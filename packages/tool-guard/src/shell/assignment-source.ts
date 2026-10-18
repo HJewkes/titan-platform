@@ -1,13 +1,13 @@
 import type { Assignment } from "./vars.js";
 import type { WordToken } from "./tokens.js";
 
-/** Hidden key in a scope's variables: the entries of the `PATH` the line set, joined by `:`; null once a store the walk cannot read touched it. */
+/**
+ * Hidden key in a scope's variables: whether the `PATH` the line set may list the working directory. It holds only
+ * `NO_CWD` or a value that means it may (null after a store the walk cannot read); no entry text is kept in it.
+ */
 export const SEARCH_KEY = "searchpath@";
-/** An entry whose directory only run time knows. */
-export const UNKNOWN_ENTRY = "$?";
-
-/** An entry a run-time `eval` may have added: probably the working directory, but only a file there is read. */
-export const SOFT_ENTRY = "@soft";
+export const NO_CWD = "no-cwd";
+export const MAY_LIST_CWD = "cwd";
 
 /** What a `PATH` assignment's word said, which an assignment holds as null when the value is dynamic. */
 export interface AssignmentSource {

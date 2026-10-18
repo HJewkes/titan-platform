@@ -110,16 +110,11 @@ describe("a line that defines a shell alias", () => {
     ["print of the argument count", "print $#"],
     ["printf with = in a format that opens with text", 'printf "b$n=%s " "$(date)"'],
     ["env with a substitution, then an assignment", "env $(env | grep -o '^HOME') DAG_CHECK=1 pnpm dag:check"],
+    ["a quoted JSON argument after a run-time word", `"$S/run.sh" '{"a":{"b":1},"c":2}'`],
   ])("keeps today's verdict for %s", async (_name, command) => {
     const got = await answer(command);
     expect(got.reason).not.toMatch(ALIAS_REASON);
     expect(got.decision).toBeNull();
-  });
-
-  it("reads a quoted JSON argument after a run-time path as no alias, though the unreadable script still refuses", async () => {
-    const got = await answer(`"$S/run.sh" '{"a":{"b":1},"c":2}'`);
-    expect(got.reason).not.toMatch(ALIAS_REASON);
-    expect(got.decision).toBe("deny");
   });
 
   // Other families may still deny these (an unknown script, an unknown program); the alias reason must not be why.

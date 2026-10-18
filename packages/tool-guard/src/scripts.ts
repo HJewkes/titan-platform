@@ -19,7 +19,7 @@ export interface ScriptTarget {
   relayed?: true;
   /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
   byPath?: true;
-  /** Found by looking a bare name up on a `PATH` the line changed, so the file may not exist. */
+  /** `./name` for a bare name a `PATH` the line changed may find in the working directory, so the file may not be there to run. */
   searched?: true;
 }
 
@@ -95,13 +95,13 @@ function ownTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
 }
 
 /**
- * Each bare name the line looks up (the command's own, and a wrapper's such as `nohup` or `env`) under a `PATH` the line changed
- * may run the file of that name in a relative directory it lists; the classifier keeps those a file may be in.
+ * Each bare name the command looks up (its own, and a wrapper's such as `nohup` or `env`) under a `PATH` the line changed that may
+ * list the working directory may run `./name`; the classifier reads only one that is there to run.
  */
 function foundOnPath(cmd: SimpleCommand, home: string): ScriptTarget[] {
   if (cmd.searchPath === undefined) return [];
   const names = [cmd.path, ...(cmd.searchPath.wrappers ?? [])].filter((n): n is string => isPathSearched(n === null ? null : commandName(n), n));
-  return names.flatMap((bare) => cmd.searchPath?.dirs.flatMap((dir) => typedTarget(cmd, `${dir === "" ? "." : dir}/${bare}`, home) ?? []) ?? []).map((t) => ({ ...t, searched: true as const }));
+  return names.flatMap((bare) => typedTarget(cmd, `./${bare}`, home) ?? []).map((t) => ({ ...t, searched: true as const }));
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {

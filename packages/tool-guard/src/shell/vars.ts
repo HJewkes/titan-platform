@@ -316,6 +316,7 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
  */
 function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
+  vars.set(SEARCH_KEY, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
   if (heard) observers.get(vars)?.(null);

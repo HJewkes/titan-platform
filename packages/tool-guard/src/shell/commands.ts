@@ -24,7 +24,7 @@ import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import { newMarks, noteRedirect, recordValue, settle, type ValueMarks } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
-import { adoptPath, assignStandalone, markPathSoft, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
+import { adoptPath, assignStandalone, guessesPath, guessPath, searchPathOf, trackCommand, withPrefixPath, type SearchPath } from "./search-path.js";
 import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
@@ -68,7 +68,7 @@ export interface SimpleCommand {
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
-  /** The `PATH` the line set before this command, which a bare command name is looked up on; absent when it set none. */
+  /** Set when the `PATH` the line set before this command may list the working directory, where a bare name may then be found. */
   searchPath?: SearchPath;
 }
 
@@ -354,7 +354,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
   const inner = withPrefixPath(w, cmd);
-  if (script?.wrap === "eval" && cmd.args.some((a) => a.dynamic)) markPathSoft(w.scope.vars);
+  if (guessesPath(cmd, script?.wrap === "eval")) guessPath(w.scope.vars);
   if (script !== null) walkScript(script, inner, wrapping, held);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(inner, [...wrapping, "find-exec"], held), null);

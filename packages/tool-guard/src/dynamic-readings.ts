@@ -9,16 +9,6 @@ export function hasDynamicName(cmd: SimpleCommand): boolean {
 }
 
 /**
- * Whether a dynamic command word may name a file by path (`$(echo ./s)`, `$DIR/s`): its text, or the text of a
- * substitution in it, holds a `/` or ends `.sh`. Its value is only known at run time, so the script cannot be read.
- */
-export function namesDynamicPath(cmd: SimpleCommand): boolean {
-  const word = cmd.args[0];
-  if (cmd.name !== null || word?.dynamic !== true) return false;
-  return /\/|\.sh$/.test(word.value) || word.subs.some((tokens) => tokens.some((t) => t.type === "word" && /\/|\.sh$/.test(t.value)));
-}
-
-/**
  * The words after a dynamic command word read as each command name a family lists. The family's own
  * classification of a reading is the verdict, so a word naming no guarded verb (`"$EDITOR" file`) reads as nothing.
  */

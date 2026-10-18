@@ -1,59 +1,61 @@
-import { SEARCH_KEY, SOFT_ENTRY, sourceOf, UNKNOWN_ENTRY } from "./assignment-source.js";
+import { MAY_LIST_CWD, NO_CWD, SEARCH_KEY, sourceOf } from "./assignment-source.js";
 import type { AssignmentSource } from "./assignment-source.js";
 import type { WordToken } from "./tokens.js";
 import { assign, DECLARERS, trackVars } from "./vars.js";
 import type { Assignment, TrackedCommand, Vars } from "./vars.js";
 
 const SYSTEM_RE = /^\$\{?PATH\}?$/;
-const CWD_RE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
+/** The working directory itself: an empty entry, `.`, `~+` or `$PWD`, with or without a trailing `/`. */
+const CWD_RE = /^(?:\.\/?|~\+\/?|\$\{?PWD\}?\/?)?$/;
+/** A literal directory under the working directory, which is not followed, as main follows none. */
+const UNDER_CWD_RE = /^(?:~\+|\$\{?PWD\}?)\/[^$`]*$/;
 /** `~`, `~/x` and `~user/x` are a home directory; `~+`, `~-` and `~N` name the working directory or a stack entry. */
 const ABSOLUTE_RE = /^(?:\/|~(?:[A-Za-z_][\w.-]*)?(?:\/|$)|\$\{?HOME\}?(?:\/|$))/;
-const DYNAMIC_RE = /[$`]/;
+const RUNTIME_RE = /[$`~]/;
 const DECLARED_RE = /^PATH(\+?)=(.*)$/s;
 
-/** What a changed `PATH` may search: the relative directories it lists, whether some entry is only known at run time, and the wrappers that look their command up on it. */
+/** A `PATH` the line changed that may list the working directory, and the wrappers that look their command up on it. */
 export interface SearchPath {
-  dirs: string[];
-  unknown: boolean;
-  /** Its only relative entry is a guess at the working directory, so a file there is read but a missing one is no reason to refuse. */
-  soft?: true;
   wrappers?: string[];
 }
 
-/** `undefined`: the line never set `PATH`; null: a store the walk cannot read; else the entries it set. */
-type Held = string[] | null | undefined;
+/** `undefined`: the line never set `PATH`; else whether the one it set may list the working directory. */
+type Held = boolean | undefined;
 
 function held(vars: Vars): Held {
-  const value = vars.get(SEARCH_KEY);
-  return typeof value === "string" ? value.split(":") : value;
+  return vars.has(SEARCH_KEY) ? vars.get(SEARCH_KEY) !== NO_CWD : undefined;
 }
 
-/** The entries `PATH=text` leaves, given what it replaces or extends; the unchanged `$PATH` stands for the system's, which the guard does not read. */
-function entriesOf(source: AssignmentSource, append: boolean, prior: Held): string[] {
+function keep(vars: Vars, cwd: boolean): void {
+  vars.set(SEARCH_KEY, cwd ? MAY_LIST_CWD : NO_CWD);
+}
+
+/** An entry that is the working directory, or one only run time knows (`$X`, `~-`), taken as a guess at it. */
+function mayBeCwd(entry: string): boolean {
+  if (CWD_RE.test(entry)) return true;
+  return !ABSOLUTE_RE.test(entry) && !UNDER_CWD_RE.test(entry) && RUNTIME_RE.test(entry);
+}
+
+/** Whether `PATH=text` may list the working directory; the unchanged `$PATH` stands for the system's, which does not. */
+function listsCwd(source: AssignmentSource, append: boolean, prior: Held): boolean {
+  const before = prior === true;
   const listed = source.text.split(":");
-  const reads = append || listed.some((entry) => SYSTEM_RE.test(entry));
-  const before = prior ?? [];
-  const entries = listed.flatMap((entry) => (SYSTEM_RE.test(entry) ? before : [entry]));
-  const unread = (prior === null && reads) || source.subs ? [UNKNOWN_ENTRY] : [];
-  return append ? [...before, ...entries, ...unread] : [...entries, ...unread];
+  // `PATH+=:x` joins its first piece to the last entry, so an empty one there is no entry of its own.
+  const entries = append && listed[0] === "" ? listed.slice(1) : listed;
+  return source.subs || (append && before) || entries.some((entry) => (SYSTEM_RE.test(entry) ? before : mayBeCwd(entry)));
 }
 
-/** An assignment to `PATH` whose value text the walk holds; any other store to `PATH` or `path` leaves its entries unknown. */
-function applied(assignment: Assignment, prior: Held): string[] {
+/** An assignment to `PATH` whose value text the walk holds; any other store to `PATH` or `path` may list the working directory. */
+function applied(assignment: Assignment, prior: Held): boolean {
   const source = sourceOf(assignment);
   const plain = assignment[2] === undefined || assignment[2] === "append";
-  if (assignment[0] !== "PATH" || source === undefined || !plain) return [UNKNOWN_ENTRY];
-  return entriesOf(source, assignment[2] === "append", prior);
-}
-
-function keep(vars: Vars, entries: string[]): void {
-  if (entries.length > 0) vars.set(SEARCH_KEY, entries.join(":"));
-  else vars.delete(SEARCH_KEY);
+  if (assignment[0] !== "PATH" || source === undefined || !plain) return true;
+  return listsCwd(source, assignment[2] === "append", prior);
 }
 
 const isPathName = (assignment: Assignment) => assignment[0] === "PATH" || assignment[0] === "path";
 
-/** A standalone `PATH=.:$PATH`: the walk stores its dynamic value as unknown, so the entries come from its text. */
+/** A standalone `PATH=.:$PATH`: the walk stores its dynamic value as unknown, so whether it lists the working directory comes from its text. */
 export function assignStandalone(assigned: readonly Assignment[], vars: Vars): void {
   for (const assignment of assigned) {
     const before = held(vars);
@@ -62,10 +64,13 @@ export function assignStandalone(assigned: readonly Assignment[], vars: Vars): v
   }
 }
 
-/** An `eval` of text only known at run time may store a `PATH` that lists the working directory. */
-export function markPathSoft(vars: Vars): void {
-  const before = held(vars);
-  if (before !== null) vars.set(SEARCH_KEY, [...(before ?? []), SOFT_ENTRY].join(":"));
+/** `source` or `.` of any file, or an `eval` of text only run time knows, may store a `PATH` that lists the working directory. */
+export function guessesPath(cmd: { name: string | null; args: WordToken[] }, evals: boolean): boolean {
+  return cmd.name === "source" || cmd.name === "." || (evals && cmd.args.some((a) => a.dynamic));
+}
+
+export function guessPath(vars: Vars): void {
+  keep(vars, true);
 }
 
 /** Carries the search path an `eval`'s text left in its walk back to the shell that ran it. */
@@ -84,15 +89,15 @@ function refersToPath(word: WordToken): boolean {
   return word.dynamic || /^(?:PATH|path)(?:\[.*\])?$/.test(target);
 }
 
-/** Tracks a command's variable writes, then records `export PATH=./bin:$PATH` and the other declarations, whose operands are words, not assignments. */
+/** Tracks a command's variable writes, then records `export PATH=.:$PATH` and the other declarations, whose operands are words, not assignments. */
 export function trackCommand(cmd: TrackedCommand, vars: Vars): void {
   const before = held(vars);
   trackVars(cmd, vars);
-  if (cmd.name !== null && NAMEREF_DECLARERS.has(cmd.name) && cmd.args.some((a) => NAMEREF_RE.test(a.value)) && cmd.args.some(refersToPath)) vars.set(SEARCH_KEY, null);
+  if (cmd.name !== null && NAMEREF_DECLARERS.has(cmd.name) && cmd.args.some((a) => NAMEREF_RE.test(a.value)) && cmd.args.some(refersToPath)) guessPath(vars);
   if (cmd.name === null || !DECLARERS.has(cmd.name)) return;
   for (const word of cmd.args) {
     const set = DECLARED_RE.exec(word.value);
-    if (set !== null) keep(vars, entriesOf({ text: set[2] ?? "", subs: word.subs.length > 0 }, set[1] === "+", before));
+    if (set !== null) keep(vars, listsCwd({ text: set[2] ?? "", subs: word.subs.length > 0 }, set[1] === "+", before));
   }
 }
 
@@ -103,33 +108,26 @@ export function namesScript(cmd: { path: string | null; name: string | null }): 
 
 /** What the command's own lookups see: the line's `PATH`, then a prefix assignment. */
 function effective(vars: Vars, assigned: readonly Assignment[]): Held {
-  let entries: Held = held(vars);
-  for (const assignment of assigned) if (isPathName(assignment)) entries = applied(assignment, entries);
-  return entries;
+  let cwd: Held = held(vars);
+  for (const assignment of assigned) if (isPathName(assignment)) cwd = applied(assignment, cwd);
+  return cwd;
 }
 
 /** A walk for the commands a shell or `find -exec` runs under this command, which inherit a prefix `PATH` through the environment. */
 export function withPrefixPath<T extends { scope: { vars: Vars } }>(w: T, cmd: { assigned: readonly Assignment[] }): T {
   if (!cmd.assigned.some(isPathName)) return w;
   const vars = new Map(w.scope.vars);
-  const entries = effective(vars, cmd.assigned);
-  if (entries === undefined) vars.delete(SEARCH_KEY);
-  else vars.set(SEARCH_KEY, entries === null ? null : entries.join(":"));
+  const cwd = effective(vars, cmd.assigned);
+  if (cwd === undefined) vars.delete(SEARCH_KEY);
+  else keep(vars, cwd);
   return { ...w, scope: { ...w.scope, vars } };
 }
 
 /**
- * The `PATH` a command's bare name is looked up on: what the line stored before it, then a prefix assignment (`PATH=.:$PATH s`,
- * `env PATH=. s`), which holds for that command alone. Absent when the line never set `PATH`.
+ * Set when a command's bare name may be found in the working directory: the `PATH` the line stored before it, then a
+ * prefix assignment (`PATH=.:$PATH s`, `env PATH=. s`), which holds for that command alone, may list it.
  */
 export function searchPathOf(vars: Vars, cmd: { assigned: readonly Assignment[]; wrappers?: string[] }): { searchPath?: SearchPath } {
-  const entries = effective(vars, cmd.assigned);
-  if (entries === undefined) return {};
-  const list = (entries ?? [UNKNOWN_ENTRY]).filter((entry) => entry !== SOFT_ENTRY).map((entry) => entry.replace(CWD_RE, "."));
-  const guessed = (entries ?? []).includes(SOFT_ENTRY);
-  const unknown = list.some((entry) => entry === UNKNOWN_ENTRY || (DYNAMIC_RE.test(entry) && !ABSOLUTE_RE.test(entry)) || (entry.startsWith("~") && !ABSOLUTE_RE.test(entry)));
-  const named = list.filter((entry) => !ABSOLUTE_RE.test(entry) && !DYNAMIC_RE.test(entry) && !entry.startsWith("~"));
-  const dirs = guessed && !named.includes(".") ? [...named, "."] : named;
-  const soft = guessed && named.length === 0 ? { soft: true as const } : {};
-  return { searchPath: { dirs, unknown, ...soft, ...(cmd.wrappers ? { wrappers: cmd.wrappers } : {}) } };
+  if (effective(vars, cmd.assigned) !== true) return {};
+  return { searchPath: cmd.wrappers ? { wrappers: cmd.wrappers } : {} };
 }

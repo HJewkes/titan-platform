@@ -119,12 +119,8 @@ interface Feeds {
 /** What each descriptor holds before a command's own redirects open: the shell's, or the command's that runs it. */
 type Descriptors = (fd: number) => Feeds;
 
-/** What a changed `PATH` may search: the relative directories it lists, whether some entry is only known at run time, and the wrappers that look their command up on it. */
+/** A `PATH` the line changed that may list the working directory, and the wrappers that look their command up on it. */
 interface SearchPath {
-    dirs: string[];
-    unknown: boolean;
-    /** Its only relative entry is a guess at the working directory, so a file there is read but a missing one is no reason to refuse. */
-    soft?: true;
     wrappers?: string[];
 }
 
@@ -163,7 +159,7 @@ interface SimpleCommand {
     added?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
     inherited?: Descriptors;
-    /** The `PATH` the line set before this command, which a bare command name is looked up on; absent when it set none. */
+    /** Set when the `PATH` the line set before this command may list the working directory, where a bare name may then be found. */
     searchPath?: SearchPath;
 }
 interface ExtractOptions {

@@ -5,8 +5,7 @@ import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
-import { isPathSearched } from "./path-changes.js";
-import { hasDynamicName, namedReadings, namesDynamicPath, wrappedReading } from "./dynamic-readings.js";
+import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { statSync } from "node:fs";
 import { afterWrites, mayBeWritten, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
@@ -119,7 +118,6 @@ function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: Script
 }
 
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  if (namesDynamicPath(cmd)) throw new UnreadableScriptError(null);
   const direct = FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
   return hasDynamicName(cmd) ? [...direct, ...dynamicActions(cmd, ctx)] : direct;
 }
@@ -162,8 +160,7 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
  * followed, down to `MAX_SCRIPT_DEPTH`; one more refuses the line.
  */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo, earlier: () => SimpleCommand[]): ClassifiedAction[] {
-  refuseUnreadablePath(cmd);
-  const targets = scriptTargets(cmd, ctx.home).filter((target) => mayExist(cmd, target, ctx, earlier) && !runsNatively(target, ctx));
+  const targets = scriptTargets(cmd, ctx.home).filter((target) => cwdLookup(target, ctx, scripts.depth, earlier) && !runsNatively(target, ctx));
   if (scripts.depth >= MAX_SCRIPT_DEPTH && targets.length > 0) throw new ScriptDepthError();
   return targets.flatMap((target) => {
     const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx, scripts.depth), () => scriptVerdicts(cmd, target, ctx, scripts));
@@ -172,55 +169,32 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
   });
 }
 
-/** A command looked up on a PATH whose entries the walk cannot read may be any file in a directory it does not know. */
-function refuseUnreadablePath(cmd: SimpleCommand): void {
-  const path = cmd.searchPath;
-  if (path === undefined) return;
-  const looksUp = [cmd.path, ...(path.wrappers ?? [])].some((n) => n !== null && isPathSearched(n.replace(/^.*\//, ""), n));
-  if ((path.unknown && (looksUp || hasDynamicName(cmd))) || (path.dirs.length > 0 && hasDynamicName(cmd))) throw new UnreadableScriptError(null);
+/**
+ * The one boundary for a name a changed PATH may find in the working directory: `./name` is read only when it is there to run
+ * and its own text can be followed. A missing, directory, non-executable, unreadable, cut or opaque-`#!` file is skipped,
+ * never refused, as a PATH lookup may find the command elsewhere. A file the line writes with text the guard cannot
+ * place still refuses, as it does when run as `./name`.
+ */
+function cwdLookup(target: ScriptTarget, ctx: ClassifyContext, depth: number, earlier: () => SimpleCommand[]): boolean {
+  if (target.searched !== true) return true;
+  if (depth >= MAX_SCRIPT_DEPTH || !runnable(target, ctx, earlier)) return false;
+  try {
+    return !scriptReadings(ctx, target.path).some(hasOpaqueShebang);
+  } catch (error) {
+    if (error instanceof UnreadableScriptError) return false;
+    throw error;
+  }
 }
 
-/** Bare commands that create no file in the working directory: readers, and builtins that only move shell state. */
-const READERS = new Set([
-  ...["cat", "ls", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "diff", "cmp", "stat", "file", "which", "readlink", "basename", "dirname", "date", "sleep", "tr", "cut"],
-  ...[":", "[", "[[", "alias", "cd", "declare", "echo", "export", "false", "let", "local", "popd", "printf", "pushd", "pwd", "read", "readonly", "set", "shift", "test", "true", "type", "typeset", "unalias", "unset"],
-]);
-const READ_ONLY_GIT = new Set(["status", "diff", "log", "show", "rev-parse", "ls-files", "describe", "branch"]);
-
-/** An explicit allowlist: a name with a `/`, `source`, `.` and any program not listed may write the file a later PATH lookup finds. */
-function onlyReads(cmd: SimpleCommand): boolean {
-  if (cmd.name === null || cmd.path === null || cmd.path.includes("/")) return false;
-  if (cmd.name !== "git") return READERS.has(cmd.name);
-  const sub = cmd.args.find((a) => !a.value.startsWith("-"))?.value ?? "";
-  return READ_ONLY_GIT.has(sub) && !cmd.args.some((a) => a.value.startsWith("--output") || a.dynamic);
-}
-
-/** A PATH lookup skips a directory and a file with no execute bit, unless the line wrote the file or runs `chmod` before it. */
-function lookupSkips(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
-  if (mayBeWritten(ctx, target.path)) return false;
+/** A file the line writes, or an executable regular file on disk; a `chmod` earlier on the line may set the execute bit. */
+function runnable(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+  if (mayBeWritten(ctx, target.path)) return true;
   try {
     const stat = statSync(target.path);
-    return !stat.isFile() || ((stat.mode & 0o111) === 0 && !earlier().some((c) => c.name === "chmod"));
+    return stat.isFile() && ((stat.mode & 0o111) !== 0 || earlier().some((c) => c.name === "chmod"));
   } catch {
     return false;
   }
-}
-
-/**
- * Whether a file a PATH lookup found may be there to run: on the disk, or written by the line. A file another command on
- * the line may have made (`cp s n; PATH=.:$PATH n`, `tar xf a.tar; PATH=.:$PATH n`) fails closed unless every earlier command only reads.
- */
-function mayExist(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
-  if (target.searched !== true) return true;
-  if (cmd.searchPath?.soft === true && lookupSkips(target, ctx, earlier)) return false;
-  try {
-    if (scriptReadings(ctx, target.path).length > 0) return true;
-  } catch (error) {
-    if (!(error instanceof UnreadableScriptError)) throw error;
-    if (!error.absent) return true;
-  }
-  if (cmd.searchPath?.soft !== true && !earlier().every(onlyReads)) throw new UnreadableScriptError(null);
-  return false;
 }
 
 /**
