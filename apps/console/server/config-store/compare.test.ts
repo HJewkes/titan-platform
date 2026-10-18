@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { invokeCommand } from "@titan-design/registry";
 import { configArgs, importRevisionZero } from "./cli.js";
-import { compareTree, configStoreCommands, type CompareTreeResult, type ConfigStoreSource } from "./compare.js";
+import { compareTree, compareTreeResult, configStoreCommands, type CompareTreeResult, type ConfigStoreSource } from "./compare.js";
 import { readRevisionLog, revisionLogPath } from "./log.js";
 import { FIXTURE_LIMITS, copyFixtureTree, tempDir } from "./test-tree.js";
 
@@ -20,7 +20,8 @@ async function importedStore(): Promise<ConfigStoreSource & { autonomyTree: stri
 
 async function rpcCompare(source: ConfigStoreSource | undefined): Promise<CompareTreeResult> {
   const { envelope } = await invokeCommand(configStoreCommands(source)["config.compareTree"], {}, { warnings: [], format: "json" });
-  return (envelope as { data: CompareTreeResult }).data;
+  if (!envelope.ok) throw new Error(envelope.error);
+  return compareTreeResult.parse(envelope.data);
 }
 
 describe("the compare-tree diff", () => {

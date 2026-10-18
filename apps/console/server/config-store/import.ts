@@ -15,6 +15,7 @@ import path from "node:path";
 import { isNode, isPair, isScalar, parseDocument, visit, type Document } from "yaml";
 import {
   checkCoordinatorConfig,
+  coordinatorConfigSchema,
   diffDocuments,
   importAutonomyTree,
   parseCharterPolicy,
@@ -30,6 +31,7 @@ const SEATS_DIR = "seats";
 const SEAT_SCHEMA = "autonomy-seat/v1";
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
+export const limitsSchema = coordinatorConfigSchema.shape.limits;
 export type Limits = CoordinatorConfig["limits"];
 export type TreeError = { file: string; path: string; message: string };
 export type TreeImport =
@@ -127,9 +129,15 @@ async function readSeats(tree: string): Promise<(FrontMatter & { seat: SeatConfi
   });
 }
 
+/** The charter's pools and funds pass through its schema untyped, so they are checked here. */
+function charterLimits({ pools, funds }: CharterPolicy): Limits {
+  const parsed = limitsSchema.safeParse({ version: 1, pools, ...(funds === undefined ? {} : { funds }) });
+  if (!parsed.success) schemaErrors(CHARTER_FILE, parsed.error.issues);
+  return parsed.data;
+}
+
 function limitsFor(charter: CharterPolicy, given: Limits | undefined): { limits: Limits; from: "charter" | "given" } {
-  const { pools, funds } = charter as { pools?: unknown; funds?: unknown };
-  if (pools !== undefined) return { limits: { version: 1, pools, ...(funds === undefined ? {} : { funds }) } as Limits, from: "charter" };
+  if (charter.pools !== undefined) return { limits: charterLimits(charter), from: "charter" };
   if (given !== undefined) return { limits: given, from: "given" };
   return refuse(CHARTER_FILE, "pools", "the charter has no pools block, and no limits were given");
 }

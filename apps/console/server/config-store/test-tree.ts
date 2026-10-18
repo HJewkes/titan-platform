@@ -2,7 +2,8 @@ import { cpSync, mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { SeatConfig } from "@titan-design/coordinator";
+import { z } from "zod";
+import { seatConfigSchema, type SeatConfig } from "@titan-design/coordinator";
 import type { Limits } from "./import.js";
 
 /** The coordinator package's synthetic example tree: charter.md, seat-a.md and seat-b.md. */
@@ -24,9 +25,18 @@ export function copyFixtureTree(): string {
   return tree;
 }
 
-/** A tree file's front matter, parsed as the JSON the fixture writes it in. */
-export function fixtureFrontMatter<T = SeatConfig>(tree: string, file: string): T {
+function frontMatterJson(tree: string, file: string): unknown {
   const match = /^---\n([\s\S]*?)\n---\n/.exec(readFileSync(path.join(tree, file), "utf8"));
   if (!match) throw new Error(`${file} has no front matter`);
-  return JSON.parse(match[1] as string) as T;
+  return JSON.parse(match[1] ?? "");
+}
+
+/** A seat file's front matter, parsed as the JSON the fixture writes it in. */
+export function fixtureSeat(tree: string, file: string): SeatConfig {
+  return seatConfigSchema.parse(frontMatterJson(tree, file));
+}
+
+/** The charter's front matter with every key kept. */
+export function fixtureCharter(tree: string): Record<string, unknown> {
+  return z.looseObject({}).parse(frontMatterJson(tree, "charter.md"));
 }

@@ -4,20 +4,20 @@ import { describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 import { renderSeatBook } from "@titan-design/coordinator";
 import { importTree } from "./import.js";
-import { FIXTURE_LIMITS, FIXTURE_TREE, copyFixtureTree, fixtureFrontMatter } from "./test-tree.js";
+import { FIXTURE_LIMITS, FIXTURE_TREE, copyFixtureTree, fixtureCharter, fixtureSeat } from "./test-tree.js";
 
 function writeYamlSeat(tree: string, file: string, edit: (yaml: string) => string): void {
-  writeFileSync(path.join(tree, file), `---\n${edit(stringify(fixtureFrontMatter(tree, file)))}---\n\n# seat\n`);
+  writeFileSync(path.join(tree, file), `---\n${edit(stringify(fixtureSeat(tree, file)))}---\n\n# seat\n`);
 }
 
 function withCharter(tree: string, extra: Record<string, unknown>): void {
-  const charter = fixtureFrontMatter<Record<string, unknown>>(tree, "charter.md");
+  const charter = fixtureCharter(tree);
   writeFileSync(path.join(tree, "charter.md"), `---\n${JSON.stringify({ ...charter, ...extra }, null, 2)}\n---\n`);
 }
 
 describe("importTree", () => {
   it("imports the coordinator package's example tree to a document that renders back to the same seat files", async () => {
-    const seats = [fixtureFrontMatter(FIXTURE_TREE, "seat-a.md"), fixtureFrontMatter(FIXTURE_TREE, "seat-b.md")];
+    const seats = [fixtureSeat(FIXTURE_TREE, "seat-a.md"), fixtureSeat(FIXTURE_TREE, "seat-b.md")];
 
     const imported = await importTree(FIXTURE_TREE, { limits: FIXTURE_LIMITS });
 
@@ -40,6 +40,15 @@ describe("importTree", () => {
     const imported = await importTree(tree, { limits: given });
 
     expect(imported.ok && [imported.limitsFrom, imported.document.limits]).toEqual(["charter", FIXTURE_LIMITS]);
+  });
+
+  it("refuses a charter pool the limits schema does not allow, naming the charter key", async () => {
+    const tree = copyFixtureTree();
+    withCharter(tree, { pools: { ...FIXTURE_LIMITS.pools, "pool-a": { ...FIXTURE_LIMITS.pools["pool-a"], ceiling_typo: 80 } } });
+
+    const imported = await importTree(tree);
+
+    expect(imported).toEqual({ ok: false, errors: [expect.objectContaining({ file: "charter.md", path: "pools.pool-a" })] });
   });
 
   it("refuses a charter with no pools block when no limits are given", async () => {

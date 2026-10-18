@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { revisionSha } from "@titan-design/coordinator";
 import { compareTree, type ConfigStoreSource } from "./compare.js";
-import { importTree, type Limits } from "./import.js";
+import { importTree, limitsSchema, type Limits } from "./import.js";
 import { appendRevision, readRevisionLog, revisionLogPath } from "./log.js";
 import { materializeDocument } from "./materialize.js";
 
@@ -31,7 +31,7 @@ export function configArgs(argv: readonly string[]): ConfigArgs | null {
 }
 
 async function readLimits(file: string | null): Promise<Limits | undefined> {
-  return file === null ? undefined : (JSON.parse(await readFile(file, "utf8")) as Limits);
+  return file === null ? undefined : limitsSchema.parse(JSON.parse(await readFile(file, "utf8")));
 }
 
 /** Returns the lines to print; throws with the refusal. */
