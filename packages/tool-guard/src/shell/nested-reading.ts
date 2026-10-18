@@ -56,17 +56,39 @@ function arithmeticTokens(at: Reading, dollar: number): Token[][] {
 }
 
 const PLAIN_MATH = /^[\w \t\r\n+\-*/%<>=!&|^~?:,.$()[\]]*$/;
-const PLAIN_PARAMETER = /\$\{#?[A-Za-z_]\w*\}/g;
+const PLAIN_PARAMETER = /\$\{(?:#?[A-Za-z_]\w*(?:\[(?:[@*]|\d+)\])?|[A-Za-z_]\w*:?[-=+][\w.]*)\}/g;
+const BASE_NUMBER = /\b\d+#\w+/g;
 const NESTED_EXPANSION = /\$[([]/;
+const PLAIN_COMMAND = /^(?:[\w \t+\-*/%>=,.:]|<(?!<))*$/;
+const INNERMOST_SPAN = /\$\(\(([^()`]*)\)\)|\$\(([^()`]*)\)|`([^`]*)`/g;
 
 /**
  * Whether the body is plain math: nothing in it hides a paren from the arithmetic reading, so the shells read it
- * the same way. That takes only characters that hide nothing, a `${name}` or `${#name}`, no `$(`, `$[` or backquote
- * (so no span nested in it), brackets that balance and parens that never close more than they opened. zsh reads an
- * unbalanced `[` or `]` as a command, so those are not plain. Every other body is read both ways or refused.
+ * the same way. That takes only characters that hide nothing, a `${name}`, `${#name}`, `${#name[@]}` or
+ * `${name:-word}`, a base number such as `16#ff` (a `#` inside a word starts no comment), brackets that balance and
+ * parens that never close more than they opened. zsh reads an unbalanced `[` or `]` as a command, so those are not
+ * plain. A nested `$(( ))` of plain math, or a `$( )` or backquote holding only plain command text (no quote,
+ * backslash, `#`, paren, separator, newline or heredoc), cannot hide a paren either, so it counts as a name; any
+ * other nested span is not plain. Every body that is not plain is read both ways or refused.
  */
 function isPlainMath(body: string): boolean {
-  const text = body.replace(PLAIN_PARAMETER, "x");
+  return isPlainMathText(withPlainSpansFolded(body.replace(PLAIN_PARAMETER, "x").replace(BASE_NUMBER, "x")));
+}
+
+function withPlainSpansFolded(text: string): string {
+  let outer = text;
+  for (let folded = foldInnermostSpans(outer); folded !== outer; folded = foldInnermostSpans(outer)) outer = folded;
+  return outer;
+}
+
+function foldInnermostSpans(text: string): string {
+  return text.replace(INNERMOST_SPAN, (span, math?: string, command?: string, backquoted?: string) => {
+    const plain = math === undefined ? PLAIN_COMMAND.test(command ?? backquoted ?? "") : isPlainMathText(math);
+    return plain ? "x" : span;
+  });
+}
+
+function isPlainMathText(text: string): boolean {
   if (!PLAIN_MATH.test(text) || NESTED_EXPANSION.test(text)) return false;
   let parens = 0;
   let brackets = 0;
