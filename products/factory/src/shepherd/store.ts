@@ -12,6 +12,7 @@ import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsk
 import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
+import type { KindMove } from "./register-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -31,7 +32,7 @@ export interface RegistrationInput extends RegistrationFactsInput {
   slice?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -127,7 +128,8 @@ export class ShepherdStore implements HoldLookup {
   /**
    * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
    * An omitted kind keeps the stored one, so a repeat without `--kind` cannot change whether the run carries a reviewed MERGE.
-   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`).
+   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`);
+   * a move into test-only also needs `diff`, the PR's test-only classification. `guard` replaces `kindMoveRefusal`.
    */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);
@@ -136,7 +138,7 @@ export class ShepherdStore implements HoldLookup {
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = repeatedPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
-      const refusal = kindMoveRefusal(stored.kind, kind);
+      const refusal = (meta.guard ?? kindMoveRefusal)(stored.kind, kind, meta.diff);
       if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")

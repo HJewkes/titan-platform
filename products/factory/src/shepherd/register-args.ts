@@ -4,7 +4,8 @@ import { z } from "zod";
 import { RegistrationRefused, RequestedPolicyFields, resolveEffectivePolicy, type EffectivePolicy } from "./policy.js";
 import { HEAD } from "./await-verdict.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
-import { TASK_KINDS, kindMoveRefusal, type Registration } from "./store.js";
+import type { KindMove } from "./register-kind.js";
+import { TASK_KINDS, type Registration } from "./store.js";
 
 export const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
@@ -61,7 +62,7 @@ export function sliceAfter(existing: Registration, args: RegisterArgs): string |
 }
 
 /** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
-export function refuseKindMove(existing: Registration, args: RegisterArgs): void {
-  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind);
+export function refuseKindMove(existing: Registration, args: RegisterArgs, { guard, diff }: KindMove): void {
+  const refusal = args.kind === undefined ? undefined : guard(existing.kind, args.kind, diff);
   if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
 }

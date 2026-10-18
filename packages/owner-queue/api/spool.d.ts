@@ -1,5 +1,5 @@
 import { RevisionSource } from '@titan-design/evidence';
-import { O as OwnerItem, a as OwnerAnswer, A as Audience, h as OwnerItemDeposit } from './deposit.js';
+import { O as OwnerItem, a as OwnerAnswer, A as Audience, i as OwnerItemDeposit } from './deposit.js';
 import 'zod';
 
 /** One anchor that held at its pinned commit, with its first and last lines quoted back. */
@@ -12,6 +12,20 @@ interface QuotedAnchor {
 declare class DepositAnchorError extends Error {
     readonly refusals: readonly string[];
     constructor(refusals: readonly string[]);
+}
+
+/** One transcript line: `byteLength` bytes at `byteOffset` of the session's transcript. */
+interface SessionEventRef {
+    session: string;
+    byteOffset: number;
+    byteLength: number;
+}
+/** The text of one transcript event, or null when it cannot be read. `@titan-design/session-read`'s readSessionEventText fits. */
+type SessionEventTextSource = (ref: SessionEventRef) => Promise<string | null>;
+/** Thrown before anything is written, when a locator cite's quote is not checked true against its event. */
+declare class DepositCiteError extends Error {
+    readonly refusal: string;
+    constructor(refusal: string);
 }
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
@@ -27,6 +41,8 @@ type DepositWriteResult = WriteResult & {
 interface WriteDepositOptions {
     /** File text at a pinned commit. With it, a deposit whose anchor does not hold is refused unwritten. */
     source?: RevisionSource;
+    /** Transcript event text. A locator cite is refused unwritten unless its quote matches; with no source it is refused. */
+    events?: SessionEventTextSource;
 }
 type SpoolReject = {
     file: string;
@@ -58,7 +74,8 @@ declare function answerFileNames(id: string): string[];
  * current or its legacy name, leaves the first file in place and returns `created: false`.
  * Throws on a refused or oversized deposit, and on a name held by a different deposit. With a
  * `source`, an anchor past EOF or on a path that is not a file at its pinned commit throws
- * DepositAnchorError before anything is written.
+ * DepositAnchorError before anything is written. A locator cite whose quote does not match its
+ * transcript event, through `events`, throws DepositCiteError before anything is written.
  */
 declare function writeDeposit(dir: string, deposit: OwnerItemDeposit, options?: WriteDepositOptions): Promise<DepositWriteResult>;
 /**
@@ -74,7 +91,7 @@ declare function writeAnswer(dir: string, id: string, answer: OwnerAnswer): Prom
 /** Returns the answer to item `id`, or undefined if none is filed. Throws on a malformed answer. */
 declare function readAnswer(dir: string, id: string): Promise<OwnerAnswer | undefined>;
 
-export { DepositAnchorError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
+export { DepositAnchorError, DepositCiteError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SessionEventRef, type SessionEventTextSource, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -108,6 +125,15 @@ declare const sourceRefSchema: z.ZodObject<{
     }>;
     ref: z.ZodString;
 }, z.core.$strip>;
+/**
+ * A cite the queue can check: `quote` must appear in one transcript line of `session`, named by
+ * `event` as `<byteOffset>:<byteLength>`. A deposit carrying one is refused unless the quote matches.
+ */
+declare const locatorCiteSchema: z.ZodObject<{
+    session: z.ZodString;
+    event: z.ZodString;
+    quote: z.ZodString;
+}, z.core.$strict>;
 declare const answerSchema: z.ZodObject<{
     optionId: z.ZodOptional<z.ZodString>;
     optionIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -178,7 +204,11 @@ declare const ownerItemSchema: z.ZodObject<{
         by: z.ZodString;
         confidence: z.ZodOptional<z.ZodNumber>;
         rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
         hidden: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
@@ -253,6 +283,7 @@ declare const ownerItemSchema: z.ZodObject<{
 type SourceRef = z.infer<typeof sourceRefSchema>;
 type OwnerItem = z.infer<typeof ownerItemSchema>;
 type OwnerAnswer = z.infer<typeof answerSchema>;
+type LocatorCite = z.infer<typeof locatorCiteSchema>;
 type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
 type OnSilence = z.infer<typeof onSilenceSchema>;
@@ -303,7 +334,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         by: z.ZodString;
         confidence: z.ZodOptional<z.ZodNumber>;
         rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
     }, z.core.$strict>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
@@ -338,4 +373,4 @@ declare function depositItemId(asker: string, depositId: string): string;
 /** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
 declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
 
-export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, type OwnerItemDeposit as h, SOURCE_SYSTEMS as i, depositItemId as j, fromDeposit as k, ownerItemSchema as l, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, type OnSilence as h, type OwnerItemDeposit as i, SOURCE_SYSTEMS as j, depositItemId as k, fromDeposit as l, locatorCiteSchema as m, ownerItemSchema as n, ownerItemDepositSchema as o, sourceRefSchema as s };

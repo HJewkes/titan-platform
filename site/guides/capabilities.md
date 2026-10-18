@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. Native rollouts return unknown/freshness-unverified; quota age and numerical admission policy require a caller-established known observation. The pure root exports `loginStateFromStatus`, `usageFromRolloutEvents`, `quotaAdmission`, `accountLabel` and `redactSecrets`; `./node` exposes the bounded login probe and read-only rollout scan. It never reads auth.json or provisions an account. For Claude account state use anthropic-account; for execution and transcript decoding use agent and session-read. Use `knownObservation` to explicitly attest a quota observation time source before admission; plain or serialized known readings do not carry that process-local provenance. The factory does not authenticate a backend or account. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). `verifySigned` checks the DER signature over the exact received bytes against a `keyRing` of installed public keys before it parses anything, then the zod schema, the issue and expiry window, the audience and your statement kind's own checks; `canonical` gives sorted-key JSON for digests. It keeps no state, so nonce replay is yours to record. To decide which actions need the owner at all, use authority. |
@@ -312,11 +312,11 @@ Tier 0, `@titan-design/evidence@0.3.0`. Citation verification, overlap grouping,
 Key exports:
 
 - `line-source`: `lineSourceFromTexts`, `splitLines`
-- `citation`: `quoteFragments`, `quoteInRange`, `verifyCitation`, `verifyRange`
+- `citation`: `quoteFragments`, `quoteInRange`, `quoteInText`, `verifyCitation`, `verifyRange`
 - `anchor`: `isAnchorForm`, `isFullSha`, `parseAnchor`
 - `anchor-check`: `verifyAnchorText`
-- `overlap`: `groupByOverlap`, `rangesOverlap`
-- +27 more in the [reference page](/reference/evidence)
+- `overlap`: `groupByOverlap`
+- +28 more in the [reference page](/reference/evidence)
 
 <a id="cap-fix-proof"></a>
 
@@ -324,7 +324,7 @@ Key exports:
 
 Tier 0, `@titan-design/fix-proof@0.5.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
 Key exports:
 
@@ -334,7 +334,7 @@ Key exports:
 - `mutation`: `checkMutation`, `parseMutationSpec`
 - `mutant-classify`: `classifyMutants`, `testFileOfSpec`
 - `classify`: `classifyReports`, `isNewApiFailure`
-- +78 more in the [reference page](/reference/fix-proof)
+- +82 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -889,14 +889,13 @@ Tier 2, `@titan-design/owner-queue@0.4.0`. The owner queue core: one OwnerItem s
 
 Key exports:
 
-- `schema`: `ownerItemSchema`, `sourceRefSchema`
+- `schema`: `locatorCiteSchema`, `ownerItemSchema`, `sourceRefSchema`
 - `card`: `cardLint`, `ownerCardSchema`
 - `audience`: `audienceOf`, `forAudience`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `consolidate`: `consolidate`
 - `influence`: `influenceEdges`
-- `keys`: `askKey`
-- +74 more in the [reference page](/reference/owner-queue)
+- +76 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
@@ -1005,7 +1004,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +211 more in the [reference page](/reference/session-read)
+- +214 more in the [reference page](/reference/session-read)
 
 <a id="cap-speech-vet"></a>
 
@@ -1192,7 +1191,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +294 more in `products/explainer/src/index.ts`
+- +306 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

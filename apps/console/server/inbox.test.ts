@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { createServer, request } from "node:http";
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { MAX_DEPOSIT_BYTES, readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
@@ -371,6 +371,37 @@ describe("titan-console inbox file", () => {
     expect(refused.stdout).toBe("");
     expect(refused.stderr).toMatch(/^inbox\.deposit refused \(HTTP 400\)/);
     expect(refused.stderr).not.toContain(marker);
+  });
+});
+
+describe("inbox.deposit with a locator cite", () => {
+  const session = "5e55-synthetic";
+  const line = JSON.stringify({ type: "assistant", sessionId: session, message: { content: [{ type: "text", text: "Ship it: the flag\ndefaults off." }] } });
+  const cite = (quote: string) => ({ recommended: { optionId: "yes", by: ASKER, cite: { session, event: `0:${Buffer.byteLength(line)}`, quote } } });
+
+  beforeEach(async () => {
+    const configDir = path.join(dir, "claude");
+    await mkdir(path.join(configDir, "projects", "-work"), { recursive: true });
+    await writeFile(path.join(configDir, "projects", "-work", `${session}.jsonl`), `${line}\n`);
+    vi.stubEnv("CLAUDE_CONFIG_DIRS", configDir);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("files a quote the session-read transcript line holds, re-wrapped", async () => {
+    const reply = await post(deposit(cite("Ship it: the flag defaults\noff.")));
+
+    expect(bodyOf(reply).data?.created).toBe(true);
+  });
+
+  it("refuses a quote the transcript line does not hold with 400 and files nothing", async () => {
+    const reply = await post(deposit(cite("Hold: the flag defaults on.")));
+
+    expect(reply.status).toBe(400);
+    expect(bodyOf(reply).error).toContain("does not match");
+    expect(await spoolFiles()).toEqual([]);
   });
 });
 

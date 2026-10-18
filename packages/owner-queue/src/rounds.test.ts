@@ -98,6 +98,15 @@ describe("buildOwnerRounds", () => {
     expectValid([build(items, base).rounds[0]!.manifest]);
   });
 
+  it("shows a locator cite's quote and where it was quoted from when there is no rationale", () => {
+    const cite = { session: "s-1", event: "120:64", quote: " Reads stay one hop " };
+    const items = [decide("located", { recommended: { optionId: "flat", by: "decider", confidence: 0.5, cite } })];
+
+    const [question] = build(items, base).rounds[0]!.manifest.questions;
+
+    expect(question).toMatchObject({ recommendation: { rationale: 'Cite: "Reads stay one hop" (session s-1, event 120:64)' } });
+  });
+
   it("asks the items a principle covers as one Principle: question listing each", () => {
     const principle: Principle = {
       id: "layout-is-planner-call",

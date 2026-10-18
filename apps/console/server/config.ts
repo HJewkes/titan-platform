@@ -1,7 +1,7 @@
 import { BlockList, isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { activeWorkGraphPath } from "@titan-design/app-paths";
+import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
@@ -17,6 +17,9 @@ const AGENT_CHAT_PORT = 7600;
 const FACTORY_PORT = 7410;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
+
+/** Where the repo-review skill writes its folders, under the active-work root. */
+const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
@@ -54,6 +57,11 @@ export interface ConsoleConfig {
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
   /**
+   * Repo reviews, one folder with a README.md each; `TITAN_CONSOLE_REVIEWS_DIR` overrides.
+   * Optional so a config built by hand serves no `reviews.list`; `resolveConfig` always sets it.
+   */
+  reviewsDir?: string;
+  /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
    */
@@ -74,6 +82,8 @@ export interface ConsoleConfig {
   inboxActions?: boolean;
   /** Where `config.surfaces` reads this host's agent-chat, factory, console and Claude Code config. */
   hostSurfaces?: HostSurfaceRoots;
+  /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
+  videoRoots?: string[];
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -119,8 +129,7 @@ export function resolveConfig(
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
     ...lanOptionsFrom(env, home, stateDir, machine),
-    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
-    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
     hostSurfaces: hostSurfaceRootsFrom(env, home),
@@ -143,10 +152,20 @@ function lanOptionsFrom(
   };
 }
 
+/** The dirs other processes write and the console reads from or files into. */
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+  return {
+    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
+    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
+  };
+}
+
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots"> {
   return {
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
+    videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
     inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),
@@ -196,6 +215,17 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */
 function decisionsFileFrom(raw: string | undefined, home: string): string | null {
   return absolutePathFrom("TITAN_CONSOLE_DECISIONS_FILE", raw, home);
+}
+
+/** A `path.delimiter` list; a relative entry would resolve against whatever directory the service started in. */
+function videoRootsFrom(raw: string | undefined, home: string): string[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  const roots = raw.split(path.delimiter).map((entry) => entry.trim()).filter((entry) => entry !== "");
+  return roots.map((entry) => {
+    const root = expandHome(entry, home);
+    if (!path.isAbsolute(root)) throw new Error(`TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute or ~/ paths, got "${entry}"`);
+    return root;
+  });
 }
 
 /** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */
