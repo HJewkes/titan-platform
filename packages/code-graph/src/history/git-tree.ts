@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { discoveryEnv, runGit, runGitLargeResult } from "./git.js";
+import { gitEnv, runGit, runGitLargeResult } from "./git.js";
 
 /** A regular file or symlink in a commit's tree: its repo-relative path and blob id. */
 export interface TreeBlob {
@@ -59,7 +59,7 @@ export function readBlobs(repoRoot: string, oids: readonly string[]): Map<string
     input: unique.map((oid) => `${oid}\n`).join(""),
     maxBuffer: BLOB_READ_BUFFER,
     stdio: ["pipe", "pipe", "ignore"],
-    env: discoveryEnv(),
+    env: gitEnv(repoRoot),
   });
   return parseCatFileBatch(out);
 }
