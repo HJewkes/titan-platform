@@ -53,6 +53,7 @@ export {
 } from "./setup.js";
 export {
   agentWorktreesIn,
+  porcelain as listWorktreesPorcelain,
   isLive,
   reclaimWorktree,
   sweepWorktrees,

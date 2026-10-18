@@ -180,3 +180,11 @@ With allowOriginHeadAncestor: true, localBackingCandidates can provide additiona
 The package validates the entire candidate list, rejects malformed entries and annotated tag IDs, and observes files, branch and HEAD again after asynchronous work and the caller recheck. Callback failures give no proof; all removal remains nonforced and retains the actual branch. Caller arrays and entries are copied rather than frozen in place.
 
 Candidates are caller-supplied backing assertions, not authenticated provider evidence. Provider status, fetches and correlation metadata belong to the product adapter. The option requires the origin-head flag to be strictly true; omitted options preserve the existing behavior and result shapes. This optional package callback does not wire any product provider reader.
+
+## Raw worktree listing
+
+listWorktreesPorcelain(gitRoot) returns a Promise of Git's exact worktree list
+--porcelain stdout. It preserves whitespace and every record, including the main
+checkout, foreign branches, detached HEADs, bare entries and locked worktrees.
+It performs no parsing or lifecycle classification. Git failures reject the
+Promise; callers choose whether to recover.

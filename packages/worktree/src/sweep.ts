@@ -74,7 +74,7 @@ export interface SweepOptions {
   formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
 
-const porcelain: GitLister = async (gitRoot) =>
+export const porcelain: GitLister = async (gitRoot) =>
   execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: gitRoot, encoding: "utf8", env: gitChildEnv() });
 
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
