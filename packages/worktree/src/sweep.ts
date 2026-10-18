@@ -100,7 +100,7 @@ function classifyByOwner(
   if (owner === undefined) return undefined;
   if (isLive(owner.state)) return { status: "held", detail: `${owner.name} is ${owner.state}` };
   const since = now - (owner.exitedAt ?? owner.lastEventAt);
-  if (since >= RECLAIM_GRACE_MS) return undefined;
+  if (!(since < RECLAIM_GRACE_MS)) return undefined;
   return {
     status: "in-grace",
     detail: `${owner.name} stopped ${Math.round(since / 1000)}s ago; reclaimable after ${RECLAIM_GRACE_MS / 1000}s`,
