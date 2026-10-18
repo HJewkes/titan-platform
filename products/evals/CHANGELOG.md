@@ -1,5 +1,13 @@
 # @titan-design/evals
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [6aa69f2]
+  - @titan-design/fix-proof@0.6.0
+  - @titan-design/review-panel@0.6.1
+
 ## 0.5.0
 
 ### Minor Changes
