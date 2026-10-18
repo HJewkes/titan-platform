@@ -119,8 +119,8 @@ function gateRefusal(gate: GateRecord, action: GateAction): LandGate | Outcome {
   if (!stepIdMatches(`${action.runId}/${action.stepId}`, gate.id)) return refused("record", `gate ${gate.id} is not step ${action.stepId} of run ${action.runId}`);
   const land = CONSOLE_STEPS.has(stepOf(gate.id)) ? landGate(gate) : undefined;
   if (land === undefined) return refused("class", `${gate.id} is ${batchRefusal(gate) ?? "not on the console's approve-merge allowlist"}`);
-  if (land.repo.toLowerCase() !== action.repo.toLowerCase() || land.pr !== action.pr) return refused("mismatch", `${gate.id} asks about ${land.repo}#${land.pr}, the record names ${action.repo}#${action.pr}`);
-  return land;
+  const samePr = land.repo.toLowerCase() === action.repo.toLowerCase() && land.pr === action.pr;
+  return samePr ? land : refused("mismatch", `${gate.id} asks about ${land.repo}#${land.pr}, the record names ${action.repo}#${action.pr}`);
 }
 
 /** The run waits on a newer gate for the step, or the gate itself pins a head other than the one the owner confirmed. */
