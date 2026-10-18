@@ -12,6 +12,8 @@ import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { createFactoryRegistry } from "./registry.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
+import type { ShepherdStore } from "./shepherd/store.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
 
@@ -20,6 +22,9 @@ const NOW_MS = Date.parse("2026-10-18T12:00:00.000Z");
 const H = "a".repeat(40);
 const H2 = "b".repeat(40);
 const ACTION_ID = "act-1";
+const OWNER = "owner-asked: synthetic scope question";
+const G10 = "g10-review: synthetic auth change";
+const HELD_RUN = "run-held";
 
 /** A rule that omits owner-remote, so the store itself refuses a console tap. */
 const OWNER_TERMINAL_ONLY: GateRule = { table: "example-table", version: "1", ruleId: "example-row", resolvers: ["owner-terminal"] };
@@ -61,6 +66,7 @@ interface World {
   runId: string;
   gateId: string;
   pr: number;
+  store: () => ShepherdStore;
 }
 
 interface WorldOptions {
@@ -94,8 +100,23 @@ async function world({ actions = true, policy, stamp }: WorldOptions = {}): Prom
   const runId = server.host.runtime.start("merge-gate", { pr: String(pr), ...(policy && { policy }), ...(stamp && { stamp }) });
   const gateId = `${runId}/approve-merge`;
   await vi.waitFor(() => expect(server.host.gates.get(gateId)?.status).toBe("pending"));
-  return { server, github, actionsDir, runId, gateId, pr };
+  return { server, github, actionsDir, runId, gateId, pr, store: () => fixture.routes.shepherd!.store.get() };
 }
+
+/** Registers the world's PR under its own run, with the holds given placed in order. */
+function holdPr(w: World, ...holds: string[]): void {
+  w.store().register({ repo: REPO, pr: w.pr, runId: HELD_RUN, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+  for (const reason of holds) w.store().hold(HELD_RUN, reason);
+}
+
+/** The console's record for a confirmed owner-release tap; returns the confirm event its bytes stand for. */
+function writeRelease(w: World, action: Record<string, unknown> = {}, actionId = ACTION_ID): string {
+  const record = JSON.stringify({ id: actionId, itemId: `hold:${REPO}#${w.pr}`, action: { kind: "owner-release", repo: REPO, pr: w.pr, headSha: H, ...action }, at: new Date(NOW_MS).toISOString() });
+  writeFileSync(join(w.actionsDir, `${actionId}.json`), record, { mode: 0o600 });
+  return `action:${createHash("sha256").update(record).digest("hex")}`;
+}
+
+const releases = (w: World) => w.store().eventsOf(HELD_RUN).filter((event) => event.kind === "release");
 
 /** Opens a gate of another class on the same server and returns its id. */
 async function openSideGate(w: World, step: string): Promise<{ runId: string; gateId: string }> {
@@ -300,6 +321,112 @@ describe("POST /owner/console-action", () => {
 
     const outcomes = await Promise.all(responses.map(async (res) => z.object({ outcome: z.string() }).parse(await res.json()).outcome));
     expect(outcomes.sort()).toEqual(["already", "resolved"]);
+  });
+
+  describe("owner-release", () => {
+    it("lifts the owner-asked hold at the head as owner-remote from the console inbox, bound to the record's sha256", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      const confirmEvent = writeRelease(w);
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([200, { outcome: "released", runId: HELD_RUN, stillHeld: null }]);
+      expect(w.store().byRun(HELD_RUN)).toMatchObject({ held: false, ownerHold: null });
+      expect(releases(w).map((event) => [event.reason, event.actor, event.headSha])).toEqual([[OWNER, `owner-remote:titan-console proof ${confirmEvent}`, H]]);
+    });
+
+    it("lifts only the owner's hold and reports the hold still in force", async () => {
+      const w = await world();
+      holdPr(w, OWNER, G10);
+      writeRelease(w);
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([200, { outcome: "released", runId: HELD_RUN, stillHeld: G10 }]);
+      expect(w.store().byRun(HELD_RUN)).toMatchObject({ held: true, holdReason: G10, ownerHold: null });
+    });
+
+    it("answers 410 gone for a PR with no owner-asked hold and for an unregistered PR, leaving any other hold alone", async () => {
+      const w = await world();
+      writeRelease(w, {}, "act-unregistered");
+      const unregistered = await post(w.server, { actionId: "act-unregistered" });
+      holdPr(w, G10);
+      writeRelease(w);
+
+      const notHeld = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(unregistered)).toMatchObject([410, { outcome: "gone", reason: expect.stringContaining("not registered") }]);
+      expect(await reply(notHeld)).toMatchObject([410, { outcome: "gone", reason: expect.stringContaining("holds no owner-asked hold") }]);
+      expect(w.store().byRun(HELD_RUN)).toMatchObject({ held: true, holdReason: G10 });
+      expect(releases(w)).toEqual([]);
+    });
+
+    it("answers 409 moved with GitHub's head when the PR moved past the record's head, and keeps the hold", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      w.github.pushHead(w.pr, H2);
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([409, { outcome: "moved", currentHead: H2 }]);
+      expect(w.store().byRun(HELD_RUN)?.ownerHold).toMatchObject({ reason: OWNER });
+      expect(releases(w)).toEqual([]);
+    });
+
+    it("refuses a record that names a coordinator resolver, and keeps the hold", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w, { resolver: { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" } });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toMatchObject([422, { outcome: "refused", reason: "record" }]);
+      expect(w.store().byRun(HELD_RUN)?.ownerHold).toMatchObject({ reason: OWNER });
+      expect(releases(w)).toEqual([]);
+    });
+
+    it("reads a replayed action id as already, and another record after it as gone", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      await post(w.server, { actionId: ACTION_ID });
+      writeRelease(w, {}, "act-2");
+
+      const replay = await post(w.server, { actionId: ACTION_ID });
+      const other = await post(w.server, { actionId: "act-2" });
+
+      expect(await reply(replay)).toEqual([200, { outcome: "already", runId: HELD_RUN }]);
+      expect(await reply(other)).toMatchObject([410, { outcome: "gone" }]);
+      expect(releases(w)).toHaveLength(1);
+    });
+
+    it("reads a replay after the owner held the PR again as already, and keeps the newer hold", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      await post(w.server, { actionId: ACTION_ID });
+      w.store().hold(HELD_RUN, OWNER);
+
+      const replay = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(replay)).toEqual([200, { outcome: "already", runId: HELD_RUN }]);
+      expect(w.store().byRun(HELD_RUN)?.ownerHold).toMatchObject({ reason: OWNER });
+      expect(releases(w)).toHaveLength(1);
+    });
+
+    it("releases once under a concurrent double post of one record: the other reads already", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+
+      const responses = await Promise.all([post(w.server, { actionId: ACTION_ID }), post(w.server, { actionId: ACTION_ID })]);
+
+      const outcomes = await Promise.all(responses.map(async (res) => z.object({ outcome: z.string() }).parse(await res.json()).outcome));
+      expect(outcomes.sort()).toEqual(["already", "released"]);
+      expect(releases(w)).toHaveLength(1);
+    });
   });
 
   it("is no registry command, and so no MCP tool", () => {
