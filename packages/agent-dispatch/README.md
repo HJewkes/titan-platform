@@ -50,12 +50,15 @@ await dispatchToAgentChat(
   --message <message>`, so the broker tracks the resumed session. It refuses a name outside
   agent-chat's name shape before running anything, and rejects with `DispatchError` on the
   broker's refusal. The message is in argv.
-- `parkAgent(bin, name, timeoutMs?)` runs `agent-chat agent park <name>`: the broker removes
+- `parkAgent(bin, name, timeoutMs, options?)` runs `agent-chat agent park <name>`: the broker removes
   an exited agent's clean, pushed worktree and keeps its branch, and `resumeAgent`
   re-creates it. A refusal (live, dirty, unpushed or shared tree) rejects with `DispatchError`
   carrying the broker's reason; a broker that cannot be reached rejects with
   `BrokerUnavailableError`. It is async: `agent park` may read the caller back (agent-chat asks
   Shepherd about a fix round), so a caller that serves HTTP must keep its event loop free.
+  The timeout is required (`DEFAULT_PARK_TIMEOUT_MS` is 60 s). Shepherd passes
+  `{ noFixRoundCheck: true }` for `--no-fix-round-check`, so agent-chat does not ask it back;
+  any other caller leaves it out and gets the same argv as before.
 - `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
   the broker delivers the text to a live agent as one channel message from the human seat,
   which starts a turn in an idle session. A name with no live session rejects with

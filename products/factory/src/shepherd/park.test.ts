@@ -1,3 +1,6 @@
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -661,5 +664,23 @@ describe("parkOnce", () => {
     await parkOnce(key, run);
 
     expect(seen).toEqual([undefined, ["rv-o-r-7"]]);
+  });
+});
+
+describe("the park Shepherd's park step runs by default", () => {
+  it("tells agent-chat to skip its fix-round callback, since the caller is Shepherd", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "shepherd-park-"));
+    const bin = join(dir, "agent-chat");
+    writeFileSync(bin, `#!/bin/sh\n: >"${dir}/argv"\nfor a in "$@"; do printf '%s\\0' "$a" >>"${dir}/argv"; done\necho "Parked $3."\n`);
+    chmodSync(bin, 0o755);
+    const [route] = parkRoutes({ store: storeWith({ implementer: "impl-a" }), now: () => 0, agentChatBin: bin, roster: createRosterReader(async () => []), exitNotice: undefined });
+    const step = { runId: "run-1", workflowName: "w", stepId: "sh-park:x", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+
+    const outcome = await route!.runner.run(step);
+    const argv = readFileSync(join(dir, "argv"), "utf8").split("\0").slice(0, -1);
+    rmSync(dir, { recursive: true, force: true });
+
+    expect(outcome.ok).toBe(true);
+    expect(argv).toEqual(["agent", "park", "impl-a", "--no-fix-round-check"]);
   });
 });

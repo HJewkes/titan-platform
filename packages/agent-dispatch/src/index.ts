@@ -32,6 +32,7 @@ export {
   DEFAULT_PARK_TIMEOUT_MS,
   buildParkArgs,
   parkAgent,
+  type ParkOptions,
   type ParkResult,
 } from "./park.js";
 export { buildMessageArgs, messageAgent } from "./message.js";

@@ -334,12 +334,17 @@ interface ParkResult {
     /** agent-chat's report, verbatim: what was parked and how to bring it back. */
     lines: string[];
 }
-declare function buildParkArgs(name: string): string[];
+interface ParkOptions {
+    /** Shepherd sets it: agent-chat would otherwise ask Shepherd itself whether the agent is in a fix round (CC-1470). */
+    noFixRoundCheck?: boolean;
+}
+declare function buildParkArgs(name: string, options?: ParkOptions): string[];
 /**
  * Remove the agent's worktree and keep its branch; rejects with `DispatchError` when the broker refuses. Async because
  * `agent park` may read the caller back (agent-chat asks Shepherd about a fix round), and a blocked caller cannot answer.
+ * The timeout has no default, so no call path can leave a park waiting on the broker without a bound it chose.
  */
-declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs?: number): Promise<ParkResult>;
+declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions): Promise<ParkResult>;
 
 /**
  * Message a live agent through `agent-chat debug send`: the broker delivers the
@@ -455,4 +460,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
