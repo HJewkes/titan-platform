@@ -8,6 +8,7 @@ import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { EXIT, invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { z } from "zod";
+import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import type { DecisionLog } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { ACTIONS_OFF, CONFIRM_TTL_MS, inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
@@ -25,6 +26,8 @@ const RUN_PLAIN = "11111111-0000-4000-8000-000000000001";
 const RUN_OWNER = "22222222-0000-4000-8000-000000000002";
 const PLAIN_ID = `gate:${RUN_PLAIN}/approve-merge`;
 const OWNER_ID = `gate:${RUN_OWNER}/approve-merge`;
+const MSG = "msg-0007";
+const CHAT_ID = `chat:${MSG}`;
 
 const SESSION: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
 const BEARER: RequestAuth = { credential: "bearer", issuedAt: null, peerLocal: false };
@@ -37,7 +40,7 @@ let clock: number;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-actions-"));
-  items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z")];
+  items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z"), chatAsk()];
   rows = [row(RUN_PLAIN, 1), row(RUN_OWNER, 2, "owner-asked: wait for me")];
   clock = Date.parse("2026-10-10T06:00:00.000Z");
 });
@@ -64,6 +67,41 @@ function gate(runId: string, openedAt: string): OwnerItem {
     openedAt,
     status: "open",
   };
+}
+
+function chatAsk(): OwnerItem {
+  return {
+    id: CHAT_ID,
+    sources: [{ system: "agent-chat", ref: MSG }],
+    kind: "decide",
+    door: "two-way",
+    summary: "Which fixture name should the parser use?",
+    context: "Two names fit; pick one.",
+    options: [
+      { id: "a", label: "alpha" },
+      { id: "b", label: "beta" },
+    ],
+    recommended: { optionId: "a", by: ASKER },
+    keys: [],
+    asker: ASKER,
+    personal: false,
+    lens: "blocking-agent",
+    unblocks: [],
+    openedAt: "2026-10-10T04:00:00.000Z",
+    status: "open",
+  };
+}
+
+/** The broker as the console sees it: the first answer to an open question lands, any later one finds it closed. */
+function spyBroker(first: AnswerOutcome = { status: "answered" }) {
+  const answers: [string, string][] = [];
+  const answerer: BrokerAnswerer = {
+    answer: async (msgId, text) => {
+      answers.push([msgId, text]);
+      return answers.length === 1 ? first : { status: "closed", reason: `${msgId} is not an open item` };
+    },
+  };
+  return { answerer, answers };
 }
 
 function row(runId: string, pr: number, held: string | null = null): WatchRow {
@@ -132,14 +170,21 @@ const ownerContext = (auth: RequestAuth = SESSION, ownerWrites = true): ConsoleC
 
 interface Harness {
   prepare(itemId: string): Promise<JsonEnvelope<unknown>>;
-  act(itemId: string, confirm: string, ctx?: ConsoleContext): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
+  act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
 }
 
-async function harness(client: OwnerActionClient, options: { enabled?: boolean; decisionLog?: DecisionLog } = {}): Promise<Harness> {
-  const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(options.decisionLog && { decisionLog: options.decisionLog }) });
+interface HarnessOptions {
+  enabled?: boolean;
+  decisionLog?: DecisionLog;
+  answerer?: BrokerAnswerer;
+}
+
+async function harness(client: OwnerActionClient, options: HarnessOptions = {}): Promise<Harness> {
+  const { decisionLog, answerer } = options;
+  const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) });
   return {
     prepare: async (itemId) => (await invokeCommand(commands["inbox.prepare"], { itemId }, ownerContext())).envelope,
-    act: (itemId, confirm, ctx = ownerContext()) => invokeCommand(commands["inbox.act"], { itemId, confirm }, ctx),
+    act: (itemId, confirm, ctx = ownerContext(), text) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }) }, ctx),
   };
 }
 
@@ -283,5 +328,102 @@ describe("inbox.act", () => {
     expect(prepared).toMatchObject({ ok: false, error: ACTIONS_OFF });
     expect(acted.envelope).toMatchObject({ ok: false, error: ACTIONS_OFF });
     expect(factorySpy.posts).toEqual([]);
+  });
+});
+
+describe("inbox answer-chat", () => {
+  it("reads back the question, its asker, options and recommendation", async () => {
+    const { prepare } = await harness(spyFactory().client, { answerer: spyBroker().answerer });
+
+    const prepared = ready(await prepare(CHAT_ID));
+
+    expect(prepared.action).toEqual({ kind: "answer-chat", msgId: MSG });
+    expect(prepared.readBack).toEqual({
+      msgId: MSG,
+      title: "Which fixture name should the parser use?",
+      asker: ASKER,
+      question: "Two names fit; pick one.",
+      options: [
+        { id: "a", label: "alpha" },
+        { id: "b", label: "beta" },
+      ],
+      recommended: "a",
+      effect: `Answer ${ASKER}'s question; the broker records it as yours`,
+    });
+  });
+
+  it("offers no action when no broker answerer is wired", async () => {
+    const { prepare } = await harness(spyFactory().client);
+
+    expect(await prepare(CHAT_ID)).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "answer-chat" } } });
+  });
+
+  it("sends the owner's text to the broker, keeps it in the record and logs it as the answer", async () => {
+    const broker = spyBroker();
+    const factorySpy = spyFactory();
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(factorySpy.client, { answerer: broker.answerer, decisionLog: log });
+    const { confirm } = ready(await prepare(CHAT_ID));
+
+    const { envelope } = await act(CHAT_ID, confirm, undefined, "  alpha  ");
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Answer sent" } });
+    expect(broker.answers).toEqual([[MSG, "alpha"]]);
+    expect(factorySpy.posts).toEqual([]);
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ itemId: CHAT_ID, action: { kind: "answer-chat", msgId: MSG }, text: "alpha" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toMatchObject({ text: "alpha", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
+  });
+
+  it("refuses an answer with no text before writing or sending anything", async () => {
+    const broker = spyBroker();
+    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
+    const { confirm } = ready(await prepare(CHAT_ID));
+
+    const { envelope, exitCode } = await act(CHAT_ID, confirm, undefined, "   ");
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "an answer needs text" });
+    expect(broker.answers).toEqual([]);
+    expect(await records()).toEqual([]);
+  });
+
+  it("refuses text on a gate tap rather than dropping it", async () => {
+    const factorySpy = spyFactory();
+    const { prepare, act } = await harness(factorySpy.client, { answerer: spyBroker().answerer });
+    const { confirm } = ready(await prepare(PLAIN_ID));
+
+    const { exitCode } = await act(PLAIN_ID, confirm, undefined, "merge");
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(factorySpy.posts).toEqual([]);
+  });
+
+  it("tells the owner the question closed when another answer won the race, and logs nothing", async () => {
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { answerer: spyBroker({ status: "closed", reason: `${MSG} is not an open item` }).answerer, decisionLog: log });
+    const { confirm } = ready(await prepare(CHAT_ID));
+
+    const { envelope } = await act(CHAT_ID, confirm, undefined, "alpha");
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "closed" }, message: expect.stringMatching(/^Not sent; the question is closed/) } });
+    expect(calls).toEqual([]);
+  });
+
+  it("leaves a broker-down answer unsettled, so the retry sends the words first written", async () => {
+    const broker = spyBroker({ status: "unreachable", detail: "connect ECONNREFUSED" });
+    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
+    const { confirm } = ready(await prepare(CHAT_ID));
+
+    const down = await act(CHAT_ID, confirm, undefined, "alpha");
+    const afterDown = await records();
+    await act(CHAT_ID, confirm, undefined, "beta");
+
+    expect(down.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
+    expect(afterDown).toEqual([`${confirm}.json`]);
+    expect(broker.answers).toEqual([
+      [MSG, "alpha"],
+      [MSG, "alpha"],
+    ]);
   });
 });

@@ -184,6 +184,75 @@ interface DispositionCheck {
  */
 declare function checkDispositions(items: readonly ReviewItem[], rows: readonly DispositionRow[]): DispositionCheck;
 
+/** How urgent a judged topic is, most urgent first. */
+declare const TOPIC_PRIORITIES: readonly ["P1", "P2", "P3", "P4"];
+/** How titan compares with the reviewed repo on a topic, as the judge writes it. */
+declare const TOPIC_VERDICTS: readonly ["missing", "have-worse", "lost", "ported-partial", "ported", "have-better", "already-have", "dropped-on-purpose", "never-worked", "out-of-scope"];
+type TopicPriority = (typeof TOPIC_PRIORITIES)[number];
+type TopicVerdict = (typeof TOPIC_VERDICTS)[number];
+declare const TOPIC_COLUMNS: readonly ["topic_id", "tier", "title", "verdict", "priority", "titan_evidence", "reason"];
+declare const CLAIM_COLUMNS: readonly ["id", "source", "status", "evidence", "claim"];
+type TopicColumn = (typeof TOPIC_COLUMNS)[number];
+type ClaimColumn = (typeof CLAIM_COLUMNS)[number];
+/**
+ * One row of `topics-judged.tsv`. Verdict and priority stay plain strings so a review that
+ * coins a new verdict still parses; compare them against the vocabularies where it matters.
+ */
+type TopicRow = Record<TopicColumn, string> & {
+    /** 1-based line in the file. */
+    line: number;
+    /** Every column beyond the common seven, which differ between review generations. */
+    extra: Record<string, string>;
+};
+/** One row of `claims-audit.tsv`. The optional columns are absent when the header lacks them. */
+type ClaimRow = Record<ClaimColumn, string> & {
+    line: number;
+    basis?: string;
+    note?: string;
+    wave?: string;
+};
+/** Headless spend of a review, from `runs.tsv`. Agent sessions are not in that file. */
+interface RunCost {
+    usd: number;
+    calls: number;
+    errors: number;
+    /** The latest `ts`, or null when no row has one. */
+    lastTs: string | null;
+}
+/** Parses `topics-judged.tsv`. Throws, naming `file`, when a common column is missing. */
+declare function parseTopicsJudged(tsv: string, file?: string): TopicRow[];
+/** Parses `claims-audit.tsv`. Throws, naming `file`, when a required column is missing. */
+declare function parseClaimsAudit(tsv: string, file?: string): ClaimRow[];
+/** The header bullets of a review's README.md. Every key is optional; older READMEs omit some. */
+interface ReviewPin {
+    remote?: string;
+    /** The pinned commit, short or full, without the date and subject that often follow it. */
+    head?: string;
+    /** Free text written when the README was, often stale; never derive a review's state from it. */
+    status?: string;
+    pinned?: string;
+    mode?: string;
+    focus?: string;
+}
+/**
+ * Reads the `- key: value` bullets of a review README. Keys match in any case (`Remote:` and
+ * `remote:` both occur), and the first bullet for a key wins. HEAD keeps only its leading
+ * hash, and remote only its leading URL when it starts with one.
+ */
+declare function readReviewPin(readme: string): ReviewPin;
+/** Sums `runs.tsv`. An empty cost counts as zero; any other non-number throws, naming its line. */
+declare function sumRunCost(tsv: string, file?: string): RunCost;
+
+/**
+ * Splits TSV text into records keyed by the header row, each with its 1-based line in the
+ * file. Blank lines are skipped. Throws when a required column is missing from the header, so
+ * a renamed column fails loudly instead of reading as empty.
+ */
+declare function readTsv(text: string, required: readonly string[], label: string): {
+    line: number;
+    fields: Record<string, string>;
+}[];
+
 interface TaskTreeNode {
     id: string;
     title: string;
@@ -300,4 +369,4 @@ type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "d
  */
 declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
 
-export { type AreaEntry, BUILT_IN_STATUSES, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type ReviewItem, type StatusEntry, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, parseCategoryRegistry, parseDeliverableRegistry, parseDispositions, prioritizedTopics, readEdges, summaryRecommendations, taskTree };
+export { type AreaEntry, BUILT_IN_STATUSES, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type ClaimRow, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, DISPOSITION_KINDS, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type DispositionCheck, type DispositionKind, type DispositionRow, DispositionRowSchema, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type ReviewItem, type ReviewPin, type RunCost, type StatusEntry, TOPIC_PRIORITIES, TOPIC_VERDICTS, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, type TopicPriority, type TopicRow, type TopicVerdict, categoriesPath, checkCategories, checkDispositions, checkEdges, criticalPath, deliverablePath, deliverablesDir, parseCategoryRegistry, parseClaimsAudit, parseDeliverableRegistry, parseDispositions, parseTopicsJudged, prioritizedTopics, readEdges, readReviewPin, readTsv, sumRunCost, summaryRecommendations, taskTree };
