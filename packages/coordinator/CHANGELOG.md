@@ -1,5 +1,17 @@
 # @titan-design/coordinator
 
+## 0.5.2
+
+### Patch Changes
+
+- 48fc4c0: Add `EDITABLE_FIELDS`, the allowlist of config fields an editor may change (path pattern, bounds, reload class), with `editableField` and `checkEditableValue`. A path no row matches, such as a seat's `grants_extra`, is not editable.
+
+## 0.5.1
+
+### Patch Changes
+
+- 7a4d313: Add the coordinator document revision log: `configRevisionSchema`, `applyEdit` (sets one schema-declared field on a copy and re-checks the document), `diffDocuments`, `documentSha`, `revisionSha` and `verifyChain` (refuses a log whose revision does not name the previous revision as its parent).
+
 ## 0.5.0
 
 ### Minor Changes

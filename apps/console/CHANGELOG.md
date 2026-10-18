@@ -1,5 +1,23 @@
 # titan-console
 
+## 0.4.2
+
+### Patch Changes
+
+- c1e9177: Add the `config.surfaces` read for this host's agent-chat `config.json` and profiles, the factory config, the console's `TITAN_CONSOLE_*` environment and each Claude Code account's `settings.json` and `.claude.json`. Only fields the catalog allowlist names carry a value; an undeclared key is listed hidden. Permissions and autoMode show as their rule texts, hooks as the commands they run, and `.claude.json` only as its trusted-folder count and MCP server names. The factory's `digest.push` URL is never named.
+- b3de4dd: Add `inbox.prepare` and `inbox.act`, behind `TITAN_CONSOLE_INBOX_ACTIONS=1`. `inbox.prepare` reads back a gate resolve or an owner-asked hold release with a five-minute confirm digest. `inbox.act` is an owner-write: it re-reads the item, refuses a stale digest before posting, writes the action record once and posts its id to the factory's `POST /owner/console-action`. A moved head comes back as `moved` and a replay as `already`.
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+  - @titan-design/react-app@0.1.4
+  - @titan-design/rpc-client@0.4.1
+
+## 0.4.1
+
+### Patch Changes
+
+- fee50d9: Add the `inbox.list` read: `approvals.flow` joined to Shepherd's live rows, each item with the one action a tap would take (resolve a gate, release a hold, answer an ask, open a round or its source) or the terminal command and why, blocking items first and newest first. A dead source is a gap line, never an empty inbox. Nothing writes yet.
+- 53ecdae: Add the read-only Inbox page at `#/inbox`, a rail entry after Home. It lists `inbox.list`: blocking items first, newest first, each with a source badge, its age, a recommendation chip, an evidence link, and a "Run on terminal" button that shows the command, a copy button and the reason. Planning items start collapsed behind their count, and FYIs are a count only. A dead source shows as a banner, so the page never says nothing needs you. Home's "Needs you" region shows the inbox's blocking count and its newest three blockers, each linking to the inbox.
+
 ## 0.4.0
 
 ### Minor Changes
