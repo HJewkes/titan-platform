@@ -13,6 +13,7 @@ import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
 /** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
@@ -127,7 +128,7 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir },
+    rounds: { dir: config.roundsDir, lineage: shipLineageReader() },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),

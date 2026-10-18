@@ -10,6 +10,7 @@ import { useSubmit, type SubmitState } from "../data/submit.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
+import { ShipLineageLine } from "./ShipLineage.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -56,6 +57,7 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
           <Typography variant="subtitle1">{question.prompt}</Typography>
           {section?.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
           <QuestionFacts question={question} />
+          <ShipLineageLine lineage={round.lineage} />
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
         </VStack>
       </CardContent>
