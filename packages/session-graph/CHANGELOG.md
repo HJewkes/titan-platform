@@ -1,5 +1,20 @@
 # @titan-design/session-graph
 
+## 0.17.0
+
+### Minor Changes
+
+- 28df3a2: Price a long-prompt tier. `PriceInput` takes an optional `longPrompt` (`abovePromptTokens` plus the five rates), which `syncPrices` and `reconcilePrices` store in six new nullable `price` columns; `reconcilePrices` counts a changed tier as an update. Migration 13 (`PRICE_LONG_PROMPT_MIGRATION_NAME`) adds the columns and recreates `request_cost` so a request whose `context_tokens` is strictly above the threshold prices every component, output included, at the long rates. A row with no tier prices exactly as before.
+
+### Patch Changes
+
+- Updated dependencies [a79cffd]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [ba8f25e]
+  - @titan-design/agent-protocol@0.8.0
+  - @titan-design/session-read@0.15.0
+
 ## 0.16.2
 
 ### Patch Changes

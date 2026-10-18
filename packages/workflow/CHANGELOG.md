@@ -1,5 +1,39 @@
 # @titan-design/workflow
 
+## 0.13.0
+
+### Minor Changes
+
+- e22d2fd: Count runs per status without loading them (TP-2419). `WorkflowRunStore.countByStatus` reads the status index alone. Serve's `/health` counts through it instead of parsing every run's step results on each probe, which held the event loop for most of a second per request.
+- cbc3107: Stop parsing every registered run on serve's hot paths (TP-2420). `WorkflowRunStore.statuses` reads each run's status without its step results, and `WorkflowRunStore.page` reads runs an id-ordered page at a time, optionally only those finished since a cutoff; the factory host exposes the store as `runs`. Shepherd's watch rows load only the runs a read wants: `list` by state, `status` by repo and PR, `waiting` the unfinished and gated runs, and the seat digest only finished runs their seat has not heard of. Pending gates are read once per call instead of once per registration. Those reads and the reverts sweep, which now pages the revert window's completed runs, yield the event loop every 10 ms.
+- c0bdde5: `register` takes `abandonsOrphan`: when a workflow returns, a recovered step its replay never reached is dropped with a new `step_abandoned` event if the predicate allows it, instead of parking the run as `recovery_required`. Without the predicate such a run still parks, now with the evidence `replay never reached recovered step <id>` (TP-2560 a).
+- c4fc339: Add the `strictReplay` register option (TP-2574 a): a replay that makes a live call while results its prior drive recorded remain unread parks as `recovery_required` before any side effect, with `replay diverged` evidence naming the call and the next unread record.
+- ef109f3: `GateAuthorize` takes an optional third argument `{ admittedBy }` ("owner-class", "allowance", "evidence" or "delegate") so an authorizer can tell how the store admitted a resolver; it still only narrows, and a two-argument authorize is unchanged. `openGate` accepts a `rule`, and `ctx.assisted` takes `rule?: GateRule` and stores it on the gate it opens (TP-3289).
+- dbc8a21: `projectRunTrace` now emits gate and artifact records (TP-391 b): human gates read from the hitl gate store for `assisted` steps, owner-gated `authorize` steps and a paused run's pending gate (prompt and payload as digests only, `decidedBy` as `human:owner` or `agent:<id>`), plus the policy gates and artifacts a step carries under `StepResult.data["titan.trace.gates"]` and `["titan.trace.artifacts"]`, parsed strictly. A malformed entry throws naming the step. Export `TRACE_ARTIFACTS_KEY` beside `TRACE_GATES_KEY`.
+- 45d312c: Add `projectRunTrace(run, { gates, executions?, digest })`, a pure projection of a stored run into strict `titan.trace/v1` run and attempt records: one attempt per ledger attempt, retries included, each with its own usage (TP-391 a). A dispatch's `StepResult.attempt` now records the attempt that succeeded.
+- 31a7c73: `runtime.cancel(runId, reason, { abandon: true })` finishes a run no runtime drives as cancelled without replaying it to settle its in-flight steps.
+- 2892aad: A step that a restart re-dispatches no longer uses up its retry budget. The active step now records `firstStartedAt`, which is kept across retries and restarts, and `restarts`, the number of times a retry-safe recovery re-dispatched it. The retry gate subtracts restarts from the attempt count before it compares with `maxRetries`. The dispatch input and `RoutedStepInput` carry both fields, so a wait can measure its deadline from the step's first start. A `StepRoute` can now declare a `reconcile` hook, which decides an interrupted step before the route's `onRestart` rule is applied. Rows stored without these fields still load: `firstStartedAt` falls back to `startedAt`, and `restarts` reads as 0.
+- d79f48e: Add `WorkflowRuntime.quiesce()` and `quiesced()` for a planned handoff. Quiesce releases every live run's lease, then stops admission: `hydrate()` claims nothing, `start()` persists the new run unclaimed for the successor runtime to adopt, and `cancel()` marks the run `cancelling` and releases it instead of finishing it.
+
+### Patch Changes
+
+- 8a027ad: `hydrate` no longer re-claims a run this runtime parked as `recovery_required` because its workflow returned with a step unfinished; it stays held until the row changes or a new runtime starts (TP-2438).
+- a2e2a70: Document trace projection (TP-391 c): the README gains a "Trace projection" section covering `projectRunTrace`'s inputs, record kinds and order, the `titan.trace.gates` and `titan.trace.artifacts` data keys, and what is digested. A new test pins that a projection after rebuilding the runtime and SQLite stores from the same database is JSON-byte-identical, and that `workflowStepRequestKey` output matches `ATTEMPT_ID_PATTERN`.
+- fa23feb: TP-3340: Shepherd opens no visual accept offer at a step the old host left in flight, so a flag turned on between hosts cannot end an adopted run short of that step. The workflow context gains `recoveredInFlight()`.
+- Updated dependencies [108b7f4]
+- Updated dependencies [9f24b7f]
+- Updated dependencies [a79cffd]
+- Updated dependencies [dfffc6c]
+- Updated dependencies [d754d5b]
+- Updated dependencies [abadd64]
+- Updated dependencies [d79a135]
+- Updated dependencies [1b2c974]
+- Updated dependencies [ef109f3]
+  - @titan-design/agent@0.6.0
+  - @titan-design/agent-protocol@0.8.0
+  - @titan-design/authority@0.5.0
+  - @titan-design/hitl@0.9.0
+
 ## 0.12.2
 
 ### Patch Changes
