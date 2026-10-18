@@ -152,6 +152,8 @@ interface SimpleCommand {
     chain: Chain;
     /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
     added?: true;
+    /** Set when a wrapper option starts the command elsewhere (`env -C d`, `pnpm --filter p exec`): `dir` then holds only for its redirects. */
+    movesDir?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
     inherited?: Descriptors;
 }

@@ -225,8 +225,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
 /** env's own options from `i`, each value word skipped, up to the first assignment or command word. */
 function envOptions(words: WordToken[], i: number): WordToken[] {
   const out: WordToken[] = [];
-  while (i < words.length && (words[i] as WordToken).value.startsWith("-")) {
-    const w = words[i] as WordToken;
+  for (let w = words[i]; w?.value.startsWith("-"); w = words[i]) {
     out.push(w);
     i += takesNextWord(w.value, ENV) ? 2 : 1;
     if (w.value === "--") break;
