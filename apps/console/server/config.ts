@@ -113,9 +113,8 @@ export function resolveConfig(
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
-    coordinatorRoots: coordinatorRootsFrom(env, home),
     ...ownerOptionsFrom(env, home),
-    hostSurfaces: hostSurfaceRootsFrom(env, home),
+    ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
@@ -128,6 +127,11 @@ function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleCon
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
   };
+}
+
+/** Where `config.surfaces` reads the coordinator files and this host's own config. */
+function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
+  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
