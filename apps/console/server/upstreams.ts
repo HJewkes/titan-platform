@@ -4,6 +4,7 @@ import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
+import { brokerAnswerer } from "./broker-answer.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
@@ -112,6 +113,15 @@ export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> 
   };
 }
 
+function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inboxActions"]> {
+  return {
+    enabled: config.inboxActions ?? false,
+    actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
+    client: factoryOwnerAction(config.factoryPort),
+    answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
@@ -129,6 +139,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     shepherd,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
+    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,
@@ -137,6 +148,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
-    inboxActions: { enabled: config.inboxActions ?? false, actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) },
+    inboxActions: inboxActionsOf(config),
   };
 }
