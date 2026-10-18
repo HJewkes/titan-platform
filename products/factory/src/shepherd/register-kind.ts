@@ -1,10 +1,10 @@
 import type { RegisterArgs } from "./register-args.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { kindMoveRefusal, type TaskKind } from "./task-kind.js";
+import { kindMoveRefusal } from "./task-kind.js";
 import { testOnlyDiff, type TestOnlyDiff } from "./test-only-diff.js";
 
-export type KindGuard = (from: TaskKind, to: TaskKind, diff?: TestOnlyDiff) => string | undefined;
+export type KindGuard = typeof kindMoveRefusal;
 
 /** The guard a register applies, and the PR's diff facts it reads them with. */
 export interface KindMove {
