@@ -10,12 +10,12 @@ import {
   verifyChain,
   type ConfigRevision,
 } from "./config-revision.js";
-import type { CoordinatorConfig } from "./coordinator-config.js";
+import { coordinatorConfigSchema, type CoordinatorConfig } from "./coordinator-config.js";
 
 const examplePath = join(dirname(fileURLToPath(import.meta.url)), "..", "examples", "single-seat.json");
 
 function exampleDocument(): CoordinatorConfig {
-  return JSON.parse(readFileSync(examplePath, "utf8")) as CoordinatorConfig;
+  return coordinatorConfigSchema.parse(JSON.parse(readFileSync(examplePath, "utf8")));
 }
 
 function edited(doc: CoordinatorConfig, path: string, value: unknown): CoordinatorConfig {

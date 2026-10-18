@@ -44,8 +44,12 @@ export type ChainResult = { ok: true; head: ConfigRevision } | { ok: false; erro
 
 const UNSAFE_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
+function isContainer(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return isContainer(value) && !Array.isArray(value);
 }
 
 // Sorted keys make the digest independent of the order a writer emitted them in.
@@ -69,20 +73,25 @@ export function revisionSha(revision: unknown): string {
   return digest(revision);
 }
 
-function unwrap(schema: z.ZodType): z.ZodType {
+type SchemaNode = z.core.$ZodType;
+
+function unwrap(schema: SchemaNode): SchemaNode {
   let node = schema;
-  while (node instanceof z.ZodOptional || node instanceof z.ZodNullable || node instanceof z.ZodDefault) {
-    node = node.unwrap() as z.ZodType;
+  while (node instanceof z.core.$ZodOptional || node instanceof z.core.$ZodNullable || node instanceof z.core.$ZodDefault) {
+    node = node._zod.def.innerType;
   }
   return node;
 }
 
 /** The schema node at `key` under `schema`, or undefined when the schema declares no such key. */
-function childSchema(schema: z.ZodType, key: string): z.ZodType | undefined {
+function childSchema(schema: SchemaNode, key: string): SchemaNode | undefined {
   const node = unwrap(schema);
-  if (node instanceof z.ZodObject) return Object.hasOwn(node.shape, key) ? (node.shape[key] as z.ZodType) : undefined;
-  if (node instanceof z.ZodRecord) return node.valueType as z.ZodType;
-  if (node instanceof z.ZodArray && /^\d+$/.test(key)) return node.element as z.ZodType;
+  if (node instanceof z.core.$ZodObject) {
+    const { shape } = node._zod.def;
+    return Object.hasOwn(shape, key) ? shape[key] : undefined;
+  }
+  if (node instanceof z.core.$ZodRecord) return node._zod.def.valueType;
+  if (node instanceof z.core.$ZodArray && /^\d+$/.test(key)) return node._zod.def.element;
   return undefined;
 }
 
@@ -91,7 +100,7 @@ function refuse(path: string, message: string): ConfigEditResult {
 }
 
 function schemaRefusal(keys: string[]): string | undefined {
-  let schema: z.ZodType = coordinatorConfigSchema;
+  let schema: SchemaNode = coordinatorConfigSchema;
   for (const [i, key] of keys.entries()) {
     if (key === "" || UNSAFE_KEYS.has(key)) return `segment ${i} (${JSON.stringify(key)}) is not a field name`;
     const child = childSchema(schema, key);
@@ -109,13 +118,14 @@ export function applyEdit(doc: CoordinatorConfig, path: string, value: unknown):
   const keys = path.split(".");
   const refusal = schemaRefusal(keys);
   if (refusal) return refuse(path, refusal);
-  const copy = structuredClone(doc) as Record<string, unknown>;
-  let node: unknown = copy;
+  const copy: unknown = structuredClone(doc);
+  let node = copy;
   for (const key of keys.slice(0, -1)) {
-    node = isRecord(node) || Array.isArray(node) ? (node as Record<string, unknown>)[key] : undefined;
+    node = isContainer(node) ? node[key] : undefined;
     if (node === undefined || node === null) return refuse(path, `${key} is absent; an edit never creates a parent`);
   }
-  (node as Record<string, unknown>)[keys[keys.length - 1]!] = structuredClone(value);
+  if (!isContainer(node)) return refuse(path, "the parent of the edited field is not an object");
+  node[keys[keys.length - 1]!] = structuredClone(value);
   const checked = checkCoordinatorConfig(copy);
   return checked.ok ? { ok: true, document: checked.config } : checked;
 }
