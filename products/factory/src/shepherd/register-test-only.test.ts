@@ -41,6 +41,7 @@ function world(files: PrFile[], guard: KindGuard | null = liveGuard): World {
   fixture.fake.prFiles.set(1, files);
   fixture.fake.compares.set(`main...${H1}`, { mergeBaseSha: MERGE_BASE, files: [] });
   for (const ref of [MERGE_BASE, "main"]) fixture.fake.files.set(`${ref}:${CONFIG_PATH}`, { content: CONFIG, blobSha: fakeSha(ref) });
+  for (const { path } of files) fixture.fake.files.set(`${H1}:${path}`, { content: "blob", blobSha: fakeSha(path) });
   const call = (args: object) => callCommand<Registered>(host, fixture.routes, "shepherd.register", args);
   return { ...fixture, host, call, storedKind: () => fixture.routes.shepherd!.store.get().byPr(REPO, 1)?.kind };
 }
