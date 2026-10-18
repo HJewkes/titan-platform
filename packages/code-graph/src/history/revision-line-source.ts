@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { isFullSha, splitLines, type LineSource } from "@titan-design/evidence";
-import { discoveryEnv, runGit } from "./git.js";
+import { gitEnv, runGit } from "./git.js";
 
 const BLOB_READ_BUFFER = 1024 * 1024 * 1024;
 const BATCH_HEADER = /^[0-9a-f]{40,64} (\S+) (\d+)$/;
@@ -26,7 +26,7 @@ function readLinesAt(repoRoot: string, rev: string, path: string): string[] | un
     input: `${rev}:${path}\n`,
     maxBuffer: BLOB_READ_BUFFER,
     stdio: ["pipe", "pipe", "ignore"],
-    env: discoveryEnv(),
+    env: gitEnv(repoRoot),
   });
   const text = parseBlob(out);
   return text === undefined ? undefined : splitLines(text);

@@ -785,6 +785,11 @@ git fail is not "outside git": `loadChurnEntries` and `loadFileFirstSeen` throw 
 and `loadHistoryMetrics` returns it as `LoadedHistory.warnings`. `loadChurnResult` and
 `loadFirstSeenResult` return `{ ok: false, reason: "not-git" | "overflow" | "git-error", detail }`.
 
+Every git call finds the repo from its `repoRoot` with GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE
+stripped, so a hook's GIT_DIR never redirects it. Only when that finds no repo and GIT_DIR is set
+(a work tree with no `.git`, its git dir elsewhere) do that call and every later one in `repoRoot`
+use the caller's env. A `.git`-less work tree nested inside another repo resolves the outer repo.
+
 Each index also writes function-level accretion on symbol nodes: `symbol_task_ids_{w}`, the
 distinct task ids (`\b[A-Z][A-Z0-9]*-\d+\b` in commit subjects, or `taskIdPattern`) whose
 commits edited the function, and `symbol_edit_commits_{w}`, for each of `accretionWindows`
