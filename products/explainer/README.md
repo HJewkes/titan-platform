@@ -75,13 +75,22 @@ cited rows do not state, a live code-checked rule that still lists a prompt enfo
 check that does not resolve in `rules.yaml` or disagrees with its L0 status, and every scope
 refinement. `doctrine/README.md` says how to add a rule.
 
+`doctrine/visual-router.json` is a pinned copy of titan-design's visual router (the react-ui
+`visual-router` subpath): its semantic patterns, its type catalogue with build status, and
+`routeVisual`'s answer for each type. `scripts/pin-visual-router.mjs <router module> <commit>`
+rewrites it; the strict schema in `visual-router.ts` fails on any upstream field it does not know.
+The plan stage's slice carries the routing table in `routing`. A storyboard beat's optional `kind`
+names a router type, and its packet then carries that type's card in `visual`: status, what renders
+it, the closest built type and a warning when it is a gap, and its not-this list. The
+`visual:gap-kind` L0 lint warns, never fails, on a script beat whose `kind` is a gap type.
+
 Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over each beat's
 `spoken`: every occurrence needs a `[w](=reading)` declaration naming one of the table's readings,
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
 [--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
-(`L0_CHECKS`: the map, why, evidence, voice, flow, pace and heteronym lints; the map lints need `--layout` and are
+(`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
