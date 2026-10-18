@@ -330,11 +330,11 @@ Key exports:
 
 - `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
-- `plan`: `planFixProof`, `testOnlyOf`
+- `plan`: `planFixProof`, `testOnlyOf`, `testOnlyReading`
 - `mutation`: `checkMutation`, `parseMutationSpec`
 - `mutant-classify`: `classifyMutants`, `testFileOfSpec`
-- `classify`: `classifyReports`, `isNewApiFailure`
-- +78 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
+- `classify`: `classifyReports`
+- +80 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
 

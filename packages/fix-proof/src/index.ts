@@ -11,7 +11,15 @@ export {
   type FixProofConfig,
 } from "./config.js";
 export { compileGlobs, expandBraces } from "./glob.js";
-export { planFixProof, testOnlyOf, type FixProofPlan, type PlanInput, type PlanResult } from "./plan.js";
+export {
+  planFixProof,
+  testOnlyOf,
+  testOnlyReading,
+  type FixProofPlan,
+  type PlanInput,
+  type PlanResult,
+  type TestOnlyReading,
+} from "./plan.js";
 export {
   checkMutation,
   MAX_KILLS,
