@@ -58,7 +58,7 @@ function useTap(itemId: string): { sheet: Sheet; confirm: () => Promise<void> } 
   return { sheet, confirm };
 }
 
-export interface InboxConfirmProps {
+interface InboxConfirmProps {
   itemId: string;
   verb: string;
   /** The terminal command shown when the console cannot take the tap, so the owner still has a way through. */
