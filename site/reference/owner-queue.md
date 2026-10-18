@@ -122,6 +122,12 @@ for (const item of items) {
   for example `revisionLineSource` from `@titan-design/code-graph/history`. An anchor past
   EOF throws `DepositAnchorError` ("head/src/a.ts#L10-L20: past EOF (15 lines)") before any
   file is written; on success `result.anchors` quotes each anchor's first and last line.
+- `writeDeposit(dir, deposit, { events })` checks a locator cite, `recommended.cite` as
+  `{ session, event: "<byteOffset>:<byteLength>", quote }`, against that transcript line.
+  `events(ref)` returns the line's text or null, for example `readSessionEventText` from
+  `@titan-design/session-read`. A quote that does not match (after whitespace and line-wrap
+  normalisation), an unreadable event, an empty quote, or no `events` source throws
+  `DepositCiteError` before any file is written. Free-text cites are never checked.
 - `readSpool(dir)` returns `{ items, rejects }`. Each valid deposit becomes an open item
   through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
   over the cap, a symlink, or a file whose name does not match its own asker and
