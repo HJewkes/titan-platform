@@ -118,6 +118,24 @@ describe("shepherd reader", () => {
 
     await expect(shepherdReader(port).timeline("hjewkes/nope", 1)).rejects.toMatchObject({ message: "factory shepherd.timeline: gh: Not Found (HTTP 404)", code: EXIT.USAGE });
   });
+
+  it("releases one hold class at the confirmed head as the named actor, and carries Shepherd's refusal code", async () => {
+    const asked: unknown[] = [];
+    const release = { repo: "example/repo", pr: 7, head: "1234567890abcdef1234567890abcdef12345678", holdClass: "g10-review", actor: "owner-remote:titan-console action:0" };
+    const port = await serve((command, args) => {
+      asked.push({ command, args });
+      if (asked.length > 1) throw Object.assign(new Error("example/repo#7 is not held, so there is nothing to release"), { code: EXIT.DATAERR });
+      return { runId: "run-7", held: null };
+    });
+    const reader = shepherdReader(port);
+
+    const after = await reader.release(release);
+    const again = reader.release(release);
+
+    expect(asked[0]).toEqual({ command: "shepherd.release", args: release });
+    expect(after).toEqual({ runId: "run-7", held: null });
+    await expect(again).rejects.toMatchObject({ message: "factory shepherd.release: example/repo#7 is not held, so there is nothing to release", code: EXIT.DATAERR });
+  });
 });
 
 describe("the console's shepherd commands", () => {
