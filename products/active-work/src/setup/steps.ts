@@ -1,0 +1,972 @@
+/**
+ * Individual setup steps used by `active-work setup` and `active-work uninstall`.
+ *
+ * Each step is a small async function that accepts a `SetupDeps` bag
+ * (filesystem, spawn, prompts, paths). Tests inject stubs; production
+ * callers let everything default. Steps never throw on failure — they
+ * return a tagged result so the orchestrator can short-circuit cleanly.
+ */
+import { promises as fsp, existsSync } from 'node:fs';
+import nodePath from 'node:path';
+import { spawn as nodeSpawn } from 'node:child_process';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import * as clackPrompts from '@clack/prompts';
+import { ensureSchemaVersion } from '../schemas/state.js';
+import { getActiveRoot, getStateRoot, getConfigRoot } from '../utils/paths.js';
+import { STEP_SUPERVISION } from './supervision-systemd.js';
+import { getSupervisor } from './supervision.js';
+
+function findRepoRoot(): string {
+  let cursor = nodePath.dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 6; depth++) {
+    if (existsSync(nodePath.join(cursor, 'package.json'))) return cursor;
+    const parent = nodePath.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  // Fallback: two up from current file (covers source layout).
+  return nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
+export interface StepPaths {
+  activeRoot: string;
+  stateRoot: string;
+  configRoot: string;
+  homeDir: string;
+}
+
+export interface SetupDeps {
+  fs?: typeof fsp;
+  spawn?: typeof nodeSpawn;
+  prompts?: typeof clackPrompts;
+  paths?: StepPaths;
+  /** When true, skip interactive prompts and assume yes. */
+  yes?: boolean;
+  /** When true, allow overwrite of existing user files. */
+  update?: boolean;
+  /** Optional override for repo root (where bundled skill lives). */
+  repoRoot?: string;
+  /** Optional override for the CLI entrypoint (for spawn calls). */
+  cliEntry?: string;
+  /**
+   * Whether a supervisor already owns the daemon; null when the platform has
+   * no integration. Defaults to probing launchctl/systemctl, so tests inject
+   * it instead of reading the host's real supervision state.
+   */
+  supervisorActive?: () => Promise<{ kind: string; active: boolean } | null>;
+}
+
+export interface StepOk {
+  ok: true;
+  name: string;
+  done: boolean;
+  message: string;
+}
+
+export interface StepErr {
+  ok: false;
+  name: string;
+  error: string;
+}
+
+export type StepResult = StepOk | StepErr;
+
+/** Resolve every defaultable dep so each step has a complete bag. */
+function resolveDeps(deps: SetupDeps): Required<
+  Omit<SetupDeps, 'yes' | 'update' | 'repoRoot' | 'cliEntry' | 'supervisorActive'>
+> & {
+  yes: boolean;
+  update: boolean;
+  repoRoot: string;
+  cliEntry: string;
+  agentChatHome: string;
+} {
+  const fs = deps.fs ?? fsp;
+  const spawn = deps.spawn ?? nodeSpawn;
+  const prompts = deps.prompts ?? clackPrompts;
+  const homeDir = deps.paths?.homeDir ?? os.homedir();
+  const paths: StepPaths = deps.paths ?? {
+    activeRoot: getActiveRoot(),
+    stateRoot: getStateRoot(),
+    configRoot: getConfigRoot(),
+    homeDir,
+  };
+  // `AGENT_CHAT_HOME` (matching agent-chat's own `home()` in `src/paths.ts`)
+  // only overrides the default, real home directory — once a caller injects
+  // `paths` (as every test does), it fully controls where agent-chat's home
+  // resolves to, regardless of what's exported in the real shell.
+  const agentChatHome = deps.paths
+    ? nodePath.join(homeDir, '.agent-chat')
+    : (process.env.AGENT_CHAT_HOME ?? nodePath.join(homeDir, '.agent-chat'));
+  // The bundled skill lives at `<repoRoot>/skill`. Find it by walking up
+  // from this module until we hit a directory containing `package.json`
+  // — works both for source (`src/setup/steps.ts`) and bundled
+  // (`dist/cli.js`) layouts.
+  const repoRoot = deps.repoRoot ?? findRepoRoot();
+  const cliEntry = deps.cliEntry ?? process.argv[1] ?? 'active-work';
+  return {
+    fs,
+    spawn,
+    prompts,
+    paths,
+    agentChatHome,
+    yes: deps.yes ?? false,
+    update: deps.update ?? false,
+    repoRoot,
+    cliEntry,
+  };
+}
+
+const STEP_CHECK_NODE = 'check-node';
+const STEP_CREATE_ACTIVE = 'create-active-root';
+const STEP_SCHEMA = 'write-schema-version';
+const STEP_CONFIG = 'write-config-stub';
+const STEP_SKILL = 'install-skill';
+const STEP_COMMAND = 'install-command';
+const STEP_MCP = 'register-mcp';
+const STEP_AGENT_CHAT_HOOKS = 'register-agent-chat-hooks';
+const STEP_DAEMON = 'start-daemon';
+const STEP_INGEST = 'ingestion';
+
+export const STEP_NAMES = {
+  CHECK_NODE: STEP_CHECK_NODE,
+  CREATE_ACTIVE: STEP_CREATE_ACTIVE,
+  SCHEMA: STEP_SCHEMA,
+  CONFIG: STEP_CONFIG,
+  SKILL: STEP_SKILL,
+  COMMAND: STEP_COMMAND,
+  MCP: STEP_MCP,
+  AGENT_CHAT_HOOKS: STEP_AGENT_CHAT_HOOKS,
+  SUPERVISION: STEP_SUPERVISION,
+  DAEMON: STEP_DAEMON,
+  INGEST: STEP_INGEST,
+} as const;
+
+const MIN_NODE_MAJOR = 22;
+
+function parseNodeMajor(version: string): number {
+  const cleaned = version.startsWith('v') ? version.slice(1) : version;
+  const major = Number(cleaned.split('.')[0]);
+  return Number.isFinite(major) ? major : 0;
+}
+
+export async function stepCheckNode(deps: SetupDeps = {}): Promise<StepResult> {
+  void deps;
+  const major = parseNodeMajor(process.versions.node);
+  if (major < MIN_NODE_MAJOR) {
+    return {
+      ok: false,
+      name: STEP_CHECK_NODE,
+      error: `Node ${MIN_NODE_MAJOR}+ required, found v${process.versions.node}`,
+    };
+  }
+  return {
+    ok: true,
+    name: STEP_CHECK_NODE,
+    done: true,
+    message: `Node v${process.versions.node} OK`,
+  };
+}
+
+async function ensureDir(fs: typeof fsp, dir: string): Promise<{ created: boolean }> {
+  try {
+    const stat = await fs.stat(dir);
+    if (stat.isDirectory()) return { created: false };
+    throw new Error(`${dir} exists but is not a directory`);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') throw err;
+  }
+  await fs.mkdir(dir, { recursive: true });
+  return { created: true };
+}
+
+export async function stepCreateActiveRoot(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths } = resolveDeps(deps);
+  try {
+    const created: string[] = [];
+    for (const dir of [paths.activeRoot, paths.stateRoot, paths.configRoot]) {
+      const { created: didCreate } = await ensureDir(fs, dir);
+      if (didCreate) created.push(dir);
+    }
+    const message =
+      created.length === 0
+        ? `Active/state/config dirs already present`
+        : `Created ${created.length} dir(s)`;
+    return {
+      ok: true,
+      name: STEP_CREATE_ACTIVE,
+      done: created.length > 0,
+      message,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      name: STEP_CREATE_ACTIVE,
+      error: (err as Error).message,
+    };
+  }
+}
+
+export async function stepWriteSchemaVersion(deps: SetupDeps = {}): Promise<StepResult> {
+  const { paths } = resolveDeps(deps);
+  try {
+    const result = await ensureSchemaVersion(paths.activeRoot);
+    const message = result.migrated
+      ? `Migrated v${result.before} -> v${result.after}`
+      : `Schema at v${result.after}`;
+    return {
+      ok: true,
+      name: STEP_SCHEMA,
+      done: result.migrated,
+      message,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      name: STEP_SCHEMA,
+      error: (err as Error).message,
+    };
+  }
+}
+
+const CONFIG_STUB = {
+  discovery: {
+    githubRepos: [] as string[],
+    localRepos: [] as string[],
+    projectsRoot: '~/Documents/projects',
+  },
+  // MCP push channels loaded on every `aw`/`open` launch, for every
+  // initiative — see `utils/global-config.ts`. Edit or clear this list to
+  // customize; an empty/missing array falls back to the agent-chat default.
+  channels: ['plugin:agent-chat@agent-chat-local'] as string[],
+};
+
+export async function stepWriteConfigStub(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths, update } = resolveDeps(deps);
+  const configPath = nodePath.join(paths.configRoot, 'config.json');
+  try {
+    await ensureDir(fs, paths.configRoot);
+    let exists = false;
+    try {
+      await fs.stat(configPath);
+      exists = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    if (exists && !update) {
+      return {
+        ok: true,
+        name: STEP_CONFIG,
+        done: false,
+        message: `Config exists at ${configPath} (left untouched)`,
+      };
+    }
+    await fs.writeFile(configPath, JSON.stringify(CONFIG_STUB, null, 2) + '\n', 'utf8');
+    return {
+      ok: true,
+      name: STEP_CONFIG,
+      done: true,
+      message: `Wrote config stub to ${configPath}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      name: STEP_CONFIG,
+      error: (err as Error).message,
+    };
+  }
+}
+
+async function pathExists(fs: typeof fsp, p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+async function copyTree(fs: typeof fsp, src: string, dest: string): Promise<void> {
+  // node:fs/promises has cp() in Node 22+.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cp = (fs as any).cp as
+    | undefined
+    | ((from: string, to: string, opts: { recursive: boolean }) => Promise<void>);
+  if (cp) {
+    await cp(src, dest, { recursive: true });
+    return;
+  }
+  // Fallback: shallow copy of files only (test envs may stub fs).
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const from = nodePath.join(src, entry.name);
+    const to = nodePath.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyTree(fs, from, to);
+    } else {
+      await fs.copyFile(from, to);
+    }
+  }
+}
+
+export async function stepInstallSkill(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths, repoRoot } = resolveDeps(deps);
+  const targetDir = nodePath.join(paths.homeDir, '.claude', 'skills', 'active-work');
+  const targetMarker = nodePath.join(targetDir, 'SKILL.md');
+  const sourceDir = nodePath.join(repoRoot, 'skill');
+  try {
+    if (await pathExists(fs, targetMarker)) {
+      return {
+        ok: true,
+        name: STEP_SKILL,
+        done: false,
+        message: `Skill already installed at ${targetDir}`,
+      };
+    }
+    if (!(await pathExists(fs, sourceDir))) {
+      return {
+        ok: true,
+        name: STEP_SKILL,
+        done: false,
+        message: `Skill source not found at ${sourceDir}; skipping`,
+      };
+    }
+    await fs.mkdir(nodePath.dirname(targetDir), { recursive: true });
+    await copyTree(fs, sourceDir, targetDir);
+    return {
+      ok: true,
+      name: STEP_SKILL,
+      done: true,
+      message: `Installed skill to ${targetDir}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      name: STEP_SKILL,
+      error: (err as Error).message,
+    };
+  }
+}
+
+export async function stepInstallCommand(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths, repoRoot } = resolveDeps(deps);
+  const targetDir = nodePath.join(paths.homeDir, '.claude', 'commands');
+  const target = nodePath.join(targetDir, 'aw-prompt.md');
+  const source = nodePath.join(repoRoot, 'claude-commands', 'aw-prompt.md');
+  try {
+    if (!(await pathExists(fs, source))) {
+      return {
+        ok: true,
+        name: STEP_COMMAND,
+        done: false,
+        message: `Command source not found at ${source}; skipping`,
+      };
+    }
+    await fs.mkdir(targetDir, { recursive: true });
+    // Overwrite unconditionally (unlike the skill step, which skips if present):
+    // the command is a single version-bundled file, so setup should refresh it.
+    await fs.copyFile(source, target);
+    return {
+      ok: true,
+      name: STEP_COMMAND,
+      done: true,
+      message: `Installed /aw-prompt command to ${target}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      name: STEP_COMMAND,
+      error: (err as Error).message,
+    };
+  }
+}
+
+/** Spawn a process and capture its exit code + stderr. */
+function runOnce(
+  spawn: typeof nodeSpawn,
+  cmd: string,
+  args: string[],
+): Promise<{ code: number | null; stderr: string; spawnError?: Error }> {
+  return new Promise((resolve) => {
+    let stderr = '';
+    let settled = false;
+    try {
+      const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        resolve({ code: null, stderr, spawnError: err });
+      });
+      child.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        resolve({ code, stderr });
+      });
+    } catch (err) {
+      if (settled) return;
+      settled = true;
+      resolve({ code: null, stderr, spawnError: err as Error });
+    }
+  });
+}
+
+const MCP_FALLBACK_SNIPPET = `{
+  "active-work": {
+    "command": "active-work",
+    "args": ["mcp", "serve", "--stdio"]
+  }
+}`;
+
+export async function stepRegisterMcp(deps: SetupDeps = {}): Promise<StepResult> {
+  const { spawn } = resolveDeps(deps);
+  const result = await runOnce(spawn, 'claude', [
+    'mcp',
+    'add',
+    '--user',
+    '@hjewkes/active-work',
+    '--',
+    'active-work',
+    'mcp',
+    'serve',
+    '--stdio',
+  ]);
+  if (result.spawnError && (result.spawnError as NodeJS.ErrnoException).code === 'ENOENT') {
+    return {
+      ok: true,
+      name: STEP_MCP,
+      done: false,
+      message:
+        '`claude` CLI not found. Add this to ~/.claude.json mcpServers section:\n' +
+        MCP_FALLBACK_SNIPPET,
+    };
+  }
+  if (result.spawnError) {
+    return {
+      ok: true,
+      name: STEP_MCP,
+      done: false,
+      message: `MCP registration skipped: ${result.spawnError.message}`,
+    };
+  }
+  if (result.code === 0) {
+    return {
+      ok: true,
+      name: STEP_MCP,
+      done: true,
+      message: 'Registered MCP server with Claude Code',
+    };
+  }
+  return {
+    ok: true,
+    name: STEP_MCP,
+    done: false,
+    message:
+      `claude mcp add exited with code ${result.code ?? 'null'}. ` +
+      'If already registered, this is safe. Otherwise add manually:\n' +
+      MCP_FALLBACK_SNIPPET,
+  };
+}
+
+/** The two commands this build registers into agent-chat's on_spawn/on_complete hooks (AW-99/AW-100). */
+const AGENT_CHAT_HOOK_COMMANDS: Record<'on_spawn' | 'on_complete', string> = {
+  on_spawn: 'active-work hooks agent-chat-spawn',
+  on_complete: 'active-work hooks agent-chat-complete',
+};
+
+interface AgentChatHooksConfig {
+  on_spawn?: string[];
+  on_complete?: string[];
+}
+
+/**
+ * `~/.agent-chat/hooks.json` — outside this build's control, so a missing
+ * home directory has to degrade gracefully.
+ */
+function agentChatHooksPath(agentChatHome: string): string {
+  return nodePath.join(agentChatHome, 'hooks.json');
+}
+
+/**
+ * Merges this build's on_spawn/on_complete commands into agent-chat's generic
+ * lifecycle hooks (CC-71) — additive only. An existing `hooks.json` keeps
+ * every entry another tool registered; re-running this step is a no-op once
+ * both commands are present, since it checks membership rather than
+ * appending unconditionally. No `~/.agent-chat` directory at all means
+ * agent-chat isn't installed on this machine, which is a normal skip, not an
+ * error — this build must not be what creates agent-chat's home directory.
+ */
+export async function stepRegisterAgentChatHooks(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, agentChatHome } = resolveDeps(deps);
+  const hooksPath = agentChatHooksPath(agentChatHome);
+
+  try {
+    await fs.stat(agentChatHome);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {
+        ok: true,
+        name: STEP_AGENT_CHAT_HOOKS,
+        done: false,
+        message: `agent-chat not found at ${agentChatHome} — skipped`,
+      };
+    }
+    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: (err as Error).message };
+  }
+
+  try {
+    let config: AgentChatHooksConfig = {};
+    try {
+      const raw = await fs.readFile(hooksPath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null) config = parsed as AgentChatHooksConfig;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        return {
+          ok: false,
+          name: STEP_AGENT_CHAT_HOOKS,
+          error: `${hooksPath} exists but is not valid JSON: ${(err as Error).message}`,
+        };
+      }
+    }
+
+    let changed = false;
+    for (const event of ['on_spawn', 'on_complete'] as const) {
+      const command = AGENT_CHAT_HOOK_COMMANDS[event];
+      const existing = config[event] ?? [];
+      if (!existing.includes(command)) {
+        config[event] = [...existing, command];
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return {
+        ok: true,
+        name: STEP_AGENT_CHAT_HOOKS,
+        done: false,
+        message: `Already registered in ${hooksPath}`,
+      };
+    }
+
+    await fs.writeFile(hooksPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+    return {
+      ok: true,
+      name: STEP_AGENT_CHAT_HOOKS,
+      done: true,
+      message: `Registered on_spawn/on_complete hooks in ${hooksPath}`,
+    };
+  } catch (err) {
+    return { ok: false, name: STEP_AGENT_CHAT_HOOKS, error: (err as Error).message };
+  }
+}
+
+/**
+ * Offer to install a user-level supervisor (systemd on Linux, launchd on
+ * macOS) that keeps the daemon running across logins. No-op on platforms
+ * without an integration.
+ */
+export async function stepSupervision(deps: SetupDeps = {}): Promise<StepResult> {
+  const { prompts, yes } = resolveDeps(deps);
+  const supervisor = getSupervisor();
+  if (!supervisor) {
+    return {
+      ok: true,
+      name: STEP_SUPERVISION,
+      done: false,
+      message: `Skipped: no daemon supervisor is integrated for ${process.platform}`,
+    };
+  }
+  if (!yes) {
+    const answer = await prompts.confirm({
+      message: supervisor.installPrompt,
+      initialValue: true,
+    });
+    if (prompts.isCancel(answer) || answer !== true) {
+      return {
+        ok: true,
+        name: STEP_SUPERVISION,
+        done: false,
+        message: 'Supervision install skipped',
+      };
+    }
+  }
+  // Supervision is an optional enhancement, not a prerequisite. Like
+  // `stepStartDaemon`, a runtime failure (no user session, container, CI) must
+  // not abort the whole setup — the unit/plist is still written, so downgrade
+  // an install failure to a non-fatal warning that tells the user how to finish
+  // enabling it by hand.
+  const result = await supervisor.install(deps);
+  if (!result.ok) {
+    return {
+      ok: true,
+      name: STEP_SUPERVISION,
+      done: false,
+      message: `Daemon supervision not enabled (${result.error}); run \`${supervisor.enableHint}\` once a user session is available`,
+    };
+  }
+  return result;
+}
+
+/** Probe the platform supervisor; null when the platform has no integration. */
+async function probeSupervisor(deps: SetupDeps): Promise<{ kind: string; active: boolean } | null> {
+  const supervisor = getSupervisor();
+  if (!supervisor) return null;
+  return { kind: supervisor.kind, active: await supervisor.isActive(deps) };
+}
+
+/** Spawn `active-work mcp serve --detach` (best-effort). */
+export async function stepStartDaemon(deps: SetupDeps = {}): Promise<StepResult> {
+  const { spawn, prompts, yes, cliEntry } = resolveDeps(deps);
+  // If a supervisor already owns the daemon, skip the manual spawn — restarting
+  // it is the supervisor's job (e.g. `systemctl --user restart` / `launchctl
+  // kickstart`).
+  const probe = deps.supervisorActive ?? (() => probeSupervisor(deps));
+  const supervisor = await probe();
+  if (supervisor?.active) {
+    return {
+      ok: true,
+      name: STEP_DAEMON,
+      done: false,
+      message: `Daemon already supervised by ${supervisor.kind}; manual start skipped`,
+    };
+  }
+  if (!yes) {
+    const answer = await prompts.confirm({
+      message: 'Start the HTTP daemon now? (background process)',
+      initialValue: true,
+    });
+    if (prompts.isCancel(answer) || answer !== true) {
+      return {
+        ok: true,
+        name: STEP_DAEMON,
+        done: false,
+        message: 'Daemon start skipped',
+      };
+    }
+  } else {
+    return {
+      ok: true,
+      name: STEP_DAEMON,
+      done: false,
+      message: 'Daemon start skipped (--yes)',
+    };
+  }
+  try {
+    const child = spawn(process.execPath, [cliEntry, 'mcp', 'serve', '--detach'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref?.();
+    return {
+      ok: true,
+      name: STEP_DAEMON,
+      done: true,
+      message: `Daemon launched (pid=${child.pid ?? 'unknown'})`,
+    };
+  } catch (err) {
+    return {
+      ok: true,
+      name: STEP_DAEMON,
+      done: false,
+      message: `Daemon launch skipped: ${(err as Error).message}`,
+    };
+  }
+}
+
+export async function stepIngestion(deps: SetupDeps = {}): Promise<StepResult> {
+  const { prompts, yes, paths } = resolveDeps(deps);
+  if (yes) {
+    return {
+      ok: true,
+      name: STEP_INGEST,
+      done: false,
+      message:
+        `Skipped ingestion walkthrough. Run \`claude\` in ${paths.activeRoot} ` +
+        'and ask it to run `active-work discover` followed by `active-work fold` / `active-work drop` / `active-work track`.',
+    };
+  }
+  const answer = await prompts.confirm({
+    message: 'Walk through existing work with Claude now?',
+    initialValue: false,
+  });
+  if (prompts.isCancel(answer) || answer !== true) {
+    return {
+      ok: true,
+      name: STEP_INGEST,
+      done: false,
+      message:
+        `Ingestion skipped. Later: run \`claude\` in ${paths.activeRoot} and ask it to ` +
+        'invoke `active-work discover` to scan your work.',
+    };
+  }
+  return {
+    ok: true,
+    name: STEP_INGEST,
+    done: true,
+    message:
+      `Run \`claude\` in ${paths.activeRoot} and paste this prompt: ` +
+      '"Please run `active-work discover`, then walk me through `active-work fold` / `active-work drop` / `active-work track` for each hit."',
+  };
+}
+
+export interface SetupReport {
+  banner: string;
+  steps: Array<{
+    name: string;
+    ok: boolean;
+    done?: boolean;
+    message?: string;
+    error?: string;
+  }>;
+}
+
+/** Run every setup step in order, short-circuiting on the first failure. */
+export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
+  const banner = 'active-work setup';
+  const steps: SetupReport['steps'] = [];
+  const ordered = [
+    stepCheckNode,
+    stepCreateActiveRoot,
+    stepWriteSchemaVersion,
+    stepWriteConfigStub,
+    stepInstallSkill,
+    stepInstallCommand,
+    stepRegisterMcp,
+    stepRegisterAgentChatHooks,
+    stepSupervision,
+    stepStartDaemon,
+    stepIngestion,
+  ];
+  for (const step of ordered) {
+    const result = await step(deps);
+    if (result.ok) {
+      steps.push({
+        name: result.name,
+        ok: true,
+        done: result.done,
+        message: result.message,
+      });
+    } else {
+      steps.push({ name: result.name, ok: false, error: result.error });
+      break;
+    }
+  }
+  return { banner, steps };
+}
+
+// ----- Uninstall ----------------------------------------------------------
+
+export interface UninstallReport {
+  steps: Array<{ name: string; done: boolean; message?: string; error?: string }>;
+  activeRootPreservedAt: string;
+}
+
+async function confirmStep(
+  prompts: typeof clackPrompts,
+  yes: boolean,
+  message: string,
+  initial = true,
+): Promise<boolean> {
+  if (yes) return true;
+  const answer = await prompts.confirm({ message, initialValue: initial });
+  if (prompts.isCancel(answer)) return false;
+  return answer === true;
+}
+
+export async function uninstallSkill(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths } = resolveDeps(deps);
+  const target = nodePath.join(paths.homeDir, '.claude', 'skills', 'active-work');
+  try {
+    if (!(await pathExists(fs, target))) {
+      return {
+        ok: true,
+        name: STEP_SKILL,
+        done: false,
+        message: `Skill not present at ${target}`,
+      };
+    }
+    await fs.rm(target, { recursive: true, force: true });
+    return {
+      ok: true,
+      name: STEP_SKILL,
+      done: true,
+      message: `Removed skill from ${target}`,
+    };
+  } catch (err) {
+    return { ok: false, name: STEP_SKILL, error: (err as Error).message };
+  }
+}
+
+export async function uninstallCommand(deps: SetupDeps = {}): Promise<StepResult> {
+  const { fs, paths } = resolveDeps(deps);
+  const target = nodePath.join(paths.homeDir, '.claude', 'commands', 'aw-prompt.md');
+  try {
+    if (!(await pathExists(fs, target))) {
+      return {
+        ok: true,
+        name: STEP_COMMAND,
+        done: false,
+        message: `Command not present at ${target}`,
+      };
+    }
+    await fs.rm(target, { force: true });
+    return {
+      ok: true,
+      name: STEP_COMMAND,
+      done: true,
+      message: `Removed /aw-prompt command from ${target}`,
+    };
+  } catch (err) {
+    return { ok: false, name: STEP_COMMAND, error: (err as Error).message };
+  }
+}
+
+export async function uninstallStopDaemon(deps: SetupDeps = {}): Promise<StepResult> {
+  const { spawn, cliEntry } = resolveDeps(deps);
+  const result = await runOnce(spawn, process.execPath, [cliEntry, 'mcp', 'stop']);
+  if (result.spawnError) {
+    return {
+      ok: true,
+      name: STEP_DAEMON,
+      done: false,
+      message: `Daemon stop skipped: ${result.spawnError.message}`,
+    };
+  }
+  return {
+    ok: true,
+    name: STEP_DAEMON,
+    done: result.code === 0,
+    message: result.code === 0 ? 'Daemon stopped' : `Daemon stop exited ${result.code ?? 'null'}`,
+  };
+}
+
+export async function uninstallMcp(deps: SetupDeps = {}): Promise<StepResult> {
+  const { spawn } = resolveDeps(deps);
+  const result = await runOnce(spawn, 'claude', [
+    'mcp',
+    'remove',
+    '--user',
+    '@hjewkes/active-work',
+  ]);
+  if (result.spawnError && (result.spawnError as NodeJS.ErrnoException).code === 'ENOENT') {
+    return {
+      ok: true,
+      name: STEP_MCP,
+      done: false,
+      message: '`claude` CLI not found. Remove the entry manually from ~/.claude.json',
+    };
+  }
+  if (result.spawnError) {
+    return {
+      ok: true,
+      name: STEP_MCP,
+      done: false,
+      message: `MCP unregister skipped: ${result.spawnError.message}`,
+    };
+  }
+  return {
+    ok: true,
+    name: STEP_MCP,
+    done: result.code === 0,
+    message:
+      result.code === 0
+        ? 'Unregistered MCP server from Claude Code'
+        : `claude mcp remove exited with code ${result.code ?? 'null'}`,
+  };
+}
+
+export async function runUninstall(deps: SetupDeps = {}): Promise<UninstallReport> {
+  const resolved = resolveDeps(deps);
+  const steps: UninstallReport['steps'] = [];
+
+  const wantSkill = await confirmStep(
+    resolved.prompts,
+    resolved.yes,
+    'Remove the active-work skill from ~/.claude/skills/?',
+  );
+  if (wantSkill) {
+    const r = await uninstallSkill(deps);
+    steps.push({
+      name: r.name,
+      done: r.ok ? r.done : false,
+      ...(r.ok ? { message: r.message } : { error: r.error }),
+    });
+  } else {
+    steps.push({ name: STEP_SKILL, done: false, message: 'Skipped' });
+  }
+
+  const wantCommand = await confirmStep(
+    resolved.prompts,
+    resolved.yes,
+    'Remove the /aw-prompt command from ~/.claude/commands/?',
+  );
+  if (wantCommand) {
+    const r = await uninstallCommand(deps);
+    steps.push({
+      name: r.name,
+      done: r.ok ? r.done : false,
+      ...(r.ok ? { message: r.message } : { error: r.error }),
+    });
+  } else {
+    steps.push({ name: STEP_COMMAND, done: false, message: 'Skipped' });
+  }
+
+  const supervisor = getSupervisor();
+  if (supervisor) {
+    const wantSupervision = await confirmStep(
+      resolved.prompts,
+      resolved.yes,
+      supervisor.uninstallPrompt,
+    );
+    if (wantSupervision) {
+      const r = await supervisor.uninstall(deps);
+      steps.push({
+        name: r.name,
+        done: r.ok ? r.done : false,
+        ...(r.ok ? { message: r.message } : { error: r.error }),
+      });
+    } else {
+      steps.push({ name: STEP_SUPERVISION, done: false, message: 'Skipped' });
+    }
+  }
+
+  const wantDaemon = await confirmStep(resolved.prompts, resolved.yes, 'Stop the daemon?');
+  if (wantDaemon) {
+    const r = await uninstallStopDaemon(deps);
+    steps.push({
+      name: r.name,
+      done: r.ok ? r.done : false,
+      ...(r.ok ? { message: r.message } : { error: r.error }),
+    });
+  } else {
+    steps.push({ name: STEP_DAEMON, done: false, message: 'Skipped' });
+  }
+
+  const wantMcp = await confirmStep(
+    resolved.prompts,
+    resolved.yes,
+    'Unregister MCP from Claude Code?',
+  );
+  if (wantMcp) {
+    const r = await uninstallMcp(deps);
+    steps.push({
+      name: r.name,
+      done: r.ok ? r.done : false,
+      ...(r.ok ? { message: r.message } : { error: r.error }),
+    });
+  } else {
+    steps.push({ name: STEP_MCP, done: false, message: 'Skipped' });
+  }
+
+  return {
+    steps,
+    activeRootPreservedAt: resolved.paths.activeRoot,
+  };
+}

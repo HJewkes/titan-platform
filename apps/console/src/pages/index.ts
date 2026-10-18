@@ -2,6 +2,7 @@ import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
 import { AgentsRoute } from "./AgentsPage.js";
 import { HomePage } from "./HomePage.js";
+import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
@@ -22,6 +23,7 @@ const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(She
 /** One entry per built view; a rail entry with none here renders its placeholder. */
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   home: HomePage,
+  inbox: InboxPage,
   initiatives: WorkPage,
   tasks: ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query })),
   sessions: SessionsRoute,

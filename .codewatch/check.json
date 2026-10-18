@@ -79,7 +79,8 @@
           "products/evals",
           "apps/console",
           "products/titan",
-          "products/explainer"
+          "products/explainer",
+          "products/active-work"
         ]
       },
       "layers": [
@@ -157,7 +158,8 @@
           "products/evals",
           "apps/console",
           "products/titan",
-          "products/explainer"
+          "products/explainer",
+          "products/active-work"
         ]
       ]
     },
@@ -211,6 +213,13 @@
       "to": "products/explainer/**"
     },
     {
+      "id": "product-isolation:products/session-miner->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/active-work/**"
+    },
+    {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -258,6 +267,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/active-work/**"
     },
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
@@ -309,6 +325,13 @@
       "to": "products/explainer/**"
     },
     {
+      "id": "product-isolation:apps/codewatch->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/active-work/**"
+    },
+    {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -356,6 +379,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/active-work/**"
     },
     {
       "id": "product-isolation:products/evals->products/session-miner",
@@ -407,6 +437,13 @@
       "to": "products/explainer/**"
     },
     {
+      "id": "product-isolation:products/evals->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/active-work/**"
+    },
+    {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -454,6 +491,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/explainer/**"
+    },
+    {
+      "id": "product-isolation:apps/console->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/active-work/**"
     },
     {
       "id": "product-isolation:products/titan->products/session-miner",
@@ -505,6 +549,13 @@
       "to": "products/explainer/**"
     },
     {
+      "id": "product-isolation:products/titan->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/active-work/**"
+    },
+    {
       "id": "product-isolation:products/explainer->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -552,6 +603,69 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/explainer/**",
       "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/explainer->products/active-work",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/explainer/**",
+      "to": "products/active-work/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/active-work->products/explainer",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/active-work/**",
+      "to": "products/explainer/**"
     },
     {
       "id": "code-graph-history-seam",
@@ -707,9 +821,19 @@
       "metric": "loc",
       "kind": "file",
       "max": 350,
-      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude.",
+      "$comment": "Vendored verbatim from titan-design review-schema-v0.3.0 (4fcb3827); exempt by owner answer 2026-10-16 ('Yes, scoped'). TP-3232 deletes the vendored copy and this exclude. The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
       "exclude": [
-        "apps/console/server/review-schema-0.3/schema.ts"
+        "apps/console/server/review-schema-0.3/schema.ts",
+        "products/active-work/src/aw.ts",
+        "products/active-work/src/bootstrap/prompt.ts",
+        "products/active-work/src/commands/task-edit.ts",
+        "products/active-work/src/commands/wrap.ts",
+        "products/active-work/src/doctor.ts",
+        "products/active-work/src/migrations/v2-to-v3-open-loops.ts",
+        "products/active-work/src/session-index/origin-agent-chat.ts",
+        "products/active-work/src/session-index/refresh.ts",
+        "products/active-work/src/sessions/open-loops.ts",
+        "products/active-work/src/setup/steps.ts"
       ],
       "excludeRoles": [
         "test",
@@ -722,6 +846,10 @@
       "metric": "cyclomatic_max",
       "kind": "file",
       "max": 30,
+      "$comment": "The products/active-work entries: owner decision 443 (2026-10-18), adopted verbatim from HJewkes/active-work eead047; TP-3541 removes this exclude.",
+      "exclude": [
+        "products/active-work/src/bootstrap/prompt.ts"
+      ],
       "excludeRoles": [
         "test",
         "fixture"
