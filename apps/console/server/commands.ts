@@ -20,6 +20,7 @@ import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
+import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
 const upstreamHealth = z.object({
@@ -51,6 +52,8 @@ export interface ConsoleSources {
   inboxActions?: Omit<InboxActionOptions, "decisionLog">;
   /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
   hostReports?: HostReportsSource;
+  /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
+  videos?: VideoCatalog;
   work?: WorkOptions;
 }
 
@@ -93,7 +96,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, inboxActions, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, inboxActions, videos, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -109,6 +112,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
+    ...videosCommands(videos),
     ...workCommands(activeWork, work),
   };
 }
