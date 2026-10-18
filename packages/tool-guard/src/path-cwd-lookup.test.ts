@@ -86,6 +86,8 @@ describe("a bare name a changed PATH may find in the working directory", () => {
     "PATH=.:$PATH s PATH=/usr/bin",
     "PATH=~+:$PATH s",
     "PATH=~-/bin:$PATH s",
+    "((PATH=0)); s",
+    "echo $(( $(PATH=.:$PATH s) ))",
   ])("takes a PATH the walk cannot read as a guess and reads ./s: %s", async (command) => {
     pushIn("s");
     expect(await decision(command)).toBe("deny");
