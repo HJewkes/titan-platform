@@ -14,6 +14,7 @@ const SCRIPTS: Record<string, string> = { "/home/you/projects/app/r.sh": "hash y
   "/home/you/projects/app/bg.sh": "sleep 1 &\nwait $!\n",
 };
 const REBIND_REASON = /does not follow a command name the line rebinds/;
+const ALIAS_REASON = /does not follow shell aliases a command defines/;
 
 /** Nothing exists on this filesystem unless listed in SCRIPTS. */
 function fakeFs(): ReadFs {
@@ -205,7 +206,6 @@ describe("a line that rebinds a command name", () => {
     ["a nested function local count restored to an unknown outer value", `n=$(cat f); f() { g() { local n=$(wc -l < h); }; g; }; f; (( n )); ${PUSH}`],
     ["a wc function defined on the line before a numeric read", `wc() { cat f; }; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a wc function with the function keyword before a numeric read", `function wc { cat f; }; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias before a numeric read", `alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a wc hash binding before a numeric read", `hash -p /tmp/x wc; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a wc defined inside the substitution before a numeric read", `n=$(wc() { cat f; }; wc -l < g); (( n )); ${PUSH}`],
     ["a wc defined by eval before a numeric read", `eval 'wc() { cat f; }'; n=$(wc -l < g); (( n )); ${PUSH}`],
@@ -219,28 +219,22 @@ describe("a line that rebinds a command name", () => {
     ["declare -n behind if", `if declare -n r=PATH; then :; fi; r=/tmp/x; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["an eval-defined wc behind if", `if eval 'wc() { cat f; }'; then :; fi; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a function-defined wc behind if", `if :; then wc() { cat f; }; fi; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias behind if", `if alias wc='cat f'; then :; fi; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a run-time command word behind if", `if $c; then :; fi; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["declare -n behind while", `while declare -n r=PATH; do break; done; r=/tmp/x; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["an eval-defined wc behind while", `while eval 'wc() { cat f; }'; do break; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a function-defined wc behind while", `while :; do wc() { cat f; }; break; done; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias behind while", `while alias wc='cat f'; do break; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a run-time command word behind while", `while $c; do break; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["declare -n behind until", `until declare -n r=PATH; do :; done; r=/tmp/x; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["an eval-defined wc behind until", `until eval 'wc() { cat f; }'; do :; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a function-defined wc behind until", `until :; do wc() { cat f; }; done; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias behind until", `until alias wc='cat f'; do :; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a run-time command word behind until", `until $c; do :; done; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["declare -n behind time -p", `time -p declare -n r=PATH; r=/tmp/x; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["an eval-defined wc behind time -p", `time -p eval 'wc() { cat f; }'; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias behind time -p", `time -p alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a run-time command word behind time -p", `time -p $c; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["declare -n behind command -p", `command -p declare -n r=PATH; r=/tmp/x; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["an eval-defined wc behind command -p", `command -p eval 'wc() { cat f; }'; n=$(wc -l < g); (( n )); ${PUSH}`],
-    ["a wc alias behind command -p", `command -p alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a run-time command word behind command -p", `command -p $c; n=$(wc -l < g); (( n )); ${PUSH}`],
     ["a wc input target defining a wc function", `n=$(wc -l < "$(wc() { cat f; }; echo g)"); (( n )); ${PUSH}`],
-    ["a wc input target setting a wc alias", `n=$(wc -l < "$(alias wc='cat f'; echo g)"); (( n )); ${PUSH}`],
     ["a redirect target holding a literal store", `: > f$(( commands[y]=0 )); ${PUSH}`],
     ["a redirect target holding a run-time word", `e='commands[y]=0'; : > f$(( $e )); ${PUSH}`],
     ["a redirect target holding an unknown run-time word", `: > f$(( $e )); ${PUSH}`],
@@ -258,6 +252,21 @@ describe("a line that rebinds a command name", () => {
     expect(got.decision).toBe("deny");
     expect(got.reason).toMatch(REBIND_REASON);
     expect(got.log).toContain("bash.oversize");
+  });
+
+  it.each([
+    ["a wc alias before a numeric read", `alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc alias behind if", `if alias wc='cat f'; then :; fi; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc alias behind while", `while alias wc='cat f'; do break; done; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc alias behind until", `until alias wc='cat f'; do :; done; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc alias behind time -p", `time -p alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc alias behind command -p", `command -p alias wc='cat f'; n=$(wc -l < g); (( n )); ${PUSH}`],
+    ["a wc input target setting a wc alias", `n=$(wc -l < "$(alias wc='cat f'; echo g)"); (( n )); ${PUSH}`],
+  ])("refuses %s with the alias reason", async (_name, command) => {
+    const got = await answer(command);
+    expect(got.decision).toBe("deny");
+    expect(got.reason).toMatch(ALIAS_REASON);
+    expect(got.log).toContain("oversize");
   });
 
   it.each([
