@@ -43,22 +43,36 @@ const waiting = z.object({ owner: z.array(waitingGate), seat: z.array(waitingGat
 
 const LIST_STATES = ["active", "finished", "all"] as const;
 
+const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
+
+/** Shepherd's `shepherd.release` arguments: one hold of `holdClass`, at the head the owner confirmed, by `actor`. */
+export interface ReleaseAt {
+  repo: string;
+  pr: number;
+  head: string;
+  holdClass: string;
+  actor: string;
+}
+
 type WatchRow = z.infer<typeof watchRow>;
 type PrTimeline = z.infer<typeof prTimeline>;
 type Waiting = z.infer<typeof waiting>;
+type Released = z.infer<typeof released>;
 type ListState = (typeof LIST_STATES)[number];
 
-/** Each read rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
+/** Each call rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
 export interface ShepherdSource {
   list(state: ListState): Promise<WatchRow[]>;
   timeline(repo: string, pr: number): Promise<PrTimeline>;
   waiting(): Promise<Waiting>;
+  /** The one write: only `inbox.act` calls it, after the owner confirmed a g10 hold's release. */
+  release(at: ReleaseAt): Promise<Released>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
 
 /**
- * Calls Shepherd's read commands on titan-factory's loopback port. It sends only the client header
+ * Calls Shepherd's read commands, and `shepherd.release`, on titan-factory's loopback port. It sends only the client header
  * `liveSource` adds: never the browser's cookie or Host, and no token, so 7410 keeps its own guards.
  */
 export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS): ShepherdSource {
@@ -77,10 +91,11 @@ export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS
     list: (state) => read("shepherd.list", { state }, z.array(watchRow)),
     timeline: (repo, pr) => read("shepherd.timeline", { repo, pr }, prTimeline),
     waiting: () => read("shepherd.waiting", {}, waiting),
+    release: ({ repo, pr, head, holdClass, actor }) => read("shepherd.release", { repo, pr, head, holdClass, actor }, released),
   };
 }
 
-/** An allowlist of Shepherd's reads; no write (merge, hold, release, register) has a console command. */
+/** An allowlist of Shepherd's reads; no write (merge, hold, release, register) has a console command of its own. A g10 release goes only through `inbox.act`. */
 export function shepherdCommands(shepherd: ShepherdSource) {
   return {
     "shepherd.list": readCommand({
