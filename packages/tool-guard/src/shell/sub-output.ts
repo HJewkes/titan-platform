@@ -30,9 +30,10 @@ function splice(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Sh
   for (const { at, sub } of cuts) {
     const tokens = word.subs[sub];
     const printed = tokens ? walkSub(tokens, shell) : null;
-    if (strict && !printed?.complete) return null;
     const output = printed?.text ?? "";
-    value += word.value.slice(last, at) + output.replace(/\n+$/, "");
+    // bash and dash drop a NUL from a substitution's output and zsh keeps it, so no one text is what runs.
+    if (strict && (!printed?.complete || output.includes("\0"))) return null;
+    value += word.value.slice(last, at) + output.replaceAll("\0", "").replace(/\n+$/, "");
     last = at;
   }
   return value + word.value.slice(last);

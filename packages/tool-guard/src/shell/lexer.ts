@@ -294,7 +294,8 @@ function readRedirect(s: LexState): void {
   const w = s.word;
   let fd: string | null = null;
   if (w && !w.quoted && !w.dynamic && /^\d+$/.test(w.value)) {
-    fd = w.value;
+    // The shell reads `01>` and `001>` as fd 1, so checks against "1" or "0" see the fd's number (TP-3333).
+    fd = w.value.replace(/^0+(?=\d)/, "");
     s.word = null;
   } else endWord(s);
   const ahead = readAhead(s.src, s.i, 3);

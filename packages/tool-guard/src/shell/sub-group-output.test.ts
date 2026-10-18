@@ -126,6 +126,8 @@ const READ_OR_EXPANDED = [
   'echo "$(echo p?sh origin HEAD:main)" | xargs git',
   'echo "$(echo pus* origin HEAD:main)" | xargs git',
   'echo "$(cat <f)" | xargs git',
+  'echo "$(echo status | cat 00<f)" | xargs git',
+  'echo "$(echo status | cat 0<f)" | xargs git',
 ];
 
 describe("a substitution that reads a file or expands a brace or glob is not read as its text (TP-3333)", () => {
@@ -184,6 +186,7 @@ describe("a substitution whose output goes elsewhere or is split or globbed is n
 const STDOUT_REDIRECTS = [
   ">/dev/null", ">>/dev/null", ">|/dev/null", ">&2", "1>&2", ">& 2", ">&-", "1>&-", "&>/dev/null", "&>>/dev/null", "1<>/dev/null", ">/dev/stderr",
   "1>/dev/null", "1>>/dev/null", "{fd}>&2", "{fd} >&2", "{x}>/dev/null", "{fd}>>/dev/null", "{fd}>|/dev/null", "{fd} >/dev/null", "{fd}&>/dev/null",
+  "01>/dev/null", "001>/dev/null", "01>>/dev/null", "01>|/dev/null", "001>&2", "01>&-", "01<>/dev/null",
 ];
 /** These leave stdout on the substitution, so its text stays known; a redirect after a subshell's `)` is left unknown, as on main. */
 const OTHER_FD_REDIRECTS = ["2>/dev/null", "2>&1", "3>/dev/null", "2>&1 3>/dev/null"];
@@ -251,5 +254,19 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
 
   it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'echo "$(echo ls)" | sh', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
     expect(RUNNERS.map((runner) => runsPush(line, runner))).toEqual([false, false, false, false]);
+  });
+});
+
+/** bash and dash drop a NUL from a substitution's output, so `pu\0sh` runs as `push` there (TP-3333). */
+const NUL_OUTPUT = [
+  `echo "$(printf 'pu\\0sh origin HEAD:main')" | xargs git`,
+  `echo "$(printf 'pu\\000sh origin HEAD:main')" | xargs git`,
+  `printf '%s\\n' "$(printf 'status\\0'; echo push origin HEAD:main)" | xargs git`,
+  `bash -c "$(printf 'git pu\\0sh origin HEAD:main')"`,
+];
+
+describe("a substitution that prints a NUL is not read as the text with it kept (TP-3333)", () => {
+  it.each(NUL_OUTPUT)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
   });
 });
