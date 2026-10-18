@@ -1,5 +1,14 @@
 # @titan-design/factory
 
+## 0.23.2
+
+### Patch Changes
+
+- Updated dependencies [48fc4c0]
+- Updated dependencies [9b5d49f]
+  - @titan-design/coordinator@0.5.2
+  - @titan-design/daemon@0.8.0
+
 ## 0.23.1
 
 ### Patch Changes
