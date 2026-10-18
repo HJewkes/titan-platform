@@ -1,0 +1,113 @@
+---
+name: active-work
+description: |
+  Maintain durable per-initiative workspace state (brief, tasks, sessions, notes, artifacts) so engineering work picks up cleanly across Claude Code sessions. Use when the user mentions: "active work", "what am I working on", "bootstrap session", "new initiative", "record this session", "update handoff", "archive initiative", "check active", "audit my workstreams", "find untracked work", "set up active-work", "add a task", "mark X done", "what's blocking me", "wrap up", "I'm done", or types /active-work.
+---
+
+# active-work — durable workspace state across Claude sessions
+
+`active-work` keeps a small filesystem-backed record for every engineering initiative the user has in flight. Files live under the active root (`~/Library/Application Support/active-work/<slug>/` on macOS — resolved via `env-paths`, which ignores `XDG_DATA_HOME`) and include `brief.md` (frontmatter + prose), `tasks/*.yml`, `sessions/*.md`, `artifacts.yml`, and `sources/` (including `sources/notes/` for durable notes). There is no `handoff.md`: current state is *derived* from the open-loop ledger in the session files, so it cannot go stale. The CLI is `active-work`; `aw <slug>` is a thin launcher that bootstraps a Claude session for an initiative. A long-running daemon, `active-work mcp serve`, exposes MCP tools to Claude Code over HTTP and serves a read-only dashboard at `http://127.0.0.1:7400/ui`.
+
+## When to engage
+
+Engage whenever the user signals they want to inspect, mutate, or hand off persistent workspace state. Trigger phrases:
+
+- "active work" / "what am I working on" — list initiatives, surface current focus
+- "bootstrap session" / `/active-work` — load the bootstrap prompt for an initiative
+- "new initiative" — scaffold a slug with `active-work new`
+- "add a task" / "mark X done" / "what's blocking me" — task ops via `active-work task`
+- "record this session" / "update handoff" / "wrap up" / "I'm done" — session capture via `active-work wrap` (there is no handoff file; the phrase still means wrap)
+- "archive initiative" — move a slug to the archived state
+- "check active" / "audit my workstreams" — `active-work audit` health check
+- "find untracked work" — `active-work discover` across configured sources
+- "set up active-work" — first-time install / `active-work setup`
+
+## Core rules
+
+1. **Edits route through the CLI.** Use `active-work new`, `active-work set`, `active-work task add`, `active-work task done`, `active-work artifact add`, etc. Direct `Edit`/`Write` on `tasks/*.yml`, `artifacts.yml`, or the frontmatter of `brief.md` bypasses validation and corrupts the schema. Prose bodies (`brief.md` body, session summaries, note bodies) can be edited directly, but prefer `active-work edit` for `brief.md` because it re-validates frontmatter on save.
+2. **LLM writes prose; CLI handles structure.** Task ordering, session filenames, frontmatter dates, slug normalization, and rank reflow are CLI primitives. Don't compute them yourself.
+3. **`active-work --help` is the canonical command reference.** This skill intentionally doesn't duplicate the surface; run `active-work --help` or `active-work <command> --help` when you need flags.
+4. **Wrap is the end of the world.** See "Wrapping a session" below. This is the rule agents most often get wrong, and getting it wrong loses the user's work.
+5. **`active-work mcp status` first.** If MCP tools aren't responding, the daemon may not be running. Start it with `active-work mcp serve --detach` before retrying.
+6. **Add to a task's notes or tags; never rebuild them.** `active-work task edit <slug> <id> --append "<one line>"` adds a line to `notes` and keeps the rest. `--add-tag <tag>` and `--remove-tag <tag>` change one tag and keep the others. The three flags combine in one call. Relationships are fields, not tags: `--parent <id>` sets the parent (same initiative), `--dep <ids>` adds deps (any initiative) and `--remove-dep <ids>` drops them, on `task edit`; `task add` takes `--parent` and `--dep` too. `--deliverable <ids>` on `task add` or `task edit` joins the task to deliverables in the platform-wide registry and refuses an unknown id; manage them with `active-work deliverable add|set|list|ship` (`ship` refuses while a joined task is open unless `--force`). Deliverable tags are for `deliverable list --tag` only and never change dispatch. Categories are fields too: `--kind`, `--cos`, `--area` and `--due YYYY-MM-DD` on `task add` or `task edit`, and `task edit <slug> <id> status <s>` takes any registry status (`wont-do` closes a task without marking it done; `icebox` parks it). When `titan-platform/categories.yml` exists, an unknown value exits non-zero, naming the axis and the allowed values; `active-work category list [--axis a]` prints them. A write naming an unknown id, an id filed in two initiatives, a parent in another initiative, or one that closes a parent or dep cycle exits non-zero, names the ids and writes nothing. `active-work task edit <slug> <id> notes "<value>"` and `... tags "<a,b>"` replace the whole field, so a broken quote or an empty variable wipes it. The CLI refuses a `notes` value that does not start with the current notes, a `tags` value that drops a tag, and any replacement of a non-empty `done_when`. Pass `--force` only when you mean to replace. `active-work task note <slug> <id> "<one line>"` is the append-only verb: it adds one line to `notes`, takes no field or flag, and refuses anything else, so a profile can be granted `Bash(active-work task note:*)` instead of `task edit`. For many tasks at once, `active-work task apply <plan.jsonl> [--dry-run] [--report <path>]` reads one JSON line per task (`{"slug","id","ops":[{"add_tag":T},{"remove_tag":T},{"append":LINE},{"done":true},{"set_parent":ID},{"add_dep":ID}]}`) with the same semantics, takes each initiative lock once and writes each task once. `set_parent` and `add_dep` write the field (even when an `epic:`/`dep:` tag already names the edge) and each such line gets the same edge check as `task edit`; a refused line fails alone and the rest apply. It is idempotent: a tag already present, a note line already in `notes`, an edge already in the field or a task already done is reported `unchanged`, so a plan can be re-run. It exits non-zero only when a line fails.
+
+## Promises between wraps
+
+A session that ends before it wraps loses every loop it only meant to file. When you promise something with a trigger ("after the 18:00 reset, restore the pool", "once the PR merges, schedule the digest"), file it at that moment:
+
+```bash
+active-work loop open <slug> --text "Restore the pool" --due 2026-10-03T18:00:00-06:00
+active-work loop open <slug> --text "Schedule the digest" --kind pr --ref https://github.com/acme/widgets/pull/57
+active-work loop open <slug> --text "Close slice 1" --kind task --ref SI-12
+```
+
+`active-work loops <slug>` marks a loop `trigger_met` when its due time has passed, its task is done or its PR is merged, and `active-work loops <slug> --due` lists only those: they are owed now. Close one with `active-work loop resolve <slug> <ref>` (add `--outcome abandoned --note "<why>"` to drop it). `loop resolve` fails when the loop is already closed, so a mistyped ref cannot report success. The merge check runs `gh`; when it cannot reach GitHub the loop stays unmarked and the result carries a warning. Answers, failures included, are kept for 5 minutes in the daemon, and one call asks `gh` about at most 10 PRs; when more are waiting, the result says so and the next call checks the rest.
+
+`active-work loops` can list more open loops than the bootstrap's "Open loops" section. The bootstrap drops a `task` loop as soon as its task is done. `loops` keeps it, marked `trigger_met: ["task-done"]`, until someone resolves it: for a promise, the done task is the cue to act, not proof that the promised action happened. Trust `loops --due` for what is owed, and resolve each loop you settle.
+
+When a session ended with no wrap at all (a reboot, a crash, a closed window), `active-work session recover <slug>` rebuilds its record from the transcript, with no model call. It takes the initiative's newest transcript that has no session record and no running `claude` process (or the one `--session <id>` names) and writes a `generated: true` record listing the last owner messages, the files written, the `active-work` and `git` commands run, and the messages sent. The next bootstrap shows it as `# Last session (recovered)` with its transcript path. It holds facts, not a narrative: read the transcript before you act on it.
+
+## Wrapping a session
+
+**Assume the process exits the instant `wrap` returns, and that everything not written to disk is lost.** Not summarized in chat — *written*. The user will very likely start a fresh session immediately; the only thing that survives is what is on disk. Chat scrollback does not carry over.
+
+The failure this is designed to prevent: an agent posts its session summary, then follows it with two to four "oh, by the way" items — a task that should be filed, a gotcha worth remembering, an uncommitted worktree — each of which then has to be captured before the session can actually end. **Do that sweep before calling `wrap`, not after.** If you find yourself about to write "one more thing" after wrapping, you wrapped too early.
+
+Run `active-work preflight <slug>` first. It is read-only and returns the live git state plus the checklist of categories you must answer.
+
+Then sweep your own session for everything durable and file it:
+
+| What you have | Where it goes |
+|---|---|
+| Unfinished work, open PRs, unanswered questions | `--next-steps` (the open-loop ledger) |
+| Prior loops this session closed | `--resolves` with `outcome: done` |
+| A thread you're deliberately dropping | `--resolves` with `outcome: abandoned` **and a note saying why** — the note is required, and it surfaces in the bootstrap for 14 days so nobody proposes the dropped thing again |
+| Anything actionable | `active-work task add` before wrapping, then `--tasks-filed` |
+| Process improvements, gotchas, "avoid this next time", non-actionable FYIs | `--notes` (lands in `sources/notes/`, indexed in every future bootstrap) |
+| Uncommitted work, unpushed branches, stashes, worktree state | recorded automatically by `wrap`; add `holding` context if the bare fact isn't enough |
+
+Write `--next-steps` text that does **not** restate the task or PR the loop targets — put the id in the step's `ref` field and let the text open with the action. The bootstrap prefixes the ref itself, so text of "AW-28 drain the miner backlog" filed against `ref: AW-28` renders as "AW-28 AW-28 drain the miner backlog" in every future session (AW-71).
+
+Every category needs an **explicit** answer. Omitting a flag is an error, not a shortcut — the assert-nothing forms (`--no-loops`, `--no-notes`, `--no-tasks`) exist so that "there was nothing here" is a claim you make deliberately rather than by forgetting. Use them only when they are actually true.
+
+`--facts <json>` is for recording a spawned worker, and `hooks agent-chat-complete` is what passes it. You do not pass it yourself. It stamps `kind: worker` and stores the object as the record's `worker` block. The object holds `facts`, the `WorkerFacts` from `@titan-design/agent-protocol/worker-facts` (agent, profile, spawner, exit, plus taskId, report, pr, tokens and costUsd when known). It can also hold `resolves`, the task ids the report names as closed, done or merged. A worker with no `facts.report` must carry `outcome: "exited-no-report"` and may carry `last_action`; a worker with a report must not carry an outcome. `authored` is optional (`continuations`, `open_questions`, `next_why`) and capped at 1,500 characters.
+
+**active-work is the source of truth — not `~/.claude` memory, not `CLAUDE.md`.** A process lesson written to memory is invisible to the next session on this initiative and to every other surface. File it as a note.
+
+Then report back plainly: the counts of what was filed and updated, and that you are ready to end. `wrap` returns exactly that receipt — relay it rather than re-deriving it.
+
+Check `ready_to_end` before you say you are done. It is `false` when a `--resolves` ref closed no loop; `resolves_rejected[]` names each bad ref and why. The session file and `brief.updated` are already written, so **do not re-run `wrap`** — that would duplicate the narrative. Report the rejected refs to the user; they get re-filed from a later session.
+
+Auto-prompt the wrap when you detect the user winding down ("I'm done", "let's stop", "wrap up", inactivity after a chunk of work).
+
+## Bootstrap flow (`aw <slug>` / `active-work open <slug>`)
+
+`aw <slug>` is the operator-facing launcher: it assembles the bootstrap prompt and execs `claude` with the initiative's worktree as cwd. Omit the slug and it resolves the initiative from the caller's cwd (matching against each initiative's **registered** worktrees — the entries in `artifacts.yml` that carry a `name`, not the ones `wrap` merely swept), falling back to the interactive picker when nothing matches uniquely; `aw --pick` forces the picker. (Register a worktree so this resolution works with `active-work worktree set <slug> <path>`, or at creation via `new --worktree` / `track --worktree`.) `active-work open <slug>` is the same assembly logic, but prints the prompt to stdout instead of spawning Claude — use it from MCP / scripts / any caller that wants to handle the spawn itself (pass `--cwd <dir>` when the caller's process cwd isn't the user's shell cwd, e.g. the daemon). The bootstrap prompt inlines:
+
+- A brief excerpt (the brief's prose body, truncated to 40 lines)
+- **Open loops** — unresolved `next_steps` from prior sessions, with the age of each hang. Under a loop, up to two indented `see:` lines name workspace notes, sources, tasks or session records related to it (ref plus title, `[from \`<initiative>\`]` when foreign); open one when it bears on closing the loop. Absent when the index is missing or nothing matched
+- **Abandoned loops** from the last 14 days, each with the reason it was dropped (`active-work loops <slug> --state abandoned` for the full history)
+- The most recent session summary
+- The top N open tasks (rank-sorted)
+- Recently-done tasks from the last 14 days, if any
+- **Durable notes** — newest first, capped by count and never expired by age. A note that declares `read_if` (one line, at most 160 chars; `active-work note add --read-if <condition>`) shows it as `(read if: <condition>)` after its kind, title and date, and on its `see:` lines; skip a note whose condition does not apply
+- Open artifacts with status
+- A context block with today's date, bootstrap time, and time since the last session
+
+For ad-hoc lookups, `active-work context related --for "<text>"` returns the same kind of ranked, bounded hits for any text.
+
+To re-seed context **mid-session** (a session that wasn't started via `aw`, or one that has drifted), run `active-work prompt` — it prints the same bootstrap prompt to stdout, cwd-resolved and side-effect-free apart from logging the retrieval hits it shows (no auto-archive). The bundled `/aw-prompt` slash command wraps it and injects the output straight into the session.
+
+The brief excerpt is already in your context, so **do not re-read `brief.md`** at the top of the session. Current state needs no separate file — it is the open-loop section, derived fresh at every bootstrap from the session ledger. Jump straight to the highest-rank open task unless the user redirects you. If the user opens a slug without further instruction, ask "continue with `<top task title>`?" and proceed on confirmation.
+
+**Sibling sessions** (`# Another session may already be live on this initiative`): each bootstrap records a lease under `<active root>/.sessions/<slug>/` and warns when another session still holds one. A session launched via `aw` is reported as a live process — its pid is actually checked — while one bootstrapped through `open`/MCP is a 90-minute guess and is worded as one, because that path leaves no process to confirm. When the section appears, **ask the user which session owns the top task before starting it**. If yours is the second session, take distinct scope and record it with `active-work wrap --track adhoc`: a `canonical` wrap here buries the other session's mainline thread in the next bootstrap. When the initiative carries an agent-chat channel, also register under a name that distinguishes you and coordinate scope there. `--no-sibling-check` skips the probe on `open`/`prompt` (and, for `open`, the lease write); `--offline` skips it too. `active-work prompt` detects siblings but never records a lease of its own — it stays read-only. Dead leases are swept at the next bootstrap; `active-work doctor` reports the live/pruned counts.
+
+**Ad-hoc sessions** (`aw <slug> --adhoc`, also `open`/`prompt --adhoc`): the opening and closing directives change to say the session is scoped to ad-hoc work on the workstream — the context is background, *not* a directive. Do **not** offer to continue the top task; wait for the user to describe the specific ad-hoc task, then work it with the workstream context in mind. The bootstrap prompt itself carries this instruction, so follow whichever framing it renders.
+
+**Init sessions** (`aw <unknown-slug>` after the operator accepts the offer to create it, also `open --init`): the initiative was just scaffolded and its brief body is a placeholder. Set it up with the user before any other work: ask what it is and why it exists, write the brief body, ask whether a worktree or project directory already exists and register it with `active-work worktree set`, file sources and the first tasks, then `active-work wrap` on the default canonical track.
+
+## Reference docs
+
+- [onboarding.md](references/onboarding.md) — first-time setup walkthrough
+- [auditing-existing-work.md](references/auditing-existing-work.md) — discover + triage flow for catching up on untracked work
+- [cli-dev.md](references/cli-dev.md) — internal architecture for skill maintainers and CLI contributors

@@ -1,0 +1,113 @@
+import { z } from 'zod';
+import { defineCommand } from '../registry/index.js';
+import { runRefresh, withRefreshLock, type RefreshLockHolder } from '../session-index/refresh.js';
+
+/**
+ * `active-work miner refresh` — bring the session-signal index up to date with
+ * the transcripts under every Claude config dir.
+ *
+ * Shares one code path with the daemon's watcher and
+ * `tools/build-session-index.mjs`. The refresh lock is cross-process and this
+ * command *blocks* on it: if the daemon is mid-pass, the user's refresh waits
+ * and then runs, rather than failing or silently doing nothing. That is why
+ * there is no HTTP endpoint here — the lock already serializes the two.
+ */
+
+const ArgsSchema = z.object({
+  full: z.boolean().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  verify_hashes: z.boolean().optional(),
+  backfill_all: z.boolean().optional(),
+});
+type Args = z.infer<typeof ArgsSchema>;
+
+/** Mirrors `WorkspaceRefreshSummary`; the registry validates every result it returns. */
+const WorkspaceSchema = z.object({
+  files: z.number(),
+  indexed: z.number(),
+  unchanged: z.number(),
+  removed: z.number(),
+  malformed: z.array(z.object({ path: z.string(), reason: z.string() })),
+  rows: z.object({
+    initiative: z.number(),
+    note: z.number(),
+    task: z.number(),
+    session: z.number(),
+    source: z.number(),
+  }),
+  edges: z.object({ holds: z.number(), mentions: z.number(), sharesTag: z.number() }),
+  orphanRatio: z.number(),
+});
+
+const ResultSchema = z.object({
+  startedAt: z.string(),
+  durationMs: z.number(),
+  transcripts: z.number(),
+  scanned: z.number(),
+  indexed: z.number(),
+  rewound: z.number(),
+  unchanged: z.number(),
+  quarantined: z.number(),
+  missing: z.number(),
+  reconciledMissing: z.number(),
+  facetsBackfilled: z.number(),
+  facetBacklog: z.number(),
+  episodesWritten: z.number(),
+  episodeBacklog: z.number().nullable(),
+  factsAdded: z.number(),
+  turnsRolledUp: z.number(),
+  tasksRequested: z.number(),
+  tasksApplied: z.number(),
+  workspace: WorkspaceSchema.nullable(),
+  preserved: z.object({ restored: z.number(), merged: z.number(), skipped: z.number() }),
+  errors: z.array(z.string()),
+});
+type Result = z.infer<typeof ResultSchema>;
+
+/** One stderr line naming who holds the lock, so a long wait is never anonymous (TP-791). */
+export function describeLockWait(holder: RefreshLockHolder | null): string {
+  if (!holder) return 'miner refresh: waiting for the refresh lock (holder unknown)\n';
+  const state = holder.stale ? ', stale: that pid is gone' : '';
+  return `miner refresh: waiting for the refresh lock held by pid ${holder.pid} since ${holder.startedAt} (${holder.command}${state})\n`;
+}
+
+export default defineCommand<Args, Result>({
+  name: 'miner.refresh',
+  description: 'Index new Claude session transcripts into the session-signal index.',
+  args: ArgsSchema,
+  result: ResultSchema,
+  cli: {
+    options: {
+      full: {
+        long: '--full',
+        description: 'Drop every derived row and re-read all transcripts from byte 0.',
+      },
+      limit: {
+        long: '--limit',
+        description: 'Visit at most N transcripts.',
+      },
+      verify_hashes: {
+        long: '--verify-hashes',
+        description: 'Re-hash every transcript to detect source drift (slow; implied by --full).',
+      },
+      backfill_all: {
+        long: '--backfill-all',
+        description:
+          'Re-extract every stale audit facet and segment every stale session this pass instead of bounded batches.',
+      },
+    },
+  },
+  async run(args) {
+    return withRefreshLock(
+      () =>
+        runRefresh({
+          full: args.full,
+          limit: args.limit,
+          verifyHashes: args.verify_hashes,
+          facetLimit: args.backfill_all ? Infinity : undefined,
+          episodeLimit: args.backfill_all ? Infinity : undefined,
+        }),
+      { onWait: (holder) => process.stderr.write(describeLockWait(holder)) },
+    );
+  },
+});
