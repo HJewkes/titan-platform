@@ -1,4 +1,8 @@
+import { SHELL_BUILTINS } from "./builtins.js";
 import type { Assignment, Vars } from "./vars.js";
+
+/** POSIX's special builtins, whose prefix assignments a POSIX-mode shell such as `sh` keeps after they return. */
+const SPECIAL_BUILTINS = new Set([":", ".", "break", "continue", "eval", "exec", "exit", "export", "readonly", "return", "set", "shift", "times", "trap", "unset"]);
 
 const SELF_RE = /^\$(?:PATH|\{PATH\})$/;
 /** A literal absolute directory, or one under `~` or `$HOME`, which the walk keeps as `~`. */
@@ -22,6 +26,20 @@ export function safePathDirs(raw: string, append: boolean, vars: Vars, homeSet =
     dirs.push(entry.replace(HOME_RE, "~").replace(/(?<=.)\/$/, ""));
   }
   return dirs;
+}
+
+/**
+ * Whether a command's prefix may reach commands other than the one it is written on: a bare name may be a function,
+ * whose body the walk reads where it is defined, and a special builtin leaves the prefix in a POSIX-mode shell.
+ */
+export function prefixOutlives(name: string | null): boolean {
+  if (name === null) return false;
+  return SPECIAL_BUILTINS.has(name) || (!name.includes("/") && !SHELL_BUILTINS.has(name));
+}
+
+/** Whether a prefix sets `HOME` to anything but a literal absolute directory, so a `~` on PATH may name the working directory. */
+export function prefixHomeUnsafe(assigned: Assignment[]): boolean {
+  return assigned.some(([name, value, kind]) => name === "HOME" && kind !== "hidden" && value?.startsWith("/") !== true);
 }
 
 /** What a command's own `NAME=value` prefix does to the `PATH` it runs under. */

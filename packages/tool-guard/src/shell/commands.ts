@@ -14,7 +14,7 @@ import { assign, childVars, expandWord, isPathName, lookup, noteSureCommands, ob
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
-import { prefixPath } from "./path-entries.js";
+import { prefixHomeUnsafe, prefixOutlives, prefixPath } from "./path-entries.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
@@ -308,6 +308,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const own = prefixPath(cmd.assigned, isPathName, w.scope.vars);
   const ownPath = own.unsafe;
   w.marks.pathDirs.push(...own.dirs);
+  // Emission order is not run order, so a prefix that may reach later commands changes the whole line's PATH, as a store does.
+  if (prefixOutlives(name) && (ownPath || prefixHomeUnsafe(cmd.assigned))) w.marks.pathChanged = true;
   const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];

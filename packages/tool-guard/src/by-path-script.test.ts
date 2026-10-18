@@ -241,7 +241,19 @@ describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
     ["a PATH= prefix on watch", "PATH=. watch ./envp"],
     ["a PATH= prefix on parallel", "PATH=. parallel ./envp ::: a"],
     ["a subshell group", "{ PATH=.; }; ./envp"],
-  ])("denies the script after %s", async (_, line) => {
+    ["a PATH= prefix on a function that runs the script", "f(){ ./envp; }; PATH=. f"],
+    ["a HOME= prefix on a function that puts a tilde on PATH", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=. f"],
+    ["a PATH= prefix on : in sh -c", "sh -c 'PATH=. :; ./envp'"],
+    ["a PATH= prefix on export in sh -c", "sh -c 'PATH=. export X; ./envp'"],
+    ["a PATH= prefix on set in sh -c", "sh -c 'PATH=. set -e; ./envp'"],
+    ["a PATH= prefix on readonly in sh -c", "sh -c 'PATH=. readonly X; ./envp'"],
+    ["a PATH= prefix on unset in sh -c", "sh -c 'PATH=. unset X; ./envp'"],
+    ["a PATH= prefix on times in sh -c", "sh -c 'PATH=. times; ./envp'"],
+    ["a PATH= prefix on trap in sh -c", "sh -c 'PATH=. trap - INT; ./envp'"],
+    ["a PATH= prefix on shift in sh -c", "sh -c 'PATH=. shift 0; ./envp'"],
+    ["a PATH= prefix on break in a loop in sh -c", "sh -c 'for i in 1; do PATH=. break; done; ./envp'"],
+    ["a PATH= prefix on continue in a loop in sh -c", "sh -c 'for i in 1; do PATH=. continue; done; ./envp'"],
+    ["a PATH= prefix on return in a function in sh -c", "sh -c 'f(){ PATH=. return; }; f; ./envp'"],  ])("denies the script after %s", async (_, line) => {
     file("envp", ENV_BASH);
     file("src.sh", "PATH=.:$PATH\n");
     expect(await decision(line)).toBe("deny");
