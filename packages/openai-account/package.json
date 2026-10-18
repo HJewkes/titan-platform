@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/openai-account",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Read-only Codex account state: login status, rollout quota readings, freshness and admission",
   "type": "module",
   "main": "./dist/index.js",
