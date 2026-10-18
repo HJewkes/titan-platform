@@ -1,0 +1,327 @@
+{
+  "profile": {
+    "name": "fixture-worker",
+    "description": "Synthetic contract fixture",
+    "model": "fixture-model",
+    "allowedTools": [
+      "Read"
+    ],
+    "disallowedTools": [
+      "Write"
+    ],
+    "isolation": "worktree",
+    "surface": "headless",
+    "surfaceLifetime": "keep",
+    "role": "worker",
+    "remoteControl": false,
+    "returnContract": "none",
+    "effort": "medium",
+    "promptPrelude": "Synthetic brief",
+    "strictMcpConfig": true,
+    "settingSources": [
+      "project",
+      "local"
+    ],
+    "disableSlashCommands": true,
+    "mcpServers": {
+      "fixture": {
+        "command": "fixture-command"
+      }
+    },
+    "env": {
+      "FIXTURE_VALUE": "synthetic"
+    },
+    "warnings": [
+      "Synthetic warning"
+    ]
+  },
+  "remoteProfile": {
+    "name": "fixture-worker",
+    "description": "Synthetic contract fixture",
+    "model": "fixture-model",
+    "allowedTools": [
+      "Read"
+    ],
+    "disallowedTools": [
+      "Write"
+    ],
+    "isolation": "worktree",
+    "surface": "headless",
+    "surfaceLifetime": "keep",
+    "role": "worker",
+    "remoteControl": false,
+    "returnContract": "none",
+    "effort": "medium",
+    "promptPrelude": "Synthetic brief",
+    "strictMcpConfig": true,
+    "settingSources": [
+      "project",
+      "local"
+    ],
+    "disableSlashCommands": true
+  },
+  "launch": {
+    "agentId": "fixture-agent",
+    "sessionId": "fixture-session",
+    "name": "fixture-worker",
+    "profile": {
+      "name": "fixture-worker",
+      "description": "Synthetic contract fixture",
+      "model": "fixture-model",
+      "allowedTools": [
+        "Read"
+      ],
+      "disallowedTools": [
+        "Write"
+      ],
+      "isolation": "worktree",
+      "surface": "headless",
+      "surfaceLifetime": "keep",
+      "role": "worker",
+      "remoteControl": false,
+      "returnContract": "none",
+      "effort": "medium",
+      "promptPrelude": "Synthetic brief",
+      "strictMcpConfig": true,
+      "settingSources": [
+        "project",
+        "local"
+      ],
+      "disableSlashCommands": true
+    },
+    "brief": "Synthetic brief",
+    "preamble": "Synthetic preamble",
+    "adopted": true,
+    "surface": "headless",
+    "tags": [
+      "fixture"
+    ],
+    "subscriptions": [
+      {
+        "selector": {
+          "spawnedBy": "self"
+        },
+        "kinds": [
+          "agent_spawned"
+        ]
+      }
+    ],
+    "remoteControl": false,
+    "channels": [
+      "fixture-channel"
+    ],
+    "permissionMode": "default",
+    "anchor": "fixture-anchor",
+    "landToken": "synthetic-not-a-credential",
+    "successorFirst": true,
+    "cwd": "/tmp/contract-fixture",
+    "configDir": "/tmp/contract-config",
+    "configDirUnset": true
+  },
+  "spawn": {
+    "t": "spawn_result",
+    "ok": true,
+    "agentId": "fixture-agent",
+    "name": "fixture-worker",
+    "reason": "Synthetic reason",
+    "code": "broker_draining",
+    "retryable": true,
+    "retryAfterMs": 10,
+    "warnings": [
+      "Synthetic warning"
+    ],
+    "disallowedTools": [
+      "Write"
+    ],
+    "transcript": {
+      "path": "/tmp/contract-transcript.jsonl",
+      "found": false
+    },
+    "base": {
+      "ref": "fixture-ref",
+      "sha": "fixture-sha"
+    },
+    "launch": {
+      "agentId": "fixture-agent",
+      "sessionId": "fixture-session",
+      "name": "fixture-worker",
+      "profile": {
+        "name": "fixture-worker",
+        "description": "Synthetic contract fixture",
+        "model": "fixture-model",
+        "allowedTools": [
+          "Read"
+        ],
+        "disallowedTools": [
+          "Write"
+        ],
+        "isolation": "worktree",
+        "surface": "headless",
+        "surfaceLifetime": "keep",
+        "role": "worker",
+        "remoteControl": false,
+        "returnContract": "none",
+        "effort": "medium",
+        "promptPrelude": "Synthetic brief",
+        "strictMcpConfig": true,
+        "settingSources": [
+          "project",
+          "local"
+        ],
+        "disableSlashCommands": true
+      },
+      "brief": "Synthetic brief",
+      "preamble": "Synthetic preamble",
+      "adopted": true,
+      "surface": "headless",
+      "tags": [
+        "fixture"
+      ],
+      "subscriptions": [
+        {
+          "selector": {
+            "spawnedBy": "self"
+          },
+          "kinds": [
+            "agent_spawned"
+          ]
+        }
+      ],
+      "remoteControl": false,
+      "channels": [
+        "fixture-channel"
+      ],
+      "permissionMode": "default",
+      "anchor": "fixture-anchor",
+      "landToken": "synthetic-not-a-credential",
+      "successorFirst": true,
+      "cwd": "/tmp/contract-fixture",
+      "configDir": "/tmp/contract-config",
+      "configDirUnset": true
+    },
+    "host": "fixture-host"
+  },
+  "identity": {
+    "agentId": "fixture-agent",
+    "name": "fixture-worker",
+    "profile": "fixture-worker",
+    "state": "exited",
+    "origin": "spawned",
+    "spawnedBy": "fixture-parent",
+    "spawnedAt": 1,
+    "brief": "Synthetic brief",
+    "cwd": "/tmp/contract-fixture",
+    "isolation": "legacy-unknown-isolation",
+    "surface": "legacy-unknown-surface",
+    "sessionId": "fixture-session",
+    "configDir": "/tmp/contract-config",
+    "configDirUnset": true,
+    "host": "fixture-host",
+    "provisionalName": true,
+    "repo": "fixture/project",
+    "branch": "fixture-branch",
+    "base": {
+      "sha": "fixture-sha",
+      "ref": "fixture-ref"
+    },
+    "task": "FIXTURE-1",
+    "workRole": "other",
+    "workRoleInferred": true,
+    "lastEventAt": 2,
+    "exitedAt": 2,
+    "detachedAt": 1,
+    "generation": 2,
+    "teleportFrom": "fixture-predecessor",
+    "exit": {
+      "code": null,
+      "summary": "Synthetic terminal observation",
+      "costUsd": 0,
+      "failedToStart": false,
+      "inferred": true
+    }
+  },
+  "list": {
+    "t": "agents_result",
+    "agents": [
+      {
+        "agentId": "fixture-agent",
+        "name": "fixture-worker",
+        "profile": "fixture-worker",
+        "state": "exited",
+        "origin": "spawned",
+        "spawnedBy": "fixture-parent",
+        "spawnedAt": 1,
+        "brief": "Synthetic brief",
+        "cwd": "/tmp/contract-fixture",
+        "isolation": "legacy-unknown-isolation",
+        "surface": "legacy-unknown-surface",
+        "sessionId": "fixture-session",
+        "configDir": "/tmp/contract-config",
+        "configDirUnset": true,
+        "host": "fixture-host",
+        "provisionalName": true,
+        "repo": "fixture/project",
+        "branch": "fixture-branch",
+        "base": {
+          "sha": "fixture-sha",
+          "ref": "fixture-ref"
+        },
+        "task": "FIXTURE-1",
+        "workRole": "other",
+        "workRoleInferred": true,
+        "lastEventAt": 2,
+        "exitedAt": 2,
+        "detachedAt": 1,
+        "generation": 2,
+        "teleportFrom": "fixture-predecessor",
+        "exit": {
+          "code": null,
+          "summary": "Synthetic terminal observation",
+          "costUsd": 0,
+          "failedToStart": false,
+          "inferred": true
+        }
+      }
+    ],
+    "slots": {
+      "held": 1,
+      "cap": 2
+    }
+  },
+  "surface": {
+    "t": "switch_result",
+    "ok": true,
+    "reason": "Synthetic reason",
+    "name": "fixture-worker",
+    "agentId": "fixture-agent",
+    "surface": "iterm-tab",
+    "warnings": [
+      "Synthetic warning"
+    ]
+  },
+  "event": {
+    "kind": "agent_exited",
+    "ts": 2,
+    "actor": "fixture-parent",
+    "target": null,
+    "msgId": null,
+    "ref": null,
+    "body": null,
+    "meta": {
+      "fixture": "synthetic"
+    }
+  },
+  "loggedEvent": {
+    "kind": "agent_exited",
+    "ts": 2,
+    "actor": "fixture-parent",
+    "target": null,
+    "msgId": null,
+    "ref": null,
+    "body": null,
+    "meta": {
+      "fixture": "synthetic"
+    },
+    "id": 1
+  }
+}

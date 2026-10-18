@@ -27,11 +27,11 @@ describe("trace subpath packaging", () => {
     for (const name of shipped) expect(importsOf(new URL(name, TRACE)).filter((spec) => spec.startsWith("node:")), name).toEqual([]);
   });
 
-  it("keeps zod and the trace subpath out of the root entry's import graph", () => {
+  it("keeps zod and schema subpaths out of the root entry's import graph", () => {
     const graph = rootEntryGraph();
     expect(graph.size).toBeGreaterThan(1);
     for (const [file, imports] of graph) {
-      expect(imports.filter((spec) => spec === "zod" || spec.includes("trace")), file).toEqual([]);
+      expect(imports.filter((spec) => spec === "zod" || spec.includes("trace") || spec.includes("wire")), file).toEqual([]);
     }
   });
 });
