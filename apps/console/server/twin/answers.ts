@@ -181,6 +181,11 @@ const TASK_DETAIL: Served["work.task"]["result"] = {
 
 const VIDEO = { id: "v-relay-intro", title: "Relay intro", group: "orbit-relay", bytes: 4_200_000, modifiedAt: at(3 * HOUR), captions: true, renderNotes: false };
 
+const VIDEO_NOTE = {
+  schema: "titan-console/video-note@1", id: "0123456789abcdef", videoId: VIDEO.id, video: "relay-intro.mp4", renderSha256: "ab".repeat(32),
+  atS: 12.5, createdAt: at(2 * HOUR), kind: "comment", text: "Hold the title card a beat longer", current: true,
+} as const;
+
 /** The answers for every source the file fixtures do not cover. */
 export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("upstreams.health", {}, {
@@ -217,5 +222,5 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
     readAt: new Date(TWIN_NOW).toISOString(),
   }),
   answer("videos.list", {}, { videos: [{ ...VIDEO, noteCount: 1, verdict: null }], truncated: false, gaps: [] }),
-  answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [], verdict: null, gaps: [] }),
+  answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
 ];
