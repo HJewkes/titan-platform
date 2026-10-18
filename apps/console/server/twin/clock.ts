@@ -9,25 +9,22 @@ export const SECOND_SHOT_SKEW_MS = 1000;
 
 /**
  * An init script that stops the page's clock at `nowMs` and seeds Math.random. Timers still run in real time, so the
- * app settles as it would live; only what it reads off the clock is held still. Self-contained, because Playwright
- * serialises it into the page.
+ * app settles as it would live; only what it reads off the clock is held still. Plain source rather than a serialised
+ * function, because tsx names nested functions with a helper the page does not have.
  */
 export function frozenClockScript(nowMs: number): string {
-  return `(${String(installFrozenClock)})(${JSON.stringify(nowMs)})`;
-}
-
-function installFrozenClock(nowMs: number): void {
+  return `(() => {
+  const NOW = ${JSON.stringify(nowMs)};
   const RealDate = Date;
-  class FrozenDate extends RealDate {
-    constructor(...args: [] | [string | number | Date] | [number, number, ...number[]]) {
-      if (args.length === 0) super(nowMs);
-      else if (args.length === 1) super(args[0]);
-      else super(...(args as [number, number]));
+  const FrozenDate = class extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(NOW);
+      else super(...args);
     }
-    static override now(): number {
-      return nowMs;
+    static now() {
+      return NOW;
     }
-  }
+  };
   Object.defineProperty(window, "Date", { value: FrozenDate, writable: true, configurable: true });
   let seed = 0x2f6b9d31;
   Math.random = () => {
@@ -36,4 +33,5 @@ function installFrozenClock(nowMs: number): void {
     x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
+})();`;
 }

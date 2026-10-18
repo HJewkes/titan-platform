@@ -1,5 +1,8 @@
 // The twin's whole snapshot: the hand-written answers, plus what the real console commands answer over the
 // synthetic active-work fixture and the synthetic review rounds, recorded in process.
+import { cp, mkdtemp, readdir, rm, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { inProcessCaller, successEnvelope, type InProcessCall } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleSources } from "../commands.js";
@@ -14,16 +17,28 @@ const NOWHERE = "/nonexistent/titan-console-twin";
 
 const unreachable = (): Promise<never> => Promise.reject(new Error("the twin reads no live source"));
 
+/** The rounds read shows each round's file mtime, which a checkout sets; a copy pinned to a fixed hour keeps it out of the frames. */
+const ROUNDS_MTIME = new Date(TWIN_NOW - 5 * 60 * 60 * 1000);
+
+async function pinnedRounds(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "titan-console-twin-rounds-"));
+  await cp(FIXTURE_ROUNDS.dir, dir, { recursive: true });
+  const entries = await readdir(dir, { recursive: true });
+  await Promise.all([dir, ...entries.map((entry) => path.join(dir, entry))].map((entry) => utimes(entry, ROUNDS_MTIME, ROUNDS_MTIME)));
+  return dir;
+}
+
 /** Only `activeWork` and `rounds` answer; every other source is recorded by hand in `answers.ts`, so none is ever read. */
-function recordingSources(): ConsoleSources {
+function recordingSources(roundsDir: string): ConsoleSources {
   return {
     upstreams: [],
     agents: { broker: { read: unreachable, history: unreachable, queue: unreachable }, eventsDbPath: NOWHERE, seatPrefixes: [] },
     sessions: { graphPath: NOWHERE, roots: () => [], now: () => TWIN_NOW },
     activeWork: fixtureActiveWork(),
     inbox: { dir: NOWHERE },
-    rounds: FIXTURE_ROUNDS,
+    rounds: { dir: roundsDir },
     shepherd: { list: unreachable, timeline: unreachable, waiting: unreachable, release: unreachable },
+    work: { now: () => TWIN_NOW },
   };
 }
 
@@ -56,16 +71,21 @@ function inProcessContext(): ConsoleContext {
   return { warnings: [], format: "json", surface: "in-process", auth: null, ownerWrites: false };
 }
 
+/** `rounds.list` names the dir it read, the pinned temp copy; the twin names the checked-in one, so no temp path reaches a frame. */
+const FIXTURE_ROUNDS_NAME = "fixtures/rounds";
+
 async function record(call: InProcessCall, command: TwinCommand, args: unknown): Promise<[string, Snapshot["calls"][string]]> {
   const envelope = await call(command, args);
   if (!envelope.ok) throw new Error(`twin fixture ${command} ${JSON.stringify(args)} failed: ${envelope.error}`);
-  return [snapshotKey(command, args), envelope];
+  const data = command === "rounds.list" ? { ...(envelope.data as object), dir: FIXTURE_ROUNDS_NAME } : envelope.data;
+  return [snapshotKey(command, args), { ...envelope, data }];
 }
 
 /** Built fresh per capture; a duplicate key would let one fixture silently shadow another, so it throws instead. */
 export async function twinSnapshot(): Promise<Snapshot> {
-  const call = inProcessCaller(createConsoleRegistry(recordingSources()), inProcessContext);
-  const fromCommands = await Promise.all(RECORDED.map(({ command, args }) => record(call, command, args)));
+  const roundsDir = await pinnedRounds();
+  const call = inProcessCaller(createConsoleRegistry(recordingSources(roundsDir)), inProcessContext);
+  const fromCommands = await Promise.all(RECORDED.map(({ command, args }) => record(call, command, args))).finally(() => rm(roundsDir, { recursive: true, force: true }));
   const hand = HAND_ANSWERS.map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)] as const);
   const calls: Snapshot["calls"] = {};
   for (const [key, envelope] of [...fromCommands, ...hand]) {

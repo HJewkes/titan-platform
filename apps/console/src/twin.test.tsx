@@ -13,11 +13,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+type Entry = Pick<IntersectionObserverEntry, "target" | "isIntersecting">;
+
 /** jsdom has no IntersectionObserver; this one sees every target at once, so each lazy frame asks for its answer. */
 class SeeEverything {
-  constructor(private readonly onChange: IntersectionObserverCallback) {}
+  constructor(private readonly onChange: (entries: Entry[]) => void) {}
   observe(target: Element): void {
-    this.onChange([{ target, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+    this.onChange([{ target, isIntersecting: true }]);
   }
   unobserve(): void {}
   disconnect(): void {}
