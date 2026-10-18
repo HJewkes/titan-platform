@@ -12,7 +12,7 @@ import { importTree, limitsSchema, type Limits } from "./import.js";
 import { appendRevision, readRevisionLog, revisionLogPath } from "./log.js";
 import { materializeDocument } from "./materialize.js";
 
-export type ConfigArgs = { verb: "import"; tree: string; limits: string | null } | { verb: "compare-tree" };
+type ConfigArgs = { verb: "import"; tree: string; limits: string | null } | { verb: "compare-tree" };
 
 export const CONFIG_USAGE = `       titan-console config import <autonomy-tree> [--limits <limits.json>]
                                         write coordinator rev 0 from the tree and materialize it;

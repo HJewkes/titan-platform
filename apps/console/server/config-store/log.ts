@@ -14,18 +14,18 @@ import path from "node:path";
 import { revisionSha, verifyChain, type ChainError, type ConfigRevision } from "@titan-design/coordinator";
 import { syncDirectory } from "./materialize.js";
 
-export const CONFIG_DIR = "config";
-export const REVISIONS_FILE = "coordinator.revisions.jsonl";
+const CONFIG_DIR = "config";
+const REVISIONS_FILE = "coordinator.revisions.jsonl";
 const MAX_LOG_BYTES = 32 * 1024 * 1024;
 const CREATE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW;
 
-export type LogState =
+type LogState =
   | { state: "empty" }
   | { state: "verified"; revisions: unknown[]; head: ConfigRevision; bytes: number }
   | { state: "invalid"; errors: ChainError[] };
 
-export type NewRevision = Omit<ConfigRevision, "$schema" | "rev" | "parent">;
+type NewRevision = Omit<ConfigRevision, "$schema" | "rev" | "parent">;
 
 export function revisionLogPath(stateDir: string): string {
   return path.join(stateDir, CONFIG_DIR, REVISIONS_FILE);

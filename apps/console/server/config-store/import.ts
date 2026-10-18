@@ -26,15 +26,15 @@ import {
   type SeatConfig,
 } from "@titan-design/coordinator";
 
-export const CHARTER_FILE = "charter.md";
+const CHARTER_FILE = "charter.md";
 const SEATS_DIR = "seats";
 const SEAT_SCHEMA = "autonomy-seat/v1";
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export const limitsSchema = coordinatorConfigSchema.shape.limits;
 export type Limits = CoordinatorConfig["limits"];
-export type TreeError = { file: string; path: string; message: string };
-export type TreeImport =
+type TreeError = { file: string; path: string; message: string };
+type TreeImport =
   | { ok: true; document: CoordinatorConfig; seats: SeatConfig[]; notes: string[]; limitsFrom: "charter" | "given" }
   | { ok: false; errors: TreeError[] };
 
@@ -44,7 +44,7 @@ interface FrontMatter {
   notes: string[];
 }
 
-export interface ImportOptions {
+interface ImportOptions {
   /** Used only when the charter has no `pools` block, which the limits are built from otherwise. */
   limits?: Limits;
 }

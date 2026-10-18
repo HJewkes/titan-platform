@@ -11,13 +11,13 @@ import path from "node:path";
 import { appDirs, type PathOptions } from "@titan-design/app-paths";
 import { documentSha, type CoordinatorConfig } from "@titan-design/coordinator";
 
-export const COORDINATOR_APP = "titan-coordinator";
-export const COORDINATOR_FILE = "coordinator.json";
+const COORDINATOR_APP = "titan-coordinator";
+const COORDINATOR_FILE = "coordinator.json";
 
 export type WriteBytes = (handle: FileHandle, bytes: Buffer) => Promise<void>;
-export type MaterializedState = "current" | "stale" | "missing" | "unreadable";
+type MaterializedState = "current" | "stale" | "missing" | "unreadable";
 
-export interface MaterializeOptions {
+interface MaterializeOptions {
   /** A seam for the crash test; the default writes every byte. */
   writeBytes?: WriteBytes;
 }
