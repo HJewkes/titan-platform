@@ -28,7 +28,8 @@ export const LabelsSchema = z
     script: z.string().min(1),
     source: z.string().min(1),
     checks: z.array(CheckLabelsSchema).min(1),
-    owner_named: z.object({ true: ids.min(1), borderline: ids, note: z.string().optional() }).strict(),
+    // Empty for a hold-out script the owner never reviewed; its owner recall is then unknown, not zero.
+    owner_named: z.object({ true: ids, borderline: ids, note: z.string().optional() }).strict(),
     /** Items a cold viewer should be able to explain, with the beats that first use them. */
     items: z.array(z.object({ group: z.string().min(1), items: ids.min(1), first_used: ids.min(1) }).strict()),
   })

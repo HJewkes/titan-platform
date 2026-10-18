@@ -1,0 +1,49 @@
+{
+  "schema": "labels/v1",
+  "script": "pipeline-explainer",
+  "source": "Frozen from the TP-3527 run of `explainer eval pace --format spike` at planned lengths, as a hold-out set: no owner review of this video names a beat, so these are the check's own flags, not judged labels. A beat nobody flagged is unlabelled, not negative.",
+  "checks": [
+    {
+      "check": "M1",
+      "check_ids": ["Q-E7"],
+      "level": "beat",
+      "true": ["c5-1-contract", "c6-10-rule"],
+      "false": [],
+      "borderline": [],
+      "note": "Each puts five new items on screen: c5-1-contract's five contract rows, c6-10-rule's four checks and its gate."
+    },
+    {
+      "check": "M2",
+      "check_ids": ["Q-E8"],
+      "level": "beat",
+      "true": [],
+      "false": [],
+      "borderline": [],
+      "note": "No beat flagged in the run."
+    },
+    {
+      "check": "M4",
+      "check_ids": ["Q-E9"],
+      "level": "beat",
+      "true": [],
+      "false": [],
+      "borderline": [],
+      "note": "No beat flagged in the run."
+    },
+    {
+      "check": "M7",
+      "check_ids": ["Q-E10"],
+      "level": "chapter",
+      "true": [],
+      "false": [],
+      "borderline": [],
+      "note": "No chapter flagged; ch2 measures 10.8 new items a minute."
+    }
+  ],
+  "owner_named": {
+    "true": [],
+    "borderline": [],
+    "note": "The owner's feedback was on redesign-explainer-v4; none names a beat of this video."
+  },
+  "items": []
+}
