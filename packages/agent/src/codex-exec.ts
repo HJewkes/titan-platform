@@ -1,3 +1,4 @@
+import type { HarnessPricingPort } from "@titan-design/agent-protocol/harness";
 import { randomUUID } from "node:crypto";
 import { isCodexThreadId } from "./codex-thread-id.js";
 import { isAbsolute } from "node:path";
@@ -41,6 +42,8 @@ export interface CodexExecAdapterOptions {
   killGraceMs?: number;
   /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
   prices?: readonly CodexPriceRow[];
+  /** Optional pure quote service; mutually exclusive with prices. */
+  pricingService?: HarnessPricingPort<"codex">;
   /** Extra runtime requirements, e.g. MCP/policy/rollout evidence for a managed peer. */
   requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
 }
@@ -68,6 +71,7 @@ export function createCodexExecAdapter(
   deps: CodexExecDeps = {},
 ): HarnessAdapter<"codex"> {
   validateOptions(options);
+  const pricingService = captureCodexPricingService(options.pricingService, options.prices);
   const executablePath = resolveCodexExecutable(options.executablePath);
   const env = prepareCodexEnv(options.env ?? process.env);
   const descriptor = codexExecCapabilities();
@@ -79,7 +83,7 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices,
+        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices, pricingService,
           requiredRuntimeCapabilities: options.requiredRuntimeCapabilities };
         return await runSupervised(request, config, deps);
       } catch (error) {
@@ -176,6 +180,7 @@ async function runSupervised<T>(
     env: Record<string, string>;
     killGraceMs?: number;
     prices?: readonly CodexPriceRow[];
+    pricingService?: HarnessPricingPort<"codex">;
     requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
   },
   deps: CodexExecDeps,
@@ -229,6 +234,7 @@ async function runSupervised<T>(
       processWallTimeMs,
       cleanup,
       config.prices,
+      config.pricingService,
     );
   } catch (error) {
     if (request.signal?.aborted) return failed(abortFailure(request.signal));
@@ -329,4 +335,18 @@ function isProcessTimeout(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const value = error as { code?: unknown; killed?: unknown; signal?: unknown };
   return value.code === "ETIMEDOUT" || (value.killed === true && value.signal === "SIGKILL");
+}
+
+function captureCodexPricingService(
+  service: HarnessPricingPort<"codex"> | undefined,
+  prices: readonly CodexPriceRow[] | undefined,
+): HarnessPricingPort<"codex"> | undefined {
+  if (service === undefined) return undefined;
+  if (prices !== undefined) throw new TypeError("prices and pricingService are mutually exclusive");
+  if (typeof service !== "object" || service === null || service.harness !== "codex") {
+    throw new TypeError("pricingService must declare harness codex");
+  }
+  const quote = service.quote;
+  if (typeof quote !== "function") throw new TypeError("pricingService.quote must be callable");
+  return Object.freeze({ harness: "codex" as const, quote: quote.bind(service) });
 }
