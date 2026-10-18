@@ -1,0 +1,31 @@
+{
+  "$schema": "merge-lint/1",
+  "level": "warn",
+  "scan": {
+    "include": ["**/*"],
+    "brief": ["**/CLAUDE.md", "**/AGENTS.md", "**/SKILL.md", "**/briefs/**", "**/*.brief.md", "profiles/*.json"]
+  },
+  "exclude": ["**/*.test.*", "**/__tests__/**", "**/fixtures/**", "**/testdata/**", "**/CHANGELOG.md", ".changeset/**", "site/**", "docs/**", "**/README.md"],
+  "allow": [
+    {
+      "path": "packages/github/src/gh-cli.ts",
+      "kind": "wrapper",
+      "mergePath": "github-wire",
+      "logs": false,
+      "reason": "the one REST merge PUT (GitHubWire.merge); called through port.merge by workflows/land-merge-message.ts (Shepherd land loop) and shepherd/hold.ts; logging lands in D-M3-02 and D-M3-09"
+    },
+    {
+      "path": "packages/github/src/merge-into-branch.ts",
+      "kind": "wrapper",
+      "mergePath": "merge-into-branch",
+      "logs": false,
+      "reason": "the branch-merge POST for sh-merge-up into a PR head branch, never the default branch"
+    },
+    { "path": "packages/tool-guard/src/**", "kind": "detector", "reason": "classifies merge calls; never makes one" },
+    { "path": "packages/tool-guard/scripts/**", "kind": "detector", "reason": "benchmarks the classifier on merge-shaped commands" },
+    { "path": "packages/session-analytics/src/**", "kind": "detector", "reason": "recognizes merge calls in recorded sessions" },
+    { "path": "packages/session-read/src/bash-parse.ts", "kind": "detector", "reason": "recognizes merge calls in recorded sessions" },
+    { "path": "packages/session-read/src/fixture.ts", "kind": "detector", "reason": "recorded-session fixture holding merge-shaped commands" },
+    { "path": "packages/session-read/src/recovery-fixture.ts", "kind": "detector", "reason": "recorded-session fixture holding merge-shaped commands" }
+  ]
+}

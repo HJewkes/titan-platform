@@ -5,6 +5,7 @@ import { z } from "zod";
 import { step } from "../workflows/land.js";
 import { accountHeld } from "./account-hold.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
+import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
@@ -102,12 +103,15 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
 }
 
 /**
- * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. The caller
+ * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else; only a reviewer
+ * Shepherd dispatched has its CI-unread-only FIX_FIRST taken as no verdict, since only its brief carries Shepherd's CI read. The caller
  * passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE.
  */
 export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding): Promise<Verdict> {
   const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
-  return "held" in taken ? taken.held : verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
+  if ("held" in taken) return taken.held;
+  const verdict = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
+  return dispatchedReviewer && !("external" in awaiting) ? ciUnreadAsNone(ctx, target.head, verdict) : verdict;
 }
 
 /** The caller passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE. */

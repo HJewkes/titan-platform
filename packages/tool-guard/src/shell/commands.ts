@@ -11,6 +11,7 @@ import { foldCommandWords } from "./case-literal.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
 import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
+import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
 import { cutReading } from "./piped-nul.js";
 import { inlineScript, SHELLS } from "./inline-script.js";
@@ -264,7 +265,8 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
   const aliased = aliasCommands(words, w.aliases);
   if (storesRebindingByMath(words, redirects, w.scope.vars)) throw new CommandRebindingError();
   w.walked = new Set();
-  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next);
+  const pattern = rawWords.length === 1 && rawWords[0]?.casePattern === true;
+  for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next, pattern);
   for (const { tokens, aliases } of aliased.scripts) walk(tokens, Object.assign(child(w, [...w.scope.wrapping, "eval"]), { aliases }));
   for (const reading of unsureReadings(runs[0], w.unsure)) walkAdded(reading, redirects, w, next);
   w.walked = null;
@@ -280,8 +282,9 @@ function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => 
   return (cmd) => cmd.name === null || cmd.xargs !== undefined || cmd.script !== undefined || RUNNERS.has(cmd.name) || cmd.name.endsWith(".sh") || (guarded?.has(cmd.name) ?? true);
 }
 
-function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
+function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, pattern = false): void {
   if (rebindsCommand(raw, w.scope.vars)) throw new CommandRebindingError();
+  if (!pattern && definesAlias(raw)) throw new AliasDefinitionError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;

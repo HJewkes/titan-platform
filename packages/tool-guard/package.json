@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "titan-tool-guard": "./dist/bin.js"
+    "titan-tool-guard": "./dist/bin.js",
+    "titan-merge-lint": "./dist/merge-lint-bin.js"
   },
   "exports": {
     ".": {
@@ -16,6 +17,10 @@
     "./shell": {
       "types": "./dist/shell/index.d.ts",
       "import": "./dist/shell/index.js"
+    },
+    "./merge-lint": {
+      "types": "./dist/merge-lint/index.d.ts",
+      "import": "./dist/merge-lint/index.js"
     }
   },
   "files": [

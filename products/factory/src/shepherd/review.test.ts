@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type GitHubPort, type PrFile } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { reviewCauseStats, type ReviewCause } from "./review-cause.js";
+import { CI_UNREAD_REASON } from "./ci-unread.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import {
   FIX_FIRST_TRUNCATED,
@@ -38,7 +39,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
-import { DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
+import { CI_UNREAD_LINE, DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
@@ -523,6 +524,8 @@ describe("sh-review", () => {
     files?: PrFile[];
     /** PR 7's own changed-file count; above the length of `files` the list reads as truncated. */
     changedFiles?: number;
+    /** The deps' port as given; wins over `files`. */
+    port?: GitHubPort;
     /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
     removals?: string[];
     /** Acts on the bound store after the registration is written, before any step runs. */
@@ -540,7 +543,7 @@ describe("sh-review", () => {
     };
     const store = boundStore(options.registered ?? registration);
     options.prepare?.(store.get());
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }), ...(options.port && { port: options.port }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -899,6 +902,33 @@ describe("sh-review", () => {
     expect(brief).toContain(`Head: ${HEAD}`);
     expect(brief).not.toContain(TASK_TEXT);
     expect(brief).not.toContain("impl-a");
+  });
+
+  it("sh-review spawns a reviewer whose brief carries the head's check-runs", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ number: 7, headSha: HEAD });
+    fake.rules = { contexts: ["validate"], strict: false };
+    fake.setRuns(HEAD, [successRun("validate", 1)]);
+    const dispatch = fakeDispatch();
+
+    await shReview(dispatch, { port: githubPort(fake.wire) });
+    const { brief } = dispatch.spawns[0]!;
+
+    expect(brief).toContain("- validate: status completed, conclusion success, required");
+    expect(brief).not.toContain("gh api");
+    expect(brief).not.toContain("gh pr view");
+  });
+
+  it("sh-review whose CI read fails briefs the reviewer to read statusCheckRollup itself", async () => {
+    const fake = fakeGitHub();
+    fake.addPr({ number: 7, headSha: HEAD });
+    fake.readFaults.listCheckRuns = [new Error("rate limited")];
+    const dispatch = fakeDispatch();
+
+    await shReview(dispatch, { port: githubPort(fake.wire) });
+
+    expect(dispatch.spawns[0]!.brief).toContain("--json headRefOid,statusCheckRollup");
+    expect(dispatch.spawns[0]!.brief).not.toContain("Shepherd read these check-runs");
   });
 
   it("adds the wired questions to the brief", async () => {
@@ -1398,6 +1428,17 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  it("takes a dispatched reviewer's CI-unread-only FIX_FIRST as no verdict and records sh-ci-unread", async () => {
+    const dispatch = fakeDispatch();
+    const unread = (head: string) => `- ${CI_UNREAD_LINE}\n\nDefect class: CI unread.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${head}\n`;
+    const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) => held.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, unread(input.head), now + 1));
+
+    const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
+
+    expect(verdicts).toMatchObject([{ kind: "none", cause: "no-verdict", reason: CI_UNREAD_REASON }]);
+    expect(stepIds).toContain(`sh-ci-unread:${H1}`);
   });
 
   describe("review.panel", () => {

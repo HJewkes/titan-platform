@@ -321,3 +321,41 @@ describe("digest.queuesDir and service.labelPrefix", () => {
     expect(() => loadConfig(configPath(xdg({ service: { deployCheckout: "deploy/tree" } })))).toThrow(/absolute/);
   });
 });
+
+describe("the github sources block", () => {
+  const load = (github: unknown) => loadConfig(configPath(xdg({ github })));
+
+  it("fills polling, ingress off, a 60 s poll and a 5 min backstop into an empty block, and leaves an absent block absent", () => {
+    expect(load({}).github).toEqual({ sources: "polling", ingress: "off", pollingIntervalMs: 60_000, backstopIntervalMs: 300_000 });
+    expect(loadConfig(configPath(xdg({ dbPath: "/srv/factory.sqlite3" }))).github).toBeUndefined();
+  });
+
+  it("reads a webhook deployment with ingress on and both intervals at their bounds", () => {
+    const github = { sources: "webhook", ingress: "on", pollingIntervalMs: 30_000, backstopIntervalMs: 600_000 };
+
+    expect(load(github).github).toEqual(github);
+  });
+
+  it.each([
+    ["pollingIntervalMs", 29_999],
+    ["pollingIntervalMs", 600_001],
+    ["backstopIntervalMs", 299_999],
+    ["backstopIntervalMs", 600_001],
+    ["pollingIntervalMs", 45_000.5],
+  ])("refuses %s %d", (key, value) => {
+    expect(() => load({ [key]: value })).toThrow(new RegExp(`github\\.${key}`));
+  });
+
+  it("refuses a misspelt key instead of leaving the default in force", () => {
+    expect(() => load({ pollingIntervalMS: 30_000 })).toThrow(/github: Unrecognized key.*pollingIntervalMS/);
+  });
+
+  it("refuses a polling interval longer than the backstop", () => {
+    expect(() => load({ pollingIntervalMs: 400_000, backstopIntervalMs: 300_000 })).toThrow(/github\.pollingIntervalMs: pollingIntervalMs must not exceed backstopIntervalMs/);
+  });
+
+  it("refuses ingress on under polling, where the route would answer 404", () => {
+    expect(() => load({ sources: "polling", ingress: "on" })).toThrow(/github\.ingress: ingress on needs sources webhook/);
+    expect(() => load({ ingress: "on" })).toThrow(/github\.ingress/);
+  });
+});

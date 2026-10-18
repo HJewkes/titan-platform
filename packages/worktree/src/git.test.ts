@@ -72,12 +72,12 @@ describe("gitChildEnv", () => {
   it("drops the dispatcher identity variables and disables credential prompts", () => {
     const env = gitChildEnv({ PATH: "/usr/bin", AGENT_CHAT_NAME: "scout", AGENT_CHAT_ID: "a1" });
 
-    expect(env).toEqual({ PATH: "/usr/bin", GIT_TERMINAL_PROMPT: "0" });
+    expect(env).toEqual({ PATH: "/usr/bin", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh" });
   });
 
   it("drops the prefixes a caller names instead of the defaults", () => {
     const env = gitChildEnv({ OTHER_TOKEN: "x", AGENT_CHAT_NAME: "scout" }, ["OTHER_"]);
 
-    expect(env).toEqual({ AGENT_CHAT_NAME: "scout", GIT_TERMINAL_PROMPT: "0" });
+    expect(env).toEqual({ AGENT_CHAT_NAME: "scout", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh" });
   });
 });

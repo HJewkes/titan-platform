@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isCodexThreadId } from "./codex-thread-id.js";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { runCodexExecSession } from "./codex-exec-session.js";
@@ -251,6 +252,10 @@ function capabilitiesForArgs(args: readonly string[]): CodexRuntimeCapability[] 
 }
 
 export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: string): string[] {
+  const resumeId = request.target.kind === "resume" ? request.target.conversation.nativeId : undefined;
+  if (request.target.kind === "resume" && !isCodexThreadId(resumeId)) {
+    throw new TypeError("Codex resume requires a canonical thread UUID");
+  }
   const native = request.native!;
   const args = ["exec"];
   if (request.target.kind === "resume") args.push("resume");
@@ -262,7 +267,7 @@ export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: 
   }
   if (request.target.kind === "fresh") args.push("--cd", request.cwd);
   if (schemaPath) args.push("--output-schema", schemaPath);
-  if (request.target.kind === "resume") args.push(request.target.conversation.nativeId);
+  if (resumeId !== undefined) args.push(resumeId);
   args.push("--", request.prompt);
   return args;
 }
