@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { resolveConfig } from "../config.js";
 import { startConsoleDaemon } from "../daemon.js";
@@ -173,7 +174,7 @@ describe("config.surfaces over the daemon's RPC", () => {
     };
     expect(body).toMatchObject({ ok: true, data: { rows: expect.arrayContaining([implementers]) } });
     const coordinatorFiles = [roots.autonomyDir ?? "", path.join(root, "agent-chat", "burndown.config.json"), path.join(root, "agent-chat", "seat-watchdog.json")];
-    const { gaps } = (body as { data: ConfigSurfaces }).data;
+    const { gaps } = z.object({ data: z.object({ gaps: z.array(z.string()) }) }).parse(body).data;
     expect(gaps.filter((gap) => coordinatorFiles.some((file) => gap.startsWith(file)))).toEqual([]);
   });
 });
