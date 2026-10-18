@@ -14,6 +14,7 @@ import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import type { RoundListeners } from "./listeners.js";
+import { reviewsCommands, type ReviewsSource } from "./reviews.js";
 import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
@@ -54,6 +55,8 @@ export interface ConsoleSources {
   hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
+  /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
+  reviews?: ReviewsSource;
   work?: WorkOptions;
 }
 
@@ -96,7 +99,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, inboxActions, videos, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -113,6 +116,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos),
+    ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };
 }
