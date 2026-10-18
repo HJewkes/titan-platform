@@ -78,5 +78,14 @@ export type {
 export { importAutonomyTree, renderSeatBook } from "./import-autonomy.js";
 export { projectSeatGeneration, sessionFactsPrSchema, sessionFactsSchema } from "./session-facts.js";
 export type { PrefixScopes, SeatGenerationActivity, SessionFacts } from "./session-facts.js";
+export {
+  applyEdit,
+  configRevisionSchema,
+  diffDocuments,
+  documentSha,
+  revisionSha,
+  verifyChain,
+} from "./config-revision.js";
+export type { ChainError, ChainResult, ConfigEditResult, ConfigRevision, DocumentChange } from "./config-revision.js";
 export { EDITABLE_FIELDS, checkEditableValue, editableField } from "./editable-fields.js";
 export type { ConfigSurface, EditableField, EditableValueResult, ReloadClass } from "./editable-fields.js";
