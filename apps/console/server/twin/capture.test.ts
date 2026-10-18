@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { embedSnapshot } from "@titan-design/react-app";
 import { PAGE_FILE } from "../paths.js";
-import { captureTwin, NondeterministicCaptureError, type TwinManifest } from "./capture.js";
+import { captureTwin, NondeterministicCaptureError } from "./capture.js";
 import { TWIN_VIEWPORTS } from "./routes.js";
 import { twinSnapshot } from "./snapshot.js";
 
@@ -38,7 +38,7 @@ describe("a twin capture", { timeout: BROWSER_TIMEOUT_MS }, () => {
   it("writes one frame per route and viewport, with its hash in the manifest", async () => {
     const manifest = await captureTwin({ html: page("<p>steady</p>"), routes: [{ name: "steady", hash: "#/steady" }], viewports: SMALL, outDir });
 
-    const written = JSON.parse(await readFile(path.join(outDir, "manifest.json"), "utf8")) as TwinManifest;
+    const written: unknown = JSON.parse(await readFile(path.join(outDir, "manifest.json"), "utf8"));
     expect(written).toEqual(manifest);
     expect(manifest.frames).toEqual([expect.objectContaining({ route: "steady", viewport: "small", file: path.join("small", "steady.png") })]);
     expect(await sha(path.join(outDir, "small", "steady.png"))).toBe(manifest.frames[0]!.sha256);

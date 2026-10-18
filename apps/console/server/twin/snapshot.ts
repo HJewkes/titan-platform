@@ -77,8 +77,9 @@ const FIXTURE_ROUNDS_NAME = "fixtures/rounds";
 async function record(call: InProcessCall, command: TwinCommand, args: unknown): Promise<[string, Snapshot["calls"][string]]> {
   const envelope = await call(command, args);
   if (!envelope.ok) throw new Error(`twin fixture ${command} ${JSON.stringify(args)} failed: ${envelope.error}`);
-  const data = command === "rounds.list" ? { ...(envelope.data as object), dir: FIXTURE_ROUNDS_NAME } : envelope.data;
-  return [snapshotKey(command, args), { ...envelope, data }];
+  const { data } = envelope;
+  const named = command === "rounds.list" && typeof data === "object" && data !== null ? { ...data, dir: FIXTURE_ROUNDS_NAME } : data;
+  return [snapshotKey(command, args), { ...envelope, data: named }];
 }
 
 /** Built fresh per capture; a duplicate key would let one fixture silently shadow another, so it throws instead. */

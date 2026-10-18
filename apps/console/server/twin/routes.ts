@@ -34,5 +34,3 @@ export const TWIN_VIEWPORTS = {
   phone: { width: 375, height: 812 },
   desktop: { width: 1440, height: 900 },
 } as const;
-
-export type TwinViewport = keyof typeof TWIN_VIEWPORTS;

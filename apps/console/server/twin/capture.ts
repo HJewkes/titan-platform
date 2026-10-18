@@ -9,9 +9,9 @@ import type { Browser } from "playwright-core";
 import { SECOND_SHOT_SKEW_MS, TWIN_NOW, frozenClockScript } from "./clock.js";
 import type { TwinRoute } from "./routes.js";
 
-export const MANIFEST_FORMAT = "titan-console-twin/v1";
+const MANIFEST_FORMAT = "titan-console-twin/v1";
 
-export interface CaptureOptions {
+interface CaptureOptions {
   /** A built console page with the twin snapshot embedded; it opens from disk, so no daemon answers it. */
   html: string;
   routes: readonly TwinRoute[];
@@ -21,7 +21,7 @@ export interface CaptureOptions {
   parallel?: number;
 }
 
-export interface CapturedFrame {
+interface CapturedFrame {
   route: string;
   hash: string;
   viewport: string;
@@ -30,7 +30,7 @@ export interface CapturedFrame {
   sha256: string;
 }
 
-export interface TwinManifest {
+interface TwinManifest {
   format: typeof MANIFEST_FORMAT;
   now: string;
   viewports: Readonly<Record<string, Viewport>>;
