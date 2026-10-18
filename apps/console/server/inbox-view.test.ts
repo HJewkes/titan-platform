@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
@@ -158,12 +159,12 @@ const fixtureFactory: RpcAnswer = (command) => {
   throw new Error(`no fixture for ${command}`);
 };
 
+const okEnvelope = z.object({ ok: z.literal(true), data: z.custom<InboxList>() });
+
 async function listInbox(factoryPort: number): Promise<InboxList> {
   handle = await startConsoleDaemon({ config: config(factoryPort), logger: silentLogger });
   const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, "{}");
-  const envelope = JSON.parse(reply.body) as { ok: boolean; data: InboxList };
-  expect(envelope.ok).toBe(true);
-  return envelope.data;
+  return okEnvelope.parse(JSON.parse(reply.body)).data;
 }
 
 async function serveFactory(rpc: RpcAnswer): Promise<number> {
