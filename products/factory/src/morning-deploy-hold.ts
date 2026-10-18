@@ -7,7 +7,7 @@ import { morningDeployHolds, type MorningDeployHold } from "./needs/morning-item
 /** A seat rewrites its whole queue file in place, so one read can miss an item that still stands. */
 const EMPTY_READS_TO_CLEAR = 2;
 
-type MorningHoldAction =
+export type MorningHoldAction =
   | { kind: "set"; hold: ManualHold }
   | { kind: "replace"; from: string; hold: ManualHold }
   | { kind: "clear"; source: string }
@@ -39,7 +39,7 @@ export function reconcileMorningHold({ manual, items, emptyBefore, now }: Mornin
   return { kind: "replace", from: source, hold: holdFor(first, now) };
 }
 
-interface MorningHoldPorts extends Pick<LockPorts, "createExclusive" | "remove"> {
+export interface MorningHoldPorts extends Pick<LockPorts, "createExclusive" | "remove"> {
   exists: (path: string) => boolean;
   /** Undefined when the file cannot be read. */
   readFile: (path: string) => string | undefined;
