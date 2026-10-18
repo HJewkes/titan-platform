@@ -83,7 +83,7 @@ export async function planDiff(ctx: Context, shas: Shas): Promise<FixProofPlan> 
 export function errorLine(refs: Shas, error: string): string {
   const shas = { base: asSha(refs.base), head: asSha(refs.head) };
   const parsed = parseFixProofConfig(null);
-  const config = parsed.ok ? parsed.config : { tests: [], carry: [] };
+  const config = parsed.ok ? parsed.config : { tests: [], carry: [], runtime: [] };
   const plan: FixProofPlan = { tests: [], carried: [], deletedTests: [], overlayRemovals: [], mutations: [], source: [], config, configEdited: false };
   const classification: Classification = { verdict: "error", tests: [], files: [], error };
   return formatResultLine(toResult({ head: shas.head, mergeBase: shas.base, plan, classification }));

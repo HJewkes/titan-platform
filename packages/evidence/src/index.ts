@@ -1,7 +1,7 @@
 export type { LineSource } from "./line-source.js";
 export { lineSourceFromTexts, splitLines } from "./line-source.js";
 export type { Citation, CitationCheck, CitationRejection, LineRange, RangeCheck, ShownLines, VerifyOptions } from "./citation.js";
-export { quoteFragments, quoteInRange, verifyCitation, verifyRange } from "./citation.js";
+export { quoteFragments, quoteInRange, quoteInText, verifyCitation, verifyRange } from "./citation.js";
 export type { Anchor, AnchorParse, AnchorPins, AnchorRejection, DiffAnchor, DiffEndpoint, RevisionAnchor } from "./anchor.js";
 export { isAnchorForm, isFullSha, parseAnchor } from "./anchor.js";
 export type { AnchorCheck, RevisionSource } from "./anchor-check.js";

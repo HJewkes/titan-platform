@@ -1,5 +1,14 @@
 # @titan-design/factory
 
+## 0.23.3
+
+### Patch Changes
+
+- 6a847ae: `shepherd register --kind test-only` reads the PR's test-only diff before refreshing or restarting a run, so the kind guard names the first source path when it refuses (TP-2732 e). Once the kind is live, a correctness registration on a tests-only PR prints a hint to re-register as test-only. The CLI help and the Shepherd guide name the kind.
+- Updated dependencies [6aa69f2]
+  - @titan-design/fix-proof@0.6.0
+  - @titan-design/review-panel@0.6.1
+
 ## 0.23.2
 
 ### Patch Changes

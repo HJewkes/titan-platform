@@ -1,5 +1,12 @@
 # @titan-design/egress-scan
 
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [6aa69f2]
+  - @titan-design/fix-proof@0.6.0
+
 ## 0.6.4
 
 ### Patch Changes

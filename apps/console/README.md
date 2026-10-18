@@ -60,6 +60,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
 | `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
+| `TITAN_CONSOLE_REVIEWS_DIR` | `<active-work root>/titan-platform/sources/research/repo-review` | Repo reviews, read by `reviews.list`: each direct subfolder with a `README.md` is one review, and only fixed paths inside it are opened (no-follow, 1 MB cap). A file that fails to read or parse is a gap line, never a hidden review |
 | `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 | `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
@@ -312,6 +313,43 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
 - **Idempotent.** A new round is staged in a dot-named dir and renamed into place. A re-import of
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
+
+## Theater
+
+The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on
+each one beside the video, in `<name>.notes.jsonl` (`cut.mp4` gets `cut.notes.jsonl`). The sidecar
+is the store of record: an agent re-rendering a video reads it in place, and nothing is copied into
+the state dir.
+
+- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", text }` or
+  `{ videoId, atS, kind: "verdict", verdict: "ship" | "needs-changes" }`. Like `rounds.submit`, it
+  runs only for the owner's session cookie on the LAN listener with `TITAN_CONSOLE_OWNER_WRITES=1`,
+  so loopback and bearer calls are refused.
+- **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
+  carries `current`, and `verdict` is the latest verdict on the current render or null.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+
+Each line is a strict `titan-console/video-note@1` object:
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-note@1"` |
+| `id` | 16 random hex |
+| `videoId`, `video` | the catalog id and the video's file name, never a path |
+| `renderSha256` | sha256 of the video's bytes when the note was made |
+| `atS` | playback time in seconds, at or above 0, rounded to 0.001 |
+| `kind` | `"comment"` with `text` (1-2000 characters), or `"verdict"` with `verdict` |
+| `createdAt` | ISO time |
+
+The file is opened with O_APPEND and O_NOFOLLOW, mode 0600, and each note is one write of at most
+4 KB, so concurrent appends never interleave. A reader skips a line it cannot parse and reports the
+count as a gap, and refuses a file over 1 MB.
+
+**Agent pickup rule.** Read `<name>.notes.jsonl`. A note is on the current render when its
+`renderSha256` equals the video's sha256 now. The open notes are the current render's comments
+written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
+`server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
+every earlier note an earlier-render note: it stays in the file as history and is never open again.
 
 ## The approvals flow
 
