@@ -323,6 +323,38 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.getByText("Hold: owner-asked: wait for the demo")).toBeTruthy();
     expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "held-1" }]);
   });
+
+  it("leads a g10 read-back with its confirm label, so a release without a MERGE says so", async () => {
+    const g10 = ready({
+      itemId: "held-1",
+      action: HELD.action,
+      readBack: {
+        repo: "example/repo",
+        pr: 14,
+        title: "add the widget cache",
+        headSha: HEAD,
+        hold: { class: "g10-review", reason: "g10-review: waiting on the reviewer" },
+        verdicts: [],
+        mergesAtHead: 0,
+        mergesNeeded: 1,
+        confirmLabel: "Release without a MERGE",
+        effect: "Release the g10-review hold on example/repo#14 at 0b7e2c1; no reviewer MERGE is recorded at this head",
+      },
+    });
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(g10), "inbox.act": resolved });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-held-1")).getByText("Release hold"));
+    expect((await screen.findByTestId("inbox-readback-label")).textContent).toBe("Release without a MERGE");
+    expect(screen.getByText("Release the g10-review hold on example/repo#14 at 0b7e2c1; no reviewer MERGE is recorded at this head")).toBeTruthy();
+    expect(screen.getByText("head 0b7e2c1, matches the live head, read 12 s ago")).toBeTruthy();
+    expect(screen.queryByText(/^Gate /)).toBeNull();
+  });
+
+  it("names the gate on a gate read-back and gives it no confirm label", async () => {
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    await tapGate();
+    expect(await screen.findByText("Gate run-gate-1/approve-merge")).toBeTruthy();
+    expect(screen.queryByTestId("inbox-readback-label")).toBeNull();
+  });
 });
 
 describe("the inbox page, empty or gapped", () => {
