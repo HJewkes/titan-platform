@@ -215,3 +215,12 @@ a synthetic flat request charge to exercise the injected service; it does not qu
 existing provider arithmetic. The later shared pricing extraction must preserve
 Claude cache TTL/long-prompt behavior and Codex inclusive cached/reasoning subsets,
 with unknown costs explicit and existing compatibility results preserved.
+
+
+## Shared pricing engines
+
+The pure `@titan-design/agent-protocol/pricing` subpath owns the dated Claude price table, `findPrice`, `priceRequest`, and the supplied-row Codex `priceCodexUsage`/`validateCodexPrices` policies. Existing session-analytics and agent entrypoints re-export these implementations. The table stays at version 4; this extraction changes no rates, matching rules, arithmetic, stored costs or account configuration.
+
+Claude request pricing retains explicit 5-minute/1-hour cache writes, total-only fallback and the strict long-prompt threshold. Its compatibility result uses `priced: false` with zero components for an unknown model; callers must preserve that flag. Codex input includes cached input and output includes reasoning: subsets are not charged twice. Missing required counters leave cost null, and existing reported/estimated costs are retained. Supplied Codex rate rows are policy, with no runtime price fetch or built-in rate assumptions.
+
+These engines retain the rich legacy input contract. A harness-neutral usage quote also needs evidence for any known cache-write TTL split; a single total cannot reconstruct it. Shared account/harness composition, neutral quote integration, SQL projection generation and published consumer adoption remain separate work.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
+import { ScriptDepthError } from "../scripts.js";
 import type { HookEvent } from "../event.js";
 import type { ClassifiedAction, ClassifyContext } from "../types.js";
 
@@ -229,10 +230,12 @@ describe("unknowns are treated conservatively", () => {
     expect(bash("cat /tmp/x && bash /tmp/s.sh", throwing)).toEqual([]);
   });
 
-  it("follows a script one level only", () => {
-    const ctx = fakeContext({}, { "/tmp/a.sh": "bash /tmp/b.sh", "/tmp/b.sh": "cat ~/.npmrc" });
+  it("follows a script it runs, and refuses one more level down", () => {
+    const two = fakeContext({}, { "/tmp/a.sh": "bash /tmp/b.sh", "/tmp/b.sh": "cat ~/.npmrc" });
+    const three = fakeContext({}, { "/tmp/a.sh": "bash /tmp/b.sh", "/tmp/b.sh": "bash /tmp/c.sh", "/tmp/c.sh": "cat ~/.npmrc" });
 
-    expect(bash("bash /tmp/a.sh", ctx)).toEqual([]);
+    expect(spellings(bash("bash /tmp/a.sh", two))).toEqual(["bash.secret.script-by-path"]);
+    expect(() => bash("bash /tmp/a.sh", three)).toThrow(ScriptDepthError);
   });
 
   it("scans a script that does not parse as text", () => {

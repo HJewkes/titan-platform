@@ -139,3 +139,10 @@ Capability assessments retain unsupported/unverified operations. Semantic
 finality is an assessment only: there is no classifier or runtime adapter here,
 and neither EOF nor a native turn completion proves session completion.
 Existing session-read functions, default roots and account behavior stay unchanged.
+
+
+## Shared pricing
+
+Import `@titan-design/agent-protocol/pricing` for the existing `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice`, `priceRequest`, `priceCodexUsage` and `validateCodexPrices` exports and their input/result types. Session-analytics and agent preserve their existing entrypoints as compatibility exports.
+
+The extraction preserves dated model matching, explicit cache-write TTL accounting, long-prompt boundaries, inclusive cached/reasoning token semantics, reported costs and explicit unavailable results. It updates no prices or stored data. A neutral quote must carry any known TTL evidence; a total alone is insufficient. No native runtime or account capability is implied.
