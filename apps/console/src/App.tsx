@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
 import { useRelayInvalidation } from "./data/live.js";
+import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
@@ -20,9 +21,16 @@ export function App(): ReactNode {
       activeKey={route.view}
       onNavigate={navigate}
     >
+      <StaleLine />
       <Page route={route} />
     </AppShell>
   );
+}
+
+function StaleLine(): ReactNode {
+  const since = useStaleSince();
+  if (since === null) return null;
+  return <Alert status="warning" message={`Live updates are off. Data may be old since ${since.toLocaleTimeString()}.`} />;
 }
 
 function Page({ route }: { route: Route }): ReactNode {
