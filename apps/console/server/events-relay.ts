@@ -60,6 +60,8 @@ interface RelayOptions {
   logger: Logger;
   fetch?: typeof fetch;
   timing?: Partial<RelayTiming>;
+  /** The clock that measures how long a stream stayed up. */
+  now?: () => number;
 }
 
 export interface EventsRelay {
@@ -72,6 +74,7 @@ interface RelayContext {
   logger: Logger;
   fetch: typeof fetch;
   timing: RelayTiming;
+  now: () => number;
 }
 
 /** One connection per upstream, redialled with capped backoff until closed; never throws. */
@@ -82,6 +85,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
     logger: options.logger,
     fetch: options.fetch ?? ((input, init) => globalThis.fetch(input, init)),
     timing: { ...DEFAULT_RELAY_TIMING, ...options.timing },
+    now: options.now ?? Date.now,
   };
   const runs = options.upstreams.map((upstream) => keepRelaying(upstream, context, controller.signal));
   return {
@@ -157,7 +161,7 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
   const watchdog = createWatchdog(stop);
   let openedAt: number | null = null;
   const outcome = (reason: string): Outcome => {
-    const stable = openedAt !== null && Date.now() - openedAt >= context.timing.stableMs;
+    const stable = openedAt !== null && context.now() - openedAt >= context.timing.stableMs;
     return { opened: openedAt !== null, stable, reason };
   };
   try {
@@ -169,7 +173,7 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
       await response.body?.cancel();
       return outcome(`HTTP ${response.status}`);
     }
-    openedAt = Date.now();
+    openedAt = context.now();
     if (reopening) broadcast(context.hub, upstream.source, { kind: RECONNECTED_KIND });
     await pump(response.body, upstream, context, watchdog);
     return outcome("stream ended");

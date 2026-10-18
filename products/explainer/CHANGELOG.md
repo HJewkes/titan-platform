@@ -1,5 +1,17 @@
 # @titan-design/explainer
 
+## 0.2.0
+
+### Minor Changes
+
+- c3e4e51: Consume titan-design's visual router (TP-3606, TP-3597 S1c). `doctrine/visual-router.json` pins the router's patterns, type catalogue and per-type routing; `loadVisualRouter` parses it strictly. `sliceForStage` gives the plan stage the routing table in `routing`. A storyboard beat's new optional `kind` names a router type, and `buildPacket` adds that type's card as `visual`: its gap warning, the closest built type and its not-this list. The new `visual:gap-kind` L0 lint warns on a script beat whose `kind` is a gap type.
+
+### Patch Changes
+
+- bcd68e7: `gatherReview` reads review folders through `@titan-design/pm`'s `parseTopicsJudged`, `parseClaimsAudit`, `readTsv` and `readReviewPin`, and its local TSV reader is gone. A README that writes `- remote:` or `- head:` in lower case now resolves its pin instead of failing with E-PIN-UNKNOWN. Rows whose cell count differs from the header still warn W-BAD-ROW and are skipped.
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
 ## 0.1.1
 
 ### Patch Changes

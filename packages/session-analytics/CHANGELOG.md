@@ -1,5 +1,14 @@
 # @titan-design/session-analytics
 
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/session-read@0.16.0
+  - @titan-design/review-panel@0.6.2
+  - @titan-design/session-graph@0.17.1
+
 ## 0.17.0
 
 ### Minor Changes
