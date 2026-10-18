@@ -1,4 +1,4 @@
-import { assignsProtectedAt, mathCloseDisagrees } from "./assign-on-expand.js";
+import { assignsProtectedAt, closedMathVerdict, mathCloseDisagrees } from "./assign-on-expand.js";
 import { joinedDollar, nextAfter } from "./joins.js";
 import { QUOTED_LITERAL_OPENERS } from "./math-close.js";
 import { type Nesting, nested } from "./nesting.js";
@@ -101,9 +101,21 @@ export function bracketArithmeticEnd(src: string, dollar: number, read: NestedRe
 
 /** `last`, the lexer's close of the math at `dollar`, once the guard's scan is shown to have checked the same body. */
 export function refusingMisreadMath(src: string, dollar: number, last: number): number {
-  if (mathCloseDisagrees(src, dollar, last)) throw new SplitParseError("the guard reads this math's close elsewhere", "unclosed-expansion");
+  if (mathCloseDisagrees(src, dollar, last)) throw misreadMath();
   return last;
 }
+
+/** As `refusingMisreadMath`, for a `$((` longer than the window: the whole body up to `last` is read, its writes included. */
+export function refusingMisreadLongMath(src: string, dollar: number, last: number): number {
+  const verdict = closedMathVerdict(src, dollar, last);
+  if (verdict === "misread") throw misreadMath();
+  if (verdict === "writes") throw assignsProtected();
+  return last;
+}
+
+export const unreadExpansion = (): SplitParseError => new SplitParseError("the guard cannot read this expansion to its end", "unclosed-expansion");
+const misreadMath = (): SplitParseError => new SplitParseError("the guard reads this math's close elsewhere", "unclosed-expansion");
+const assignsProtected = (): ParseError => new ParseError("an expansion assigns a parameter the guard protects");
 
 /**
  * zsh runs the value of `${~x}`, `${(e)x}` and `$~x` as a glob qualifier or as code, and `${n::=v}` stores into whatever
@@ -112,8 +124,8 @@ export function refusingMisreadMath(src: string, dollar: number, last: number): 
 export function refuseValueRun(src: string, dollar: number): void {
   if (zshRunsValue(src, dollar)) throw new ParseError("zsh runs this expansion's value as code");
   const verdict = assignsProtectedAt(src, dollar);
-  if (verdict === "writes") throw new ParseError("an expansion assigns a parameter the guard protects");
-  if (verdict === "unread") throw new SplitParseError("the guard cannot read this expansion to its end", "unclosed-expansion");
+  if (verdict === "writes") throw assignsProtected();
+  if (verdict === "unread") throw unreadExpansion();
 }
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {

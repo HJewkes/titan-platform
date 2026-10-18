@@ -97,7 +97,8 @@ export function assignsProtectedAt(src: string, dollar: number): ExpandVerdict {
   const { text: body, truncated } = joinedWindow(src, open, MAX_BODY);
   if (body.startsWith("{")) return assignedAt(body, 1, PROTECTED) !== null ? "writes" : braceMathWrites(body, truncated);
   if (body.startsWith("[")) return mathWrites(body, 1, "]");
-  if (body.startsWith("((")) return mathWrites(body, 2, "))");
+  // a `$((` the window cuts is read whole once the lexer finds its close (`closedMathVerdict`), or refused as unread
+  if (body.startsWith("((")) return deferredIfCut(mathWrites(body, 2, "))"), truncated);
   if (!BRACE_SPLICE_START_RE.test(body)) return false;
   // a window that ends before a decision cannot show that no assigning group follows
   return BRACE_SPLICE_RE.test(body) ? "writes" : unreadIf(truncated);
@@ -126,6 +127,25 @@ export function mathCloseDisagrees(src: string, dollar: number, last: number): b
   const math = closeOf(body, close.length, close);
   if (math === CUT_OFF || math.unpaired) return true;
   return joinedWindow(src.slice(0, last), open, MAX_BODY).text.length !== math.end + close.length - 1;
+}
+
+const deferredIfCut = (verdict: ExpandVerdict, truncated: boolean): ExpandVerdict => (verdict === "unread" && truncated ? false : verdict);
+
+/** Whether the `$((` at `dollar` runs past the window before the guard's scan finds its close. */
+export function mathCutByWindow(src: string, dollar: number): boolean {
+  const { text: body, truncated } = joinedWindow(src, nextAfter(src, dollar), MAX_BODY);
+  return truncated && body.startsWith("((") && closeOf(body, 2, "))") === CUT_OFF;
+}
+
+/**
+ * For a `$((` longer than the window, read whole up to `last`, the lexer's close: "misread" when the guard's scan
+ * closes it anywhere else, "writes" when the math writes a protected name.
+ */
+export function closedMathVerdict(src: string, dollar: number, last: number): "misread" | "writes" | false {
+  const { text: body } = joinedWindow(src.slice(0, last + 1), nextAfter(src, dollar), Number.POSITIVE_INFINITY);
+  const math = closeOf(body, 2, "))");
+  if (math === CUT_OFF || math.unpaired || math.end + 2 !== body.length) return "misread";
+  return mathHolds(body.slice(2, math.end), math.flat) ? "writes" : false;
 }
 
 function mathHolds(text: string, flat: string): boolean {

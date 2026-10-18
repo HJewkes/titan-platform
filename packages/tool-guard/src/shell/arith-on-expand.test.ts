@@ -26,6 +26,11 @@ async function handled(command: string): Promise<"deny" | "pass"> {
   return stdout === "" ? "pass" : "deny";
 }
 
+/** About 4000 characters of math, far past the guard's 600-character window. */
+const LONG_SUM = "1 + ".repeat(1000);
+const quotedParenNest = (body: string, depth: number): string =>
+  Array.from({ length: depth }).reduce<string>((inner) => `$(( '(' ${inner} ))`, body);
+
 const REFUSED = [
   ["an assignment in $(( ))", ": $(( PS4=1 ))"],
   ["a compound assignment", ": $(( PS4 += 1 ))"],
@@ -83,6 +88,10 @@ const REFUSED = [
   ["an unpaired ] in math", ": $(( PATH=0 ] 1 ))"],
   ["a brace splice onto a $[ group", ": {$,}[PATH=0]"],
   ["a brace splice onto a $[ group that writes PS4", "set -x; : {$,}[PS4=1]"],
+  ["a write past the window in a closed body", `: $(( ${LONG_SUM}PS4=1 ))`],
+  ["a write past the window in quoted-paren math nested 4 deep", `: ${quotedParenNest(`${LONG_SUM}PS4=1`, 4)}`],
+  ["a computed name past the window in a closed body", `n=PS4; : $(( ${LONG_SUM}$n=1 ))`],
+  ["a body past the window that never closes", `: $(( ${LONG_SUM}1`],
 ] as const;
 
 const REFUSED_IN_RUN_TEXT = [["eval text", "eval ': $(( PS4=1 ))'"]] as const;
@@ -105,6 +114,7 @@ const PASSED = [
   ["a quoted commit message", "git commit -m '$(( PS4=1 ))'"],
   ["a $' inside double quotes in a nested expansion that only reads", `echo $(( \${y-"$'"} + 1 ))`],
   ["a )) just inside the window edge that only reads", `echo $(( x${" ".repeat(592)}))`],
+  ["a closed body past the window that only reads", `echo $(( ${LONG_SUM}1 ))`],
 ] as const;
 
 describe("math that writes a protected parameter at a $ is refused by the lexer (TP-3294)", () => {
