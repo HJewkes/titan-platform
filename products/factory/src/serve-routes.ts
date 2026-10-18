@@ -28,5 +28,5 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, .
   const { shepherd } = routes;
   mountResolveProof(app, { ...deps, port: shepherd?.port, store: shepherd?.store });
   if (consoleAnswers) mountGateAnswer(app, { host: deps.host, port: shepherd?.port, roundsDir: consoleAnswers.roundsDir, stateDir, now: deps.now, log: deps.log });
-  if (consoleAnswers?.actionsDir !== undefined) mountConsoleAction(app, { host: deps.host, port: shepherd?.port, actionsDir: consoleAnswers.actionsDir, log: deps.log });
+  if (consoleAnswers?.actionsDir !== undefined) mountConsoleAction(app, { host: deps.host, port: shepherd?.port, store: shepherd?.store, actionsDir: consoleAnswers.actionsDir, log: deps.log });
 }
