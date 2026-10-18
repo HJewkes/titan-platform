@@ -26,8 +26,17 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 const CONFIG_NAMESPACE = "config.";
-/** Verbs that only read or prepare a change; any other `config.*` command must be owner-write. */
-const NON_WRITING_CONFIG_VERBS = new Set(["surfaces", "prepare"]);
+/**
+ * `config.*` verbs that never write a config surface, each pinned to its class; any other
+ * `config.*` command must be owner-write. `report` deposits another host's report into the
+ * console's state directory, and nothing in it is ever applied.
+ */
+const NON_WRITING_CONFIG_VERBS: ReadonlyMap<string, string> = new Map([
+  ["surfaces", "read"],
+  ["prepare", "read"],
+  ["hosts", "read"],
+  ["report", "deposit"],
+]);
 
 // Synthetic config surfaces, one per kind the console reads or will edit.
 const FIXTURE_FILES: Record<string, string> = {
@@ -110,7 +119,7 @@ describe("config-writing console commands are owner-write", () => {
 
     const unguarded = commands
       .filter((command) => command.commandClass !== "owner-write")
-      .filter((command) => !NON_WRITING_CONFIG_VERBS.has(command.name.slice(CONFIG_NAMESPACE.length)))
+      .filter((command) => NON_WRITING_CONFIG_VERBS.get(command.name.slice(CONFIG_NAMESPACE.length)) !== command.commandClass)
       .map((command) => `${command.name} (${command.commandClass})`);
 
     expect(unguarded).toEqual([]);
