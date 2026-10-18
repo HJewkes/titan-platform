@@ -67,9 +67,9 @@ export interface InboxConfirmProps {
 /** The confirm sheet: the read-back of what the tap does, then Confirm as the second tap. Cancel sends nothing. */
 export function InboxConfirm({ itemId, verb, command, onClose }: InboxConfirmProps): ReactNode {
   const { sheet, confirm } = useTap(itemId);
-  const done = sheet.status === "acted";
+  const done = sheet.status === "acted" || sheet.status === "failed" || sheet.status === "refused";
   return (
-    <Drawer isOpen onClose={onClose} placement="bottom" size="lg" title={`${verb}?`} testID="inbox-confirm">
+    <Drawer isOpen onClose={onClose} placement="bottom" size="xl" title={`${verb}?`} testID="inbox-confirm">
       <DrawerBody>
         <VStack gap={3}>
           <SheetBody sheet={sheet} command={command} />
@@ -92,22 +92,24 @@ export function InboxConfirm({ itemId, verb, command, onClose }: InboxConfirmPro
 function SheetBody({ sheet, command }: { sheet: Sheet; command: string | undefined }): ReactNode {
   if (sheet.status === "reading") return <Spinner size="sm" label="Reading the live gate and head" />;
   if (sheet.status === "refused") return <TerminalFallback message={`The console cannot take this tap: ${sheet.reason}`} command={command} />;
+  // The outcome leads, so a short phone sheet never scrolls it out of sight below the read-back.
   return (
     <>
-      {sheet.prepared === undefined ? null : <ReadBack prepared={sheet.prepared} />}
       {sheet.status === "acting" ? <Spinner size="sm" label="Sending" /> : null}
       {sheet.status === "acted" ? <Alert status={LANDED.has(sheet.acted.outcome.status) ? "success" : "warning"} message={sheet.acted.message} testID="inbox-confirm-outcome" /> : null}
       {sheet.status === "failed" ? <TerminalFallback message={`Not done: ${sheet.error}`} command={command} /> : null}
+      {sheet.prepared === undefined ? null : <ReadBack prepared={sheet.prepared} />}
     </>
   );
 }
 
 function ReadBack({ prepared }: { prepared: Ready }): ReactNode {
   const { readBack } = prepared;
+  const ref = `${readBack.repo}#${readBack.pr}`;
   return (
     <VStack gap={2} testID="inbox-readback">
       <Typography variant="subtitle1">{readBack.effect}</Typography>
-      <Typography variant="body2">{`${readBack.repo}#${readBack.pr}: ${readBack.title}`}</Typography>
+      <Typography variant="body2">{readBack.title.includes(ref) ? readBack.title : `${ref}: ${readBack.title}`}</Typography>
       <Typography variant="mono">{`head ${readBack.headSha.slice(0, 7)}, matches the live head, read ${secondsSince(prepared.readAt)} s ago`}</Typography>
       {readBack.gateId === undefined ? null : <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography>}
       {readBack.hold === undefined ? null : <Typography variant="caption" color="secondary">{`Hold: ${readBack.hold.reason}`}</Typography>}

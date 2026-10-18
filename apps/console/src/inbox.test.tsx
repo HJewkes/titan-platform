@@ -292,7 +292,8 @@ describe("the inbox page, acting from the console", () => {
     const sheet = await tapGate();
     expect((await within(sheet).findByTestId("inbox-confirm-error")).textContent).toContain("Not done: inbox actions are off");
     expect(within(sheet).getByText("titan-factory gate resolve run-gate-1/approve-merge --decision merge")).toBeTruthy();
-    expect(confirmButton().getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
+    expect(within(sheet).getByText("Close")).toBeTruthy();
   });
 
   it("keeps the read-back and offers the terminal when the owner write is refused", async () => {
@@ -314,10 +315,11 @@ describe("the inbox page, acting from the console", () => {
   });
 
   it("reads back the hold a Release hold tap lifts", async () => {
-    const held = ready({ itemId: "held-1", action: HELD.action, readBack: { repo: "example/repo", pr: 14, title: "Merge example/repo#14", headSha: HEAD, hold: HELD.hold, effect: "Release the owner-asked hold on example/repo#14 at 0b7e2c1" } });
+    const held = ready({ itemId: "held-1", action: HELD.action, readBack: { repo: "example/repo", pr: 14, title: "add the widget cache", headSha: HEAD, hold: HELD.hold, effect: "Release the owner-asked hold on example/repo#14 at 0b7e2c1" } });
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(held), "inbox.act": resolved });
     fireEvent.click(within(await screen.findByTestId("inbox-row-held-1")).getByText("Release hold"));
     expect(await screen.findByText("Release the owner-asked hold on example/repo#14 at 0b7e2c1")).toBeTruthy();
+    expect(screen.getByText("example/repo#14: add the widget cache")).toBeTruthy();
     expect(screen.getByText("Hold: owner-asked: wait for the demo")).toBeTruthy();
     expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "held-1" }]);
   });
