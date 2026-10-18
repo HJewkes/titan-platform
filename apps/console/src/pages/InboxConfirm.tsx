@@ -105,12 +105,14 @@ function SheetBody({ sheet, command }: { sheet: Sheet; command: string | undefin
   );
 }
 
-type PrReadBack = Extract<Ready["readBack"], { repo: string }>;
+/** A gate or hold read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's carries `confirmLabel`. */
+type RepoReadBack = Extract<Ready["readBack"], { repo: string }>;
 
 function ReadBack({ prepared }: { prepared: Ready }): ReactNode {
   const { readBack } = prepared;
   return (
     <VStack gap={2} testID="inbox-readback">
+      {"confirmLabel" in readBack ? <Typography variant="subtitle2" testID="inbox-readback-label">{readBack.confirmLabel}</Typography> : null}
       <Typography variant="subtitle1">{readBack.effect}</Typography>
       {"repo" in readBack ? (
         <PrFacts readBack={readBack} readAt={prepared.readAt} />
@@ -124,13 +126,13 @@ function ReadBack({ prepared }: { prepared: Ready }): ReactNode {
   );
 }
 
-function PrFacts({ readBack, readAt }: { readBack: PrReadBack; readAt: string }): ReactNode {
+function PrFacts({ readBack, readAt }: { readBack: RepoReadBack; readAt: string }): ReactNode {
   const ref = `${readBack.repo}#${readBack.pr}`;
   return (
     <>
       <Typography variant="body2">{readBack.title.includes(ref) ? readBack.title : `${ref}: ${readBack.title}`}</Typography>
       <Typography variant="mono">{`head ${readBack.headSha.slice(0, 7)}, matches the live head, read ${secondsSince(readAt)} s ago`}</Typography>
-      {readBack.gateId === undefined ? null : <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography>}
+      {"gateId" in readBack && readBack.gateId !== undefined ? <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography> : null}
       {readBack.hold === undefined ? null : <Typography variant="caption" color="secondary">{`Hold: ${readBack.hold.reason}`}</Typography>}
     </>
   );
