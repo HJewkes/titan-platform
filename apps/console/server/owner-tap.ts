@@ -66,7 +66,7 @@ export async function writeOnce(file: string, bytes: string): Promise<boolean> {
   return true;
 }
 
-export const recordFileOf = (actionsDir: string, confirm: string): string => path.join(actionsDir, `${confirm}.json`);
+const recordFileOf = (actionsDir: string, confirm: string): string => path.join(actionsDir, `${confirm}.json`);
 
 export const outcomeFile = (file: string): string => file.replace(/\.json$/, ".outcome.json");
 
@@ -76,7 +76,7 @@ export async function writeRecord(actionsDir: string, file: string, record: obje
   await writeOnce(file, `${JSON.stringify(record, null, 2)}\n`);
 }
 
-export async function readRecord<T>(file: string, schema: z.ZodType<T>): Promise<T | undefined> {
+async function readRecord<T>(file: string, schema: z.ZodType<T>): Promise<T | undefined> {
   const text = await readFile(file, "utf8").catch((error: unknown) => (errnoOf(error) === "ENOENT" ? undefined : Promise.reject(error)));
   return text === undefined ? undefined : schema.parse(JSON.parse(text));
 }
@@ -113,7 +113,7 @@ export async function settleOutcome(file: string, outcome: { status: string }, a
 
 const settledOutcome = z.looseObject({ status: z.string(), runId: z.string().optional() });
 
-export type SettledOutcome = z.infer<typeof settledOutcome>;
+type SettledOutcome = z.infer<typeof settledOutcome>;
 
 export async function readSettled(file: string): Promise<SettledOutcome | undefined> {
   const text = await readFile(outcomeFile(file), "utf8").catch(() => undefined);

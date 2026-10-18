@@ -5,7 +5,7 @@ import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 
 /** What every `*.prepare` answers: a read-back with a confirm digest, or the reason the console cannot take the tap. */
-export interface TapReady {
+interface TapReady {
   status: "ready";
   confirm: string;
   readAt: string;
