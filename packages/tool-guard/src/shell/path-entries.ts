@@ -59,13 +59,14 @@ export function safePathDirs(raw: RawValue, append: boolean, vars: Vars, homeSet
   return dirs;
 }
 
-/** The plain `$NAME`, `${NAME}` or tilde (as `HOME`) the shell expands at `start`; an operator such as `${HOME:+.}` is no lead. */
+/**
+ * The tilde (as `HOME`) or variable the shell expands at `start`. The lexer keeps a ref only for a plain `$NAME` or
+ * `${NAME}`, so an operator such as `${HOME:+.}` is no lead.
+ */
 function leadAt(raw: RawValue, start: number): { name: string; length: number } | null {
   if (raw.tildes.includes(start)) return { name: "HOME", length: 1 };
   const ref = raw.refs.find((r) => r.start === start);
-  if (!ref) return null;
-  const text = raw.text.slice(ref.start, ref.end);
-  return text === `$${ref.name}` || text === `\${${ref.name}}` ? { name: ref.name, length: text.length } : null;
+  return ref ? { name: ref.name, length: ref.end - ref.start } : null;
 }
 
 /** The directory an entry names, kept as `~` under a home lead `homeLead` characters long; null unless the contract above approves it. */
