@@ -86,7 +86,7 @@ describe("a substitution in math", () => {
   it.each([
     ["a file's contents", "echo $(( $(cat count) + 1 ))"],
     ["a date with text", "echo $(( $(date +%F) ))"],
-    ["a date the line redefines", "date() { echo 'commands[y]=0'; }; echo $(( $(date +%s) ))"],
+    ["a date the line redefines", "date() { cat f; }; echo $(( $(date +%s) ))"],
     ["a count the line redefines", "wc() { cat f; }; echo $(( $(wc -l < g) ))"],
   ])("refuses %s", (_name, src) => {
     expect(line(src)).toThrow(CommandRebindingError);
