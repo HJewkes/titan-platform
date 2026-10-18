@@ -46,7 +46,7 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
 /** Shepherd's `shepherd.release` arguments: one hold of `holdClass`, at the head the owner confirmed, by `actor`. */
-export interface ReleaseAt {
+interface ReleaseAt {
   repo: string;
   pr: number;
   head: string;
