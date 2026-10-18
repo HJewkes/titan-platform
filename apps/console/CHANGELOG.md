@@ -1,5 +1,16 @@
 # titan-console
 
+## 0.4.2
+
+### Patch Changes
+
+- c1e9177: Add the `config.surfaces` read for this host's agent-chat `config.json` and profiles, the factory config, the console's `TITAN_CONSOLE_*` environment and each Claude Code account's `settings.json` and `.claude.json`. Only fields the catalog allowlist names carry a value; an undeclared key is listed hidden. Permissions and autoMode show as their rule texts, hooks as the commands they run, and `.claude.json` only as its trusted-folder count and MCP server names. The factory's `digest.push` URL is never named.
+- b3de4dd: Add `inbox.prepare` and `inbox.act`, behind `TITAN_CONSOLE_INBOX_ACTIONS=1`. `inbox.prepare` reads back a gate resolve or an owner-asked hold release with a five-minute confirm digest. `inbox.act` is an owner-write: it re-reads the item, refuses a stale digest before posting, writes the action record once and posts its id to the factory's `POST /owner/console-action`. A moved head comes back as `moved` and a replay as `already`.
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+  - @titan-design/react-app@0.1.4
+  - @titan-design/rpc-client@0.4.1
+
 ## 0.4.1
 
 ### Patch Changes
