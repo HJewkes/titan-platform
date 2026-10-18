@@ -19,7 +19,7 @@ const POSITIONAL_RE = /^(?:\d+|[@*])$/;
 type Resolve = (name: string) => string | null | undefined;
 
 /** How math in one scope reads names, and whether a command substitution's output may be read as digits there. */
-export interface MathScope {
+interface MathScope {
   resolve: Resolve;
   pathLine: boolean;
 }

@@ -3,7 +3,7 @@
  * replaced by a number, for the bare names math reads; `joined` has each removed, so a store spelled across one
  * (`commands$x=1`) still reads as one. `opaque` marks a piece whose text no rule here can vouch for.
  */
-export interface MathPieces {
+interface MathPieces {
   bare: string;
   joined: string;
   /** Names whose values `$name`, `${name}` and `${name:-w}` expand; digits, `@` and `*` are positional. */

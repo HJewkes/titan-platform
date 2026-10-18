@@ -60,8 +60,9 @@ interface Reading {
 /**
  * Notes, before a token list is walked, everything math needs from the whole of it: each name's writes, whether
  * something may write any name or set the positional parameters, and whether a command it runs may be rebound.
+ * Returns the tokens unchanged.
  */
-export function noteLineWrites(tokens: Token[], vars: Vars): void {
+export function noteLineWrites(tokens: Token[], vars: Vars): Token[] {
   const words = tokens.filter((t): t is WordToken => t.type === "word");
   if (words.length > 0 && !words.some(onPathLine)) vars.set(NOT_PATH_LINE, null);
   if (positionalsMaySet(tokens)) vars.set(POSITIONALS_SET, null);
@@ -72,6 +73,16 @@ export function noteLineWrites(tokens: Token[], vars: Vars): void {
     const all = vars.has(key) ? [vars.get(key) ?? null, ...texts] : texts;
     vars.set(key, all.includes(null) ? null : all.join(VALUE_SEPARATOR));
   }
+  return tokens;
+}
+
+/** The variables a walk starts with: a script the line runs trusts neither its environment nor its arguments. */
+export const startingVars = (scriptText: boolean): Vars => new Map<string, string | null>(scriptText ? [[ENVIRONMENT_UNKNOWN, null], [POSITIONALS_SET, null]] : []);
+
+/** A nested shell's arguments are its positional parameters; `eval` text runs in the shell that has them. */
+export function withShellArguments<W extends { scope: { vars: Vars } }>(walk: W, wrap: string): W {
+  if (wrap !== "eval") walk.scope.vars.set(POSITIONALS_SET, null);
+  return walk;
 }
 
 /** Records every segment's writes; true, and done, once one may write a name the model cannot read. */
@@ -117,7 +128,11 @@ function commandWrites(command: WordToken, args: WordToken[], r: Reading): boole
   if (name === "getopts") record(r, "OPTIND", "");
   if (ENVIRONMENT_SETTERS.has(name)) return environmentWrites(args, r);
   if (name === "for" || name === "select") return loopWrites(args, r);
-  if (!WRITERS.has(name)) return false;
+  return WRITERS.has(name) && slotWrites(name, args, r);
+}
+
+/** What a builtin from `WRITER_SPECS` stores in the names its slots spell; a declarer's value is read as written. */
+function slotWrites(name: string, args: WordToken[], r: Reading): boolean {
   if (NAMEREF_DECLARERS.has(name) && args.some((a) => /^-[A-Za-z0-9]*n/.test(a.value) || (isRunTime(a) && OPTION_LIKE_RE.test(a.value)))) return true;
   if ((name === "mapfile" || name === "readarray") && args.some((a) => /^-[A-Za-z0-9]*C/.test(a.value))) return true;
   const slots = nameSlots(name, args);

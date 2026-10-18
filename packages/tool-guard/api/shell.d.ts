@@ -181,6 +181,8 @@ interface ExtractOptions {
     onScript?: (text: string) => void;
     /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
     arithmetic?: boolean;
+    /** The text is a script the line runs, whose environment and positional parameters the line may have set. */
+    scriptText?: boolean;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
