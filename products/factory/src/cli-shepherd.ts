@@ -62,7 +62,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--task <slug/id>", "the task this PR delivers; defaults to the id in an agent-chat/<name> head branch")
     .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
-    .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
+    .option("--kind <kind>", "correctness, security, feature, refactor, test-only (the PR changes only tests) or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')

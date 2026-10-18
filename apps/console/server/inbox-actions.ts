@@ -6,10 +6,11 @@
  * console-action route, which reads the record and decides, and writes the outcome once beside it. A replay of the same confirm
  * reposts the record it already wrote, byte for byte, so the factory recognises its own resolve and answers `already`.
  *
- * An `answer-chat` tap takes the owner's text, keeps it in the same record, and posts it to the agent-chat broker instead.
+ * An `answer-chat` tap takes the owner's text, keeps it in the same record, and posts it to the agent-chat broker instead. A g10
+ * `hold-release` tap reads back the verdicts Shepherd recorded (`g10-hold.ts`) and calls `shepherd.release` itself.
  *
- * This slice acts on `resolve-gate`, `owner-release` and `answer-chat`; every other action, a deposit's included, has no console
- * action.
+ * The inbox acts on `resolve-gate`, `owner-release`, `answer-chat` and a g10 `hold-release`; every other action, a deposit's
+ * included, has no console action.
  */
 import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
@@ -19,6 +20,7 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import type { DecisionItem, DecisionLog, DecisionLogResult } from "./decision-log.js";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
+import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { readInbox, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
@@ -29,11 +31,12 @@ const MAX_PREPARED = 256;
 const ACTOR = { class: "owner-remote", id: "titan-console", channel: "console:inbox" } as const;
 const CONFIRM = /^[0-9a-f]{64}$/;
 const MAX_ANSWER = 8000;
+const CHANGED = "the item changed since it was read; read it again before confirming";
 
 type InboxAction = InboxItem["action"];
 type PostedAction = Extract<InboxAction, { kind: "resolve-gate" | "owner-release" }>;
 type ChatAction = Extract<InboxAction, { kind: "answer-chat" }>;
-type ConsoleAction = PostedAction | ChatAction;
+type ConsoleAction = PostedAction | ChatAction | G10Action;
 type Outcome = ActionOutcome | Unreachable | AnswerOutcome;
 
 export interface InboxActionOptions {
@@ -68,7 +71,9 @@ type ChatReadBack = {
   effect: string;
 };
 
-type ReadBack = PrReadBack | ChatReadBack;
+type G10ReadBack = Omit<PrReadBack, "gateId"> & G10Signal;
+
+type ReadBack = PrReadBack | G10ReadBack | ChatReadBack;
 
 export type PrepareResult =
   | { status: "ready"; itemId: string; action: ConsoleAction; readBack: ReadBack; readAt: string; confirm: string; expiresAt: string }
@@ -90,11 +95,12 @@ interface Prepared {
 
 const isPostedAction = (action: InboxAction): action is PostedAction => action.kind === "resolve-gate" || action.kind === "owner-release";
 
-const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefined): action is ConsoleAction => isPostedAction(action) || (action.kind === "answer-chat" && answerer !== undefined);
+const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefined): action is ConsoleAction => isPostedAction(action) || isG10Release(action) || (action.kind === "answer-chat" && answerer !== undefined);
 
 const short = (sha: string | null): string => (sha === null ? "an unknown head" : sha.slice(0, 7));
 
-const digestOf = (item: InboxItem, readAt: string): string => createHash("sha256").update(JSON.stringify([item.id, item.action, item.hold ?? null, readAt])).digest("hex");
+/** The read-back is in the digest, so a verdict recorded between the read and the tap refuses the stale confirm. */
+const digestOf = (item: InboxItem, readAt: string, readBack: ReadBack): string => createHash("sha256").update(JSON.stringify([item.id, item.action, item.hold ?? null, readBack, readAt])).digest("hex");
 
 const refuse = (message: string): never => {
   throw failure(message, EXIT.DATAERR);
@@ -106,12 +112,21 @@ function chatReadBackOf(item: InboxItem, action: ChatAction): ChatReadBack {
   return { msgId: action.msgId, title: item.summary, ...(item.asker && { asker: item.asker }), question: item.context, ...(options && { options }), ...(item.recommended && { recommended: item.recommended.optionId }), effect };
 }
 
-function readBackOf(item: InboxItem, action: ConsoleAction): ReadBack {
+const prBaseOf = (item: InboxItem, action: PostedAction | G10Action) => ({ repo: action.repo, pr: action.pr, title: item.summary, headSha: action.headSha, ...(item.hold && { hold: item.hold }) });
+
+/** A g10 release reads the PR's timeline for its verdicts; every other read-back comes from the item alone. */
+async function readBackOf(sources: InboxSources, item: InboxItem, action: ConsoleAction): Promise<ReadBack> {
   if (action.kind === "answer-chat") return chatReadBackOf(item, action);
+  if (action.kind === "hold-release") return { ...prBaseOf(item, action), ...g10Signal((await sources.shepherd.timeline(action.repo, action.pr)).entries, action) };
   const at = `${action.repo}#${action.pr} at ${short(action.headSha)}`;
-  const base = { repo: action.repo, pr: action.pr, title: item.summary, headSha: action.headSha, ...(item.hold && { hold: item.hold }) };
-  if (action.kind === "owner-release") return { ...base, effect: `Release the owner-asked hold on ${at}` };
-  return { ...base, gateId: action.gateId, effect: `Approve the merge of ${at}` };
+  if (action.kind === "owner-release") return { ...prBaseOf(item, action), effect: `Release the owner-asked hold on ${at}` };
+  return { ...prBaseOf(item, action), gateId: action.gateId, effect: `Approve the merge of ${at}` };
+}
+
+function noActionReason(action: InboxAction): string {
+  if (action.kind === "terminal") return action.reason;
+  if (action.kind === "hold-release") return `a ${action.holdClass} hold is released by its seat, not from the inbox`;
+  return `a ${action.kind} item is not acted on from the inbox yet`;
 }
 
 /** Confirms this console issued, newest last; expired ones are dropped on each prepare, and the oldest past the cap. */
@@ -141,11 +156,12 @@ async function liveItem(sources: InboxSources, itemId: string): Promise<{ item: 
 async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, itemId: string): Promise<PrepareResult> {
   const { item, readAt } = await liveItem(ctx.sources, itemId);
   const { action } = item;
-  if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: action.kind === "terminal" ? action.reason : `a ${action.kind} item is not acted on from the inbox yet` };
-  const confirm = digestOf(item, readAt);
+  if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
+  const readBack = await readBackOf(ctx.sources, item, action);
+  const confirm = digestOf(item, readAt, readBack);
   const expiresAt = ctx.now() + CONFIRM_TTL_MS;
   store.remember(confirm, { itemId, readAt, expiresAt });
-  return { status: "ready", itemId, action, readBack: readBackOf(item, action), readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
+  return { status: "ready", itemId, action, readBack, readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
 }
 
 /** Only the fields the decision log reads go into the record; an absent one is dropped by JSON. */
@@ -182,9 +198,11 @@ interface ActContext {
 async function writeRecord(ctx: ActContext, file: string, tap: Tap, prepared: Prepared): Promise<void> {
   const { item } = await liveItem(ctx.sources, prepared.itemId);
   const { action } = item;
-  if (!isConsoleAction(action, ctx.options.answerer) || digestOf(item, prepared.readAt) !== tap.confirm) return refuse("the item changed since it was read; read it again before confirming");
+  if (!isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
+  const readBack = await readBackOf(ctx.sources, item, action);
+  if (digestOf(item, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
-  const record = { itemId: item.id, action, readBack: readBackOf(item, action), ...(text !== undefined && { text }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
+  const record = { itemId: item.id, action, readBack, ...(text !== undefined && { text }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
   await mkdir(ctx.options.actionsDir, { recursive: true, mode: 0o700 });
   await writeOnce(file, `${JSON.stringify(record, null, 2)}\n`);
 }
@@ -233,7 +251,7 @@ function messageOf(outcome: Outcome): string {
 /** Settled outcomes are written once, and only the call that wrote a landed one logs the decision. */
 async function settle(ctx: ActContext, file: string, record: ActionRecord, outcome: Outcome): Promise<DecisionLogResult | undefined> {
   if (outcome.status === "unreachable" || outcome.status === "off") return undefined;
-  const wrote = await writeOnce(file.replace(/\.json$/, ".outcome.json"), `${JSON.stringify({ ...outcome, at: new Date(ctx.now()).toISOString() })}\n`);
+  const wrote = await writeOnce(outcomeFile(file), `${JSON.stringify({ ...outcome, at: new Date(ctx.now()).toISOString() })}\n`);
   if (!wrote || (outcome.status !== "resolved" && outcome.status !== "released" && outcome.status !== "answered")) return undefined;
   const answer = { text: answerTextOf(record), by: ACTOR, at: new Date(ctx.now()).toISOString() };
   return ctx.options.decisionLog?.record(record.item, answer);
@@ -241,9 +259,22 @@ async function settle(ctx: ActContext, file: string, record: ActionRecord, outco
 
 const answerTextOf = ({ action, text }: ActionRecord): string => (action.kind === "answer-chat" ? (text ?? "") : action.kind === "resolve-gate" ? "merge" : "release");
 
+const outcomeFile = (file: string): string => file.replace(/\.json$/, ".outcome.json");
+
+const settledOutcome = z.looseObject({ status: z.string(), runId: z.string().optional() });
+
+/** Shepherd refuses a second release of a lifted hold, so a replay is answered from the outcome this record already settled. */
+async function releaseOnce(ctx: ActContext, file: string, confirm: string, action: G10Action): Promise<Outcome> {
+  const text = await readFile(outcomeFile(file), "utf8").catch(() => undefined);
+  const settled = text === undefined ? undefined : settledOutcome.safeParse(JSON.parse(text)).data;
+  if (settled?.status === "released") return { status: "already", ...(settled.runId && { runId: settled.runId }) };
+  return releaseG10(ctx.sources.shepherd, action, confirm);
+}
+
 /** A replay posts what the record says, so an answer goes out with the words first written, whatever a later tap carries. */
-function dispatch(ctx: ActContext, confirm: string, record: ActionRecord): Promise<Outcome> {
+function dispatch(ctx: ActContext, file: string, confirm: string, record: ActionRecord): Promise<Outcome> {
   const { action } = record;
+  if (action.kind === "hold-release") return releaseOnce(ctx, file, confirm, action);
   if (action.kind !== "answer-chat") return ctx.options.client.post(confirm);
   const { answerer } = ctx.options;
   if (answerer === undefined || record.text === undefined) return Promise.resolve({ status: "unreachable", detail: "the broker answerer is not wired" });
@@ -261,7 +292,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   const file = path.join(ctx.options.actionsDir, `${tap.confirm}.json`);
   if ((await readRecord(file)) === undefined) await writeRecord(ctx, file, tap, prepared);
   const record = (await readRecord(file)) ?? refuse("the action record could not be read back");
-  const outcome = await dispatch(ctx, tap.confirm, record);
+  const outcome = await dispatch(ctx, file, tap.confirm, record);
   const log = await settle(ctx, file, record, outcome);
   return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }) };
 }
@@ -286,7 +317,7 @@ export function inboxActionCommands(sources: InboxSources, options: InboxActionO
     }),
     "inbox.act": ownerWriteCommand({
       name: "inbox.act",
-      description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, or an answer to the broker",
+      description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, an answer to the broker, or a g10 release to Shepherd",
       args: z.strictObject({ itemId: z.string().min(1).max(512), confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional() }),
       result: z.custom<ActResult>(),
       ownerWrite: true,

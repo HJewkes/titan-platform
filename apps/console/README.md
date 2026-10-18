@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
 | `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 | `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
@@ -342,11 +343,12 @@ from a hitl gate joined to a live Shepherd row; a deposit never gets one.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
-owner-asked hold) and `answer-chat` (an agent's chat_ask); any other item answers `no-action` with its reason.
+owner-asked hold), `answer-chat` (an agent's chat_ask) and a `hold-release` of a `g10-review` or `g10-adversary`
+hold; any other item, a hold of another class included, answers `no-action` with its reason.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
-   id, its action, its hold and the read time. The console keeps it for five minutes and accepts no confirm it did
+   id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
    not issue.
 2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
    It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
@@ -380,6 +382,16 @@ broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per ca
 The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
 token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
 prompt never reaches this path: `inbox.list` gives it a terminal action.
+
+A g10 `hold-release` tap (`server/g10-hold.ts`) is offered whether or not a reviewer MERGE is on record, since the
+owner may release one at the terminal. Its read-back adds every verdict the PR's Shepherd timeline recorded, each
+marked `atHead` when it names the live head, and counts the MERGEs at that head against the class's need: one for
+`g10-review`, two from two reviewers for `g10-adversary`. When they fall short, the effect says so and
+`confirmLabel` reads "Release without a MERGE" (or "Release without both MERGEs"). A verdict recorded after the
+read changes the read-back, so the confirm is refused. The console calls Shepherd's `shepherd.release` on
+loopback itself, naming the hold class and the confirmed head, with the actor
+`owner-remote:titan-console action:<confirm>`. Shepherd refuses a moved head (the owner sees "PR moved"), and a
+replay of a released confirm is answered `already` from its outcome file, without a second release.
 
 ## active-work reads
 
