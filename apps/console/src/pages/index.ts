@@ -13,6 +13,8 @@ import { ShepherdDetailPage } from "./ShepherdDetailPage.js";
 import { ShepherdPage } from "./ShepherdPage.js";
 import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
+import { TheaterPage } from "./TheaterPage.js";
+import { TheaterPlayer } from "./TheaterPlayer.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
@@ -30,5 +32,6 @@ export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   knowledge: KnowledgePage,
   agents: AgentsRoute,
   rounds: RoundsView,
+  theater: ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage)),
   shepherd: ShepherdView,
 };
