@@ -5,6 +5,7 @@ import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { configSurfacesCommands, unconfigured } from "./config-surfaces/catalog.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
+import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
@@ -49,6 +50,8 @@ export interface ConsoleSources {
   hostSurfaces?: HostSurfaceRoots;
   /** Optional so test sources need not build one; absent, `inbox.prepare` and `inbox.act` answer that inbox actions are off. */
   inboxActions?: Omit<InboxActionOptions, "decisionLog">;
+  /** Optional so test sources need not build one; absent, `config.report` and `config.hosts` are not served. */
+  hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
   work?: WorkOptions;
@@ -93,7 +96,7 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, inboxActions, videos, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, hostReports, inboxActions, videos, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -108,6 +111,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd }, { ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
+    ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos),
     ...workCommands(activeWork, work),
   };

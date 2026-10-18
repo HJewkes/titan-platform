@@ -138,6 +138,8 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general? }` in; `{ status: "submitted", path, sha256, headSha }` or `{ status: "already-submitted" }` out. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
 | `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. A `deposit` (see "Owner inbox deposits") |
+| `POST /rpc/config.report` | Another host's `titan config report` in; `{ host, receivedAt }` out. A `deposit` taken only over a bearer from another machine (see "Host config reports") |
+| `POST /rpc/config.hosts` | `{ hosts: [{ host, status, reportedAt, receivedAt, platform, surfaces }], gaps }`: each other host's last report. One older than 25 hours is `not reported`, with no surfaces |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -152,7 +154,8 @@ Three rules hold for every later slice.
   active-work daemon, the broker and the factory at `127.0.0.1:<port>`; only the port is configurable.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
-- **Read-only, apart from two writes.** `inbox.deposit` files an item but cannot answer one.
+- **Read-only, apart from three writes.** `inbox.deposit` files an item but cannot answer one.
+  `config.report` stores another host's config report under the state dir and applies nothing.
   `rounds.submit`, an `owner-write`, records the owner's answers to a round as its
   `feedback.json` and resolves nothing itself. No command controls an agent. A later write must
   take a class below.
@@ -206,7 +209,7 @@ echoes a cookie, the token or a login code.
 
 | Class | Runs for |
 | --- | --- |
-| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` is a read |
+| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` and `config.report` is a read |
 | `deposit` | An HTTP call: on loopback, where every POST already needs an allowlisted `Origin` or `X-Titan-Client`, or on the LAN with either credential |
 | `owner-write` | Only the owner's session cookie on the LAN listener, from a peer that is not this machine, while `TITAN_CONSOLE_OWNER_WRITES=1` |
 
@@ -230,6 +233,23 @@ helper still compiles; it runs with no proof, because only `ownerWriteCommand` a
 Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
+
+## Host config reports
+
+`config.surfaces` reads this host's files directly. Another host, such as a laptop, runs
+`titan config report --to https://<lan-name>:<port> --token-file <path>`, which posts its
+report to `config.report`; `config.hosts` shows it.
+
+- **Data, not authority.** A report names files and their facts (present, mode, mtime, size,
+  sha256), never a value. The schema is strict at every level, so a field it does not name,
+  a `revision` to apply among them, answers 400 and stores nothing. The handler writes only
+  `$TITAN_CONSOLE_STATE/config/host-reports/<host>.json` (0600, by rename) and nothing else.
+- **A bearer from another machine only.** Loopback carries no credential, and any local
+  process can read `lan.token`, so a report from loopback, a session cookie or a bearer whose
+  peer is this machine gets 403. A host name is lowercase letters, digits and dashes; at most 16
+  hosts are kept, and a repeat replaces that host's report.
+- **Stale is not reported.** A report older than 25 hours, by the older of its own
+  `reportedAt` and the console's `receivedAt`, shows `not reported` with no surfaces.
 
 ## Owner inbox deposits
 
@@ -322,8 +342,8 @@ with the one action a tap takes, or the terminal command and why the console off
 from a hitl gate joined to a live Shepherd row; a deposit never gets one.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
-`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate) and `owner-release` (an
-owner-asked hold); any other item answers `no-action` with its reason.
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
+owner-asked hold) and `answer-chat` (an agent's chat_ask); any other item answers `no-action` with its reason.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
@@ -352,6 +372,15 @@ decision-log row (see "The decision log"), and a replay does not write it again.
 `consoleAnswers.actionsDir` must name the same `owner-actions` dir. The factory trusts the OS account, as for
 answer-ship: a same-user process could write a record and post its id. That is no stronger than running
 `titan-factory gate resolve` from the same account, and it is not claimed to be.
+
+An `answer-chat` tap differs in three ways (`server/broker-answer.ts`). Its read-back is the question: the message
+id, summary, asker, context, the asker's options and recommendation. `inbox.act` takes the owner's words as `text`
+(required, trimmed, at most 8000 characters; a gate or hold tap refuses any text), and the record keeps them, so a
+retry sends the words first written. The console posts `{ msgId, text, channel: "dashboard" }` to the agent-chat
+broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per call, and never follows a redirect.
+The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
+token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
+prompt never reaches this path: `inbox.list` gives it a terminal action.
 
 ## active-work reads
 
