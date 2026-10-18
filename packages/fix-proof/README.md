@@ -35,10 +35,18 @@ the `fix-proof` bin does the git and vitest work.
   namespace as that user, with `no_new_privs` and no capabilities, so no process a head test
   starts outlives the run or writes the runner's files. A sandbox that cannot be set up writes
   error markers; vitest never falls back to an unsandboxed run. The head side ignores the flag.
-- `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base
-  <mergeBase> --head <sha>` derives the plan from git, decodes the reports under a byte cap and
-  prints one result line. It spawns nothing but git. `dist/judge.js` is the same command on its
-  own; it cannot run `exec` or `run`.
+- `fix-proof exec --side mutants --out <dir> ...` writes one `mutants.report` for a diff of
+  test material alone that adds a `*.mutations.json` spec. It builds the merge base, overlays the
+  head's tests and carried files, runs the specs' test files once as a baseline, then applies each
+  mutation alone to the merge-base text of its file, rebuilds the package that owns it, reruns the
+  spec's test file, and restores and rebuilds again. With `--sandbox-user`, every build and vitest
+  call after the overlay runs in the sandbox. No spec, or source in the diff, writes a skipped
+  marker. `execMutants()` is the same as a function.
+- `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>]
+  [--mutants-report <file>] --base <mergeBase> --head <sha>` derives the plan from git, decodes
+  the reports under a byte cap and prints one result line, with `mutants` read from
+  `--mutants-report`. It spawns nothing but git. `dist/judge.js` is the same command on its own;
+  it cannot run `exec` or `run`.
 - `fix-proof run --base <mergeBase> --head <sha>` runs both sides and the judge in one process,
   for local use. Each side and the judge read their own bare snapshot of the two commits, fetched
   before either side runs, and the base reports are read before the head side starts, so head code
