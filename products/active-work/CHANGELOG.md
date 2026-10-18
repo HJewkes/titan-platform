@@ -1,5 +1,12 @@
 # @titan-design/active-work
 
+## 0.24.1
+
+### Patch Changes
+
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+
 ## 0.24.0
 
 ### Minor Changes
