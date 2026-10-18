@@ -26,6 +26,11 @@ const RUN_PLAIN = "11111111-0000-4000-8000-000000000001";
 const RUN_OWNER = "22222222-0000-4000-8000-000000000002";
 const PLAIN_ID = `gate:${RUN_PLAIN}/approve-merge`;
 const OWNER_ID = `gate:${RUN_OWNER}/approve-merge`;
+const RUN_G10 = "33333333-0000-4000-8000-000000000003";
+const RUN_ADV = "44444444-0000-4000-8000-000000000004";
+const G10_ID = `gate:${RUN_G10}/approve-merge`;
+const ADV_ID = `gate:${RUN_ADV}/approve-merge`;
+const OLD_HEAD = "0000000000aaaaaaaaaa0000000000aaaaaaaaaa";
 const MSG = "msg-0007";
 const CHAT_ID = `chat:${MSG}`;
 
@@ -37,12 +42,16 @@ let factory: FakeDaemon | undefined;
 let items: OwnerItem[];
 let rows: WatchRow[];
 let clock: number;
+let timelines: Record<number, unknown[]>;
+let shepherd: ReturnType<typeof fakeShepherd>;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-actions-"));
   items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z"), chatAsk()];
   rows = [row(RUN_PLAIN, 1), row(RUN_OWNER, 2, "owner-asked: wait for me")];
   clock = Date.parse("2026-10-10T06:00:00.000Z");
+  timelines = {};
+  shepherd = fakeShepherd();
 });
 
 afterEach(async () => {
@@ -121,6 +130,21 @@ function row(runId: string, pr: number, held: string | null = null): WatchRow {
   };
 }
 
+const verdict = (reviewer: string, value: "MERGE" | "FIX_FIRST", headSha: string, n = 1) => ({ kind: "verdict", stepId: `sh-await-verdict:${n}`, verdict: value, headSha, locator: null, reviewer });
+
+/** `shepherd.release` as Shepherd answers it: refused at a head GitHub has moved past, and for a run whose hold is already lifted. */
+function fakeShepherd(githubHead = HEAD) {
+  const state = { githubHead, releases: [] as Record<string, unknown>[] };
+  const release = (args: Record<string, unknown>) => {
+    const ref = `${String(args.repo)}#${String(args.pr)}`;
+    if (args.head !== state.githubHead) throw Object.assign(new Error(`${ref} is at ${state.githubHead}, not ${String(args.head)}, and is no clean merge-up Shepherd made of it`), { code: EXIT.DATAERR });
+    if (state.releases.some((each) => each.pr === args.pr)) throw Object.assign(new Error(`${ref} is not held, so there is nothing to release`), { code: EXIT.DATAERR });
+    state.releases.push(args);
+    return { runId: rows.find((each) => each.pr === args.pr)!.runId, held: null };
+  };
+  return Object.assign(state, { release });
+}
+
 const actionsDir = () => path.join(dir, "owner-actions");
 
 const recordShape = z.object({ action: z.object({ kind: z.string(), gateId: z.string().optional(), headSha: z.string() }) });
@@ -158,9 +182,11 @@ function spyLog() {
 }
 
 async function sources(): Promise<InboxSources> {
-  factory = await startFakeDaemon({ ok: true }, (command) => {
+  factory = await startFakeDaemon({ ok: true }, (command, args) => {
     if (command === "needs.list") return { items, gaps: [] };
     if (command === "shepherd.list") return rows;
+    if (command === "shepherd.timeline") return { row: rows.find((each) => each.pr === args.pr), entries: timelines[Number(args.pr)] ?? [] };
+    if (command === "shepherd.release") return shepherd.release(args);
     throw new Error(`no fixture for ${command}`);
   });
   return { factory: factoryNeeds(factory.port), shepherd: shepherdReader(factory.port), rounds: { dir: path.join(dir, "rounds") }, inbox: { dir: path.join(dir, "deposits") } };
@@ -425,5 +451,110 @@ describe("inbox answer-chat", () => {
       [MSG, "alpha"],
       [MSG, "alpha"],
     ]);
+  });
+});
+
+describe("inbox g10 hold release", () => {
+  beforeEach(() => {
+    items = [...items, gate(RUN_G10, "2026-10-10T05:30:00.000Z"), gate(RUN_ADV, "2026-10-10T05:40:00.000Z")];
+    rows = [...rows, row(RUN_G10, 3, "g10-review: awaiting an opus review"), row(RUN_ADV, 4, "g10-adversary: awaiting two reviews")];
+  });
+
+  it("reads back the verdicts at the live head and releases through Shepherd as the console's owner-remote", async () => {
+    timelines[3] = [verdict("reviewer-a", "FIX_FIRST", OLD_HEAD, 1), verdict("reviewer-a", "MERGE", HEAD, 2)];
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const prepared = ready(await prepare(G10_ID));
+
+    const { envelope } = await act(G10_ID, prepared.confirm);
+
+    expect(prepared.action).toEqual({ kind: "hold-release", repo: REPO, pr: 3, headSha: HEAD, holdClass: "g10-review" });
+    expect(prepared.readBack).toMatchObject({
+      verdicts: [
+        { reviewer: "reviewer-a", verdict: "FIX_FIRST", headSha: OLD_HEAD, atHead: false },
+        { reviewer: "reviewer-a", verdict: "MERGE", headSha: HEAD, atHead: true },
+      ],
+      mergesAtHead: 1,
+      mergesNeeded: 1,
+      confirmLabel: "Release hold",
+      effect: `Release the g10-review hold on ${REPO}#3 at 1234567; the reviewer's MERGE stands at this head`,
+    });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "released", runId: RUN_G10, stillHeld: null }, message: "Hold released" } });
+    expect(shepherd.releases).toEqual([{ repo: REPO, pr: 3, head: HEAD, holdClass: "g10-review", actor: `owner-remote:titan-console action:${prepared.confirm}` }]);
+    expect(calls[0]![1]).toMatchObject({ text: "release", by: { class: "owner-remote" } });
+  });
+
+  it("still offers the release with no MERGE at the live head, and says so on the confirm", async () => {
+    timelines[3] = [verdict("reviewer-a", "MERGE", OLD_HEAD)];
+    const { prepare, act } = await harness(spyFactory().client);
+    const prepared = ready(await prepare(G10_ID));
+
+    const { envelope } = await act(G10_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ mergesAtHead: 0, confirmLabel: "Release without a MERGE", effect: expect.stringMatching(/no reviewer MERGE is recorded at this head$/) });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "released" } } });
+  });
+
+  it("counts a g10-adversary hold with one MERGE, or two from one reviewer, as short of both", async () => {
+    timelines[4] = [verdict("reviewer-a", "MERGE", HEAD, 1), verdict("reviewer-a", "MERGE", HEAD, 2)];
+    const { prepare } = await harness(spyFactory().client);
+
+    const prepared = ready(await prepare(ADV_ID));
+
+    expect(prepared.readBack).toMatchObject({ mergesAtHead: 1, mergesNeeded: 2, confirmLabel: "Release without both MERGEs", effect: expect.stringMatching(/only 1 of the 2 MERGEs it needs/) });
+  });
+
+  it("reads a g10-adversary hold with two reviewers' MERGEs at the head as a plain release", async () => {
+    timelines[4] = [verdict("reviewer-a", "MERGE", HEAD, 1), verdict("reviewer-b", "MERGE", HEAD, 2)];
+    const { prepare } = await harness(spyFactory().client);
+
+    const prepared = ready(await prepare(ADV_ID));
+
+    expect(prepared.readBack).toMatchObject({ mergesAtHead: 2, confirmLabel: "Release hold", effect: expect.stringMatching(/both MERGEs stand at this head$/) });
+  });
+
+  it("tells the owner the PR moved when Shepherd refuses the confirmed head, and logs nothing", async () => {
+    shepherd.githubHead = NEW_HEAD;
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const { confirm } = ready(await prepare(G10_ID));
+
+    const { envelope } = await act(G10_ID, confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "moved", currentHead: NEW_HEAD }, message: "PR moved to abcdef1, read again" } });
+    expect(shepherd.releases).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("answers a replay as already without asking Shepherd to release again", async () => {
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const { confirm } = ready(await prepare(G10_ID));
+    await act(G10_ID, confirm);
+
+    const { envelope } = await act(G10_ID, confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "already", runId: RUN_G10 }, message: "Already done by this confirmation" } });
+    expect(shepherd.releases).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a confirm read before a verdict landed, without releasing", async () => {
+    const { prepare, act } = await harness(spyFactory().client);
+    const { confirm } = ready(await prepare(G10_ID));
+    timelines[3] = [verdict("reviewer-a", "MERGE", HEAD)];
+
+    const { envelope, exitCode } = await act(G10_ID, confirm);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+    expect(shepherd.releases).toEqual([]);
+  });
+
+  it("offers no action for a hold of a class only its seat releases", async () => {
+    rows = [...rows.slice(0, 2), row(RUN_G10, 3, "stalled: EX-2 the run stopped")];
+    const { prepare } = await harness(spyFactory().client);
+
+    expect(await prepare(G10_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "a stalled hold is released by its seat, not from the inbox" } });
   });
 });
