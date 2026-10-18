@@ -7,7 +7,11 @@ the `fix-proof` bin does the git and vitest work.
 - `planFixProof({ nameStatus, baseConfig, headConfig })`: tests to run, carried support files,
   deleted tests and overlay removals, with globs from the base config only. It also lists
   mutation specs (`mutations`) and every non-test path (`source`); `testOnlyOf(plan)` is true
-  when `source` is empty.
+  when `source` is empty. Paths matching the config's `runtime` globs (fixtures a package
+  publishes or production code reads) stay carried but also count as `source`.
+  `testOnlyReading(plan)` refuses test-only with a reason: `source`, then `deletes-tests` for any
+  deleted test (a test renamed to a non-test path included), then `no-tests` for a diff that adds
+  or changes no test, such as a changeset- or fixture-only diff.
 - `parseMutationSpec(text)` and `checkMutation(mutation, baseText, config)`: a strict
   `*.mutations.json` spec of 1 to 5 named find/replace mutations with the tests each must fail,
   and the merge-base check that each `find` occurs exactly once in a file that is not test material.
