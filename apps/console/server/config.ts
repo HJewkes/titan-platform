@@ -5,6 +5,7 @@ import { activeWorkGraphPath } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -57,6 +58,8 @@ export interface ConsoleConfig {
   decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
+  /** Where `config.surfaces` reads this host's agent-chat, factory, console and Claude Code config. */
+  hostSurfaces?: HostSurfaceRoots;
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -108,6 +111,7 @@ export function resolveConfig(
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     ...ownerOptionsFrom(env, home),
+    hostSurfaces: hostSurfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
