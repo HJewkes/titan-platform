@@ -38,12 +38,23 @@ const optionSchema = z.object({
   anchors: anchorsSchema.optional(),
 });
 
+/**
+ * A cite the queue can check: `quote` must appear in one transcript line of `session`, named by
+ * `event` as `<byteOffset>:<byteLength>`. A deposit carrying one is refused unless the quote matches.
+ */
+export const locatorCiteSchema = z.strictObject({
+  session: z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "a session id: letters, digits, _ and -"),
+  event: z.string().regex(/^\d{1,15}:[1-9]\d{0,8}$/, "an event: <byteOffset>:<byteLength> of one transcript line"),
+  quote: z.string().max(2000),
+});
+
 const recommendationSchema = z.object({
   optionId: z.string().min(1),
   by: z.string().min(1),
   confidence: z.number().min(0).max(1).optional(),
   rationale: z.string().optional(),
-  cite: z.string().optional(),
+  /** Legacy free text, or a locator cite checked against its transcript at deposit. */
+  cite: z.union([z.string(), locatorCiteSchema]).optional(),
   hidden: z.boolean().optional(),
 });
 
@@ -105,6 +116,7 @@ export const ownerItemSchema = z.object({
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type OwnerItem = z.infer<typeof ownerItemSchema>;
 export type OwnerAnswer = z.infer<typeof answerSchema>;
+export type LocatorCite = z.infer<typeof locatorCiteSchema>;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
 export type Audience = (typeof AUDIENCES)[number];
 export type OnSilence = z.infer<typeof onSilenceSchema>;
