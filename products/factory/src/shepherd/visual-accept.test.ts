@@ -143,7 +143,7 @@ describe("a head red only on its seat's baseline check", () => {
 describe("the visual accept offer on replay", () => {
   const red: Extract<LandOutcome, { kind: "ci-failed" }> = { kind: "ci-failed", headSha: H1, failing: [{ name: "visual", conclusion: "failure", url: "", workflowRunId: 1 }] };
   const recorded = { offered: true, mode: "on", check: "visual" };
-  const runWith = (next: string | undefined, resumed?: string) => {
+  const runWith = (next: string | undefined, resumed?: string, answer: Record<string, unknown> = { decision: "accept-set", headSha: H1, approvedSet: SET, note: NOTE }) => {
     const dispatched: string[] = [];
     const asked: string[] = [];
     const dispatch: WorkflowContext["dispatch"] = async (stepId, _template, options) => {
@@ -152,7 +152,7 @@ describe("the visual accept offer on replay", () => {
     };
     const assisted: WorkflowContext["assisted"] = async (stepId) => {
       asked.push(stepId);
-      return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "accept-set", headSha: H1, approvedSet: SET, note: NOTE } };
+      return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: answer };
     };
     const ctx = partialFake<WorkflowContext>({ historyNext: () => next, resumedGate: () => resumed, recoveredInFlight: () => [], dispatch, assisted, expireGates: () => [] });
     const run: VisualAcceptRun = { ctx, target: { repo: REPO, pr: 1 }, state: { waits: 0 }, visualAcceptOffers: 0 };
@@ -175,7 +175,25 @@ describe("the visual accept offer on replay", () => {
 
     expect(accepted).toMatchObject({ kind: "wake", payload: { visual: "accepted", text: NOTE } });
     expect([dispatched, asked, liveMode.mock.calls]).toEqual([["sh-visual-accept-offer:0"], ["sh-visual-accept"], []]);
-    expect(run.acceptedSet?.fromHead).toBe(H1);
+    expect(run.acceptedSet?.set.fromHead).toBe(H1);
+  });
+
+  it.each([[H1, "release"], [H2, undefined]])("keeps the base of the recorded CI read at %s with the set", async (readAt, base) => {
+    const { run } = runWith("sh-visual-accept-offer:0");
+    run.lastCi = { headSha: readAt, baseRef: "release" };
+
+    await askVisualAccept(run, red);
+
+    expect(run.acceptedSet).toEqual({ set: SET, base });
+  });
+
+  it.each([[{ decision: "send-back", headSha: H1, note: NOTE }], [{ decision: "abandon", headSha: H1 }]])("clears an older set on %o at a newer red head", async (answer) => {
+    const { run } = runWith("sh-visual-accept-offer:0", undefined, answer);
+    run.acceptedSet = { set: { ...SET, fromHead: H2 }, base: "main" };
+
+    await askVisualAccept(run, red);
+
+    expect(run.acceptedSet).toBeUndefined();
   });
 
   it("offers nothing to a live run resumed on another gate", async () => {
