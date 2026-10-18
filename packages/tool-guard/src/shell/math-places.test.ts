@@ -20,6 +20,8 @@ const PLACES: Array<[string, string]> = [
   ["a legacy $[ ] body", "echo $[ S ]"],
   ["an element read subscript", "echo ${a[S]}"],
   ["an element assignment subscript", "a[S]=1"],
+  ["a quoted segment inside an element assignment subscript", "a['S']=1"],
+  ["a quoted assignment argument to declare", "declare 'a[S]=1'"],
   ["a substring offset", "echo ${x:S}"],
   ["a substring length", "echo ${x:0:S}"],
   ["a redirect target", ": > f$(( S ))"],
@@ -40,6 +42,8 @@ describe("every place a shell evaluates math is read by both protected-parameter
   it.each([
     ["a quoted heredoc body", "cat <<'EOF'\n$(( commands[y]=0 ))\nEOF"],
     ["a single-quoted word", "echo '$(( commands[y]=0 ))'"],
+    ["a fully quoted word that is no assignment", "gh api x -f 'a[$K]=b'"],
+    ["a fully quoted element write that is no assignment", "gh api x -f 'a[commands[y]=0]=b'"],
   ])("reads no store in %s, which nothing evaluates", (_, line) => {
     expect(() => extractCommands(line)).not.toThrow();
   });

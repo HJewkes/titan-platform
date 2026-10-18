@@ -1,5 +1,6 @@
 import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
+import { DECLARERS } from "./name-slots.js";
 
 /** A text the shell evaluates as math, and whether it holds a run-time expansion. */
 export interface MathPlace {
@@ -10,7 +11,7 @@ export interface MathPlace {
 export const ARITHMETIC_OPENER_RE = /\$\(\(|\$\[/g;
 /** Where a subscript opens in an expansion: after `${name` or `$name`. */
 const EXPANSION_SUBSCRIPT_RE = /\$\{[^}\s]*?[A-Za-z0-9_@*]\[|\$[A-Za-z_]\w*\[/g;
-/** An unquoted word that begins as a name with a subscript, which the shell takes as an element assignment: `a[$i]=1`. */
+/** A word that begins as a name with a subscript, which the shell takes as an element assignment: `a[$i]=1`. */
 const ASSIGNED_SUBSCRIPT_RE = /^[A-Za-z_]\w*\[/;
 /** A literal element write, whose subscript is math even when no expansion is in it: `a[commands[y]=0]=1`. */
 const ELEMENT_WRITE_RE = /\]\+?=/;
@@ -24,21 +25,31 @@ const SUBSTRING_OPENER_RE = /\$\{[!#]?(?:[A-Za-z_]\w*(?:\[[^\]]*\])?|[@*]|\d+):(
  * subscript, in a run-time word, a redirect target, or an unquoted heredoc body.
  */
 export function mathPlaces(words: WordToken[], redirects: RedirectToken[]): MathPlace[] {
+  const declarer = words.findIndex((w) => !w.dynamic && !w.quoted && DECLARERS.has(w.value));
+  // A declarer reads its arguments as assignments however they are quoted: `declare 'a[i]=1'`.
+  const from = (w: WordToken, i: number) => (declarer >= 0 && i > declarer ? Infinity : quotedAt(w));
   const sources = [
-    ...words.map((w) => (w.dynamic ? spansOf(w.value, w.quoted, false) : literalElementWrite(w))),
-    ...redirects.flatMap((r) => (r.target?.dynamic ? [spansOf(r.target.value, r.target.quoted, false)] : [])),
-    ...redirects.flatMap((r) => (r.body && r.target?.quoted !== true ? [spansOf(r.body, true, false)] : [])),
+    ...words.map((w, i) => (w.dynamic ? spansOf(w.value, from(w, i), false) : literalElementWrite(w, from(w, i)))),
+    ...redirects.flatMap((r) => (r.target?.dynamic ? [spansOf(r.target.value, quotedAt(r.target), false)] : [])),
+    ...redirects.flatMap((r) => (r.body && r.target?.quoted !== true ? [spansOf(r.body, 0, false)] : [])),
   ];
   const subscripts = redirects.flatMap((r) => NAMED_FD_RE.exec(r.named ?? r.fd ?? "")?.[2]?.slice(1, -1) ?? []);
   return [...sources.flat().map((text) => ({ text, dynamic: true })), ...subscripts.map((text) => ({ text, dynamic: /[$`]/.test(text) }))];
 }
 
-/** The subscript of a word with no expansion in it that writes an element, which is math all the same. */
-const literalElementWrite = (w: WordToken): string[] => (ELEMENT_WRITE_RE.test(w.value) ? spansOf(w.value, w.quoted, true) : []);
+/** Where quoting begins in a word; one another builder made quoted is taken as quoted from its start. */
+const quotedAt = (w: WordToken): number => w.quotedAt ?? (w.quoted ? 0 : Infinity);
 
-/** The outermost spans: an opener inside an earlier span is read with it, which keeps the scan linear. */
-function spansOf(text: string, quoted: boolean, elementOnly: boolean): string[] {
-  const assigned = quoted ? null : ASSIGNED_SUBSCRIPT_RE.exec(text);
+/** The subscript of a word with no expansion in it that writes an element, which is math all the same. */
+const literalElementWrite = (w: WordToken, quotedFrom: number): string[] => (ELEMENT_WRITE_RE.test(w.value) ? spansOf(w.value, quotedFrom, true) : []);
+
+/**
+ * The outermost spans: an opener inside an earlier span is read with it, which keeps the scan linear. The shell takes a
+ * word as an element assignment while its name and `[` are unquoted, so quoting from `quotedFrom` on keeps the subscript.
+ */
+function spansOf(text: string, quotedFrom: number, elementOnly: boolean): string[] {
+  const head = ASSIGNED_SUBSCRIPT_RE.exec(text);
+  const assigned = head !== null && head[0].length <= quotedFrom ? head : null;
   const expansions = elementOnly ? [] : [...text.matchAll(ARITHMETIC_OPENER_RE), ...text.matchAll(EXPANSION_SUBSCRIPT_RE), ...text.matchAll(SUBSTRING_OPENER_RE)];
   const openers = [...expansions, ...(assigned ? [assigned] : [])];
   const spans: string[] = [];

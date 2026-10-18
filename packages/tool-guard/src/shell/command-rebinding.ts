@@ -60,7 +60,9 @@ export function rebindsCommand(cmd: Unwrapped, vars: Vars = new Map()): boolean 
 /**
  * Whether a command's words store into a rebinding parameter through math, which the shell evaluates apart from any
  * builtin that names the parameter: the places `mathPlaces` lists, and a descriptor variable (`{BASH_CMDS[y]}>f`).
- * A run-time word in those places may expand to `commands[y]=0`.
+ * A run-time word in those places may expand to `commands[y]=0`. A bare name math reads (`(( X ))`) is followed to
+ * the text the line stored in it; one the line never set and the shell sets on its own (`REPLY`, `_`) may hold
+ * anything; any other name the line never set reads as no store.
  */
 export function storesRebindingByMath(words: WordToken[], redirects: RedirectToken[], vars: Vars): boolean {
   const resolve = scopeNames(vars);

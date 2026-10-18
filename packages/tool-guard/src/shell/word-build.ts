@@ -36,6 +36,7 @@ export function endWord(s: LexState): void {
 export function markQuoted(w: WordToken): WordToken {
   if (w.value !== "") w.spliced = true;
   w.quoted = true;
+  w.quotedAt ??= w.value.length;
   return w;
 }
 
@@ -60,6 +61,7 @@ export function readEscape(s: LexState): void {
   s.i += 2;
   if (next !== undefined && next !== "\n") {
     const w = ensureWord(s);
+    w.quotedAt ??= w.value.length;
     w.value += next;
     w.quoted = true;
     w.spliced = true;
@@ -76,6 +78,7 @@ export function readSingle(s: LexState): void {
 
 export function readAnsiC(s: LexState, w: WordToken): void {
   const end = ansiCEnd(s.src, s.i + 1);
+  w.quotedAt ??= w.value.length;
   w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
   w.quoted = true;
   w.spliced = true;
