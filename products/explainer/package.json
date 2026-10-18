@@ -39,6 +39,7 @@
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/graph-layout": "workspace:^",
+    "@titan-design/pm": "workspace:^",
     "@titan-design/speech-vet": "workspace:^",
     "commander": "^14.0.3",
     "yaml": "^2.9.1",

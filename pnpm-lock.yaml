@@ -1110,6 +1110,9 @@ importers:
       '@titan-design/graph-layout':
         specifier: workspace:^
         version: link:../../packages/graph-layout
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/speech-vet':
         specifier: workspace:^
         version: link:../../packages/speech-vet
