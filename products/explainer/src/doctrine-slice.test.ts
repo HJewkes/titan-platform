@@ -36,6 +36,14 @@ describe("sliceForStage", () => {
     expect(params).toEqual(["chapters.count"]);
   });
 
+  it("gives the plan stage the visual routing table, and no other stage", () => {
+    const routing = (stage: StageRequest["stage"]) => slice({ stage, type: "repo-tour" }).routing;
+
+    expect(routing("plan")).toContain("## Visual router");
+    expect(routing("plan")).toMatch(/\| `sankey` \| new \| gap: draw `dependency-graph`/);
+    expect(DOCTRINE_STAGES.filter((stage) => stage !== "plan" && routing(stage) !== "")).toEqual([]);
+  });
+
   it("adds the requested beats' rules to the script prompt", () => {
     expect(ids(slice({ stage: "script", type: "repo-argument", beats: ["code-walk"] }).prompt)).toEqual(["dir-C3", "dir-P2", "dir-T2"]);
   });
@@ -59,11 +67,12 @@ describe("sliceForStage", () => {
       checks: [],
       tokens: ["MOTION.video.dim", "MOTION.video.hold"],
       params: [],
+      routing: "",
     });
   });
 
   it("loads no prose at gather or select", () => {
-    const empty = { prompt: [], base: [], packet: [], checks: [], tokens: [], params: [] };
+    const empty = { prompt: [], base: [], packet: [], checks: [], tokens: [], params: [], routing: "" };
 
     expect([slice({ stage: "gather", type: "repo-tour" }), slice({ stage: "select", type: "repo-tour" })]).toEqual([empty, empty]);
   });
