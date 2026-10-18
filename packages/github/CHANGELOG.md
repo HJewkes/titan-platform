@@ -1,5 +1,49 @@
 # @titan-design/github
 
+## 0.11.0
+
+### Minor Changes
+
+- 0dd6186: Add `readBackstopSnapshot`: one repo's open PRs with head rollup contexts and reviews, recently closed PRs, and main history since a cursor, read over GraphQL with every range paged whole. A range past its cap throws `BackstopTruncated`, any GraphQL `errors` entry fails the read, and the snapshot carries GitHub's reported `rateLimit` cost. `snapshotRequests` and `graphqlPoints` compute the query's cost.
+- 6a0952d: Add `GitHubPort.closePr`: closes an open PR without merging it and leaves its branch. A PR already closed or merged skips as `closed` or `merged`.
+- 8c89092: Add `compareAncestry(repo, base, head)` to `GitHubWire` and `GitHubPort`: the compare API's `status` as `ahead`, `behind`, `identical` or `diverged`, and `missing` on a 404. Add `lsRemotePullHead(exec, remoteUrl, n)`, which reads `refs/pull/<n>/head` through `git ls-remote` and answers the sha or null; the credential rides in the child env, a URL carrying one is refused, and a failed read throws `LsRemoteError`. New exports `Ancestry`, `GitExec`, `execGit`, `LsRemoteOptions` and `LsRemoteError`. `fakeGitHub` answers both from its history: `compareAncestry` walks `commits`, and `fake.gitExec` answers each PR's head.
+- 6281b49: Add `mergeIntoBranch` to `GitHubWire` and `GitHubPort`: GitHub's Merges API merges a commit into a branch without a pull request. A 201 answers `merged` with the merge commit sha, a 204 answers `already-contained`, a 409 answers `conflict`, and any other status throws. The fake records each call in `branchMerges` and answers a conflict for any head in `mergeConflicts`.
+- 65287ec: `titan-factory shepherd prs [owner/repo] --json` lists every open PR of each seat repo, or of the one named, from Shepherd's PR snapshot, plus the PRs Shepherd merged in the last 24 hours. Each row carries the branch, head, base, state, title, body, draft flag, whether Shepherd has it registered (with its run id and phase), the snapshot's cached CI for the head when it holds one, its source and when it was read. Open rows answer with no GitHub call while the open list is under a minute old, and concurrent callers share one list read. A merged row's `mergeSha` comes from the run's merge step, never from a PR read. A seat repo with no run in it is still listed.
+
+  `@titan-design/github`: `PullRequest` gains optional `title` and `body`, which the gh wire now fills from the REST answer (a null body reads as an empty string).
+
+- 1476172: Add `titan-gh ci-failures`: a digest of each failing Actions job (first failing test, vitest summary, coverage miss, log tail) for a PR or one job (TP-2319).
+- 102a9df: Add `titan-gh premerge <owner/repo#N> <sha> --approved-head <sha> [--clone <dir>] [--json]`: the read-only half of agent-chat's `scripts/seat/premerge`. It checks PR state, the head sha, required checks and statuses, strict behind and the approved-head walk, and prints `OK ... head= base= req=[] strict= behind=` or `FAIL <repo>#<N>: <reasons>`, exiting 0, 1, or 2 on usage. With `--clone`, the bin runs `git merge-tree --write-tree` in that clone to prove a walked approval and to merge the head into the base branch's current tip, read from GitHub and passed by sha (never a local, possibly stale `origin/<base>`), failing on a conflict, a git error or a clone without that commit. Without it, an approved head other than the PR head fails, and GitHub's `unknown` mergeability is re-read a few times and then fails, never passes. `PullRequest` gains an optional `behindBy`, which `getPr` fills from the compare for an open PR.
+- be96d75: Add `approvedHeadWalk` and `MAX_BASE_MERGES`: follow first parents from a PR head through two-parent merges of the base branch to an approved head, check each base parent is on the base and inside the newest, and require the head's tree to equal a clean merge of the newest base parent into the approved head (`cleanMergeTree`, supplied by the caller; missing or failing, the walk refuses). Otherwise it gives premerge's reasons. `mergeReadiness` takes the walk as `approvalWalk`, so an approval of an earlier head reached that way no longer reports `head-moved`.
+- 82d8c0a: Bind the sh-fix-proof run to the registered PR and base branch, so a run for another PR at the same head cannot supply the result (TP-2357 b). `CheckRun.pullRequests` is a new required field, so an external implementer of `GitHubWire` or a hand-built `CheckRun` must add it (an empty array when the run names no PR).
+- c278211: checks.ts is the one check-judging core: export `isSucceeded` (moved from readiness) and `isPassingConclusion`. `latestPerName` now treats a run with no `startedAt` that has not completed as newest, so a queued rerun shadows an older result and reads pending; a completed run with no start, like an equal start, orders by the higher id.
+- 69f323c: Add `setPrBase` to the GitHub port and wire. It retargets an open PR onto another base with one `PATCH repos/{repo}/pulls/{pr}` whose body carries only `base`. The port reads the PR first and skips a merged, closed or already-retargeted PR. The fake records each retarget in `baseChanges`.
+- 027f0f2: Add `octokitWire`, the GitHub port over Octokit for long-running services (TP-2561 b1). It behaves like this:
+
+  - `@octokit/plugin-throttling` waits out rate limits and spaces writes.
+  - `@octokit/plugin-retry` retries GET and HEAD only.
+  - ETag reads keep the existing cache and 304 rules.
+  - The token comes from `gh auth token`, is held in memory, and is re-read once on a 401.
+  - Parity with `restCaller`: every call acquires `sharedRateBudget` (the `RATE_FLOOR` pacing), and a GraphQL call times out at 30 s.
+
+  New exports: `octokitClient`, `sharedOctokit`, `octokitRest`, `GitHubRequestError`, the `Rest` and `Fields` types, and `appInstallationTokenOverHttp`. `client.budget()` reports the live rate windows and throttle cooldowns. `ghCliWire` is unchanged.
+
+- 608b103: `Commit` gains an optional `message`, which the gh adapter reads from the git commits API. Shepherd's ci-wait no longer waits out its 45 minutes on a head GitHub Actions started no run for: past a 5 minute grace, a conflicting head goes to the conflict fix round, and a skip token in the head commit message wakes the fixer to push a fresh commit. An unsettled mergeable state or a failed read keeps the wait as before.
+- 8c25894: Add `jobSteps(repo, jobId)` to `GitHubPort` (wire: `getJobSteps`): an Actions job's steps in run order, each with its name and conclusion. The fake answers from `fake.jobSteps` and 404s a job with none seeded.
+
+  Shepherd's frozen-main and base-red holds now count a head's failing check as the base's only when it fails there at the same job step, and every failing test id (or, with no vitest heading, every error line) in the head's job log also fails there. A check that fails at another step, fails a test the base does not, or whose step or log cannot be read, wakes the fixer. So does one whose log may hold a failure it does not name: an unhandled error or worker crash, a tail cut inside vitest's failure output, headings that number other than the summary's failed tests and suites, or a step that timed out or was cancelled.
+
+- 6eab4e8: Add `classifyGitHubFailure` and `nextResetAt`: a pure classifier that turns a failed GitHub answer into ok, unavailable (with `resetAt`, source, bucket and call class), unknown, auth or error, with the 60 s doubling to a 15 min cap (TP-3395, slice a of TP-3096). No existing export changes.
+
+### Patch Changes
+
+- b0fb3e6: `ghCliWire` rejects a pull request whose REST `state` is neither `open` nor `closed`, instead of passing it through where a "not open" check reads it as closed (TP-2358 a).
+- 4ffd52a: `ciVerdict` builds on checks.ts: any unfinished run of a required context and app reads pending whatever its start time or id, and once every run has completed the newest is `latestPerName`'s pick (a null or tied start goes to the higher id). Success is `isSucceeded` and the all-runs rule uses `isPassing`. Its own conclusion set and picker are gone.
+- 8438a4e: Read Actions job logs with `--allow-escape-sequences` and strip the colour codes, so `jobLogTail` stops failing with "HTTP 200" (TP-2665); `failureOf` no longer reports a 2xx as an HTTP error.
+- 216db04: The fake GitHub's merge now moves the PR's base branch to the merge sha, as GitHub does. Before, the base branch stayed on its pre-merge sha, and the fake's default compare read that stale tip as a newer push containing the merge.
+- e6dafd1: `restCaller` passes `CORE_TIMEOUT_MS` (60 s) to `gh` for every core REST call, so a hung `gh` is killed and the call rejects instead of never settling (TP-2933 a).
+- 77e2c4d: `fakeGitHub`'s `deleteRef` now closes every open PR based on the deleted branch, as GitHub's API delete does (TP-2962 a).
+
 ## 0.10.0
 
 ### Minor Changes

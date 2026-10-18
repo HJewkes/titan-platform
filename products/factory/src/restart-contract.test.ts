@@ -65,6 +65,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,
   "sh-approval-carry:fix": `${RECORD}: an approval carried across a small fix`,
   "sh-approval-carry:own": `${RECORD}: an approval carried across an own merge-up`,
+  "sh-approval-carry:set": `${RECORD}: a visual approval carried by the owner's accepted set`,
   "sh-approval-carry": `${RECORD}: an approve-merge answer that followed the head`,
   "sh-merge-up": `${RECORD}: a MERGE carried across a clean merge-up`,
   "sh-release-preflight": `${READ}: the release's registry preflight`,
