@@ -12,6 +12,7 @@ const MapSide = z.object({ reveal: z.array(Reveal).default([]), pins: z.array(Pi
 // invariants), and widening `ScriptSchema` to admit them would loosen every script/v1 check.
 const SpikeScriptSchema = z.object({
   id: Id,
+  video: z.object({ invariants: z.array(z.string().min(1)).default([]) }).optional(),
   maps: z.record(z.string(), z.object({ nodes: z.array(z.object({ id: Id, label: z.string().min(1) })) })).default({}),
   beats: z.array(
     z.object({
@@ -101,6 +102,8 @@ function spikeSourceBeat(beat: SpikeBeat, label: Labeller): PaceSourceBeat {
 /** A spike script's item track, plus the key paths its reader skipped so a caller can report them. */
 export interface SpikePace {
   beats: PaceBeat[];
+  /** The script's `video.invariants` phrases, for the seated-invariant lint. */
+  invariants: string[];
   ignored: string[];
 }
 
@@ -109,5 +112,6 @@ export function fromSpikeScript(json: unknown, timing?: ScriptTiming): SpikePace
   const { script, ignored } = readSpikeScript(json);
   const labels = new Map(Object.entries(script.maps).flatMap(([map, { nodes }]) => nodes.map((n) => [`${map}:${n.id}`, n.label])));
   const label: Labeller = (map, id) => labels.get(`${map}:${id}`) ?? id;
-  return { beats: buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing), ignored };
+  const beats = buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing);
+  return { beats, invariants: script.video?.invariants ?? [], ignored };
 }
