@@ -16,7 +16,7 @@ const EVENT_DDL = `
   CREATE INDEX shepherd_event_run ON shepherd_event (run_id, id);
   CREATE INDEX shepherd_event_repo ON shepherd_event (repo, id);`;
 
-/** The append-only history of holds, releases, freezes and thaws; nothing is deleted, and only a repoint rewrites a run id, to the run that replaces it. */
+/** The append-only history of holds, releases, freezes, thaws and repair stops; nothing is deleted, and only a repoint rewrites a run id, to the run that replaces it. */
 export function shepherdEventMigration(version = 16): Migration {
   return { version, name: "factory:shepherd_event", up: (db) => db.exec(EVENT_DDL) };
 }
@@ -26,11 +26,37 @@ export function reclassMarkMigration(version = 25): Migration {
   return { version, name: "factory:shepherd_event_reclass", up: (db) => db.exec("ALTER TABLE shepherd_event ADD COLUMN reclass INTEGER NOT NULL DEFAULT 0") };
 }
 
-export const EVENT_KINDS = ["hold", "release", "freeze", "thaw"] as const;
+/** SQLite cannot alter a CHECK, so the table is rebuilt with the repair-stop kinds; ids, rows and indexes carry over. */
+const REPAIR_STOP_KINDS_DDL = `
+  CREATE TABLE shepherd_event_next (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id   TEXT,
+    repo     TEXT NOT NULL,
+    pr       INTEGER,
+    kind     TEXT NOT NULL CHECK (kind IN ('hold', 'release', 'freeze', 'thaw', 'repair-stop', 'repair-go')),
+    reason   TEXT,
+    actor    TEXT,
+    at       TEXT NOT NULL,
+    head_sha TEXT,
+    reclass  INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO shepherd_event_next (id, run_id, repo, pr, kind, reason, actor, at, head_sha, reclass)
+    SELECT id, run_id, repo, pr, kind, reason, actor, at, head_sha, reclass FROM shepherd_event;
+  DROP TABLE shepherd_event;
+  ALTER TABLE shepherd_event_next RENAME TO shepherd_event;
+  CREATE INDEX shepherd_event_run ON shepherd_event (run_id, id);
+  CREATE INDEX shepherd_event_repo ON shepherd_event (repo, id);`;
+
+/** Lets the event history take the repair-stop kinds; runs after `reclassMarkMigration`, whose column it keeps. */
+export function widenEventKinds(db: Db): void {
+  db.exec(REPAIR_STOP_KINDS_DDL);
+}
+
+export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface ShepherdEvent {
-  /** Null for a freeze or thaw, which belong to a repo, not a run. */
+  /** Null for a freeze or thaw, or a path repair stop, which belong to a repo, not a run. */
   runId: string | null;
   repo: string;
   pr: number | null;
