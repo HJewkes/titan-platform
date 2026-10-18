@@ -41,7 +41,7 @@ export interface Emission<S> {
  * Every shell's reading of a `{name}` redirect is walked in full, each but zsh's on a copy of the scope; any can refuse
  * the line. zsh's leaves its scope on the walk; a scope another leaves different is the walk's to carry on.
  */
-export function emitReadings<W extends HandedOn>(rawWords: WordToken[], rawRedirects: RedirectToken[], w: W, beside: (w: W) => W, emitReading: EmitReading<W>): Emission<W["scope"]> {
+export function emitReadings<W extends Linked>(rawWords: WordToken[], rawRedirects: RedirectToken[], w: W, beside: (w: W) => W, emitReading: EmitReading<W>): Emission<W["scope"]> {
   const readings = namedFdReadings(rawWords, rawRedirects);
   if (!readings) return { readings: [emitReading(rawWords, rawRedirects, w)], disputed: [] };
   const [asFd, ...others] = readings;
@@ -51,6 +51,7 @@ export function emitReadings<W extends HandedOn>(rawWords: WordToken[], rawRedir
   const disputed: Array<W["scope"]> = [];
   for (const { copy } of besides) if ([w.scope, ...disputed].every((scope) => differs(scope, copy.scope))) disputed.push(copy.scope);
   chargeForks(w.marks, disputed.length);
+  if (disputed.length > 0) w.chain = splitChain(w.chain);
   return { readings: [cmd, ...emitted], disputed };
 }
 
@@ -60,12 +61,32 @@ function differs(scope: Scope, beside: Scope): boolean {
   return [...keys].some((key) => scope.vars.has(key) !== beside.vars.has(key) || scope.vars.get(key) !== beside.vars.get(key));
 }
 
+type ChainOf = Linked["chain"];
+
+/** The chain a split `&&` chain's walks came from; a walk after the split is in its own chain, the parent's trust before it is still theirs. */
+const splitFrom = new WeakMap<ChainOf, ChainOf>();
+
+function splitChain(from: ChainOf): ChainOf {
+  const chain = { start: from.start };
+  splitFrom.set(chain, from);
+  return chain;
+}
+
 /**
- * The walk carried on in a reading's own scope, with its own `&&` chain and copy of the scopes a `)` returns to;
+ * Whether `chain` is `held` or one split from it: a branch created before a `{name}` command's split is trusted by
+ * every walk after it, and one created after it only by its own walk's commands.
+ */
+export function continuesChain(held: ChainOf, chain: ChainOf): boolean {
+  for (let at: ChainOf | undefined = chain; at; at = splitFrom.get(at)) if (at === held) return true;
+  return false;
+}
+
+/**
+ * The walk carried on in a reading's own scope, with its own `&&` chain (split from the one it left) and copy of the scopes a `)` returns to;
  * `observe` hears what each of those scopes' variables store.
  */
 export function forkWalk<W extends Linked & { stack: Array<W["scope"]> }>(w: W, scope: W["scope"], observe: (fork: W, vars: Vars) => void): W {
-  const fork: W = { ...w, scope, chain: { start: w.chain.start }, stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
+  const fork: W = { ...w, scope, chain: splitChain(splitFrom.get(w.chain) ?? w.chain), stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
   for (const vars of [scope.vars, ...fork.stack.map((outer) => outer.vars)]) observe(fork, vars);
   copyGroupState(w, fork);
   return fork;

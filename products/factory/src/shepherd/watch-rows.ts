@@ -31,19 +31,23 @@ type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean
  * Only the runs `keep` wants are loaded, since every run's step results together take most of a second to parse, and
  * the loop yields the event loop between slices so serve keeps answering while it reads.
  */
-export async function rowsWithRuns(host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<RowWithRun[]> {
+export const rowsWithRuns = (host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<RowWithRun[]> =>
+  mapRows(host, services, keep, (found) => found);
+
+/** As `rowsWithRuns`, but each run is reduced by `build` as it is read, so a caller that keeps less than the run holds no run past its turn. */
+export async function mapRows<T>(host: FactoryHost, services: ShepherdServices, keep: RowFilter, build: (found: RowWithRun) => T): Promise<T[]> {
   const pause = sliceClock();
   const statuses = host.runs.statuses();
   const pendingGates = host.pendingGates();
-  const found: RowWithRun[] = [];
+  const built: T[] = [];
   for (const registration of services.store.get().all()) {
     const status = statuses.get(registration.runId);
     if (status === undefined || !keep(registration, status)) continue;
     await pause();
     const run = host.runtime.status(registration.runId);
-    if (run) found.push({ row: rowOf(host, services, registration, run, pendingGates), run, registration });
+    if (run) built.push(build({ row: rowOf(host, services, registration, run, pendingGates), run, registration }));
   }
-  return found;
+  return built;
 }
 
 export const watchRows = async (host: FactoryHost, services: ShepherdServices, keep?: RowFilter): Promise<WatchRow[]> => (await rowsWithRuns(host, services, keep)).map(({ row }) => row);

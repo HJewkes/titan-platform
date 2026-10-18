@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { panelFindingsText } from "./review-panel-step.js";
 import { suiteRules } from "./suite-host.js";
-import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
+import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, successorBrief, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -507,5 +507,19 @@ describe("review wake brief: the owner's send-back", () => {
     expect(reason).toContain(`The owner sent head ${H1} back at the approve-merge gate`);
     expect(reason).not.toContain("FIX_FIRST");
     expect(payload).toContain(dataFence("owner note", note));
+  });
+});
+
+describe("successor brief: the PR's head branch", () => {
+  it("keeps a head branch name that holds a backtick inside its fence", () => {
+    const headRef = "feat/x`injected";
+    const pr = fakeGitHub({ repo: REPO }).addPr({ headSha: H1, headRef });
+    const task = { input: { repo: REPO, pr: pr.number }, pr, reason: "A check failed.", payload: "payload" };
+
+    const brief = successorBrief(task, "agent-x", "agent-y", "seat-a");
+
+    const fence = dataFence("head branch", headRef);
+    expect(brief).toContain(fence);
+    expect(brief.replace(fence, "")).not.toContain("injected");
   });
 });

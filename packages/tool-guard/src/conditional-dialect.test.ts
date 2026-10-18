@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "./classify.js";
 import { nodeContext } from "./context.js";
+import { AliasDefinitionError } from "./shell/alias-definitions.js";
 import { CommandRebindingError } from "./shell/command-rebinding.js";
 import { UnreadableScriptError } from "./shell/unsure-readings.js";
 
@@ -16,7 +17,23 @@ const SCRIPT = "/home/you/projects/app/x.sh";
 const withScript = (text: string) => nodeContext(HOME, { realpath: (p) => p, readHead: (p) => (p === SCRIPT ? text : "feat/x"), isFile: (p) => p === SCRIPT });
 const scriptSpellings = (command: string, text: string) => classify(event(command), withScript(text)).map((a) => a.spelling);
 
+const refusesAlias = (command: string) => () => classify(event(command), ctx);
+
 describe("a [[ is joined only on the Bash tool's own line", () => {
+  it.each([
+    `shopt -s expand_aliases\nalias '[['=false\n[[ a || ${PUSH} ]]`,
+    `$(printf '\\x61lias') '[['=false; [[ a || ${PUSH} ]]`,
+    `alias '[['=false; eval '[[ a || ${PUSH} ]]'`,
+    `al""ias '[['=false; [[ a || ${PUSH} ]]`,
+    `\\alias '[['=false; [[ a || ${PUSH} ]]`,
+    `a=alias; $a '[['=false; [[ a || ${PUSH} ]]`,
+    `a=ali; b=as; $a$b '[['=false; eval '[[ a || ${PUSH} ]]'`,
+    `a=ali; b=as; $a$b '[['=false; [[ a || ${PUSH} ]]`,
+    `x=$'\\x61lias'; $x '[['=false; [[ a || ${PUSH} ]]`,
+  ])("refuses a line that defines an alias for [[, which no push report can follow: %j", (command) => {
+    expect(refusesAlias(command)).toThrow(AliasDefinitionError);
+  });
+
   it.each([
     `sh -c '[[ a || ${PUSH} ]]'`,
     `dash -c '[[ a || ${PUSH} ]]'`,
@@ -29,21 +46,12 @@ describe("a [[ is joined only on the Bash tool's own line", () => {
   });
 
   it.each([
-    `shopt -s expand_aliases\nalias '[['=false\n[[ a || ${PUSH} ]]`,
-    `alias '[['=false; eval '[[ a || ${PUSH} ]]'`,
-    `al""ias '[['=false; [[ a || ${PUSH} ]]`,
-    `\\alias '[['=false; [[ a || ${PUSH} ]]`,
-    `a=alias; $a '[['=false; [[ a || ${PUSH} ]]`,
     `shopt -s expand_al""iases; [[ a || ${PUSH} ]]`,
   ])("reports the push on a line that may define an alias: %j", (command) => {
     expect(spellings(command)).toContain("bash.merge.git-push-protected");
   });
 
   it.each([
-    `a=ali; b=as; $a$b '[['=false; eval '[[ a || ${PUSH} ]]'`,
-    `a=ali; b=as; $a$b '[['=false; [[ a || ${PUSH} ]]`,
-    `$(printf '\\x61lias') '[['=false; [[ a || ${PUSH} ]]`,
-    `x=$'\\x61lias'; $x '[['=false; [[ a || ${PUSH} ]]`,
     `o=expand_aliases; p=; shopt -s $o$p; [[ a || ${PUSH} ]]`,
     `shopt -s $o$p\n[[ a || ${PUSH} ]]`,
     `setopt $o; [[ a || ${PUSH} ]]`,
@@ -110,7 +118,6 @@ describe("a [[ is joined only on the Bash tool's own line", () => {
 
 describe("a step that runs text in this shell later may alias [[ for a later line", () => {
   it.each([
-    `eval 'a=ali; b=as; $a$b "[["=false'\n[[ a || ${PUSH} ]]`,
     `trap 'a=ali; b=as; $a$b "[["=false' DEBUG\n[[ a || ${PUSH} ]]`,
     `mapfile -C 'a=ali; b=as; $a$b "[["=false' -c 1 < /dev/null\n[[ a || ${PUSH} ]]`,
     `readarray -C 'a=ali; b=as; $a$b "[["=false' -c 1 < /dev/null\n[[ a || ${PUSH} ]]`,
@@ -121,19 +128,25 @@ describe("a step that runs text in this shell later may alias [[ for a later lin
   const NEXT = `\n[[ a || ${PUSH} ]]`;
   const ALIAS = `a=ali; b=as; $a$b "[["=false`;
   it.each([
-    `function f { eval '${ALIAS}'; }; f${NEXT}`,
     `function f { trap '${ALIAS}' DEBUG; }; f${NEXT}`,
+    `f() { trap '${ALIAS}' DEBUG; }; f${NEXT}`,
+    `if true; then mapfile -C '${ALIAS}' -c 1 < /dev/null; fi${NEXT}`,
+  ])("reports the push when a body holds a same-shell runner: %j", (command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    `eval 'a=ali; b=as; $a$b "[["=false'\n[[ a || ${PUSH} ]]`,
+    `function f { eval '${ALIAS}'; }; f${NEXT}`,
     `coproc NAME { eval '${ALIAS}'; }${NEXT}`,
     `select x in a; do eval '${ALIAS}'; done${NEXT}`,
-    `f() { trap '${ALIAS}' DEBUG; }; f${NEXT}`,
     `{ eval '${ALIAS}'; }${NEXT}`,
     `( eval '${ALIAS}' )${NEXT}`,
     `e''val '${ALIAS}'${NEXT}`,
     `builtin eval '${ALIAS}'${NEXT}`,
     `case x in x) eval '${ALIAS}';; esac${NEXT}`,
-    `if true; then mapfile -C '${ALIAS}' -c 1 < /dev/null; fi${NEXT}`,
-  ])("reports the push when a body holds a same-shell runner: %j", (command) => {
-    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  ])("refuses an eval that defines an alias for [[, which no push report can follow: %j", (command) => {
+    expect(refusesAlias(command)).toThrow(AliasDefinitionError);
   });
 
   it("still joins after a command that merely names a file reader as an argument (guard row)", () => {
