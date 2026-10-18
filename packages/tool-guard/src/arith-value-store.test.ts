@@ -15,6 +15,7 @@ const home = mkdtempSync(join(tmpdir(), "tool-guard-store-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 const PUSH = "git push origin HEAD:main";
+const BARE = `'$(${PUSH})'`;
 const PAYLOAD = `'a[$(${PUSH})]'`;
 
 const port: HookPort = {
@@ -49,6 +50,33 @@ describe("a typed payload stored without an assignment word, then read as arithm
     ["a here-string read inside a loop", `while read X; do (( X )); done <<< ${PAYLOAD}`],
     ["a piped read in a group", `echo ${PAYLOAD} | { read X; (( X )); }`],
   ])("denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
+describe("a subscript typed inside (( )), with the payload stored elsewhere (TP-3284)", () => {
+  it.each([
+    ["a function argument in a subshell body", `f() (( a[$1] )); f ${BARE}`],
+    ["set -- read by a later (( ))", `(( a[$1] )); set -- ${BARE}; (( a[$1] ))`],
+    ["a here-string read in a loop", `while read X; do (( a[X] )); done <<< ${BARE}`],
+  ])("denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
+describe("a span's words still feed the value marks (TP-3284)", () => {
+  it("denies a stored payload, then a subscript assigned from an argument", async () => {
+    const command = `echo 'a[$(${PUSH})]' >/dev/null; (( a[0]=$1 )); (( a[0] ))`;
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
+describe("an empty () inside (( )) still reads as a function header (TP-3284)", () => {
+  it.each(["(( () ))", "(( a () ))", "(( ( ) ))"])("denies a stored payload behind %s", async (span) => {
+    const command = `echo 'a[$(${PUSH})]' >/dev/null; ${span}; (( X ))`;
     expect(await handled(command)).toBe("deny");
     expect(built(command)).toBe("deny");
   });
@@ -105,4 +133,44 @@ describe("a value nothing on the line reads as arithmetic (TP-1624)", () => {
     expect(await handled(command)).toBe("pass");
     expect(built(command)).toBe("pass");
   });
+});
+
+describe("a (( )) outside the line itself keeps the nested-subshell reading (TP-3284)", () => {
+  const scripts: Record<string, string> = {
+    "push.sh": PUSH,
+    "deploy.sh": PUSH,
+    "outer.sh": "./inner.sh",
+    "inner.sh": "((./push.sh))",
+  };
+  const withScripts: HookPort = { ...port, context: { ...port.context, readScript: (p: string) => scripts[p.slice(home.length + 1)] ?? null } };
+  const verdict = async (command: string) => ((await handle(input(command), {}, withScripts)).stdout === "" ? "pass" : "deny");
+
+  it.each([
+    "sh -c '((./push.sh))'",
+    "dash -c '((./push.sh))'",
+    "bash -c '((./push.sh))'",
+    "./bash -c '((./push.sh))'",
+    "eval '((./push.sh))'",
+    "echo '((./push.sh))' | bash",
+    "bash <<<'((./push.sh))'",
+    "((./deploy.sh)\\\n)",
+    "(\\\n(./push.sh))",
+    "((x));(\\\n(./push.sh))",
+    "if (\\\n(./push.sh)); then :; fi",
+    "./inner.sh",
+    "./outer.sh",
+  ])("denies %j", async (command) => {
+    expect(await verdict(command)).toBe("deny");
+  });
+
+  it("passes a bash arithmetic assignment on the line", async () => {
+    expect(await verdict("((a[0]=1))")).toBe("pass");
+  });
+
+  it.each(["(( i++ ))", "for ((i=0;i<3;i++)); do echo $i; done", "if (( $# > 0 )); then :; fi", "((a[1<<2]))", "(cd x && make)"])(
+    "passes %j",
+    async (command) => {
+      expect(await verdict(command)).toBe("pass");
+    },
+  );
 });

@@ -1,4 +1,4 @@
-import { BrokerUnavailableError, parkAgent } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, parkAgent } from "@titan-design/agent-dispatch";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -192,7 +192,10 @@ function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
   return liveRetry({ attempt: async (name) => asAttempt(await attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
 }
 
-export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
+/** The caller is Shepherd, so agent-chat need not call back into `shepherd status` for the fix round. */
+const shepherdPark =(agentChatBin: string): ParkPort => (name) => parkAgent(agentChatBin, name, DEFAULT_PARK_TIMEOUT_MS, { noFixRoundCheck: true });
+
+export const parkRoutes = (deps: ParkDeps, park: ParkPort = shepherdPark(deps.agentChatBin), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
   const wiring: ParkWiring = { park, roster: deps.roster ?? agentChatRoster(deps.agentChatBin), notice: deps.exitNotice, retry };
   rearm = (runId, headSha, agent) => {
     if (!deps.store.get().parkSettled(runId, headSha, agent)) armRetry(deps.store, wiring, runId, headSha, agent);

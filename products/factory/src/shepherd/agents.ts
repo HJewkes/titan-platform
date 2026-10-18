@@ -4,6 +4,9 @@ import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
 
 export const AGENT_CALL_TIMEOUT_MS = 90_000;
 
+/** Every agent this adapter starts is Shepherd's, so its roster row says so (CC-1466); a record, never `--spawned-as`. */
+const SHEPHERD_LAUNCH = { launchedBy: "shepherd" } as const;
+
 export interface AgentChatOptions {
   /** The Claude config directory every spawn runs under; absent means agent-chat's default account. */
   configDir?: string;
@@ -42,12 +45,12 @@ export function agentChatAgents(agentChatBin: string, options: AgentChatOptions 
     spawn: ({ name, profile, brief, cwd, runningReviews, review }) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
-        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
+        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
       }),
     resume: (name, message, runningReviews, review) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
-        await resumeAgent(agentChatBin, name, message, timeoutMs);
+        await resumeAgent(agentChatBin, name, message, timeoutMs, SHEPHERD_LAUNCH);
       }),
     message: (name, message) => mutating(roster, async () => { await messageAgent(agentChatBin, name, message, timeoutMs); }),
   };

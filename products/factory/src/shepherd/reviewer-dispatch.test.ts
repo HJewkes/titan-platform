@@ -186,7 +186,7 @@ describe("agentChatReviewerDispatch spawn", () => {
 
     await dispatch.spawn("rv-demo-7", BRIEF, target);
 
-    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", PROFILE, "--brief-stdin"]);
+    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", PROFILE, "--launched-by", "shepherd", "--brief-stdin"]);
     expect(recorded("argv")).not.toContain("SENTINEL");
     expect(recorded("stdin")).toBe(BRIEF);
     expect(recorded("cwd").trim()).toBe(checkout);
@@ -211,13 +211,13 @@ describe("agentChatReviewerDispatch spawn", () => {
   it("spawns with whichever profile was configured", async () => {
     await dispatchOver(undefined, { roles: { g10: "rv-other", standard: "rv-other" } }).spawn("rv-demo-7", BRIEF, target);
 
-    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", "rv-other", "--brief-stdin"]);
+    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", "rv-other", "--launched-by", "shepherd", "--brief-stdin"]);
   });
 
   it("passes the configured Claude config directory", async () => {
     await dispatchOver(undefined, { configDir: "/srv/claude-second" }).spawn("rv-demo-7", BRIEF, target);
 
-    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", PROFILE, "--config-dir", "/srv/claude-second", "--brief-stdin"]);
+    expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", PROFILE, "--config-dir", "/srv/claude-second", "--launched-by", "shepherd", "--brief-stdin"]);
   });
 
   it.each(["~/projects/demo", "$HOME/projects/demo", "${HOME}/projects/demo"])("starts the reviewer in the home checkout when the path is written %s", async (path) => {
@@ -395,7 +395,7 @@ describe("agentChatReviewerDispatch resume", () => {
   it("resumes the named agent through agent-chat with the brief as its next message", async () => {
     await dispatchOver().resume("rv-standing", BRIEF);
 
-    expect(recordedArgv()).toEqual(["agent", "resume", "rv-standing", "--message", BRIEF]);
+    expect(recordedArgv()).toEqual(["agent", "resume", "rv-standing", "--message", BRIEF, "--launched-by", "shepherd"]);
   });
 
   it("reports an unreachable broker as broker-down", async () => {
