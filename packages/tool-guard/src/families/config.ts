@@ -59,7 +59,14 @@ function inPlaceSpelling(cmd: SimpleCommand, name: string): SpellingId | null {
 }
 
 function writesTo(cmd: SimpleCommand, m: Mention): boolean {
-  return cmd.name === "mv" || m.word === null || m.word === copyDestination(cmd);
+  return cmd.name === "mv" || hardLinks(cmd) || m.word === null || m.word === copyDestination(cmd);
+}
+
+/** A hard link shares the source's inode, so a later write through it rewrites the source where no path names it. */
+function hardLinks(cmd: SimpleCommand): boolean {
+  const options = cmd.args.map((a) => a.value).filter((v) => v.startsWith("-"));
+  if (cmd.name === "cp") return options.some((v) => /^-[A-Za-z]*l/.test(v) || /^--li/.test(v));
+  return cmd.name === "ln" && !options.some((v) => /^-[A-Za-z]*s/.test(v) || /^--sy/.test(v));
 }
 
 /** `cp /tmp/settings.json ~/.claude/` writes `~/.claude/settings.json`: the destination joined with each source's name. */

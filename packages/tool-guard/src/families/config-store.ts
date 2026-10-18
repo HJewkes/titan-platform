@@ -14,6 +14,9 @@ const CONSOLE_STATE = "~/.local/state/titan-console";
 export const CONFIG_STORE_PATHS: readonly GuardedPath[] = [
   coordinatorDir("xdg", "~/.config/titan-coordinator"),
   coordinatorDir("macos", "~/Library/Preferences/titan-coordinator"),
+  // The directory alone, not what is under it: removing, moving or copying over it takes the owner state with it, while
+  // agents still deposit into its inbox and rounds.
+  { id: "home:titan-console", pattern: CONSOLE_STATE },
   { id: "home:titan-console/lan.token", pattern: `${CONSOLE_STATE}/lan.token` },
   consoleDir("owner-actions", "a1.json"),
   consoleDir("config", "log.jsonl"),
@@ -63,7 +66,8 @@ export function consoleOwnerVerb(cmd: SimpleCommand, ctx: ClassifyContext): stri
 function consoleArgs(cmd: SimpleCommand, ctx: ClassifyContext): ConsoleWord[] | null {
   if (cmd.name === CONSOLE_BIN) return asReceived(cmd.args);
   if (cmd.name === null || !SCRIPT_RUNNERS.has(cmd.name)) return null;
-  const at = cmd.args.findIndex((a) => !a.dynamic && isConsoleScript(a.value, cmd.dir, ctx));
+  const dir = cmd.movesDir ? null : cmd.dir;
+  const at = cmd.args.findIndex((a) => !a.dynamic && isConsoleScript(a.value, dir, ctx));
   return at < 0 ? null : asReceived(cmd.args.slice(at + 1));
 }
 

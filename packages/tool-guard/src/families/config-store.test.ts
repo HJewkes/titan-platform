@@ -70,6 +70,22 @@ describe("an agent session writing the fleet config store", () => {
     ["an owner action record", "cp /tmp/forged.json ~/.local/state/titan-console/owner-actions/a9.json"],
     ["the config revision log", "echo '{}' >> ~/.local/state/titan-console/config/log.jsonl"],
     ["removing the revision log", "rm -rf ~/.local/state/titan-console/config"],
+    ["removing the state dir", "rm -rf ~/.local/state/titan-console"],
+    ["removing the state dir by a trailing-slash path", "rm -rf ~/.local/state/titan-console/"],
+    ["moving the state dir away", "mv ~/.local/state/titan-console /tmp/old-console"],
+    ["moving a forged dir over it", "mv /tmp/forged ~/.local/state/titan-console"],
+    ["copying a forged dir over it", "cp -r /tmp/forged ~/.local/state/titan-console"],
+    ["syncing a forged dir over it", "rsync -a --delete /tmp/forged/ ~/.local/state/titan-console/"],
+    ["linking a forged dir over it", "ln -sfn /tmp/forged ~/.local/state/titan-console"],
+    ["locking the owner out of it", "chmod 000 ~/.local/state/titan-console"],
+    ["hard-linking the document", "ln ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking it with -f", "ln -f ~/.config/titan-coordinator/coordinator.json /tmp/h"],
+    ["hard-linking the LAN secret", "ln ~/.local/state/titan-console/lan.token ~/t"],
+    ["hard-linking through cp -l", "cp -l ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking through cp --link", "cp --link ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking a tree through cp -al", "cp -al ~/.local/state/titan-console/config /tmp/c"],
+    ["hard-linking the Claude settings", "ln ~/.claude/settings.json ~/s"],
+    ["a redirect whose runner moves only the command", "cd ~/.config/titan-coordinator && pnpm -C /tmp exec node a.js > coordinator.json"],
   ])("refuses %s", async (_form, command) => {
     expect(await bash(command)).toEqual(REFUSED);
   });
@@ -132,6 +148,21 @@ describe("an agent session minting or resetting the owner's console login", () =
     "cd apps && node ./console/dist/cli.js login-link",
     'cd "$D" && node dist/cli.js login-link',
     "node c.js login-link",
+    "pnpm --filter titan-console exec node dist/cli.js login-link",
+    "pnpm -F titan-console exec tsx server/cli.ts login-link",
+    "pnpm -C apps/console exec node dist/cli.js login-link",
+    "pnpm --dir apps/console exec node dist/cli.js token rotate",
+    "pnpm --dir=apps/console exec node dist/cli.js login-link",
+    "pnpm -r exec node dist/cli.js login-link",
+    'pnpm --filter "$P" exec node dist/cli.js login-link',
+    "npm -C apps/console exec node dist/cli.js login-link",
+    "npm --prefix apps/console exec -- node dist/cli.js login-link",
+    "npm -w titan-console exec -- tsx server/cli.ts config import ./autonomy",
+    "yarn --cwd apps/console exec node dist/cli.js login-link",
+    "bun --cwd apps/console x tsx server/cli.ts login-link",
+    "env -C apps/console node dist/cli.js login-link",
+    "env --chdir=apps/console tsx server/cli.ts login-link",
+    "sudo -D /home/you/projects/app/apps/console node dist/cli.js login-link",
   ])("refuses %s", async (command) => {
     expect(await bash(command)).toEqual(REFUSED);
   });
@@ -169,6 +200,17 @@ describe("what keeps passing", () => {
     "grep -rn login-link apps/console/server",
     "echo x > ~/.local/state/titan-console/rounds/r-1/note.txt",
     "echo x > ~/.config/titan-coordinator-notes.md",
+    "ls ~/.local/state/titan-console",
+    "cd ~/.local/state/titan-console && ls rounds",
+    "mkdir -p ~/.local/state/titan-console/rounds/r-2",
+    "cp -r ./round-7 ~/.local/state/titan-console/rounds/",
+    "cat ~/.local/state/titan-console/rounds/r-1/frame.json",
+    "ln -s ~/.config/titan-coordinator/coordinator.json ~/view.json",
+    "ln -sf ~/.config/titan-coordinator/coordinator.json /tmp/view.json",
+    "pnpm --filter titan-console exec node dist/cli.js rounds import ./round-7",
+    "pnpm -C apps/console exec node dist/cli.js --help",
+    "pnpm --filter app exec node scripts/build.js login",
+    "env -C apps/console node dist/cli.js rounds withdraw r-3 --reason closed",
   ])("%s", async (command) => {
     expect(await bash(command)).toEqual(PASSES);
   });

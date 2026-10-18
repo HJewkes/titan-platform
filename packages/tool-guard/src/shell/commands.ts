@@ -67,6 +67,8 @@ export interface SimpleCommand {
   chain: Chain;
   /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
   added?: true;
+  /** Set when a wrapper option starts the command elsewhere (`env -C d`, `pnpm --filter p exec`): `dir` then holds only for its redirects. */
+  movesDir?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
 }
@@ -347,7 +349,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
-  const set = inherited === TOP_DESCRIPTORS ? {} : { inherited };
+  const set = { ...(inherited === TOP_DESCRIPTORS ? {} : { inherited }), ...(cmd.movesDir ? { movesDir: true as const } : {}) };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
