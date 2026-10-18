@@ -3,7 +3,7 @@ import { extractCommands } from "./commands.js";
 import { scriptsOf, tokenLists } from "./ifs-scripts.js";
 import { tokenize } from "./lexer.js";
 
-const W = "R=origin,HEAD:main; for i in 1 2; do git push $R; declare $a$b=,; done";
+const W = "R=origin,HEAD:main; for i in 1 2; do git push $R; IFS=,; done";
 const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 const LINES = [

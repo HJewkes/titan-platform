@@ -45,6 +45,7 @@ function replaying(recorded: Recorded): { ctx: WorkflowContext; dispatched: stri
     iteration: () => 0,
     historyNext: () => recorded.next,
     resumedGate: () => undefined,
+    recoveredInFlight: () => [],
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       dispatched.push(stepId);

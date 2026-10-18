@@ -126,6 +126,32 @@ describe("importRound copies a round@2 dir into the rounds dir", () => {
   });
 });
 
+describe("importRound reads review-schema 0.3", () => {
+  it("imports a CI packet round that only review-schema 0.3 reads", async () => {
+    const packet = path.join(FIXTURE_ROUNDS.dir, "td920-packet-r1");
+
+    expect(await runImport(packet)).toMatchObject({ created: true, frames: 0, feedback: "none" });
+    expect((await listRounds({ dir: roundsDir })).rounds).toEqual([expect.objectContaining({ valid: true, unit: "widgets-pr42-a1a1a1a1a1a1" })]);
+  });
+});
+
+describe("importRound reads review-schema 0.3 feedback (TP-3272)", () => {
+  it("imports a feedback.json whose answer rounds.submit marked recommendationSeen, with option notes", async () => {
+    await editJson("feedback.json", (json) => {
+      json.answers = [{ questionId: "ship-cards", pick: "Ship", recommendationSeen: true, optionNotes: [{ option: "Don't ship", note: "Not this time." }] }];
+    });
+
+    expect(await runImport()).toMatchObject({ created: true, feedback: "copied" });
+  });
+
+  it("still refuses a feedback.json with a key the schema does not know", async () => {
+    await editJson("feedback.json", (json) => (json.foo = 1));
+
+    await expectRefused(/feedback\.json: .*"foo"/);
+    expect(await entries()).toEqual([]);
+  });
+});
+
 describe("importRound re-imports the same round", () => {
   it("changes nothing on a second import of the same dir", async () => {
     await runImport();

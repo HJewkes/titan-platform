@@ -1,13 +1,19 @@
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
+import type { RequestAuth } from "@titan-design/daemon";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { answerFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { invokeCommand } from "@titan-design/registry";
 import { roundQueueItems, spoolQueueItems } from "./approval-items.js";
+import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
 import { readQueueRounds, type QueueRound } from "./rounds.js";
+import { roundsSubmitCommands } from "./rounds-submit.js";
 
 const ASKER = "pc-test-agent";
 const OWNER = { class: "owner", id: "owner", channel: "console" };
@@ -34,6 +40,31 @@ const roundOf = (rounds: readonly QueueRound[], id: string): QueueRound => {
   if (round === undefined) throw new Error(`no fixture round ${id}`);
   return round;
 };
+
+const SHOWN = "orbit-retry-r1";
+const OWNER_CONTEXT: ConsoleContext = {
+  warnings: [],
+  format: "json",
+  surface: "http",
+  auth: { credential: "session", issuedAt: 1_000, peerLocal: false } satisfies RequestAuth,
+  ownerWrites: true,
+};
+
+/** Answers the shown fixture round through rounds.submit, which marks the answer recommendationSeen. */
+async function submitShown(dir: string): Promise<void> {
+  const manifestSha256 = createHash("sha256").update(await readFile(path.join(dir, SHOWN, "round.json"))).digest("hex");
+  const answer = { questionId: "ship-backoff", pick: "Ship", optionNotes: [{ option: "Don't ship", note: "Only if the cap regresses." }] };
+  const args = { id: SHOWN, manifestSha256, headSha: "0123456789abcdef0123456789abcdef01234567", answers: [answer] };
+  const { envelope } = await invokeCommand(roundsSubmitCommands({ dir })["rounds.submit"], args, OWNER_CONTEXT);
+  if (!envelope.ok) throw new Error("the fixture submit was refused");
+}
+
+async function editFeedback(dir: string, edit: (feedback: Record<string, unknown>) => void): Promise<void> {
+  const file = path.join(dir, SHOWN, "feedback.json");
+  const feedback = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(file, "utf8")));
+  edit(feedback);
+  await writeFile(file, JSON.stringify(feedback));
+}
 
 function deposit(depositId: string): OwnerItemDeposit {
   return {
@@ -67,6 +98,12 @@ describe("roundQueueItems", () => {
     expect(items.answered).toHaveLength(1);
     expect(items.answered[0]).toMatchObject({ id: "round:kiln-schedule-r1/unit-start", status: "answered", answer: { optionId: "Celsius" } });
     expect(items.gaps).toEqual([]);
+  });
+
+  it("reports a round only review-schema 0.3 reads as a gap, not as queue items", async () => {
+    const items = roundQueueItems([roundOf(await fixtureRounds(), "td920-packet-r1")]);
+
+    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: ["td920-packet-r1: needs review-schema 0.3 in owner-queue (TP-3232)"] });
   });
 
   it("lists a withdrawn round's questions as withdrawn, with their hidden picks kept hidden", async () => {
@@ -113,6 +150,43 @@ describe("roundQueueItems", () => {
     expect(items.answered).toEqual([]);
     expect(items.open.map((item) => item.id)).toEqual(["round:kiln-schedule-r1/unit-start"]);
     expect(items.gaps).toEqual(["kiln-schedule-r1: feedback.json does not fit its round"]);
+  });
+});
+
+describe("roundQueueItems reads review-schema 0.3 feedback (TP-3272)", () => {
+  it("keeps a shown round answered through rounds.submit, so its question does not open again", async () => {
+    const dir = path.join(root, "rounds");
+    const rounds = await fixtureRounds(submitShown);
+    const { gaps } = await readQueueRounds({ dir });
+
+    const items = roundQueueItems([roundOf(rounds, SHOWN)]);
+
+    expect(roundOf(rounds, SHOWN).feedback?.answers[0]).toMatchObject({ recommendationSeen: true, optionNotes: [{ option: "Don't ship" }] });
+    expect(gaps.filter((gap) => gap.startsWith(SHOWN))).toEqual([]);
+    expect(items.open).toEqual([]);
+    expect(items.answered).toMatchObject([{ id: `round:${SHOWN}/ship-backoff`, status: "answered", answer: { optionId: "Ship" } }]);
+  });
+
+  it("still refuses a feedback.json with a key the schema does not know, keeping the round open", async () => {
+    const rounds = await fixtureRounds(async (dir) => {
+      await submitShown(dir);
+      await editFeedback(dir, (feedback) => (feedback.foo = 1));
+    });
+    const { gaps } = await readQueueRounds({ dir: path.join(root, "rounds") });
+
+    expect(roundOf(rounds, SHOWN).feedback).toBeNull();
+    expect(gaps.join("\n")).toMatch(new RegExp(`^${SHOWN}: feedback\\.json: .*"foo"`, "m"));
+  });
+
+  it("reports feedback that does not project onto owner-queue's 0.1 shape as a gap, with no items and no throw", async () => {
+    const sent = roundOf(await fixtureRounds(submitShown), SHOWN);
+    if (sent.feedback === null) throw new Error("the submit wrote no feedback");
+    const answers = sent.feedback.answers.map((answer) => ({ ...answer, pairs: [{ pair: "line-1", choice: "A" as const }] }));
+    const drifted = { ...sent, feedback: { ...sent.feedback, answers } };
+
+    const items = roundQueueItems([drifted]);
+
+    expect(items).toEqual({ open: [], answered: [], withdrawn: [], gaps: [`${SHOWN}: its feedback needs review-schema 0.3 in owner-queue (TP-3232)`] });
   });
 });
 

@@ -8,7 +8,7 @@ import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
-import { expectLinearTime } from "./test-linearity.js";
+import { expectLinearTime, LINEARITY_TIMEOUT_MS } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
@@ -38,6 +38,11 @@ describe("a command that writes a parameter the shell later runs", () => {
     ["a zsh read prompt", "read 'PS4?Name: '", "PS4"],
     ["a for loop variable", "for PS4 in a", "PS4"],
     ["getopts", "getopts o PS4", "PS4"],
+    ["getopts behind the -- zsh skips", "getopts -- o PS4", "PS4"],
+    ["zparseopts behind the -- zsh skips", "zparseopts -- -A PS4 y:", "PS4"],
+    ["zformat behind the -- zsh skips", "zformat -- -f PS4 x", "PS4"],
+    ["zstat behind the -- zsh skips", "zstat -- -A PS4 f", "PS4"],
+    ["zsh stat behind the -- it skips", "stat -- -H PS4 f", "PS4"],
     ["mapfile", "mapfile module_path", "module_path"],
     ["printf -v", "printf -v PS4 x", "PS4"],
     ["printf -v attached", "printf -vPS4 x", "PS4"],
@@ -216,7 +221,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
@@ -230,7 +235,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 
   it("fails closed on an option word too long to walk", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);

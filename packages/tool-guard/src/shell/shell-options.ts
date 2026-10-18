@@ -1,3 +1,4 @@
+import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 
 /** Long options that take the next word. */
@@ -7,6 +8,8 @@ const NAMED_FDS: Record<string, number> = { stdin: 0, stdout: 1, stderr: 2 };
 const FD_PATH_RE = /\/(?:dev\/(stdin|stdout|stderr)|(?:dev|proc\/(?:self|thread-self|\d+))\/fd\/(\d+))$/;
 /** Ops that can put text on a descriptor; `>&` is a dup like `<&`, since dup2 has no direction (`0>&3` reads fd 3). */
 const STDIN_OPS = new Set(["<", "<>", "<<", "<<-", "<<<", "<&", ">&"]);
+/** bash's and zsh's `{name}<f` opens the first free descriptor from 10 up, a number the line does not show. */
+const FIRST_NAMED_FD = 10;
 
 /** One source on the descriptor a shell runs: heredoc, here-string or `< <(...)` text, a file `<` or `<>` opens, or the pipe. */
 export type StdinSource = { kind: "text"; text: string } | { kind: "file"; target: WordToken } | { kind: "pipe" };
@@ -20,6 +23,11 @@ interface ShellStdin {
   scriptFile: WordToken | null;
   /** Every source on that descriptor, or on stdin when it runs none, which a `-c` string may still read. */
   sources: StdinSource[];
+  /**
+   * Whether a script operand the line spells as a plain path may still be stdin: a cwd it does not show, or a symlink
+   * or move earlier on the line, can make any name the shell's own stdin, so the text on stdin is read as a script too.
+   */
+  mayBeStdin: boolean;
   /** Whether the shell runs a descriptor whose text the line cannot show: a dup, an inherited fd, or a run-time file. */
   unknowable: boolean;
 }
@@ -163,7 +171,8 @@ export function shellStdin(
   const fd = file === null ? null : pathFd(file.value);
   const runs = readsStdin || fd !== null || (file !== null && (file.dynamic || file.computed));
   const feeds = feedsOf(redirects, piped, inherited)(fd ?? 0, redirects.length);
-  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), unknowable: runs && feeds.unknown };
+  const mayBeStdin = file !== null && fd === null;
+  return { runs, fd: fd ?? 0, scriptFile: fd === null ? file : null, sources: sourcesOf(feeds), mayBeStdin, unknowable: runs && feeds.unknown };
 }
 
 /**
@@ -223,6 +232,7 @@ function sourcesOf({ redirects, pipe, texts }: Feeds): StdinSource[] {
  * What feeds descriptor `fd` from the first `end` redirects, read left to right as the shells open them: stdin starts
  * on the pipe, and a descriptor no redirect opens holds what it inherited. A dup or a target naming a descriptor
  * (`<&3`, `< /dev/fd/3`, `< /dev/stdin`) feeds what that descriptor held just before it, so `< /dev/stdin` keeps the pipe.
+ * A `{name}` fd, which the shell picks, may be any descriptor from 10 up.
  */
 function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descriptors): (fd: number, end: number) => Feeds {
   const memo = new Map<string, Feeds>();
@@ -233,6 +243,7 @@ function feedsOf(redirects: RedirectToken[], piped: boolean, inherited: Descript
     const out: Feeds = { redirects: new Set(), pipe: fd === 0 && piped, texts: [], unknown: false };
     let opened = out.pipe;
     redirects.slice(0, end).forEach((r, i) => {
+      if (r.fd !== null && NAMED_FD_RE.test(r.fd)) out.unknown ||= fd >= FIRST_NAMED_FD;
       if (Number(r.fd ?? (r.op.startsWith(">") ? "1" : "0")) !== fd || !STDIN_OPS.has(r.op)) return;
       opened = true;
       join(out, redirectFeeds(r, (named) => feeds(named, i)));

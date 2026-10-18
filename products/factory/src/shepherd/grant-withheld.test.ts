@@ -37,6 +37,7 @@ function stoppingAtEvidence(policy: string): { ctx: WorkflowContext; inputs: Map
     iteration: () => 0,
     historyNext: () => undefined,
     resumedGate: () => undefined,
+    recoveredInFlight: () => [],
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       inputs.set(stepId, JSON.parse(Object.values(options?.vars ?? {})[0] ?? "null"));

@@ -2,13 +2,14 @@ import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./ar
 import { balancedEnd, bracketArithmeticEnd, type DollarOpener, dollarOpener, refuseValueRun } from "./balanced.js";
 import { QUOTED_LITERAL_OPENERS } from "./math-close.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inConditional, inJoiningConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs } from "./parse-error.js";
 import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from "./nested-reading.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
+import { readAnsiInArith } from "./arith-ansi.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
@@ -51,7 +52,7 @@ const READERS: Record<string, (s: LexState) => void> = {
   " ": readBlank,
   "\t": readBlank,
   "\\": readEscape,
-  "'": readSingle,
+  "'": readSingleOrArith,
   '"': readDouble,
   "`": readBacktick,
   $: readDollar,
@@ -157,6 +158,12 @@ function appendShift(s: LexState, end: number): void {
   s.i = end;
 }
 
+function appendWord(s: LexState, text: string, end: number): void {
+  ensureWord(s).value = text;
+  endWord(s);
+  s.i = end;
+}
+
 function readBlank(s: LexState): void {
   endWord(s);
   s.i++;
@@ -168,17 +175,31 @@ function readOperator(s: LexState, op: string, end: number): void {
   const start = s.i;
   const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
+  // A glued `]]` is a pending word until it ends, so the `[[` is judged only after `endWord`.
+  if ((op === "&&" || op === "||") && inJoiningConditional(s)) return appendWord(s, op, end);
   noteParen(s, op, glued);
   s.i = end;
   s.tokens.push(op === "(" && start === s.arithOpen ? { type: "op", value: op, arith: true } : { type: "op", value: op });
   if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 
+/** bash and zsh expand an arithmetic body as if double-quoted, so its single quotes are literal and `$(cmd)` still runs. */
+function readSingleOrArith(s: LexState): void {
+  if (s.i >= s.arithEnd || s.arithEnd === Number.POSITIVE_INFINITY) return readSingle(s);
+  readQuoted(s, "'");
+  // bash finds the span's end with the quote taken whole, so a substitution reaching past it reads two ways.
+  if (s.i > s.arithEnd) throw new ParseError("a substitution in arithmetic runs past the end bash finds for it");
+}
+
 function readDouble(s: LexState): void {
+  readQuoted(s, '"');
+}
+
+function readQuoted(s: LexState, close: string): void {
   const w = markQuoted(ensureWord(s));
   s.i++;
-  while (s.src[s.i] !== '"') {
-    if (s.i >= s.src.length) throw new ParseError('unterminated "');
+  while (s.src[s.i] !== close) {
+    if (s.i >= s.src.length) throw new ParseError(`unterminated ${close}`);
     const c = s.src[s.i] as string;
     const next = s.src[s.i + 1];
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
@@ -202,7 +223,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
   braced: (s, w) => refusingAs("unclosed-expansion", () => readBraced(s, w)),
   bracket: (s, w) => refusingAs("unclosed-expansion", () => readBracketArithmetic(s, w)),
   paren: (s, w) => (s.src[nextAfter(s.src, s.i + 1)] === "(" ? refusingAs("unclosed-expansion", () => readArithmetic(s, w)) : pushSubstitution(s, w, s.i + 2)),
-  "ansi-c": readAnsiC,
+  "ansi-c": (s, w) => (s.i < s.arithEnd ? readAnsiInArith(s, w) : readAnsiC(s, w)),
   locale: readLocale,
 };
 
@@ -308,8 +329,25 @@ function readRedirect(s: LexState): void {
     return;
   }
   refuseRedirect(s, op);
+  const named = fd === null ? namedFdWord(s, w) : null;
   const heredoc = op === "<<" || op === "<<-";
-  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [] };
+  const token: RedirectToken = { type: "redirect", op, fd, target: null, body: heredoc ? "" : null, subs: [], ...(named ? { named: named.value } : {}) };
   s.tokens.push(token);
   s.redirect = { token, stripTabs: op === "<<-" };
+}
+
+/** bash's `{name}` or `{name[i]}`, and zsh's `{name}`, before a redirect: the shell stores the fd it opens there. */
+export const NAMED_FD_RE = /^\{([A-Za-z_]\w*)(\[.*\])?\}$/;
+
+/**
+ * The `{name}` word bash and zsh read as a named descriptor: glued to the operator, or for zsh a space before it, plain.
+ * Dash, and bash a space apart, keep it a word, so it stays in the tokens marked `namedFd` for the walk to read both ways.
+ */
+function namedFdWord(s: LexState, glued: WordToken | null): WordToken | null {
+  const last = s.tokens.at(-1);
+  if (s.i < s.arithEnd || last?.type !== "word" || (glued !== null && glued !== last)) return null;
+  const match = !last.quoted && !last.spliced ? NAMED_FD_RE.exec(last.value) : null;
+  if (!match || (glued === null && match[2] !== undefined) || inConditional(s)) return null;
+  last.namedFd = glued === null ? "spaced" : "glued";
+  return last;
 }

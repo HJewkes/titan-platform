@@ -1,14 +1,78 @@
+import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
+import { mayBeWritten } from "./line-writes.js";
+import { isNativeProgram, parseShebang } from "./shebang.js";
+import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
-import { UnknownStdinError } from "./shell/unsure-readings.js";
+import { ReadingLimitError, UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
 export interface ScriptTarget {
   path: string;
   kind: "shell" | "interpreter";
+  /** A `-c` shell's stdin file, which only a command in the string may run (`bash -c 'cat | bash' < x.sh`), so it is read as far as it reads. */
+  relayed?: true;
+  /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
+  byPath?: true;
+}
+
+/** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
+export class OpaqueShebangError extends UnreadableScriptError {
+  constructor() {
+    super(null);
+    this.message = "a script run by path whose #! line the guard cannot follow";
+    this.name = "OpaqueShebangError";
+  }
+}
+
+/** How many scripts deep the guard reads: the line's script, and the by-path scripts that one runs. */
+export const MAX_SCRIPT_DEPTH = 2;
+
+/** A by-path script run from a script already `MAX_SCRIPT_DEPTH` deep, which the guard does not read; the hook denies it unchecked. */
+export class ScriptDepthError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a script run by path from scripts nested deeper than the guard reads";
+    this.name = "ScriptDepthError";
+  }
+}
+
+/** Whether a script's first line is one the guard cannot follow, whoever runs it. */
+export function hasOpaqueShebang(text: string): boolean {
+  return parseShebang(text).kind === "opaque";
+}
+
+/** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */
+export function refuseOpaqueShebang(target: ScriptTarget, opaque: ReadonlySet<string>): void {
+  if (target.byPath && opaque.has(target.path)) throw new OpaqueShebangError();
+}
+
+/**
+ * Whether a by-path target is a native program, which holds no script for the guard to read. Only when the line has
+ * not written that file: a write may have replaced what the disk holds, and the disk is all this looks at.
+ */
+export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolean {
+  if (target.byPath !== true || mayBeWritten(ctx, target.path)) return false;
+  try {
+    // Stat before open: opening a FIFO blocks the hook into its timeout, which fails open.
+    const stat = statSync(target.path);
+    if (!stat.isFile()) return false;
+    const fd = openSync(target.path, constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+      const readAt = (position: number, length: number): Buffer => {
+        const buf = Buffer.alloc(length);
+        return buf.subarray(0, readSync(fd, buf, 0, length, position));
+      };
+      return isNativeProgram(readAt, stat.size);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
 }
 
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
@@ -25,26 +89,33 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
   if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
-  return cmd.path?.endsWith(".sh") ? typedTarget(cmd, cmd.path, home) : null;
+  return runsByPath(cmd.path) ? typedTarget(cmd, cmd.path, home) : null;
 }
 
-/** `./x.sh`, `~/bin/x.sh`, `/tmp/x.sh` or a bare `x.sh`, resolved as typed from the command's directory. */
+/** The kernel reads any file named with a `/`, whatever its suffix, and its `#!` line picks the interpreter; a bare name is read only as `x.sh`. */
+function runsByPath(typed: string | null): typed is string {
+  return typed !== null && (typed.includes("/") || typed.endsWith(".sh"));
+}
+
+/** `./x`, `~/bin/x.zsh`, `/tmp/x` or a bare `x.sh`, resolved as typed from the command's directory. */
 function typedTarget(cmd: SimpleCommand, typed: string, home: string): ScriptTarget | null {
   const path = resolveValue(cmd.dir, typed, home);
-  return path === null ? null : { path, kind: "shell" };
+  return path === null ? null : { path, kind: "shell", byPath: true };
 }
 
 /**
  * `bash x.sh`, or each file on the descriptor it runs: `bash < x.sh`, `bash /dev/stdin < x.sh`, `bash /dev/fd/3 3< x.sh`.
- * A `-c` string may read stdin too. `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor
- * whose text the line cannot show is refused.
+ * Under `-c` stdin is no script of the shell's own, but a command in the string may run it (`bash -c 'cat | bash' < x.sh`).
+ * `bash -c` text and heredocs are already walked by `extractCommands`. A descriptor whose text the line cannot show is
+ * refused.
  */
 function shellTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const { scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
+  const { runs, scriptFile, sources, unknowable } = shellStdin(shellOperands(cmd.args, cmd.name), cmd.redirects, false, cmd.inherited);
   if (unknowable) throw new UnknownStdinError();
   const script = scriptFile === null ? null : target(cmd, scriptFile, home, "shell");
   if (script !== null) return [script];
-  return sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  const files = sources.flatMap((s) => (s.kind === "file" ? [target(cmd, s.target, home, "shell")].filter((t): t is ScriptTarget => t !== null) : []));
+  return runs ? files : files.map((t) => ({ ...t, relayed: true }));
 }
 
 /** The first non-option word, null when an option in `inline` means the program text is inline. */

@@ -34,6 +34,7 @@ function reading(recorded: Recorded): { ctx: WorkflowContext; dispatched: string
     iteration: (stepId) => iterations.get(stepId) ?? 0,
     historyNext: () => recorded.next,
     resumedGate: () => undefined,
+    recoveredInFlight: () => [],
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       const iteration = iterations.get(stepId) ?? 0;

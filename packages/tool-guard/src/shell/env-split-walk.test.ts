@@ -90,6 +90,18 @@ describe("env -S is split by env's rules and read as env's argv (TP-3210)", () =
     expect(await hookStdout(line)).toContain("secret-read");
   });
 
+  it.each([
+    ["an ambiguous option in an env a -S string runs", `env -S 'env --ig HOME ${PUSH}'`],
+    ["an ambiguous option in a chained env", `env -S env env --ig HOME ${PUSH}`],
+  ])("denies a push behind %s", async (_form, line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+
+  // uutils env execs '!' as a program name and exits 127, so the push never runs (TP-3291).
+  it("allows a -S string that starts with '!'", async () => {
+    expect(await verdict(`env -S '! ${PUSH}'`)).toBe("pass");
+  });
+
   it.each(["env -S 'echo hi'", "env -S '-u X echo hi'", "env -S '-i FOO=1 echo hi'", "env -S '-a sh echo hi'", "env -S \"echo '\\$G'\"", "env FOO=1 echo hi", "env FOO=1 -S 'echo hi'"])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -117,6 +129,18 @@ describe("env's leading words are read in one pass", () => {
   it.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", async (unit) => {
     const small = await bestMs(envLine(unit, largeBytes / SCALE));
     const large = await bestMs(envLine(unit, largeBytes));
+
+    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+  }, 60_000);
+
+  const splitLine = (unit: string, bytes: number) => `env -S '${unit.repeat(Math.floor(bytes / unit.length))}true'\n`;
+
+  it.each([
+    ["env -S 'env env …'", splitLine, "env "],
+    ["env -S env -S env -S …", envLine, "-S env "],
+  ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", async (_form, line, unit) => {
+    const small = await bestMs(line(unit, largeBytes / SCALE));
+    const large = await bestMs(line(unit, largeBytes));
 
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
   }, 60_000);

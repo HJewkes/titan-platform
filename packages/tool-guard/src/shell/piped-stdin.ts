@@ -10,10 +10,14 @@ export function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, std
   return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
 }
 
-/** Each splicing shell's text of a print piped on, so a push only bash or zsh prints still reaches the shell it feeds. */
+/**
+ * The other texts piped on beside `nextStdin`'s: each splicing shell's text of a print, so a push only bash or zsh prints
+ * still reaches the shell it feeds, or what `tee` or `cat` passes on of the texts piped into it.
+ */
 export function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean, shellStdin: string[]): string[] {
   if (op === "(" && empty) return shellStdin;
   if (!cmd || (op !== "|" && op !== "|&")) return [];
+  if (printedText(cmd.name, cmd.args) === null && passesThrough(cmd)) return shellStdin;
   return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
 }
 
@@ -24,8 +28,8 @@ function passesThrough(cmd: Unwrapped): boolean {
   return operands.length === 0 || operands.includes("-");
 }
 
-/** A stdin redirect replaces the pipe; a file or descriptor it names has unknown text. */
-export function xargsStdin(redirects: RedirectToken[], piped: string | null): string | null {
+/** Each text xargs may read: every one piped in, or what a stdin redirect replaces the pipe with; a file or descriptor it names has unknown text. */
+export function xargsStdins(redirects: RedirectToken[], piped: string | null, shellStdin: string[]): Array<string | null> {
   const feeds = redirects.some((r) => (r.fd === null || r.fd === "0") && ["<", "<<", "<<-", "<<<", "<&"].includes(r.op));
-  return feeds ? stdinScript(redirects) : piped;
+  return feeds ? [stdinScript(redirects)] : [piped, ...shellStdin];
 }

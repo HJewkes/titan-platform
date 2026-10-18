@@ -1,5 +1,5 @@
 import { Chain, SimpleCommand } from './shell/index.js';
-export { AliasTable, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
+export { AliasDefinitionError, AliasTable, CommandRebindingError, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
 import { ActorClass, PolicyTable } from '@titan-design/authority';
 import { z } from 'zod';
 
@@ -72,7 +72,7 @@ interface ClassifyContext {
     readLink(path: string): string | null;
     /** Current branch of the checkout at `dir`, null when detached or not a checkout. */
     readHead(dir: string): string | null;
-    /** Text of a script run by path, null when it cannot be read. */
+    /** Text of a script run by path, null for none. A node context throws `UnreadableScriptError` for one it cannot read in full. */
     readScript(path: string): string | null;
     /**
      * Set by the classifier once a line writes a script: every text the script may then hold, the disk's included, or
@@ -310,7 +310,7 @@ interface ReadFs {
     /** Whether a lookup finds a file whatever the case of its name. */
     foldsCase?: boolean;
 }
-/** The classifier's context over a read-only filesystem. Every port returns null rather than throwing. */
+/** The classifier's context over a read-only filesystem. Every port but `readScript` returns null rather than throwing. */
 declare function nodeContext(home: string, rfs?: ReadFs): ClassifyContext;
 
 /** The PreToolUse entry the owner pastes into `hooks.PreToolUse`, after the git-safety entry. */

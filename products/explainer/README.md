@@ -99,13 +99,16 @@ default, reads a Python-emitted spike script.json loosely and notes on stderr th
 `structure.tsv` rows and an `L0-pace` run record under `--config` (by default `unconfigured`), and
 prints one line a chapter: new items, heard (or planned) seconds, items a minute and the M7 verdict.
 An item is anything new on screen, so a chip cue counts too. On the v4 fixture with its
-durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. Exit codes are the same as `eval l0`:
+durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explainer hold-out
+(`fixtures/spike/pipeline-explainer/`, planned lengths) Q-E7 fails on `c5-1-contract` and
+`c6-10-rule`, and ch2 shows 13 items over 72 s. Exit codes are the same as `eval l0`:
 1 only when an error row (Q-E7) fails. A warning row is recorded as failing but never changes
 the exit code.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
-(`fixtures/spike/redesign-explainer-v4/labels.json` for v4). Rows come from a `structure.tsv`
+(`fixtures/spike/redesign-explainer-v4/labels.json` for v4, `fixtures/spike/pipeline-explainer/labels.json`
+for the hold-out, whose owner-named set is empty). Rows come from a `structure.tsv`
 or a JSON array of `{check_id, severity, pass, detail_beats}` (`--script-sha` keeps JSON rows
 with no `script_sha`); a labelled check (M1, M3 and so
 on) scores the rows whose `check_id` is its name or one of its `check_ids` (Q-E7 for M1). It

@@ -939,4 +939,62 @@ type PrefixScopes = Readonly<Record<string, string>>;
  */
 declare function projectSeatGeneration(state: SeatState, activity: SeatGenerationActivity, scopes: PrefixScopes): SessionFacts[];
 
-export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema };
+/** One entry of a coordinator document's revision log; `parent` is the previous revision's `revisionSha`. */
+type ConfigRevision = {
+    $schema: "titan-coordinator-revision/v1";
+    rev: number;
+    parent: string | null;
+    at: string;
+    by: {
+        class: "owner-remote" | "owner-terminal" | "import";
+        id: string;
+    };
+    /** sha256 of the action record that authorized the change; an import has none. */
+    action?: string | undefined;
+    notes?: string[] | undefined;
+    document: CoordinatorConfig;
+};
+declare const configRevisionSchema: z.ZodType<ConfigRevision>;
+type ConfigEditResult = {
+    ok: true;
+    document: CoordinatorConfig;
+} | {
+    ok: false;
+    errors: CoordinatorConfigError[];
+};
+type DocumentChange = {
+    path: string;
+    kind: "added" | "removed" | "changed";
+    before?: unknown;
+    after?: unknown;
+};
+type ChainError = {
+    rev: number;
+    code: "invalid" | "sequence" | "parent" | "document";
+    message: string;
+};
+type ChainResult = {
+    ok: true;
+    head: ConfigRevision;
+} | {
+    ok: false;
+    errors: ChainError[];
+};
+/** sha256 of a document's canonical JSON: what a reader compares a materialized file against. */
+declare function documentSha(document: unknown): string;
+/** sha256 of a revision's canonical JSON: the value its child names as `parent`. */
+declare function revisionSha(revision: unknown): string;
+/**
+ * Sets one field of a copy of `doc`; never mutates it and never throws. Refuses a path the schema
+ * does not declare, a path whose parent object is absent, and a result that fails `checkCoordinatorConfig`.
+ */
+declare function applyEdit(doc: CoordinatorConfig, path: string, value: unknown): ConfigEditResult;
+/** Leaf-level changes from `before` to `after`, sorted by key; an array is one leaf. */
+declare function diffDocuments(before: unknown, after: unknown): DocumentChange[];
+/**
+ * Checks a revision log oldest first: each entry parses, is numbered by its position, names the
+ * previous entry's `revisionSha` as its parent (rev 0 names none), and carries a valid document.
+ */
+declare function verifyChain(revisions: readonly unknown[]): ChainResult;
+
+export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type ChainError, type ChainResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigEditResult, type ConfigRevision, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, type DocumentChange, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, applyEdit, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, configRevisionSchema, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, diffDocuments, documentSha, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, revisionSha, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema, verifyChain };

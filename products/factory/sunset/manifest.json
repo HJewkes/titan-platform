@@ -163,6 +163,20 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approved-set-carry.test.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/approved-set-carry.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/author-types.ts",
    "fate": "kept",
    "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
@@ -194,6 +208,18 @@
    "task": "D-M2-09",
    "milestone": "M2",
    "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/base-moved.test.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/base-moved.ts",
+   "fate": "kept",
+   "reason": "GitHub read, check or utility code; v9.1 builds the github-api pool (D-M1a-03) beside it and names no deletion"
   },
   {
    "repo": "titan-platform",
@@ -1807,6 +1833,30 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop-command.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop.test.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/repair.ts",
    "fate": "kept",
    "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"
@@ -2857,6 +2907,20 @@
    "task": "D-M3-19",
    "milestone": "M3",
    "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-accept.test.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/visual-accept.ts",
+   "fate": "survives",
+   "task": "D-M7-01",
+   "reason": "V1-7 visual carry, adopted by D-M7-01"
   },
   {
    "repo": "titan-platform",

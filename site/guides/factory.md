@@ -163,7 +163,11 @@ stays out of the repo.
   commit by a plain fast-forward push, and only then is retargeted to the default branch. It is
   off when absent, when the file is missing or invalid, and in an advisory repo. While it is off,
   `sh-stack-children` records `skipped` and nothing is pushed. A failed read of the open PRs
-  also records `skipped`, so main CI and cleanup still run.
+  also records `skipped`, so main CI and cleanup still run. Whatever the switch, `sh-cleanup`
+  moves each open PR still based on the merged head branch onto that PR's base before it deletes
+  the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
+  deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
+  and keeps the branch with a caveat while any of them is still based on it.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
@@ -598,6 +602,21 @@ deployer. `--set` does not take the lock, so it can be set while a deploy runs; 
 hold applies from the next deploy. A second `--set` replaces the reason. When both a pause and a
 manual hold stand, `service pause` and the `deploy held:` refusal show both reasons.
 `--clear` lifts both and prints one line for each hold it lifted.
+
+A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
+only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
+allowed) sets the manual hold with the item's reason and `source: morning:<seat>:<n>`, for example
+`7. DEPLOY HOLD: copy the db before the migration deploys. One-way.` An item that only mentions a
+deploy hold mid-text does nothing. The deploy pacer syncs the hold at each tick before it decides,
+so the tick that sets it spawns nothing, and `service deploy` syncs it under the deploy lock
+before it reads the holds. Removing the item clears the hold once two pacer ticks in a row find no
+hold item, so a queue file caught mid-rewrite cannot clear it. That count lives in serve's memory:
+a restart starts it at 0, which can delay a clear by a tick and never causes one. A one-shot
+`service deploy` can set a Morning hold but never clears one. The sync never overwrites or clears
+a hold set by hand, keeps every hold when a queue file cannot be read (a missing dir counts), and
+never reads, writes or removes `deploy-pause.json`. A `--clear` while the item stands is undone by
+the next tick, so remove the item instead. The queue files are the Morning digest's
+(`digest.queuesDir`, else the default under the active-work root).
 
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.

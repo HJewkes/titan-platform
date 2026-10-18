@@ -169,6 +169,20 @@ function isRemoteFactoryUrl(value: string): boolean {
   return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
 }
 
+/**
+ * Where GitHub events come from (TP-3099). `ingress` is the kill switch: off, a webhook deployment runs as polling without
+ * `sources` changing. Top-level rather than under `shepherd`, because the reconciler outlives Shepherd.
+ */
+export const GithubConfigSchema = z
+  .strictObject({
+    sources: z.enum(["webhook", "polling"]).default("polling"),
+    ingress: z.enum(["on", "off"]).default("off"),
+    pollingIntervalMs: z.number().int().min(30_000).max(600_000).default(60_000),
+    backstopIntervalMs: z.number().int().min(300_000).max(600_000).default(300_000),
+  })
+  .refine((g) => g.pollingIntervalMs <= g.backstopIntervalMs, { message: "pollingIntervalMs must not exceed backstopIntervalMs", path: ["pollingIntervalMs"] })
+  .refine((g) => !(g.ingress === "on" && g.sources === "polling"), { message: "ingress on needs sources webhook: under polling the route answers 404", path: ["ingress"] });
+
 /** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
 const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
 
@@ -182,6 +196,7 @@ export const FactoryConfigSchema = z.object({
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
   service: ServiceConfigSchema.optional(),
+  github: GithubConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -207,10 +222,17 @@ export const FactoryConfigSchema = z.object({
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
+       * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the
+       * console inbox's action record read out of that dir; absent means that route 404s.
        */
-      consoleAnswers: z.strictObject({ roundsDir: absolutePath }).optional(),
+      consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /**
+       * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
+       * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
+       */
+      visualSetCarry: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */

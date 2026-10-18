@@ -2,11 +2,12 @@ import { useState, type ReactNode } from "react";
 import {
   Alert, Badge, Button, ButtonText, Card, CardContent, HStack, Input, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack,
 } from "@titan-design/react-ui";
-import type { Question } from "@titan-design/review-schema";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
+import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
+import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
 
@@ -26,22 +27,28 @@ interface ShipFrame {
 const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
 const sha7 = (sha: string): string => sha.slice(0, 7);
 
-/** A merge gate: each changed image as before | after | diff, then Ship or Send back bound to the PR head. */
+/** A merge gate: each changed image as before | after | diff, then the round's questions in order, the Ship or Send back pick bound to the PR head among them. */
 export function ShipRound({ round }: { round: ValidRound }): ReactNode {
   const question = round.manifest.questions.find(isMergeQuestion);
+  const side = useSideAnswers();
   if (question === undefined) return null;
   return (
     <VStack gap={4}>
       <ShipHeading round={round} question={question} />
       <Montages round={round} />
-      <ShipAnswer round={round} question={question} />
-      <SideQuestions questions={round.manifest.questions.filter((other) => other !== question)} />
+      {round.manifest.questions.map((each, index) =>
+        each === question ? (
+          <ShipAnswer key={each.id} round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side.answers} />
+        ) : (
+          <SideQuestion key={each.id} question={each} position={index + 1} side={side} />
+        ),
+      )}
     </VStack>
   );
 }
 
 function ShipHeading({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
-  const section = round.manifest.sections?.find((candidate) => candidate.questionIds.includes(question.id));
+  const section = round.manifest.sections.find((candidate) => candidate.questionIds.includes(question.id));
   return (
     <Card variant="subtle">
       <CardContent>
@@ -132,16 +139,25 @@ function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame })
   );
 }
 
-function ShipAnswer({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
+interface ShipAnswerProps {
+  round: ValidRound;
+  question: MergeQuestion;
+  sideQuestions: readonly Question[];
+  side: Record<string, QuestionAnswer>;
+}
+
+function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): ReactNode {
   const { available, state, submit } = useSubmit();
   const [note, setNote] = useState("");
   if (round.status === "sent" || state.status === "sent") return <AnswerOutcome answer={round.answer} headSha={question.merge.headSha} state={state} />;
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: "" };
-  const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: [{ questionId: question.id, pick: question.merge.ship[0] }] });
-  const back = () => submit({ ...sent, answers: [{ questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }] });
-  const disabled = !available || state.status === "sending";
+  const sideAnswers = submittedAnswers(sideQuestions, side);
+  const missing = missingRequired(sideQuestions, sideAnswers);
+  const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
+  const back = () => submit({ ...sent, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
+  const disabled = !available || state.status === "sending" || missing.length > 0;
   return (
     <Card variant="outline">
       <CardContent>
@@ -151,6 +167,7 @@ function ShipAnswer({ round, question }: { round: ValidRound; question: MergeQue
             <Button color="success" isDisabled={disabled} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
             <Button variant="outline" color="warning" isDisabled={disabled || sendBack === undefined} onPress={() => void back()}><ButtonText>Send back</ButtonText></Button>
           </HStack>
+          {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
           {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
           {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
         </VStack>
@@ -186,29 +203,26 @@ function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha
   return <Alert status={status} message={message} />;
 }
 
-/** The round's other questions, as the question view shows them: picks stay in this page. */
-function SideQuestions({ questions }: { questions: readonly Question[] }): ReactNode {
+/** The owner's picks on the round's other questions, held until the Ship or Send back press sends them. */
+function useSideAnswers() {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [activeId, setActiveId] = useState<string>();
-  if (questions.length === 0) return null;
+  return { answers, activeId, setActiveId, setAnswers };
+}
+
+type SideAnswers = ReturnType<typeof useSideAnswers>;
+
+function SideQuestion({ question, position, side }: { question: Question; position: number; side: SideAnswers }): ReactNode {
+  const { answers, activeId, setActiveId, setAnswers } = side;
   return (
-    <Section>
-      <SectionHeader title="Side questions" subtitle="Read-only: picks stay in this page and are not sent." />
-      <SectionContent>
-        <VStack gap={3}>
-          {questions.map((question, index) => (
-            <RoundQuestion
-              key={question.id}
-              question={question}
-              position={index + 1}
-              answer={answers[question.id]}
-              onChoose={(choice) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) }))}
-              active={question.id === activeId}
-              onActivate={() => setActiveId(question.id)}
-            />
-          ))}
-        </VStack>
-      </SectionContent>
-    </Section>
+    <RoundQuestion
+      question={question}
+      position={position}
+      answer={answers[question.id]}
+      onChoose={(choice) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) }))}
+      onText={(text) => setAnswers((current) => ({ ...current, [question.id]: { text } }))}
+      active={question.id === activeId}
+      onActivate={() => setActiveId(question.id)}
+    />
   );
 }

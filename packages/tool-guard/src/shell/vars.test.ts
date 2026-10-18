@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { extractCommands } from "./commands.js";
 
 const REPO = "/home/you/projects/app";
@@ -92,11 +93,6 @@ describe("variables built up before the command they name", () => {
     ["an export -f scalar that names a function (TP-1491)", "Y=push; export -f Y=status; git $Y origin HEAD:main"],
     ["a readonly -f scalar that names a function (TP-1491)", "Y=push; readonly -f Y=status; git $Y origin HEAD:main"],
     ["a declare with a lone dash (TP-1491)", "Y=push; declare - Y=status; git $Y origin HEAD:main"],
-    ["a run-time declare word (TP-1491)", "Y=status; F=$(cmd); declare \"$F\"; git $Y origin HEAD:main"],
-    ["a substituted export word (TP-1491)", "Y=status; export $(cmd); git $Y origin HEAD:main"],
-    ["a run-time typeset word (TP-1491)", "Y=status; F=$(cmd); typeset $F; git $Y origin HEAD:main"],
-    ["a run-time local word (TP-1491)", "Y=status; F=$(cmd); f() { local \"$F\"; git $Y origin HEAD:main; }; f"],
-    ["a run-time readonly word (TP-1491)", "Y=status; F=$(cmd); readonly \"$F\"; git $Y origin HEAD:main"],
     ["an element 0 assignment (TP-1491)", "Y=status; Y[0]=push; git $Y origin HEAD:main"],
     ["a declared element 0 (TP-1491)", "Y=status; declare 'Y[0]=push'; git $Y origin HEAD:main"],
     ["a typeset element 0 (TP-1491)", "Y=status; typeset 'Y[0]=push'; git $Y origin HEAD:main"],
@@ -138,7 +134,6 @@ describe("variables built up before the command they name", () => {
   it.each([
     ["a read into a subscripted target", "Y=status; read 'Y[0]' <<< push; git $Y"],
     ["a printf -v into a subscripted target", "Y=status; printf -v 'Y[0]' push; git $Y"],
-    ["a printf -v into an attached subscripted target", "Y=status; printf -v'Y[0]' push; git $Y"],
     ["an element 1 assignment (TP-1491)", "Y=status; Y[1]=push; git $Y"],
     ["an element assignment at a run-time index (TP-1491)", "Y=status; Y[i]=push; git $Y"],
     ["an append to element 0 (TP-1491)", "Y=pu; Y[0]+=sh; git $Y"],
@@ -152,6 +147,20 @@ describe("variables built up before the command they name", () => {
     ["a declare -ra element 0 (TP-1491)", "Y=push; declare -ra 'Y[0]=status'; git $Y"],
     ["a declare -r -x element 0 (TP-1491)", "Y=push; declare -x -r 'Y[0]=status'; git $Y"],
     ["a local -r element 0 in a function (TP-1491)", "Y=push; f() { local -r 'Y[0]=status'; git $Y; }; f"],
+    ["mapfile (TP-1491)", "Y=status; mapfile Y < list; git $Y"],
+    ["mapfile with options (TP-1491)", "Y=status; mapfile -t -d , Y < list; git $Y"],
+    ["readarray (TP-1491)", "Y=status; readarray Y < list; git $Y"],
+  ])("leaves the variable unknown after %s", (_, command) => {
+    expect(gitArgs(command)).toEqual([["$Y"]]);
+  });
+
+  // A run-time word where a declarer reads a name may be any name, `BASH_CMDS` among them (TP-3320).
+  it.each([
+    ["a run-time declare word (TP-1491)", "Y=status; F=$(cmd); declare \"$F\"; git $Y origin HEAD:main"],
+    ["a substituted export word (TP-1491)", "Y=status; export $(cmd); git $Y origin HEAD:main"],
+    ["a run-time typeset word (TP-1491)", "Y=status; F=$(cmd); typeset $F; git $Y origin HEAD:main"],
+    ["a run-time local word (TP-1491)", "Y=status; F=$(cmd); f() { local \"$F\"; git $Y origin HEAD:main; }; f"],
+    ["a run-time readonly word (TP-1491)", "Y=status; F=$(cmd); readonly \"$F\"; git $Y origin HEAD:main"],
     ["a declare with a run-time option (TP-1491)", "Y=push; F=$(cmd); declare $F 'Y[0]=status'; git $Y"],
     ["a declare with a quoted run-time option (TP-1491)", "Y=push; F=$(cmd); declare \"$F\" 'Y[0]=status'; git $Y"],
     ["a declare with a braced run-time option (TP-1491)", "Y=push; F=$(cmd); declare ${F} 'Y[0]=status'; git $Y"],
@@ -160,11 +169,14 @@ describe("variables built up before the command they name", () => {
     ["a declare with a partly run-time option (TP-1491)", "Y=push; F=$(cmd); declare -$F 'Y[0]=status'; git $Y"],
     ["a typeset with a run-time option (TP-1491)", "Y=push; F=$(cmd); typeset $F 'Y[0]=status'; git $Y"],
     ["a local with a run-time option (TP-1491)", "Y=push; F=$(cmd); f() { local $F 'Y[0]=status'; git $Y; }; f"],
-    ["mapfile (TP-1491)", "Y=status; mapfile Y < list; git $Y"],
-    ["mapfile with options (TP-1491)", "Y=status; mapfile -t -d , Y < list; git $Y"],
-    ["readarray (TP-1491)", "Y=status; readarray Y < list; git $Y"],
-  ])("leaves the variable unknown after %s", (_, command) => {
-    expect(gitArgs(command)).toEqual([["$Y"]]);
+    ["a declare with a run-time option", "Y=push; F=$(cmd); declare $F 'Y[0]=status'; git $Y origin HEAD:main"],
+    ["a run-time declaration word", "F=$(cmd); declare $F; Z=status; git $Z origin HEAD:main"],
+  ])("refuses %s, whose name may rebind a command", (_, command) => {
+    expect(() => extractCommands(command)).toThrow(CommandRebindingError);
+  });
+
+  it("refuses a printf -v into an attached target whose bracket may be a glob, as the option it may make is unknown", () => {
+    expect(() => gitArgs("Y=status; printf -v'Y[0]' push; git $Y")).toThrow(CommandRebindingError);
   });
 
   it("leaves MAPFILE unknown after a mapfile with no name (TP-1491)", () => {
@@ -177,7 +189,6 @@ describe("variables built up before the command they name", () => {
 
   it.each([
     ["a declare -r element 0", "Y=push; declare -r 'Y[0]=status'; git $Y origin HEAD:main"],
-    ["a declare with a run-time option", "Y=push; F=$(cmd); declare $F 'Y[0]=status'; git $Y origin HEAD:main"],
   ])("classifies a push after %s as a push to an unknown branch (TP-1491)", (_, command) => {
     expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
   });
@@ -197,9 +208,10 @@ describe("variables built up before the command they name", () => {
     expect(gitArgs("Y=status; declare Z=1; git $Y")).toEqual([["status"]]);
   });
 
-  it("forgets HOME after a run-time declaration word (TP-1491)", () => {
+  it("keeps HOME after a literal declaration and refuses a run-time one (TP-1491, TP-3320)", () => {
     const cat = (command: string) => extractCommands(command, { cwd: REPO, home: "/home/you" }).at(-1)?.args[0]?.value;
-    expect([cat("declare Z=1; cat $HOME/x"), cat("declare \"$F\"; cat $HOME/x")]).toEqual(["/home/you/x", "$HOME/x"]);
+    expect(cat("declare Z=1; cat $HOME/x")).toBe("/home/you/x");
+    expect(() => cat("declare \"$F\"; cat $HOME/x")).toThrow(CommandRebindingError);
   });
 
   it.each([
@@ -274,7 +286,6 @@ describe("writes to a readonly variable, which bash rejects (TP-1501)", () => {
 
   it.each([
     ["a function's local -r ended", "Y=status; f() { local -r Y=x; }; f; Y=push; git $Y origin HEAD:main"],
-    ["a run-time declaration word", "F=$(cmd); declare $F; Z=status; git $Z origin HEAD:main"],
     ["eval, which keeps readonly in a scope of its own", "readonly Y=push; eval 'Y=status; git $Y origin HEAD:main'"],
     ["a child shell, which drops readonly", "readonly Y=status; export Y; bash -c 'Y=push; git $Y origin HEAD:main'"],
   ])("still reads a push after %s may or may not leave a variable readonly", (_, command) => {

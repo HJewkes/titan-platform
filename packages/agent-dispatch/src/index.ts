@@ -8,6 +8,7 @@ export {
   dispatchToAgentChat,
   type DispatchRequest,
   type DispatchResult,
+  type LaunchedBy,
 } from "./dispatch.js";
 export { observeAgentChatCalls, type AgentChatCall } from "./call-timing.js";
 export { assertInstalledHeadless, installedProfilesDir } from "./profile-guard.js";
@@ -31,6 +32,7 @@ export {
   DEFAULT_PARK_TIMEOUT_MS,
   buildParkArgs,
   parkAgent,
+  type ParkOptions,
   type ParkResult,
 } from "./park.js";
 export { buildMessageArgs, messageAgent } from "./message.js";

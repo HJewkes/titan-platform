@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import type { SpawnSyncOptions } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -113,7 +114,6 @@ describe("a shell's options are read as the shell reads them (TP-3221)", () => {
     "bash -eo pipefail -c 'echo hi'",
     "zsh -O -c 'echo hi'",
     "bash -s foo <<< 'echo hi'",
-    `bash -- foo <<< ${TEXT}`,
     "bash +c 'echo hi'",
     "zsh -c0 'echo hi'",
     "dash -sc 'echo hi' <<< 'echo hi'",
@@ -156,6 +156,24 @@ const SHELLS_HERE = new Set([...KNOWN_SHELLS].filter(has));
  * Runs `line` under `runner` in a scratch dir holding `x.sh`, with zsh reading no startup files, and reports whether it
  * created `mk`, as the fake `git` on PATH does too. A run that hangs is cut off.
  */
+/**
+ * Runs a shell as the leader of its own process group, then kills the group, so nothing it
+ * forked outlives the call. zsh forks a pipeline's left side, and that child stays blocked on
+ * zsh's sync pipe after the shell exits; 1,514 of them piled up on basement and stalled the
+ * agent-chat broker, which scans every process.
+ */
+function spawnInGroup(program: string, args: string[], options: SpawnSyncOptions): void {
+  // spawnSync honours detached (libuv starts a new session) though its type leaves it out.
+  const inGroup: SpawnSyncOptions & { detached: boolean } = { ...options, detached: true };
+  const { pid } = spawnSync(program, args, inGroup);
+  if (pid <= 0) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // ESRCH: nothing in the group outlived the shell.
+  }
+}
+
 function runs(line: string, runner = "bash", script = "touch mk"): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shell-options-"));
   try {
@@ -168,12 +186,36 @@ function runs(line: string, runner = "bash", script = "touch mk"): boolean {
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
     const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "s.sh"], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
+    spawnInGroup(program, [...flags, "s.sh"], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
     return fs.existsSync(path.join(dir, "mk"));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+describe("spawnInGroup", () => {
+  it("leaves nothing the shell forked running after it returns", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spawn-in-group-"));
+    try {
+      spawnInGroup("sh", ["-c", "sleep 30 & echo $! > child.pid"], { cwd: dir, stdio: "ignore", timeout: 10_000 });
+      const child = Number(fs.readFileSync(path.join(dir, "child.pid"), "utf8"));
+      // init reaps the killed child asynchronously; give it a moment before calling it a leak.
+      for (let tries = 0; tries < 40 && alive(child); tries++) await new Promise((done) => setTimeout(done, 50));
+      expect(alive(child)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe.skipIf(!SHELLS_HERE.has("bash"))("each shell runs the text behind its options (TP-3221)", () => {
   it.each(

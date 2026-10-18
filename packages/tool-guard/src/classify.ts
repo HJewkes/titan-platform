@@ -8,13 +8,14 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
 import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
+import { refuseFdScripts } from "./fd-scripts.js";
 import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
@@ -29,7 +30,7 @@ const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.v
  * dynamic wrapper readings or script text than it checks; the hook owns that failure policy.
  */
 export function classify(event: HookEvent, ctx: ClassifyContext): ClassifiedAction[] {
-  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES });
+  if (event.kind === "bash") return classifyCommand(event.command, event.cwd, ctx, { verdicts: new Map(), bytesLeft: MAX_SCRIPT_BYTES, opaque: new Set(), depth: 0 });
   if (event.kind === "read") return unique(FAMILIES.flatMap((f) => f.read?.(event, ctx) ?? []));
   if (event.kind === "write") return unique(FAMILIES.flatMap((f) => f.write?.(event, ctx) ?? []));
   return [];
@@ -41,6 +42,10 @@ interface ScriptMemo {
   verdicts: Map<ClassifyContext, Map<string, ClassifiedAction[]>>;
   /** What is left of `MAX_SCRIPT_BYTES`; a script the memo already holds costs nothing. */
   bytesLeft: number;
+  /** Paths whose first line is a `#!` the guard cannot follow; kept beside the memo because `bash x.sh` and `./x.sh` share a verdict but only the second runs that line. */
+  opaque: Set<string>;
+  /** How many scripts deep the text being classified is: 0 on the line, 1 in a script it runs, and so on. */
+  depth: number;
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
@@ -55,9 +60,13 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
   return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
 }
 
-/** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
+/**
+ * A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it.
+ * Only the line, which the Bash tool's own bash or zsh runs, joins a `[[`'s operators.
+ */
 function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
+  const inScript = scripts === null || scripts.depth > 0;
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: inScript, arithmetic: !inScript, joinsConditional: !inScript };
 }
 
 /**
@@ -77,6 +86,7 @@ function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, sc
 }
 
 function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+  refuseFdScripts(commands);
   const out: ClassifiedAction[] = [];
   let line = ctx;
   for (const cmd of commands) {
@@ -139,10 +149,16 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
   return !family.names || (cmd.name !== null && family.names.has(cmd.name));
 }
 
-/** One level deep: a shell script is classified as a command string, any other script's text gets the mention rule. */
+/**
+ * A shell script is classified as a command string, any other script's text gets the mention rule. Inside a script every script it runs is
+ * followed, down to `MAX_SCRIPT_DEPTH`; one more refuses the line.
+ */
 function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
-  return scriptTargets(cmd, ctx.home).flatMap((target) => {
-    const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx), () => scriptVerdicts(cmd, target, ctx, scripts));
+  const targets = scriptTargets(cmd, ctx.home).filter((target) => !runsNatively(target, ctx));
+  if (scripts.depth >= MAX_SCRIPT_DEPTH && targets.length > 0) throw new ScriptDepthError();
+  return targets.flatMap((target) => {
+    const actions = memoized(scripts, ctx, scriptKey(cmd, target, ctx, scripts.depth), () => scriptVerdicts(cmd, target, ctx, scripts));
+    refuseOpaqueShebang(target, scripts.opaque);
     return actions.map((a) => (a.action === "secret-read" ? classified("bash.secret.script-by-path", a.subject) : a));
   });
 }
@@ -154,10 +170,21 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
  */
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
   const added = cmd.added === true;
-  return scriptReadings(ctx, target.path).flatMap((text) => {
+  return targetReadings(ctx, target).flatMap((text) => {
+    if (hasOpaqueShebang(text)) budget.opaque.add(target.path);
     if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
-    return scriptText(cmd, target, text, ctx);
+    return scriptText(cmd, target, text, ctx, budget);
   });
+}
+
+/** A shell runs every byte of its script, so one the guard cannot read in full refuses the line; an interpreter's, or a `-c` shell's stdin, is read as far as it reads. */
+function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
+  try {
+    return scriptReadings(ctx, target.path);
+  } catch (error) {
+    if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
+    return error.head === null ? [] : [error.head];
+  }
 }
 
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
@@ -172,9 +199,9 @@ function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void 
  * verdicts depend only on its text, its directory, the line state and, for an interpreter's, the program that runs it;
  * a state change makes a new context object.
  */
-function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext): string {
+function scriptKey(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, depth: number): string {
   const program = target.kind === "interpreter" ? cmd.path : null;
-  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program]);
+  return JSON.stringify([ctx.foldCase === true, cmd.dir, target.path, program, target.relayed === true, depth]);
 }
 
 function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, compute: () => ClassifiedAction[]): ClassifiedAction[] {
@@ -187,10 +214,10 @@ function memoized(scripts: ScriptMemo, ctx: ClassifyContext, key: string, comput
   return actions;
 }
 
-function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext): ClassifiedAction[] {
+function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
   if (target.kind === "shell") {
     try {
-      return classifyCommand(text, cmd.dir, ctx, null);
+      return inside(scripts, () => classifyCommand(text, cmd.dir, ctx, scripts));
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }
@@ -199,6 +226,16 @@ function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx:
   const name = target.kind === "interpreter" ? cmd.name : null;
   const path = name === null ? null : cmd.path;
   return classifySimple({ name, path, args: [word], env: {}, redirects: [], dir: cmd.dir, wrapping: [], next: null, prev: null, negated: false, chain: { start: null } }, ctx);
+}
+
+/** Runs `read` one script deeper; the memo's byte budget stays shared, so the depth is restored whatever `read` throws. */
+function inside<T>(scripts: ScriptMemo, read: () => T): T {
+  scripts.depth++;
+  try {
+    return read();
+  } finally {
+    scripts.depth--;
+  }
 }
 
 function unique(actions: ClassifiedAction[]): ClassifiedAction[] {

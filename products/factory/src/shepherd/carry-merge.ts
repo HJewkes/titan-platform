@@ -17,6 +17,7 @@ import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
+import { SET_CARRY_STEP, setCarryRoute } from "./approved-set-carry.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
@@ -28,6 +29,7 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: REMERGE_STEP, kind: "dispatch" },
   { id: FIX_CARRY_STEP, kind: "dispatch" },
   { id: OWN_MERGE_UP_STEP, kind: "dispatch" },
+  { id: SET_CARRY_STEP, kind: "dispatch" },
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
   { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
@@ -268,6 +270,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
     remergeRoute(deps.now, wiring?.carry),
     fixCarryRoute(deps.now, wiring?.carry),
     ownMergeUpRoute(deps.now, wiring?.carry),
+    setCarryRoute(deps.now, wiring?.carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
     mergeUpRoute(deps.now),
   ];

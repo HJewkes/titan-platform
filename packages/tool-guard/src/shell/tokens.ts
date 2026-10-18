@@ -21,6 +21,8 @@ export interface WordToken {
   computed: boolean;
   /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
   unquotedExpansion?: true;
+  /** The word is a `case` pattern, matched against the subject and never run. */
+  casePattern?: true;
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
@@ -30,6 +32,8 @@ export interface WordToken {
   typed?: string;
   /** Set on a word variable tracking adds itself, never by the lexer; only such a word can assign a hidden slot. */
   hidden?: true;
+  /** A `{name}` before a redirect: zsh reads it as the redirect's descriptor and dash as a word; bash only when glued. */
+  namedFd?: "glued" | "spaced";
 }
 
 export interface OpToken {
@@ -50,6 +54,8 @@ export interface RedirectToken {
   type: "redirect";
   op: string;
   fd: string | null;
+  /** The `{name}` word before the operator; in the reading that takes it as the descriptor, `fd` holds it too. */
+  named?: string;
   target: WordToken | null;
   body: string | null;
   /** Command substitutions in an unquoted heredoc body, which the shell runs before the command. */
@@ -76,6 +82,10 @@ export interface RegexScan {
   depth: number;
   commandStart: boolean;
   conditionalAt: number;
+  /** Depth of a `[[` that opened at a bare command start, whose `&&` and `||` are words; -1 for none or any other `[[`. */
+  joinsAt: number;
+  /** No word or redirect has come since a line start or a control operator, so a `[[` here is at a bare command start. */
+  bareStart: boolean;
   regexAt: number;
   /** The last word stood in command position, so a `(` after it may open a function header `name ( )`. */
   wordAtStart: boolean;

@@ -56,6 +56,10 @@
         "link": "/reference/locator"
       },
       {
+        "text": "openai-account",
+        "link": "/reference/openai-account"
+      },
+      {
         "text": "owner-proof",
         "link": "/reference/owner-proof"
       },
@@ -252,6 +256,16 @@
       {
         "text": "react-ui",
         "link": "/reference/react-ui"
+      }
+    ]
+  },
+  {
+    "text": "Products",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "active-work",
+        "link": "/reference/active-work"
       }
     ]
   }

@@ -217,6 +217,10 @@ function fakeMachine(init: MachineInit = {}) {
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
     listDirs: (dir) => WORKSPACE_DIRS[dir] ?? [],
+    listFiles: (dir) => {
+      const names = [...files.keys()].filter((path) => path.startsWith(`${dir}/`) && !path.slice(dir.length + 1).includes("/")).map((path) => path.slice(dir.length + 1));
+      return names.length === 0 ? undefined : names;
+    },
     copyTree: (from, to) => [...trees].filter(([key]) => under(key, from)).forEach(([key, value]) => trees.set(to + key.slice(from.length), value)),
     removeTree: (path) => [...trees.keys()].filter((key) => under(key, path)).forEach((key) => trees.delete(key)),
     createExclusive: (path, text) => !files.has(path) && files.set(path, text) !== undefined,
@@ -994,6 +998,55 @@ describe("service deploy rollback pause", () => {
   });
 });
 
+describe("service deploy Morning deploy hold (TP-3519)", () => {
+  const QUEUES = "/srv/queues";
+  const SEAT_FILE = `${QUEUES}/seat-a.md`;
+  const morning = (...items: string[]): string => ["## Morning queue (owner only)", ...items, ""].join("\n");
+  const HOLD_ITEM = "7. DEPLOY HOLD: copy the widget db first. One-way.";
+  const SOURCE = "morning:seat-a:7";
+
+  async function deployWithMorning(machine: ReturnType<typeof fakeMachine>): Promise<{ code: number; err: string }> {
+    let err = "";
+    const io = { stdout: () => undefined, stderr: (t: string) => void (err += t) };
+    const code = await deployService(machine.ports, io, { ...OPTIONS, morningQueuesDir: QUEUES });
+    return { code, err };
+  }
+
+  it("refuses with the Morning item's reason while a DEPLOY HOLD item stands and no hold file exists", async () => {
+    const machine = fakeMachine({ files: { [SEAT_FILE]: morning(HOLD_ITEM) } });
+
+    const { code, err } = await deployWithMorning(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("deploy held: deploys are held by hand since ");
+    expect(err).toContain(`Morning ${SOURCE}: copy the widget db first (Morning item ${SOURCE}; remove the item to clear)`);
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.record()).toBeUndefined();
+    expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: SOURCE } });
+  });
+
+  it("leaves the Morning hold unwritten when another live deployer holds deploy.lock", async () => {
+    const machine = fakeMachine({ files: { [SEAT_FILE]: morning(HOLD_ITEM), [`${STATE}/deploy.lock`]: "777" }, alive: [777] });
+
+    const { code } = await deployWithMorning(machine);
+
+    expect(code).toBe(1);
+    expect(machine.files.has(deployHoldPath(STATE))).toBe(false);
+  });
+
+  it("keeps a Morning hold whose item is gone, since one read never clears it, and stays held", async () => {
+    const hold = { heldAt: "2026-10-11T17:35:00.000Z", reason: `Morning ${SOURCE}: copy the widget db first`, source: SOURCE };
+    const machine = fakeMachine({ files: { [SEAT_FILE]: morning(), [deployHoldPath(STATE)]: JSON.stringify(hold) } });
+
+    const { code, err } = await deployWithMorning(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain(`remove the item to clear`);
+    expect(machine.files.get(deployHoldPath(STATE))).toBe(JSON.stringify(hold));
+    expect(machine.mutations()).toEqual([]);
+  });
+});
+
 describe("deploy lock", () => {
   function lockMachine(files: Record<string, string>, beforeRename?: (files: Map<string, string>) => void): LockPorts & { files: Map<string, string> } {
     const map = new Map(Object.entries(files));
@@ -1069,6 +1122,18 @@ describe("titan-factory service deploy verb", () => {
 
     expect(code).toBe(0);
     expect(machine.calls[0]).toBe("git clone https://example.test/org/titan-platform.git /srv/tester/Library/Application Support/titan-factory/deploy/titan-platform");
+  });
+
+  it("refuses while a Morning DEPLOY HOLD item stands in the configured digest.queuesDir (TP-3519)", async () => {
+    const machine = fakeMachine({ files: { "/srv/queues/seat-a.md": "## Morning queue (owner only)\n7. DEPLOY HOLD: copy the widget db first. One-way.\n" } });
+    const env = configured({});
+    writeFileSync(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json"), JSON.stringify({ digest: { queuesDir: "/srv/queues" } }));
+
+    const code = await cliIn(env, machine);
+
+    expect(code).toBe(1);
+    expect(machine.holds().manual).toMatchObject({ set: true, hold: { source: "morning:seat-a:7" } });
+    expect(machine.mutations()).toEqual([]);
   });
 
   it("deploys from service.deployCheckout when it is configured", async () => {

@@ -1,5 +1,17 @@
 # @titan-design/titan
 
+## 0.3.1
+
+### Patch Changes
+
+- f8acaee: Extract the systemd unit quoting helpers and the oneshot service and calendar timer renderers from
+  the health sampler units into a shared `systemd/render` module, so host services can render their
+  units the same way. The health sampler units render byte-identical output.
+- Updated dependencies [448bcea]
+- Updated dependencies [3fafd2e]
+- Updated dependencies [8f37474]
+  - @titan-design/daemon@0.7.0
+
 ## 0.3.0
 
 ### Minor Changes

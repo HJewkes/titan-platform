@@ -10,6 +10,7 @@ import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
+import { BLIND_AB_REFUSED } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 
@@ -163,7 +164,7 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf())).toBe(false);
   });
 
-  it("answers a Ship round, whose variants are the PR's images, but refuses a design round", async () => {
+  it("answers a Ship round, whose variants are the PR's images, but refuses a design round without frames.json", async () => {
     for (const id of ["ship-tile-r1", "lantern-cards-r1"]) await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
     const shaOf = async (id: string) => sha256(await readFile(path.join(dir, id, "round.json")));
     const shipTiles = { questionId: "ship-tiles", pick: "Ship" };
@@ -172,8 +173,98 @@ describe("rounds.submit", () => {
     const design = await submit({ id: "lantern-cards-r1", manifestSha256: await shaOf("lantern-cards-r1"), answers: [] });
 
     expect(ship.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: "89abcdef0123456789abcdef0123456789abcdef" } });
-    expect(design.envelope).toMatchObject({ ok: false, error: "a design round is answered in the review harness" });
+    expect(design.envelope).toMatchObject({ ok: false, error: "a design round without frames/frames.json is answered in the review harness" });
     expect(await exists(feedbackOf("lantern-cards-r1"))).toBe(false);
+  });
+
+  it("saves a design round's answers when its frames.json is valid", async () => {
+    const id = "beacon-states-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const manifestSha256 = sha256(await readFile(path.join(dir, id, "round.json")));
+    const answers = [{ questionId: "beacon-fill-pick", pick: "Ring" }, { questionId: "beacon-notes", text: "Keep the halo." }];
+
+    const { envelope } = await submit({ id, manifestSha256, answers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+    expect(JSON.parse(await readFile(feedbackOf(id), "utf8"))).toMatchObject({ unit: "beacon-dot", answers });
+  });
+
+  it("refuses a design round whose frames.json is not a frames@1 index", async () => {
+    const id = "beacon-states-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    await writeFile(path.join(dir, id, "frames", "frames.json"), "not json");
+
+    const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(path.join(dir, id, "round.json"))), answers: [] });
+
+    expect(envelope).toMatchObject({ ok: false, error: "a design round without frames/frames.json is answered in the review harness" });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json", async () => {
+    const id = "ship-tile-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const file = path.join(dir, id, "round.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    manifest.questions.unshift(
+      { id: "side-many", kind: "pick-many", prompt: "Which tiles need a second look?", options: ["Light", "Dark"] },
+      { id: "side-scale", kind: "scale", prompt: "How clear is the stripe?", min: 1, max: 5 },
+      { id: "side-text", kind: "text", prompt: "Anything else?" },
+    );
+    manifest.sections.find((section: { id: string }) => section.id === "side").questionIds.push("side-many", "side-scale", "side-text");
+    await writeFile(file, JSON.stringify(manifest));
+    const answers = [
+      { questionId: "badge-follow-up", pick: "No" },
+      { questionId: "side-many", picks: ["Light"] },
+      { questionId: "side-scale", value: 4 },
+      { questionId: "side-text", text: "Fine." },
+      { questionId: "ship-tiles", pick: "Ship" },
+    ];
+
+    const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(file)), headSha: "89abcdef0123456789abcdef0123456789abcdef", answers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const written = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+    expect(written.answers.map((answer) => answer.questionId)).toEqual(["badge-follow-up", "side-many", "side-scale", "side-text", "ship-tiles"]);
+  });
+
+  it("answers a TD-920 CI-packet round, which only review-schema 0.3 accepts, with Ship at its bound head", async () => {
+    const id = "td920-packet-r1";
+    const head = "a1".repeat(20);
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const roundSha = sha256(await readFile(path.join(dir, id, "round.json")));
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, headSha: head, answers: [{ questionId: "ship", pick: "Ship" }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: head } });
+  });
+
+  it("refuses a round.json the lister calls invalid, such as one with an unknown top-level key, and writes nothing", async () => {
+    const round = path.join(dir, ROUND, "round.json");
+    const bytes = Buffer.from((await readFile(round, "utf8")).replace(/^\{/, '{"approvedBy": "agent", '));
+    await writeFile(round, bytes);
+
+    const { envelope, exitCode } = await submit(shipArgs({ manifestSha256: sha256(bytes) }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("round.json is not a valid round: ") });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses a blind-ab round, which review-schema 0.3 accepts, and writes nothing", async () => {
+    const id = "blind-r1";
+    const round = JSON.parse(await readFile(path.join(FIXTURE_ROUNDS.dir, "td920-packet-r1", "round.json"), "utf8"));
+    const takes = [{ engine: "engine-alpha", src: "audio/a.wav" }, { engine: "engine-beta", src: "audio/b.wav" }];
+    round.questions.push({ id: "listen", kind: "blind-ab", prompt: "Which take reads better?", pairs: [{ id: "line-1", transcript: "Welcome back.", takes }] });
+    round.sections = round.sections.map((section: { id: string }) => (section.id === "side" ? { ...section, questionIds: ["bundle", "listen"] } : section));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await mkdir(path.join(dir, id));
+    await writeFile(path.join(dir, id, "round.json"), bytes);
+
+    const { envelope, exitCode } = await submit({ id, manifestSha256: sha256(bytes), answers: [] });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining(BLIND_AB_REFUSED) });
+    expect(await exists(feedbackOf(id))).toBe(false);
   });
 
   it("refuses feedback over the size cap", async () => {

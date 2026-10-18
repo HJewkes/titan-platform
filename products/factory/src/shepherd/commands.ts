@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
-import type { WorkflowRun } from "@titan-design/workflow";
+import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
@@ -11,7 +11,7 @@ import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldRes
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ownUpdatedHeads } from "./merge-up-release.js";
-import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
+import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
@@ -20,6 +20,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { repairStopCommand } from "./repair-stop-command.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
@@ -28,7 +29,7 @@ import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
-import { LIST_FILTER, rowOf, rowsWithRuns, waitingFilter, watchRows } from "./watch-rows.js";
+import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
 
 /** Transitional, for workflows.ts until TP-2466 b repoints it. */
@@ -236,15 +237,28 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
 /** `stackFrozen` is read by agent-chat, which stacks no new child on a parent past its fix-round limit. */
 export type StatusRow = WatchRow & { stackFrozen: boolean };
 
-const statusCommand = defineCommand<{ repo?: string; pr?: number }, StatusRow[], FactoryContext>({
+interface StatusArgs {
+  repo?: string;
+  pr?: number;
+  all?: boolean;
+}
+
+/**
+ * Finished runs are dropped before any is loaded unless `all` is set or one PR is named: parsing every finished run's
+ * step results on each call ran serve out of heap (TP-3517), while one PR's runs are few and `shepherd wait` reads its end.
+ */
+function statusFilter({ repo, pr, all }: StatusArgs): (registration: Registration, status: WorkflowStatus) => boolean {
+  const wantsFinished = all === true || pr !== undefined;
+  return (registration, status) =>
+    (wantsFinished || !runFinished(status)) && (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr);
+}
+
+const statusCommand = defineCommand<StatusArgs, StatusRow[], FactoryContext>({
   name: "shepherd.status",
-  description: "One row per shepherded PR, optionally narrowed to a repo or a PR: phase, head, next action, blockers, and whether new stacking on it is frozen",
-  args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional() }),
+  description: "One row per shepherded PR whose run has not finished, optionally narrowed to a repo or a PR (which lists its finished runs too): phase, head, next action, blockers, and whether new stacking on it is frozen; all lists every finished run as well",
+  args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional(), all: z.boolean().optional() }),
   result: z.custom<StatusRow[]>(),
-  run: async ({ repo, pr }, ctx) => {
-    const rows = await rowsWithRuns(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr));
-    return rows.map(({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) }));
-  },
+  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) })),
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
@@ -301,7 +315,8 @@ const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, Fa
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const { runId } = registration;
-    const reads = { ownUpdates: () => ownUpdatedHeads(runOf(ctx.host, registration)), carry: (input: CarryInput) => carry(input) };
+    const run = () => runOf(ctx.host, registration);
+    const reads = { ownUpdates: () => ownUpdatedHeads(run()), updating: () => updateBranchRunning(run()), carry: (input: CarryInput) => carry(input) };
     const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) }, reads);
     return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
@@ -345,6 +360,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.timeline": timelineCommand,
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
+  "shepherd.repair-stop": repairStopCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,

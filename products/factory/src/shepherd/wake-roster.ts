@@ -45,3 +45,15 @@ export function successorName(lineage: Lineage, roster: readonly AgentRow[]): st
   const highest = Math.max(0, ...taken.map((name) => successorIndex(lineage.implementer, name) ?? 0));
   return `${lineage.implementer}-s${highest + 1}`;
 }
+
+/** A name the roster no longer shows live, or never shows, is not working; a failed read says nothing and reads as live. */
+export function exitedOn(agents: { roster(): Promise<readonly AgentRow[]> } | undefined): ((name: string, signal: AbortSignal) => Promise<boolean>) | undefined {
+  if (agents === undefined) return undefined;
+  return async (name) => {
+    const rows = await agents.roster().catch((error: unknown): undefined => {
+      console.error(`shepherd: ${name} is read as live, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    });
+    return rows !== undefined && latestRow(name, rows)?.presence === "exited";
+  };
+}

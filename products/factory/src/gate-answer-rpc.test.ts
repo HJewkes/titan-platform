@@ -4,16 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIENT_HEADER, silentLogger } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { GateResolverRefused } from "@titan-design/hitl";
+import type { GateRule } from "@titan-design/hitl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { ANSWER_SHIP_PATH, MAX_ANSWER_BODY_BYTES } from "./gate-answer-rpc.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { createFactoryRegistry } from "./registry.js";
+import { acceptPacket, visualAcceptGate, writeFactoryPacket } from "./test-support/accept-set.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 import { shepherdFixture } from "./test-support/shepherd.js";
+import { tableGateRule } from "./workflows/land-approval.js";
 
 const REPO = "example-org/example-repo";
 const NOW_MS = Date.parse("2026-10-16T12:00:00.000Z");
@@ -22,6 +24,17 @@ const H2 = "b".repeat(40);
 const TREE = "c".repeat(40);
 const ROUND_ID = "r-1";
 
+/** A rule that omits owner-remote, so the store itself refuses a console Ship. */
+const OWNER_TERMINAL_ONLY: GateRule = { table: "example-table", version: "1", ruleId: "example-row", resolvers: ["owner-terminal"] };
+
+/** `stamped` is land's own MRG-AU stamp; `owner-terminal` is the synthetic rule above. */
+type GateStamp = "stamped" | "owner-terminal";
+
+function stampOf(stamp: string | undefined): GateRule | undefined {
+  if (stamp === "owner-terminal") return OWNER_TERMINAL_ONLY;
+  return stamp === "stamped" ? tableGateRule({ table: "authority", rowId: "MRG-AU", version: 1 }) : undefined;
+}
+
 const mergeGate = defineWorkflow({
   name: "merge-gate",
   steps: [{ id: "approve-merge", kind: "assisted" }],
@@ -29,13 +42,15 @@ const mergeGate = defineWorkflow({
     const pr = ctx.param("pr")!;
     const prompt = `Merge PR #${pr} in ${REPO} at head ${H}? CI is green. Policy authority/MRG-AU: synthetic reason`;
     const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: H, reason: "synthetic reason", reviewedMerge: false, sendBack: ctx.param("sendBack") === "1" });
-    await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF });
+    const rule = stampOf(ctx.param("stamp"));
+    await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF, ...(rule && { rule }) });
   },
 });
 
 const dirs: string[] = [];
 const servers: FactoryServer[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const server of servers.splice(0)) await server.close();
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
@@ -50,7 +65,14 @@ interface World {
   pr: number;
 }
 
-async function world({ mounted = true, port, sendBack = false }: { mounted?: boolean; port?: (base: GitHubPort) => GitHubPort; sendBack?: boolean } = {}): Promise<World> {
+interface WorldOptions {
+  mounted?: boolean;
+  port?: (base: GitHubPort) => GitHubPort;
+  sendBack?: boolean;
+  stamp?: GateStamp;
+}
+
+async function world({ mounted = true, port, sendBack = false, stamp }: WorldOptions = {}): Promise<World> {
   const dir = mkdtempSync(join(tmpdir(), "factory-answer-ship-"));
   dirs.push(dir);
   const roundsDir = join(dir, "rounds");
@@ -60,7 +82,7 @@ async function world({ mounted = true, port, sendBack = false }: { mounted?: boo
   const fixture = shepherdFixture({ frozen: true, port: port ? port(base) : base });
   const server = await startFactoryServer({
     dbPath: join(dir, "factory.sqlite3"),
-    workflows: [mergeGate],
+    workflows: [mergeGate, visualAcceptGate(REPO)],
     routes: fixture.routes,
     resyncOnStart: false,
     now: () => NOW_MS,
@@ -74,7 +96,7 @@ async function world({ mounted = true, port, sendBack = false }: { mounted?: boo
   servers.push(server);
   const { number: pr } = github.addPr({ headSha: H });
   github.commits.set(H, { sha: H, parents: [], tree: TREE });
-  const runId = server.host.runtime.start("merge-gate", { pr: String(pr), sendBack: sendBack ? "1" : "0" });
+  const runId = server.host.runtime.start("merge-gate", { pr: String(pr), sendBack: sendBack ? "1" : "0", ...(stamp && { stamp }) });
   const gateId = `${runId}/approve-merge`;
   await vi.waitFor(() => expect(server.host.gates.get(gateId)?.status).toBe("pending"));
   return { server, github, dir, roundsDir, runId, gateId, pr };
@@ -175,12 +197,9 @@ describe("POST /gates/answer-ship", () => {
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
-  it("refuses with 403 when the gate store refuses the owner-remote resolver, leaving the gate pending", async () => {
-    const w = await world();
+  it("refuses with 403 when the gate's rule admits owner-terminal only, leaving the gate pending", async () => {
+    const w = await world({ stamp: "owner-terminal" });
     const packetSha = writeRound(w);
-    vi.spyOn(w.server.host.gates, "resolve").mockImplementation((id, _payload, resolver) => {
-      throw new GateResolverRefused(id, resolver.class, "the rule admits owner-terminal only");
-    });
 
     const res = await post(w.server, answer(w, packetSha));
 
@@ -188,6 +207,17 @@ describe("POST /gates/answer-ship", () => {
     expect(await res.json()).toMatchObject({ outcome: "refused", reason: "resolver" });
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
+
+  it("resolves a gate stamped with the MRG-AU row, which names owner-remote", async () => {
+    const w = await world({ stamp: "stamped" });
+    const packetSha = writeRound(w);
+
+    const res = await post(w.server, answer(w, packetSha));
+
+    expect(res.status).toBe(200);
+    expect(w.server.host.gates.get(w.gateId)).toMatchObject({ status: "resolved", rule: { ruleId: "MRG-AU" }, resolvedBy: { class: "owner-remote" } });
+  });
+
 
   it("appends one 0600 pick-later follow-up when merge-pick-later resolves, and none for a replay", async () => {
     const w = await world();
@@ -268,6 +298,47 @@ describe("POST /gates/answer-ship", () => {
     expect([moved.status, await moved.json()]).toEqual([409, { outcome: "moved", currentHead: H2 }]);
     expect([gone.status, await gone.json()]).toMatchObject([410, { outcome: "gone" }]);
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  describe("on a red head's sh-visual-accept gate", () => {
+    /** Opens the accept gate, and puts the factory's packet and delivery record for H under the server's state dir. */
+    async function acceptGate(w: World, mode: "off" | "on"): Promise<{ body: Record<string, unknown>; gateId: string }> {
+      mkdirSync(join(w.dir, "config", "titan-factory"), { recursive: true });
+      writeFileSync(join(w.dir, "config", "titan-factory", "config.json"), JSON.stringify({ shepherd: { visualSetCarry: mode } }));
+      vi.stubEnv("XDG_CONFIG_HOME", join(w.dir, "config"));
+      const runId = w.server.host.runtime.start("visual-accept-gate", { pr: String(w.pr), head: H });
+      const gateId = `${runId}/sh-visual-accept`;
+      await vi.waitFor(() => expect(w.server.host.gates.get(gateId)?.status).toBe("pending"));
+      const packet = acceptPacket({ repo: REPO, pr: w.pr, headSha: H, headTree: TREE });
+      writeFactoryPacket(w.dir, runId, packet, H);
+      writeRound(w);
+      writeFileSync(join(w.roundsDir, ROUND_ID, "packet.json"), packet);
+      return { body: answer(w, hash(Buffer.from(packet).toString("utf8")), { runId, gateId, choice: "accept-set" }), gateId };
+    }
+
+    it("resolves accept-set with the set read from the factory's own packet dir, and reads a replay as already", async () => {
+      const w = await world();
+      const { body, gateId } = await acceptGate(w, "on");
+
+      const res = await post(w.server, body);
+      const replay = await post(w.server, body);
+
+      expect([res.status, await res.json()]).toEqual([200, { outcome: "resolved", gateId, choice: "accept-set" }]);
+      expect([replay.status, await replay.json()]).toEqual([200, { outcome: "already", gateId }]);
+      const gate = w.server.host.gates.get(gateId);
+      expect(gate?.payload).toMatchObject({ decision: "accept-set", headSha: H, approvedSet: { fromHead: H, packetId: "p-accept", sidePaths: [] } });
+      expect(gate?.resolvedBy).toMatchObject({ class: "owner-remote", channel: "console:ship" });
+    });
+
+    it("refuses accept-set with 422 off while shepherd.visualSetCarry is off, leaving the gate pending", async () => {
+      const w = await world();
+      const { body, gateId } = await acceptGate(w, "off");
+
+      const res = await post(w.server, body);
+
+      expect([res.status, await res.json()]).toMatchObject([422, { outcome: "refused", reason: "off" }]);
+      expect(w.server.host.gates.get(gateId)?.status).toBe("pending");
+    });
   });
 
   it("is no registry command, and so no MCP tool, so only the mounted route can answer a Ship", () => {

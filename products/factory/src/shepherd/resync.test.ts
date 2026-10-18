@@ -25,10 +25,13 @@ import { REREVIEW } from "./stale-gates.js";
 import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditions } from "./resync.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
-import { shepherdStoreRef } from "./store.js";
+import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import { supersedeStaleReviews } from "./stale-reviews.js";
 import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
+import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
+import type { SourceTextLocator } from "@titan-design/session-read";
+import { partialFake } from "@titan-design/test-kit";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const SEED_LEASE_MS = 3_000;
@@ -649,10 +652,36 @@ interface AuthorityOptions {
   unreadable?: { value: boolean };
   /** Each review's evidence is whole, as a real evidence step writes it. */
   whole?: boolean;
+  /** Wires the hold's named reviewer `rev-x`, so the merge path's satisfier reads what it says. */
+  holdReviewer?: HoldReviewer;
+}
+
+/** What `rev-x`'s transcript holds when the satisfier reads it; `unreadable` makes the read throw. */
+interface HoldReviewer {
+  says: { verdict: "MERGE" | "FIX_FIRST"; head: string } | "nothing" | "unreadable";
+}
+
+const rosterRow = (name: string, spawnedBy: string | null): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "exited", spawnedBy, predecessor: null });
+const REV_X = rosterRow("rev-x", "coord");
+const REV_X_LOCATOR = partialFake<SourceTextLocator>({ selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } });
+/** The implementer and the reviewer share only their spawner, so the roster proves the reviewer independent. */
+const HOLD_ROSTER: readonly ReviewerAgent[] = [rosterRow("coord", null), rosterRow("impl-a", "coord"), REV_X];
+
+function holdReviewerWiring(reviewer: HoldReviewer): { dispatch: ReviewerDispatch; reader: ReviewerReader } {
+  const dispatch: ReviewerDispatch = { roster: async () => [...HOLD_ROSTER], spawn: async () => undefined, resume: async () => undefined };
+  const reader: ReviewerReader = {
+    read: async () => {
+      const { says } = reviewer;
+      if (says === "unreadable") throw new Error("the transcript could not be read");
+      const text = says === "nothing" ? "Still reading." : `Read it all.\n\nVerdict: ${says.verdict}\nPR: ${REPO}#1\nHead: ${says.head}\n`;
+      return [{ agentId: REV_X.agentId, sessionId: REV_X.sessionId, writtenAt: 1, text, locator: REV_X_LOCATOR }];
+    },
+  };
+  return { dispatch, reader };
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable, whole = false }: AuthorityOptions = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable, whole = false, holdReviewer }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
@@ -664,7 +693,8 @@ async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, 
   const port = githubPort(fake.wire);
   const getPr = port.getPr.bind(port);
   const flaky = { ...port, getPr: async (repo: string, pr: number) => (unreadable?.value ? Promise.reject(new Error("rate limited")) : getPr(repo, pr)) };
-  const routes = factoryRoutesFor({ port: flaky, store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const review = holdReviewer && holdReviewerWiring(holdReviewer);
+  const routes = factoryRoutesFor({ port: flaky, store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), ...(review && { review }) });
   const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)], goneSweepMs, headMovedSweepMs) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   if (!serve) cleanups.push(() => host.close());
   fake.addPr({ headSha: REVIEWED });
@@ -792,6 +822,152 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  const ADVERSARY = "g10-adversary: merge policy; TP-1";
+  const OWNER_ASKED = "owner-asked: discuss first";
+  const STALLED = "stalled: waiting on a fix; TP-1";
+  const thawSuperseded = `superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`;
+
+  /** Freezes and thaws the repo while serving, after `between` runs on the frozen repo. */
+  const thawAfter = async (services: AuthorityRun["services"], between: () => void): Promise<void> => {
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    between();
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+  };
+
+  it("leaves a gate a freeze caused on an owner-asked hold with the owner once the repo has thawed", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    services.store.get().hold(runId, OWNER_ASKED);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(fake.pr(1).merged).toBeFalsy();
+    expect(reviewed).toEqual([REVIEWED]);
+  });
+
+  it("supersedes a gate a freeze caused on a run with a hold the merge step reads, and the run asks again but does not merge while held", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    services.store.get().hold(runId, ADVERSARY);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: REVIEWED, condition: "transient-only" }]);
+    await vi.waitFor(() => expect(reviewed).toEqual([REVIEWED, REVIEWED]));
+    await sleep(50, new AbortController().signal);
+    expect(fake.pr(1).merged).toBeFalsy();
+  });
+
+  it("a thaw while serving leaves an owner hold's gate with the owner", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+
+    await thawAfter(services, () => services.store.get().hold(runId, OWNER_ASKED));
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a reviewer's MERGE at the gate's head, said after the thaw, satisfies the hold on the merge path while serving, and the run merges that head", async () => {
+    const reviewer: HoldReviewer = { says: "nothing" };
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true, holdReviewer: reviewer });
+    await thawAfter(services, () => services.store.get().hold(runId, ADVERSARY, "rev-x"));
+    expect(fake.pr(1).merged).toBeFalsy();
+
+    reviewer.says = { verdict: "MERGE", head: REVIEWED };
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(thawSuperseded);
+    expect(services.store.get().byRun(runId)?.holdSatisfied?.head).toBe(REVIEWED);
+  });
+
+  it.each<[string, HoldReviewer["says"]]>([
+    ["a FIX_FIRST at the gate's head", { verdict: "FIX_FIRST", head: REVIEWED }],
+    ["a MERGE at an older head", { verdict: "MERGE", head: fakeSha("older-head") }],
+    ["no verdict", "nothing"],
+    ["a transcript that cannot be read", "unreadable"],
+  ])("with %s from the hold's reviewer, a thaw while serving merges nothing and leaves the hold unsatisfied", async (_name, says) => {
+    const { fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true, holdReviewer: { says } });
+
+    await thawAfter(services, () => services.store.get().hold(runId, ADVERSARY, "rev-x"));
+    await sleep(50, new AbortController().signal);
+
+    expect(fake.pr(1).merged).toBeFalsy();
+    expect(services.store.get().byRun(runId)).toMatchObject({ held: true, holdSatisfied: null });
+  });
+
+  const satisfiedAt = (store: ShepherdStore, runId: string, head: string): boolean => {
+    store.hold(runId, ADVERSARY, "rev-x");
+    return store.satisfyHold(runId, "rev-x", head, { agentId: "agent-rev-x", sessionId: "session-rev-x", locator: {} });
+  };
+
+  it("a thaw while serving supersedes the gate of a run whose hold was satisfied at the gate's head, and the run merges it", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+
+    await thawAfter(services, () => expect(satisfiedAt(services.store.get(), runId, REVIEWED)).toBe(true));
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(thawSuperseded);
+  });
+
+  it("a thaw while serving leaves the gate of a run with an owner hold, even with its other hold satisfied at the gate's head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+
+    await thawAfter(services, () => {
+      expect(satisfiedAt(services.store.get(), runId, REVIEWED)).toBe(true);
+      services.store.get().hold(runId, OWNER_ASKED);
+    });
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(fake.pr(1).merged).toBeFalsy();
+  });
+
+  it.each<[string, string, (store: ShepherdStore, runId: string) => unknown]>([
+    ["release", STALLED, (store, runId) => store.release(runId)],
+    ["releaseIfHeld, as the g10 auto-release lifts it", STALLED, (store, runId) => store.releaseIfHeld(runId, STALLED)],
+    ["releaseClass", STALLED, (store, runId) => store.releaseClass(runId, "stalled")],
+    ["releaseOwnerHold", OWNER_ASKED, (store, runId) => store.releaseOwnerHold(runId)],
+  ])("a %s after a thaw while serving lets the held run merge the same head", async (_name, reason, release) => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { serve: true });
+    await thawAfter(services, () => services.store.get().hold(runId, reason));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe(reason === OWNER_ASKED ? "pending" : "cancelled");
+    expect(fake.pr(1).merged).toBeFalsy();
+
+    release(services.store.get(), runId);
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(thawSuperseded);
+    expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("leaves the gate of a run given an owner hold while the sweep reads its PR head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
+    const onGetPr = fake.onGetPr;
+    fake.onGetPr = (pr, reads) => {
+      if (!services.store.get().byRun(runId)?.held) services.store.get().hold(runId, OWNER_ASKED);
+      onGetPr?.(pr, reads);
+    };
+
+    expect(await supersedeTransientGates(host, services)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("re-gates a run with an owner hold at its new head after a thaw, and the hold stays", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { unmetReviews: 2 });
+    services.store.get().hold(runId, OWNER_ASKED);
+    await resyncShepherd(host, services);
+    fake.pushHead(1, PUSHED);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: PUSHED, condition: "head-moved" }]);
+    await gateOpened(host, gateId(runId, "approve-merge:1"));
+    expect(host.gates.get(gateId(runId, "approve-merge:1"))?.prompt).toContain(`at head ${PUSHED} into main?`);
+    expect((await resyncShepherd(host, services)).superseded).toEqual([]);
+    expect(services.store.get().byRun(runId)).toMatchObject({ held: true, holdReason: OWNER_ASKED });
+    expect(fake.pr(1).merged).toBeFalsy();
   });
 
   it("keeps the standing MERGE after a review-again cancel, reads its evidence again instead of a reviewer, and merges the same head", async () => {
@@ -1142,5 +1318,76 @@ describe("resyncShepherd over many runs", () => {
     const report = await resyncShepherd(w.seed, w.routes.shepherd!, { dryRun: true, now: () => (clock += 1_000) });
 
     expect(report.phaseMs).toEqual({ ended: 1_000, reverts: 1_000, superseded: 1_000, supersededReviews: 1_000, supersededMerges: 1_000 });
+  });
+});
+
+describe("resyncShepherd on an approve-merge gate whose PR base moved", () => {
+  const PARENT = "agent-chat/parent";
+  const FEATURE_BASE: EffectivePolicy = { ...OWNER_GATE_POLICY, featureBase: true };
+
+  async function gatedInto(base: string, policy: EffectivePolicy = FEATURE_BASE) {
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    const store = shepherdStoreRef();
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(PHASES)], routes, gatePollMs: 5 });
+    cleanups.push(() => host.close());
+    fake.addPr({ headSha: HEAD, baseRef: base });
+    const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy });
+    await gateOpened(host, gateId(runId, "approve-merge"));
+    return { host, fake, services: routes.shepherd!, runId, gate: gateId(runId, "approve-merge") };
+  }
+
+  it("supersedes the gate once the PR is retargeted to main, and lists it in the report", async () => {
+    const { host, fake, services, runId, gate } = await gatedInto(PARENT);
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gate, from: PARENT, to: "main", condition: "base-changed" }]);
+    expect(host.gates.get(gate)?.status).toBe("cancelled");
+  });
+
+  it("supersedes a gate into a non-default base the run has no featureBase grant for, though the base did not move", async () => {
+    const { host, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().update(runId, { task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gate, from: PARENT, to: PARENT, condition: "base-changed" }]);
+  });
+
+  it("on a dry run reports the supersede and cancels nothing", async () => {
+    const { host, fake, services, gate } = await gatedInto(PARENT);
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services, { dryRun: true });
+
+    expect(report.superseded.map((superseded) => superseded.gateId)).toEqual([gate]);
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("keeps the gate when the PR cannot be read", async () => {
+    const { host, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().update(runId, { task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    const port = { ...services.port, getPr: async () => Promise.reject(new Error("synthetic read failure")) };
+
+    const report = await resyncShepherd(host, { ...services, port });
+
+    expect(report.superseded).toEqual([]);
+    expect(report.supersedeError).toBeUndefined();
+    expect(host.gates.get(gate)?.status).toBe("pending");
+  });
+
+  it("leaves the gate of a run with an owner hold with the owner, though the base moved", async () => {
+    const { host, fake, services, runId, gate } = await gatedInto(PARENT);
+    services.store.get().hold(runId, "owner-asked: discuss first");
+    fake.pr(1).baseRef = "main";
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gate)?.status).toBe("pending");
   });
 });

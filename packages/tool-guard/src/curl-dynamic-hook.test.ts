@@ -110,10 +110,7 @@ describe("handle: an HTTP write to a run-time URL", () => {
     "printf -v HOME %s d; wget https://api.github.com/repos/o/r/pulls/1/merge",
     "mapfile -t HOME < f; wget https://api.github.com/repos/o/r/pulls/1/merge",
     "declare -n R=HOME; R=d; wget https://api.github.com/repos/o/r/pulls/1/merge",
-    'export "$V=d"; wget https://api.github.com/repos/o/r/pulls/1/merge',
-    'declare "$V"=d; wget https://api.github.com/repos/o/r/pulls/1/merge',
     "read WGETRC; export WGETRC; wget https://api.github.com/repos/o/r/pulls/1/merge",
-    'read "$V" <<< d; wget https://api.github.com/repos/o/r/pulls/1/merge',
     "(( HOME = 1 )); wget https://api.github.com/repos/o/r/pulls/1/merge",
     "HTTPIE_CONFIG_DIR=d http https://api.github.com/repos/o/r/pulls/1/merge",
     "export HTTPIE_CONFIG_DIR=d; http https://api.github.com/repos/o/r/pulls/1/merge",
@@ -171,6 +168,17 @@ describe("handle: an HTTP write to a run-time URL", () => {
     const { columns } = await logColumns(command);
 
     expect(columns).toEqual(["deny", "MRG-WK", "merge", "bash.merge.curl-api", "coordinator+worker+headless"]);
+  });
+
+  // A run-time name a declarer or read stores into may be any name, so the line is refused as a possible rebinding (TP-3320).
+  it.each([
+    'export "$V=d"; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'declare "$V"=d; wget https://api.github.com/repos/o/r/pulls/1/merge',
+    'read -- "$V" <<< d; wget https://api.github.com/repos/o/r/pulls/1/merge',
+  ])("denies %s before reading the merge", async (command) => {
+    const { columns } = await logColumns(command);
+
+    expect(columns?.[0]).toBe("deny");
   });
 
   it.each([

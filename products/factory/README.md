@@ -95,6 +95,13 @@ head other than the gate's, or a missing verdict reads no evidence, and the comm
 dialog above. A visual-path, seat owner-gate, route-escalation or release gate, a round
 pick, and every other gate still need the owner's presence.
 
+Land stamps its approve-merge gate with the table.json row that gated it, so the gate store, and its
+SQLite trigger, admit only that row's resolvers (migrations 27 and 28). An `authority/MRG-AU` gate
+admits owner-terminal, owner-remote and `coordinator` as a rule delegate, which `deviceGateAuthorize`
+lets answer only on the evidence above, never on the rule alone. Release gates open rule-less, so the
+owner may approve one from the phone (owner decision 2026-10-16). Seat, merge-guard, route and default
+gates have no row and open rule-less too, as do gates opened before the migrations.
+
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
 to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
@@ -630,6 +637,21 @@ then held until a newer one arrives.
 A failed install or build also writes `deploy-build.log` beside `deploy.json`: the command,
 target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
 keeps a 20-line tail and names the log; the file holds only the newest failure.
+
+A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
+only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold
+allowed) sets the manual hold with the item's reason and `source: morning:<seat>:<n>`, for example
+`7. DEPLOY HOLD: copy the db before the migration deploys. One-way.` An item that only mentions a
+deploy hold mid-text does nothing. The deploy pacer syncs the hold at each tick before it decides,
+so the tick that sets it spawns nothing, and `service deploy` syncs it under the deploy lock
+before it reads the holds. Removing the item clears the hold once two pacer ticks in a row find no
+hold item, so a queue file caught mid-rewrite cannot clear it. That count lives in serve's memory:
+a restart starts it at 0, which can delay a clear by a tick and never causes one. A one-shot
+`service deploy` can set a Morning hold but never clears one. The sync never overwrites or clears
+a hold set by hand, keeps every hold when a queue file cannot be read (a missing dir counts), and
+never reads, writes or removes `deploy-pause.json`. A `--clear` while the item stands is undone by
+the next tick, so remove the item instead. The queue files are the Morning digest's
+(`digest.queuesDir`, else the default under the active-work root).
 
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.

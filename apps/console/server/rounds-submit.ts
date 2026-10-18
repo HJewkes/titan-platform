@@ -8,7 +8,8 @@
  * question carried. The round id resolves only to a real directory in the rounds dir, as
  * `rounds.get` does. The file is created with `wx` (O_CREAT|O_EXCL, which also refuses a symlink
  * planted at the name) and mode 0600, so a second submit finds it and is told so; nothing is
- * ever overwritten. A withdrawn round is refused before anything is written, so neither the decision
+ * ever overwritten. A design round is answered here only when it has a valid `frames/frames.json`, as the page then
+ * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
  */
@@ -22,14 +23,10 @@ import { decisionLogResult, type DecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
-import {
-  FEEDBACK_SCHEMA_ID,
-  FeedbackDocument,
-  Round2Manifest,
-  SubmittedAnswer,
-  type Round2Question,
-} from "./round2-adapter.js";
-import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, readCapped, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
+import { hasFramesIndex } from "./round-frames.js";
+import type { Manifest, Question } from "./round-schema.js";
+import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
+import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -88,15 +85,10 @@ async function readManifest(roundDir: string): Promise<{ bytes: Buffer; modified
   }
 }
 
-function parseManifest(bytes: Buffer): Round2Manifest {
-  let json: unknown;
-  try {
-    json = JSON.parse(bytes.toString("utf8"));
-  } catch {
-    return refuse(`${ROUND_FILE} is not JSON`);
-  }
-  const parsed = Round2Manifest.safeParse(json);
-  return parsed.success ? parsed.data : refuse(`${ROUND_FILE} is not a round@2 manifest`);
+/** The same strict parse the lister and detail use, so submit never accepts a round they call invalid. */
+function validManifest(bytes: Buffer): Manifest {
+  const parsed = parseManifest(bytes);
+  return parsed.ok ? parsed.manifest : refuse(`${ROUND_FILE} is not a valid round: ${parsed.reason}`);
 }
 
 /** Each field an answer may carry, by the question kinds that take it; `comment` and `optionNotes` go anywhere. */
@@ -108,17 +100,17 @@ const FIELD_KINDS: Record<string, readonly string[]> = {
   text: ["text"],
 };
 
-function answerProblem(question: Round2Question, answer: SubmittedAnswer): string | null {
+function answerProblem(question: Question, answer: SubmittedAnswer): string | null {
   const misplaced = Object.keys(answer).find((field) => FIELD_KINDS[field] && !FIELD_KINDS[field].includes(question.kind));
   if (misplaced) return `${misplaced} does not answer a ${question.kind} question`;
   if (answer.pick !== undefined && answer.revisionRequested) return "a revision request carries no pick";
-  const offered = question.options ?? [];
+  const offered = "options" in question ? question.options : [];
   const chosen = [...(answer.pick === undefined ? [] : [answer.pick]), ...(answer.picks ?? [])];
   const unknown = chosen.find((option) => !offered.includes(option));
   return unknown === undefined ? null : `"${unknown}" is not one of its options`;
 }
 
-function checkAnswers(manifest: Round2Manifest, answers: SubmittedAnswer[]): void {
+function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
   const questions = new Map(manifest.questions.map((question) => [question.id, question]));
   const seen = new Set<string>();
   for (const answer of answers) {
@@ -131,24 +123,27 @@ function checkAnswers(manifest: Round2Manifest, answers: SubmittedAnswer[]): voi
 }
 
 /** Null when no answer ships a merge-bound question; otherwise the head sha every shipped question named. */
-function shippedHead(manifest: Round2Manifest, { answers, headSha }: SubmitArgs): string | null {
-  const shipped = manifest.questions.filter(
-    (question) => question.merge && answers.some((answer) => answer.questionId === question.id && question.merge?.ship.includes(answer.pick ?? "")),
+function shippedHead(manifest: Manifest, { answers, headSha }: SubmitArgs): string | null {
+  const shipped = manifest.questions.flatMap((question) =>
+    question.kind === "pick-one" && question.merge && answers.some((answer) => answer.questionId === question.id && question.merge?.ship.includes(answer.pick ?? ""))
+      ? [{ id: question.id, merge: question.merge }]
+      : [],
   );
   if (shipped.length === 0) return null;
   if (headSha === undefined) return refuse("a Ship answer must carry the head sha its question names");
-  const stale = shipped.find((question) => question.merge?.headSha !== headSha);
+  const stale = shipped.find(({ merge }) => merge.headSha !== headSha);
   return stale === undefined ? headSha : refuse(`question "${stale.id}" names a different head sha`);
 }
 
 /** In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind. */
-function withSeen(manifest: Round2Manifest, answer: SubmittedAnswer) {
+function withSeen(manifest: Manifest, answer: SubmittedAnswer) {
   const answered = answer.pick !== undefined || answer.picks !== undefined || answer.value !== undefined || answer.text !== undefined;
-  const recommended = manifest.questions.find((question) => question.id === answer.questionId)?.recommendation !== undefined;
+  const question = manifest.questions.find((each) => each.id === answer.questionId);
+  const recommended = question !== undefined && question.kind !== "text" && question.recommendation !== undefined;
   return manifest.recommendations === "shown" && answered && recommended ? { ...answer, recommendationSeen: true as const } : answer;
 }
 
-function feedbackBytes(manifest: Round2Manifest, args: SubmitArgs, now: Date): Buffer {
+function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer {
   const document = FeedbackDocument.parse({
     schema: FEEDBACK_SCHEMA_ID,
     unit: manifest.unit,
@@ -191,9 +186,10 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   if ((await statusOf(roundDir)) === "withdrawn") refuse("refused: withdrawn; this round was superseded and takes no answer");
   const { bytes: manifestBytes, modifiedAt } = await readManifest(roundDir);
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
-  const manifest = parseManifest(manifestBytes);
-  // A Ship round's variants are the PR's changed images, which the console's Ship view shows.
-  if (manifest.variants.length > 0 && !manifest.questions.some((question) => question.merge)) refuse("a design round is answered in the review harness");
+  const manifest = validManifest(manifestBytes);
+  // A Ship round's variants are the PR's changed images; a design round's frames show only through a valid frames.json.
+  const design = manifest.variants.length > 0 && !manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
+  if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   const headSha = shippedHead(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);

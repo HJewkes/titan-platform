@@ -36,6 +36,7 @@ import { registerLand } from "./cli-land.js";
 import { registerGate, registerResume, registerServe, routesOf } from "./cli-host-verbs.js";
 import type { HeadRefRead } from "./shepherd/register-identity.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
+import { sourcesReader, type SourcesReader } from "./github-sources/mode.js";
 
 export { EXIT };
 export { formatResume } from "./cli-host-verbs.js";
@@ -85,12 +86,14 @@ export interface CliDeps {
   gateNotify?: (env: NodeJS.ProcessEnv) => GateNotifyOptions | undefined;
   /** The serve verb's console Ship route; absent, or undefined for an env, means serve does not mount it. */
   consoleAnswers?: (env: NodeJS.ProcessEnv) => ConsoleAnswersOptions | undefined;
+  /** The serve verb's GitHub sources reader behind health's `sources`; an invalid config throws here, failing the start. */
+  sources?: (env: NodeJS.ProcessEnv, log: Logger) => SourcesReader;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
   exitAfterServe?: () => void;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), exitAfterServe: () => process.exit() };
 
 export interface Verbs {
   io: CliIo;

@@ -92,19 +92,85 @@ through a symlinked parent, is refused just before the append.
   by path one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
+- A line that defines a shell alias is refused whole, with its own reason: `alias y=git`, `alias -g`, `enable -a`,
+  a store into zsh's `aliases`, `galiases` or `saliases` (or bash's `BASH_ALIASES`) by assignment, `typeset -A`,
+  `set -A`, `read -A`, `printf -v` or `${aliases[y]::=git}`, in the line, in `eval` and `-c` text, in a substitution,
+  a function body or a script it sources, because zsh expands an alias in text it parses later in the same process
+  and the guard would read `y push` as an unknown program (TP-2705). Querying one (`alias`, `alias g`, `alias -L`,
+  `alias -m 'g*'`) and `unalias` pass. A command word the shell may expand into `alias` is read as `alias`: a brace
+  expansion (`{alias,y=echo}`), a glob a file named like `alias`, a wrapper such as `builtin`, or a store builtin such as `typeset` or `source` would match, in any letter case (`ali*`, `t?peset`), a
+  leading `=` or a tilde without a `/`. A word with a `/` is a path and never `alias`, and a glob no such name matches
+  (`TP-*`, `*dropped*`) is only a name, unless it holds a `]` opening a bracket class, `#`, `\`, `^`, `~`, `<n-m>` or a group; a lone `case` pattern word is matched, never run, but only between `in` and `esac` (zsh's brace form `case x { … }` is read as commands). A word that varies where
+  `alias` reads its operands, or where a store builtin reads an option or a name, is read as one that may define:
+  `alias *`, `typeset ali*`, `printf *`, `print $x`; a numeric parameter (`$?`, `$#`) and a format that opens with
+  text (`printf "b$n=%s "`) are not. Only the plain `NAME=VALUE` form of a declaration is spared, as neither shell
+  globs it: `typeset a[1]=2` passes. A command word only known at run time with no external runner (`env`, `sudo`, `nohup`, `nice`, `xargs`) before it is read as one that may be `alias`, also after `builtin`, `command`, `noglob`, `nocorrect`, `-`, `time` or `coproc`, which run builtins:
+  `"$C" y=git` and `"$(printf al%s ias)" y=git` are refused, as is `"$C" -v 'aliases[y]' git`. Accepted false denies, since `alias` itself takes the same words: `"$MAKE" CC=gcc`, `"$PY" -m pip install x==1.2`, `"$DOCKER" run -e A=1`; `"$EDITOR" file` and `"$cmd" --version` pass. Not seen: a run-time word behind an external runner (`sudo "$C" y=git`, `env "$C" y=git`; `env $(…) A=1 pnpm` must pass), a run-time word with only a glob, tilde or `=` operand, fully dynamic `eval` text, an alias written into `~/.zshrc` for a later session, and
+  `hash NAME=path` (see the rebinding bullet).
+- A line that rebinds a command name is refused whole, with its own reason: zsh `hash y=/usr/bin/git`, bash `hash -p`, and a store into `commands`, `BASH_CMDS`, `functions`, `dis_functions` or `nameddirs` (`commands[y]=…`, `commands+=(…)`, `set -A commands …`, `zstyle -e … 'commands[y]=…'`), because the guard classifies by command name and would read `y push` as an unknown program (TP-2706). Listing, looking up or resetting the hash table (`hash`, `hash git`, `hash -r`) passes. A store builtin whose stored-into name is only known at run time (`export $(cmd)`, `declare "$F"`, `read -- "$n"`, `zpty -r z "$n"`, `zgetattr f a "$n"`) is refused too, since that name may be `commands[y]`; `name-slots.ts` and `hooked-params.ts` read these builtins from one table, `WRITER_SPECS`. Not seen: a command word only known at run time that is `hash` then (`"$(printf ha%s sh)" y=/x`), fully dynamic `eval` text, `autoload` from an `fpath` file and `zmodload` tricks, and a rebinding written into `~/.zshrc` for a later session.
+- A builtin with a store option (`print`, `printf`, `set`, `read`, `compgen`, `mapfile`, `wait`, `zparseopts`, `strftime`, `zstat`, zsh `stat`, `compadd`: every `WRITER_SPECS` builtin with a name option or a store flag, with no exemptions) that meets a run-time word where it still reads options (`print $x`, `set "$x"`, `print *`) is refused the same way, quoted or not, because that word may be `-v commands[y]`. Write `--` before the run-time words to pass: `print -- $x`, `wait -- $pid`. zsh's `zparseopts`, `zformat`, `zstyle`, `zstat` and `stat` skip one leading `--` and read options after it, so `stat -- "$f"` is refused too; write `stat ./"$f"`, since `stat $o commands s` with `o=-LH` stores into `commands` once zsh/stat is loaded. A run-time word in a name slot (`read -- "$n"`, `declare "$x"`, zsh `read -n "$n"`, `zstyle -s :a k "$n"`) may be any name, so it is refused after `--` too; write the name itself (TP-3320).
 - It does not classify `titan-factory` verbs.
+
+## merge-lint
+
+`titan-merge-lint` is the source half of the merge guard. The hook above classifies a merge call when it runs; the lint
+reads tracked files, prose briefs included, and warns on a merge call committed into code or into a brief. It is
+text-level, with one regex pass over each file, and it writes nothing but stdout. `@titan-design/tool-guard/merge-lint`
+exports the pure pieces (`scan`, `parseRules`, `findHits`, `buildReport`).
+
+```sh
+titan-merge-lint                        # scan the tracked files of the working directory
+titan-merge-lint --stdin --name brief   # scan one piped brief under that label
+titan-merge-lint --rules <file>         # read the rules from another file
+```
+
+A hit is any of: `gh pr merge` (with global flags, across a soft-wrapped line; `--disable-auto` is excluded), a
+`pulls/<n>/merge` or `repos/<o>/<r>/merges` route, GraphQL `mergePullRequest`, `enablePullRequestAutoMerge` or
+`enqueuePullRequest`, and octokit `pulls.merge(`. A hit warns unless an entry in `.github/merge-lint.json` covers it. The
+file lists wrappers (a logged merge path, with its `mergePath` and `logs` flag), detectors (code that names a shape to
+recognize it) and deny lists, each with a `path` glob and an optional `text` that pins the entry to hit lines containing
+it. An entry whose path covers every file is refused, an entry that covers no hit warns as stale, and a wrapper with
+`logs: false` warns once per run.
+
+Exit codes: 0 at `level: warn` whatever was found; at `level: error`, 1 for any unallowed hit; 2 for a missing or invalid
+rule file at either level. Under GitHub Actions each warning is an annotation:
+
+```text
+::warning file=src/a.ts,line=1,title=merge-lint::gh-pr-merge: a merge call outside the allowlist in .github/merge-lint.json: gh pr merge 1
+```
+
+On the titan-platform tree, `pnpm merge:lint` runs in the `validate` job at warn level. Not seen on purpose: a command
+built at run time (string concatenation, `$GH pr merge`, aliases), a merge made in the GitHub UI, a direct push to the
+default branch (the hook's `bash.merge.git-push-*` covers it), a call into a wrapper rather than the merge API, and merge
+instructions in the excluded human docs.
 
 ## Known gaps
 
 - Stdin named through the working directory or a symlink (`cd /dev && bash stdin`) is not
   read as stdin. TP-3240 tracks it.
-- bash's and zsh's named-descriptor redirect `{name}<` is read as an operand, so
-  `bash {fd}< ./x.sh /dev/fd/10` is not read. TP-3279 tracks it.
 
 ## Gotchas
 
 - A shell that runs stdin, or a descriptor its script operand names, is refused when the line
-  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`.
+  does not show that text: `bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3` with no `3<`,
+  or `bash {fd}< ./x.sh /dev/fd/10`, whose descriptor number from 10 up the shell picks.
+- A `{name}` before a redirect is read as each shell reads it and refused if any reading is:
+  zsh reads `{fd}<` and `{fd} <` as the descriptor, dash keeps both as words, and bash reads
+  only a glued `{fd}<` or `{a[0]}<` as one (`env -C {x} </dev/null git push` runs the push in
+  bash, and `env -C {x} </dev/null {fd}< ./x.sh bash /dev/fd/10` runs x.sh in bash alone).
+  When the readings leave a different directory or variable (`cd {x} </dev/null`), the rest
+  of the command list is checked once per reading; a line that would need more than 8 such
+  walks is refused.
+  The same readings decide what a command prints into another: a `{ }` group or `( )`
+  subshell piped on carries every text any reading prints, so
+  `{ echo {fd}</dev/null git push origin HEAD:main; } | bash` is refused. Each command's text
+  keeps the newline echo ends it with, joined within one shell's reading of echo at a time,
+  so `{ echo hi; echo git push origin HEAD:main; } | bash` is refused. bash reads a `{name}`
+  redirect after `}` or `)` as the group's own, so
+  `{ echo git push origin HEAD:main; } {fd}</dev/null | bash` is refused too. `$(...)` output
+  is read as the shell splicing it reads it (bash: glued only; zsh: glued and spaced), so
+  `eval "$(echo {x} </dev/null git push origin HEAD:main)"` is refused for zsh. The text of a
+  `< <(...)` whose readings print different text is left unknown, so a shell reading it is refused.
   A shell that a `-c` string, `eval`, `emulate -c` or `find -exec` starts inherits its runner's
   stdin and descriptors, so `bash -c bash < $F` is refused too.
   Run the script by a literal path, or redirect a literal file (`bash /dev/stdin < ./x.sh`).

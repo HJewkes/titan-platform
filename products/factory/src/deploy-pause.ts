@@ -22,15 +22,17 @@ export type DeployPause = z.infer<typeof DeployPauseSchema>;
 const ManualHoldSchema = z.object({
   heldAt: z.string(),
   reason: z.string().min(1),
+  /** `morning:<seat>:<n>` when a Morning item set the hold; a build that predates the key strips it and still holds. */
+  source: z.string().min(1).optional(),
 });
 
-type ManualHold = z.infer<typeof ManualHoldSchema>;
+export type ManualHold = z.infer<typeof ManualHoldSchema>;
 
 /** `pause` is undefined when the file exists but does not parse; that still pauses. */
 type PauseState = { paused: false } | { paused: true; pause: DeployPause | undefined };
 
 /** `hold` is undefined when the file exists but does not parse; that still holds. */
-type ManualState = { set: false } | { set: true; hold: ManualHold | undefined };
+export type ManualState = { set: false } | { set: true; hold: ManualHold | undefined };
 
 interface HoldsState {
   held: boolean;
@@ -61,18 +63,30 @@ export function readDeployPause(ports: PauseReadPorts, stateDir: string): PauseS
   return ports.exists(path) ? { paused: true, pause: parseWith(DeployPauseSchema, ports.readFile(path)) } : { paused: false };
 }
 
+export function readManualHold(ports: PauseReadPorts, stateDir: string): ManualState {
+  const path = deployHoldPath(stateDir);
+  return ports.exists(path) ? { set: true, hold: parseWith(ManualHoldSchema, ports.readFile(path)) } : { set: false };
+}
+
 /** Both holds; existence of either file alone holds every deploy. */
 export function readDeployHolds(ports: PauseReadPorts, stateDir: string): HoldsState {
   const failure = readDeployPause(ports, stateDir);
-  const path = deployHoldPath(stateDir);
-  const manual: ManualState = ports.exists(path) ? { set: true, hold: parseWith(ManualHoldSchema, ports.readFile(path)) } : { set: false };
+  const manual = readManualHold(ports, stateDir);
   return { held: failure.paused || manual.set, failure, manual };
 }
 
-/** Undefined once the hold is on disk, else why not. */
-export function writeManualHold(ports: { writeFile: (path: string, text: string) => void }, stateDir: string, hold: ManualHold): string | undefined {
+interface HoldWritePorts extends Partial<Pick<LockPorts, "createExclusive">> {
+  writeFile: (path: string, text: string) => void;
+}
+
+/** Undefined once the hold is on disk, else why not; `exclusive` writes only where no hold stands, so it never replaces an owner's own. */
+export function writeManualHold(ports: HoldWritePorts, stateDir: string, hold: ManualHold, { exclusive = false } = {}): string | undefined {
+  const path = deployHoldPath(stateDir);
+  const text = `${JSON.stringify(hold, null, 2)}\n`;
   try {
-    ports.writeFile(deployHoldPath(stateDir), `${JSON.stringify(hold, null, 2)}\n`);
+    if (!exclusive) ports.writeFile(path, text);
+    else if (ports.createExclusive === undefined) return "no create-only write to set the hold with";
+    else if (!ports.createExclusive(path, text)) return `${DEPLOY_HOLD} already exists`;
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -106,7 +120,19 @@ export function describeManualHold(state: ManualState): string {
   if (!state.set) return "deploys are not held by hand";
   const { hold } = state;
   if (hold === undefined) return `deploys are held by hand: ${DEPLOY_HOLD} exists but does not parse`;
-  return `deploys are held by hand since ${hold.heldAt}: ${hold.reason}`;
+  const from = hold.source === undefined ? "" : ` (Morning item ${hold.source}; remove the item to clear)`;
+  return `deploys are held by hand since ${hold.heldAt}: ${hold.reason}${from}`;
+}
+
+/**
+ * Removes only the manual hold, and only while it still carries `source`, so an owner's `--set` that raced in stays.
+ * No lock, as for `--set`: a deployer already past its hold check finishes either way.
+ */
+export function clearManualHold(ports: PauseReadPorts & Pick<LockPorts, "remove">, stateDir: string, source: string): boolean {
+  const state = readManualHold(ports, stateDir);
+  if (!state.set || state.hold?.source !== source) return false;
+  ports.remove(deployHoldPath(stateDir));
+  return true;
 }
 
 /** One line per standing hold, so a manual hold never hides a failure pause or the reverse. */

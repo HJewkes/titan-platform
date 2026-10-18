@@ -62,6 +62,13 @@ describe("expansions nested past the reading limit", () => {
     expect(() => tokenize(line(MAX_NESTING))).not.toThrow();
     expect(() => tokenize(line(MAX_NESTING + 1))).toThrow(/nested more than/);
   });
+
+  // A quote makes a `$((` body not plain math, so each is read both ways and only a few levels of that are read.
+  it("lexes quoted $(( nested up to the both-readings limit and refuses past it", () => {
+    const line = (depth: number): string => `echo ${nest('$(( "" + ', "1", " ))", depth)}`;
+    expect(() => tokenize(line(4))).not.toThrow();
+    expect(() => tokenize(line(5))).toThrow(/nests too deep/);
+  });
 });
 
 /** Single quotes hide the nesting from the line's reading; arithmetic then reads the stored value, and bash 5.3 runs the line after it. */

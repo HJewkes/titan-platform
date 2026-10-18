@@ -64,7 +64,8 @@ function holdsInOrder(text: string, name: string): boolean {
 /**
  * The scripts the walk runs from these tokens, through its own `inlineScript` over the same readings it takes:
  * each case-folded and NUL-cut reading, each unsure-word reading, and each `find -exec` command. Piped text is
- * every word and heredoc before the shell, a superset of what the walk models as printed or passed through. A
+ * every word and heredoc before the shell, each ending its own line as echo's text does, a superset of what the walk
+ * models as printed or passed through. A
  * trap's action and alias values run as code too. A shell's run-time `-c` string, like eval's, is `runTime`.
  * Spliced text is charged against the source's length as the walk charges it, and past that it throws as there.
  */
@@ -113,7 +114,7 @@ function commandsRun(words: WordToken[], budget: UnsureBudget): Unwrapped[] {
 }
 
 function commandScripts(cmd: Unwrapped, { redirects, piped }: Stage, before: Stage[], budget: UnsureBudget): string[] {
-  const stdin = piped ? [before.flatMap(stageTexts).join("\n")] : [];
+  const stdin = piped ? [before.flatMap(stageTexts).map((text) => `${text}\n`).join("")] : [];
   const inline = inlineScript(cmd, redirects, stdin, budget)?.texts ?? [];
   if (cmd.name === "trap") return [...inline, ...cmd.args.filter((a) => a.value !== "--").slice(0, 1).map((a) => a.value)];
   if (cmd.name === "alias") return [...inline, ...cmd.args.flatMap((a) => (a.value.includes("=") ? [a.value.slice(a.value.indexOf("=") + 1)] : []))];

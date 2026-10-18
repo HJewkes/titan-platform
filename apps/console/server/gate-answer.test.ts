@@ -46,6 +46,8 @@ describe("factoryGateAnswer", () => {
 
   it.each([
     [200, { outcome: "resolved", gateId: "g", choice: "send-back" }, { status: "resolved", gateId: "g", choice: "send-back" }],
+    [200, { outcome: "resolved", gateId: "g", choice: "accept-set" }, { status: "resolved", gateId: "g", choice: "accept-set" }],
+    [422, { outcome: "refused", reason: "off" }, { status: "refused", reason: "off" }],
     [200, { outcome: "already", gateId: "g" }, { status: "already", gateId: "g" }],
     [409, { outcome: "moved", currentHead: "b".repeat(40), waitsOn: "ci" }, { status: "moved", currentHead: "b".repeat(40), waitsOn: "ci" }],
     [410, { outcome: "gone", reason: "gate settled" }, { status: "gone", reason: "gate settled" }],

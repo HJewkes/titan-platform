@@ -5,11 +5,12 @@ import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import { COMPARE_FILE_CAP, type CheckRun, type Commit, type CommitStatus, type CompareResult, type GitHubWire, type IssueComment, type JobStep, type PrFile, type PullRequest, type RepoFile, type SquashSource } from "./port.js";
+import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
+import { compareFiles, readAncestry } from "./compare.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
@@ -91,6 +92,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
+    compareAncestry: (repo, base, head) => readAncestry(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
     createComment: async (repo, number, body) => ({ id: (await api.send<{ id: number }>("POST", `repos/${repo}/issues/${number}/comments`, {}, JSON.stringify({ body }))).id }),
@@ -365,25 +367,4 @@ async function threadComments(api: Rest, thread: GhReviewThread): Promise<Review
     page = next.pageInfo;
   }
   return nodes.map((comment) => ({ id: comment.databaseId, author: comment.author?.login ?? "", authorAssociation: comment.authorAssociation, path: comment.path, line: comment.line, body: comment.body, resolved: thread.isResolved }));
-}
-
-interface GhComparePage {
-  merge_base_commit: { sha: string };
-  total_commits?: number;
-  commits?: unknown[];
-  files?: { filename: string }[];
-}
-
-/** Every page repeats the merge base and total; files and commits are split across pages. */
-async function compareFiles(api: Rest, repo: string, base: string, head: string): Promise<CompareResult> {
-  let mergeBaseSha = "";
-  let totalCommits = 0;
-  let commitsSeen = 0;
-  const files = await api.pages(`repos/${repo}/compare/${base}...${head}`, { per_page: "100" }, (page: GhComparePage) => {
-    mergeBaseSha = page.merge_base_commit.sha;
-    totalCommits = page.total_commits ?? 0;
-    commitsSeen += page.commits?.length ?? 0;
-    return (page.files ?? []).map((file) => file.filename);
-  });
-  return { mergeBaseSha, files, truncated: files.length >= COMPARE_FILE_CAP || totalCommits > commitsSeen };
 }

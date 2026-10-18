@@ -22,6 +22,7 @@ declare const SESSION_COOKIE = "titan_session";
 declare const LOGIN_PATH = "/auth/login";
 declare const LOGOUT_PATH = "/auth/logout";
 declare const LOGIN_CODE_TTL_MS: number;
+declare const DEFAULT_SIGN_IN_HINT = "Ask the operator for a fresh sign-in link.";
 declare const SESSION_MAX_AGE_MS: number;
 /** `v1.<issuedAt>.<HMAC(cookieKey, "v1.<issuedAt>")>`; stateless, so it survives restarts. */
 declare function signSession(secret: string, issuedAt?: number): string;
@@ -48,11 +49,17 @@ interface DaemonAuthOptions {
     tokenFile: string;
     /** Codes minted before this are refused. Defaults to now. */
     startedAt?: number;
+    /**
+     * Tells a signed-out browser how to get a sign-in link, shown on the sign-in pages. A product
+     * names its own command here. Defaults to {@link DEFAULT_SIGN_IN_HINT}.
+     */
+    signInHint?: string;
 }
 interface DaemonAuth {
     /** The current secret, re-read when the file's inode, size, times, mode or owner change. */
     secret(): string;
     readonly ledger: LoginCodeLedger;
+    readonly signInHint: string;
 }
 /** Throws {@link TokenFileError} now, so a daemon with an untrustworthy file never starts. */
 declare function createDaemonAuth(options: DaemonAuthOptions): DaemonAuth;
@@ -400,6 +407,8 @@ interface RemoteListenerOptions {
     tls: RemoteTlsOptions;
     /** How often the TLS files are checked for a change. Defaults to 60000. */
     tlsReloadMs?: number;
+    /** How a signed-out browser gets a sign-in link, shown on the sign-in pages; see `DaemonAuthOptions.signInHint`. */
+    signInHint?: string;
 }
 
 interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
@@ -488,4 +497,4 @@ interface StaticAppOptions {
 /** Mounts `GET <base>/*`: files from `root`, `index.html` for client routes, 404 for missing assets. */
 declare function mountStaticApp(app: Hono, options: StaticAppOptions): void;
 
-export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
+export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
