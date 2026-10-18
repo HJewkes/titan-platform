@@ -316,7 +316,8 @@ function readRedirect(s: LexState): void {
   s.i = ahead.ends[op.length - 1] ?? s.src.length;
   const paren = pastJoins(s.src, s.i);
   if ((op === "<" || op === ">") && s.src[paren] === "(") {
-    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
+    const awaited = s.redirect !== null && s.tokens.at(-1) === s.redirect.token;
+    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)], ...(awaited ? { awaited: true as const } : {}) });
     return;
   }
   refuseRedirect(s, op);

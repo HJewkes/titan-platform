@@ -21,10 +21,8 @@ const MAX_TEXTS = 16;
  * operand position becomes this word, which only shells and sourcers keep (`withoutProcsub`), so no other command's
  * arguments change. A substitution a redirect awaits (`bash < <(...)`, `cmd > >(...)`) belongs to that redirect.
  */
-export function withProcsub(words: WordToken[], before: Token | undefined, token: Token): WordToken[] {
-  if (token.type !== "subs" || words.length === 0) return words;
-  // The lexer leaves a `<` or `>` pending past a `<( )`, so the next word, even after `;`, may already be its target.
-  if (before?.type === "redirect" && before.body === null) return words;
+export function withProcsub(words: WordToken[], token: Token): WordToken[] {
+  if (token.type !== "subs" || token.awaited || words.length === 0) return words;
   const operand: WordToken = { type: "word", value: PROCSUB_PATH, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [], procsub: token.subs };
   return [...words, operand];
 }
