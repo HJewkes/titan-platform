@@ -20,7 +20,9 @@ describe("reading a spike script.json", () => {
 
     expect(ignored).toEqual(
       expect.arrayContaining([
-        "video",
+        "video.audience",
+        "video.stake",
+        "video.map",
         "chapters",
         "beats[].band",
         "beats[].connector_in",
@@ -32,6 +34,8 @@ describe("reading a spike script.json", () => {
         "maps.*.nodeBox",
       ]),
     );
+    expect(ignored).not.toContain("video");
+    expect(ignored).not.toContain("video.invariants");
     expect(ignored).not.toContain("beats[].origin");
     expect(ignored).not.toContain("beats[].visual.render");
     expect(ignored).not.toContain("beats[].visual.map_state.old");
@@ -45,6 +49,21 @@ describe("reading a spike script.json", () => {
     expect(items("r1-3-stores")?.slice(0, 3)).toEqual(["Backlog", "Tick", "Broker"]);
     expect(items("r5-1-holds")).toEqual(["two hold slots", "set per head"]);
     expect(beats.find((b) => b.id === "r5-1-holds")).toMatchObject({ mapBeside: true, render: "SplitMapBeat" });
+  });
+
+  // Mutation: not reading `video` leaves the seated-invariant lint no phrases to match.
+  it("hands the script's video invariants to a caller of the item track", () => {
+    const { invariants } = fromSpikeScript(v4Script());
+
+    expect(invariants).toHaveLength(7);
+    expect(invariants).toContain("State survives restarts.");
+  });
+
+  // Mutation: dropping the default makes a script with no `video` block hand back undefined.
+  it("hands back no invariants when the script has no video block", () => {
+    const noVideo = Object.fromEntries(Object.entries(v4Script() as object).filter(([key]) => key !== "video"));
+
+    expect(fromSpikeScript(noVideo).invariants).toEqual([]);
   });
 
   // Mutation: returning only the beats from fromSpikeScript leaves a caller nothing to report.
