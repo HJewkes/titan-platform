@@ -273,18 +273,6 @@ declare function observedPresence(cwd: string, git?: GitRunner): Promise<GitPres
  */
 declare function pruneStaleWorktrees(gitRoot: string): Promise<void>;
 
-/** A fresh package-owned ignored-file observation, not caller-supplied clearance. */
-interface ParkIgnoredFilesObservation {
-    readonly worktree: string;
-    readonly entries: readonly string[];
-}
-/** Product policy over ignored files only; dirty work and failed reads cannot be waived. */
-interface ParkIgnoredFilesPolicy {
-    readonly expandDirectories?: boolean;
-    readonly protectedEntries: (observation: ParkIgnoredFilesObservation) => readonly string[];
-    readonly formatRefusal?: (observation: ParkIgnoredFilesObservation) => string;
-}
-
 /** A copied snapshot of the actual local branch and commit being parked. */
 interface ParkLocalBackingObservation {
     readonly branch: string;
@@ -299,6 +287,18 @@ interface ParkLocalBackingCandidate {
 /** Called lazily only when ordinary origin backing did not prove the captured HEAD. */
 type ParkLocalBackingReader = (observation: Readonly<ParkLocalBackingObservation>) => Promise<readonly ParkLocalBackingCandidate[]>;
 
+/** A fresh package-owned ignored-file observation, not caller-supplied clearance. */
+interface ParkIgnoredFilesObservation {
+    readonly worktree: string;
+    readonly entries: readonly string[];
+}
+/** Product policy over ignored files only; dirty work and failed reads cannot be waived. */
+interface ParkIgnoredFilesPolicy {
+    readonly expandDirectories?: boolean;
+    readonly protectedEntries: (observation: ParkIgnoredFilesObservation) => readonly string[];
+    readonly formatRefusal?: (observation: ParkIgnoredFilesObservation) => string;
+}
+
 /** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
 interface ParkOptions {
     /** Lazy caller-supplied local commit backing; requires allowOriginHeadAncestor strictly true. */
@@ -312,6 +312,7 @@ interface ParkOptions {
     /** Positive finite fetch budget; invalid values refuse without fetching. Defaults to 15 seconds. */
     fetchTimeoutMs?: WorktreeOptions["fetchTimeoutMs"];
 }
+
 /** A selected local candidate adds only its opaque correlation; ordinary origin success has no backingRef. */
 declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
     allowOriginHeadAncestor: true;
