@@ -4,7 +4,7 @@ import { resolveValue } from "./shell/path.js";
 import type { ClassifyContext } from "./types.js";
 
 /** A by-path run of a script, and whether the command that ran it, or one that launched its shell, had PATH in its own prefix. */
-export interface PathRun {
+interface PathRun {
   path: string;
   own: boolean;
 }
