@@ -34,7 +34,8 @@ export interface PaceBeat {
 
 // note, title and chip are items: each is a line of on-screen text that names something new for the viewer to
 // read and hold (a recipe caption, an outro title card, a target chip), not a qualifier of an item already shown
-// (an attribute) nor an animation of one (an action).
+// (an attribute) nor an animation of one (an action). stamp and line are attributes: a stamp marks the state of
+// a row already on screen, and a line highlights a line of code the CodeWalk already shows.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -49,9 +50,20 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   note: "item",
   title: "item",
   chip: "item",
+  fan: "item",
+  legend: "item",
+  rule: "item",
+  rows: "item",
+  col: "item",
+  check: "item",
+  gate: "item",
+  bar: "item",
+  gauge: "item",
   detail: "attribute",
   left: "attribute",
   right: "attribute",
+  stamp: "attribute",
+  line: "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -93,8 +105,10 @@ export interface PaceSourceBeat {
 
 type AtS = (cue: string | undefined) => number | null;
 
+const COUNT_KINDS = new Set(["card", "fan"]);
+
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
-  beat.render === "HookBeat" && kind === "card" && /^\d/.test(label);
+  beat.render === "HookBeat" && COUNT_KINDS.has(kind) && /^\d/.test(label);
 
 function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
   return beat.cues.flatMap(({ target, atCue }) => {
