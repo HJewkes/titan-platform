@@ -1,6 +1,6 @@
 # doctrine
 
-Two registries share this directory. Keep them apart.
+Two registries share this directory, with a pinned data file beside them. Keep them apart.
 
 | Path | What it holds | Loaded by |
 |---|---|---|
@@ -8,6 +8,7 @@ Two registries share this directory. Keep them apart.
 | `craft/<source>.yaml` | The craft doctrine (`doctrine-craft/v1`): every rule id the video-types study (VT §4) lists, one file per source doctrine | `loadDoctrine` |
 | `vocabulary.yaml` | The allowed beats, video types and audiences a craft rule may scope to | `loadDoctrine` |
 | `evidence.tsv` | A verbatim copy of the narrative evidence ledger (`E##` ids and grades) | `loadDoctrine` |
+| `visual-router.json` | A pinned copy of titan-design's visual router; rewrite it with `scripts/pin-visual-router.mjs`, never by hand | `loadVisualRouter` |
 
 `checkDoctrine(loadDoctrine(), loadRuleRegistry())` returns every issue in the craft registry; it
 must return none.
