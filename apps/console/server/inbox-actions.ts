@@ -38,7 +38,7 @@ export interface InboxActionOptions {
   now?: () => number;
 }
 
-export interface ReadBack {
+type ReadBack = {
   repo: string;
   pr: number;
   title: string;
@@ -46,19 +46,19 @@ export interface ReadBack {
   gateId?: string;
   hold?: { class: string; reason: string };
   effect: string;
-}
+};
 
 export type PrepareResult =
   | { status: "ready"; itemId: string; action: ConsoleAction; readBack: ReadBack; readAt: string; confirm: string; expiresAt: string }
   | { status: "no-action"; itemId: string; action: InboxAction; reason: string };
 
-export interface ActResult {
+type ActResult = {
   actionId: string;
   outcome: ActionOutcome | Unreachable;
   /** One line for the owner, naming what to do next when the tap did not land. */
   message: string;
   log?: DecisionLogResult;
-}
+};
 
 interface Prepared {
   itemId: string;

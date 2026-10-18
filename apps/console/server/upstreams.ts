@@ -14,7 +14,7 @@ import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
 
 /** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
-export const OWNER_ACTIONS_DIR = "owner-actions";
+const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
 export type UpstreamId = (typeof UPSTREAM_IDS)[number];
