@@ -34,7 +34,7 @@ async function hook(toolName: string, toolInput: Record<string, unknown>): Promi
   const stdin = JSON.stringify({ tool_name: toolName, session_id: "sess-1", tool_use_id: "tu-1", cwd: REPO, tool_input: toolInput });
   const { stdout, log } = await handle(stdin, { CLAUDE_AGENT_ID: "impl-7" }, port);
   if (stdout === "") return { decision: null, action: null };
-  const decision = (JSON.parse(stdout) as { hookSpecificOutput: { permissionDecision: string } }).hookSpecificOutput.permissionDecision;
+  const decision = /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unparsed";
   return { decision, action: log[0]?.split("\t")[3] ?? null };
 }
 
