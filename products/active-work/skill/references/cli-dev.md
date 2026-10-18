@@ -1,6 +1,6 @@
 # CLI dev — internal architecture for skill maintainers
 
-If you are modifying the `active-work` skill, adding a CLI command, extending the daemon, or wiring a new MCP tool, this is the orientation doc. The CLI source lives in `hjewkes/active-work`.
+If you are modifying the `active-work` skill, adding a CLI command, extending the daemon, or wiring a new MCP tool, this is the orientation doc. The CLI source lives in the titan-platform monorepo under `products/active-work`.
 
 ## Directory map
 
@@ -61,4 +61,4 @@ When you add a trigger phrase to `SKILL.md`, ask: is there an existing CLI comma
 
 ## Release flow
 
-Changes to skill content ship in the next `@titan-design/active-work` release. The `postinstall.js` hook reinstalls the skill on every update; users do not need to do anything beyond `npm install -g @titan-design/active-work@latest` (or the pnpm equivalent).
+Changes to skill content ship in the next `@titan-design/active-work` release, which titan-platform's changesets Release workflow publishes; add a changeset with any change under `products/active-work`. The `postinstall.js` hook reinstalls the skill on every update; users do not need to do anything beyond `npm install -g @titan-design/active-work@latest` (or the pnpm equivalent).

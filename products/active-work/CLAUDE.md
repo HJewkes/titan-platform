@@ -1,13 +1,16 @@
 # active-work — repo notes for Claude
 
+This product lives in the titan-platform monorepo. The root `CLAUDE.md` rules (tiers,
+changesets, the six gates) apply here too.
+
 ## Stack
 
-- Node 22+, ESM only (`"type": "module"`)
-- TypeScript strict, target ES2022, module Node16
-- Package manager: pnpm
+- Node 24, ESM only (`"type": "module"`)
+- TypeScript strict, target ES2022, module Node16, extending the root `tsconfig.base.json`
+- Package manager: pnpm workspace; `@titan-design/*` dependencies are `workspace:^`
 - Build: tsup → ESM bundle of `src/cli.ts` to `dist/`
-- Tests: vitest with workspace (unit / integration projects)
-- Lint: eslint flat config + typescript-eslint + prettier
+- Tests: root vitest (the projects for `__tests__/` arrive in TP-624 S1b)
+- Lint: the root eslint config, with pre-existing hits in `eslint-suppressions.json`
 
 ## Layout
 
@@ -28,36 +31,24 @@
 | `skill/` | SKILL.md + references; copied to `~/.claude/skills/active-work/` by postinstall |
 | `scripts/` | postinstall, preuninstall |
 | `__tests__/` | Vitest tests; fixtures under `__tests__/fixtures/` |
-| `docs/superpowers/plans/` | Implementation plans |
 
 ## Commands
 
+From this directory:
+
 ```bash
 pnpm dev <args>      # tsx src/cli.ts <args>
-pnpm test            # full vitest run
-pnpm test:unit       # unit project only
-pnpm test:integration
 pnpm typecheck
-pnpm lint
-pnpm build           # tsup
-pnpm verify          # the full local gate; CI runs exactly this
+pnpm build           # tsup + vite dashboard
 ```
-
-## Worktree deps
-
-The agent-chat broker preinstalls deps in a new worktree from `.agent-chat/worktree.json`, with scripts ignored. Do not run `pnpm install` again; run `pnpm rebuild better-sqlite3` and `pnpm run prepare` only if you need the native module or the pre-push hook.
 
 ## Verify before opening a PR
 
-Before `gh pr create`, run `pnpm verify` in your worktree and report its last lines.
-The PR merges when the `check` context is green; if it is red, read `gh pr checks <n>`
-and the failing job's log, fix, and push to the same PR.
-
-`verify` runs format:check (fix with `pnpm format`), lint, typecheck, check:tools, then
-`scripts/test-sandboxed.sh` (build:cli, `vitest run` under a throwaway HOME, the
-CLI-reference generator smoke), then the full build. CI's `std / verify` job runs exactly
-this script. CI also runs gitleaks and `pnpm audit --audit-level=critical`, which `verify`
-does not. The eval-miner run stays a local, manual gate: it needs `~/.claude` transcripts.
+Run the root gates from the repo root, each green:
+`pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build`.
+A fresh worktree needs `pnpm install --frozen-lockfile` first. The postinstall and
+preuninstall scripts exit early outside a `node_modules` path, so a workspace install
+leaves `~/.claude` alone.
 
 ## Conventions
 

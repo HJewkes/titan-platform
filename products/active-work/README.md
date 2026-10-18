@@ -170,27 +170,21 @@ The dashboard at `http://127.0.0.1:7400/ui` (served by the daemon) is a read-onl
 
 ## Development
 
-```bash
-pnpm install
-pnpm dev <command>      # tsx-driven dev runner; e.g. pnpm dev list
-pnpm test               # full vitest run (unit + integration)
-pnpm test:unit          # unit project only
-pnpm test:integration   # integration project only
-pnpm typecheck
-pnpm lint
-pnpm build              # tsup CLI bundle + vite dashboard bundle
-```
-
-Node 22+, pnpm. The build produces `dist/cli.js` (single ESM bundle) and `dist/dashboard/index.html` (single-file React app).
-
-The CLI reference is generated, gitignored, and written during release. Adding a command needs no doc commit. To read it locally:
+active-work lives in the titan-platform monorepo at `products/active-work`. Work from a titan-platform checkout and run the root gates from the repo root:
 
 ```bash
-pnpm build                                 # ensure dist/cli.js is current
-node scripts/gen-cli-reference.mjs         # writes docs/cli-reference.md
+pnpm install --frozen-lockfile
+pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
+pnpm --filter @titan-design/active-work dev <command>   # tsx-driven dev runner; e.g. dev list
 ```
 
-The implementation follows a wave-based plan documented at [`docs/superpowers/plans/2026-05-12-active-work-v2.md`](docs/superpowers/plans/2026-05-12-active-work-v2.md). Repo-specific conventions (lint rules, atomic-write requirements, the "CLI is non-interactive by default" rule) live in [`CLAUDE.md`](CLAUDE.md).
+Node 24, pnpm. The build produces `dist/cli.js` (single ESM bundle) and `dist/dashboard/index.html` (single-file React app). Its `@titan-design/*` dependencies resolve to the workspace packages, so a change to one of them is picked up after `pnpm build`.
+
+Releases go through titan-platform's changesets Release workflow: a change under `products/active-work` needs a changeset, and merging the "Version Packages" pull request publishes it.
+
+The CLI reference is generated, gitignored, and written by `prepack`, so `pnpm pack` and `pnpm publish` both include it. Adding a command needs no doc commit. To read it locally, build, then run `node scripts/gen-cli-reference.mjs` from this directory.
+
+Product-specific conventions (atomic-write requirements, the "CLI is non-interactive by default" rule) live in [`CLAUDE.md`](CLAUDE.md).
 
 ### Project layout
 
