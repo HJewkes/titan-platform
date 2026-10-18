@@ -26,7 +26,7 @@ function appFor(name: string) {
     fileResponse(c.req.raw, path.join(dir, name), {
       contentType: "video/mp4",
       cacheControl: "no-cache",
-    })
+    }),
   );
   return app;
 }
@@ -46,9 +46,7 @@ describe("fileResponse", () => {
   it("reads bytes=-4 as the last four bytes", async () => {
     const res = await fetchFile("bytes=-4");
     expect(res.status).toBe(206);
-    expect(res.headers.get("content-range")).toBe(
-      `bytes 16-19/${BYTES.length}`
-    );
+    expect(res.headers.get("content-range")).toBe(`bytes 16-19/${BYTES.length}`);
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("ghij");
   });
 
@@ -56,9 +54,7 @@ describe("fileResponse", () => {
     const open = await fetchFile("bytes=15-");
     expect(Buffer.from(await open.arrayBuffer()).toString()).toBe("fghij");
     const clamped = await fetchFile("bytes=18-999");
-    expect(clamped.headers.get("content-range")).toBe(
-      `bytes 18-19/${BYTES.length}`
-    );
+    expect(clamped.headers.get("content-range")).toBe(`bytes 18-19/${BYTES.length}`);
   });
 
   it("answers a start at or past the size with 416 and the size", async () => {
@@ -68,12 +64,7 @@ describe("fileResponse", () => {
   });
 
   it("answers a multi-range or malformed request with the whole file", async () => {
-    for (const header of [
-      "bytes=0-1,4-5",
-      "bytes=5-2",
-      "items=0-1",
-      "bytes=-",
-    ]) {
+    for (const header of ["bytes=0-1,4-5", "bytes=5-2", "items=0-1", "bytes=-"]) {
       const res = await fetchFile(header);
       expect(res.status).toBe(200);
       expect(Buffer.from(await res.arrayBuffer()).equals(BYTES)).toBe(true);
@@ -109,13 +100,9 @@ describe("fileResponse", () => {
 
 describe("fileResponse HEAD", () => {
   it("returns no body stream, so the file is never read", async () => {
-    const res = await fileResponse(
-      new Request("http://x/f", { method: "HEAD" }),
-      path.join(dir, "clip.bin"),
-      {
-        contentType: "video/mp4",
-      }
-    );
+    const res = await fileResponse(new Request("http://x/f", { method: "HEAD" }), path.join(dir, "clip.bin"), {
+      contentType: "video/mp4",
+    });
     expect(res.body).toBeNull();
     expect(res.headers.get("content-length")).toBe(String(BYTES.length));
   });

@@ -4,7 +4,6 @@
  */
 import { constants } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
-import { Readable } from "node:stream";
 
 export interface FileResponseOptions {
   contentType: string;
@@ -12,10 +11,7 @@ export interface FileResponseOptions {
   cacheControl?: string;
 }
 
-type RangeRequest =
-  | { kind: "whole" }
-  | { kind: "unsatisfiable" }
-  | { kind: "slice"; start: number; end: number };
+type RangeRequest = { kind: "whole" } | { kind: "unsatisfiable" } | { kind: "slice"; start: number; end: number };
 
 const SINGLE_RANGE = /^bytes=(\d*)-(\d*)$/;
 
@@ -25,11 +21,7 @@ const SINGLE_RANGE = /^bytes=(\d*)-(\d*)$/;
  * never name the path. A symlink at the final component or a non-regular file is refused (403),
  * a missing file is 404.
  */
-export async function fileResponse(
-  request: Request,
-  file: string,
-  options: FileResponseOptions
-): Promise<Response> {
+export async function fileResponse(request: Request, file: string, options: FileResponseOptions): Promise<Response> {
   const handle = await openRegular(file);
   if (handle === "missing") return plain("Not found", 404);
   if (handle === "refused") return plain("Forbidden", 403);
@@ -41,12 +33,10 @@ export async function fileResponse(
     headers.set("content-range", `bytes */${size}`);
     return new Response(null, { status: 416, headers });
   }
-  const [start, end, status] =
-    range.kind === "slice" ? [range.start, range.end, 206] : [0, size - 1, 200];
+  const [start, end, status] = range.kind === "slice" ? [range.start, range.end, 206] : [0, size - 1, 200];
   const length = size === 0 ? 0 : end - start + 1;
   headers.set("content-length", String(length));
-  if (status === 206)
-    headers.set("content-range", `bytes ${start}-${end}/${size}`);
+  if (status === 206) headers.set("content-range", `bytes ${start}-${end}/${size}`);
   if (request.method === "HEAD" || length === 0) {
     await handle.close();
     return new Response(null, { status, headers });
@@ -54,16 +44,12 @@ export async function fileResponse(
   return new Response(streamRange(handle, start, end), { status, headers });
 }
 
-async function openRegular(
-  file: string
-): Promise<FileHandle | "missing" | "refused"> {
+async function openRegular(file: string): Promise<FileHandle | "missing" | "refused"> {
   let handle: FileHandle;
   try {
     handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ENOENT"
-      ? "missing"
-      : "refused";
+    return isErrno(error, "ENOENT") ? "missing" : "refused";
   }
   if ((await handle.stat()).isFile()) return handle;
   await handle.close();
@@ -89,14 +75,23 @@ function parseRange(header: string | null, size: number): RangeRequest {
   return { kind: "slice", start, end };
 }
 
-function streamRange(
-  handle: FileHandle,
-  start: number,
-  end: number
-): ReadableStream<Uint8Array> {
-  return Readable.toWeb(
-    handle.createReadStream({ start, end, autoClose: true })
-  ) as ReadableStream<Uint8Array>;
+function isErrno(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
+function streamRange(handle: FileHandle, start: number, end: number): ReadableStream<Uint8Array> {
+  const source = handle.createReadStream({ start, end, autoClose: true });
+  const chunks = source[Symbol.asyncIterator]();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await chunks.next();
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    cancel() {
+      source.destroy();
+    },
+  });
 }
 
 function baseHeaders(options: FileResponseOptions): Headers {
@@ -105,8 +100,7 @@ function baseHeaders(options: FileResponseOptions): Headers {
     "accept-ranges": "bytes",
     "x-content-type-options": "nosniff",
   });
-  if (options.cacheControl !== undefined)
-    headers.set("cache-control", options.cacheControl);
+  if (options.cacheControl !== undefined) headers.set("cache-control", options.cacheControl);
   return headers;
 }
 
