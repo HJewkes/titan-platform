@@ -126,4 +126,4 @@ export type {
   HarnessExecutionRequest, HarnessExecutionPort, HarnessDispatchReceipt,
 } from "./execution-port.js";
 
-export type { HarnessPricePolicyRef, HarnessPriceCatalogRef, HarnessPriceQuote, HarnessPricingPort } from "./pricing-port.js";
+export type { HarnessPricePolicyRef, HarnessPriceCatalogRef, HarnessPriceQuote, HarnessPricingContext, HarnessPricingPort } from "./pricing-port.js";

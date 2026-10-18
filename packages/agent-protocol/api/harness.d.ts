@@ -362,6 +362,10 @@ interface HarnessPriceCatalogRef {
     readonly matchingPolicy: HarnessPricePolicyRef;
     readonly accountingPolicy: HarnessPricePolicyRef;
 }
+/** Evidence paired with the same normalized usage observation; no native fields are required. */
+interface HarnessPricingContext {
+    readonly cacheWriteSplit?: Readonly<CacheWriteSplit>;
+}
 /** Unpriced is explicit; a reported zero remains distinct from an unavailable price. */
 type HarnessPriceQuote = {
     readonly status: "priced";
@@ -370,6 +374,16 @@ type HarnessPriceQuote = {
     };
     readonly basis: {
         readonly kind: "reported";
+        readonly source: string;
+    };
+} | {
+    readonly status: "priced";
+    readonly cost: NonNullable<UsageMeasurement["cost"]> & {
+        readonly kind: "estimate";
+    };
+    /** The current normalized record source, without reconstructing its original catalog. */
+    readonly basis: {
+        readonly kind: "existing_estimate";
         readonly source: string;
     };
 } | {
@@ -390,7 +404,7 @@ type HarnessPriceQuote = {
 interface HarnessPricingPort<H extends string = string> {
     readonly harness: H;
     /** atMs is event time in epoch milliseconds. This port neither sums usage nor mutates it. */
-    quote(measurement: UsageMeasurement, atMs: number): HarnessPriceQuote;
+    quote(measurement: UsageMeasurement, atMs: number, context?: HarnessPricingContext): HarnessPriceQuote;
 }
 
 declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
@@ -549,4 +563,4 @@ type HarnessRunResult<T = string, H extends string = string> = {
     usage: readonly UsageMeasurement[];
 };
 
-export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessPriceCatalogRef, type HarnessPricePolicyRef, type HarnessPriceQuote, type HarnessPricingPort, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };
+export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessPriceCatalogRef, type HarnessPricePolicyRef, type HarnessPriceQuote, type HarnessPricingContext, type HarnessPricingPort, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };
