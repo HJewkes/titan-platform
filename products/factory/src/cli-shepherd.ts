@@ -44,6 +44,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
       .option("--json", "print the result as JSON");
   registerRunVerbs(verb, verbs);
   registerHoldVerbs(verb, verbs);
+  registerRepairStopVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
@@ -93,6 +94,18 @@ function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+}
+
+/** A repair stop is the seat's stop on fixers short of an owner hold; it is not a hold, so these verbs never touch the release path. */
+function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("repair-stop <ref>", "stop every fixer wake and resume for owner/repo#N, or for each PR touching owner/repo:<path glob>; a stop is not a hold and leaves the release path as it is")
+    .requiredOption("--reason <text>", "why fixers are stopped")
+    .action((ref: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "set", ref, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("repair-go <ref>", "clear the repair stop on owner/repo#N or owner/repo:<path glob>, so the next wake repairs as before")
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "clear", ref, actor: callerOf(verbs.io.env) }), opts));
+  verb("repair-stops [repo]", "every repair stop, or only owner/repo's")
+    .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {
