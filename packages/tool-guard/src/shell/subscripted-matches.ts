@@ -1,5 +1,5 @@
 /** A match: where it starts, its text, and the name the head captured, if any. */
-export interface SubscriptedMatch {
+interface SubscriptedMatch {
   index: number;
   0: string;
   name: string | undefined;

@@ -1,5 +1,6 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
 import { copyVars } from "./line-writes.js";
+export { copyVars };
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";

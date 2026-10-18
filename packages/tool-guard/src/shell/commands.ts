@@ -10,7 +10,7 @@ import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-han
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, copyVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, compoundStoresRebinding, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
@@ -30,7 +30,6 @@ import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 import { noteLineWrites, startingVars, withShellArguments } from "./math-trust.js";
-import { copyVars } from "./line-writes.js";
 
 const MAX_DEPTH = 8;
 
