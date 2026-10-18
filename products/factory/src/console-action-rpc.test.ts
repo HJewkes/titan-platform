@@ -7,7 +7,7 @@ import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import type { GateRule } from "@titan-design/hitl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { CONSOLE_ACTION_PATH, MAX_ACTION_RECORD_BYTES } from "./console-action-rpc.js";
+import { CONSOLE_ACTION_PATH, MAX_ACTION_BODY_BYTES, MAX_ACTION_RECORD_BYTES } from "./console-action-rpc.js";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { createFactoryRegistry } from "./registry.js";
@@ -280,14 +280,15 @@ describe("POST /owner/console-action", () => {
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
-  it("takes only {actionId} in the body, and rejects an id that climbs out of the actions dir", async () => {
+  it("takes only {actionId} in the body, and rejects an id that climbs out of the actions dir and a body over the cap", async () => {
     const w = await world();
     writeRecord(w);
 
     const extra = await post(w.server, { actionId: ACTION_ID, gateId: w.gateId });
     const climbing = await post(w.server, { actionId: `../actions/${ACTION_ID}` });
+    const oversize = await post(w.server, { actionId: ACTION_ID, pad: "x".repeat(MAX_ACTION_BODY_BYTES) });
 
-    expect([extra.status, climbing.status]).toEqual([400, 400]);
+    expect([extra.status, climbing.status, oversize.status]).toEqual([400, 400, 413]);
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
