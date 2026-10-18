@@ -32,6 +32,11 @@ A coordinator for another user needs one document instead of a tree of seat file
 agent-dispatch's `limitsSchema`, and `checkCoordinatorConfig` checks the references between
 its sections.
 
+Changes to that document are a revision log. `applyEdit` sets one schema-declared field on a
+copy and re-checks the whole document, `diffDocuments` lists the changed leaves, and
+`verifyChain` checks that each revision names the previous one's `revisionSha` as its parent,
+so a forked or rewritten log fails.
+
 ## When to reach for it
 
 Use it to validate or type a seat's front matter after you have parsed the YAML yourself.
@@ -107,6 +112,15 @@ const result = checkCoordinatorConfig({
 });
 // a seat with pool "spare" would give
 // { ok: false, errors: [{ code: "reference", path: "seats.web-coord.pool", ... }] }
+```
+
+```ts
+import { applyEdit, verifyChain } from "@titan-design/coordinator";
+
+const edit = applyEdit(document, "seats.web-coord.concurrency.implementers", 4);
+// edit.ok ? edit.document : edit.errors
+verifyChain(revisions);
+// { ok: true, head } or errors such as { rev: 2, code: "parent", ... }
 ```
 
 ```ts

@@ -3,9 +3,12 @@ import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
+import { configSurfacesCommands, unconfigured } from "./config-surfaces/catalog.js";
+import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
+import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import type { RoundListeners } from "./listeners.js";
@@ -40,6 +43,8 @@ export interface ConsoleSources {
   decisionLog?: DecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
+  /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
+  hostSurfaces?: HostSurfaceRoots;
   work?: WorkOptions;
 }
 
@@ -55,21 +60,13 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, work }: ConsoleSources) {
+/** The owner's merged queue, as the raw Flow and as the inbox with its actions. */
+function ownerQueueCommands(sources: InboxSources) {
+  return { ...approvalsCommands(sources), ...inboxViewCommands(sources) };
+}
+
+function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   return {
-    ...upstreamsCommands(upstreams),
-    ...agentsCommands(agents),
-    ...sessionsCommands(sessions),
-    ...tasksCommands({ activeWork, sessions, work }),
-    ...graphCommands({ activeWork, sessions }),
-    ...knowledgeCommands(activeWork, work),
-    ...inboxCommands(inbox),
-    ...roundsCommands(rounds),
-    ...roundFramesCommands(rounds),
-    ...roundsSubmitCommands(rounds, decisionLog, listeners),
-    ...approvalsCommands({ factory, rounds, inbox }),
-    ...shepherdCommands(shepherd),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
@@ -84,6 +81,26 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
       result: initiativeResult,
       run: ({ slug }) => readInitiative(activeWork, slug, work),
     }),
+  };
+}
+
+/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, factory, decisionLog, listeners, hostSurfaces, work }: ConsoleSources) {
+  return {
+    ...upstreamsCommands(upstreams),
+    ...agentsCommands(agents),
+    ...sessionsCommands(sessions),
+    ...tasksCommands({ activeWork, sessions, work }),
+    ...graphCommands({ activeWork, sessions }),
+    ...knowledgeCommands(activeWork, work),
+    ...inboxCommands(inbox),
+    ...roundsCommands(rounds),
+    ...roundFramesCommands(rounds),
+    ...roundsSubmitCommands(rounds, decisionLog, listeners),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
+    ...shepherdCommands(shepherd),
+    ...configSurfacesCommands(hostSurfaces === undefined ? [unconfigured("host config surfaces")] : hostSurfaceReaders(hostSurfaces)),
+    ...workCommands(activeWork, work),
   };
 }
 
