@@ -123,17 +123,21 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
   };
 }
 
+function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+  return {
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    eventsDbPath: config.agentChatEventsDbPath,
+    seatPrefixes: config.seatPrefixes,
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
   return {
     upstreams: createUpstreams(config),
     activeWork,
-    agents: {
-      broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
-      eventsDbPath: config.agentChatEventsDbPath,
-      seatPrefixes: config.seatPrefixes,
-    },
+    agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     inbox: { dir: config.inboxDir },
     rounds: { dir: config.roundsDir },
