@@ -122,6 +122,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     inbox: { dir: config.inboxDir },
     rounds: { dir: config.roundsDir },
     shepherd,
+    coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({

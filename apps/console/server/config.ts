@@ -5,6 +5,7 @@ import { activeWorkGraphPath } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -57,6 +58,8 @@ export interface ConsoleConfig {
   decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
+  /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
+  coordinatorRoots?: CoordinatorRoots;
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -107,6 +110,7 @@ export function resolveConfig(
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    coordinatorRoots: coordinatorRootsFrom(env, home),
     ...ownerOptionsFrom(env, home),
   };
   assertCoherent(config);

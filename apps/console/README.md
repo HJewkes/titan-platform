@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from; unset, that command answers a gap for them. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
