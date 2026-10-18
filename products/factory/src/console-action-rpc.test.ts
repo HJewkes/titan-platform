@@ -375,6 +375,39 @@ describe("POST /owner/console-action", () => {
       expect(releases(w)).toEqual([]);
     });
 
+    it("answers 409 moved with GitHub's head when the PR moves during the release itself, and keeps the hold", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      const read = w.github.wire.getPr.bind(w.github.wire);
+      vi.spyOn(w.github.wire, "getPr").mockImplementationOnce(async (...args) => {
+        const before = await read(...args);
+        w.github.pushHead(w.pr, H2);
+        return before;
+      });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([409, { outcome: "moved", currentHead: H2 }]);
+      expect(w.store().byRun(HELD_RUN)?.ownerHold).toMatchObject({ reason: OWNER });
+      expect(releases(w)).toEqual([]);
+    });
+
+    it("still answers 410 gone when the owner-asked hold is lifted during the release itself", async () => {
+      const w = await world();
+      holdPr(w, OWNER);
+      writeRelease(w);
+      const read = w.github.wire.getPr.bind(w.github.wire);
+      vi.spyOn(w.github.wire, "getPr").mockImplementationOnce(async (...args) => {
+        w.store().releaseOwnerHold(HELD_RUN, { actor: "owner-terminal:synthetic", headSha: H });
+        return read(...args);
+      });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toMatchObject([410, { outcome: "gone", reason: expect.stringContaining("holds no owner-asked hold") }]);
+    });
+
     it("refuses a record that names a coordinator resolver, and keeps the hold", async () => {
       const w = await world();
       holdPr(w, OWNER);
