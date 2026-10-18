@@ -28,12 +28,17 @@ const Mode = z.enum(["off", "shadow", "on"]);
 const OfferInput = z.looseObject({ repo: z.string(), failing: z.array(z.string()), mode: Mode.optional() });
 const OfferResult = z.looseObject({ offered: z.boolean(), mode: Mode, check: z.string().nullable() });
 
-/** The set the owner accepted at a red head, as the gate answer carries it; a later head of the run is checked against it. */
-type AcceptedSet = { fromHead: string } & Record<string, unknown>;
+/**
+ * The set the owner accepted at a red head, as the gate answer carries it, and the base that head's recorded CI read judged it
+ * on; a later head of the run is checked against both.
+ */
+type AcceptedSet = { set: { fromHead: string } & Record<string, unknown>; base: string | undefined };
 
 export interface VisualAcceptRun extends GateRun {
   visualAcceptOffers: number;
   acceptedSet?: AcceptedSet;
+  /** The run's last recorded CI read, which at a red head is the read that made it red. */
+  lastCi?: { headSha: string; baseRef?: string };
 }
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
@@ -71,6 +76,9 @@ async function offer(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualS
   return step(ctx, `${OFFER_STEP}:${run.visualAcceptOffers++}`, input, OfferResult);
 }
 
+/** The base from the recorded CI read at `headSha` (land-ci records `baseRef` with it), so a replay rebuilds the same one; none otherwise. */
+const judgedBase = (run: VisualAcceptRun, headSha: string): string | undefined => (run.lastCi?.headSha === headSha ? run.lastCi.baseRef : undefined);
+
 /** Asks the owner at a head red only on the seat's baseline check whether CI's regenerated set is the one to commit. */
 export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMode: () => VisualSetCarry = () => "off", beforeAsk?: BeforeAsk): Promise<VisualAccept> {
   const offered = await offer(run, red, liveMode);
@@ -82,8 +90,10 @@ export async function askVisualAccept(run: VisualAcceptRun, red: RedHead, liveMo
   const answered = await askAtHead(run.ctx, VISUAL_ACCEPT_GATE, prompt, { schema, brief });
   if (!answered) return { kind: "left", outcome: undefined };
   const answer = schema.parse(answered.data);
+  // Any answer at a newer red head replaces an older set, so only the latest accept can carry.
+  const accepted = answer.decision === "accept-set" ? answer.approvedSet : undefined;
+  run.acceptedSet = accepted && { set: accepted, base: judgedBase(run, red.headSha) };
   if (answer.decision === "abandon") return { kind: "left", outcome: { kind: "stopped", reason: "abandoned", headSha: red.headSha, detail: "a human abandoned the PR at its regenerated baselines" } };
-  if (answer.decision === "accept-set") run.acceptedSet = answer.approvedSet;
   return { kind: "wake", payload: ownerSendBackOf(answer.note ?? "", answer.decision === "accept-set" ? "accepted" : "sent-back") };
 }
 

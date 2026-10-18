@@ -53,13 +53,19 @@ describe("expansions nested past the reading limit", () => {
   });
 
   it.each([
-    ["$((", (depth: number) => `echo ${nest("$((", "1", "))", depth)}`],
     ["${", (depth: number) => `: ${nest("${", "", "}", depth)}`],
     ["$(", (depth: number) => `echo ${nest("$(", "echo 1", ")", depth)}`],
     ['${x-"', (depth: number) => `: ${nest('${x-"', "", '"}', depth)}`],
   ])("lexes %s nested to the limit", (_name, line) => {
     expect(() => tokenize(line(MAX_NESTING))).not.toThrow();
     expect(() => tokenize(line(MAX_NESTING + 1))).toThrow(/nested more than/);
+  });
+
+  // A `$((` holding another is not plain math, so each is read both ways and only a few levels of that are read.
+  it("lexes $(( nested up to the both-readings limit and refuses past it", () => {
+    const line = (depth: number): string => `echo ${nest("$((", "1", "))", depth)}`;
+    expect(() => tokenize(line(5))).not.toThrow();
+    expect(() => tokenize(line(6))).toThrow(/nests too deep/);
   });
 });
 

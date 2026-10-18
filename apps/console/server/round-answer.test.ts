@@ -37,6 +37,7 @@ async function answerFor(text: string): Promise<unknown> {
 describe("rounds.get answer", () => {
   it.each([
     ["resolved", { status: "resolved", gateId: "gate-1", choice: "send-back" }, { status: "resolved", at: AT, choice: "send-back" }],
+    ["resolved accept-set", { status: "resolved", gateId: "gate-1", choice: "accept-set" }, { status: "resolved", at: AT, choice: "accept-set" }],
     ["already", { status: "already", gateId: "gate-1" }, { status: "already", at: AT }],
     ["moved", { status: "moved", currentHead: HEAD, waitsOn: "ci" }, { status: "moved", at: AT, currentHead: HEAD }],
     ["gone", { status: "gone", reason: "no pending gate" }, { status: "gone", at: AT, reason: "no pending gate" }],

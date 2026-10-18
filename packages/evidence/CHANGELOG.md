@@ -1,5 +1,12 @@
 # @titan-design/evidence
 
+## 0.3.0
+
+### Minor Changes
+
+- 5cd4f1b: Add `parseAnchor` for `head/`, `base/` and `diff/` code anchors pinned to 40-hex commits, and `isFullSha` (TP-2766).
+- abadd64: Add `verifyAnchorText`, `verifyRange` and `isAnchorForm`: check a pinned anchor's lines exist at its commit and quote them back (TP-2767).
+
 ## 0.2.1
 
 ### Patch Changes
