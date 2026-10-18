@@ -4,7 +4,7 @@ import { gitOrNull } from "./git.js";
 const REGENERABLE_DIRS = ["node_modules", "dist", "coverage", ".turbo"];
 
 /** `.claude` only at the top, since re-attach copies it from the repository root. */
-const isRegenerable = (entry: string): boolean => {
+export const isRegenerable = (entry: string): boolean => {
   const segments = entry.split("/").filter(Boolean);
   return segments[0] === ".claude" || segments.some((segment) => REGENERABLE_DIRS.includes(segment));
 };

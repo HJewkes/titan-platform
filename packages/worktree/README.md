@@ -137,3 +137,38 @@ callback; removal is nonforced. These checks do not make external writes atomic.
 
 The caller keeps roster, process, tenancy, assignment and provider policy. This
 option adds no merged-PR reader, SQLite/cache exception or lifecycle authority.
+
+
+## Explicit ignored-file policy for parking
+
+A caller can supply a park-only policy over fresh ignored-file observations:
+
+    const result = await parkWorktree(record, recheck, {
+      ignoredFiles: {
+        expandDirectories: true,
+        protectedEntries: ({ entries }) =>
+          entries.filter(entry => !productCanRegenerate(entry)),
+        formatRefusal: ({ worktree, entries }) =>
+          "Keep " + worktree + ": " + entries.join(", "),
+      },
+    });
+
+The synchronous classifier receives a new frozen observation and readonly copy
+of candidate strings. It returns the unique string subset to protect. Invalid
+descriptors, thrown classifiers, nonarrays, holes, duplicates, invented entries,
+Promises and thenables refuse removal. A formatter only presents an already
+required refusal; an empty, nonstring or thrown result uses the generic refusal.
+
+Only literal expansion true lists the files inside collapsed ignored directories.
+A failed expansion protects its original directory unconditionally. Tracked or
+untracked changes, unreadable status or ignored listings, branch/HEAD changes,
+caller refusal and nonforced removal failure cannot be waived. Policy observations
+are repeated around asynchronous proof and before/after the caller recheck,
+including tracking and local-copy fast paths.
+
+The policy is caller-owned classification authority for ignored data, not an
+authentication or filesystem-atomicity guarantee. Keep application cache and
+database inspection in the product; the package has no SQLite or provider policy.
+The descriptor is copied without freezing its caller. Without ignoredFiles,
+existing result keys, static types and Git probe order are unchanged. This option
+alone adds no branch metadata and changes no release/reclaim/force behavior.

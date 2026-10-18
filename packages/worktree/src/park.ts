@@ -3,9 +3,13 @@ import { gitOrNull, gitText as git } from "./git.js";
 import { DEFAULT_FETCH_TIMEOUT_MS, type WorktreeOptions } from "./options.js";
 import type { WorktreeRecord } from "./reattach.js";
 import { unsavedWork } from "./unsaved-work.js";
+import { prepareIgnoredFiles, type ParkFileObserver, type ParkIgnoredFilesPolicy } from "./park-ignored-files.js";
+export type { ParkIgnoredFilesObservation, ParkIgnoredFilesPolicy } from "./park-ignored-files.js";
 
 /** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
 export interface ParkOptions {
+  /** Explicit policy over fresh ignored files only; dirty status and failed observations always refuse. */
+  ignoredFiles?: ParkIgnoredFilesPolicy;
   /** Retain the actual branch when tracking or a fresh origin-head ancestry proof backs its HEAD. */
   allowOriginHeadAncestor?: boolean;
   /** Permit a missing origin/branch only when a fresh DEFAULT fetch contains the actual HEAD. */
@@ -208,8 +212,8 @@ async function originHeadRefusal(
   return count === 0 ? undefined : `${count} commit(s) in ${target.worktree} are not on ${tracking}; push first`;
 }
 
-async function originHeadChanged(target: WorktreeRecord, observed: OriginHead): Promise<string | undefined> {
-  const dirty = await unsavedWork(target.worktree);
+async function originHeadChanged(target: WorktreeRecord, observed: OriginHead, files?: ParkFileObserver): Promise<string | undefined> {
+  const dirty = files ? await files() : await unsavedWork(target.worktree);
   if (dirty) return dirty;
   const branch = await gitOrNull(["symbolic-ref", "--quiet", "--short", "HEAD"], target.worktree);
   const head = await gitOrNull(["rev-parse", "--verify", "HEAD^{commit}"], target.worktree);
@@ -221,7 +225,8 @@ async function originHeadChanged(target: WorktreeRecord, observed: OriginHead): 
 async function originBacking(
   target: WorktreeRecord,
   observed: OriginHead,
-  options: ParkOptions
+  options: ParkOptions,
+  files?: ParkFileObserver
 ): Promise<{ containedIn?: string } | { reason: string }> {
   const { branch } = observed;
   let containedIn: string | undefined;
@@ -232,7 +237,7 @@ async function originBacking(
       if (containedIn === undefined) return { reason: currentBranchRefusal(target, branch) };
     }
   }
-  const dirty = await unsavedWork(target.worktree);
+  const dirty = files ? await files() : await unsavedWork(target.worktree);
   if (dirty) return { reason: dirty };
   if (containedIn === undefined) {
     const refusal = await originHeadRefusal(target, observed, options);
@@ -247,23 +252,53 @@ async function originBacking(
 async function parkOriginHead(
   target: WorktreeRecord,
   recheck: () => string | undefined,
-  options: ParkOptions
+  options: ParkOptions,
+  files?: ParkFileObserver
 ): Promise<{ ok: true; head: string; branch: string; containedIn?: string } | { ok: false; reason: string }> {
   const branch = await gitOrNull(["symbolic-ref", "--quiet", "--short", "HEAD"], target.worktree);
   const head = await gitOrNull(["rev-parse", "--verify", "HEAD^{commit}"], target.worktree);
   if (branch === null || head === null || !objectId(head))
     return { ok: false, reason: currentBranchRefusal(target, branch) };
   const observed = { branch, head };
-  const backing = await originBacking(target, observed, options);
+  const initial = files ? await files() : undefined;
+  if (initial) return { ok: false, reason: initial };
+  const backing = await originBacking(target, observed, options, files);
   if ("reason" in backing) return { ok: false, reason: backing.reason };
-  const changed = await originHeadChanged(target, observed);
+  const result = await finishObservedPark(target, observed, recheck, files);
+  return result.ok ? { ...result, branch, ...backing } : result;
+}
+
+async function finishObservedPark(
+  target: WorktreeRecord,
+  observed: OriginHead,
+  recheck: () => string | undefined,
+  files?: ParkFileObserver
+): Promise<{ ok: true; head: string } | { ok: false; reason: string }> {
+  const changed = await originHeadChanged(target, observed, files);
   if (changed) return { ok: false, reason: changed };
   const late = recheck();
   if (late) return { ok: false, reason: late };
-  const final = await originHeadChanged(target, observed);
+  const final = await originHeadChanged(target, observed, files);
   if (final) return { ok: false, reason: final };
-  const result = await removeParked(target, head);
-  return result.ok ? { ...result, branch, ...backing } : result;
+  return removeParked(target, observed.head);
+}
+
+async function parkPolicyAllocated(
+  target: WorktreeRecord,
+  recheck: () => string | undefined,
+  options: ParkOptions,
+  files: ParkFileObserver
+): Promise<{ ok: true; head: string } | { ok: false; reason: string }> {
+  const off = await offBranch(target);
+  if (off) return { ok: false, reason: off };
+  const head = await gitOrNull(["rev-parse", "--verify", "HEAD^{commit}"], target.worktree);
+  if (head === null || !objectId(head)) return { ok: false, reason: "could not read HEAD in " + target.worktree + "; not parked" };
+  const dirty = await files();
+  if (dirty) return { ok: false, reason: dirty };
+  const observed = { branch: target.branch, head };
+  const refusal = await originHeadRefusal(target, observed, options);
+  if (refusal) return { ok: false, reason: refusal };
+  return finishObservedPark(target, observed, recheck, files);
 }
 
 /** Explicit origin-head proof reports the actual retained branch and any differently named backing head. */
@@ -283,6 +318,16 @@ export async function parkWorktree(
   recheck: () => string | undefined = () => undefined,
   options: ParkOptions = {}
 ): Promise<{ ok: true; head: string; branch?: string; containedIn?: string } | { ok: false; reason: string }> {
+  let ignored: unknown;
+  try { ignored = options.ignoredFiles; }
+  catch { return { ok: false, reason: "invalid ignored-file policy in " + target.worktree + "; not parked" }; }
+  if (ignored !== undefined) {
+    const files = prepareIgnoredFiles(ignored, target.worktree);
+    if (typeof files !== "function") return { ok: false, reason: files.reason };
+    return options.allowOriginHeadAncestor === true
+      ? parkOriginHead(target, recheck, options, files)
+      : parkPolicyAllocated(target, recheck, options, files);
+  }
   return options.allowOriginHeadAncestor === true
     ? parkOriginHead(target, recheck, options)
     : parkAllocatedWorktree(target, recheck, options);

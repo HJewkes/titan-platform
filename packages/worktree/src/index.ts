@@ -30,7 +30,7 @@ export {
   type WorktreeOptions,
   type ReleaseProof,
 } from "./options.js";
-export { parkWorktree, type ParkOptions } from "./park.js";
+export { parkWorktree, type ParkOptions, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {

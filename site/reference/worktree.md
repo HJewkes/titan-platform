@@ -195,3 +195,21 @@ locally usable ancestry. Files, branch and HEAD are checked again around
 asynchronous proof and the caller's lifecycle recheck, then removal is nonforced
 and all branches remain. This is not an atomic lock or provider/lifecycle policy.
 See the package README for budget behavior and the tracking-evidence boundary.
+
+
+## Product ignored-file policy
+
+ParkOptions.ignoredFiles optionally supplies a synchronous protectedEntries
+classifier over readonly ParkIgnoredFilesObservation values and an optional
+presentation-only formatRefusal. Set expandDirectories to literal true to inspect
+collapsed ignored-directory contents through the package Git runner. Inputs and
+validated protected subsets are copied/frozen; malformed results and failed
+observations refuse. A failed expanded subtree is always protected.
+
+The package repeats fresh file/branch/HEAD checks around asynchronous proof and
+the caller lifecycle recheck, including opt-in fast paths. Product-specific cache
+and readonly database classification remain in the product. An empty ignored
+subset cannot waive dirty status, failed reads, origin/HEAD proof, lifecycle or
+nonforced Git removal failures. No-policy probes/results/types remain unchanged,
+and ignoredFiles alone returns the existing success shape. This adds no provider,
+assignment, force, release or atomic-removal guarantee.
