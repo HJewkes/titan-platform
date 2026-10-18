@@ -1833,6 +1833,30 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop-command.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop.test.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/repair-stop.ts",
+   "fate": "delete",
+   "task": "D-M4-02",
+   "milestone": "M4",
+   "filing": "TP-3149"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/repair.ts",
    "fate": "kept",
    "reason": "engine, registration and read-model core; v9.1 sec. 3 keeps the durable workflow engine (re-keyed in D-M1b-*) and names no deletion for it"

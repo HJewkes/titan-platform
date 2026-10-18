@@ -4,7 +4,7 @@ import { cueKindRole, fromScriptV1, type PaceBeat } from "./pace-items.js";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { fromSpikeScript } from "./spike-script.js";
-import { v4Durations, v4Script } from "./spike-fixtures.test-helpers.js";
+import { pipelineScript, v4Durations, v4Script } from "./spike-fixtures.test-helpers.js";
 import { readTiming } from "./timing.js";
 
 const v4 = (): PaceBeat[] => fromSpikeScript(v4Script(), readTiming(v4Durations())).beats;
@@ -90,6 +90,33 @@ describe("the kind table", () => {
 
     expect(() => fromSpikeScript(script)).toThrow(/unknown cue kind "widget"/);
     expect(cueKindRole("detail")).toBe("attribute");
+  });
+});
+
+describe("the pipeline-explainer item track", () => {
+  const pilot = (): PaceBeat[] => fromSpikeScript(pipelineScript()).beats;
+  const kinds = (b: PaceBeat) => b.items.map((i) => i.kind);
+
+  // Mutation: removing check from the kind table throws "unknown cue kind" on c6-10-rule.
+  it("gives every cue kind in the pilot a role and counts c6-10-rule's checks and gate as new items", () => {
+    const beats = pilot();
+
+    expect(kinds(beat(beats, "c6-10-rule"))).toEqual(["check", "check", "check", "check", "gate"]);
+    expect(beat(beats, "c6-10-rule").newItems).toHaveLength(5);
+  });
+
+  // Mutation: dropping fan from the count-card kinds gives c1-3-cost a "13 slices" item.
+  it("does not count a HookBeat's fan of slices as an item", () => {
+    expect(beat(pilot(), "c1-3-cost").items).toEqual([]);
+  });
+
+  // Mutation: classing stamp or line as items gives c3-6 a "queued" item and c3-1 a "262" item.
+  it("treats a row's stamp and a CodeWalk's highlighted line as attributes", () => {
+    const beats = pilot();
+
+    expect(byRole(beat(beats, "c3-6-slices"), "item")).toEqual(["slices a-k", "owns"]);
+    expect(byRole(beat(beats, "c3-6-slices"), "attribute")).toEqual(["queued"]);
+    expect(beat(beats, "c3-1-score").newItems).toEqual([]);
   });
 });
 

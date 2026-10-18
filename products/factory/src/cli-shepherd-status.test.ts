@@ -59,4 +59,20 @@ describe("shepherd status --all", () => {
     expect(rows).toHaveLength(2);
     expect(rows).toEqual(expect.arrayContaining(runIds.map((runId) => expect.objectContaining({ runId }))));
   });
+
+  it("without --all lists only the live run", async () => {
+    const { dbPath, deps, runIds } = await liveAndCancelled();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--json", "--port", String(await deadPort())], deps);
+
+    expect(JSON.parse(status.out)).toEqual([expect.objectContaining({ runId: runIds[0] })]);
+  });
+
+  it("a --phase naming a finished phase asks for finished runs without --all", async () => {
+    const { dbPath, deps, runIds } = await liveAndCancelled();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--phase", "cancelled", "--json", "--port", String(await deadPort())], deps);
+
+    expect(JSON.parse(status.out)).toEqual([expect.objectContaining({ runId: runIds[1], phase: "cancelled" })]);
+  });
 });

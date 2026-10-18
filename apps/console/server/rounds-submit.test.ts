@@ -164,7 +164,7 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf())).toBe(false);
   });
 
-  it("answers a Ship round, whose variants are the PR's images, but refuses a design round", async () => {
+  it("answers a Ship round, whose variants are the PR's images, but refuses a design round without frames.json", async () => {
     for (const id of ["ship-tile-r1", "lantern-cards-r1"]) await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
     const shaOf = async (id: string) => sha256(await readFile(path.join(dir, id, "round.json")));
     const shipTiles = { questionId: "ship-tiles", pick: "Ship" };
@@ -173,8 +173,31 @@ describe("rounds.submit", () => {
     const design = await submit({ id: "lantern-cards-r1", manifestSha256: await shaOf("lantern-cards-r1"), answers: [] });
 
     expect(ship.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: "89abcdef0123456789abcdef0123456789abcdef" } });
-    expect(design.envelope).toMatchObject({ ok: false, error: "a design round is answered in the review harness" });
+    expect(design.envelope).toMatchObject({ ok: false, error: "a design round without frames/frames.json is answered in the review harness" });
     expect(await exists(feedbackOf("lantern-cards-r1"))).toBe(false);
+  });
+
+  it("saves a design round's answers when its frames.json is valid", async () => {
+    const id = "beacon-states-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const manifestSha256 = sha256(await readFile(path.join(dir, id, "round.json")));
+    const answers = [{ questionId: "beacon-fill-pick", pick: "Ring" }, { questionId: "beacon-notes", text: "Keep the halo." }];
+
+    const { envelope } = await submit({ id, manifestSha256, answers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+    expect(JSON.parse(await readFile(feedbackOf(id), "utf8"))).toMatchObject({ unit: "beacon-dot", answers });
+  });
+
+  it("refuses a design round whose frames.json is not a frames@1 index", async () => {
+    const id = "beacon-states-r1";
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    await writeFile(path.join(dir, id, "frames", "frames.json"), "not json");
+
+    const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(path.join(dir, id, "round.json"))), answers: [] });
+
+    expect(envelope).toMatchObject({ ok: false, error: "a design round without frames/frames.json is answered in the review harness" });
+    expect(await exists(feedbackOf(id))).toBe(false);
   });
 
   it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json", async () => {

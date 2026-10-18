@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpawnDeferred } from "./spawn-gate.js";
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, dataFence, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { DispatchOptions, RoutedStepInput, StepResult } from "@titan-design/workflow";
@@ -140,7 +140,8 @@ describe("sh-wake-implementer: who is woken", () => {
     const [spawn] = agents.asked;
     expect(spawn).toMatchObject({ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT });
     expect(spawn!.message).toContain("taking over octo/demo#1 from impl-a");
-    expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch \`feat/demo-fix\` and check it out at the PR head ${H1}.`);
+    expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch, named in the fenced data below, and check it out at the PR head ${H1}.`);
+    expect(spawn!.message).toContain(dataFence("head branch", "feat/demo-fix"));
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
   });

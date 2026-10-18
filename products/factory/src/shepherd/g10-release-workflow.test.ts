@@ -118,6 +118,16 @@ describe("a g10-review hold on a run Shepherd reviews itself", () => {
     expect(w.store.byRun(w.runId)?.held).toBe(false);
   });
 
+  it("releases itself and merges the same way while a seat's repair stop covers the run (TP-3500)", async () => {
+    const w = heldSecurityRun({ g10: "bd-reviewer", standard: "reviewer" });
+    w.store.repairStops().set({ repo: REPO, scope: "#1" }, "the owner's freeze", { actor: "seat" });
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(stepIds(w)).toContain(`${G10_RELEASE_STEP}:${H1}:0`);
+    expect(w.store.byRun(w.runId)?.held).toBe(false);
+  });
+
   it.each([
     ["the spawned reviewer's profile is not an opus one", { g10: "reviewer", standard: "reviewer" }, AUTO_POLICY, "spawn"],
     ["the MERGE is a resumed standing reviewer's", { g10: "bd-reviewer", standard: "reviewer" }, { ...AUTO_POLICY, reviewer: STANDING }, "resume"],

@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
@@ -66,7 +67,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -88,11 +89,7 @@ type RegistrationListener = (registration: Registration, change?: "hold-eased") 
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
-  constructor(
-    private readonly db: Db,
-    private readonly now: () => number = Date.now,
-    private readonly onChange: RegistrationListener = () => undefined,
-  ) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onChange: RegistrationListener = () => undefined) {}
 
   register(input: RegistrationInput): Registration {
     if (input.pr === undefined && input.branch === undefined) throw new Error("a shepherd registration needs a pr or a branch");
@@ -236,7 +233,10 @@ export class ShepherdStore implements HoldLookup {
     return vouchedLine(this.db, runId, fromHead, baseRef);
   }
 
-  /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
+  /** The seat's stops on fixer dispatch; apart from holds, so a stop never gates or releases a merge. */
+  readonly repairStops = (): RepairStopTable => repairStopTable(this.db, () => this.stamp());
+
+  /** The run's hold, release and repair-stop events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
     return registration ? eventsFor(this.db, runId, registration.repo) : [];

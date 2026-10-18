@@ -1,4 +1,4 @@
-import { ExecutionTransitionError, TERMINAL_EXECUTION_PHASES, reduceExecutionTransition } from "@titan-design/agent-protocol";
+import { EXECUTION_PHASES, ExecutionTransitionError, isTerminalExecutionPhase, reduceExecutionTransition } from "@titan-design/agent-protocol";
 import type { ExecutionRecord, ExecutionTransition } from "@titan-design/agent-protocol";
 import { nowIso, quoteIdent } from "@titan-design/store-sqlite";
 import type { Db } from "@titan-design/store-sqlite";
@@ -8,6 +8,15 @@ import { DEFAULT_EXECUTION_TABLE } from "./migration.js";
 
 interface StoredEvent { transition: string; record: string }
 interface StoredRecord { record: string }
+
+const LIVE_EXECUTION_PHASES = EXECUTION_PHASES.filter(phase => !isTerminalExecutionPhase(phase));
+
+/** `phase IN` lets SQLite use the phase index; `NOT IN` scans every finished execution. */
+export function recoverableSql(snapshot: string): string {
+  return `SELECT record FROM ${snapshot}
+      WHERE phase IN (${LIVE_EXECUTION_PHASES.map(phase => `'${phase}'`).join(",")})
+      ORDER BY prepared_at,execution_id LIMIT ?`;
+}
 
 /** Immediate transactions commit a validated snapshot and its immutable receipt together. */
 export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger<TResult> {
@@ -32,9 +41,7 @@ export class SqliteExecutionLedger<TResult = unknown> implements ExecutionLedger
 
   listRecoverable(limit = 100): ExecutionRecord<TResult>[] {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError("limit must be a positive safe integer");
-    const rows = this.db.prepare(`SELECT record FROM ${this.snapshot}
-      WHERE phase NOT IN (${TERMINAL_EXECUTION_PHASES.map(phase => `'${phase}'`).join(",")})
-      ORDER BY prepared_at,execution_id LIMIT ?`).all(limit) as StoredRecord[];
+    const rows = this.db.prepare(recoverableSql(this.snapshot)).all(limit) as StoredRecord[];
     return rows.map(row => JSON.parse(row.record) as ExecutionRecord<TResult>);
   }
 
