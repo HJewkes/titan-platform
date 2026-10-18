@@ -109,7 +109,10 @@ async function removeParked(
     await git(["worktree", "remove", target.worktree], target.gitRoot);
   } catch (err) {
     const detail = String(
-      (err as { stderr?: unknown }).stderr || (err as Error).message
+      typeof err === "object" && err !== null
+        ? ("stderr" in err && err.stderr) ||
+            ("message" in err ? err.message : undefined)
+        : undefined
     ).trim();
     return {
       ok: false,
