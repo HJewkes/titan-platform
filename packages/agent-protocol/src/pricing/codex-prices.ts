@@ -86,15 +86,26 @@ export interface CodexPricingPortOptions {
 
 /** Pure caller-bound catalog. No bundled rates, catalog identity or native authority. */
 export function createCodexPricingPort(options: CodexPricingPortOptions): HarnessPricingPort<"codex"> {
-  const rows = options.prices.map(row => Object.freeze({
+  const rows = freezeCodexRows(options.prices);
+  const catalog = freezeCodexCatalog(options.catalog);
+  return Object.freeze({
+    harness: "codex" as const,
+    quote: (measurement: UsageMeasurement, atMs: number) => quoteCodexUsage(measurement, atMs, rows, catalog),
+  });
+}
+
+function freezeCodexRows(prices: readonly CodexPriceRow[]): readonly CodexPriceRow[] {
+  const rows = prices.map(row => Object.freeze({
     model: row.model, effectiveFrom: row.effectiveFrom,
     inputUsdPerMTok: row.inputUsdPerMTok,
     cachedInputUsdPerMTok: row.cachedInputUsdPerMTok,
     outputUsdPerMTok: row.outputUsdPerMTok,
   }));
   validateCodexPrices(rows);
-  Object.freeze(rows);
-  const supplied = options.catalog;
+  return Object.freeze(rows);
+}
+
+function freezeCodexCatalog(supplied: CodexPricingPortOptions["catalog"]): CodexPricingPortOptions["catalog"] {
   const catalog = Object.freeze({
     id: supplied.id, version: supplied.version, provider: supplied.provider,
     matchingPolicy: Object.freeze({ id: supplied.matchingPolicy.id, version: supplied.matchingPolicy.version }),
@@ -105,32 +116,40 @@ export function createCodexPricingPort(options: CodexPricingPortOptions): Harnes
     catalog.accountingPolicy.id, catalog.accountingPolicy.version]) {
     if (typeof value !== "string" || value.length === 0) throw new TypeError("Codex pricing catalog references must be nonempty strings");
   }
-  return Object.freeze({
-    harness: "codex" as const,
-    quote(measurement: UsageMeasurement, atMs: number): HarnessPriceQuote {
-      // Existing native/estimated cost wins even if model/time/counts are unavailable.
-      const cost = measurement.cost;
-      if (cost !== null) {
-        if (cost.kind !== "reported" && cost.kind !== "estimate") throw new TypeError("existing cost kind must be reported or estimate");
-        if (!Number.isFinite(cost.usd) || cost.usd < 0) throw new TypeError("existing USD must be finite and nonnegative");
-        return cost.kind === "reported"
-          ? { status: "priced", cost: { ...cost, kind: "reported" }, basis: { kind: "reported", source: measurement.source } }
-          : { status: "priced", cost: { ...cost, kind: "estimate" }, basis: { kind: "existing_estimate", source: measurement.source } };
-      }
-      if (!Number.isFinite(atMs)) return { status: "unpriced", reason: "event time is not finite" };
-      if (measurement.model === null) return { status: "unpriced", reason: "model is unavailable" };
-      const { input, cachedInput, output } = measurement.tokens;
-      if (![input, cachedInput, output].every(value => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
-        return { status: "unpriced", reason: "required token counts are unavailable or invalid" };
-      }
-      const row = rowInForce(rows, measurement.model, atMs);
-      if (!row) return { status: "unpriced", reason: "no dated rate row matches the model" };
-      const usd = costUsd(measurement, row);
-      if (usd === undefined || !Number.isFinite(usd)) return { status: "unpriced", reason: "computed USD is not finite" };
-      return {
-        status: "priced", cost: { usd, kind: "estimate" },
-        basis: { kind: "catalog", atMs, catalog: Object.freeze({ ...catalog, model: row.model, effectiveFrom: row.effectiveFrom }) },
-      };
-    },
-  });
+  return catalog;
+}
+
+function quoteCodexUsage(
+  measurement: UsageMeasurement,
+  atMs: number,
+  rows: readonly CodexPriceRow[],
+  catalog: CodexPricingPortOptions["catalog"],
+): HarnessPriceQuote {
+  const cost = measurement.cost;
+  if (cost !== null) return quoteExistingCodexCost(measurement, cost);
+  if (!Number.isFinite(atMs)) return { status: "unpriced", reason: "event time is not finite" };
+  if (measurement.model === null) return { status: "unpriced", reason: "model is unavailable" };
+  const { input, cachedInput, output } = measurement.tokens;
+  if (![input, cachedInput, output].every(value => typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+    return { status: "unpriced", reason: "required token counts are unavailable or invalid" };
+  }
+  const row = rowInForce(rows, measurement.model, atMs);
+  if (!row) return { status: "unpriced", reason: "no dated rate row matches the model" };
+  const usd = costUsd(measurement, row);
+  if (usd === undefined || !Number.isFinite(usd)) return { status: "unpriced", reason: "computed USD is not finite" };
+  return {
+    status: "priced", cost: { usd, kind: "estimate" },
+    basis: { kind: "catalog", atMs, catalog: Object.freeze({ ...catalog, model: row.model, effectiveFrom: row.effectiveFrom }) },
+  };
+}
+
+function quoteExistingCodexCost(
+  measurement: UsageMeasurement,
+  cost: NonNullable<UsageMeasurement["cost"]>,
+): HarnessPriceQuote {
+  if (cost.kind !== "reported" && cost.kind !== "estimate") throw new TypeError("existing cost kind must be reported or estimate");
+  if (!Number.isFinite(cost.usd) || cost.usd < 0) throw new TypeError("existing USD must be finite and nonnegative");
+  return cost.kind === "reported"
+    ? { status: "priced", cost: { ...cost, kind: "reported" }, basis: { kind: "reported", source: measurement.source } }
+    : { status: "priced", cost: { ...cost, kind: "estimate" }, basis: { kind: "existing_estimate", source: measurement.source } };
 }

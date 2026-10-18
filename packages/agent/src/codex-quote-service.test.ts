@@ -14,10 +14,10 @@ const boundary = vi.hoisted(() => {
   return { violations, forbidden };
 });
 // Mock ONLY a dedicated new fixture. Existing original tests retain all imports/assertions.
-vi.mock("./codex-process.js", () => ({
-  inspectCodexVersion: () => boundary.forbidden("inspectCodexVersion"),
-  startCodexProcess: () => boundary.forbidden("startCodexProcess"),
-  createCodexSchemaFile: () => boundary.forbidden("createCodexSchemaFile"),
+vi.mock("node:fs/promises", () => ({
+  mkdtemp: () => boundary.forbidden("mkdtemp"),
+  rm: () => boundary.forbidden("rm"),
+  writeFile: () => boundary.forbidden("writeFile"),
 }));
 vi.mock("node:child_process", () => ({
   execFile: () => boundary.forbidden("execFile"),
