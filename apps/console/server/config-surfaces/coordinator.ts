@@ -13,7 +13,7 @@ export interface CoordinatorRoots {
 export const AUTONOMY_DIR_UNSET = "autonomy tree: TITAN_CONSOLE_AUTONOMY_DIR is not set";
 
 /** A config file is small; one past this is listed as a gap rather than parsed. */
-export const MAX_CONFIG_BYTES = 1024 * 1024;
+const MAX_CONFIG_BYTES = 1024 * 1024;
 
 export function coordinatorRootsFrom(env: NodeJS.ProcessEnv, home: string): CoordinatorRoots {
   const autonomy = env.TITAN_CONSOLE_AUTONOMY_DIR;

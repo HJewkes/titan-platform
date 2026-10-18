@@ -2,7 +2,7 @@ import { z } from "zod";
 import { LineCounter, isMap, isScalar, parseDocument, type Node, type Pair } from "yaml";
 import { readCommand } from "../owner-guard.js";
 
-export const SURFACE_GROUPS = ["coordinator"] as const;
+const SURFACE_GROUPS = ["coordinator"] as const;
 type SurfaceGroup = (typeof SURFACE_GROUPS)[number];
 
 /**
@@ -82,10 +82,9 @@ const configFile = z.object({
   newestBackup: z.string().nullable(),
 });
 
-export const configSurfacesResult = z.object({ files: z.array(configFile), rows: z.array(configRow), gaps: z.array(z.string()) });
+const configSurfacesResult = z.object({ files: z.array(configFile), rows: z.array(configRow), gaps: z.array(z.string()) });
 
 export type ConfigRow = z.infer<typeof configRow>;
-export type ConfigFile = z.infer<typeof configFile>;
 export type ConfigSurfaces = z.infer<typeof configSurfacesResult>;
 
 type FieldPath = readonly string[];
