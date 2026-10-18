@@ -101,11 +101,6 @@ export function trackCommand(cmd: TrackedCommand, vars: Vars): void {
   }
 }
 
-/** Whether a command word names a file the kernel or a shell reads as a script: any word with a `/`, or `x.sh`. */
-export function namesScript(cmd: { path: string | null; name: string | null }): boolean {
-  return cmd.path?.includes("/") === true || cmd.name?.endsWith(".sh") === true;
-}
-
 /** What the command's own lookups see: the line's `PATH`, then a prefix assignment. */
 function effective(vars: Vars, assigned: readonly Assignment[]): Held {
   let cwd: Held = held(vars);
