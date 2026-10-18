@@ -30,6 +30,7 @@ import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 import { noteLineWrites, startingVars, withShellArguments } from "./math-trust.js";
+import { copyVars } from "./line-writes.js";
 
 const MAX_DEPTH = 8;
 
@@ -268,7 +269,7 @@ function child(w: Walk, wrapping: Wrapping[], descriptors = w.descriptors): Walk
 function scope(op: string, w: Walk): void {
   if (op === "(") {
     w.stack.push(w.scope);
-    w.scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
+    w.scope = { dir: w.scope.dir, vars: copyVars(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
     observed(w);
   }
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
@@ -340,7 +341,7 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
 
 /** A walk on a copy of the scope, so a `cd` or an assignment in a reading on it moves nothing; its commands decide as main's do. */
 function besideWalk(w: Walk): Walk {
-  return observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
+  return observed({ ...w, scope: { ...w.scope, vars: copyVars(w.scope.vars) } });
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {

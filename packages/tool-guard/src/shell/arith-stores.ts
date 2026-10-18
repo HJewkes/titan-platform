@@ -3,7 +3,8 @@ import { NAMED_FD_RE, tokenize } from "./lexer.js";
 import { shellSetsName } from "./ifs-arith.js";
 import type { MathPlace } from "./math-places.js";
 import { readPieces } from "./math-pieces.js";
-import { ANY_WRITE, ENVIRONMENT_UNKNOWN, NOT_PATH_LINE, POSITIONALS_SET, VALUE_SEPARATOR, writtenKey } from "./math-trust.js";
+import { VALUE_SEPARATOR, writtenText } from "./line-writes.js";
+import { ANY_WRITE, ENVIRONMENT_UNKNOWN, NOT_PATH_LINE, POSITIONALS_SET } from "./math-trust.js";
 import { isNumeric } from "./numeric-names.js";
 import { numericOutput } from "./numeric-output.js";
 
@@ -40,8 +41,9 @@ function resolveName(vars: ReadonlyMap<string, string | null>, name: string): st
   if (vars.has(ANY_WRITE)) return null;
   if (shellSetsName(name)) return vars.has(name) && isNumeric(vars, name) ? undefined : null;
   // zsh's `argv` is the positional parameters, so a builtin that writes it (`read -A argv`) sets them.
-  if (POSITIONAL_RE.test(name)) return [POSITIONALS_SET, ENVIRONMENT_UNKNOWN, writtenKey("argv")].some((key) => vars.has(key)) ? null : undefined;
-  if (vars.has(writtenKey(name))) return vars.get(writtenKey(name)) ?? null;
+  if (POSITIONAL_RE.test(name)) return vars.has(POSITIONALS_SET) || vars.has(ENVIRONMENT_UNKNOWN) || writtenText(vars, "argv") !== undefined ? null : undefined;
+  const written = writtenText(vars, name);
+  if (written !== undefined) return written;
   return vars.has(ENVIRONMENT_UNKNOWN) && !SHELL_COUNTERS.has(name) ? null : undefined;
 }
 

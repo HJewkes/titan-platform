@@ -1,4 +1,5 @@
 import { copyGroupState, groupStdin } from "./group-stdin.js";
+import { copyVars } from "./line-writes.js";
 import type { OpToken, RedirectToken, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
 import { nextShellStdin, nextStdin } from "./piped-stdin.js";
@@ -87,7 +88,7 @@ export function continuesChain(held: ChainOf, chain: ChainOf): boolean {
  * `observe` hears what each of those scopes' variables store.
  */
 export function forkWalk<W extends Linked & { stack: Array<W["scope"]> }>(w: W, scope: W["scope"], observe: (fork: W, vars: Vars) => void): W {
-  const fork: W = { ...w, scope, chain: splitChain(splitFrom.get(w.chain) ?? w.chain), stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
+  const fork: W = { ...w, scope, chain: splitChain(splitFrom.get(w.chain) ?? w.chain), stack: w.stack.map((outer) => ({ ...outer, vars: copyVars(outer.vars) })) };
   for (const vars of [scope.vars, ...fork.stack.map((outer) => outer.vars)]) observe(fork, vars);
   copyGroupState(w, fork);
   return fork;

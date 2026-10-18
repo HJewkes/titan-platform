@@ -1,4 +1,5 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
+import { copyVars } from "./line-writes.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { printedText } from "./printed.js";
@@ -235,7 +236,7 @@ export function observeStores(vars: Vars, observer: StoreObserver): void {
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
 export function childVars(vars: Vars): Vars {
-  const copy = new Map(vars);
+  const copy = copyVars(vars);
   for (const key of copy.keys()) if (key.startsWith("readonly@")) copy.set(key, null);
   return copy;
 }

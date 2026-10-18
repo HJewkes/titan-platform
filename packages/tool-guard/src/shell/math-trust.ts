@@ -3,6 +3,7 @@ import { expandedTexts, isRunTime, nameMayBeRunTime, segments, splitCommand, TES
 import type { Segment } from "./ifs-writes.js";
 import { DECLARERS, NAMEREF_DECLARERS, nameSlots, WRITERS } from "./name-slots.js";
 import { numericOutput } from "./numeric-output.js";
+import { addLineWrites, VALUE_SEPARATOR } from "./line-writes.js";
 import { onPathLine } from "./path-commands.js";
 import { tokenize } from "./lexer.js";
 import { subscriptedMatches } from "./subscripted-matches.js";
@@ -11,14 +12,6 @@ import { ASSIGNMENT_RE } from "./vars.js";
 import type { Vars } from "./vars.js";
 import { expansionBodies, writtenNames } from "./writers.js";
 
-/**
- * Hidden key holding the text of every write a line makes to NAME, joined, wherever on the line it sits: math reads
- * a name in a loop or a function body after a write that comes later in the text. Null when one write is unknown,
- * `""` for a number. No identifier can spell these keys, and scopes copy them with the values.
- */
-export const writtenKey = (name: string) => `wrote@${name}`;
-/** Separates the texts of a name's writes in its key: each is read on its own. */
-export const VALUE_SEPARATOR = "\0";
 /** The line runs text that may write any name: `eval`, `source`, `trap`, a run-time command word or name, a nameref. */
 export const ANY_WRITE = "wrote@*";
 /** The positional parameters may hold text the line chose: `set --`, a call of its own function with a word that is not digits, a shell's arguments. */
@@ -70,11 +63,8 @@ export function noteLineWrites(tokens: Token[], vars: Vars): Token[] {
   if (positionalsMaySet(tokens)) vars.set(POSITIONALS_SET, null);
   const r: Reading = { writes: new Map(), pathLine: !vars.has(NOT_PATH_LINE), depth: 0 };
   if (recordList(tokens, r) || STARTUP_FILES.some((name) => r.writes.has(name))) vars.set(ANY_WRITE, null);
-  for (const [name, texts] of r.writes) {
-    const key = writtenKey(name);
-    const all = vars.has(key) ? [vars.get(key) ?? null, ...texts] : texts;
-    vars.set(key, all.includes(null) ? null : all.join(VALUE_SEPARATOR));
-  }
+  const own = new Map([...r.writes].map(([name, texts]) => [name, texts.includes(null) ? null : texts.join(VALUE_SEPARATOR)]));
+  addLineWrites(vars, own);
   return tokens;
 }
 
