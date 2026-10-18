@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
@@ -11,6 +12,7 @@ import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsk
 import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
+import type { KindMove } from "./register-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -30,7 +32,7 @@ export interface RegistrationInput extends RegistrationFactsInput {
   slice?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -66,7 +68,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -88,11 +90,7 @@ type RegistrationListener = (registration: Registration, change?: "hold-eased") 
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
-  constructor(
-    private readonly db: Db,
-    private readonly now: () => number = Date.now,
-    private readonly onChange: RegistrationListener = () => undefined,
-  ) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onChange: RegistrationListener = () => undefined) {}
 
   register(input: RegistrationInput): Registration {
     if (input.pr === undefined && input.branch === undefined) throw new Error("a shepherd registration needs a pr or a branch");
@@ -130,7 +128,8 @@ export class ShepherdStore implements HoldLookup {
   /**
    * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
    * An omitted kind keeps the stored one, so a repeat without `--kind` cannot change whether the run carries a reviewed MERGE.
-   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`).
+   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`);
+   * a move into test-only also needs `diff`, the PR's test-only classification. `guard` replaces `kindMoveRefusal`.
    */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);
@@ -139,7 +138,7 @@ export class ShepherdStore implements HoldLookup {
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = repeatedPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
-      const refusal = kindMoveRefusal(stored.kind, kind);
+      const refusal = (meta.guard ?? kindMoveRefusal)(stored.kind, kind, meta.diff);
       if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
@@ -236,7 +235,10 @@ export class ShepherdStore implements HoldLookup {
     return vouchedLine(this.db, runId, fromHead, baseRef);
   }
 
-  /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
+  /** The seat's stops on fixer dispatch; apart from holds, so a stop never gates or releases a merge. */
+  readonly repairStops = (): RepairStopTable => repairStopTable(this.db, () => this.stamp());
+
+  /** The run's hold, release and repair-stop events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
     return registration ? eventsFor(this.db, runId, registration.repo) : [];

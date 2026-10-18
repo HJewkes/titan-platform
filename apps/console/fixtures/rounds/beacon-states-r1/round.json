@@ -1,0 +1,63 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "beacon-dot",
+  "round": 1,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "context": "A status beacon for the fixture dashboard, first pass.",
+  "widths": [390],
+  "variants": [
+    { "key": "beacon-idle", "image": "shots/beacon-idle.png", "label": "Idle" },
+    { "key": "beacon-busy", "image": "shots/beacon-busy.png", "label": "Busy" },
+    { "key": "beacon-error", "image": "shots/beacon-error.png", "label": "Error" },
+    { "key": "beacon-muted", "image": "shots/beacon-muted.png", "label": "Muted" },
+    { "key": "beacon-sketch", "storyId": "beacon-dot--sketch", "label": "Pencil sketch" }
+  ],
+  "recommendations": "after-answer",
+  "sections": [
+    {
+      "id": "states",
+      "title": "Beacon states",
+      "deciding": "Nothing: these are the states the pick below applies to.",
+      "changed": "The beacon gained a muted state.",
+      "context": "The dashboard around the beacon is out of scope.",
+      "kind": "STATES",
+      "variantKeys": ["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted"]
+    },
+    {
+      "id": "fill",
+      "title": "Beacon fill",
+      "deciding": "Whether the beacon is a ring or a filled dot.",
+      "changed": "The dot is filled in every state.",
+      "context": "Colours are settled and out of scope.",
+      "parts": [{ "id": "beacon-fill", "label": "Beacon fill", "current": "fill: \"ring\"", "proposed": "fill: \"solid\"", "lang": "ts" }],
+      "seeAlso": ["beacon-idle", "beacon-error"],
+      "questionIds": ["beacon-fill-pick"]
+    },
+    {
+      "id": "sketch",
+      "title": "Early sketch",
+      "deciding": "Anything the sketch should carry forward.",
+      "changed": "A sketch from before the states were drawn.",
+      "context": "The sketch is a story with no rendered frame.",
+      "kind": "STATES",
+      "variantKeys": ["beacon-sketch"],
+      "questionIds": ["beacon-notes"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "beacon-fill-pick",
+      "kind": "pick-one",
+      "prompt": "Should the beacon be filled or a ring?",
+      "options": ["Filled", "Ring"],
+      "required": true,
+      "signsOff": "beacon-fill",
+      "recommendation": { "answer": "Filled", "rationale": "A filled dot reads at a glance on a phone.", "confidence": 0.8, "by": "fixture-agent" }
+    },
+    {
+      "id": "beacon-notes",
+      "kind": "text",
+      "prompt": "Anything from the sketch worth keeping?"
+    }
+  ]
+}

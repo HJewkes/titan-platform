@@ -1,0 +1,1589 @@
+{
+  "source": {
+    "package": "@titan-design/react-ui",
+    "subpath": "visual-router",
+    "commit": "631c1cf1584b9003aeb008423baf2e5e6e9ed004"
+  },
+  "patterns": [
+    {
+      "id": "fan-in-queue",
+      "name": "Fan-in queue",
+      "trigger": "Several producers feed one constrained resource, so waiting and capacity tell the story.",
+      "primitives": [
+        "named sources",
+        "a queue showing its depth",
+        "a capacity figure with units",
+        "the single constrained service",
+        "accepted and turned-away outcomes"
+      ],
+      "budget": "Up to 5 sources and 5 queued items; group extra sources into one cohort.",
+      "nearestType": "data-flow"
+    },
+    {
+      "id": "stage-framework",
+      "name": "Stage framework",
+      "trigger": "Every stage answers the same set of questions, and comparing stages matters most.",
+      "primitives": [
+        "stage headers in order",
+        "one slot row per question, labelled",
+        "a visible marker for an empty slot",
+        "handoffs between stages"
+      ],
+      "budget": "3 to 6 stages, at most 4 slot rows, about 20 filled cells.",
+      "nearestType": "process"
+    },
+    {
+      "id": "input-to-artifact",
+      "name": "Input to artifact",
+      "trigger": "Loose input such as a chat or notes is turned into a lasting structured record.",
+      "primitives": [
+        "a short excerpt of the input",
+        "the transformation step, named",
+        "the finished record with its fields",
+        "links from statements to the fields they fill",
+        "fields still unknown"
+      ],
+      "budget": "At most 4 input excerpts, 6 record fields and 3 provenance links.",
+      "nearestType": "data-flow"
+    },
+    {
+      "id": "paired-traces",
+      "name": "Paired traces",
+      "trigger": "Two similar requests end differently and the reader must find where they split.",
+      "primitives": [
+        "one shared ordered rule list",
+        "a worded status per rule on each side",
+        "the first point of divergence, marked",
+        "an outcome per trace"
+      ],
+      "budget": "Two traces, 3 to 6 rules, one marked divergence.",
+      "nearestType": "flowchart"
+    },
+    {
+      "id": "paved-road",
+      "name": "Paved road",
+      "trigger": "A supported route crosses trust boundaries, and some routes must be shown as blocked.",
+      "primitives": [
+        "labelled trust zones",
+        "allowed routes with a text label",
+        "blocked routes that end at the zone edge",
+        "the privileged gate",
+        "where audit records land"
+      ],
+      "budget": "Up to 3 zones, 8 components and 2 blocked routes.",
+      "nearestType": "architecture"
+    },
+    {
+      "id": "control-catalog",
+      "name": "Control catalogue",
+      "trigger": "Controls only make sense grouped by the surface that enforces them.",
+      "primitives": [
+        "one group per enforcement surface",
+        "named controls",
+        "who or what enforces each",
+        "when it runs",
+        "gaps and exception routes"
+      ],
+      "budget": "3 to 5 surfaces, about 24 controls in all.",
+      "nearestType": "layer-stack"
+    },
+    {
+      "id": "compensating-layers",
+      "name": "Compensating layers",
+      "trigger": "Each defence catches some of what the previous one missed, and some risk survives.",
+      "primitives": [
+        "the incoming risk",
+        "layers in order, each with what it stops",
+        "what slips past each layer",
+        "the residual risk at the end, stated in words"
+      ],
+      "budget": "3 to 5 layers following one risk thread.",
+      "nearestType": "layer-stack"
+    },
+    {
+      "id": "block-decomposition",
+      "name": "Block decomposition",
+      "trigger": "A system breaks into parts that each carry a stable id someone can cite.",
+      "primitives": [
+        "an id badge per block",
+        "a noun name per block",
+        "parent to child links only",
+        "detail kept in data, not on the canvas"
+      ],
+      "budget": "Root plus 3 levels, about 9 visible blocks; split by subsystem beyond that.",
+      "nearestType": "tree"
+    },
+    {
+      "id": "lifecycle",
+      "name": "Lifecycle",
+      "trigger": "One subject moves through phases, and its waits, retries and endings carry weight.",
+      "primitives": [
+        "a main rail of phases",
+        "a separate band for waiting and recovery",
+        "a separate band for end states",
+        "labelled transitions"
+      ],
+      "budget": "4 or 5 main phases, at most 9 states and 10 transitions.",
+      "nearestType": "state-machine"
+    }
+  ],
+  "types": [
+    {
+      "id": "architecture",
+      "name": "Architecture",
+      "bestFor": "Components, the boundaries around them and the connections that cross those lines.",
+      "notThis": [
+        {
+          "when": "the point is what changed between two versions",
+          "use": "architecture-delta"
+        },
+        {
+          "when": "machines, zones and replicas matter more than logical parts",
+          "use": "deployment"
+        }
+      ],
+      "patterns": [
+        "paved-road"
+      ],
+      "budget": "About 9 components in at most 3 zones.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph map suite (network-graph/map), static preset",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Architecture is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "architecture-delta",
+      "name": "Architecture delta",
+      "bestFor": "Before and after views of one system, with additions, removals and moves called out.",
+      "notThis": [
+        {
+          "when": "only one state of the system matters",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "One system in two states, with a change ledger of up to 8 rows.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "map suite, two layouts sharing ids",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Architecture delta is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "it-current-state",
+      "name": "IT current state",
+      "bestFor": "An inventory of the systems in place today, grouped by department or phase.",
+      "notThis": [
+        {
+          "when": "the connections between systems are the message",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 5 groups of 4 systems.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "map suite, grouped columns",
+      "fallback": [
+        "dependency-graph",
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "IT current state is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "flowchart",
+      "name": "Flowchart",
+      "bestFor": "Branching decisions and algorithms where steps lead to yes or no choices.",
+      "notThis": [
+        {
+          "when": "several actors exchange messages over time",
+          "use": "sequence"
+        },
+        {
+          "when": "one subject moves between named states",
+          "use": "state-machine"
+        },
+        {
+          "when": "owners and handoffs matter more than the logic",
+          "use": "swimlane"
+        }
+      ],
+      "patterns": [
+        "paired-traces"
+      ],
+      "budget": "About 9 steps and 3 decisions.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph layered layout plus node shapes",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Flowchart is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "sequence",
+      "name": "Sequence",
+      "bestFor": "Messages passed between actors in order, such as a request and its response.",
+      "notThis": [
+        {
+          "when": "there is one subject and its state is what changes",
+          "use": "state-machine"
+        },
+        {
+          "when": "the order of decisions matters, not who sends what",
+          "use": "flowchart"
+        }
+      ],
+      "patterns": [
+        "paired-traces"
+      ],
+      "budget": "Up to 5 actors and 12 messages.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/sequence",
+      "fallback": [
+        "timeline",
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "Sequence is not built yet (new); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "state-machine",
+      "name": "State machine",
+      "bestFor": "The states one subject can be in and the events that move it between them.",
+      "notThis": [
+        {
+          "when": "actors trade messages",
+          "use": "sequence"
+        },
+        {
+          "when": "the steps are decisions, not states",
+          "use": "flowchart"
+        }
+      ],
+      "patterns": [
+        "lifecycle"
+      ],
+      "budget": "About 9 states and 10 transitions.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph layered layout plus bands",
+      "fallback": [
+        "dependency-graph",
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "State machine is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "er",
+      "name": "Entity relationship",
+      "bestFor": "Entities, their attributes and how many of one relate to another.",
+      "notThis": [
+        {
+          "when": "physical tables, keys and column types are the point",
+          "use": "db-schema"
+        },
+        {
+          "when": "classes carry methods and inheritance",
+          "use": "uml-class"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 6 entities of 8 attributes.",
+      "status": "have",
+      "component": "SchemaCard",
+      "storyId": "components-organisms-schemacard--default",
+      "basis": "ui/charts/schema-card",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "SchemaCard"
+        },
+        "closest": {
+          "type": "er",
+          "component": "SchemaCard",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "timeline",
+      "name": "Timeline",
+      "bestFor": "Dated events placed along one time axis.",
+      "notThis": [
+        {
+          "when": "tasks span date ranges",
+          "use": "gantt"
+        },
+        {
+          "when": "a measure changes continuously over time",
+          "use": "line"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 12 events on one axis.",
+      "status": "have",
+      "component": "Timeline",
+      "storyId": "components-organisms-timeline--default",
+      "basis": "ui/charts/timeline",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "Timeline"
+        },
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "swimlane",
+      "name": "Swimlane",
+      "bestFor": "Work passing between owners, one lane per owner, with each handoff drawn.",
+      "notThis": [
+        {
+          "when": "rows are questions asked at every stage rather than owners",
+          "use": "process"
+        },
+        {
+          "when": "there is only one owner",
+          "use": "flowchart"
+        }
+      ],
+      "patterns": [
+        "stage-framework"
+      ],
+      "budget": "Up to 5 lanes and 6 stages.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/stage-grid",
+      "fallback": [
+        "timeline",
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "Swimlane is not built yet (new); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "quadrant",
+      "name": "Quadrant",
+      "bestFor": "Items placed on two judged axes and read by the corner they land in.",
+      "notThis": [
+        {
+          "when": "both axes are measured and the spread matters",
+          "use": "scatter"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 12 items and one label per corner.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "Scatter preset with corner labels",
+      "fallback": [
+        "scatter"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "scatter",
+          "component": "Scatter",
+          "caveat": "Quadrant is not built yet (template); Scatter (Scatter) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "radar",
+      "name": "Radar",
+      "bestFor": "A few items compared across the same five to eight measures.",
+      "notThis": [
+        {
+          "when": "more than three items are compared",
+          "use": "bar"
+        },
+        {
+          "when": "the categories repeat in a cycle such as months",
+          "use": "polar"
+        }
+      ],
+      "patterns": [],
+      "budget": "3 to 8 axes and at most 3 series.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/radar",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Radar is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "polar",
+      "name": "Polar",
+      "bestFor": "Values for categories that wrap around, such as hours of a day.",
+      "notThis": [
+        {
+          "when": "the categories have no natural cycle",
+          "use": "bar"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 12 segments.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/polar",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Polar is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "loop",
+      "name": "Loop",
+      "bestFor": "A cycle that feeds itself, such as a flywheel or a review loop.",
+      "notThis": [
+        {
+          "when": "the cycle has exits and end states",
+          "use": "state-machine"
+        }
+      ],
+      "patterns": [],
+      "budget": "3 to 6 steps around one hub.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph ring layout",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Loop is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "nested",
+      "name": "Nested",
+      "bestFor": "Containment where each level sits wholly inside the one above.",
+      "notThis": [
+        {
+          "when": "a parent has several children",
+          "use": "tree"
+        },
+        {
+          "when": "the levels are ordered defences, not containers",
+          "use": "layer-stack"
+        }
+      ],
+      "patterns": [
+        "compensating-layers"
+      ],
+      "budget": "Up to 5 levels in a single chain.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "map suite, one chain",
+      "fallback": [
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": "Nested is not built yet (ng); Treemap (Treemap) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "tree",
+      "name": "Tree",
+      "bestFor": "A hierarchy in which each child has exactly one parent.",
+      "notThis": [
+        {
+          "when": "a node has several parents or links form cycles",
+          "use": "dependency-graph"
+        },
+        {
+          "when": "the nodes are people with roles",
+          "use": "org-chart"
+        },
+        {
+          "when": "the size of each branch is the message",
+          "use": "treemap"
+        }
+      ],
+      "patterns": [
+        "block-decomposition"
+      ],
+      "budget": "Root plus 3 levels, about 5 children per node.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph layered layout, tidy-tree mode",
+      "fallback": [
+        "dependency-graph",
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Tree is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "org-chart",
+      "name": "Org chart",
+      "bestFor": "Who reports to whom, with a name and role on each card.",
+      "notThis": [
+        {
+          "when": "the nodes are not people or teams",
+          "use": "tree"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 12 cards over 3 levels.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "tree layout plus card nodes",
+      "fallback": [
+        "dependency-graph",
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Org chart is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "layer-stack",
+      "name": "Layer stack",
+      "bestFor": "Ordered layers, each resting on the one beneath, with what each layer holds.",
+      "notThis": [
+        {
+          "when": "the layers are containers drawn inside one another",
+          "use": "nested"
+        },
+        {
+          "when": "it is a data platform split into quality tiers",
+          "use": "tiers"
+        }
+      ],
+      "patterns": [
+        "control-catalog",
+        "compensating-layers"
+      ],
+      "budget": "4 to 6 layers with a few items each.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/layer-stack",
+      "fallback": [
+        "bar",
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Layer stack is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "exploded-axonometric",
+      "name": "Exploded axonometric",
+      "bestFor": "Illustrated 3D art that pulls a product apart into its parts.",
+      "notThis": [
+        {
+          "when": "the parts and how they stack are what matters",
+          "use": "layer-stack"
+        },
+        {
+          "when": "the parts form a hierarchy",
+          "use": "tree"
+        }
+      ],
+      "patterns": [],
+      "budget": "Not planned.",
+      "status": "skip",
+      "component": null,
+      "storyId": null,
+      "basis": "not planned: illustration with no data to compute it from",
+      "fallback": [
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": "Exploded axonometric is not planned; Treemap (Treemap) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "axonometric-plan",
+      "name": "Axonometric plan",
+      "bestFor": "A floor-plan illustration of a physical space.",
+      "notThis": [
+        {
+          "when": "zones and what runs in them are the point",
+          "use": "deployment"
+        },
+        {
+          "when": "logical parts and their links are the point",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "Not planned.",
+      "status": "skip",
+      "component": null,
+      "storyId": null,
+      "basis": "not planned: illustration with no data to compute it from",
+      "fallback": [
+        "treemap"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": "Axonometric plan is not planned; Treemap (Treemap) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "venn",
+      "name": "Venn",
+      "bestFor": "Overlaps between two or three sets, with a count or label per region.",
+      "notThis": [
+        {
+          "when": "there are more than three sets",
+          "use": "heatmap"
+        },
+        {
+          "when": "set sizes matter more than their overlap",
+          "use": "bar"
+        }
+      ],
+      "patterns": [],
+      "budget": "2 or 3 sets.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/venn",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Venn is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "funnel",
+      "name": "Pyramid / funnel",
+      "bestFor": "Stages that narrow by value, or a ranked hierarchy drawn widest at the base.",
+      "notThis": [
+        {
+          "when": "the stages do not narrow",
+          "use": "bar"
+        },
+        {
+          "when": "flows split and merge between stages",
+          "use": "sankey"
+        }
+      ],
+      "patterns": [],
+      "budget": "3 to 7 tiers.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/funnel",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Pyramid / funnel is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "bar",
+      "name": "Bar",
+      "bestFor": "Comparing one value across categories.",
+      "notThis": [
+        {
+          "when": "the categories are points in time and the trend matters",
+          "use": "line"
+        },
+        {
+          "when": "a running total steps up and down",
+          "use": "waterfall"
+        },
+        {
+          "when": "the values are nested parts of one whole",
+          "use": "treemap"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 12 bars.",
+      "status": "have",
+      "component": "BarList",
+      "storyId": "components-molecules-barlist--default",
+      "basis": "ui/charts/bar-list and spark-bars; columns are variant V1",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "BarList"
+        },
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall",
+      "bestFor": "How a starting total becomes a final one through gains and losses.",
+      "notThis": [
+        {
+          "when": "each value stands on its own",
+          "use": "bar"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 10 steps.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/waterfall",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Waterfall is not built yet (new); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "treemap",
+      "name": "Treemap",
+      "bestFor": "Shares of a whole across many parts, nested when the parts group.",
+      "notThis": [
+        {
+          "when": "there are only a few parts",
+          "use": "bar"
+        },
+        {
+          "when": "the hierarchy itself matters more than size",
+          "use": "tree"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 30 leaves in two levels.",
+      "status": "have",
+      "component": "Treemap",
+      "storyId": "components-atoms-treemap--default",
+      "basis": "ui/charts/treemap",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "Treemap"
+        },
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "heatmap",
+      "name": "Heatmap",
+      "bestFor": "A grid of two categories with an intensity in each cell.",
+      "notThis": [
+        {
+          "when": "each cell holds a category, not a level",
+          "use": "access-matrix"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 12 by 12 cells and 4 intensity steps.",
+      "status": "in-flight",
+      "component": null,
+      "storyId": null,
+      "basis": "charts/dependency-matrix (TD-35)",
+      "fallback": [
+        "treemap",
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": "Heatmap is not built yet (in-flight); Treemap (Treemap) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "line",
+      "name": "Line",
+      "bestFor": "A measure changing over time, including slope, bump and ridgeline forms.",
+      "notThis": [
+        {
+          "when": "the data are discrete events, not a measure",
+          "use": "timeline"
+        },
+        {
+          "when": "the categories have no order",
+          "use": "bar"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 5 series.",
+      "status": "in-flight",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/line-chart, built but not exported yet (TD-34); slope and bump are V2, ridgeline V5",
+      "fallback": [
+        "scatter",
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "scatter",
+          "component": "Scatter",
+          "caveat": "Line is not built yet (in-flight); Scatter (Scatter) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "gantt",
+      "name": "Gantt",
+      "bestFor": "Tasks with start and end dates on one time axis, plus milestones.",
+      "notThis": [
+        {
+          "when": "events are single moments",
+          "use": "timeline"
+        },
+        {
+          "when": "cards move through workflow columns",
+          "use": "kanban"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 15 rows.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/gantt",
+      "fallback": [
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "Gantt is not built yet (new); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "scatter",
+      "name": "Scatter",
+      "bestFor": "How two measures relate across many items, with bubble size as an optional third.",
+      "notThis": [
+        {
+          "when": "the axes are judgements and the corners carry meaning",
+          "use": "quadrant"
+        },
+        {
+          "when": "one measure is tracked over time",
+          "use": "line"
+        }
+      ],
+      "patterns": [],
+      "budget": "Points readable without overlap; label at most 8.",
+      "status": "have",
+      "component": "Scatter",
+      "storyId": "components-atoms-scatter--default",
+      "basis": "ui/charts/scatter; beeswarm is V3",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "Scatter"
+        },
+        "closest": {
+          "type": "scatter",
+          "component": "Scatter",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "high-level",
+      "name": "High-level overview",
+      "bestFor": "A one-glance overview of a data stack, with phases across the top.",
+      "notThis": [
+        {
+          "when": "routes and boundaries need detail",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 5 phases and 9 components.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "architecture map preset plus a phase chevron band",
+      "fallback": [
+        "dependency-graph",
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "High-level overview is not built yet (template); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "process",
+      "name": "Process",
+      "bestFor": "Ordered stages that each answer the same questions, with inputs and outputs.",
+      "notThis": [
+        {
+          "when": "the rows are owners, not questions",
+          "use": "swimlane"
+        },
+        {
+          "when": "branching decisions matter",
+          "use": "flowchart"
+        }
+      ],
+      "patterns": [
+        "stage-framework",
+        "input-to-artifact"
+      ],
+      "budget": "3 to 6 stages and up to 4 slot rows.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "StageGrid preset",
+      "fallback": [
+        "timeline",
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "Process is not built yet (template); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "tiers",
+      "name": "Tiers (medallion)",
+      "bestFor": "Data quality tiers from raw to curated, with who may read each.",
+      "notThis": [
+        {
+          "when": "the layers are general, not data quality tiers",
+          "use": "layer-stack"
+        }
+      ],
+      "patterns": [],
+      "budget": "3 or 4 tiers.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "layer-stack preset",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Tiers (medallion) is not built yet (template); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "data-flow",
+      "name": "Data flow",
+      "bestFor": "Where data comes from, what transforms it and where it ends up.",
+      "notThis": [
+        {
+          "when": "the order of decisions is the point",
+          "use": "flowchart"
+        },
+        {
+          "when": "volumes split and merge along the way",
+          "use": "sankey"
+        }
+      ],
+      "patterns": [
+        "fan-in-queue",
+        "input-to-artifact"
+      ],
+      "budget": "About 9 nodes grouped by role.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph clustered layout, grouped by role",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Data flow is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "hub-spoke",
+      "name": "Hub and spoke",
+      "bestFor": "One central system and those around it, labelled with how each connects.",
+      "notThis": [
+        {
+          "when": "the outer systems also connect to each other",
+          "use": "dependency-graph"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 8 spokes.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph ego layout",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Hub and spoke is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "access-matrix",
+      "name": "Access matrix",
+      "bestFor": "Which roles may do what, with one categorical value per cell.",
+      "notThis": [
+        {
+          "when": "the cells hold a level, not a category",
+          "use": "heatmap"
+        },
+        {
+          "when": "controls are grouped by where they are enforced",
+          "use": "layer-stack"
+        }
+      ],
+      "patterns": [
+        "control-catalog"
+      ],
+      "budget": "Up to 8 roles by 10 resources.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "matrix preset on the heatmap (after TD-35)",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Access matrix is not built yet (template); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "sankey",
+      "name": "Sankey",
+      "bestFor": "Quantities moving from sources to destinations, with band width set by volume.",
+      "notThis": [
+        {
+          "when": "the stages only narrow, without splitting",
+          "use": "funnel"
+        },
+        {
+          "when": "the paths matter, not the amounts",
+          "use": "data-flow"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 12 nodes in 4 columns.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/sankey",
+      "fallback": [
+        "dependency-graph",
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Sankey is not built yet (new); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "fishbone",
+      "name": "Fishbone",
+      "bestFor": "Causes of one effect, grouped into categories along a spine.",
+      "notThis": [
+        {
+          "when": "the causes form a general hierarchy",
+          "use": "tree"
+        }
+      ],
+      "patterns": [],
+      "budget": "4 to 6 categories with 3 causes each.",
+      "status": "new",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/charts/fishbone",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Fishbone is not built yet (new); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "wardley",
+      "name": "Wardley map",
+      "bestFor": "Components placed by how visible they are to users and how mature they are.",
+      "notThis": [
+        {
+          "when": "the axes are opinions with no maturity scale",
+          "use": "quadrant"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 15 components.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "NetworkGraph supplied layout plus an axis frame",
+      "fallback": [
+        "scatter",
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "scatter",
+          "component": "Scatter",
+          "caveat": "Wardley map is not built yet (ng); Scatter (Scatter) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "kanban",
+      "name": "Kanban",
+      "bestFor": "Work items shown as cards in workflow columns.",
+      "notThis": [
+        {
+          "when": "dates and durations matter",
+          "use": "gantt"
+        }
+      ],
+      "patterns": [],
+      "budget": "3 to 6 columns.",
+      "status": "in-flight",
+      "component": null,
+      "storyId": null,
+      "basis": "ui/board (model and fixtures on main)",
+      "fallback": [
+        "bar"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "bar",
+          "component": "BarList",
+          "caveat": "Kanban is not built yet (in-flight); Bar (BarList) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "user-journey",
+      "name": "User journey",
+      "bestFor": "A customer's steps through a service and how they feel at each one.",
+      "notThis": [
+        {
+          "when": "back-office work matters as much as the customer",
+          "use": "service-blueprint"
+        }
+      ],
+      "patterns": [],
+      "budget": "4 to 7 steps.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "StageGrid plus a LineChart sentiment row",
+      "fallback": [
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "User journey is not built yet (template); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "service-blueprint",
+      "name": "Service blueprint",
+      "bestFor": "A service seen from the customer down through staff and back-office systems.",
+      "notThis": [
+        {
+          "when": "only the customer view matters",
+          "use": "user-journey"
+        }
+      ],
+      "patterns": [],
+      "budget": "4 or 5 lanes and up to 7 steps.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "StageGrid preset",
+      "fallback": [
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "timeline",
+          "component": "Timeline",
+          "caveat": "Service blueprint is not built yet (template); Timeline (Timeline) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "deployment",
+      "name": "Deployment",
+      "bestFor": "What runs where: zones, hosts and replica counts.",
+      "notThis": [
+        {
+          "when": "logical parts matter, not where they run",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 3 zones and 9 hosts.",
+      "status": "ng",
+      "component": null,
+      "storyId": null,
+      "basis": "map suite",
+      "fallback": [
+        "dependency-graph"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": "Deployment is not built yet (ng); Dependency graph (NetworkGraph) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "dependency-graph",
+      "name": "Dependency graph",
+      "bestFor": "Things that depend on other things, including shared and circular dependencies.",
+      "notThis": [
+        {
+          "when": "every node has exactly one parent",
+          "use": "tree"
+        },
+        {
+          "when": "boundaries and zones matter",
+          "use": "architecture"
+        }
+      ],
+      "patterns": [],
+      "budget": "About 20 nodes before grouping.",
+      "status": "have",
+      "component": "NetworkGraph",
+      "storyId": "components-organisms-networkgraph--default",
+      "basis": "ui/charts/network-graph",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "NetworkGraph"
+        },
+        "closest": {
+          "type": "dependency-graph",
+          "component": "NetworkGraph",
+          "caveat": null
+        },
+        "gap": false
+      }
+    },
+    {
+      "id": "uml-class",
+      "name": "UML class",
+      "bestFor": "Classes with their fields, operations and inheritance.",
+      "notThis": [
+        {
+          "when": "the model is stored data, not behaviour",
+          "use": "er"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 6 classes.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "SchemaCard preset with an operations section",
+      "fallback": [
+        "er",
+        "db-schema"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "er",
+          "component": "SchemaCard",
+          "caveat": "UML class is not built yet (template); Entity relationship (SchemaCard) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "story-map",
+      "name": "Story map",
+      "bestFor": "User activities across the top, stories beneath by priority, and release cuts.",
+      "notThis": [
+        {
+          "when": "work moves through status columns",
+          "use": "kanban"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 6 activities and 3 releases.",
+      "status": "template",
+      "component": null,
+      "storyId": null,
+      "basis": "StageGrid preset",
+      "fallback": [
+        "treemap",
+        "timeline"
+      ],
+      "route": {
+        "render": null,
+        "closest": {
+          "type": "treemap",
+          "component": "Treemap",
+          "caveat": "Story map is not built yet (template); Treemap (Treemap) is the closest available type."
+        },
+        "gap": true
+      }
+    },
+    {
+      "id": "db-schema",
+      "name": "Database schema",
+      "bestFor": "Tables, columns, keys and the foreign keys between them.",
+      "notThis": [
+        {
+          "when": "the model is conceptual, without column types",
+          "use": "er"
+        }
+      ],
+      "patterns": [],
+      "budget": "Up to 6 tables.",
+      "status": "have",
+      "component": "SchemaCard",
+      "storyId": "components-organisms-schemacard--default",
+      "basis": "ui/charts/schema-card",
+      "fallback": [],
+      "route": {
+        "render": {
+          "component": "SchemaCard"
+        },
+        "closest": {
+          "type": "db-schema",
+          "component": "SchemaCard",
+          "caveat": null
+        },
+        "gap": false
+      }
+    }
+  ]
+}

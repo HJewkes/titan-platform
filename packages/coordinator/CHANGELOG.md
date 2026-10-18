@@ -1,5 +1,37 @@
 # @titan-design/coordinator
 
+## 0.5.2
+
+### Patch Changes
+
+- 48fc4c0: Add `EDITABLE_FIELDS`, the allowlist of config fields an editor may change (path pattern, bounds, reload class), with `editableField` and `checkEditableValue`. A path no row matches, such as a seat's `grants_extra`, is not editable.
+
+## 0.5.1
+
+### Patch Changes
+
+- 7a4d313: Add the coordinator document revision log: `configRevisionSchema`, `applyEdit` (sets one schema-declared field on a copy and re-checks the document), `diffDocuments`, `documentSha`, `revisionSha` and `verifyChain` (refuses a log whose revision does not name the previous revision as its parent).
+
+## 0.5.0
+
+### Minor Changes
+
+- 9ebb9ba: Add `authoredBlockSchema`, `parseAuthored` and `renderAuthored` for the seat's authored handoff block (TP-2896 a): parse never throws and caps the JSON text at 1,500 chars; render drops standing rules past their `expires` UTC day and omits empty sections.
+
+### Patch Changes
+
+- 741313f: Make charter `worktrees_per_repo_per_seat` optional
+- Updated dependencies [3189a46]
+- Updated dependencies [556b5e2]
+- Updated dependencies [06506bc]
+- Updated dependencies [8f81511]
+- Updated dependencies [7330b11]
+- Updated dependencies [0acca69]
+- Updated dependencies [ca0dd12]
+- Updated dependencies [ca0dd12]
+- Updated dependencies [ff27157]
+  - @titan-design/agent-dispatch@0.8.0
+
 ## 0.4.2
 
 ### Patch Changes

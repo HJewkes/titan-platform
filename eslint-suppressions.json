@@ -594,6 +594,376 @@
       "count": 3
     }
   },
+  "products/active-work/src/aw.ts": {
+    "titan/max-function-lines": {
+      "count": 6
+    }
+  },
+  "products/active-work/src/bootstrap/archive-tasks.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/bootstrap/prompt.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/cli.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/_open-helpers.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/archive.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/artifact-add-branch.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/artifact-status.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/edit.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/focus.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/fold.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/hooks-agent-chat-complete.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/list.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/miner-liveness.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/miner-status.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/new.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/open.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/pause.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/prompt.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/session-list.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/sessions-browser.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/source-add.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/sync.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/task-delete.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/task-edit.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/task-reorder.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/track.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/unfocus.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/commands/worktree-set.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/commands/wrap.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/dashboard/App.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/components/InitiativeCard.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/components/Toast.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/components/shared/Badge.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/components/shared/Card.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/components/shared/DataTable.tsx": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/dashboard/views/Artifacts.tsx": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/dashboard/views/Initiatives.tsx": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/dashboard/views/Tasks.tsx": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/discover/claude.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/discover/git.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/discover/github.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/discover/index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/discover/projects.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/discover/run-command.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/doctor.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/drain/ingestor.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/drain/transcript-reader.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/launcher-lease.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/lint/sources.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/lint/task.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/migrations/index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/migrations/v1-to-v2-artifacts.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/schemas/artifacts.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/search/index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/search/related.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/search/resolve.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/server/daemon.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/server/dashboard-routes.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/server/logger.ts": {
+    "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/server/session-index-watch.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/session-index/delta-pass.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/origin-agent-chat.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/reader-gate.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/refresh.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/tasks.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/session-index/watch-paths.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/sessions/lease.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/setup/steps.ts": {
+    "titan/max-function-lines": {
+      "count": 12
+    }
+  },
+  "products/active-work/src/setup/supervision-launchd.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/setup/supervision-systemd.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/active-work/src/utils/git-gh.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "products/active-work/src/workspace-index/refresh.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/active-work/src/wrap/sweep.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
   "products/evals/src/corpus/test-fixture.ts": {
     "titan/max-line-length": {
       "count": 1

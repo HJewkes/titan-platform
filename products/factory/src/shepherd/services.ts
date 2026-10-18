@@ -6,7 +6,7 @@ import type { GhGateway } from "./gh-gateway-port.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ReviewSlots } from "./review-slots.js";
-import type { ShepherdStoreRef } from "./store.js";
+import type { ShepherdStoreRef, kindMoveRefusal } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 
@@ -30,6 +30,8 @@ export interface ShepherdServices extends SnapshotServices {
   gateway?: GhGateway;
   /** The spawn gate's last reviewer reading, reported in `/health`; absent on a host with no gate. */
   reviewSlots?: () => ReviewSlots | undefined;
+  /** Replaces `kindMoveRefusal` at register; a test runs the guard as it reads once TEST_ONLY_GATED is gone (TP-2732 f deletes both). */
+  kindGuard?: typeof kindMoveRefusal;
   /** `shepherd.visualDelivery` on or in shadow; absent means serve starts no delivery sweep. */
   visualDelivery?: VisualDeliveryWatch;
 }

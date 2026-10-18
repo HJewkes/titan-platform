@@ -233,6 +233,36 @@ const check = checkDispositions(items, parseDispositions(dispositionsTsv));
 if (!check.ok) for (const item of check.missing) console.error(`no disposition for ${item.id}`);
 ```
 
+## Review folders
+
+The same review folder holds more than proposals, and its files differ between review
+generations. These parsers read the shapes that every review shares and keep the rest.
+
+- `parseTopicsJudged(tsv, file?)` requires `topic_id tier title verdict priority
+  titan_evidence reason`. Any other column lands in the row's `extra`, by its header name.
+- `parseClaimsAudit(tsv, file?)` requires `id source status evidence claim`. `basis`, `note` and
+  `wave` appear on a row only when the header has them.
+- `readReviewPin(readme)` reads the README's `- key: value` bullets for `remote`, `HEAD`,
+  `status`, `pinned`, `mode` and `focus`, in any case. The first bullet for a key wins. HEAD
+  keeps only its leading hash, short or full, and remote only its leading URL. `status` is
+  whatever was true when the README was written, so show it and never derive a state from it.
+- `sumRunCost(tsv, file?)` returns `{ usd, calls, errors, lastTs }` from `runs.tsv`. An empty
+  cost counts as zero, and `lastTs` is `null` when no row has a timestamp.
+- `TOPIC_PRIORITIES` (`P1`-`P4`) and `TOPIC_VERDICTS` are the vocabularies. Parsed verdicts
+  and priorities stay plain strings, so a review that coins a new verdict still parses.
+- `readTsv(text, required, label)` is the reader under all of them: rows keyed by header, each
+  with its 1-based line, blank lines skipped.
+
+A missing required column throws, naming `file`, so a renamed column fails loudly.
+
+```ts
+import { parseTopicsJudged, readReviewPin, sumRunCost } from "@titan-design/pm";
+
+const urgent = parseTopicsJudged(topicsTsv, "acme-widget/topics-judged.tsv").filter((t) => t.priority === "P1");
+const { remote, head } = readReviewPin(readme);
+const { usd, lastTs } = sumRunCost(runsTsv);
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and writes nothing, the category and deliverable

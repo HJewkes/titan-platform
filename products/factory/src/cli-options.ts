@@ -4,6 +4,7 @@ import { isRepo } from "@titan-design/github";
 import { InvalidArgumentError, type Command } from "commander";
 import { parsePrRef } from "./registry.js";
 import { filterRows, parsePhases, type StatusFilter } from "./shepherd/status-filter.js";
+import { FINISHED_PHASES } from "./shepherd/step-phase.js";
 
 export type { StatusFilter };
 
@@ -54,6 +55,12 @@ function phaseList(value: string): ReturnType<typeof parsePhases> {
   } catch (err) {
     throw new InvalidArgumentError(err instanceof Error ? err.message : String(err));
   }
+}
+
+/** Serve leaves finished runs out of a status read unless asked, so `--all`, or a `--phase` naming a finished phase, asks. */
+export function statusArgs(target: { repo: string; pr?: number } | undefined, { all, phase }: StatusFilter): { repo?: string; pr?: number; all?: true } {
+  const wantsFinished = all === true || (phase?.some((name) => FINISHED_PHASES.has(name)) ?? false);
+  return { ...target, ...(wantsFinished && { all: true }) };
 }
 
 /** Filters `status` rows here, not on serve, so an older serve that ignores unknown args still filters; no flag leaves the data untouched. */

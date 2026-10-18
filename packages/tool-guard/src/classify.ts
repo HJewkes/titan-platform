@@ -66,7 +66,7 @@ function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyCon
  */
 function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
   const inScript = scripts === null || scripts.depth > 0;
-  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: inScript, joinsConditional: !inScript };
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: inScript, arithmetic: !inScript, joinsConditional: !inScript };
 }
 
 /**

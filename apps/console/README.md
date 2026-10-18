@@ -59,7 +59,13 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from; unset, that command answers a gap for them. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
+| `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
+| `TITAN_CONSOLE_REVIEWS_DIR` | `<active-work root>/titan-platform/sources/research/repo-review` | Repo reviews, read by `reviews.list`: each direct subfolder with a `README.md` is one review, and only fixed paths inside it are opened (no-follow, 1 MB cap). A file that fails to read or parse is a gap line, never a hidden review |
+| `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
+| `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
+| `TITAN_CONSOLE_CLAUDE_DIRS` | `~/.claude` and every `~/.claude-profiles/*` | Comma list of Claude Code config dirs `config.surfaces` reads. From `.claude.json` it reports only the trusted-folder count and the MCP server names |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -129,11 +135,13 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
 | `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it), plus `dir`, the rounds dir the server reads. A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
 | `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
-| `POST /rpc/rounds.frames` | `{ id }` in; `{ frames: [{ key, theme?, views }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for |
+| `POST /rpc/rounds.frames` | `{ id }` in; `{ indexed, frames: [{ key, theme?, views, indexed }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for. The top `indexed` says the round has a `frames/frames.json`, and a frame's `indexed` says that file lists it. An invalid `frames.json` is refused (66) |
 | `POST /rpc/rounds.frame` | `{ id, key, view? }` in; `{ contentType: "image/png", bytes, sha256, base64 }` out for one listed frame. The client names a key and view, never a path. Refused (66) for an unlisted key or view, a path leaving the round, a symlink at any component, a non-regular file, a non-PNG, a file over 8 MiB or a sha256 the frames index does not match. Also served over `/mcp`, so an agent can read the images as the owner does |
-| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general? }` in; `{ status: "submitted", path, sha256, headSha }` or `{ status: "already-submitted" }` out. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question), or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
+| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general? }` in; `{ status: "submitted", path, sha256, headSha }` or `{ status: "already-submitted" }` out. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
 | `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. A `deposit` (see "Owner inbox deposits") |
+| `POST /rpc/config.report` | Another host's `titan config report` in; `{ host, receivedAt }` out. A `deposit` taken only over a bearer from another machine (see "Host config reports") |
+| `POST /rpc/config.hosts` | `{ hosts: [{ host, status, reportedAt, receivedAt, platform, surfaces }], gaps }`: each other host's last report. One older than 25 hours is `not reported`, with no surfaces |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -148,7 +156,8 @@ Three rules hold for every later slice.
   active-work daemon, the broker and the factory at `127.0.0.1:<port>`; only the port is configurable.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
-- **Read-only, apart from two writes.** `inbox.deposit` files an item but cannot answer one.
+- **Read-only, apart from three writes.** `inbox.deposit` files an item but cannot answer one.
+  `config.report` stores another host's config report under the state dir and applies nothing.
   `rounds.submit`, an `owner-write`, records the owner's answers to a round as its
   `feedback.json` and resolves nothing itself. No command controls an agent. A later write must
   take a class below.
@@ -202,7 +211,7 @@ echoes a cookie, the token or a login code.
 
 | Class | Runs for |
 | --- | --- |
-| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` is a read |
+| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` and `config.report` is a read |
 | `deposit` | An HTTP call: on loopback, where every POST already needs an allowlisted `Origin` or `X-Titan-Client`, or on the LAN with either credential |
 | `owner-write` | Only the owner's session cookie on the LAN listener, from a peer that is not this machine, while `TITAN_CONSOLE_OWNER_WRITES=1` |
 
@@ -226,6 +235,23 @@ helper still compiles; it runs with no proof, because only `ownerWriteCommand` a
 Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
+
+## Host config reports
+
+`config.surfaces` reads this host's files directly. Another host, such as a laptop, runs
+`titan config report --to https://<lan-name>:<port> --token-file <path>`, which posts its
+report to `config.report`; `config.hosts` shows it.
+
+- **Data, not authority.** A report names files and their facts (present, mode, mtime, size,
+  sha256), never a value. The schema is strict at every level, so a field it does not name,
+  a `revision` to apply among them, answers 400 and stores nothing. The handler writes only
+  `$TITAN_CONSOLE_STATE/config/host-reports/<host>.json` (0600, by rename) and nothing else.
+- **A bearer from another machine only.** Loopback carries no credential, and any local
+  process can read `lan.token`, so a report from loopback, a session cookie or a bearer whose
+  peer is this machine gets 403. A host name is lowercase letters, digits and dashes; at most 16
+  hosts are kept, and a repeat replaces that host's report.
+- **Stale is not reported.** A report older than 25 hours, by the older of its own
+  `reportedAt` and the console's `receivedAt`, shows `not reported` with no surfaces.
 
 ## Owner inbox deposits
 
@@ -289,6 +315,43 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
 
+## Theater
+
+The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on
+each one beside the video, in `<name>.notes.jsonl` (`cut.mp4` gets `cut.notes.jsonl`). The sidecar
+is the store of record: an agent re-rendering a video reads it in place, and nothing is copied into
+the state dir.
+
+- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", text }` or
+  `{ videoId, atS, kind: "verdict", verdict: "ship" | "needs-changes" }`. Like `rounds.submit`, it
+  runs only for the owner's session cookie on the LAN listener with `TITAN_CONSOLE_OWNER_WRITES=1`,
+  so loopback and bearer calls are refused.
+- **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
+  carries `current`, and `verdict` is the latest verdict on the current render or null.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+
+Each line is a strict `titan-console/video-note@1` object:
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-note@1"` |
+| `id` | 16 random hex |
+| `videoId`, `video` | the catalog id and the video's file name, never a path |
+| `renderSha256` | sha256 of the video's bytes when the note was made |
+| `atS` | playback time in seconds, at or above 0, rounded to 0.001 |
+| `kind` | `"comment"` with `text` (1-2000 characters), or `"verdict"` with `verdict` |
+| `createdAt` | ISO time |
+
+The file is opened with O_APPEND and O_NOFOLLOW, mode 0600, and each note is one write of at most
+4 KB, so concurrent appends never interleave. A reader skips a line it cannot parse and reports the
+count as a gap, and refuses a file over 1 MB.
+
+**Agent pickup rule.** Read `<name>.notes.jsonl`. A note is on the current render when its
+`renderSha256` equals the video's sha256 now. The open notes are the current render's comments
+written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
+`server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
+every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
 ## The approvals flow
 
 `approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
@@ -310,6 +373,64 @@ ordered. An unanswered after-answer question's recommendation is removed from `o
 `withdrawn` and `dropped`, as `rounds.get` does. A PR group's `shipBlockedBy` lists open change
 requests (free text, or a pick other than the implemented one); an unanswered question never
 blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic group.
+
+## The inbox and its actions
+
+`inbox.list` (`server/inbox-view.ts`) is a read: `approvals.flow`'s order joined to Shepherd's live rows, each item
+with the one action a tap takes, or the terminal command and why the console offers none. A write action comes only
+from a hitl gate joined to a live Shepherd row; a deposit never gets one.
+
+A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
+owner-asked hold), `answer-chat` (an agent's chat_ask) and a `hold-release` of a `g10-review` or `g10-adversary`
+hold; any other item, a hold of another class included, answers `no-action` with its reason.
+
+1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+   gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
+   id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
+   not issue.
+2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+   It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
+   It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
+   record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
+   never the cookie. The console posts `{ actionId }` to the factory's `POST /owner/console-action`.
+
+The factory reads the record and decides; its resolver is `owner-remote` `titan-console` on `console:inbox`, with
+the record's sha256 as the confirm event. The console pins the route's answers in `server/owner-action.ts`:
+
+| Factory answer | Owner sees |
+| --- | --- |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
+| 409 `moved` | "PR moved to `abc1234`, read again" |
+| 410 `gone`, 403 or 422 `refused` | the reason |
+| 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
+| 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
+
+A settled outcome is written once as `<confirm>.outcome.json`. A landed resolve or release also writes one
+decision-log row (see "The decision log"), and a replay does not write it again. The factory's
+`consoleAnswers.actionsDir` must name the same `owner-actions` dir. The factory trusts the OS account, as for
+answer-ship: a same-user process could write a record and post its id. That is no stronger than running
+`titan-factory gate resolve` from the same account, and it is not claimed to be.
+
+An `answer-chat` tap differs in three ways (`server/broker-answer.ts`). Its read-back is the question: the message
+id, summary, asker, context, the asker's options and recommendation. `inbox.act` takes the owner's words as `text`
+(required, trimmed, at most 8000 characters; a gate or hold tap refuses any text), and the record keeps them, so a
+retry sends the words first written. The console posts `{ msgId, text, channel: "dashboard" }` to the agent-chat
+broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per call, and never follows a redirect.
+The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
+token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
+prompt never reaches this path: `inbox.list` gives it a terminal action.
+
+A g10 `hold-release` tap (`server/g10-hold.ts`) is offered whether or not a reviewer MERGE is on record, since the
+owner may release one at the terminal. Its read-back adds every verdict the PR's Shepherd timeline recorded, each
+marked `atHead` when it names the live head, and counts the MERGEs at that head against the class's need: one for
+`g10-review`, two from two reviewers for `g10-adversary`. When they fall short, the effect says so and
+`confirmLabel` reads "Release without a MERGE" (or "Release without both MERGEs"). A verdict recorded after the
+read changes the read-back, so the confirm is refused. The console calls Shepherd's `shepherd.release` on
+loopback itself, naming the hold class and the confirmed head, with the actor
+`owner-remote:titan-console action:<confirm>`. Shepherd refuses a moved head (the owner sees "PR moved"), and a
+replay of a released confirm is answered `already` from its outcome file, without a second release.
 
 ## active-work reads
 
@@ -361,7 +482,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
 | `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
-| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page; a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
+| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers through `rounds.submit`; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
 A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,

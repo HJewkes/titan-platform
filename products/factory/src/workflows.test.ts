@@ -213,7 +213,7 @@ describe("configuredRoutes with shepherd.review", () => {
     const { result } = await reviewWith(scene);
 
     expect(result(REVIEW)).toMatchObject({ kind: "dispatched", mode: "spawn", reviewer: "rv-octo-demo-1", head: H1, ...REVIEWER });
-    expect(scene.calls()).toContain(`agent spawn rv-octo-demo-1 ${PROFILE} --brief-stdin`);
+    expect(scene.calls()).toContain(`agent spawn rv-octo-demo-1 ${PROFILE} --launched-by shepherd --brief-stdin`);
     expect(readFileSync(join(scene.dir, "spawn-cwd"), "utf8").trim()).toBe(scene.checkout);
     expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: H1 });
     expect(result(MERGE_EVIDENCE)).toMatchObject({ head: H1, merge: { resolver: REVIEWER, dispatchedReviewer: REVIEWER, repoFrozen: false } });
@@ -284,7 +284,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     await reviewWith(scene);
 
-    expect(scene.calls()).toContain("agent spawn rv-octo-demo-1 rv-other --config-dir /srv/rv-claude --brief-stdin");
+    expect(scene.calls()).toContain("agent spawn rv-octo-demo-1 rv-other --config-dir /srv/rv-claude --launched-by shepherd --brief-stdin");
   });
 
   it("gives up on a reviewer that starts no session once shepherd.review.sessionStartTimeoutMs has passed", async () => {

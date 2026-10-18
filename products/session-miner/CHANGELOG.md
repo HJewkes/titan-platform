@@ -1,5 +1,93 @@
 # @titan-design/session-miner
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [a67d654]
+  - @titan-design/pm@0.4.0
+
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+
+## 0.10.0
+
+### Minor Changes
+
+- fbbdb87: Add `titan-miner tool-gap-weekly`: run Q9 tool-gaps and Q10 tool-adoption over the last 7 days, file or note one active-work task per pattern id, pipe one digest notice to `--notify-command`, then keep the week's snapshot. Ships `ops/systemd/session-miner-tool-gaps.{service,timer}` for a weekly run.
+- 2cf9598: Add `titan-miner throughput table` and `throughput backtest` over done task YAML from an initiative allowlist (TP-2155 a).
+- 5c44e3d: Add Q0 `titan-miner insights prices`: the price table as data, the window's unpriced models, and with `--published <file>` (CLI only) every published model the table prices differently (`differs`, naming each field) or not at all (`missing`), resolved through `findPrice`. Without a published file `mismatches` is null, so an unchecked table never reads as clean.
+- 1c956dd: Add Q12 `insights data-quality`: one row per fault to clear before any analysis, each with a severity, its evidence and a suggested task title. It flags a graph whose newest request trails `--until` (or now) by more than `--max-lag` minutes (default 60), transcripts discovered but not indexed, an audit facet backlog, and unpriced models with requests. With `--assignments <file>` (CLI only) it also flags lines that fail `assignmentSchema`, outcomes outside `merged`, `done` and any `--known-outcome`, and agents with no session in the graph. session-analytics exports `DEFAULT_MERGED_OUTCOMES` and `DEFAULT_DONE_OUTCOMES`, the outcome words `costPerOutcome` counts by default.
+- 835bbb8: Add Q14 `titan-miner insights seat-generations --seat <name>`: each agent that held the seat's name in the window, in start order, with how it ended and its graph sessions, over session-analytics' `seatGenerations`. `sessionArgs` is a ready `--session` string of only the sessions the graph knows. It reads the broker log (`--broker-log`, CLI only) and the events table, and refuses the session filters.
+- 41669c1: Add the citation contract for insight findings: `findingSchema` (a claim, at least one citation and a non-empty falsifier) and `verifyCitations`, plus `titan-miner insights verify-citations --findings <file>`. The command re-runs each cited question once per distinct question and args, checks each cited JSON pointer (numbers within a relative tolerance, 1 percent by default; anything else exactly), reports `ok`, `mismatch`, `missing-field`, `unknown-question` or `error` per citation, and exits non-zero on any that is not ok.
+- ed21449: Ship the session-insights skill in `skills/session-insights/`: `SKILL.md` runs data quality and prices before any question, hands the JSON answers to a read-only analyst, and keeps only findings that pass `verify-citations`; `analyst-brief.md` states the citation contract with a synthetic example that parses as `findingSchema`.
+- 7c821fb: Add Q13 `insights quality-guardrails`: review fill and successor rework for a window, and with `--before-since`/`--before-until` each one's before/after comparison (TP-508 e).
+- 9183618: The session-insights skill checks file inputs for staleness against `--until`, denies the analyst Bash, network and agent-chat with a $2 and 150k-token cap, and scores each proposed lever on verdict-to-merge, open MERGE PRs and `requestsPerFinished`.
+- e584a4f: The session-insights skill runs Q13 `quality-guardrails` in its question list and names it, with a before window, as every proposed lever's guardrail.
+
+### Patch Changes
+
+- d95eb32: `insights blocked-flow` logs each GitHub PR read as a gh-calls v1 line (`caller: "session-miner"`) in `~/.local/state/gh-calls/<day>.jsonl`, keeping 7 days, so a day's GitHub API use can be read per caller (TP-1172).
+- d2dc37c: Add the throughput set selector that picks open tasks by id, parent or milestone for the coming `throughput forecast` command (TP-2157 a).
+- dd57ba1: `titan-miner throughput pr-backfill` caches each merged PR's head sha and changed files (paths and line counts, no diff text) in `<state>/pr-diffs.json`, mode 0600, through `@titan-design/github`: cached refs cost no calls, a 404 is cached as missing, a capped file list is marked truncated, and the run stops at the rate floor with progress saved. `readPrDiffCache` returns the map `taskActuals` takes as `prDiffs` (TP-2162 c).
+- 8054ee7: Add `titan-miner throughput review`, which loads the PR diff cache, and optionally Shepherd's per-run stats via `--shepherd-runs`, into `taskActuals`. It prints the review table keyed on review class x lead touch and the per-target ablation of the diff arm against the kind x size-band arm, with the model hash and cache coverage, in text and `--json` (TP-2162 d).
+- Updated dependencies [0dd6186]
+- Updated dependencies [6a0952d]
+- Updated dependencies [448bcea]
+- Updated dependencies [8c89092]
+- Updated dependencies [6281b49]
+- Updated dependencies [d357882]
+- Updated dependencies [54b6d69]
+- Updated dependencies [65287ec]
+- Updated dependencies [3fafd2e]
+- Updated dependencies [b6a1d02]
+- Updated dependencies [491685f]
+- Updated dependencies [79754af]
+- Updated dependencies [228fd31]
+- Updated dependencies [1476172]
+- Updated dependencies [6881274]
+- Updated dependencies [102a9df]
+- Updated dependencies [be96d75]
+- Updated dependencies [8f37474]
+- Updated dependencies [82d8c0a]
+- Updated dependencies [b0fb3e6]
+- Updated dependencies [fe65aaa]
+- Updated dependencies [28df3a2]
+- Updated dependencies [91ea294]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [c278211]
+- Updated dependencies [4ffd52a]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [69f323c]
+- Updated dependencies [027f0f2]
+- Updated dependencies [4ec603a]
+- Updated dependencies [608b103]
+- Updated dependencies [8438a4e]
+- Updated dependencies [216db04]
+- Updated dependencies [8c25894]
+- Updated dependencies [e6dafd1]
+- Updated dependencies [77e2c4d]
+- Updated dependencies [6eab4e8]
+- Updated dependencies [1c956dd]
+- Updated dependencies [f03dea7]
+- Updated dependencies [811e8ac]
+- Updated dependencies [55cdd43]
+- Updated dependencies [2467880]
+  - @titan-design/github@0.11.0
+  - @titan-design/daemon@0.7.0
+  - @titan-design/pm@0.3.0
+  - @titan-design/registry@0.5.0
+  - @titan-design/throughput@0.3.0
+  - @titan-design/session-analytics@0.17.0
+  - @titan-design/memory@0.3.0
+  - @titan-design/session-graph@0.17.0
+  - @titan-design/session-read@0.15.0
+
 ## 0.9.1
 
 ### Patch Changes

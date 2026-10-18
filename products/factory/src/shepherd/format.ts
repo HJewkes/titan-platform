@@ -2,6 +2,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
 import type { PrRow } from "./prs.js";
+import type { RepairStopResult } from "./repair-stop-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import { lastAwaitClause } from "./none-reason.js";
@@ -27,6 +28,7 @@ const FORMATTERS: Formatters = {
   "shepherd.timeline": formatTimeline,
   "shepherd.hold": formatHold,
   "shepherd.release": formatHold,
+  "shepherd.repair-stop": formatRepairStops,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -67,6 +69,11 @@ function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
   return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
 }
 
+function formatRepairStops({ changed, stops }: RepairStopResult): string {
+  const lines = stops.map((stop) => `${stop.repo}${stop.scope.startsWith("#") ? "" : ":"}${stop.scope}  ${stop.reason} (by ${stop.actor}, ${stop.at})`);
+  return `${changed ? "changed; " : ""}${stops.length === 0 ? "no repair stops" : `repair stops:\n${lines.join("\n")}`}\n`;
+}
+
 function formatReviewAsk({ runId, head, requested }: ReviewAsk): string {
   return `run ${runId}: ${requested ? "asked for Shepherd's own review" : "Shepherd's own review was already asked"} at ${head}\n`;
 }
@@ -75,7 +82,12 @@ function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
   const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${sizeWarning(registered)}`;
+  const notes = `${sizeWarning(registered)}${kindHintLine(registered)}`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n${notes}`;
+}
+
+function kindHintLine({ kindHint }: Registered): string {
+  return kindHint === undefined ? "" : `${kindHint}\n`;
 }
 
 function sizeWarning({ sizeFlag }: Registered): string {

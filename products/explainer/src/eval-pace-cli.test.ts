@@ -2,10 +2,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { LabelsSchema } from "./eval-calibrate.js";
 import { runEvalCli } from "./eval-cli.js";
 import { scriptSha } from "./eval-store.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { v4Durations, v4Script } from "./spike-fixtures.test-helpers.js";
+import { pipelineLabels, pipelineScript, v4Durations, v4Script } from "./spike-fixtures.test-helpers.js";
 
 const spikeBeat = (id: string, titles: string[]) => ({
   id,
@@ -58,6 +59,20 @@ describe("explainer eval pace", () => {
     expect(printed()).toContain("ch2\t20\t39.1\t30.7\tfail");
     expect(row("Q-E7")?.slice(5, 9)).toEqual(["error", expect.any(String), "0", "false"]);
     expect(row("Q-E10")?.[9]).toBe("ch2,ch3");
+  });
+
+  // Mutation: mapping col to attribute drops c3-6's "owns" and c8-1's "agents", and the frozen ch3 and ch8 rows fail.
+  it("fails the pipeline-explainer hold-out on exactly its labelled Q-E7 beats, with ch2 under 20 items a minute", async () => {
+    const m1 = LabelsSchema.parse(pipelineLabels()).checks.find((c) => c.check === "M1");
+
+    const code = await pace(write("script.json", pipelineScript()));
+
+    expect(code).toBe(1);
+    expect(row("Q-E7")?.slice(5)).toEqual(["error", "2", "0", "false", m1?.true.join(",")]);
+    expect(printed()).toContain(
+      ["ch1\t5\t36.0\t8.3", "ch2\t13\t72.0\t10.8", "ch3\t12\t66.0\t10.9", "ch4\t15\t106.0\t8.5", "ch5\t11\t50.0\t13.2",
+        "ch6\t23\t176.0\t7.8", "ch7\t22\t134.0\t9.9", "ch8\t5\t31.0\t9.7", "ch9\t1\t13.0\t4.6"].map((r) => `${r}\tpass`).join("\n"),
+    );
   });
 
   it("passes a spike script whose only failures are warnings, still recording them as failing rows", async () => {

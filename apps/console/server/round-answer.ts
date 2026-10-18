@@ -18,7 +18,7 @@ export const gateAnswer = z.object({
   status: z.enum(["resolved", "already", "moved", "gone", "refused", "off"]),
   at: z.string(),
   /** Which answer a resolved outcome applied. */
-  choice: z.enum(["merge", "send-back"]).optional(),
+  choice: z.enum(["merge", "send-back", "accept-set"]).optional(),
   currentHead: z.string().optional(),
   reason: z.string().optional(),
 });
