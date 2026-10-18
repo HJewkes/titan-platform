@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
 import { invokeCommand, type CommandRegistry } from "@titan-design/registry";
 import { resolveConfig } from "./config.js";
-import type { ClassedCommand, ConsoleContext } from "./owner-guard.js";
+import { assertClassed, type ClassedCommand, type ConsoleContext } from "./owner-guard.js";
 import { createConsoleRegistry } from "./registry.js";
 import { closedPort } from "./test-support.js";
 import { createSources } from "./upstreams.js";
@@ -79,7 +79,10 @@ async function servedRegistry(): Promise<CommandRegistry<ConsoleContext>> {
 }
 
 function classed(registry: CommandRegistry<ConsoleContext>): ClassedCommand[] {
-  return registry.list() as ClassedCommand[];
+  return registry.list().map((command) => {
+    assertClassed(command);
+    return command;
+  });
 }
 
 /** The widest context a request can carry, so a deposit runs as it would on the LAN. */
