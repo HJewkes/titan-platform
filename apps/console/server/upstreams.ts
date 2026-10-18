@@ -4,6 +4,7 @@ import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
+import { brokerAnswerer } from "./broker-answer.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
@@ -137,6 +138,11 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
-    inboxActions: { enabled: config.inboxActions ?? false, actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) },
+    inboxActions: {
+      enabled: config.inboxActions ?? false,
+      actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
+      client: factoryOwnerAction(config.factoryPort),
+      answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    },
   };
 }

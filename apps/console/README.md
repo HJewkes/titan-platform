@@ -321,8 +321,8 @@ with the one action a tap takes, or the terminal command and why the console off
 from a hitl gate joined to a live Shepherd row; a deposit never gets one.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
-`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate) and `owner-release` (an
-owner-asked hold); any other item answers `no-action` with its reason.
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
+owner-asked hold) and `answer-chat` (an agent's chat_ask); any other item answers `no-action` with its reason.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
@@ -351,6 +351,15 @@ decision-log row (see "The decision log"), and a replay does not write it again.
 `consoleAnswers.actionsDir` must name the same `owner-actions` dir. The factory trusts the OS account, as for
 answer-ship: a same-user process could write a record and post its id. That is no stronger than running
 `titan-factory gate resolve` from the same account, and it is not claimed to be.
+
+An `answer-chat` tap differs in three ways (`server/broker-answer.ts`). Its read-back is the question: the message
+id, summary, asker, context, the asker's options and recommendation. `inbox.act` takes the owner's words as `text`
+(required, trimmed, at most 8000 characters; a gate or hold tap refuses any text), and the record keeps them, so a
+retry sends the words first written. The console posts `{ msgId, text, channel: "dashboard" }` to the agent-chat
+broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per call, and never follows a redirect.
+The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
+token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
+prompt never reaches this path: `inbox.list` gives it a terminal action.
 
 ## active-work reads
 
