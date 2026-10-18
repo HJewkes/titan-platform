@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
+import { registerConfig, type ReportPorts } from "./config/report.js";
 import { registerHealth } from "./health/cli-health.js";
 import { registerHost } from "./host/cli-host.js";
 import { realHostPorts, type HostPorts } from "./host/ports.js";
@@ -15,6 +16,9 @@ export interface CliIo {
   titanBin?: string;
   /** Process and file access for `titan host`; tests inject fakes. */
   hostPorts?: HostPorts;
+  /** File access and the HTTP client for `titan config report`; tests inject fakes. */
+  reportPorts?: ReportPorts;
+  fetch?: typeof fetch;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -37,6 +41,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   };
   registerHealth(program, { ...shared, stderr: io.stderr, titanBin: io.titanBin ?? resolve(process.argv[1] ?? "titan") });
   registerHost(program, { ...shared, ports: io.hostPorts ?? realHostPorts(env) });
+  registerConfig(program, { ...shared, stderr: io.stderr, reportPorts: io.reportPorts, fetch: io.fetch });
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (err) {

@@ -14,7 +14,12 @@ node products/titan/dist/bin.js health uptime factory --window 24h [--min 0.99] 
 node products/titan/dist/bin.js health cost --window 24h [--json]
 node products/titan/dist/bin.js health import <stopgap.jsonl> [--target factory]
 node products/titan/dist/bin.js host doctor [--json]
+node products/titan/dist/bin.js config report [--json] [--to <https console origin> --token-file <path>]
 ```
+
+`titan config report` lists this host's config files as facts (present, mode, mtime, and for a
+file that is not secret its size and sha256), never their values. `--to` deposits the report
+in the console's `config.report` over the LAN bearer; the console only shows it.
 
 `titan host doctor` runs `active-work doctor --json`, `agent-chat doctor` and `titan-factory
 service check --json`, then checks each product and tool CLI is on PATH and reports its version.
@@ -50,5 +55,6 @@ Reference: [titan](https://hjewkes.github.io/titan-platform/reference/titan).
 | `src/host/cli-host.ts` | the `titan host` group and `doctor`, text and `--json` output |
 | `src/host/doctor.ts` | the doctor rows and the report's zod schema |
 | `src/host/inventory.ts` | the inventory paths, their categories and platforms, and the stat-only rows |
+| `src/config/report.ts` | `titan config report`: the per-host surface facts and the `config.report` deposit client |
 | `src/host/ports.ts` | the exec, readFile, stat, list and which ports, and the real ones |
 | `src/health/self-cost.ts` | the `self` row from `process.cpuUsage()` and `process.resourceUsage()` |
