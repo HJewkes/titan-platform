@@ -55,9 +55,14 @@ async function runScenario({ build = DIST_BUILD, head, base = {}, exec, sandboxU
   return decodeMutantsReport(fs.readFileSync(path.join(out, "mutants.report"), "utf-8"));
 }
 
+function listOf(value: unknown, key: string): unknown[] {
+  const list: unknown = typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+  return Array.isArray(list) ? list : [];
+}
+
 function statuses(report: unknown): Record<string, unknown> {
-  const files = (report as { testResults: { assertionResults: { title: string; status: string }[] }[] }).testResults;
-  return Object.fromEntries(files.flatMap((file) => file.assertionResults.map((test) => [test.title, test.status])));
+  const tests = listOf(report, "testResults").flatMap((file) => listOf(file, "assertionResults"));
+  return Object.fromEntries(tests.map((test) => [String(Reflect.get(Object(test), "title")), Reflect.get(Object(test), "status")]));
 }
 
 function runsOf(decoded: DecodedMutants) {
