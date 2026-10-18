@@ -8,6 +8,7 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import type { DecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
+import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import type { RoundListeners } from "./listeners.js";
@@ -59,6 +60,11 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
+/** The owner's merged queue, as the raw Flow and as the inbox with its actions. */
+function ownerQueueCommands(sources: InboxSources) {
+  return { ...approvalsCommands(sources), ...inboxViewCommands(sources) };
+}
+
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
   return {
     "work.portfolio": readCommand({
@@ -91,7 +97,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners),
-    ...approvalsCommands({ factory, rounds, inbox }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd }),
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands([coordinatorRoots === undefined ? unconfigured("coordinator surfaces") : coordinatorSurfaces(coordinatorRoots)]),
     ...workCommands(activeWork, work),
