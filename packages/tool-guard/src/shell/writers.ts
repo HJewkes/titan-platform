@@ -55,7 +55,7 @@ export function noteCompounds(tokens: Token[]): Token[] {
 }
 
 /** The index of the second `)` that closes a `((` opened before `start`, or -1 when none does. */
-function compoundEnd(tokens: Token[], start: number): number {
+export function compoundEnd(tokens: Token[], start: number): number {
   let depth = 2;
   for (let i = start; i < tokens.length; i++) {
     if (isOp(tokens[i], "(")) depth++;
