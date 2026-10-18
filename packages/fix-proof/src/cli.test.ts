@@ -21,6 +21,22 @@ function node(entry: string, args: string[], cwd: string) {
   return { status: result.status, lines: result.stdout.split("\n").filter((line) => line !== "") };
 }
 
+const ADD_SUBTRACTS = { name: "add subtracts", file: "src/math.ts", find: "a + b", replace: "a - b", kills: ["adds"] };
+// The shape of the tp#1374 evidence: the mutant fails its test through a thrown wait error, not an assertion.
+const THROWING_TEST = 'import { add } from "./math";\ntest("adds", () => { if (add(1, 2) !== 3) throw new Error("sum not reached within 10 ms"); });\n';
+
+async function mutantsVerdict(test: string) {
+  const repo = makeRepo({}, os.tmpdir(), { "src/math.ts": FIXED });
+  const head = repo.commit({ "src/math.test.ts": test, "src/math.test.mutations.json": JSON.stringify({ v: 1, mutations: [ADD_SUBTRACTS] }) });
+  const out = outDir();
+  const shas = ["--base", repo.base, "--head", head];
+
+  const exec = await runCli(["exec", "--side", "mutants", ...shas, "--out", out], repo.dir);
+  const absent = path.join(out, "absent.report");
+  const line = await runCli(["judge", ...shas, "--base-report", absent, "--head-report", absent, "--mutants-report", path.join(out, "mutants.report")], repo.dir);
+  return { exec, mutants: parsed(line).mutants };
+}
+
 function outDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-cli-"));
   outs.push(dir);
@@ -44,7 +60,7 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
     const result = parsed(await runCli(["exec", "--side", "other", "--base", "a", "--head", "b", "--out", "x"], os.tmpdir()));
 
     expect(result.verdict).toBe("error");
-    expect(result.error).toContain("usage: fix-proof exec --side base|head");
+    expect(result.error).toContain("usage: fix-proof exec --side base|head|mutants");
   });
 
   it.each(["root; rm", "Root", ""])("exec --sandbox-user %j is a usage error line", async (user) => {
@@ -62,6 +78,19 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
 
     expect(line).toBe("");
     expect(decodeReport(fs.readFileSync(path.join(out, "base.report"), "utf-8"))).toMatchObject({ ok: false, reported: true });
+  });
+
+  it("exec --side mutants and judge --mutants-report kill a mutation that fails its test on a real vitest assertion", async () => {
+    const { exec, mutants } = await mutantsVerdict(REAL_TEST);
+
+    expect(exec).toBe("");
+    expect(mutants).toEqual({ verdict: "killed", results: [{ spec: "src/math.test.mutations.json", name: "add subtracts", outcome: "killed" }] });
+  });
+
+  it("a mutation whose test fails by a thrown Error rather than an assertion is not killed", async () => {
+    const { mutants } = await mutantsVerdict(THROWING_TEST);
+
+    expect(mutants).toMatchObject({ verdict: "not-killed", results: [{ name: "add subtracts", outcome: "error" }] });
   });
 
   it("an unknown subcommand is a usage error line", async () => {
