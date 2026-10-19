@@ -4,13 +4,15 @@ import { partialFake } from "@titan-design/test-kit";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { GATE_DEMOTIONS, VISUAL_DEMOTION, VISUAL_DEMOTION_NOTE, autoPassComment, autoPassesOf } from "./auto-pass.js";
+import { GATE_DEMOTIONS, VISUAL_DEMOTION, VISUAL_DEMOTION_NOTE, autoPassComment, autoPassesOf, type VisualDemotion } from "./auto-pass.js";
 import { demoteFailedRounds, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
-import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { shepherdGatePolicy, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { shepherdMainCi } from "./post-merge.js";
 import { fixFirstEscalation, type Escalated } from "./route-table.js";
 import type { ObservedPr } from "./observe.js";
+import { seatVisualDemotion } from "./seat-demotion.js";
+import { SeatBookInvalid, type Seat, type SeatBook } from "./seats.js";
 import { countRound, type Routed } from "./routed.js";
 import type { Verdict } from "./phases.js";
 
@@ -39,19 +41,19 @@ const STORY: PrFile[] = [{ path: "packages/ui/src/Button.stories.tsx", status: "
 const GREEN: CheckRun[] = [successRun("validate", 1), successRun("dag-check", 6), successRun("visual", 2), successRun("contrast 1/3", 3), successRun("contrast 2/3", 4), successRun("contrast 3/3", 5)];
 const red = (name: string, id: number): CheckRun => successRun(name, id, undefined, "failure");
 
-async function evidenceFor(files: PrFile[], runs: CheckRun[] = GREEN, over: Partial<MergeEvidenceInput> = {}): Promise<MergeEvidence> {
+async function evidenceFor(files: PrFile[], runs: CheckRun[] = GREEN, over: Partial<MergeEvidenceInput> = {}, demotion: VisualDemotion | null = VISUAL_DEMOTION): Promise<MergeEvidence> {
   const fake = fakeGitHub();
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, runs);
   fake.prFiles.set(1, files);
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...over }, noFreezeStoreUntilTp523, { kind: "feature" });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...over }, demotion, noFreezeStoreUntilTp523, { kind: "feature" });
 }
 
 describe("D2: a visual-path head merges without the owner only on the guard", () => {
   it("allows a story-only change with every visual and contrast check green and a MERGE at the head, and says so in the reason", async () => {
     const evidence = await evidenceFor(STORY);
 
-    const decision = decideAutoMerge(HEAD, evidence, VISUAL_PATHS);
+    const decision = decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: VISUAL_DEMOTION });
 
     expect(decision.outcome).toBe("allow");
     expect(decision.reason).toContain(VISUAL_DEMOTION_NOTE);
@@ -67,7 +69,7 @@ describe("D2: a visual-path head merges without the owner only on the guard", ()
   ])("keeps the visual-path gate for a head that changes %s", async (_case, path) => {
     const evidence = await evidenceFor([...STORY, { path, status: "modified" }]);
 
-    const decision = decideAutoMerge(HEAD, evidence, VISUAL_PATHS);
+    const decision = decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: VISUAL_DEMOTION });
 
     expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "visual-path" } });
   });
@@ -80,52 +82,76 @@ describe("D2: a visual-path head merges without the owner only on the guard", ()
   ])("keeps the visual-path gate when %s", async (_case, runs) => {
     const evidence = await evidenceFor(STORY, runs);
 
-    expect(decideAutoMerge(HEAD, evidence, VISUAL_PATHS)).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: VISUAL_DEMOTION })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
   });
 
   it("keeps the visual-path gate when the MERGE was written at another head", async () => {
     const evidence = await evidenceFor(STORY, GREEN, { verdict: { value: "MERGE", head: fakeSha("older-head"), locator } });
 
-    expect(decideAutoMerge(HEAD, evidence, VISUAL_PATHS)).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: VISUAL_DEMOTION })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
   });
 
   it("keeps files-unread for the owner even when every other condition holds", async () => {
     const evidence = { ...(await evidenceFor(STORY)), changedFilesUnread: "the PR's files could not be read" };
 
-    expect(decideAutoMerge(HEAD, evidence, VISUAL_PATHS)).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: VISUAL_DEMOTION })).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
   });
 
   it("keeps the visual-path gate with the demotion reverted", async () => {
     const evidence = await evidenceFor(STORY);
 
-    expect(decideAutoMerge(HEAD, evidence, VISUAL_PATHS, undefined, null)).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualPaths: VISUAL_PATHS, visualDemotion: null })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
   });
 });
 
 const GATE2: EffectivePolicy = { merge: "owner-gate", ownerGateReason: "gate-2-visual", mergeMethod: "squash", fixer: true, seat: "design-seat", visualPaths: VISUAL_PATHS };
 const mergeAt = (evidence: MergeEvidence): ((headSha: string) => Verdict) => () => ({ kind: "MERGE", headSha: HEAD, evidence });
 
-const SEAT_BASELINE: PrFile = { path: "packages/ui/baseline/button.svg", status: "modified" };
-const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "design-seat", visualPaths: VISUAL_PATHS, baselinePaths: ["packages/ui/baseline/**"] };
+const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "design-seat", visualPaths: VISUAL_PATHS };
+const visualSeat = (name: string, baselines: string): Seat => ({ name, remotes: [REPO], paths: {}, grants: [], visualPaths: VISUAL_PATHS, visualBaselines: { check: "visual", paths: [baselines] } });
+const SHARED: SeatBook = { seats: [visualSeat("design-seat", "packages/ui/baseline/**"), visualSeat("docs-seat", "packages/ui/golden/**")], denied: [] };
+const sharedDemotion = (): VisualDemotion | null => seatVisualDemotion(() => SHARED, REPO);
 
-describe("D2: the seat's own baseline globs", () => {
-  it("lets the guard pass a story-only head under a seat that declares baselines", async () => {
+describe("D2: every seat's baseline globs on the remote, read at decision time", () => {
+  it("lets the guard pass a story-only head on a remote whose seats declare different baselines", async () => {
     const evidence = await evidenceFor(STORY);
 
-    expect(shepherdGatePolicy(AUTO, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+    expect(shepherdGatePolicy(AUTO, mergeAt(evidence), sharedDemotion()).decide("merge", { headSha: HEAD }).outcome).toBe("allow");
   });
 
-  it("keeps the visual-path gate under auto when the head changes a seat baseline outside the built-in globs", async () => {
-    const evidence = await evidenceFor([...STORY, SEAT_BASELINE]);
+  it.each(["packages/ui/baseline/button.svg", "packages/ui/golden/card.html"])("keeps the visual-path gate under auto when the head changes the seat baseline %s", async (path) => {
+    const evidence = await evidenceFor([...STORY, { path, status: "modified" }]);
 
-    expect(shepherdGatePolicy(AUTO, mergeAt(evidence)).decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+    expect(shepherdGatePolicy(AUTO, mergeAt(evidence), sharedDemotion()).decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
   });
 
-  it("waits for the owner on a gate-2-visual registration when the head changes a seat baseline outside the built-in globs", async () => {
-    const evidence = await evidenceFor([...STORY, SEAT_BASELINE]);
-    const gate2 = { ...GATE2, baselinePaths: ["packages/ui/baseline/**"] };
+  it.each(["packages/ui/baseline/button.svg", "packages/ui/golden/card.html"])("waits for the owner on a gate-2-visual registration when the head changes the seat baseline %s", async (path) => {
+    const evidence = await evidenceFor([...STORY, { path, status: "modified" }]);
 
-    expect(shepherdGatePolicy(gate2, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+    expect(shepherdGatePolicy(GATE2, mergeAt(evidence), sharedDemotion()).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+  });
+
+  it("gates a seat baseline through the land options a run built from a stored policy with no baseline field", async () => {
+    const evidence = await evidenceFor([...STORY, { path: "packages/ui/golden/card.html", status: "modified" }]);
+
+    const options = shepherdLandOptions(() => AUTO, mergeAt(evidence), undefined, undefined, sharedDemotion);
+
+    expect(options.policy.decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+  });
+
+  it("records the same gate in the evidence step as the merge decision reaches", async () => {
+    const evidence = await evidenceFor([...STORY, { path: "packages/ui/golden/card.html", status: "modified" }], GREEN, {}, sharedDemotion());
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+  });
+
+  it("keeps every visual gate when the seat book cannot be read", async () => {
+    const evidence = await evidenceFor(STORY);
+    const unreadable = seatVisualDemotion(() => {
+      throw new SeatBookInvalid("invalid seat file");
+    }, REPO);
+
+    expect(shepherdGatePolicy(AUTO, mergeAt(evidence), unreadable).decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
   });
 });
 
@@ -133,7 +159,7 @@ describe("D2: a gate-2-visual registration", () => {
   it("merges without the owner when the guard holds at the head, naming the registration in the reason", async () => {
     const evidence = await evidenceFor([{ path: "packages/ui/src/Button.test.tsx", status: "modified" }]);
 
-    const decision = shepherdGatePolicy(GATE2, mergeAt(evidence)).decide("merge", { headSha: HEAD });
+    const decision = shepherdGatePolicy(GATE2, mergeAt(evidence), VISUAL_DEMOTION).decide("merge", { headSha: HEAD });
 
     expect(decision.outcome).toBe("allow");
     expect(decision.reason).toContain(VISUAL_DEMOTION_NOTE);
@@ -143,20 +169,20 @@ describe("D2: a gate-2-visual registration", () => {
   it("waits for the owner when the head refreshes a baseline PNG", async () => {
     const evidence = await evidenceFor([...STORY, { path: "packages/ui/specimen/baseline/a-chromium-linux.png", status: "modified" }]);
 
-    expect(shepherdGatePolicy(GATE2, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+    expect(shepherdGatePolicy(GATE2, mergeAt(evidence), VISUAL_DEMOTION).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
   });
 
   it("waits for the owner when a contrast shard is red", async () => {
     const evidence = await evidenceFor(STORY, [...GREEN.filter((run) => run.name !== "contrast 1/3"), red("contrast 1/3", 9)]);
 
-    expect(shepherdGatePolicy(GATE2, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+    expect(shepherdGatePolicy(GATE2, mergeAt(evidence), VISUAL_DEMOTION).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
   });
 
   it("waits for the owner on a seat with no visual paths, whose ceiling is the owner gate", async () => {
     const evidence = await evidenceFor(STORY);
     const noVisual: EffectivePolicy = { merge: "owner-gate", ownerGateReason: "gate-2-visual", mergeMethod: "squash", fixer: true, seat: "design-seat" };
 
-    expect(shepherdGatePolicy(noVisual, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+    expect(shepherdGatePolicy(noVisual, mergeAt(evidence), VISUAL_DEMOTION).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
   });
 
   it("waits for the owner with the demotion reverted", async () => {

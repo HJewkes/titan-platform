@@ -167,6 +167,12 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
 }
 
+/** Every baseline glob any seat owning `repo` declares: unlike `lookupSeat`'s shared set, a glob one seat names is enough to gate. */
+export function seatBaselineGlobs(book: SeatBook, repo: string): string[] {
+  const remote = repo.toLowerCase();
+  return [...new Set(book.seats.filter((s) => s.remotes.includes(remote)).flatMap((s) => s.visualBaselines?.paths ?? []))];
+}
+
 /** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */
 export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<Record<string, { path?: string }>> = {}): string | undefined {
   const found = lookupSeat(book, repo);

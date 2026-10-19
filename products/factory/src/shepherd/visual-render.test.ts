@@ -26,7 +26,7 @@ async function decisionFor(paths: string[]) {
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, paths.map((path): PrFile => ({ path, status: "added" })));
-  const evidence = await mergeEvidence(githubPort(fake.wire), input, noFreezeStoreUntilTp523, { kind: "feature" });
+  const evidence = await mergeEvidence(githubPort(fake.wire), input, null, noFreezeStoreUntilTp523, { kind: "feature" });
   return evidence.record.decision;
 }
 

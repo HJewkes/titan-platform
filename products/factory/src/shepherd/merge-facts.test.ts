@@ -55,7 +55,7 @@ function world(files: PrFile[] = [{ path: "src/a.ts", status: "modified" }]): Fa
 }
 
 async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> = {}, kind: string | null = "correctness") {
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind === null ? {} : { kind });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, null, noFreezeStoreUntilTp523, kind === null ? {} : { kind });
 }
 
 afterEach(() => vi.mocked(evaluate).mockReset());
@@ -310,14 +310,14 @@ describe("mergeEvidence", () => {
 
     expect(evidence.merge.changedPaths).toEqual(["tools/x.yml", ".github/actions/x.yml"]);
     vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-    expect(decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "unchanged" } }).outcome).toBe("allow");
+    expect(decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "unchanged" } }, { visualDemotion: null }).outcome).toBe("allow");
   });
 
   it("gates facts collected at one head when the decision is for another", async () => {
     const evidence = await collect(world());
 
-    expect(decideAutoMerge(HEAD, evidence).outcome).toBe("allow");
-    expect(decideAutoMerge(OTHER_HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { rowId: "head-mismatch" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualDemotion: null }).outcome).toBe("allow");
+    expect(decideAutoMerge(OTHER_HEAD, evidence, { visualDemotion: null })).toMatchObject({ outcome: "gate", rule: { rowId: "head-mismatch" } });
   });
 
   it("reports the test merge unclean once the head has moved past the reviewed one", async () => {
@@ -351,7 +351,7 @@ describe("mergeEvidence", () => {
       const fake = world(headFiles);
       const port = pushedDuringRead(fake, [{ path: "src/a.ts", status: "modified" }]);
 
-      const evidence = await mergeEvidence(port, { ...input, ...overrides }, noFreezeStoreUntilTp523, { kind: "correctness" });
+      const evidence = await mergeEvidence(port, { ...input, ...overrides }, null, noFreezeStoreUntilTp523, { kind: "correctness" });
 
       expect(evidence.merge.changedPaths).toEqual([]);
       expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the head moved to ${OTHER_HEAD} during the read`);
@@ -381,7 +381,7 @@ describe("mergeEvidence", () => {
       const listPrFiles: GitHubPort["listPrFiles"] = async (repo, number) => ((settleReads ??= reads), real.listPrFiles(repo, number));
       return { port: { ...real, getPr, listPrFiles }, reads: () => settleReads ?? reads, sleeps: [] };
     }
-    const settle = (rig: ReturnType<typeof scripted>) => mergeEvidence(rig.port, input, noFreezeStoreUntilTp523, { kind: "correctness" }, { sleep: async (ms) => void rig.sleeps.push(ms) });
+    const settle = (rig: ReturnType<typeof scripted>) => mergeEvidence(rig.port, input, null, noFreezeStoreUntilTp523, { kind: "correctness" }, { sleep: async (ms) => void rig.sleeps.push(ms) });
 
     it("settles to blocked on the second read and allows MRG-AU-RV through a bypassable review rule", async () => {
       const rig = scripted(["unknown", "blocked"]);
@@ -663,7 +663,7 @@ describe("a fact that cannot be read", () => {
     const fake = world();
     const port = { ...githubPort(fake.wire), listPrFiles: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
 
-    const evidence = await mergeEvidence(port, { ...input, visualPaths: ["packages/ui/**"] }, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, { ...input, visualPaths: ["packages/ui/**"] }, null, noFreezeStoreUntilTp523, { kind: "correctness" });
 
     expect(evidence.changedFilesUnread).toBe(`the changed files of ${REPO}#1 are unknown: the read failed: HTTP 502`);
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" }, reason: expect.stringContaining("so the PR counts as visual") });
@@ -690,7 +690,7 @@ describe("a fact that cannot be read", () => {
     fake.pr(1).mergeableState = "blocked";
     const port = { ...githubPort(fake.wire), reviewRulesBypassable: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 500 })) };
 
-    const evidence = await mergeEvidence(port, input, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, input, null, noFreezeStoreUntilTp523, { kind: "correctness" });
 
     const unread = `review rules of ${REPO}@${fake.pr(1).baseRef} are unreadable: HTTP 500`;
     expect(evidence.merge.mergeTreeClean).toBe(false);
@@ -704,7 +704,7 @@ describe("a fact that cannot be read", () => {
     const leaky = new TypeError("fetch https://db.example.invalid/store failed: Authorization: Bearer tok_FAKE0000SECRET");
     const failing = { get: () => { throw leaky; } } as unknown as ShepherdStoreRef;
 
-    const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+    const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, null, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
     const comment = evidenceComment(evidence.record);
 
     expect(evidence.merge).not.toHaveProperty("kind");
@@ -741,7 +741,7 @@ describe("a fact that cannot be read", () => {
     Object.defineProperty(hostile, "name", { get: () => { throw new Error("getter-secret-message"); } });
     const failing = { get: () => { throw hostile; } } as unknown as ShepherdStoreRef;
 
-    const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+    const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, null, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
     expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: Error"]);
     expect(evidence.record.decision.outcome).toBe("gate");
@@ -757,7 +757,7 @@ describe("a fact that cannot be read", () => {
     it.each(hostileProxies)("gates with the fixed class Error, never failing the step or storing text, when %s", async (_case, thrown) => {
       const failing = { get: () => { throw thrown(); } } as unknown as ShepherdStoreRef;
 
-      const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
+      const evidence = await mergeEvidence(githubPort(world().wire), { ...input, ...carried() }, null, noFreezeStoreUntilTp523, registeredKind(failing, "run-1"));
 
       expect(evidence.unreadFacts).toEqual(["the registered kind is unreadable: store unreadable: Error"]);
       expect(evidence.record.decision.outcome).toBe("gate");

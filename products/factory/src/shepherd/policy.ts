@@ -6,7 +6,7 @@ import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
 import type { LandOptions } from "../workflows/land.js";
 import { ALLOWED_CHECK_APPS, decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
-import { DEFAULT_VISUAL_DEMOTION, VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
+import { VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
 import { shownPaths, visualDemotionAt } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { CiPolicySchema } from "./review-schemas.js";
@@ -56,8 +56,6 @@ export interface EffectivePolicy {
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
-  /** The seat's `visual_baselines` globs: under the D2 guard a change to one still waits for the owner. */
-  baselinePaths?: string[];
   /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
   featureBase?: true;
   /** The seat's `release-merge` grant: a Version Packages PR may merge on its preflight; absent, the release waits for the owner. */
@@ -74,7 +72,6 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
-  baselinePaths: z.array(z.string()).optional(),
   featureBase: z.literal(true).optional(),
   release: z.literal("grant").optional(),
 });
@@ -117,7 +114,6 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
-    ...(seat?.visualBaselines && { baselinePaths: seat.visualBaselines.paths }),
     ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
     ...(seat?.grants.includes(RELEASE_MERGE_GRANT) && { release: "grant" as const }),
   };
@@ -126,18 +122,12 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
 /** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base or release grant, never loosen any. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
-  const visualPaths = unionPaths(trusted.visualPaths, other.visualPaths);
-  const baselinePaths = unionPaths(trusted.baselinePaths, other.baselinePaths);
+  const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
-  const visual = { ...(visualPaths && { visualPaths }), ...(baselinePaths && { baselinePaths }) };
-  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...visual };
+  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
   if (!other.featureBase) delete stricter.featureBase;
   if (other.release !== "grant") delete stricter.release;
   return stricter;
-}
-
-function unionPaths(a: string[] | undefined, b: string[] | undefined): string[] | undefined {
-  return a || b ? [...new Set([...(a ?? []), ...(b ?? [])])] : undefined;
 }
 
 /** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
@@ -156,31 +146,25 @@ function parseRequest(request: unknown): RequestedPolicy {
 /**
  * `never` denies and `owner-gate` gates. `auto` allows a merge only when authority's MRG-AU-RV holds on the merge facts
  * the MERGE review collected at the exact head being decided, and none of those facts' changed files is visual; anything
- * else gates. `verdictFor` is the review taken at that head.
+ * else gates. `verdictFor` is the review taken at that head. `visualDemotion` is the D2 guard `seatVisualDemotion` built
+ * for the repo; absent, every visual gate waits for the owner.
  */
 export function shepherdGatePolicy(
   effective: EffectivePolicy,
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
-  visualDemotion: VisualDemotion | null = DEFAULT_VISUAL_DEMOTION,
+  visualDemotion: VisualDemotion | null = null,
 ): GatePolicy {
   const rule: PolicyRule = { table: SHEPHERD_POLICY_TABLE, rowId: effective.seat, version: 1 };
-  const demotion = seatDemotion(visualDemotion, effective.baselinePaths);
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       const headSha = action === "merge" ? target?.headSha : undefined;
-      if (effective.merge === "auto" && headSha !== undefined) return decideAutoMerge(headSha, mergeEvidenceAt(headSha, verdictFor), effective.visualPaths, undefined, demotion);
-      const passed = headSha === undefined ? undefined : gate2VisualPass(effective, headSha, verdictFor, demotion);
+      if (effective.merge === "auto" && headSha !== undefined) return decideAutoMerge(headSha, mergeEvidenceAt(headSha, verdictFor), { visualPaths: effective.visualPaths, visualDemotion });
+      const passed = headSha === undefined ? undefined : gate2VisualPass(effective, headSha, verdictFor, visualDemotion);
       if (passed) return passed;
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
   };
-}
-
-/** The D2 guard with the seat's own baseline globs added to the paths the owner reviews, so a refreshed baseline never passes it. */
-function seatDemotion(demotion: VisualDemotion | null, baselinePaths: string[] | undefined): VisualDemotion | null {
-  if (demotion === null || baselinePaths === undefined) return demotion;
-  return { ...demotion, ownerPaths: [...new Set([...demotion.ownerPaths, ...baselinePaths])] };
 }
 
 /**
@@ -190,7 +174,7 @@ function seatDemotion(demotion: VisualDemotion | null, baselinePaths: string[] |
 function gate2VisualPass(effective: EffectivePolicy, headSha: string, verdictFor: (headSha: string) => Verdict | undefined, demotion: VisualDemotion | null): GateDecision | undefined {
   if (demotion === null || effective.ownerGateReason !== "gate-2-visual" || effective.visualPaths === undefined) return undefined;
   const evidence = mergeEvidenceAt(headSha, verdictFor);
-  const decision = decideAutoMerge(headSha, evidence, effective.visualPaths, undefined, demotion);
+  const decision = decideAutoMerge(headSha, evidence, { visualPaths: effective.visualPaths, visualDemotion: demotion });
   if (decision.outcome !== "allow" || evidence === undefined) return undefined;
   const read = visualDemotionAt(evidence.merge, demotion, ALLOWED_CHECK_APPS);
   if (!read.holds) return undefined;
@@ -208,6 +192,7 @@ export function shepherdLandOptions(
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
   escalationAt: (headSha: string) => Escalated | undefined = () => undefined,
   decidedBase: () => string | undefined = () => undefined,
+  visualDemotion: () => VisualDemotion | null = () => null,
 ): LandOptions {
   const reread = new WeakMap<Verdict, unknown>();
   const current = (headSha: string): Verdict | undefined => {
@@ -220,7 +205,7 @@ export function shepherdLandOptions(
     if (verdict && evidence) reread.set(verdict, await refreshMergeEvidence(ctx, evidence, effective().visualPaths));
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
-    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current);
+    const decision = onDecidedBase(shepherdGatePolicy(effective(), current, visualDemotion()).decide(action, target), target?.headSha, decidedBase(), current);
     if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
     if (escalated !== undefined && target?.headSha !== undefined && clearedByFreshMerge(escalated, decision, target.headSha, current)) return clearedDecision(escalated, decision, target.headSha);

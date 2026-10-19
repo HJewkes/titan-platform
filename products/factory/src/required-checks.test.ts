@@ -57,8 +57,8 @@ describe.each(UNREADABLE)("merge facts when the required checks read fails with 
     const fake = greenWorld();
     failRulesWith(fake, error);
 
-    const evidence = await mergeEvidence(githubPort(fake.wire), evidenceInput(), noFreezeStoreUntilTp523);
-    const decision = decideAutoMerge(HEAD, evidence);
+    const evidence = await mergeEvidence(githubPort(fake.wire), evidenceInput(), null, noFreezeStoreUntilTp523);
+    const decision = decideAutoMerge(HEAD, evidence, { visualDemotion: null });
 
     expect(evidence.requiredChecksUnknown).toBe(`required checks of ${REPO}@main are unreadable: ${status}`);
     expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "required-checks-unknown" }, reason: evidence.requiredChecksUnknown });
@@ -70,7 +70,7 @@ describe("merge facts when the repo has no rules", () => {
     const fake = greenWorld();
     fake.rules.contexts = [];
 
-    const evidence = await mergeEvidence(githubPort(fake.wire), evidenceInput(), noFreezeStoreUntilTp523);
+    const evidence = await mergeEvidence(githubPort(fake.wire), evidenceInput(), null, noFreezeStoreUntilTp523);
 
     expect(evidence.requiredChecksUnknown).toBeUndefined();
     expect(evidence.merge.requiredContexts).toEqual([]);

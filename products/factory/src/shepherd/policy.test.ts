@@ -402,15 +402,6 @@ describe("a seat with visual paths", () => {
     expect(stricterPolicy(base, base)).not.toHaveProperty("visualPaths");
   });
 
-  it("carries the seat's baseline globs, and keeps their union when a stricter policy narrows another", () => {
-    const baselined: Seat = { ...DESIGN, remotes: ["acme/baselined"], visualBaselines: { check: "visual", paths: ["baseline/**"] } };
-    const base: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "t" };
-
-    expect(resolveEffectivePolicy(lookupSeat({ seats: [baselined], denied: [] }, "acme/baselined")).baselinePaths).toEqual(["baseline/**"]);
-    expect(stricterPolicy(base, { ...base, baselinePaths: ["b/**"] }).baselinePaths).toEqual(["b/**"]);
-    expect(stricterPolicy(base, base)).not.toHaveProperty("baselinePaths");
-  });
-
   it("round-trips visual paths through the stored policy schema", () => {
     const policy = effective("acme/design");
 

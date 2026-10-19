@@ -52,6 +52,7 @@ import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, t
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 import { autoPassRoute } from "./auto-pass.js";
+import { configuredVisualDemotion } from "./seat-demotion.js";
 import { countConflictRound, onEscalated, type FailedRoundsState } from "./failed-rounds-demotion.js";
 
 export { SHEPHERD_STEPS };
@@ -126,7 +127,8 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 
 /** An unsettled mergeability past its bound is the seat's to hear about, never an owner gate, while land keeps re-reading. */
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
-  const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
+  const demotion = () => run.phases.visualDemotion?.(run.target.repo) ?? null;
+  const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase, demotion);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
   return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha), sendBackOffered: sendBackOffer() };
@@ -366,7 +368,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   ];
 }
 
-export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase, visualSetCarry: () => configuredVisualSetCarry() };
+export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewPhase, visualSetCarry: () => configuredVisualSetCarry(), visualDemotion: (repo) => configuredVisualDemotion(repo) };
 
 /** The registered workflow; params `repo`, `pr` or `branch`, and `policy` as an `EffectivePolicy` JSON string. */
 export function shepherdPrWorkflow(phases: ShepherdPhases = DEFAULT_PHASES): WorkflowDefinition {

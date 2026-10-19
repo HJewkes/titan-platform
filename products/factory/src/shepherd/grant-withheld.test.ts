@@ -79,7 +79,7 @@ function world(): FakeGitHub {
   return fake;
 }
 
-const decided = async (input: MergeEvidenceInput) => mergeEvidence(githubPort(world().wire), input, noFreezeStoreUntilTp523, { kind: "correctness" });
+const decided = async (input: MergeEvidenceInput) => mergeEvidence(githubPort(world().wire), input, null, noFreezeStoreUntilTp523, { kind: "correctness" });
 
 describe("an unverified fix-proof is recorded on the MERGE, never a withheld grant (decision 303, TP-2660 b)", () => {
   it("keeps the merge-on-green grant and records the unread proof and its read reason under an auto policy (tp#1356)", async () => {
@@ -92,7 +92,7 @@ describe("an unverified fix-proof is recorded on the MERGE, never a withheld gra
   it("merges a run shaped like tp#1356 under MRG-AU-RV with no gate, naming the standing in the record and the PR comment", async () => {
     const fake = world();
 
-    const evidence = await mergeEvidence(githubPort(fake.wire), await evidenceInput("auto", UNREAD), noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(githubPort(fake.wire), await evidenceInput("auto", UNREAD), null, noFreezeStoreUntilTp523, { kind: "correctness" });
 
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
     expect(evidence.record.proofUnverified).toBe(`unread (${PROOF_READ})`);

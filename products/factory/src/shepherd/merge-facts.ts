@@ -11,7 +11,7 @@ import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualDemotionAt, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
-import { DEFAULT_VISUAL_DEMOTION, VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
+import { VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
@@ -167,14 +167,17 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
  * gates under any policy, and under `visualPaths` so does a head whose changed files match one, unless `visualBaselines`
  * shows no baseline changed and its check passed there, or the D2 guard `visualDemotion` holds there.
  */
-export function decideAutoMerge(
-  headSha: string,
-  evidence: DecidableEvidence | undefined,
-  visualPaths?: readonly string[],
-  visualBaselines?: VisualBaselines,
-  visualDemotion: VisualDemotion | null = DEFAULT_VISUAL_DEMOTION,
-): GateDecision {
-  return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines, visualDemotion }), evidence);
+export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visual: AutoMergeVisual): GateDecision {
+  const policy: VisualPolicy = { visualPaths: visual.visualPaths, visualBaselines: visual.visualBaselines, visualDemotion: visual.visualDemotion };
+  return withUnreadFacts(decideOnFacts(headSha, evidence, policy), evidence);
+}
+
+/** What `decideAutoMerge` reads about visual files; the D2 guard has no default, so every caller passes the seat-built one. */
+export interface AutoMergeVisual {
+  visualPaths?: readonly string[];
+  visualBaselines?: VisualBaselines;
+  /** `seatVisualDemotion` for the repo at decision time; null keeps every visual gate for the owner. */
+  visualDemotion: VisualDemotion | null;
 }
 
 function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy): GateDecision {
@@ -361,13 +364,13 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, visualDemotion: VisualDemotion | null, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
   const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) };
-  const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
+  const decision = decideAutoMerge(input.head, decidable, { visualPaths: input.visualPaths, visualBaselines: input.visualBaselines, visualDemotion });
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,

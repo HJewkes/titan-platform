@@ -32,7 +32,7 @@ async function decisionFor(files: PrFile[], { runs = [green], baselines = BASELI
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2), ...runs]);
   fake.prFiles.set(1, files);
-  const evidence = await mergeEvidence(githubPort(fake.wire), { ...input, ...(baselines && { visualBaselines: baselines }) }, noFreezeStoreUntilTp523, { kind: "feature" });
+  const evidence = await mergeEvidence(githubPort(fake.wire), { ...input, ...(baselines && { visualBaselines: baselines }) }, null, noFreezeStoreUntilTp523, { kind: "feature" });
   return evidence.record.decision;
 }
 

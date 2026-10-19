@@ -7,6 +7,7 @@ import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { seatVisualDemotion } from "./seat-demotion.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
@@ -223,7 +224,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
   const run = runOf(ctx.host, registration);
   const row = rowOf(ctx.host, services, registration, run);
   const policy = stricterPolicy(registration.policy, runPolicy(run));
-  const decision = shepherdGatePolicy(policy).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
+  const decision = shepherdGatePolicy(policy, undefined, seatVisualDemotion(services.seats, repo)).decide("merge", row.headSha === null ? undefined : { headSha: row.headSha });
   const held = services.store.get().heldReason(repo, pr, registration.branch ?? undefined, row.headSha ?? undefined);
   return { runId: run.id, phase: row.phase, decision, held: held === undefined ? null : { reason: held }, pendingGate: row.pendingGate, waiting: row.nextAction };
 }

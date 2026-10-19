@@ -41,6 +41,7 @@ import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
+import { seatVisualDemotion } from "./shepherd/seat-demotion.js";
 import { boundCheckout, loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { advisoryFile } from "./shepherd/advisory-file.js";
@@ -165,7 +166,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
     if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
     return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha), adversary.takeRehold) : route;
   });
-  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, heldRepair: deps.heldRepair, visualPacket: deps.visualPacket, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
+  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, heldRepair: deps.heldRepair, visualPacket: deps.visualPacket, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo), visualDemotion: (repo: string) => seatVisualDemotion(deps.seats ?? (() => NO_SEATS), repo) };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow) };

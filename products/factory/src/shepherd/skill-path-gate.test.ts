@@ -45,7 +45,7 @@ async function evidenceFor(files: PrFile[]) {
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, files);
-  return mergeEvidence(githubPort(fake.wire), input, noFreezeStoreUntilTp523, { kind: "correctness" });
+  return mergeEvidence(githubPort(fake.wire), input, null, noFreezeStoreUntilTp523, { kind: "correctness" });
 }
 
 const SKILL_FREE: PrFile[] = [{ path: "src/x.ts", status: "modified" }];
@@ -61,8 +61,8 @@ describe("the skill-path merge guard", () => {
     const clean = await evidenceFor(SKILL_FREE);
     const skill = await evidenceFor(WITH_SKILL);
 
-    const allowed = decideAutoMerge(HEAD, clean, visualPaths);
-    const gated = decideAutoMerge(HEAD, skill, visualPaths);
+    const allowed = decideAutoMerge(HEAD, clean, { visualPaths, visualDemotion: null });
+    const gated = decideAutoMerge(HEAD, skill, { visualPaths, visualDemotion: null });
 
     expect(allowed).toEqual({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV", version: 1 }, reason: `MRG-AU-RV holds at ${HEAD}` });
     expect(gated).toEqual({ outcome: "gate", rule: SKILL_RULE, reason: `the owner reviews repo skill changes: ${SKILL_FILE}` });
@@ -71,13 +71,13 @@ describe("the skill-path merge guard", () => {
   it("gates a rename out of the skills directory by its previous path", async () => {
     const evidence = await evidenceFor([{ path: "docs/x.md", previousPath: SKILL_FILE, status: "renamed" }]);
 
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: SKILL_RULE, reason: expect.stringContaining(SKILL_FILE) });
+    expect(decideAutoMerge(HEAD, evidence, { visualDemotion: null })).toMatchObject({ outcome: "gate", rule: SKILL_RULE, reason: expect.stringContaining(SKILL_FILE) });
   });
 
   it("still gates unread changed files first", async () => {
     const evidence = { ...(await evidenceFor(WITH_SKILL)), changedFilesUnread: "the list is truncated" };
 
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
+    expect(decideAutoMerge(HEAD, evidence, { visualDemotion: null })).toMatchObject({ outcome: "gate", rule: { rowId: "files-unread" } });
   });
 
   it("records the skill gate in the evidence comment with the rule in words and the paths listed", async () => {

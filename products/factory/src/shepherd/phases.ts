@@ -13,6 +13,7 @@ import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import type { VisualDemotion } from "./auto-pass.js";
 import type { PushWatch } from "./push-signal.js";
 import type { VisualPacketPorts } from "./visual-packet-trigger.js";
 
@@ -102,6 +103,8 @@ export interface ShepherdPhases {
   review(ctx: WorkflowContext, request: ReviewRequest): Promise<Verdict>;
   /** Read only where the run is live, never on replay; absent means `off`. */
   visualSetCarry?: () => VisualSetCarry;
+  /** The D2 guard for a repo, read at each merge decision; absent keeps every visual gate for the owner. */
+  visualDemotion?: (repo: string) => VisualDemotion | null;
 }
 
 /** What a phase's routes may need; a phase takes only what it reads. */
@@ -148,4 +151,6 @@ export interface ShepherdDeps {
   consoleAnswers?: boolean;
   /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */
   visualBaselineCheck?: (repo: string) => string | undefined;
+  /** The D2 guard the evidence step records its decision under; absent keeps every visual gate for the owner. */
+  visualDemotion?: (repo: string) => VisualDemotion | null;
 }
