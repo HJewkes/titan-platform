@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
 import { AgentsRoute } from "./AgentsPage.js";
+import { ConfigPage } from "./ConfigPage.js";
 import { HomePage } from "./HomePage.js";
 import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
@@ -38,4 +39,5 @@ export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   reviews: ReviewsView,
   theater: ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage)),
   shepherd: ShepherdView,
+  config: ConfigPage,
 };

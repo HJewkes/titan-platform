@@ -221,9 +221,9 @@ function TerminalDetail({ command, reason }: { command: string | undefined; reas
 }
 
 /** A page served over plain http on the LAN is not a secure context, so it has no clipboard; the command still shows. */
-const canCopy = (): boolean => "clipboard" in navigator;
+export const canCopy = (): boolean => "clipboard" in navigator;
 
-function CopyButton({ command }: { command: string }): ReactNode {
+export function CopyButton({ command }: { command: string }): ReactNode {
   const [copied, setCopied] = useState(false);
   const copy = async (): Promise<void> => {
     await navigator.clipboard.writeText(command);
