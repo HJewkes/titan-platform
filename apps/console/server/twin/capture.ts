@@ -189,7 +189,7 @@ interface OverflowOptions {
   parallel?: number;
 }
 
-export interface RouteOverflow {
+interface RouteOverflow {
   route: string;
   /** Pixels the document is wider than the viewport; 0 when nothing scrolls sideways. */
   overflowPx: number;
