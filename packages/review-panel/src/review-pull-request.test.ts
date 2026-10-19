@@ -67,6 +67,16 @@ function fakeWorld(script: Script, refused: readonly string[] = []) {
 }
 
 describe("reviewPullRequest", () => {
+  it("passes the brief's fix-proof waiver to the aggregate, which merges only when the waiver names the head", async () => {
+    const vacuous = (fixProofWaivedAt: string): ReviewRequest => ({ ...request(STANDARD), brief: { checkoutRoot: "/tmp/reviews", fixProof: "vacuous", fixProofWaivedAt } });
+
+    const waived = await reviewPullRequest(vacuous(HEAD), fakeWorld(merge).ports, OPTS);
+    const stale = await reviewPullRequest(vacuous("d".repeat(40)), fakeWorld(merge).ports, OPTS);
+
+    expect(waived.outcome).toBe("MERGE");
+    expect(stale.outcome).toBe("no-verdict");
+  });
+
   it("spawns the single correctness member under its derived name and returns its MERGE", async () => {
     const { world, ports } = fakeWorld(merge);
 
