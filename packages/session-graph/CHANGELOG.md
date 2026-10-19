@@ -1,5 +1,22 @@
 # @titan-design/session-graph
 
+## 0.18.0
+
+### Minor Changes
+
+- 9914239: Add explicit source-port normalized indexing and semantic readback while retaining the Codex compatibility entry, atomic staging and existing omitted-port behavior.
+
+### Patch Changes
+
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+  - @titan-design/session-read@0.16.1
+
 ## 0.17.1
 
 ### Patch Changes

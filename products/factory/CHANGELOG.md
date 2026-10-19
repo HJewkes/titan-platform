@@ -1,5 +1,24 @@
 # @titan-design/factory
 
+## 0.24.1
+
+### Patch Changes
+
+- d82852a: TP-3637: a decided answer never waives a fix-proof. `ServiceAnswer` now carries the broker's `provenance` marker when agent-chat sets one. gateNotify refuses a `decided` answer on every gate, because it would resolve as owner-remote and the decider is not the owner. It also refuses a `waive-proof` answer unless it is `human-endorsed`, so an unmarked relay fails closed. A refused answer leaves the gate pending, settles the ask as `refused`, and writes no waiver row. The owner's own terminal answer still waives.
+- 4bfc8a3: Resync PR-read deadlines now arm through an optional `readTimer` on `ShepherdServices`, defaulting to the wall clock. A test can pass a deadline in by hand instead of faking global timers, which also captured the seed host's gate polls and made the hung-read test time out on a loaded runner (TP-3647).
+- Updated dependencies [d82852a]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [6dd2f97]
+  - @titan-design/agent-dispatch@0.9.0
+  - @titan-design/agent@0.6.1
+  - @titan-design/session-read@0.16.1
+  - @titan-design/session-analytics@0.17.4
+  - @titan-design/worktree@0.2.0
+  - @titan-design/coordinator@0.5.3
+  - @titan-design/workflow@0.13.1
+
 ## 0.24.0
 
 ### Minor Changes

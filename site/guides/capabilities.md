@@ -53,7 +53,7 @@ Before adding code:
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. `misakiToIpa` converts the result to IPA. Words outside misaki's lexicon come back unread (`phonemes: null`) unless you pass a `fallback`. Synthesis is `speech-tts`, and checking readings against declarations is `speech-vet`. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). `whisperStt` transcribes audio to word-timed `Transcript`s through transformers.js Whisper (optional peer), cached by audio hash, and declares `capabilities.tokenLogprobs: true` (word probabilities and per-window segment confidence from token log-probs; opt out with `tokenLogprobs: false`). `wav2vec2Recognizer` gives espeak-style IPA phones per 20 ms frame (fp32 by default, at parity with the PyTorch model; q8 opt-in changes verdicts) and exposes the CTC logits for forced alignment. `alignWords` force-aligns a script to those logits for word starts within a frame or two, with a per-voice-family offset. Synthesis is `speech-tts`. |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. Callers state the capabilities they need (voice, word timestamps, phoneme input, speed), and a profile plus `TITAN_SPEECH_*` env picks the provider. It ships an in-process Kokoro provider (fp32, misaki phonemes, word timings from the model's own durations; `unknownWords: "fail"` rejects text with unphonemized words via `TtsUnknownWordsError` instead of timing them at zero width) and helpers to tune speed to a words-per-minute target. `detectSpeechRuntime` picks each speech model's device (CPU by default, CUDA reported but opt-in) and cache directory from the platform, `TITAN_SPEECH_*` env and the profile, for speech-tts and speech-stt alike. Recognition and alignment are not here; they belong to speech-stt. |
-| [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Its git and setup children preserve the existing dispatcher transport-list pin. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
+| [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Its git and setup children preserve the existing dispatcher transport-list pin. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. An explicit releaseProof opt-in recognizes the exact merged PR tip or its commit membership while retaining git-only defaults and every file-loss/nonforced-removal guard. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
 | [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. Validate and render the seat's authored handoff block (continuations, standing rules with expiry, open questions, next/why; at most 1,500 characters) with `parseAuthored` and `renderAuthored`. Edit a `titan-coordinator/v1` document through a revision log: `applyEdit` sets one schema-declared field on a copy and refuses an undeclared path or a result that fails `checkCoordinatorConfig`, `diffDocuments` lists changed leaves, and `verifyChain` refuses a log whose revision does not name the previous revision's `revisionSha` as its parent. Check a proposed config edit against the allowlist `EDITABLE_FIELDS` (path pattern, bounds, reload class) with `checkEditableValue`; a path no row matches is not editable. |
@@ -142,7 +142,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.8.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.9.0`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. For SDK-free execution targets, capability/limit assessments and generic progress/result/failure contracts and transcript source/observation/continuation DTOs, import ./harness; native execution stays in agent. HarnessSourcePort describes injected discovery, scoped lookup and semantic observation/text reads; its capability assessments preserve unsupported/unverified operations without providing runtime adapters or finality guarantees. HarnessExecutionPort adds an open generic execution service with profile/account/billing-pool binding references, model/output intent, an interface version and distinct dispatch receipts. These structural contracts add no runtime validation, authenticated authority or qualified native capability; account/quota, policy and bus ports remain pending. HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter. For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
 
@@ -427,7 +427,7 @@ Key exports:
 
 ### [`tool-guard`](/reference/tool-guard)
 
-Tier 0, `@titan-design/tool-guard@0.5.1`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
+Tier 0, `@titan-design/tool-guard@0.5.2`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 **Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand.
 
@@ -452,7 +452,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](/reference/agent)
 
-Tier 1, `@titan-design/agent@0.6.0`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.6.1`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -470,7 +470,7 @@ Key exports:
 
 ### [`agent-dispatch`](/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.8.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
 
@@ -486,7 +486,7 @@ Key exports:
 
 ### [`agent-lifecycle`](/reference/agent-lifecycle)
 
-Tier 1, `@titan-design/agent-lifecycle@0.1.8`. Durable agent execution state and fenced ownership
+Tier 1, `@titan-design/agent-lifecycle@0.1.9`. Durable agent execution state and fenced ownership
 
 **Use this when:** You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one.
 
@@ -737,9 +737,9 @@ Key exports:
 
 ### [`worktree`](/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.1.6`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.2.0`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
-**Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Its git and setup children preserve the existing dispatcher transport-list pin. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
+**Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Its git and setup children preserve the existing dispatcher transport-list pin. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. An explicit releaseProof opt-in recognizes the exact merged PR tip or its commit membership while retaining git-only defaults and every file-loss/nonforced-removal guard.
 
 Key exports:
 
@@ -748,7 +748,7 @@ Key exports:
 - `errors`: `OriginUnreachableError`, `WorktreeBudgetExhaustedError`, `WorktreeInUseError`
 - `git`: `pinGitProtocols`, `withPinnedGitProtocols`, `findGitRoot`, `gitChildEnv`, `observedPresence`, `runGit`
 - `layout`: `pruneStaleWorktrees`
-- +48 more in the [reference page](/reference/worktree)
+- +49 more in the [reference page](/reference/worktree)
 
 ## Tier 2 — domain
 
@@ -795,7 +795,7 @@ Key exports:
 
 ### [`coordinator`](/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.5.2`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.5.3`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. Validate and render the seat's authored handoff block (continuations, standing rules with expiry, open questions, next/why; at most 1,500 characters) with `parseAuthored` and `renderAuthored`. Edit a `titan-coordinator/v1` document through a revision log: `applyEdit` sets one schema-declared field on a copy and refuses an undeclared path or a result that fails `checkCoordinatorConfig`, `diffDocuments` lists changed leaves, and `verifyChain` refuses a log whose revision does not name the previous revision's `revisionSha` as its parent. Check a proposed config edit against the allowlist `EDITABLE_FIELDS` (path pattern, bounds, reload class) with `checkEditableValue`; a path no row matches is not editable.
 
@@ -954,7 +954,7 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.17.3`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.17.4`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
 
@@ -974,7 +974,7 @@ Key exports:
 
 ### [`session-graph`](/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.17.1`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.18.0`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. For explicit harness-neutral normalized ingestion, supply an observation source port to indexSource and its text port to readIndexedText; unavailable observation capabilities return typed unavailable before graph/file access. The legacy indexCodexSource entry remains compatible.
 
@@ -994,7 +994,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.16.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.16.1`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -1106,7 +1106,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.13.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.13.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
@@ -1152,7 +1152,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.24.3`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.24.4`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:** You want durable per-initiative state (brief, tasks, sessions, artifacts, notes) that Claude Code sessions read and write through the `active-work` CLI, its MCP server or its loopback daemon, or `aw <slug>` to launch a session with the initiative's bootstrap prompt. Other products reach it over that process boundary. To validate a task record without the product, use `pm`; to resolve its data root, use `app-paths`.
 

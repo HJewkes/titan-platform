@@ -36,6 +36,9 @@ const STATE_SECTIONS = [
 
 const COUNT_WIDTH = 96;
 
+/** InitiativeCard is a fixed 326px and PortfolioOverview passes it no className, so the cap reaches it by its testID. */
+const CARDS_FIT_PHONE = "[&_[data-testid=initiative-card]]:max-w-full";
+
 function cardOf(row: Row): InitiativeCardProps {
   return { title: row.title, slug: row.slug, state: row.state, rank: row.rank, shipTarget: row.shipTarget, openCount: row.openTasks, severityCounts: row.severityCounts, topTask: row.topTask };
 }
@@ -64,7 +67,7 @@ export function InitiativesPage(): ReactNode {
     <VStack gap={6}>
       {personalKnown ? null : <Alert status="warning" message="active-work could not say which initiatives are personal, so every one is treated as personal and left out of exports." />}
       {parseErrors.length > 0 ? <Alert status="warning" message={`Unreadable briefs: ${parseErrors.map((entry) => entry.slug).join(", ")}`} /> : null}
-      <PortfolioOverview title="Initiatives" subtitle="Read from the active-work daemon" stats={statsOf(initiatives)} sections={sectionsOf(initiatives)} />
+      <PortfolioOverview className={CARDS_FIT_PHONE} title="Initiatives" subtitle="Read from the active-work daemon" stats={statsOf(initiatives)} sections={sectionsOf(initiatives)} />
       <Section>
         <SectionHeader title="Records" subtitle="Open tasks, notes, sources and sessions per initiative" />
         <SectionContent>

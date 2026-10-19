@@ -1,5 +1,19 @@
 # titan-console
 
+## 0.6.2
+
+### Patch Changes
+
+- c158727: Home, initiatives and an initiative's detail no longer scroll sideways on a 390px phone: the initiative title, the initiative cards and the upstream cards shrink to the row they sit in.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [6dd2f97]
+  - @titan-design/session-graph@0.18.0
+  - @titan-design/session-read@0.16.1
+  - @titan-design/session-analytics@0.17.4
+  - @titan-design/worktree@0.2.0
+
 ## 0.6.1
 
 ### Patch Changes
