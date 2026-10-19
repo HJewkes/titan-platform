@@ -26,6 +26,11 @@ interface WordToken {
     /** The word is a `case` pattern, matched against the subject and never run. */
     casePattern?: true;
     refs: VarRef[];
+    /** Where in `value` an unquoted `~` opens a tilde prefix the shell expands; trusted only while `value` is still `text`. */
+    tildes?: {
+        text: string;
+        at: number[];
+    };
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
     /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
@@ -155,6 +160,8 @@ interface SimpleCommand {
     /** Whether `!` negates the status of the pipeline the command is in. */
     negated: boolean;
     chain: Chain;
+    /** Set when `PATH` or zsh's `path` had been written, or may have, by the time the command runs, or the command's own prefix writes it. */
+    pathChanged?: true;
     /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
     added?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
@@ -180,6 +187,8 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Called once the walk ends if it wrote `PATH` or zsh's `path` in a shell that outlives it, or may have. */
+    onPathWrite?: (unsafe: boolean, dirs: string[]) => void;
     /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
     joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
@@ -187,6 +196,7 @@ interface ExtractOptions {
     /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
     arithmetic?: boolean;
 }
+
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
  * strings, `eval` and heredocs fed to a shell. Literal variable assignments are expanded into

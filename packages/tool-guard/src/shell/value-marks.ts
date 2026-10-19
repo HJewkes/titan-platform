@@ -31,10 +31,16 @@ export interface ValueMarks {
   /** One walk per substitution in each known value with code behind a bracket. */
   walks: Array<() => void>;
   lists: number;
+  /** Something the line has run so far wrote `PATH` or zsh's `path`, or may have, as a store the walk cannot read does. */
+  pathChanged: boolean;
+  /** The absolute directories the line puts on `PATH`; a script there changes nothing unless the line writes into it. */
+  pathDirs: string[];
+  /** The line may give `HOME` a value other than a fixed absolute directory, so a `~` it puts on PATH may name the working directory. */
+  homeUnfixed: boolean;
 }
 
 export function newMarks(): ValueMarks {
-  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0 };
+  return { arithmetic: false, opaque: false, typed: false, bracket: false, unwalkable: false, walks: [], lists: 0, pathChanged: false, pathDirs: [], homeUnfixed: false };
 }
 
 /**

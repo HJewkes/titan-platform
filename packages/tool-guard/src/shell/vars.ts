@@ -2,7 +2,12 @@ import type { OpToken, Token, WordToken } from "./lexer.js";
 import { recordSource, SEARCH_KEY } from "./assignment-source.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
+import { rawValue, safePathDirs } from "./path-entries.js";
+import type { RawValue } from "./path-entries.js";
+import { isPathName, notePathForgotten, notePathWrite, observePath } from "./path-writes.js";
+import type { PathObserver } from "./path-writes.js";
 import { printedText } from "./printed.js";
+import { shiftedTildes } from "./word-build.js";
 import { commandWrites, compoundWrites, IDENTIFIER_RE, noteCompounds, TARGET_RE } from "./writers.js";
 
 /**
@@ -19,7 +24,7 @@ export type Vars = Map<string, string | null>;
  * A `hidden` write is the walk's own save or restore of a function local, which no readonly check stops.
  * `cased` marks a value copied from one a case attribute may have changed.
  */
-export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true];
+export type Assignment = [name: string, value: string | null, kind?: "append" | "element" | "hidden", cased?: true, raw?: RawValue];
 
 /** The subscript ends at the last `]` before `=`, so a nested subscript never hides that the word assigns. */
 export const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -66,7 +71,8 @@ export function expandWord(w: WordToken, resolve: (name: string) => string | nul
     value += w.value.slice(last, ref.start) + literals[i];
     last = ref.end;
   }
-  const expanded = literals.includes(null) ? w : { ...w, value: value + w.value.slice(last), dynamic: false, refs: [], typed: w.typed ?? w.value };
+  value += w.value.slice(last);
+  const expanded = literals.includes(null) ? w : { ...w, value, dynamic: false, refs: [], typed: w.typed ?? w.value, tildes: shiftedTildes(w, literals, value) };
   const result = unsure ? markWord(expanded) : expanded;
   if (sureWords.has(w)) sureWords.add(result);
   return result;
@@ -191,7 +197,7 @@ function runsDeclarer(words: WordToken[]): boolean {
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
   const parsed = splitAssignment(w);
-  const assignment: Assignment | null = parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
+  const assignment: Assignment | null = parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true, parsed[4]] : parsed;
   if (assignment) recordSource(assignment, w);
   return assignment;
 }
@@ -204,19 +210,21 @@ function splitAssignment(w: WordToken): Assignment | null {
   const parts = ASSIGNMENT_PARTS_RE.exec(w.value);
   if (!parts) return null;
   const [whole, name = "", subscript, plus] = parts;
-  const value = w.dynamic ? null : w.value.slice(whole.length);
+  const raw = rawValue(w, whole.length);
+  const value = w.dynamic ? null : raw.text;
   if (subscript !== undefined) return [name, subscript === "[0]" && !plus ? value : null, "element"];
-  return plus ? [name, value, "append"] : [name, value];
+  return plus ? [name, value, "append", undefined, raw] : [name, value, undefined, undefined, raw];
 }
 
 /** Records an assignment; an append is literal only when both the earlier value and the appended part are. */
-export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
+export function assign(vars: Vars, [name, value, kind, cased, raw]: Assignment): void {
   const priorCased = isCased(vars, name);
+  const dirs = isPathName(name) && raw !== undefined && (kind === undefined || kind === "append") ? safePathDirs(raw, kind === "append", vars) : null;
   if (kind === "hidden") restore(vars, name, value);
-  else if (kind !== "append") write(vars, name, value, kind !== "element");
+  else if (kind !== "append") write(vars, name, value, kind !== "element", dirs);
   else {
     const prior = vars.get(name) ?? null;
-    write(vars, name, prior !== null && value !== null ? prior + value : null);
+    write(vars, name, prior !== null && value !== null ? prior + value : null, true, dirs);
   }
   markCased(vars, name, cased || (kind === "append" && priorCased));
 }
@@ -226,8 +234,9 @@ type StoreObserver = (value: string | null) => void;
 const observers = new WeakMap<Vars, StoreObserver>();
 
 /** Every write to `vars` goes through `write`, so the observer hears each value the scope stores. */
-export function observeStores(vars: Vars, observer: StoreObserver): void {
+export function observeStores(vars: Vars, observer: StoreObserver, onPath?: PathObserver): void {
   observers.set(vars, observer);
+  if (onPath) observePath(vars, onPath);
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -244,12 +253,13 @@ const readonlyKey = (name: string) => `readonly@${name}`;
  * Arithmetic stores only numbers, and an element write is heard where it is typed, as the variable keeps only
  * element 0, so neither is `heard` here.
  */
-function write(vars: Vars, name: string, value: string | null, heard = true): void {
+function write(vars: Vars, name: string, value: string | null, heard = true, pathDirs: string[] | null = null): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
   clearCased(vars, name);
   if (name === "PATH" || name === "path") vars.set(SEARCH_KEY, null);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
+  notePathWrite(vars, name, vars.get(name), pathDirs);
   if (heard) observers.get(vars)?.(value);
 }
 
@@ -319,6 +329,9 @@ function forgetAll(vars: Vars, heard = true): void {
   vars.set(SEARCH_KEY, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
+  vars.set("PATH", null);
+  vars.set("path", null);
+  notePathForgotten(vars);
   if (heard) observers.get(vars)?.(null);
 }
 

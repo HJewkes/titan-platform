@@ -73,7 +73,7 @@ function LoadFailure({ slug, message }: { slug: string; message: string | undefi
 function Heading({ initiative }: { initiative: Detail["initiative"] }): ReactNode {
   return (
     <HStack gap={3} align="center" wrap>
-      <InitiativeHeader title={initiative.title} slug={initiative.slug} state={initiative.state} rank={initiative.rank} shipTarget={initiative.shipTarget} updated={initiative.updated} />
+      <InitiativeHeader className="min-w-0 max-w-full" title={initiative.title} slug={initiative.slug} state={initiative.state} rank={initiative.rank} shipTarget={initiative.shipTarget} updated={initiative.updated} />
       {initiative.personal ? <PersonalBadge /> : null}
     </HStack>
   );
