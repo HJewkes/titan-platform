@@ -9,6 +9,7 @@ import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./registration-hold.js";
 import { narrowToRegistration } from "./registration-policy.js";
+import { separateLineages, type LineageRow } from "./reviewer-lineage.js";
 import type { ShepherdStore } from "./store.js";
 
 export const G10_RELEASE_STEP = "sh-g10-release";
@@ -88,21 +89,24 @@ interface TwoMerge {
   mergeUp?: MergeUp;
 }
 
-/** Two reviewers, not one twice: separate sessions, and separate profiles, so one model's blind spot cannot pass both. */
-const independent = ({ correctness, adversary }: TwoMerge): boolean =>
-  isOpusProfile(correctness.profile) && correctness.profile !== adversary.profile && correctness.verdict.reviewer.sessionId !== adversary.verdict.reviewer.sessionId;
+/**
+ * Two reviewers, not one twice. Decision 457 runs both at the same profile, so the profile no longer tells them apart; the
+ * roster must prove their conversations separate (D7). `roster` undefined means it was not read, which proves nothing.
+ */
+const independent = ({ correctness, adversary }: TwoMerge, roster: readonly LineageRow[] | undefined): boolean =>
+  isOpusProfile(correctness.profile) && roster !== undefined && separateLineages(correctness.verdict.reviewer, adversary.verdict.reviewer, roster);
 
 /** `files` undefined means the list was not read whole, which could hide the rule file, so it never releases. */
 const clearOfOwnerPacket = (files: readonly string[] | undefined): files is readonly string[] => files !== undefined && !files.some((path) => OWNER_PACKET_FILES.includes(path));
 
 /**
  * True when the run is held as `g10-adversary`, on record with no named reviewer (418(2)), and both Shepherd's opus correctness MERGE
- * and its adversary MERGE stand at the PR's head as read now, with the required checks green there and no change to the owner's rule
- * file in the diff. A MERGE stands at the head it was written at, or the head a recorded clean merge-up of it made (341(1)).
+ * and its adversary MERGE stand at the PR's head as read now, from reviewers the roster shows share no conversation, with the required
+ * checks green there and no change to the owner's rule file in the diff. A MERGE stands at the head it was written at, or the head a recorded clean merge-up of it made (341(1)).
  */
-export function satisfiesTwoMerge(run: G10Run, merges: TwoMerge, prHead: string, checks: G10Checks, files: readonly string[] | undefined): boolean {
+export function satisfiesTwoMerge(run: G10Run, merges: TwoMerge, prHead: string, checks: G10Checks, files: readonly string[] | undefined, roster: readonly LineageRow[] | undefined): boolean {
   if (!run.held || holdClassOf(run.holdReason) !== G10_ADVERSARY_CLASS || maybeAssigned(run)) return false;
-  if (!independent(merges) || !clearOfOwnerPacket(files)) return false;
+  if (!independent(merges, roster) || !clearOfOwnerPacket(files)) return false;
   const stands = [merges.correctness, merges.adversary].every(({ verdict }) => verdict.value === "MERGE" && standsAt(verdict, merges.mergeUp) === prHead);
   return stands && checks.green && checks.head === prHead;
 }
@@ -141,6 +145,12 @@ async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
   return { released, head: prHead, ...(released && { verdict: input.verdict }) };
 }
 
+/** The roster as the lineage check reads it; an unwired or failed read is undefined, so the hold stays. */
+async function lineageRoster(deps: ShepherdDeps): Promise<readonly LineageRow[] | undefined> {
+  const read = await deps.roster?.read();
+  return read?.kind === "known" ? read.rows : undefined;
+}
+
 /**
  * The files are re-read pinned to the head just read, so a push between the reads leaves them unread. The release event carries the
  * head, which `adversary-anchor.ts` takes as the released head a later merge-up must stay on; the step records both refs and the rule.
@@ -150,9 +160,10 @@ async function releaseOnTwoMerges(deps: ShepherdDeps, mode: TwoMergeMode | undef
   const target = { repo: input.repo, pr: input.pr };
   const prHead = (await deps.port.getPr(target.repo, target.pr)).headSha;
   const files = await pinnedPaths(deps.port, { ...target, head: prHead }, prHead);
+  const roster = await lineageRoster(deps);
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
-  const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined);
+  const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined, roster);
   const released = judged && mode === "on" && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason, { actor: SHEPHERD_ACTOR, headSha: prHead });
   const refs = { rule: TWO_MERGE_RULE, correctness: input.correctness, adversary: input.adversary };
   return { released, head: prHead, mode: mode ?? "off", ...(released && refs), ...(judged && mode === "shadow" && { wouldRelease: true, ...refs }) };
