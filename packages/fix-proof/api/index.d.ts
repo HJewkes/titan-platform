@@ -212,7 +212,10 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
  */
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
-/** `killed` only when every declared mutation is killed; `error` when the specs or the report could not be read at all. */
+/**
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `error` when the specs or the report could not be read at all.
+ */
 declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
 type MutantVerdict = (typeof MUTANT_VERDICTS)[number];
 interface MutantResult {
@@ -225,6 +228,11 @@ interface MutantResult {
 interface MutantsResult {
     verdict: MutantVerdict;
     results: MutantResult[];
+    /**
+     * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+     * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
+     */
+    uncovered?: string[];
     error?: string;
 }
 /** One spec as the judge read it at head, with the test file its `kills` name tests in. */
@@ -309,8 +317,9 @@ type ParsedResultLine = {
 };
 /**
  * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
- * code on both sides, so it reads vacuous at best; it is proved when every declared mutation is killed and every selected
- * test ran and passed at head. A surviving mutation, a failing or unrun test, or a mutants error proves nothing.
+ * code on both sides, so it reads vacuous at best. It is proved when every changed test file has a spec of its own in the
+ * diff, every declared mutation is killed, and every selected test ran and passed at head. A line with no `uncovered`
+ * list comes from a judge that never checked coverage, so it proves nothing.
  */
 declare function provedByMutants(result: FixProofResult): boolean;
 /** Joins a plan and its classification into the result a runner prints for head. */

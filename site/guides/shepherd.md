@@ -105,10 +105,14 @@ merge base with the head's tests overlaid, and the judge adds a `mutants` field 
 `fix-proof/v1` line.
 
 The gate lets the review proceed on a `vacuous` line only when its `mutants` verdict is
-`killed` and every selected test ran and passed at head (`provedByMutants`). A surviving
-mutation, a test that fails or does not run at head, or a mutants error leaves the `vacuous`
-verdict standing, so the round ends as `NO_REPRO`, and the wake asks the implementer for kills
-rather than for a test that fails at the merge base. The judge adds `mutants` only when it reads
+`killed`, every changed test file has a spec of its own added or changed in the same diff, and
+every selected test ran and passed at head (`provedByMutants`). A killed spec proves only the
+test file beside it, so one beside an unchanged test cannot vouch for a test the PR changed.
+A changed test file with no spec (listed as `mutants.uncovered`), a surviving mutation, a test
+that fails or does not run at head, a mutants error, or a line from a judge that never checked
+coverage leaves the `vacuous` verdict standing, so the round ends as `NO_REPRO`, and the wake asks the implementer for kills
+rather than for a test that fails at the merge base, fencing the test files that still need a
+spec. The judge adds `mutants` only when it reads
 the diff from git as test material alone, so a line from a diff with source in it never passes
 this way. A pull request with no spec reads `NO_REPRO` as before.
 

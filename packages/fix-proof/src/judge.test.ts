@@ -171,9 +171,8 @@ describe("judge with mutation specs", () => {
     const GUARD = "src/guard.test.ts";
     const guardTest = (body: string) => `test("denies", () => { ${body} });\n`;
     const bothPassed = (): string => {
-      const zero = zeroReport("passed") as { testResults: unknown[] };
-      const guard = { name: GUARD, status: "passed", assertionResults: [{ fullName: "denies", status: "passed", failureMessages: [] }] };
-      return encodeReport({ testResults: [...zero.testResults, guard] });
+      const file = (name: string, test: string) => ({ name, status: "passed", assertionResults: [{ fullName: test, status: "passed", failureMessages: [] }] });
+      return encodeReport({ testResults: [file("src/math.test.ts", "adds zero"), file(GUARD, "denies")] });
     };
     const judgeOver = async (baseFiles: Record<string, string>, headFiles: Record<string, string>) => {
       const repo = makeRepo({}, undefined, baseFiles);
