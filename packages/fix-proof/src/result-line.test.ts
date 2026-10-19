@@ -32,6 +32,7 @@ describe("provedByMutants", () => {
   const testOnly = (overrides: Partial<FixProofResult> = {}): FixProofResult => ({
     ...result(),
     verdict: "vacuous",
+    deletedTests: [],
     counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
     mutants: { verdict: "killed", results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: "killed" }], uncovered: [] },
     ...overrides,
@@ -57,6 +58,10 @@ describe("provedByMutants", () => {
     const mutants = { ...testOnly().mutants!, uncovered: ["src/guard.test.ts"] };
 
     expect(provedByMutants(testOnly({ mutants }))).toBe(false);
+  });
+
+  it("does not prove killed mutants on a diff that deletes a test", () => {
+    expect(provedByMutants(testOnly({ deletedTests: ["src/guard.test.ts"] }))).toBe(false);
   });
 
   it("does not prove killed mutants from a judge that never checked coverage", () => {

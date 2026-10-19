@@ -79,9 +79,10 @@ describe("the tests brief and fix-proof", () => {
   });
 
   describe("on a test-only diff with a mutation check", () => {
-    const testOnly = (verdict: "killed" | "not-killed", uncovered: string[] = []) =>
+    const testOnly = (verdict: "killed" | "not-killed", uncovered: string[] = [], deletedTests: string[] = []) =>
       fixProof({
         verdict: "vacuous",
+        deletedTests,
         counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
         tests: [],
         mutants: { verdict, results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: verdict === "killed" || uncovered.length > 0 ? "killed" : "survived" }], uncovered },
@@ -97,6 +98,14 @@ describe("the tests brief and fix-proof", () => {
     it("keeps a vacuous proof blocking when a changed test file has no spec, though every mutation is killed", () => {
       const brief = shapeBrief("tests", { ...target, fixProof: testOnly("not-killed", ["src/guard.test.ts"]) });
 
+      expect(brief).not.toContain("every mutation its specs declare");
+      expect(brief).toMatch(/none proves the change. That is blocking/);
+    });
+
+    it("never reads a proof that deletes a test as proved, though every mutation is killed", () => {
+      const brief = shapeBrief("tests", { ...target, fixProof: testOnly("killed", [], ["src/guard.test.ts"]) });
+
+      expect(brief).toMatch(/deletes 1 test file/);
       expect(brief).not.toContain("every mutation its specs declare");
       expect(brief).toMatch(/none proves the change. That is blocking/);
     });

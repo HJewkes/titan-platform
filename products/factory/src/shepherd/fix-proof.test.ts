@@ -187,6 +187,16 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns).toEqual([]);
   });
 
+  it("ends a PR as NO_REPRO when its mutants are killed but it deletes a test", async () => {
+    const line = mutantsLine("killed").replace('"deletedTests":[]', '"deletedTests":["packages/x/src/guard.test.ts"]');
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(line), files: TEST_ONLY_FILES });
+
+    expect(line).toContain("guard.test.ts");
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    expect(spawns).toEqual([]);
+  });
+
   it("ends a test-only PR as NO_REPRO on a killed line from a judge that never checked coverage", async () => {
     const unchecked = mutantsLine("killed").replace(',"uncovered":[]', "");
 

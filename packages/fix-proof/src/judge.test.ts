@@ -200,6 +200,35 @@ describe("judge with mutation specs", () => {
     });
   });
 
+  describe("a test the PR removes from the tests", () => {
+    const GUARD = "src/guard.test.ts";
+    const judgeRemoving = async (remove: (dir: string) => void) => {
+      const repo = makeRepo({}, undefined, { "src/math.test.ts": VACUOUS_TEST, [GUARD]: `test("denies", () => { expect(1).toBe(1); });\n` });
+      remove(repo.dir);
+      const head = repo.commit({ "src/math.test.ts": `${VACUOUS_TEST}// touched\n`, [SPEC]: specText() });
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: reports(killedMutants) }));
+    };
+
+    it("a deleted test beside a killed spec on an untouched sibling leaves the PR unproved", async () => {
+      const result = await judgeRemoving((dir) => git(dir, ["rm", "-q", GUARD]));
+
+      expect(result).toMatchObject({ verdict: "vacuous", deletedTests: [GUARD] });
+      expect(result.mutants).toBeUndefined();
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("a test renamed into a carried fixture counts as deleted and leaves the PR unproved", async () => {
+      const result = await judgeRemoving((dir) => {
+        fs.mkdirSync(path.join(dir, "src/fixtures"));
+        git(dir, ["mv", GUARD, "src/fixtures/guard.ts"]);
+      });
+
+      expect(result).toMatchObject({ verdict: "vacuous", deletedTests: [GUARD] });
+      expect(result.mutants).toBeUndefined();
+      expect(provedByMutants(result)).toBe(false);
+    });
+  });
+
   it("attaches no mutants when the diff also changes source", async () => {
     const result = await judgeHead({ [SPEC]: specText(), "src/math.ts": "export const add = (a: number, b: number) => a - b;\n// touched\n" }, killedMutants);
 

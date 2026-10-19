@@ -28,13 +28,13 @@ export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: fals
 /**
  * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
  * code on both sides, so it reads vacuous at best. It is proved when every changed test file has a spec of its own in the
- * diff, every declared mutation is killed, and every selected test ran and passed at head. A line with no `uncovered`
- * list comes from a judge that never checked coverage, so it proves nothing.
+ * diff, every declared mutation is killed, every selected test ran and passed at head, and no test was deleted or renamed
+ * out of the tests. A line with no `uncovered` list comes from a judge that never checked coverage, so it proves nothing.
  */
 export function provedByMutants(result: FixProofResult): boolean {
   const { counts, mutants } = result;
   const headPasses = counts["passes-on-base"] > 0 && counts["fails-on-head"] === 0 && counts["not-run"] === 0;
-  const covered = mutants?.uncovered !== undefined && mutants.uncovered.length === 0;
+  const covered = mutants?.uncovered !== undefined && mutants.uncovered.length === 0 && result.deletedTests.length === 0;
   return result.verdict === "vacuous" && mutants?.verdict === "killed" && covered && headPasses;
 }
 
