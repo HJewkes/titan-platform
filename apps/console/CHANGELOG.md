@@ -1,5 +1,26 @@
 # titan-console
 
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+  - @titan-design/worktree@0.3.0
+
 ## 0.12.0
 
 ### Minor Changes

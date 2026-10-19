@@ -142,7 +142,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.9.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.9.1`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. For SDK-free execution targets, capability/limit assessments and generic progress/result/failure contracts and transcript source/observation/continuation DTOs, import ./harness; native execution stays in agent. HarnessSourcePort describes injected discovery, scoped lookup and semantic observation/text reads; its capability assessments preserve unsupported/unverified operations without providing runtime adapters or finality guarantees. HarnessExecutionPort adds an open generic execution service with profile/account/billing-pool binding references, model/output intent, an interface version and distinct dispatch receipts. These structural contracts add no runtime validation, authenticated authority or qualified native capability; account/quota, policy and bus ports remain pending. HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter. For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
 
@@ -452,7 +452,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](/reference/agent)
 
-Tier 1, `@titan-design/agent@0.6.1`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.6.2`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -737,7 +737,7 @@ Key exports:
 
 ### [`worktree`](/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.2.1`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.3.0`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
 **Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Its git and setup children preserve the existing dispatcher transport-list pin. Inputs are plain records; optional allocation groups and name-aware budgets preserve the caller's capacity policy. Requested origin-branch checkouts retain default-branch setup trust, and a branch-keeping release completes only a parked allocation. The caller keeps its own roster, journal and optional setup adapter. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. An explicit releaseProof opt-in recognizes the exact merged PR tip or its commit membership while retaining git-only defaults and every file-loss/nonforced-removal guard. Failed releases expose an optional ordinary-changes code, and missing assigned allocation records have a typed error, so products can retain their wording without parsing diagnostics or changing safety. Use fetchDefaultTip when a caller must refuse an unavailable origin instead of falling back to local HEAD; its existing fetch shares one timeout budget across default-branch candidates.
 

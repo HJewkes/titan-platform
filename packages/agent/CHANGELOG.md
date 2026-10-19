@@ -1,5 +1,13 @@
 # @titan-design/agent
 
+## 0.6.2
+
+### Patch Changes
+
+- cda3cbe: Add a pure caller-bound Codex pricing port and optional quote-service injection in the Codex exec adapter. Preserve legacy pricing behavior, quote captured turn usage once across success/failure paths, and keep unpriced usage distinct from priced zero.
+- Updated dependencies [cda3cbe]
+  - @titan-design/agent-protocol@0.9.1
+
 ## 0.6.1
 
 ### Patch Changes
