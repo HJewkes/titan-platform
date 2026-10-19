@@ -1,5 +1,92 @@
 # titan-console
 
+## 0.6.1
+
+### Patch Changes
+
+- 2b90758: The `#/config` page gains a Hosts section from `config.hosts`: each other host's name and last report time. A host whose report is older than 25 hours is marked "not reported". The section is read-only.
+- 28aa920: Extract the owner-tap kernel (confirm store, digest, write-once record and outcome files) from the inbox actions into `owner-tap.ts`, and turn the inbox confirm sheet into a generic `TapSheet`. No behaviour change.
+- 30b0b10: Every routed console view renders inside a page shell that gives it a gutter beside the rail, a width cap and, on list views, the view's title as its heading.
+- 847d56e: `inbox.list` gains `derived`: machine-raised rows for Shepherd stalls past 15 minutes in phase, runs that failed in the last day, and agents blocked for more than 15 minutes. Each row carries its evidence (what was observed, the source, and since when) and the threshold it crossed, and links to the run's timeline or the agent page. Derived rows have no action and sit beside `items`, so `inbox.act` never acts on them. A row without evidence is refused at construction. The inbox page shows them under "Raised by the console" with no button.
+  - @titan-design/session-analytics@0.17.3
+
+## 0.6.0
+
+### Minor Changes
+
+- 60672e9: Show one shell-level status line while the console's live event stream is down: "Live updates are off. Data may be old since <time of the drop>." Every page gets it, and it clears when the stream reopens. A stream that never opened on load shows no line.
+- bf71eea: Add pause-to-comment, scrub markers and verdicts to the theater player. "Comment at m:ss" pauses the video and stamps the note with the presented frame's `mediaTime` from `requestVideoFrameCallback`, falling back to `currentTime`. On a phone the bar is fixed along the bottom of the screen. Ship and Needs changes append a verdict at the frame on screen. A refused owner write is shown verbatim. A strip under the video carries one tick per note on the current render, and tapping a tick seeks to it.
+
+### Patch Changes
+
+- 35b246d: Add the `config.drift` read command: one row per value kept in several config files (the worktree cap per repo across the home CLAUDE.md, the charter, agent-chat's `config.json` and `burndown.config.json`; the load5 hold; a lone roster seat's implementer cap against `maxAgents`), listing every copy's file, line and value. A row is `drift` when any two copies disagree. `config.surfaces` gains a `claude-md` row with the worktree cap the home CLAUDE.md states, and nothing else from that file.
+- 81e9f8e: Add the read-only `#/config` page: every `config.surfaces` row grouped by surface, led by the `config.drift` rows whose copies disagree. A row with a file line shows the exact command that opens that line, with a copy button; a hidden row shows only "present", never a value. The page has no edit control.
+
+  The console frame now grows with a long page instead of stopping at the viewport height, so the rail runs the full length of every page.
+
+- a6fd5c9: Add the `config.surfaces` read command: it lists the coordinator config files (charter and seat front matter, `burndown.config.json`, the owner switches in `seat-watchdog.json`) as rows with value, file, line, the inline comment and the decision numbers it names, plus each file's mtime and newest hand backup. Each surface declares an allowlist of safe fields; any other key is a hidden row with no value, and a parse failure names only the error code and line. `TITAN_CONSOLE_AUTONOMY_DIR` points it at the autonomy tree and `AGENT_CHAT_HOME` at the agent-chat files.
+- 24e56e2: `config.surfaces` no longer reads a `README.md` or a dotfile in the autonomy `seats/` directory as a seat. The surface specs move from `catalog.ts` to a sibling `specs.ts`, with no change in behaviour.
+- c5f0166: Add a structure test that walks the served registry: every `config.*` command is owner-write unless its verb only reads, and no read or deposit command changes a config file.
+- e6ef8da: Add `pnpm --filter titan-console capture`, deterministic twin captures of every console route. It renders the built page from disk with no daemon, from fixtures typed against `ConsoleCommands`, and shoots each route twice at phone and desktop widths. It fails on any byte difference between the two shots, and writes the frames and a `manifest.json` to `dist/twin` for visual review packets. `work.*` reads take an optional `now` clock for their `fetchedAt`.
+- 2e60fe4: Add the Reviews tab: a list of repo reviews newest first, and a review detail with the summary, findings filtered to P1 and P2 by default with sort chips and windowed rows, and the audited claims.
+  - @titan-design/session-analytics@0.17.2
+
+## 0.5.0
+
+### Minor Changes
+
+- 2f149af: Add the theater's notes store. `videos.note` (owner-write) appends a timestamped comment or a Ship / Needs changes verdict to `<name>.notes.jsonl` beside the video. Each line is a strict `titan-console/video-note@1` object bound to the render's sha256. `videos.notes` reads them back, each marked `current` for the render now on disk, and `videos.list` gains `noteCount` and `verdict`. The README documents the schema and the agent pickup rule (`openNotes`).
+- 0c4f033: Add the Theater page: every rendered video grouped by folder with verdict and note badges, and a player with captions, a notes list that seeks on tap, earlier-render notes dimmed, and `#/theater/<id>?t=<seconds>` links that open paused at that time.
+
+### Patch Changes
+
+- 3aa4dc2: Add the `reviews.get` read. It returns one repo review: its SUMMARY markdown capped at 256 KB with a `truncated` flag, the coverage line, the recommendations (or a gap line when the SUMMARY has no recommendations heading), every topic row and the claims rows. The name is looked up in the scanned set of review folders and never joined as given, so an unknown name or a `../` path gets a NOT FOUND refusal that does not echo it.
+- a587427: Add `reviews.list`, the read side of the Reviews tab. It scans one level of `TITAN_CONSOLE_REVIEWS_DIR` (default: the repo-review folder under the active-work root). Each subfolder with a `README.md` is a review. The command reads fixed paths in each one, no-follow and capped at 1 MB, parses them with `@titan-design/pm`'s review-folder parsers and caches them by mtime and size. Each review comes back with its pin, its label (`current-label`, else `flat`), P1 and P2 counts, claims, coverage, headless cost, and a state that a rule table in `server/review-rules.ts` derives from the files. The README's status line is never used for the state. A label that is not a plain name, a symlinked file or dir, and a file that fails to parse each show up as a gap line instead.
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
+- Updated dependencies [41fce70]
+  - @titan-design/owner-queue@0.5.0
+  - @titan-design/session-read@0.16.0
+  - @titan-design/decider@0.6.6
+  - @titan-design/session-analytics@0.17.1
+  - @titan-design/session-graph@0.17.1
+
+## 0.4.3
+
+### Patch Changes
+
+- 336eeb1: Add the `config.report` deposit and the `config.hosts` read. Another host's `titan config report` is taken only over a bearer from another machine, stored under the state dir and shown, never applied. The report schema is strict, so a report carrying a `revision` is refused. A report older than 25 hours shows as not reported.
+- 0c9e8ac: Let `inbox.act` answer an agent's chat_ask. `inbox.prepare` reads back the question, its asker, options and recommendation; `inbox.act` takes the owner's `text`, keeps it in the action record, and posts it to the agent-chat broker's `POST /api/answer` on channel `dashboard` through a new `BrokerAnswerer`. Redirects are never followed, a question answered first elsewhere comes back `closed`, and a broker that is down is `unreachable`.
+- 382dcde: The inbox page acts: a gate row shows "Approve merge" and an owner-asked hold row "Release hold". The tap opens a confirm sheet that calls `inbox.prepare` and shows the read-back (effect, repo#PR, title, head, how long ago it was read). Confirm stays disabled until that read-back has loaded, then calls `inbox.act` and shows the outcome in the sheet. Cancel sends nothing. When the console cannot act (actions off, owner writes refused, no action, or a snapshot page), the sheet or row shows the terminal command instead.
+- d1c31e6: Let `inbox.act` release a `g10-review` or `g10-adversary` hold through Shepherd's `shepherd.release`, as `owner-remote:titan-console`. The release is offered whether or not a reviewer MERGE is recorded: `inbox.prepare` reads back the verdicts from the PR's timeline, counts the MERGEs at the live head (two from two reviewers for `g10-adversary`), and when they fall short says so and labels the confirm "Release without a MERGE". Shepherd's refusal of a moved head comes back as `moved`, and a replay as `already`.
+- 5b3eff1: The inbox confirm sheet reads all three read-back shapes: a gate, a g10 hold and a chat answer. A g10 hold's read-back leads with its confirm label, for example "Release without a MERGE", and only a gate's read-back names its gate. This restores the titan-console typecheck on main.
+- ae71217: Add the theater's video catalog. `TITAN_CONSOLE_VIDEO_ROOTS` names the directories to list; `videos.list` returns every mp4 and webm under them by opaque id, with captions and render-notes flags, or one gap line when unset. `GET /media/videos/:id` serves a listed video with byte ranges and `/media/videos/:id/captions` its `.vtt`; each request re-checks that the real path stays inside its root, and anything else answers a fixed 404. The dev server forwards `/media/*` to the daemon.
+- Updated dependencies [a67d654]
+  - @titan-design/pm@0.4.0
+
+## 0.4.2
+
+### Patch Changes
+
+- c1e9177: Add the `config.surfaces` read for this host's agent-chat `config.json` and profiles, the factory config, the console's `TITAN_CONSOLE_*` environment and each Claude Code account's `settings.json` and `.claude.json`. Only fields the catalog allowlist names carry a value; an undeclared key is listed hidden. Permissions and autoMode show as their rule texts, hooks as the commands they run, and `.claude.json` only as its trusted-folder count and MCP server names. The factory's `digest.push` URL is never named.
+- b3de4dd: Add `inbox.prepare` and `inbox.act`, behind `TITAN_CONSOLE_INBOX_ACTIONS=1`. `inbox.prepare` reads back a gate resolve or an owner-asked hold release with a five-minute confirm digest. `inbox.act` is an owner-write: it re-reads the item, refuses a stale digest before posting, writes the action record once and posts its id to the factory's `POST /owner/console-action`. A moved head comes back as `moved` and a replay as `already`.
+- Updated dependencies [9b5d49f]
+  - @titan-design/daemon@0.8.0
+  - @titan-design/react-app@0.1.4
+  - @titan-design/rpc-client@0.4.1
+
+## 0.4.1
+
+### Patch Changes
+
+- fee50d9: Add the `inbox.list` read: `approvals.flow` joined to Shepherd's live rows, each item with the one action a tap would take (resolve a gate, release a hold, answer an ask, open a round or its source) or the terminal command and why, blocking items first and newest first. A dead source is a gap line, never an empty inbox. Nothing writes yet.
+- 53ecdae: Add the read-only Inbox page at `#/inbox`, a rail entry after Home. It lists `inbox.list`: blocking items first, newest first, each with a source badge, its age, a recommendation chip, an evidence link, and a "Run on terminal" button that shows the command, a copy button and the reason. Planning items start collapsed behind their count, and FYIs are a count only. A dead source shows as a banner, so the page never says nothing needs you. Home's "Needs you" region shows the inbox's blocking count and its newest three blockers, each linking to the inbox.
+
 ## 0.4.0
 
 ### Minor Changes

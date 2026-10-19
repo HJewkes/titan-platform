@@ -41,7 +41,7 @@ const blocker = (id: string, summary: string, openedAt: string) => ({
   section: "blocking",
   action: { kind: "terminal", reason: "fixture" },
 });
-const inbox = (items: unknown[], gaps: string[] = []) => ok({ items, gaps, fyiCount: 0, readAt: new Date(NOW).toISOString() });
+const inbox = (items: unknown[], gaps: string[] = []) => ok({ items, gaps, fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [] });
 
 type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
 

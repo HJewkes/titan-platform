@@ -29,6 +29,8 @@ export type { CodexReadResult, ReadCodexOptions, ReadCodexTextOptions } from "./
 export { readCodexObservations, readCodexText } from "./codex-read.js";
 export type { SessionTextRequest } from "./source-text.js";
 export { readSessionText } from "./source-text.js";
+export type { ReadSessionEventTextOptions, SessionEventRef } from "./event-text.js";
+export { readSessionEventText } from "./event-text.js";
 export type {
   CacheWriteSplit,
   ConversationItemKind,

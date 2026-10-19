@@ -189,6 +189,26 @@ key, only to push the release branch and open the pull request (see
 A red `lint`, `typecheck`, or `test` on main blocks every publish, since the release job
 runs them first.
 
+### Publishing stranded versions
+
+A version can strand on main without reaching npm. If a newer push cancels the CI run for
+a "Version Packages" merge, that merge's Release run never starts. Once a later changeset
+is pending, every Release run refreshes the pull request instead of publishing. A manual
+dispatch of `release.yml` on main publishes those versions:
+
+```sh
+gh workflow run release.yml --ref main -f dry_run=true   # list what would publish
+gh workflow run release.yml --ref main -f dry_run=false  # publish it
+```
+
+The dispatch runs only when a push CI run at the main tip succeeded. It then runs
+`scripts/release-stranded.mjs`, which publishes every public workspace version the npm
+registry lacks, without `changeset version`, git tags, or GitHub releases. The run summary
+lists each version it publishes. A package npm has never seen cannot use trusted
+publishing until its first hand publish (below), so the dispatch skips it and any package
+whose runtime dependencies reach it, and reports both instead of failing. The dispatch
+stays in `release.yml` because each trusted publisher names that file.
+
 ### The first publish of a brand-new package
 
 npm accepts a trusted publisher only for a package that already exists on the registry, and

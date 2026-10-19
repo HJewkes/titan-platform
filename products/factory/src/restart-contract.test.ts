@@ -58,6 +58,8 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-review-request": `${READ}: whether Shepherd's own review was asked for`,
   "sh-review-stop": `${READ}: whether the review was stopped`,
   "sh-review-panel": `${RECORD}: the panel's aggregate verdict`,
+  "sh-fix-proof-waive": `${WRITE}: stores the owner's fix-proof waiver for a head`,
+  "sh-fix-proof-waived": `${RECORD}: whether the owner waived a head's fix-proof`,
   "sh-no-reviewer-hold": `${WRITE}: holds the run and alerts when no reviewer is wired`,
   "sh-no-reviewer-wait": `${READ}: waits for the no-reviewer hold to release`,
   "sh-carry-scope": `${RECORD}: the scope an approval carried over`,

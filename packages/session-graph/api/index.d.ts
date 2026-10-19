@@ -1,5 +1,6 @@
 import { Db, WatermarkTable, EdgeTable, SpanFtsTables, Migration } from '@titan-design/store-sqlite';
 import { TranscriptDelta, DiscoveredTranscript, SessionSourceDescriptor, WakeCause, Inbound, SessionUsageSummary } from '@titan-design/session-read';
+import { HarnessSourcePort, CapabilityAssessment } from '@titan-design/agent-protocol/harness';
 
 /** One open session graph: the connection plus the kit helpers bound to its tables. */
 interface SessionGraph {
@@ -557,7 +558,19 @@ interface NormalizedIndexResult {
     observations: number;
     reason?: string;
 }
-/** Replay changed sources into temporary staging; swap rows and watermark atomically. */
+/** Only observation capability and the bound reader are needed by the graph. */
+type SourceIndexPort = Pick<HarnessSourcePort, "capabilities" | "readObservations">;
+type SourceIndexResult = NormalizedIndexResult | {
+    status: "unavailable";
+    conversationRef: string;
+    observations: 0;
+    assessment: Exclude<CapabilityAssessment, {
+        status: "supported";
+    }>;
+};
+/** The explicit adapter owns decoding; unavailable observation capabilities have no graph or file effects. */
+declare function indexSource(graph: SessionGraph, source: SessionSourceDescriptor, sourcePort: SourceIndexPort): Promise<SourceIndexResult>;
+/** @deprecated Supply a source port to indexSource; this entry retains the original Codex reader semantics. */
 declare function indexCodexSource(graph: SessionGraph, source: SessionSourceDescriptor): Promise<NormalizedIndexResult>;
 
 declare function isInjectedCause(cause: WakeCause): boolean;
@@ -573,10 +586,13 @@ interface IndexedSpan {
     field: string;
     spanId?: number;
 }
-/** One resolver for search and error clustering; never display a raw JSON line. */
-declare function readIndexedText(graph: SessionGraph, span: IndexedSpan, options?: {
+interface ReadIndexedTextOptions {
     homeDir?: string;
-}): Promise<string | null>;
+    /** An explicit port never falls back to a native reader, including for legacy spans without normalized locators. */
+    sourcePort?: Pick<HarnessSourcePort, "capabilities" | "readText">;
+}
+/** One resolver for search and error clustering; never display a raw JSON line. */
+declare function readIndexedText(graph: SessionGraph, span: IndexedSpan, options?: ReadIndexedTextOptions): Promise<string | null>;
 /** A graph opened read-only may have lost its `normalized_*` tables to migration 9; every normalized reader then sees nothing. */
 declare function hasNormalizedTables(graph: SessionGraph): boolean;
 declare function countNormalizedSessions(graph: SessionGraph): number;
@@ -641,4 +657,4 @@ declare function ensureNormalizedSchema(db: Db): void;
 /** Ambiguity is explicit; workspace session bodies remain in their original namespace. */
 declare function resolveConversationAlias(db: Db, legacyRef: string): string | null;
 
-export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrEnrichment, type PrKey, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, sessionsNeedingOrigin, stripInjected, syncPrices };
+export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrEnrichment, type PrKey, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, sessionsNeedingOrigin, stripInjected, syncPrices };

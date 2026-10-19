@@ -169,5 +169,6 @@ export async function reviewPullRequest(request: ReviewRequest, ports: ReviewPor
   const { repo, pr, head } = request.facts;
   const run: Run = { request, ports, opts: { ...DEFAULT_OPTIONS, ...opts }, target: { repo, pr, head }, sonnetFor };
   const results = await Promise.all(plan.members.map((member) => reviewMember(run, member)));
-  return aggregate(plan, results, { head, source: request.source, sonnetFor, ...(request.brief.fixProof !== undefined && { fixProof: request.brief.fixProof }) });
+  const { fixProof, fixProofWaivedAt } = request.brief;
+  return aggregate(plan, results, { head, source: request.source, sonnetFor, ...(fixProof !== undefined && { fixProof }), ...(fixProofWaivedAt !== undefined && { fixProofWaivedAt }) });
 }

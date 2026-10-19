@@ -72,6 +72,7 @@ function parseNameStatus(text: string): DiffEntry[] {
 interface Sorter {
   isTest: (path: string) => boolean;
   isCarry: (path: string) => boolean;
+  isRuntime: (path: string) => boolean;
   isSpec: (path: string) => boolean;
   isChangeset: (path: string) => boolean;
   add: (bucket: keyof Buckets, path: string) => void;
@@ -97,7 +98,7 @@ function addChanged(sorter: Sorter, path: string): void {
 }
 
 function isTestOnlyPath(sorter: Sorter, path: string): boolean {
-  if (isHarnessPath(path)) return false;
+  if (isHarnessPath(path) || sorter.isRuntime(path)) return false;
   return sorter.isTest(path) || sorter.isCarry(path) || sorter.isSpec(path) || sorter.isChangeset(path);
 }
 
@@ -142,6 +143,7 @@ function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: b
   const sorter: Sorter = {
     isTest: compileGlobs(config.tests),
     isCarry: compileGlobs(config.carry),
+    isRuntime: compileGlobs(config.runtime),
     isSpec: compileGlobs([MUTATION_SPEC_GLOB]),
     isChangeset: compileGlobs([CHANGESET_GLOB]),
     add: (bucket, path) => buckets[bucket].add(path),
@@ -170,9 +172,29 @@ function rejectDashedTests(plan: FixProofPlan): PlanResult {
   return unsafe === undefined ? { ok: true, plan } : { ok: false, error: `unsafe test path: ${unsafe}` };
 }
 
-/** True when the diff touches only tests, carried files, mutation specs and changesets, none of them harness paths. */
+/**
+ * True when the diff touches only tests, carried files, mutation specs and changesets, none of them harness or runtime
+ * paths. It ignores deleted tests and an empty `tests`; `testOnlyReading` refuses those too.
+ */
 export function testOnlyOf(plan: Pick<FixProofPlan, "source">): boolean {
   return plan.source.length === 0;
+}
+
+export type TestOnlyReading =
+  | { testOnly: true }
+  | { testOnly: false; reason: "source"; paths: string[] }
+  | { testOnly: false; reason: "deletes-tests"; paths: string[] }
+  | { testOnly: false; reason: "no-tests" };
+
+/**
+ * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
+ * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ */
+export function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading {
+  if (plan.source.length > 0) return { testOnly: false, reason: "source", paths: [...plan.source] };
+  if (plan.deletedTests.length > 0) return { testOnly: false, reason: "deletes-tests", paths: [...plan.deletedTests] };
+  if (plan.tests.length === 0) return { testOnly: false, reason: "no-tests" };
+  return { testOnly: true };
 }
 
 /** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */

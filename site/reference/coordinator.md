@@ -35,7 +35,9 @@ its sections.
 Changes to that document are a revision log. `applyEdit` sets one schema-declared field on a
 copy and re-checks the whole document, `diffDocuments` lists the changed leaves, and
 `verifyChain` checks that each revision names the previous one's `revisionSha` as its parent,
-so a forked or rewritten log fails.
+so a forked or rewritten log fails. `EDITABLE_FIELDS` is the allowlist of fields an editor may
+change, each with its bounds and when its readers pick the change up; `checkEditableValue`
+refuses any path no row matches.
 
 ## When to reach for it
 
@@ -121,6 +123,15 @@ const edit = applyEdit(document, "seats.web-coord.concurrency.implementers", 4);
 // edit.ok ? edit.document : edit.errors
 verifyChain(revisions);
 // { ok: true, head } or errors such as { rev: 2, code: "parent", ... }
+```
+
+```ts
+import { checkEditableValue } from "@titan-design/coordinator";
+
+checkEditableValue("coordinator", "seats.web-coord.concurrency.implementers", 65);
+// { ok: false, reason: "invalid", ... }: the cap is 0..64
+checkEditableValue("coordinator", "seats.web-coord.grants_extra", []);
+// { ok: false, reason: "not-editable", ... }
 ```
 
 ```ts

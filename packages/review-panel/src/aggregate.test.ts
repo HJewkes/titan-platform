@@ -232,6 +232,48 @@ describe("aggregate satisfiesG10 needs a pinned fix-proof", () => {
   });
 });
 
+describe("aggregate under an owner's fix-proof waiver", () => {
+  const untested = plan("standard", ["untested"]);
+  const dissenting = [merge("correctness"), fixFirst("tests", "the test passes on base")];
+
+  it.each(["vacuous", "no-tests", "error", "unproven"] as const)("keeps the tests member advisory on a %s line when the waiver names the head", (word) => {
+    const verdict = aggregate(untested, dissenting, { ...input, fixProof: fixProofLine(HEAD, word), fixProofWaivedAt: HEAD });
+
+    expect(verdict.outcome).toBe("MERGE");
+    expect(verdict.dissent).toEqual([]);
+    expect(verdict.findings).toEqual([]);
+  });
+
+  it("merges with no fix-proof result when the waiver names the head", () => {
+    expect(aggregate(untested, dissenting, { ...input, fixProofWaivedAt: HEAD }).outcome).toBe("MERGE");
+  });
+
+  it("still blocks on the tests member when the waiver names an older head, as before a merge-up", () => {
+    const verdict = aggregate(untested, dissenting, { ...input, fixProof: fixProofLine(HEAD, "vacuous"), fixProofWaivedAt: OLD_HEAD });
+
+    expect(verdict.outcome).toBe("FIX_FIRST");
+    expect(verdict.dissent).toEqual(["tests"]);
+  });
+
+  it("still blocks on the tests member when no waiver was recorded", () => {
+    expect(aggregate(untested, dissenting, { ...input, fixProof: fixProofLine(HEAD, "vacuous") }).outcome).toBe("FIX_FIRST");
+  });
+
+  it("does not count an unplanned tests member as missing when the waiver names the head, and does at any other head", () => {
+    const g10 = [merge("correctness"), merge("adversary")];
+    const fixProof = fixProofLine(HEAD, "vacuous");
+    expect(G10.members.map((m) => m.shape)).not.toContain("tests");
+
+    const waived = aggregate(G10, g10, { ...input, fixProof, fixProofWaivedAt: HEAD });
+    const stale = aggregate(G10, g10, { ...input, fixProof, fixProofWaivedAt: OLD_HEAD });
+
+    expect(waived.outcome).toBe("MERGE");
+    expect(waived.satisfiesG10).toBe(true);
+    expect(stale.outcome).toBe("no-verdict");
+    expect(stale.satisfiesG10).toBe(false);
+  });
+});
+
 describe("aggregate findings", () => {
   it("keeps a blocking finding with no verifiable citation", () => {
     const verdict = aggregate(plan("standard"), [fixFirst("correctness", "src/missing.ts:4 is absent, and nothing guards it")], input);

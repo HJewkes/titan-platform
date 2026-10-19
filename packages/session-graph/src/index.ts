@@ -28,11 +28,11 @@ export { countRounds, isReviewerProfile, projectReviewRounds } from "./review-ro
 export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
 export { reconcilePrices, syncPrices, type LongPromptPrice, type PriceInput, type ReconcileResult, type SyncPricesOptions } from "./prices.js";
 
-export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
+export { indexSource, indexCodexSource, type NormalizedIndexResult, type SourceIndexPort, type SourceIndexResult } from "./normalized-index.js";
 export { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text.js";
 export {
   countNormalizedEvents, countNormalizedSessions, hasNormalizedTables, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions,
   normalizedSourcePath, normalizedUsage, readIndexedText,
-  type ConversationSummary, type IndexedSpan, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageSummary,
+  type ConversationSummary, type IndexedSpan, type ReadIndexedTextOptions, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageSummary,
 } from "./normalized-query.js";
 export { ensureNormalizedSchema, resolveConversationAlias } from "./normalized-schema.js";

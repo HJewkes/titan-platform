@@ -151,6 +151,30 @@ One row per check, in three groups:
   `hostDoctorReportSchema` in `src/host/doctor.ts` is its schema.
 - It never reads a secret and changes nothing.
 
+## `titan config report`
+
+```sh
+titan config report [--json] [--host <name>]
+titan config report --to https://<console-lan-name>:<port> --token-file <lan.token copy>
+```
+
+One row per config surface of the TP-3579 inventory that lives on every host: agent-chat's
+`config.json`, `profiles/*.json`, `burndown.config.json`, `seat-watchdog.json`, `hooks.json` and
+`ui.token` (under `$AGENT_CHAT_HOME`), the factory config (under `$XDG_CONFIG_HOME`), and
+`settings.json` and `.claude.json` for `~/.claude` and every `~/.claude-profiles/*`.
+
+- A row is facts about the file, never its values: `present`, `mode`, `mtime`, and for a file
+  that is not secret `bytes` and `sha256`. `ui.token` and `.claude.json` are secret: they are
+  stat'd and never opened. A report therefore cannot carry a value a file holds.
+- Paths under home are shown `~`-relative, so two hosts' rows for one surface compare by name.
+- `--host` defaults to this machine's short host name, lowercased.
+- `--to` posts the report to the console's `config.report` over the LAN listener, with the
+  token file's contents as the bearer. It must be `https`, and a redirect is refused. A
+  self-signed console certificate needs `NODE_EXTRA_CA_CERTS`. The console stores the report and
+  shows it in `config.hosts`; nothing in a report is ever applied, and a report older than 25
+  hours shows as not reported.
+- `--json` prints `{ schema: "titan-config-report/v1", host, platform, reportedAt, surfaces }`.
+
 ## What it deliberately does not do
 
 - It does not run as a daemon. A scheduler starts it each minute.
