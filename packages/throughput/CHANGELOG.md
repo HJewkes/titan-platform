@@ -1,5 +1,12 @@
 # @titan-design/throughput
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

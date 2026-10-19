@@ -17,10 +17,37 @@ export function appendChar(s: LexState, c: string): void {
   s.i++;
 }
 
+/** What may follow the `~` of a tilde prefix that names `HOME` itself: an unquoted `/`, a `:`, or the end of the word. */
+const TILDE_END_RE = /[/:\s;&|()<>]/;
+
+/**
+ * Notes an unquoted `~` the shell expands to `HOME`: one after the assignment's `=` or an unescaped `:`. The `/` after
+ * it must be unquoted too, as `~"/b"` stays literal; a `~user` prefix names another directory, so it is not noted.
+ */
+export function noteTilde(s: LexState): void {
+  const [before, prev, next] = [s.src[s.i - 2], s.src[s.i - 1], s.src[s.i + 1]];
+  if ((prev !== "=" && prev !== ":") || before === "\\" || (next !== undefined && !TILDE_END_RE.test(next))) return;
+  const w = ensureWord(s);
+  w.tildes = { text: "", at: [...(w.tildes?.at ?? []), w.value.length] };
+}
+
+/** Where `value` holds a tilde prefix the shell expands, or none once anything has rewritten the word since it was read. */
+export function tildeStarts(w: WordToken): number[] {
+  return w.tildes?.text === w.value ? w.tildes.at : [];
+}
+
+/** The noted tildes of `w` in `value`, which replaced each of its `refs` by its literal and so moved every tilde after it. */
+export function shiftedTildes(w: WordToken, literals: Array<string | null>, value: string): WordToken["tildes"] {
+  if (tildeStarts(w).length === 0) return undefined;
+  const shift = (tilde: number) => w.refs.reduce((sum, ref, i) => (ref.end <= tilde ? sum + (literals[i] ?? "").length - (ref.end - ref.start) : sum), 0);
+  return { text: value, at: tildeStarts(w).map((tilde) => tilde + shift(tilde)) };
+}
+
 export function endWord(s: LexState): void {
   const w = s.word;
   if (!w) return;
   s.word = null;
+  if (w.tildes) w.tildes.text = w.value;
   const pending = s.redirect;
   s.redirect = null;
   if (!pending) {

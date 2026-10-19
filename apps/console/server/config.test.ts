@@ -82,6 +82,12 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
   });
 
+  it("reads video roots as a path list, expanding ~, and refuses a relative entry", () => {
+    expect(resolveConfig({}, HOME).videoRoots).toEqual([]);
+    expect(resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["~/renders", "/var/clips"].join(path.delimiter) }, HOME).videoRoots).toEqual([path.join(HOME, "renders"), "/var/clips"]);
+    expect(() => resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["/var/clips", "renders"].join(path.delimiter) }, HOME)).toThrow(/TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([
@@ -188,6 +194,11 @@ describe("console LAN config", () => {
     expect(lan({}).roundsDir).toBe(path.join(HOME, ".local/state/titan-console", "rounds"));
     expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).roundsDir).toBe("/var/console/rounds");
     expect(lan({ TITAN_CONSOLE_ROUNDS_DIR: "~/rounds" }).roundsDir).toBe(path.join(HOME, "rounds"));
+  });
+
+  it("reads repo reviews under the active-work root unless TITAN_CONSOLE_REVIEWS_DIR is given", () => {
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw" }, HOME, "linux").reviewsDir).toBe("/var/aw/titan-platform/sources/research/repo-review");
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw", TITAN_CONSOLE_REVIEWS_DIR: "~/reviews" }, HOME, "linux").reviewsDir).toBe(path.join(HOME, "reviews"));
   });
 
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {

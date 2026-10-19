@@ -13,6 +13,7 @@ import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+import { videoCatalog } from "./videos.js";
 
 /** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
 const OWNER_ACTIONS_DIR = "owner-actions";
@@ -122,24 +123,38 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
   };
 }
 
+function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+  return {
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    eventsDbPath: config.agentChatEventsDbPath,
+    seatPrefixes: config.seatPrefixes,
+  };
+}
+
+/** The sources that read dirs on this machine, which other processes write. */
+function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+  return {
+    inbox: { dir: config.inboxDir },
+    rounds: { dir: config.roundsDir },
+    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
+    videos: videoCatalog({ roots: config.videoRoots ?? [] }),
+    ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
   return {
     upstreams: createUpstreams(config),
     activeWork,
-    agents: {
-      broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
-      eventsDbPath: config.agentChatEventsDbPath,
-      seatPrefixes: config.seatPrefixes,
-    },
+    agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir },
+    ...localDirSourcesOf(config),
     shepherd,
+    coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
-    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,

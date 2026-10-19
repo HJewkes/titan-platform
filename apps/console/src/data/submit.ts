@@ -8,6 +8,7 @@ type SubmitArgs = ConsoleCommands["rounds.submit"]["args"];
 /** Where answers go: the daemon's live source, or null on an exported snapshot page, which can send nothing. */
 const AnswerSource = createContext<DataSource | null>(null);
 export const AnswerSourceProvider = AnswerSource.Provider;
+export const useAnswerSource = (): DataSource | null => useContext(AnswerSource);
 
 export type SubmitState = { status: "idle" | "sending" } | { status: "sent"; already: boolean } | { status: "failed"; error: string };
 

@@ -1,5 +1,5 @@
 import { O as OwnerItem, A as Audience, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './deposit.js';
-export { b as AUDIENCES, D as DEPOSIT_LENS, c as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as ON_SILENCE_ACTIONS, g as OnSilence, h as OwnerItemDeposit, R as ROUTE_TARGETS, i as SOURCE_SYSTEMS, j as depositItemId, k as fromDeposit, o as ownerItemDepositSchema, l as ownerItemSchema, s as sourceRefSchema } from './deposit.js';
+export { b as AUDIENCES, D as DEPOSIT_LENS, c as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as LocatorCite, g as ON_SILENCE_ACTIONS, h as OnSilence, i as OwnerItemDeposit, R as ROUTE_TARGETS, j as SOURCE_SYSTEMS, k as depositItemId, l as fromDeposit, m as locatorCiteSchema, o as ownerItemDepositSchema, n as ownerItemSchema, s as sourceRefSchema } from './deposit.js';
 import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
 import { z } from 'zod';
@@ -66,7 +66,11 @@ declare const ownerCardSchema: zod.ZodObject<{
         by: zod.ZodString;
         confidence: zod.ZodOptional<zod.ZodNumber>;
         rationale: zod.ZodOptional<zod.ZodString>;
-        cite: zod.ZodOptional<zod.ZodString>;
+        cite: zod.ZodOptional<zod.ZodUnion<readonly [zod.ZodString, zod.ZodObject<{
+            session: zod.ZodString;
+            event: zod.ZodString;
+            quote: zod.ZodString;
+        }, zod_v4_core.$strict>]>>;
         hidden: zod.ZodOptional<zod.ZodBoolean>;
     }, zod_v4_core.$strip>>;
     command: zod.ZodOptional<zod.ZodString>;
@@ -511,6 +515,15 @@ declare const sourceRefSchema: z.ZodObject<{
     }>;
     ref: z.ZodString;
 }, z.core.$strip>;
+/**
+ * A cite the queue can check: `quote` must appear in one transcript line of `session`, named by
+ * `event` as `<byteOffset>:<byteLength>`. A deposit carrying one is refused unless the quote matches.
+ */
+declare const locatorCiteSchema: z.ZodObject<{
+    session: z.ZodString;
+    event: z.ZodString;
+    quote: z.ZodString;
+}, z.core.$strict>;
 declare const answerSchema: z.ZodObject<{
     optionId: z.ZodOptional<z.ZodString>;
     optionIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -581,7 +594,11 @@ declare const ownerItemSchema: z.ZodObject<{
         by: z.ZodString;
         confidence: z.ZodOptional<z.ZodNumber>;
         rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
         hidden: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
@@ -656,6 +673,7 @@ declare const ownerItemSchema: z.ZodObject<{
 type SourceRef = z.infer<typeof sourceRefSchema>;
 type OwnerItem = z.infer<typeof ownerItemSchema>;
 type OwnerAnswer = z.infer<typeof answerSchema>;
+type LocatorCite = z.infer<typeof locatorCiteSchema>;
 type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
 type OnSilence = z.infer<typeof onSilenceSchema>;
@@ -706,7 +724,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         by: z.ZodString;
         confidence: z.ZodOptional<z.ZodNumber>;
         rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
     }, z.core.$strict>>;
     command: z.ZodOptional<z.ZodString>;
     evidenceRef: z.ZodOptional<z.ZodString>;
@@ -741,4 +763,4 @@ declare function depositItemId(asker: string, depositId: string): string;
 /** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
 declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
 
-export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, type OwnerItemDeposit as h, SOURCE_SYSTEMS as i, depositItemId as j, fromDeposit as k, ownerItemSchema as l, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, type OnSilence as h, type OwnerItemDeposit as i, SOURCE_SYSTEMS as j, depositItemId as k, fromDeposit as l, locatorCiteSchema as m, ownerItemSchema as n, ownerItemDepositSchema as o, sourceRefSchema as s };

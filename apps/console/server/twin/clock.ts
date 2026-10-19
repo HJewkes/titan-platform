@@ -1,0 +1,37 @@
+/** The instant every twin capture shows, half a minute past a minute so a one-second skew moves no minute-grained age. */
+export const TWIN_NOW = Date.parse("2031-03-05T12:00:30.000Z");
+
+/**
+ * The second shot of each route runs its clock this much later. A page that shows only fixture data, or ages to the
+ * minute, renders the same bytes; one that prints the clock itself does not, which is the leak the twin exists to catch.
+ */
+export const SECOND_SHOT_SKEW_MS = 1000;
+
+/**
+ * An init script that stops the page's clock at `nowMs` and seeds Math.random. Timers still run in real time, so the
+ * app settles as it would live; only what it reads off the clock is held still. Plain source rather than a serialised
+ * function, because tsx names nested functions with a helper the page does not have.
+ */
+export function frozenClockScript(nowMs: number): string {
+  return `(() => {
+  const NOW = ${JSON.stringify(nowMs)};
+  const RealDate = Date;
+  const FrozenDate = class extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(NOW);
+      else super(...args);
+    }
+    static now() {
+      return NOW;
+    }
+  };
+  Object.defineProperty(window, "Date", { value: FrozenDate, writable: true, configurable: true });
+  let seed = 0x2f6b9d31;
+  Math.random = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+})();`;
+}

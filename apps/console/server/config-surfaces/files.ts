@@ -5,7 +5,7 @@ import { EMPTY_SURFACES, surfaceRows, type ConfigFile, type ConfigRow, type Conf
 /** A config file is small; one past this is listed as a gap rather than parsed. */
 const MAX_CONFIG_BYTES = 1024 * 1024;
 
-interface Target {
+export interface Target {
   spec: SurfaceSpec;
   surface: string;
   file: string;

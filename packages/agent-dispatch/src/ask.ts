@@ -43,6 +43,11 @@ export interface ServiceAnswer {
   by: "human";
   /** Where the owner answered from, when agent-chat knows. */
   channel?: string;
+  /**
+   * The broker's marker, when it set one: `decided` for the decider's answer on the human's behalf, `human-endorsed` for a
+   * human-approved relay. Kept as read, so a marker this package does not know reaches the caller rather than failing the page.
+   */
+  provenance?: string;
   at: number;
 }
 
@@ -59,6 +64,7 @@ const serviceAnswerSchema: z.ZodType<ServiceAnswer> = z.object({
   text: z.string(),
   by: z.literal("human"),
   channel: z.string().optional(),
+  provenance: z.string().optional(),
   at: z.number(),
 });
 

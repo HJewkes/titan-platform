@@ -131,7 +131,7 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
   const ended: EndedRun[] = [];
   const scope = options.scope ?? "gated";
   const runIds = candidateRuns(host, scope).map((run) => run.id).filter((runId) => !options.only || options.only.has(runId));
-  const reasons = await mapBounded(runIds, RESYNC_CONCURRENCY, (runId) => goneReason(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const reasons = await mapBounded(runIds, RESYNC_CONCURRENCY, (runId) => goneReason(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   for (const [index, runId] of runIds.entries()) {
     const read = reasons[index]!;
     if (read.status === "rejected") {

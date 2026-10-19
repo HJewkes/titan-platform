@@ -1,6 +1,7 @@
 import { isCodeEnforced } from "./doctrine-checks.js";
 import type { DoctrineEnforcement, DoctrineRegistry, DoctrineRule, DoctrineStage } from "./doctrine-schema.js";
 import { resolveRule, type Rule, type RuleRegistry } from "./rules.js";
+import { renderRoutingTable, shippedVisualRouter, type VisualRouter } from "./visual-router.js";
 
 export interface StageRequest {
   stage: DoctrineStage;
@@ -8,6 +9,8 @@ export interface StageRequest {
   audience?: string;
   /** The beats the stage works on; only B rules for these reach `prompt` or `packet`. */
   beats?: string[];
+  /** The plan stage's routing source; defaults to the pinned router in this package's doctrine dir. */
+  router?: VisualRouter;
 }
 
 /** The rule half of one stage's slice (VT §5.4). Every list is sorted by rule id. */
@@ -18,6 +21,8 @@ export interface StageSlice {
   checks: DoctrineRule[];
   tokens: string[];
   params: string[];
+  /** The visual router's pattern cards and type table, for the plan stage; empty for every other stage. */
+  routing: string;
 }
 
 export interface PromptLeak {
@@ -76,7 +81,8 @@ export function sliceForStage(registry: DoctrineRegistry, qRules: RuleRegistry, 
   const tokenRules = building || stage === "render" ? staged.filter((rule) => inScope(rule, request)) : [];
   const tokens = uniqueSorted(tokenRules.flatMap((rule) => (rule.tokens ?? []).map((token) => token.name)));
   const params = uniqueSorted([...prompt, ...base, ...packet, ...checks].map((rule) => rule.param));
-  return { prompt, base, packet, checks, tokens, params };
+  const routing = stage === "plan" ? renderRoutingTable(request.router ?? shippedVisualRouter()) : "";
+  return { prompt, base, packet, checks, tokens, params, routing };
 }
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

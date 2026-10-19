@@ -1,5 +1,12 @@
 # @titan-design/code-graph
 
+## 0.18.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
 ## 0.18.0
 
 ### Minor Changes
