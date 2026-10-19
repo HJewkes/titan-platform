@@ -107,6 +107,7 @@ export interface MemberBase extends ReviewTarget {
   fixFirsts?: number;
   fixProof?: string;
   fixProofUnverified?: FixProofUnverified;
+  fixProofWaivedAt?: string;
 }
 
 interface DispatchedMember {

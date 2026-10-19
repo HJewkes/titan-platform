@@ -1,6 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
-import { fixProofLines, unverifiedLines, type FixProofUnverified } from "./briefs/tests.js";
+import { fixProofLines, unverifiedLines, waivedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/ci.js";
 import { OWNER_PICK_CONTRADICTED, boundedFindings, findingsText } from "./fix-first-findings.js";
@@ -61,6 +61,8 @@ export interface ReviewerBriefInput {
   fixProof?: string;
   /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
   fixProofUnverified?: FixProofUnverified;
+  /** The head the owner waived the fix-proof at; it replaces the fix-proof section only when it is this head. */
+  fixProofWaivedAt?: string;
   /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
   earlierFindings?: readonly EarlierFinding[];
   /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
@@ -100,7 +102,8 @@ const ciLines = (input: ReviewerBriefInput): string[] => (input.ciChecks && ciTa
 
 /** Checks CI already ran at this head cost build slots when a reviewer reruns them; the fix-proof text is rebuilt from the parsed result, never echoed. */
 function rerunLines(input: ReviewerBriefInput): string[] {
-  const proof = input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
+  const waived = waivedLines(input.head, input.fixProofWaivedAt);
+  const proof = waived.length > 0 ? waived : input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
   const rerun = input.fixProofUnverified === undefined && fixProofReproduced(input.head, input.fixProof);
   return [
     ...proof,
