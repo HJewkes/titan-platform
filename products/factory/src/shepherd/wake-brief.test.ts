@@ -409,6 +409,16 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     expect(payload).toContain(fence("head branch", pr.headRef));
   });
 
+  it("asks a test-only PR whose mutation check failed for kills, not for a test that fails at the merge base", async () => {
+    const { wake } = proofScene(noRepro("vacuous", { mutants: { verdict: "not-killed", results: [] } }));
+
+    const { reason } = await wake();
+
+    expect(reason).toContain("the mutation check did not pass");
+    expect(reason).toContain("fail under that mutation and pass at the head");
+    expect(reason).not.toContain("fails at the merge base and passes at the head");
+  });
+
   it("says no test was added for a no-tests verdict, without claiming tests ran", async () => {
     const { wake } = proofScene(noRepro("no-tests"));
 

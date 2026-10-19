@@ -73,12 +73,12 @@ commit or a rebase gets a fresh review. The run log records each clean merge-up 
 `security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
 `correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
-`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies,
-except a move into `test-only`.
+`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies.
+A move into `test-only` meets the diff check [below](#the-test-only-kind).
 
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
 head's fix-proof result before the review. A vacuous or test-less proof ends the round as
-`NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
+`NO_REPRO`, unless its mutation check proves it (see [the test-only kind](#the-test-only-kind)). A proof that shows nothing about the head goes to the reviewer marked unverified.
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
 could not be read although one was due. A read that fails is read once more at the same head
 first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
@@ -95,20 +95,37 @@ serve drives it`.
 
 ### The test-only kind
 
-A move into `test-only` is refused with exit 65 while the fix-proof gate does not yet read
-test-only diffs. Once it does, only a `correctness` run may move there, and only when the pull
-request's diff changes nothing but tests, carried test files, `*.mutations.json` sidecars and
+A pull request that only adds or changes tests runs the same production code on both sides of
+the fix-proof, so base against head can only read `vacuous`. It proves itself with a mutation
+spec instead: a `<test>.mutations.json` beside the test, declaring changes to production code
+and the tests each one must fail (see
+[the fix-proof reference](../reference/fix-proof.md#test-only-diffs-and-mutation-specs)). When
+the diff adds or changes a spec, the `fix-proof-mutants` CI job applies each mutation to the
+merge base with the head's tests overlaid, and the judge adds a `mutants` field to the
+`fix-proof/v1` line.
+
+The gate lets the review proceed on a `vacuous` line only when its `mutants` verdict is
+`killed` and every selected test ran and passed at head (`provedByMutants`). A surviving
+mutation, a test that fails or does not run at head, or a mutants error leaves the `vacuous`
+verdict standing, so the round ends as `NO_REPRO`, and the wake asks the implementer for kills
+rather than for a test that fails at the merge base. The judge adds `mutants` only when it reads
+the diff from git as test material alone, so a line from a diff with source in it never passes
+this way. A pull request with no spec reads `NO_REPRO` as before.
+
+A `feature`, `refactor` or `unknown` run may move into `test-only` freely, since that only adds
+the gate; a `security` run may not leave `security`. A `correctness` run may move there only
+when the pull request's diff changes nothing but tests, carried test files, `*.mutations.json` sidecars and
 `.changeset/*.md`. Shepherd classifies the diff from GitHub under `.github/fix-proof.json` at the
 default branch's merge base and at its tip. It reads the diff before it refreshes the
 registration or replaces a dead run, so a refusal names the first source path and leaves the
 stored kind and the run as they were. The guard also refuses when the diff cannot be read in
 full: a file list at GitHub's cap, a harness path, a pull request based on another branch, or a
 read error. A new registration with `--kind test-only` is not refused, because a branch may have
-no diff yet. Until the gate reads test-only diffs, it gates a `test-only` run exactly like
-`correctness`; once it does, it re-checks the diff at every head, so the kind never loosens it.
+no diff yet. The gate reads the judge's line at every head, and the judge re-checks the diff
+there, so the kind never loosens it. The kind keeps the run on the gate and out of MERGE carry.
 
-Once the kind is live, a `correctness` registration, stated or defaulted, on a pull request
-that changes only tests prints a hint after the run line:
+A `correctness` registration, stated or defaulted, on a pull request that changes only tests
+prints a hint after the run line:
 
 ```
 hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO

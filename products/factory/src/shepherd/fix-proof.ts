@@ -1,4 +1,4 @@
-import { RESULT_PREFIX, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { RESULT_PREFIX, parseResultLine, provedByMutants, type FixProofResult } from "@titan-design/fix-proof";
 import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -14,10 +14,10 @@ import { FIX_PROOF_KINDS } from "./task-kind.js";
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
-/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */
-const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head"]);
+/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
+const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
- * Above the three-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
+ * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
  */
 const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
@@ -264,11 +264,15 @@ export async function readFixProofAt(ctx: WorkflowContext, target: { repo: strin
   return rereads ? step(ctx, stepId, input, FixProofReadSchema) : first;
 }
 
-/** A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result; anything else lets the review proceed. */
+/**
+ * A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result, unless its mutants prove it; anything
+ * else lets the review proceed. A surviving mutation leaves the vacuous verdict standing, so it is NO_REPRO too.
+ */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
   if (read.kind !== "result" || typeof read.line !== "string") return undefined;
   const parsed = parseResultLine(read.line);
   if (!parsed.ok || parsed.result.head !== head || !NO_REPRO_VERDICTS.has(parsed.result.verdict)) return undefined;
+  if (provedByMutants(parsed.result)) return undefined;
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 

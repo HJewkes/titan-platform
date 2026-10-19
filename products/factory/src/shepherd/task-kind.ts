@@ -8,13 +8,7 @@ export type TaskKind = (typeof TASK_KINDS)[number];
 export const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "security", "test-only"]);
 
 /**
- * Until the gate reads test-only diffs and mutants, a run cannot move into test-only at all. A test-only run is gated exactly like
- * correctness meanwhile, so a fresh `--kind test-only` registration loosens nothing.
- */
-const TEST_ONLY_GATED: boolean = false;
-
-/**
- * Why a move from `from` into test-only is refused once the kind is live. Only a correctness run needs diff facts: test-only is
+ * Why a move from `from` into test-only is refused. Only a correctness run needs diff facts: test-only is
  * the one fix-proof kind it may move to, and only when the PR's diff, read in full, reads test-only; every other reading refuses.
  */
 export function testOnlyMoveRefusal(from: TaskKind, diff: TestOnlyDiff | undefined): string | undefined {
@@ -49,6 +43,5 @@ export function kindMoveRefusal(from: TaskKind, to: TaskKind, diff?: TestOnlyDif
     return `kind ${from} cannot move to ${to}, which is outside the fix-proof kinds`;
   }
   if (to !== "test-only" || from === "test-only") return undefined;
-  if (!TEST_ONLY_GATED) return `kind ${from} cannot move to test-only yet: the fix-proof gate does not read test-only diffs`;
   return testOnlyMoveRefusal(from, diff);
 }

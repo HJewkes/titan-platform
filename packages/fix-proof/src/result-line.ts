@@ -25,6 +25,17 @@ export interface FixProofResult {
 
 export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: false; error: string };
 
+/**
+ * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
+ * code on both sides, so it reads vacuous at best; it is proved when every declared mutation is killed and every selected
+ * test ran and passed at head. A surviving mutation, a failing or unrun test, or a mutants error proves nothing.
+ */
+export function provedByMutants(result: FixProofResult): boolean {
+  const { counts } = result;
+  const headPasses = counts["passes-on-base"] > 0 && counts["fails-on-head"] === 0 && counts["not-run"] === 0;
+  return result.verdict === "vacuous" && result.mutants?.verdict === "killed" && headPasses;
+}
+
 /** Joins a plan and its classification into the result a runner prints for head. */
 export function toResult(args: { head: string; mergeBase: string; plan: FixProofPlan; classification: Classification }): FixProofResult {
   const { classification, plan } = args;

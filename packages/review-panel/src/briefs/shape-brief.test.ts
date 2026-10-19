@@ -78,6 +78,29 @@ describe("the tests brief and fix-proof", () => {
     expect(brief).toMatch(/blocking/);
   });
 
+  describe("on a test-only diff with a mutation check", () => {
+    const testOnly = (verdict: "killed" | "not-killed") =>
+      fixProof({
+        verdict: "vacuous",
+        counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
+        tests: [],
+        mutants: { verdict, results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: verdict === "killed" ? "killed" : "survived" }] },
+      });
+
+    it("reads a vacuous proof whose mutations are all killed as proved, not blocking", () => {
+      const brief = shapeBrief("tests", { ...target, fixProof: testOnly("killed") });
+
+      expect(brief).toContain("every mutation its specs declare made the tests it names fail");
+      expect(brief).not.toContain("none proves the change");
+    });
+
+    it("keeps a vacuous proof with a surviving mutation blocking", () => {
+      const brief = shapeBrief("tests", { ...target, fixProof: testOnly("not-killed") });
+
+      expect(brief).toMatch(/none proves the change. That is blocking/);
+    });
+  });
+
   it("reads a padded fix-proof/v1 line the way aggregate does", () => {
     const brief = shapeBrief("tests", { ...target, fixProof: `  ${fixProof()}\n` });
 
