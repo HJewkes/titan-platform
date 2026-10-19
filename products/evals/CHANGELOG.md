@@ -1,5 +1,13 @@
 # @titan-design/evals
 
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [27f8d12]
+  - @titan-design/review-panel@0.7.0
+  - @titan-design/session-analytics@0.17.2
+
 ## 0.5.2
 
 ### Patch Changes

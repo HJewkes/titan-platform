@@ -1,5 +1,12 @@
 # @titan-design/session-analytics
 
+## 0.17.2
+
+### Patch Changes
+
+- Updated dependencies [27f8d12]
+  - @titan-design/review-panel@0.7.0
+
 ## 0.17.1
 
 ### Patch Changes
