@@ -37,7 +37,7 @@ export function ConfigPage(): ReactNode {
   const surfaces = useQuery("config.surfaces");
   const drift = useQuery("config.drift");
   return (
-    <VStack gap={6} className="px-inset-md">
+    <VStack gap={6}>
       {drift.status === "loading" ? (
         <Spinner size="sm" label="Loading drift" />
       ) : drift.data === undefined ? (
