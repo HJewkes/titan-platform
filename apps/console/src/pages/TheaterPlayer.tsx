@@ -5,7 +5,8 @@ import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { ScrubMarkers } from "./ScrubMarkers.js";
 import { TheaterComment, formatAt } from "./TheaterComment.js";
-import { VERDICT_LABELS, VideoBadges, type VideoRow } from "./TheaterPage.js";
+import { VERDICT_LABELS, VideoBadges } from "./TheaterFeed.js";
+import type { VideoRow } from "./theater-feed.js";
 
 type Note = ConsoleCommands["videos.notes"]["result"]["notes"][number];
 type Seek = (seconds: number) => void;

@@ -415,6 +415,21 @@ A file under a `copies` or `intermediate` folder whose size and sha256 of its fi
 match another listed video folds into that video, whose `copies` counts it. Identical files
 outside those folders never fold. A folded copy's id still resolves on the media routes.
 
+### The feed
+
+`#/theater` sections the renders by day in the reader's own timezone (Today, Yesterday, a
+weekday within the week, then the date), newest first, each header counting its videos and their
+run time. A row shows the title, one purpose pill, at most one flag (Old take, else Phone for a
+portrait render), the verdict and note pills, and a byline. The purpose is the sidecar's
+`purpose`, else a tag naming one, else `clip` under 10 seconds, else `repo-review` or `daily`
+from the `subject` or series, else Other (`purposeOf()` in `src/pages/theater-feed.ts`). Its
+colour is only the dot beside the label, from the dataviz categorical hues.
+
+The state lives in the hash, so a filtered feed is a link: `?q=` searches the title, description,
+series, folder, subject and tags; `?tag=<purpose>` narrows to one purpose chip; `?old=1` shows
+superseded takes. Without a search or a chip, clips wait behind their chip and each day header
+links to its own.
+
 ## The approvals flow
 
 `approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
