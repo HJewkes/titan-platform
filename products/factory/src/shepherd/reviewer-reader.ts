@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
-import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
+import { isDeepStrictEqual } from "node:util";
+import { inSessionSourceOrder, assistantTextFinality, claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation, type SessionSourceDescriptor } from "@titan-design/session-read";
 import { DamagedTranscriptError, type SeatReader } from "./external-review.js";
 import type { Presence } from "./presence.js";
 import { isInvestigativeCall, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage } from "@titan-design/review-panel";
@@ -18,16 +19,24 @@ export interface TranscriptReviewerReaderOptions {
   roster: () => Promise<readonly TranscriptRow[]>;
   /** Names the machine in every locator; defaults to the hostname, as session-miner does. */
   namespace?: string;
+  /** Explicit source mapping only; absence retains legacy Claude path reading. No discovery or provider inference. */
+  sourceFor?: (row: Readonly<TranscriptRow>) => SessionSourceDescriptor;
+}
+
+/** Resolve one caller-declared source, copied before awaits; mismatch rejects without fallback. */
+function declaredSource(row: SeatRow, namespace: string, sourceFor: TranscriptReviewerReaderOptions["sourceFor"]): SessionSourceDescriptor | undefined {
+  if (sourceFor === undefined) return undefined;
+  const source = structuredClone(sourceFor(Object.freeze({ ...row })));
+  if (source.path !== row.transcriptPath || source.namespace !== namespace ||
+      source.conversation.namespace !== namespace || source.conversation.nativeId !== row.sessionId ||
+      source.conversation.harness !== source.harness) {
+    throw new TypeError("reviewer source descriptor does not match the roster session/path/namespace");
+  }
+  return source;
 }
 
 /** Only `exited` is a finished session; a `detached` process may still be writing its turn. */
 const FINISHED: Presence = "exited";
-
-/** Where the last assistant text sits: the byte offset of its record and its index in that record's content. */
-interface FinalText {
-  line: number;
-  part: number;
-}
 
 const writtenAt = (observation: NormalizedSessionObservation) => (observation.timestamp === null ? Number.NaN : Date.parse(observation.timestamp));
 
@@ -65,29 +74,10 @@ export function sentMessages(agentId: string, observation: NormalizedSessionObse
   return [{ agentId, sessionId: observation.conversation.nativeId, writtenAt: writtenAt(observation), text, locator }];
 }
 
-/** The index under `message.content` a path points into, or -1 when it points elsewhere in the record. */
-function contentIndex(path: readonly (string | number)[]): number {
-  return path[0] === "message" && path[1] === "content" && typeof path[2] === "number" ? path[2] : -1;
-}
-
 /** The text of a user message written in this conversation, or null for any other observation. */
 function userText(observation: NormalizedSessionObservation): string | null {
   if (observation.kind !== "message" || observation.role !== "user" || observation.historyOrigin !== null) return null;
   return observation.content.map((part) => part.text).join("\n");
-}
-
-/** Records that are not part of the conversation: titles, hook summaries and the like. An unknown kind is not one of them. */
-function isBookkeeping(observation: NormalizedSessionObservation): boolean {
-  if (observation.kind === "metadata") return !observation.entries.some((entry) => entry.name === "model");
-  if (observation.kind !== "unknown") return false;
-  return !observation.nativeKind.startsWith("claude.content.") && !observation.nativeKind.startsWith("claude.message.");
-}
-
-/** True when the observation shows the conversation went on after the last assistant text. */
-function continuesPast(final: FinalText, observation: NormalizedSessionObservation): boolean {
-  const { line, subrecord } = observation.evidence;
-  if (line.byteOffset === final.line) return contentIndex(subrecord.path) > final.part;
-  return !isBookkeeping(observation);
 }
 
 /**
@@ -97,14 +87,16 @@ function continuesPast(final: FinalText, observation: NormalizedSessionObservati
  */
 export function finishedTurnMessages(agentId: string) {
   const messages: ReviewerMessage[] = [];
-  let final: FinalText | null = null;
-  let continued = false;
+  const finality = assistantTextFinality();
+  // A valid sent verdict continues the product conversation even before text on the same native record.
+  let sentSinceText = false;
   let investigativeCalls = 0;
   // The decoder emits a record's metadata just before its message, so a mark applies to messages on the same line only.
   let client: { line: number; synthetic: ReviewerMessage["synthetic"] } | undefined;
   const stamped = (found: ReviewerMessage[]) => found.map((message) => ({ ...message, investigativeCalls }));
   return {
     add(observation: NormalizedSessionObservation): void {
+      finality.add(observation);
       if (isInvestigativeCall(observation)) investigativeCalls += 1;
       const line = observation.evidence.line.byteOffset;
       const marked = syntheticOf(observation);
@@ -113,15 +105,11 @@ export function finishedTurnMessages(agentId: string) {
       const sent = stamped(sentMessages(agentId, observation));
       messages.push(...sent);
       const found = stamped(reviewerMessages(agentId, observation, client?.line === line ? client.synthetic : undefined));
-      if (found.length === 0) {
-        continued ||= sent.length > 0 || (final !== null && continuesPast(final, observation));
-        return;
-      }
+      if (found.length > 0) sentSinceText = false;
+      if (sent.length > 0) sentSinceText = true;
       messages.push(...found);
-      final = { line: observation.evidence.line.byteOffset, part: contentIndex(found.at(-1)!.locator.selector.path) };
-      continued = false;
     },
-    result: (): readonly ReviewerMessage[] => (continued ? [] : messages),
+    result: (): readonly ReviewerMessage[] => (finality.hasFinalText() && !sentSinceText ? messages : []),
   };
 }
 
@@ -146,14 +134,15 @@ interface Scan {
   whole: boolean;
 }
 
-async function scanTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<Scan> {
+async function scanTranscript(agentId: string, transcriptPath: string, namespace: string, declared?: SessionSourceDescriptor): Promise<Scan> {
   const turn = finishedTurnMessages(agentId);
   const sent: ReviewerMessage[] = [];
   const written: ReviewerMessage[] = [];
   let brief: string | null = null;
   let consumedBytes = -1;
-  const source = claudeSourceFromPath(transcriptPath, namespace);
-  for await (const observation of readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset))) {
+  const source = declared ?? claudeSourceFromPath(transcriptPath, namespace);
+  const observations = readSessionObservations(source, {}, (done) => (consumedBytes = done.resumeBoundary.byteOffset));
+  for await (const observation of inSessionSourceOrder(source, observations)) {
     turn.add(observation);
     const sentHere = sentMessages(agentId, observation);
     sent.push(...sentHere);
@@ -164,8 +153,8 @@ async function scanTranscript(agentId: string, transcriptPath: string, namespace
 }
 
 /** Reads every complete record; none when the file holds bytes past the last one, because a later record is still being written. */
-async function readWholeTranscript(agentId: string, transcriptPath: string, namespace: string): Promise<readonly ReviewerMessage[]> {
-  const scan = await scanTranscript(agentId, transcriptPath, namespace);
+async function readWholeTranscript(agentId: string, transcriptPath: string, namespace: string, declared?: SessionSourceDescriptor): Promise<readonly ReviewerMessage[]> {
+  const scan = await scanTranscript(agentId, transcriptPath, namespace, declared);
   return scan.whole ? scan.finished : [];
 }
 
@@ -176,8 +165,8 @@ const RUNNING: ReadonlySet<Presence> = new Set<Presence>(["live", "exiting"]);
  * A process that died mid-turn never writes its final text, so its sent messages count on their own. A partial last
  * record is a write in progress only while the reviewer runs; once it has exited or detached, it is damage, and rejects with what the complete records said and the brief.
  */
-async function readSeatTranscript(row: SeatRow, namespace: string): Promise<readonly ReviewerMessage[]> {
-  const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace);
+async function readSeatTranscript(row: SeatRow, namespace: string, declared?: SessionSourceDescriptor): Promise<readonly ReviewerMessage[]> {
+  const scan = await scanTranscript(row.agentId, row.transcriptPath, namespace, declared);
   if (!scan.whole && !RUNNING.has(row.presence)) {
     throw new DamagedTranscriptError(`the ${row.presence} session ${row.sessionId} ends in a partial record`, scan.written, scan.brief);
   }
@@ -212,15 +201,17 @@ interface SeatCache {
 }
 
 /** Reads each seat transcript once until its signature changes; a damaged read is cached as the same rejection, any other failure is retried. */
-function cachedSeatReader(namespace: string): SeatCache {
-  const cache = new Map<string, { signature: string; result: Promise<readonly ReviewerMessage[]> }>();
+function cachedSeatReader(namespace: string, sourceFor: TranscriptReviewerReaderOptions["sourceFor"]): SeatCache {
+  const cache = new Map<string, { signature: string; source: SessionSourceDescriptor | undefined; result: Promise<readonly ReviewerMessage[]> }>();
   const read = async (row: SeatRow) => {
+    const source = declaredSource(row, namespace, sourceFor);
     const signature = await seatSignature(row);
-    if (signature === null) return readSeatTranscript(row, namespace);
+    if (signature === null) return readSeatTranscript(row, namespace, source);
     const hit = cache.get(row.transcriptPath);
-    if (hit?.signature === signature) return hit.result;
-    const result = readSeatTranscript(row, namespace);
-    cache.set(row.transcriptPath, { signature, result });
+    if (hit?.signature === signature && isDeepStrictEqual(hit.source, source)) return hit.result;
+    const result = readSeatTranscript(row, namespace, source);
+    // Locator sources are public mutable values; the cache identity must never alias them.
+    cache.set(row.transcriptPath, { signature, source: source === undefined ? undefined : structuredClone(source), result });
     result.catch((error: unknown) => {
       if (!(error instanceof DamagedTranscriptError) && cache.get(row.transcriptPath)?.result === result) cache.delete(row.transcriptPath);
     });
@@ -257,13 +248,13 @@ function heldTranscriptRows(held: readonly ReviewerAgent[] | undefined, input: A
 /** Reads the dispatched reviewer's own finished transcript; a read error propagates, and the caller treats it as nothing yet. */
 export function transcriptReviewerReader(options: TranscriptReviewerReaderOptions): SeatReader {
   const namespace = options.namespace ?? os.hostname();
-  const seats = cachedSeatReader(namespace);
+  const seats = cachedSeatReader(namespace, options.sourceFor);
   return {
     async read(input) {
       const rows = await options.roster();
       seats.retain(rows);
       const row = finishedTranscript(rows, input);
-      return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace) : [];
+      return row ? readWholeTranscript(row.agentId, row.transcriptPath, namespace, declaredSource(row, namespace, options.sourceFor)) : [];
     },
     async readSeat(input, held) {
       const rows = heldTranscriptRows(held, input) ?? (await options.roster());
