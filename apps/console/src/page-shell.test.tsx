@@ -6,6 +6,8 @@ import { staticSource, type Snapshot } from "@titan-design/rpc-client";
 import { TWIN_ROUTES } from "../server/twin/routes.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
+import { parseRoute } from "./router.js";
+import { viewFor } from "./views.js";
 
 let snapshot: Snapshot;
 
@@ -36,6 +38,13 @@ async function renderAt(hash: string): Promise<void> {
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 }
 
+const LIST_ROUTES = TWIN_ROUTES.filter(({ hash }) => parseRoute(hash).id === undefined);
+
+/** Headings of any level under `root` that read exactly `text`; a stat tile labelled with the same word is no title. */
+function headingsReading(root: HTMLElement, text: string): Element[] {
+  return [...root.querySelectorAll("h1, h2, h3, h4, h5, h6, [role=heading]")].filter((heading) => heading.textContent === text);
+}
+
 /** Text the shell draws around the routed view, so whatever is left belongs to the view. */
 function textOutsideMain(main: HTMLElement): string {
   return [...(main.parentElement?.children ?? [])]
@@ -58,6 +67,13 @@ describe("the page shell", () => {
     await renderAt("#/rounds");
 
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Review rounds");
+  });
+
+  it.each(LIST_ROUTES)("titles $name once", async ({ hash }) => {
+    await renderAt(hash);
+
+    const title = viewFor(parseRoute(hash).view).title;
+    expect(headingsReading(screen.getByRole("main"), title)).toHaveLength(1);
   });
 
   it("leaves a detail view's title to the view, under its own trail", async () => {
