@@ -7,7 +7,7 @@ import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
-import { OWNER_PACKET_FILES } from "./registration-hold.js";
+import { OWNER_PACKET_FILES } from "./signoffs.js";
 import { narrowToRegistration } from "./registration-policy.js";
 import { separateLineages, type LineageRow } from "./reviewer-lineage.js";
 import type { ShepherdStore } from "./store.js";
