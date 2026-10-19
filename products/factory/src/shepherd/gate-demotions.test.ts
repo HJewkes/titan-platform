@@ -105,6 +105,30 @@ describe("D2: a visual-path head merges without the owner only on the guard", ()
 const GATE2: EffectivePolicy = { merge: "owner-gate", ownerGateReason: "gate-2-visual", mergeMethod: "squash", fixer: true, seat: "design-seat", visualPaths: VISUAL_PATHS };
 const mergeAt = (evidence: MergeEvidence): ((headSha: string) => Verdict) => () => ({ kind: "MERGE", headSha: HEAD, evidence });
 
+const SEAT_BASELINE: PrFile = { path: "packages/ui/baseline/button.svg", status: "modified" };
+const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "design-seat", visualPaths: VISUAL_PATHS, baselinePaths: ["packages/ui/baseline/**"] };
+
+describe("D2: the seat's own baseline globs", () => {
+  it("lets the guard pass a story-only head under a seat that declares baselines", async () => {
+    const evidence = await evidenceFor(STORY);
+
+    expect(shepherdGatePolicy(AUTO, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  });
+
+  it("keeps the visual-path gate under auto when the head changes a seat baseline outside the built-in globs", async () => {
+    const evidence = await evidenceFor([...STORY, SEAT_BASELINE]);
+
+    expect(shepherdGatePolicy(AUTO, mergeAt(evidence)).decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" } });
+  });
+
+  it("waits for the owner on a gate-2-visual registration when the head changes a seat baseline outside the built-in globs", async () => {
+    const evidence = await evidenceFor([...STORY, SEAT_BASELINE]);
+    const gate2 = { ...GATE2, baselinePaths: ["packages/ui/baseline/**"] };
+
+    expect(shepherdGatePolicy(gate2, mergeAt(evidence)).decide("merge", { headSha: HEAD }).outcome).toBe("gate");
+  });
+});
+
 describe("D2: a gate-2-visual registration", () => {
   it("merges without the owner when the guard holds at the head, naming the registration in the reason", async () => {
     const evidence = await evidenceFor([{ path: "packages/ui/src/Button.test.tsx", status: "modified" }]);
