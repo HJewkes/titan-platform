@@ -3,6 +3,7 @@ import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
 import { useRelayInvalidation } from "./data/live.js";
 import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
+import { Page } from "./pages/PageShell.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
 import { NAV_ITEMS, viewFor } from "./views.js";
@@ -22,7 +23,7 @@ export function App(): ReactNode {
       onNavigate={navigate}
     >
       <StaleLine />
-      <Page route={route} />
+      <RoutedView route={route} />
     </AppShell>
   );
 }
@@ -30,10 +31,19 @@ export function App(): ReactNode {
 function StaleLine(): ReactNode {
   const since = useStaleSince();
   if (since === null) return null;
-  return <Alert status="warning" message={`Live updates are off. Data may be old since ${since.toLocaleTimeString()}.`} />;
+  return (
+    <div className="px-gutter-sm pt-gutter-sm sm:px-gutter-md sm:pt-gutter-md">
+      <Alert status="warning" message={`Live updates are off. Data may be old since ${since.toLocaleTimeString()}.`} />
+    </div>
+  );
 }
 
-function Page({ route }: { route: Route }): ReactNode {
+function RoutedView({ route }: { route: Route }): ReactNode {
   const Registered = PAGES[route.view];
-  return Registered ? <Registered route={route} /> : <PlaceholderPage view={viewFor(route.view)} />;
+  if (Registered) return <Registered route={route} />;
+  return (
+    <Page maxWidth="narrow">
+      <PlaceholderPage view={viewFor(route.view)} />
+    </Page>
+  );
 }
