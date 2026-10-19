@@ -27,7 +27,7 @@ import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 import { supersedeStaleReviews } from "./stale-reviews.js";
-import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
+import type { ReadTimer } from "./bounded.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -1256,19 +1256,43 @@ describe("resyncShepherd on an active review step", () => {
 });
 
 describe("resyncShepherd over many runs", () => {
+  /**
+   * A read timer fired by hand, so no clock moves. The fakes answer in microtasks, so a deadline still armed after a full
+   * event-loop turn belongs to a read that never answers; global fake timers would also capture the seed's gate polls.
+   */
+  function handTimer(): { timer: ReadTimer; fireAfterTurn: () => Promise<void>; fired: () => number } {
+    const armed = new Set<() => void>();
+    let fired = 0;
+    const timer: ReadTimer = (onTimeout) => {
+      armed.add(onTimeout);
+      return () => armed.delete(onTimeout);
+    };
+    const fireAfterTurn = async (): Promise<void> => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      for (const onTimeout of [...armed]) {
+        armed.delete(onTimeout);
+        fired++;
+        onTimeout();
+      }
+    };
+    return { timer, fireAfterTurn, fired: () => fired };
+  }
+
   it("a PR read that never answers holds its run and the other runs in the phase still end", async () => {
     const w = world();
     const runs = [await gatedRun(w, 1), await gatedRun(w, 2)];
     [1, 2].forEach((pr) => merge(w.fake, pr));
     const services = w.routes.shepherd!;
-    const hanging = { ...services, port: { ...services.port, getPr: (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr)) } };
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    let settled = false;
+    const deadlines = handTimer();
+    const getPr = (repo: string, pr: number) => (pr === 1 ? new Promise<never>(() => undefined) : services.port.getPr(repo, pr));
+    const hanging = { ...services, port: { ...services.port, getPr }, readTimer: deadlines.timer };
+    const resync = { settled: false };
 
-    const resyncing = resyncShepherd(w.seed, hanging).finally(() => (settled = true));
-    for (let phase = 0; phase < 4; phase++) await vi.advanceTimersByTimeAsync(RESYNC_READ_TIMEOUT_MS);
+    const resyncing = resyncShepherd(w.seed, hanging).finally(() => (resync.settled = true));
+    for (let turn = 0; turn < 20 && !resync.settled; turn++) await deadlines.fireAfterTurn();
 
-    expect(settled).toBe(true);
+    expect(resync.settled).toBe(true);
+    expect(deadlines.fired()).toBeGreaterThan(0);
     const report = await resyncing;
     expect(report.held).toEqual([runs[0]]);
     expect(report.ended).toEqual([{ runId: runs[1], reason: `${LANDED_ELSEWHERE}${REPO}#2 was merged outside Shepherd` }]);
