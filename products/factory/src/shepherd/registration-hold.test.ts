@@ -105,7 +105,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     },
   );
 
-  it.each(["src/leak-guard/scan.test.ts", "src/broker/host-directory.test.ts"])("leaves a test file %s of an agent-chat security path unheld", async (path) => {
+  it.each(["src/leak-guard/scan.test.ts", "src/broker/host-directory.test.ts", "apps/console/server/owner-tap.test.ts", "products/factory/src/shepherd/owner-release.test.ts"])("leaves a test file %s of an agent-chat security path unheld", async (path) => {
     const r = rig([file(path, 10)]);
 
     expect(await holdOf(r)).toBeUndefined();
@@ -128,6 +128,10 @@ describe("the G10 hold Shepherd places at registration", () => {
     ["profiles/bd-reviewer.json", "security"],
     ["src/agents/profiles.ts", "security"],
     ["src/agents/profile-baseline.ts", "security"],
+    ["apps/console/server/owner-tap-kernel.ts", "policy"],
+    ["apps/console/server/inbox-actions-render.ts", "policy"],
+    ["products/factory/src/shepherd/owner-release-proof.ts", "policy"],
+    ["products/factory/src/owner-release-cli.ts", "policy"],
   ])("holds an owner-action or agent profile path %s g10-adversary", async (path, touch) => {
     const r = rig([file(path, 10)]);
 
