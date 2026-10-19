@@ -1,11 +1,10 @@
 import { classifyReports, type Classification } from "./classify.js";
-import { errorLine, git, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
+import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
-import { compileGlobs } from "./glob.js";
-import { classifyMutants, mutantsError, testFileOfSpec, type MutantsResult, type SpecUnderTest } from "./mutant-classify.js";
-import { checkMutation, parseMutationSpec, type MutationSpec } from "./mutation.js";
+import { classifyMutants, mutantsError, type MutantsResult } from "./mutant-classify.js";
 import { testOnlyOf, type FixProofPlan } from "./plan.js";
 import { formatResultLine, toResult } from "./result-line.js";
+import { readSpecs, SpecError } from "./spec-read.js";
 import { decodeMutantsReport, decodeReport, type DecodedReport } from "./transport.js";
 
 /** Git calls only, so a short budget; the judge's CI job allows 8 minutes. */
@@ -33,7 +32,6 @@ export interface JudgeOptions {
 }
 
 class ReportError extends Error {}
-class SpecError extends Error {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -66,43 +64,9 @@ function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classificat
   }
 }
 
-// A blob that is not a regular file (a symlink or a gitlink) reads as missing, so a mutation never writes through one.
-async function readBlob(ctx: Context, sha: string, file: string): Promise<string | null> {
-  const listed = await git(ctx, ["ls-tree", sha, "--", file], `listing ${file}`);
-  if (!/^100(?:644|755) blob /.test(listed)) return null;
-  return git(ctx, ["show", `${sha}:${file}`], `reading ${file}`);
-}
-
-async function headFilesBeside(ctx: Context, head: string, spec: string): Promise<string[]> {
-  const dir = spec.includes("/") ? spec.slice(0, spec.lastIndexOf("/")) : "";
-  const pathspec = dir === "" ? [] : ["--", dir];
-  return (await git(ctx, ["ls-tree", "-r", "--name-only", head, ...pathspec], "listing the spec's directory")).split("\n").filter(Boolean);
-}
-
-async function readSpecAtHead(ctx: Context, head: string, path: string): Promise<MutationSpec> {
-  const text = await readBlob(ctx, head, path);
-  if (text === null) throw new SpecError(`${path}: not a regular file at head`);
-  const parsed = parseMutationSpec(text);
-  if (!parsed.ok) throw new SpecError(`${path}: ${parsed.error}`);
-  return parsed.spec;
-}
-
-async function readSpec(ctx: Context, plan: FixProofPlan, shas: Shas, path: string): Promise<SpecUnderTest> {
-  const spec = await readSpecAtHead(ctx, shas.head, path);
-  const testFile = testFileOfSpec(path, await headFilesBeside(ctx, shas.head, path), compileGlobs(plan.config.tests));
-  if (testFile === null) throw new SpecError(`${path}: no single test file sits beside it`);
-  for (const mutation of spec.mutations) {
-    const checked = checkMutation(mutation, await readBlob(ctx, shas.base, mutation.file), plan.config);
-    if (!checked.ok) throw new SpecError(`${path}: ${checked.error}`);
-  }
-  return { path, testFile, mutations: spec.mutations };
-}
-
 async function judgeMutants(ctx: Context, plan: FixProofPlan, shas: Shas, encoded: string | undefined): Promise<MutantsResult> {
   try {
-    const specs: SpecUnderTest[] = [];
-    for (const path of plan.mutations) specs.push(await readSpec(ctx, plan, shas, path));
-    return classifyMutants(specs, decodeMutantsReport(encoded));
+    return classifyMutants(await readSpecs(ctx, plan, shas), decodeMutantsReport(encoded));
   } catch (error) {
     if (!(error instanceof SpecError || error instanceof RunError)) throw error;
     return mutantsError(error.message);

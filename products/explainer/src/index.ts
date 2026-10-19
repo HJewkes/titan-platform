@@ -219,6 +219,18 @@ export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
+export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
+export {
+  VisualRouterSchema,
+  findVisualType,
+  loadVisualRouter,
+  renderRoutingTable,
+  shippedVisualRouter,
+  visualCard,
+  type VisualCard,
+  type VisualRouter,
+  type VisualType,
+} from "./visual-router.js";
 export { maskEntities, repoEntities } from "./lint-text.js";
 export {
   DEFAULT_RULES_PATH,
@@ -252,6 +264,7 @@ export {
 } from "./doctrine-schema.js";
 export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine-load.js";
 export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
+export { findPromptLeaks, sliceForStage, type PromptLeak, type StageRequest, type StageSlice } from "./doctrine-slice.js";
 export {
   EvidenceSpanSchema,
   ExplainerFactSchema,

@@ -129,6 +129,27 @@ describe("buildSpawnArgs", () => {
   });
 });
 
+describe("buildSpawnArgs launchedBy", () => {
+  it("leaves a caller that does not opt in with exactly the argv it had before the option", () => {
+    expect(buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, briefing: "relay", configDir: "/cfg" })).toEqual([
+      "agent", "spawn", "agent-x", DISPATCH_PROFILE, "--briefing", "relay", "--config-dir", "/cfg", "--brief-stdin",
+    ]);
+  });
+
+  it("records a Shepherd launch, with its reason, and never as --spawned-as", () => {
+    const args = buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, launchedBy: "shepherd", launchReason: "wake" });
+
+    expect(args).toEqual(["agent", "spawn", "agent-x", DISPATCH_PROFILE, "--launched-by", "shepherd", "--launch-reason", "wake", "--brief-stdin"]);
+    expect(args).not.toContain("--spawned-as");
+  });
+
+  it("sends no reason without a launcher", () => {
+    expect(buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, launchReason: "wake" })).toEqual([
+      "agent", "spawn", "agent-x", DISPATCH_PROFILE, "--brief-stdin",
+    ]);
+  });
+});
+
 describe("dispatchToAgentChat", () => {
   it("invokes the CLI with the spawn argv, in the initiative's directory", async () => {
     const bin = fakeAgentChat();

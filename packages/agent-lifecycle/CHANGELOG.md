@@ -1,5 +1,25 @@
 # @titan-design/agent-lifecycle
 
+## 0.1.9
+
+### Patch Changes
+
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+
+## 0.1.8
+
+### Patch Changes
+
+- f4bd7c6: `listRecoverable` selects with `phase IN` the non-terminal phases instead of `phase NOT IN` the terminal ones, so SQLite uses the `agent_execution_phase` index rather than scanning every finished execution.
+- Updated dependencies [a79cffd]
+  - @titan-design/agent-protocol@0.8.0
+
 ## 0.1.7
 
 ### Patch Changes

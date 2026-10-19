@@ -11,7 +11,7 @@ import { EXIT, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_FRAME_BYTES, frameIndex, getFrame, roundFramesCommands } from "./round-frames.js";
+import { MAX_FRAME_BYTES, frameIndex, getFrame, listFrames, roundFramesCommands } from "./round-frames.js";
 import { closedPort, send, sessionCookie, writeSelfSignedCert, type Reply, type SelfSignedPair } from "./test-support.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8 as a remote host.
@@ -96,9 +96,9 @@ describe("rounds.frame reads a listed frame", () => {
     const { entries } = await frameIndex(round);
     const story = await frameIndex(path.join(dir, "lantern-cards-r1"));
 
-    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light" });
+    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true });
     expect(entries.get("panel-wide")?.files).toEqual({ head: "images/panel-wide.png", base: "base/panel-wide.png" });
-    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" } });
+    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false });
     expect(story.entries.size).toBe(0);
   });
 });
@@ -130,14 +130,40 @@ describe("rounds.frames", () => {
     expect(envelope).toEqual({
       ok: true,
       data: {
+        indexed: true,
         frames: [
-          { key: "tile-light", theme: "light", views: ["head", "base", "diff"] },
-          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"] },
-          { key: "panel-wide", theme: "light", views: ["head", "base"] },
-          { key: "badge-new", views: ["head"] },
+          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true },
+          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true },
+          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true },
+          { key: "badge-new", views: ["head"], indexed: false },
         ],
       },
     });
+  });
+});
+
+describe("a design round's frames", () => {
+  const DESIGN = "beacon-states-r1";
+
+  it("lists every key frames.json names as indexed, and no frame for a story variant it does not", async () => {
+    const { indexed, frames } = await listFrames({ dir }, DESIGN);
+
+    expect(indexed).toBe(true);
+    expect(frames.map((listed) => [listed.key, listed.indexed])).toEqual([["beacon-idle", true], ["beacon-busy", true], ["beacon-error", true], ["beacon-muted", true]]);
+  });
+
+  it("refuses a section's key that frames.json does not list", async () => {
+    await expectRefused(frame("beacon-sketch", "head", DESIGN), /lists no head view of "beacon-sketch"/);
+  });
+
+  it("says a design round has no frames.json", async () => {
+    expect(await listFrames({ dir }, "lantern-cards-r1")).toEqual({ indexed: false, frames: [] });
+  });
+
+  it("refuses the listing when frames.json is not a frames@1 index", async () => {
+    await writeFile(path.join(dir, DESIGN, "frames", "frames.json"), JSON.stringify({ schema: "titan-review/frames@0", frames: [] }));
+
+    await expectRefused(listFrames({ dir }, DESIGN), /not a frames@1 index/);
   });
 });
 

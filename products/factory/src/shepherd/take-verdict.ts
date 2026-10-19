@@ -37,9 +37,9 @@ export const asksOwnerBrief = (ctx: WorkflowContext): boolean => {
   const policy = effectivePolicy(ctx);
   return policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
 };
-/** The grant follows the run policy alone; a withheld one names its policy (TP-2658), and an unverified proof is only recorded. */
+/** The grant follows the run policy and an owner's proof waiver; a withheld one names which (TP-2658), and an unverified proof is only recorded. */
 function seatGrants(ctx: WorkflowContext, standing: ProofStanding): Pick<MergeEvidenceInput, "seatGrants" | "grantWithheld" | "proofUnverified"> {
-  const grantWithheld = grantWithheldOf(effectivePolicy(ctx).merge);
+  const grantWithheld = grantWithheldOf(effectivePolicy(ctx).merge, standing);
   const proofUnverified = proofUnverifiedOf(standing);
   return { ...(grantWithheld ? { seatGrants: [], grantWithheld } : { seatGrants: [MERGE_ON_GREEN_GRANT] }), ...(proofUnverified !== undefined && { proofUnverified }) };
 }

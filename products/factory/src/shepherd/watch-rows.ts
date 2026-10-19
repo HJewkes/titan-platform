@@ -1,6 +1,7 @@
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { sliceClock } from "../loop-slice.js";
+import type { RepoFreeze } from "./repo-freeze.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 import { watchRow, type WatchRow } from "./view.js";
@@ -9,7 +10,18 @@ import { watchRow, type WatchRow } from "./view.js";
 export function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun, pendingGates: readonly PendingGate[] = host.pendingGates()): WatchRow {
   const pending = pendingGates.find((gate) => gate.runId === run.id);
   const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
+  const row = watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
+  const frozen = repoFreezeOf(services, registration.repo);
+  return frozen ? { ...row, repoFrozen: frozen } : row;
+}
+
+/** A freeze store the host has not bound reads as no freeze, so the watch list still answers. */
+function repoFreezeOf(services: ShepherdServices, repo: string): RepoFreeze | undefined {
+  try {
+    return services.freeze?.get().repoFreezes.get(repo);
+  } catch {
+    return undefined;
+  }
 }
 
 const FINISHED_RUN: ReadonlySet<WorkflowStatus> = new Set(["completed", "failed", "cancelled"]);
@@ -31,19 +43,23 @@ type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean
  * Only the runs `keep` wants are loaded, since every run's step results together take most of a second to parse, and
  * the loop yields the event loop between slices so serve keeps answering while it reads.
  */
-export async function rowsWithRuns(host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<RowWithRun[]> {
+export const rowsWithRuns = (host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<RowWithRun[]> =>
+  mapRows(host, services, keep, (found) => found);
+
+/** As `rowsWithRuns`, but each run is reduced by `build` as it is read, so a caller that keeps less than the run holds no run past its turn. */
+export async function mapRows<T>(host: FactoryHost, services: ShepherdServices, keep: RowFilter, build: (found: RowWithRun) => T): Promise<T[]> {
   const pause = sliceClock();
   const statuses = host.runs.statuses();
   const pendingGates = host.pendingGates();
-  const found: RowWithRun[] = [];
+  const built: T[] = [];
   for (const registration of services.store.get().all()) {
     const status = statuses.get(registration.runId);
     if (status === undefined || !keep(registration, status)) continue;
     await pause();
     const run = host.runtime.status(registration.runId);
-    if (run) found.push({ row: rowOf(host, services, registration, run, pendingGates), run, registration });
+    if (run) built.push(build({ row: rowOf(host, services, registration, run, pendingGates), run, registration }));
   }
-  return found;
+  return built;
 }
 
 export const watchRows = async (host: FactoryHost, services: ShepherdServices, keep?: RowFilter): Promise<WatchRow[]> => (await rowsWithRuns(host, services, keep)).map(({ row }) => row);

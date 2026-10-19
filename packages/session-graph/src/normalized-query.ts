@@ -1,5 +1,6 @@
 import { contentHash, prefixHash } from "@titan-design/locator";
 import type { UsageMeasurement } from "@titan-design/agent-protocol";
+import type { HarnessSourcePort } from "@titan-design/agent-protocol/harness";
 import { expandHome, readSessionSourceText, readSessionText, SessionUsageAccumulator, type SessionUsageSummary, type SourceTextLocator, type SessionSourceDescriptor, type SpanField } from "@titan-design/session-read";
 import { hasTable } from "@titan-design/store-sqlite";
 import os from "node:os";
@@ -7,13 +8,21 @@ import type { SessionGraph } from "./graph.js";
 import { stripInjected } from "./injected-text.js";
 
 export interface IndexedSpan { sourceId: number; byteOffset: number; byteLength: number; field: string; spanId?: number }
+export interface ReadIndexedTextOptions {
+  homeDir?: string;
+  /** An explicit port never falls back to a native reader, including for legacy spans without normalized locators. */
+  sourcePort?: Pick<HarnessSourcePort, "capabilities" | "readText">;
+}
+
 /** One resolver for search and error clustering; never display a raw JSON line. */
-export async function readIndexedText(graph: SessionGraph, span: IndexedSpan, options: { homeDir?: string } = {}): Promise<string | null> {
-  const text = await readSourceText(graph, span, options.homeDir ?? os.homedir());
+export async function readIndexedText(graph: SessionGraph, span: IndexedSpan, options: ReadIndexedTextOptions = {}): Promise<string | null> {
+  const sourcePort = options.sourcePort;
+  if (sourcePort && sourcePort.capabilities.text.status !== "supported") return null;
+  const text = await readSourceText(graph, span, options.homeDir ?? os.homedir(), sourcePort);
   return text !== null && span.field === "prompt" ? stripInjected(text) : text;
 }
 
-async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: string): Promise<string | null> {
+async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: string, sourcePort?: ReadIndexedTextOptions["sourcePort"]): Promise<string | null> {
   const row = !hasTable(graph.db, "normalized_span") ? undefined : graph.db.prepare(`SELECT n.locators FROM normalized_span n JOIN search_span s USING(span_id)
     WHERE s.source_id = ? AND s.byte_offset = ? AND s.field = ?`).get(span.sourceId, span.byteOffset, span.field) as { locators: string } | undefined;
   if (row) {
@@ -26,11 +35,15 @@ async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: s
     if (span.byteOffset + span.byteLength + 1 > watermark.lastOffset) {
       try { if (!watermark.contentHash || await contentHash(descriptor.path) !== watermark.contentHash) return null; } catch { return null; }
     }
-    const texts = await Promise.all((JSON.parse(row.locators) as SourceTextLocator[]).map(locator => readSessionSourceText(locator, { sources: [JSON.parse(source.descriptor) as SessionSourceDescriptor] })));
+    const texts = await Promise.all((JSON.parse(row.locators) as SourceTextLocator[]).map(locator => {
+      const options = { sources: [JSON.parse(source.descriptor) as SessionSourceDescriptor] };
+      return sourcePort ? sourcePort.readText(locator, options) : readSessionSourceText(locator, options);
+    }));
     return texts.some(text => text === null) ? null : texts.join("\n");
   }
   const normalized = hasTable(graph.db, "normalized_source") && graph.db.prepare("SELECT 1 FROM normalized_source WHERE transcript_id = ?").get(span.sourceId);
   if (normalized) return null;
+  if (sourcePort) return null;
   const legacy = graph.transcripts.list().find(t => t.sourceId === span.sourceId);
   return legacy ? readSessionText({ path: expandHome(legacy.sourceKey, homeDir), byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field as SpanField }) : null;
 }

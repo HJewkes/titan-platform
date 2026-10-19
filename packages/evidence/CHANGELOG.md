@@ -1,5 +1,23 @@
 # @titan-design/evidence
 
+## 0.4.0
+
+### Minor Changes
+
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
+## 0.3.0
+
+### Minor Changes
+
+- 5cd4f1b: Add `parseAnchor` for `head/`, `base/` and `diff/` code anchors pinned to 40-hex commits, and `isFullSha` (TP-2766).
+- abadd64: Add `verifyAnchorText`, `verifyRange` and `isAnchorForm`: check a pinned anchor's lines exist at its commit and quote them back (TP-2767).
+
 ## 0.2.1
 
 ### Patch Changes

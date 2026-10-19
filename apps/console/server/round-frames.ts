@@ -63,9 +63,13 @@ type FramesIndex = z.infer<typeof FramesIndexSchema>;
 interface FrameEntry {
   files: Partial<Record<FrameView, string>>;
   theme?: Theme;
+  /** Listed in frames/frames.json, not only named by a variant's image. */
+  indexed: boolean;
 }
 
 interface FrameIndex {
+  /** False when the round has no frames/frames.json; an invalid one is refused before this is built. */
+  present: boolean;
   entries: Map<string, FrameEntry>;
   /** Keyed by the file's path relative to the round dir, normalised, so `./a.png` and `a.png` share one sha. */
   sha256: Map<string, string>;
@@ -75,7 +79,9 @@ const frameResult = z.object({ contentType: z.literal("image/png"), bytes: z.num
 type FrameRead = z.infer<typeof frameResult>;
 
 const framesResult = z.object({
-  frames: z.array(z.object({ key: z.string(), theme: z.enum(THEME_MODES).optional(), views: z.array(z.enum(FRAME_VIEWS)) })),
+  /** Whether the round has a frames/frames.json; a design round without one is answered in the harness. */
+  indexed: z.boolean(),
+  frames: z.array(z.object({ key: z.string(), theme: z.enum(THEME_MODES).optional(), views: z.array(z.enum(FRAME_VIEWS)), indexed: z.boolean() })),
 });
 type FramesList = z.infer<typeof framesResult>;
 
@@ -152,6 +158,11 @@ async function readFramesIndex(roundDir: string): Promise<FramesIndex | null> {
   return parsed.data;
 }
 
+/** True only for a frames.json that reads and parses as frames@1; a missing or refused index is false. */
+export async function hasFramesIndex(roundDir: string): Promise<boolean> {
+  return readFramesIndex(roundDir).then((index) => index !== null, () => false);
+}
+
 function recordFiles(record: FramesIndex["frames"][number]): Partial<Record<FrameView, string>> {
   const files: Partial<Record<FrameView, string>> = { head: record.file };
   if (record.base) files.base = record.base.file;
@@ -165,10 +176,10 @@ function indexEntries(roundDir: string, index: FramesIndex | null): FrameIndex {
   const sha256 = new Map<string, string>();
   for (const record of index?.frames ?? []) {
     const files = recordFiles(record);
-    entries.set(record.key, record.theme === undefined ? { files } : { files, theme: record.theme });
+    entries.set(record.key, record.theme === undefined ? { files, indexed: true } : { files, theme: record.theme, indexed: true });
     for (const listed of [record, record.base, record.after, record.diff]) if (listed) sha256.set(canonical(roundDir, listed.file), listed.sha256);
   }
-  return { entries, sha256 };
+  return { present: index !== null, entries, sha256 };
 }
 
 /** Every frame the round lists: image variants give the head view; frames@1 records add base, diff, theme and sha256. */
@@ -179,7 +190,7 @@ export async function frameIndex(roundDir: string): Promise<FrameIndex> {
   for (const variant of parsed.manifest.variants) {
     if (variant.image === undefined) continue;
     const listed = index.entries.get(variant.key);
-    index.entries.set(variant.key, { ...listed, files: { ...listed?.files, head: variant.image } });
+    index.entries.set(variant.key, { ...listed, files: { ...listed?.files, head: variant.image }, indexed: listed?.indexed ?? false });
   }
   return index;
 }
@@ -205,11 +216,11 @@ async function roundFrameIndex(dir: string, id: string): Promise<{ roundDir: str
   return { roundDir, index: await frameIndex(roundDir) };
 }
 
-/** Which views each frame has, so the page asks only for files the round lists. */
-async function listFrames({ dir }: RoundsSource, id: string): Promise<FramesList> {
+/** Which views each frame has, and whether frames.json lists it, so the page asks only for files the round lists. */
+export async function listFrames({ dir }: RoundsSource, id: string): Promise<FramesList> {
   const { index } = await roundFrameIndex(dir, id);
-  const frames = [...index.entries].map(([key, { files, theme }]) => ({ key, theme, views: FRAME_VIEWS.filter((view) => files[view] !== undefined) }));
-  return { frames };
+  const frames = [...index.entries].map(([key, { files, theme, indexed }]) => ({ key, theme, views: FRAME_VIEWS.filter((view) => files[view] !== undefined), indexed }));
+  return { indexed: index.present, frames };
 }
 
 export async function getFrame({ dir }: RoundsSource, id: string, key: string, view: FrameView): Promise<FrameRead> {
@@ -230,7 +241,7 @@ export function roundFramesCommands(source: RoundsSource) {
     }),
     "rounds.frames": readCommand({
       name: "rounds.frames",
-      description: "Every frame a review round lists, with its theme and the views (head, base, after, diff) it has files for",
+      description: "Every frame a review round lists, with its theme, the views (head, base, after, diff) it has files for and whether frames.json lists it",
       args: z.object({ id: z.string().regex(ROUND_ID) }),
       result: framesResult,
       run: ({ id }) => listFrames(source, id),

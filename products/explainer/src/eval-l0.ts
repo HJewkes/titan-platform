@@ -9,6 +9,7 @@ import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
 import { paceCheck } from "./lint-pace.js";
+import { visualKindCheck } from "./lint-visual-kind.js";
 import type { ScriptTiming } from "./timing.js";
 
 /** One check's verdict before it is keyed to a config, script and registry. */
@@ -48,7 +49,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
   });
 };
 
-export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, heteronymCheck];
+export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, heteronymCheck, visualKindCheck];
 
 export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming): L0Result[] {
   const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}) };

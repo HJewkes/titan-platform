@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import type { BoundedRunBase as ProtocolBase, HarnessRunResult as ProtocolResult } from "@titan-design/agent-protocol/harness";
+import type { BoundedRunBase } from "./harness-contracts.js";
+import type { HarnessRunResult } from "./index.js";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { z } from "zod";
 import type { ClaudeCodeRunRequest, CodexRunRequest, HarnessRunProgress } from "./harness-contracts.js";
 
@@ -70,4 +73,14 @@ describe("harness request conformance", () => {
     };
     expect(progress.kind).toBe("conversation_identified");
   });
+});
+
+it("preserves legacy aliases across the protocol boundary", () => {
+  expectTypeOf<BoundedRunBase>().toEqualTypeOf<
+    ProtocolBase<"claude-code" | "codex">
+  >();
+  expectTypeOf<HarnessRunProgress["harness"]>().toEqualTypeOf<"claude-code" | "codex">();
+  expectTypeOf<HarnessRunResult>().toEqualTypeOf<
+    ProtocolResult<string, "claude-code" | "codex">
+  >();
 });

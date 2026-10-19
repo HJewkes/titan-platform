@@ -9,6 +9,7 @@ import type { AnswersPage, AskRequest, ServiceAnswer } from "@titan-design/agent
 import type { ResolverClass } from "@titan-design/authority";
 import { GateAlreadySettled, GateExpired, GateNotFound, GatePayloadInvalid, GateResolverRefused, type GateRecord, type GateResolver } from "@titan-design/hitl";
 import type { GateAskState, GateAskStore } from "./gate-ask-store.js";
+import { WAIVE_PROOF } from "./gate-brief.js";
 
 export interface GateNotifyPorts {
   /** The agent-chat service label the asks are filed and read back under. */
@@ -33,6 +34,8 @@ interface JsonObjectSchema {
 }
 
 const DECISION = "decision";
+const DECIDED = "decided";
+const HUMAN_ENDORSED = "human-endorsed";
 
 /** The decision question, when the gate is the factory's one-question decision convention. */
 function decisionQuestion(gate: GateRecord) {
@@ -151,11 +154,27 @@ function applyAnswer(ports: GateNotifyPorts, answer: ServiceAnswer): boolean {
     ports.asks.settle(ask.gateId, "withdrawn", "gate settled by another route");
     return true;
   }
+  const refusal = provenanceRefusal(answer, payload);
+  if (refusal !== undefined) {
+    ports.asks.settle(ask.gateId, "refused", refusal);
+    return true;
+  }
   if (payload === undefined) {
     ports.asks.settle(ask.gateId, "unmappable", answer.text);
     return true;
   }
   return resolveOnce(ports, ask.gateId, payload, resolverFor(ports, answer));
+}
+
+/**
+ * Every answer here resolves as the owner, which the decider answering on the human's behalf is not, so a decided answer
+ * settles no gate. A waive-proof also needs the broker to say a human approved the words: an unmarked answer may come from
+ * any caller on the socket (Q1), so it fails closed and the waiver stays with the terminal.
+ */
+function provenanceRefusal(answer: ServiceAnswer, payload: Record<string, unknown> | undefined): string | undefined {
+  if (answer.provenance === DECIDED) return "a decided answer is the decider's, not the owner's; answer at the terminal";
+  if (payload?.[DECISION] === WAIVE_PROOF && answer.provenance !== HUMAN_ENDORSED) return `${WAIVE_PROOF} is the owner's own and the answer is not human-endorsed; answer at the terminal`;
+  return undefined;
 }
 
 function resolverFor(ports: GateNotifyPorts, answer: ServiceAnswer): GateResolver {

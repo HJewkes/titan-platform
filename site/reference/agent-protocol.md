@@ -125,3 +125,28 @@ survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+## Injected source ports
+
+The SDK-free harness subpath exports HarnessSourcePort over the existing
+transcript DTOs. It describes corpus-bound discovery, scoped conversation lookup,
+resumable observation reads and selected semantic text reads. Found and
+not-written results retain nonempty source/expected-path collections; unavailable
+is distinct, with a reason. The optional cwd is a lookup hint, never an implicit
+account selection.
+
+Capability assessments retain unsupported/unverified operations. Semantic
+finality is an assessment only: there is no classifier or runtime adapter here,
+and neither EOF nor a native turn completion proves session completion.
+Existing session-read functions, default roots and account behavior stay unchanged.
+
+
+## Shared pricing
+
+Import `@titan-design/agent-protocol/pricing` for the existing `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice`, `priceRequest`, `priceCodexUsage` and `validateCodexPrices` exports and their input/result types. Session-analytics and agent preserve their existing entrypoints as compatibility exports.
+
+The extraction preserves dated model matching, explicit cache-write TTL accounting, long-prompt boundaries, inclusive cached/reasoning token semantics, reported costs and explicit unavailable results. It updates no prices or stored data. A neutral quote must carry any known TTL evidence; a total alone is insufficient. No native runtime or account capability is implied.
+
+### Pricing context and existing estimates
+
+An optional readonly `HarnessPricingContext.cacheWriteSplit` preserves TTL evidence from the same normalized usage observation while keeping two-argument quote calls compatible. The `existing_estimate` basis carries the current record source and retains an already-estimated amount without claiming an unavailable original catalog; reported costs retain their reported basis. Existing nonnull costs, including zero, precede model/counter/event-time availability checks. New catalog estimates still require all existing revision evidence, and unavailable new computations remain explicitly unpriced.

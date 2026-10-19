@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { ScriptSchema } from "./script-schema.js";
 import { fromSpikeScript, readSpikeScript } from "./spike-script.js";
-import { v4Script } from "./spike-fixtures.test-helpers.js";
+import { pipelineScript, v4Script } from "./spike-fixtures.test-helpers.js";
 
 describe("reading a spike script.json", () => {
   // Mutation: reading the spike through ScriptSchema instead of the loose schema throws on the v4 fixture.
@@ -20,7 +21,9 @@ describe("reading a spike script.json", () => {
 
     expect(ignored).toEqual(
       expect.arrayContaining([
-        "video",
+        "video.audience",
+        "video.stake",
+        "video.map",
         "chapters",
         "beats[].band",
         "beats[].connector_in",
@@ -32,6 +35,8 @@ describe("reading a spike script.json", () => {
         "maps.*.nodeBox",
       ]),
     );
+    expect(ignored).not.toContain("video");
+    expect(ignored).not.toContain("video.invariants");
     expect(ignored).not.toContain("beats[].origin");
     expect(ignored).not.toContain("beats[].visual.render");
     expect(ignored).not.toContain("beats[].visual.map_state.old");
@@ -45,6 +50,31 @@ describe("reading a spike script.json", () => {
     expect(items("r1-3-stores")?.slice(0, 3)).toEqual(["Backlog", "Tick", "Broker"]);
     expect(items("r5-1-holds")).toEqual(["two hold slots", "set per head"]);
     expect(beats.find((b) => b.id === "r5-1-holds")).toMatchObject({ mapBeside: true, render: "SplitMapBeat" });
+  });
+
+  // Mutation: requiring map_state.map again makes the pilot unreadable.
+  it("labels a single-map script's reveals from its top-level map when map_state names no map", () => {
+    const { beats, ignored } = fromSpikeScript(pipelineScript());
+
+    expect(beats.find((b) => b.id === "c2-1-model")?.items.map((i) => i.label)).toEqual(["Backlog", "Burndown tick", "Broker"]);
+    expect(ignored).toContain("map.edges");
+    expect(ignored).not.toContain("map.nodes");
+  });
+
+  // Mutation: not reading `video` leaves the seated-invariant lint no phrases to match.
+  it("hands the script's video invariants to a caller of the item track", () => {
+    const { invariants } = fromSpikeScript(v4Script());
+
+    expect(invariants).toHaveLength(7);
+    expect(invariants).toContain("State survives restarts.");
+  });
+
+  // Mutation: dropping the default makes a script with no `video` block hand back undefined.
+  it("hands back no invariants when the script has no video block", () => {
+    const { video, ...noVideo } = z.looseObject({ video: z.unknown() }).parse(v4Script());
+
+    expect(video).toBeDefined();
+    expect(fromSpikeScript(noVideo).invariants).toEqual([]);
   });
 
   // Mutation: returning only the beats from fromSpikeScript leaves a caller nothing to report.

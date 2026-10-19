@@ -1,5 +1,37 @@
 # @titan-design/agent
 
+## 0.6.1
+
+### Patch Changes
+
+- 9914239: Extract SDK-free execution contracts into agent-protocol/harness with open harness identity parameters, preserving existing agent exports through compatibility aliases. This is the execution-only checkpoint of TP-3426; the remaining S01 ports are not implemented.
+- 9914239: Expose the existing dated catalog and pricing arithmetic through the pure agent-protocol/pricing subpath and replace higher-tier implementations with compatibility exports, preserving model matching, TTL and inclusive token accounting.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+  - @titan-design/agent-lifecycle@0.1.9
+
+## 0.6.0
+
+### Minor Changes
+
+- 9f24b7f: Discover Codex on PATH and require version 0.162.1 or newer with a bounded capability
+  probe before every execution. Reject missing command/sandbox capabilities and any
+  unverified extra MCP, policy or rollout requirements without starting a model.
+
+### Patch Changes
+
+- 108b7f4: Reject malformed Codex resume thread IDs before runtime probing and direct argv construction, preventing thread IDs from injecting CLI options.
+- a79cffd: A `cancellation_unknown` execution terminal now carries the optional `usage` the harness reported before it was aborted, timed out or lost its cancellation acknowledgement, the same way a `failed` terminal does. `terminalFromHarnessResult` copies non-empty harness usage onto it and omits the key when nothing was spent.
+- Updated dependencies [f4bd7c6]
+- Updated dependencies [a79cffd]
+  - @titan-design/agent-lifecycle@0.1.8
+  - @titan-design/agent-protocol@0.8.0
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,0 +1,47 @@
+{
+  "schema": "titan-review/frames@1",
+  "unit": "beacon-dot",
+  "round": 1,
+  "frames": [
+    {
+      "key": "beacon-idle",
+      "variant": "beacon-idle",
+      "viewport": {
+        "width": 320,
+        "height": 180
+      },
+      "file": "shots/beacon-idle.png",
+      "sha256": "66172bb2e7ff6b9e7b1c1d7059b2a6b899314190acdbdca589c71f56680a9eb7"
+    },
+    {
+      "key": "beacon-busy",
+      "variant": "beacon-busy",
+      "viewport": {
+        "width": 320,
+        "height": 180
+      },
+      "file": "shots/beacon-busy.png",
+      "sha256": "f5f4e697f8139e3aa5bf1518f84469d57f4d20fecebaec7366a36adda9a4fff9"
+    },
+    {
+      "key": "beacon-error",
+      "variant": "beacon-error",
+      "viewport": {
+        "width": 320,
+        "height": 180
+      },
+      "file": "shots/beacon-error.png",
+      "sha256": "028a3a9dfac0f4b6799e41265cdf5b8eda536f2eb94e35cc87322f9306ede329"
+    },
+    {
+      "key": "beacon-muted",
+      "variant": "beacon-muted",
+      "viewport": {
+        "width": 320,
+        "height": 180
+      },
+      "file": "shots/beacon-muted.png",
+      "sha256": "48a00f81c6347b0a855f6fd9cf95789d10d7b227b02e9c3c494dcf511b151ae1"
+    }
+  ]
+}
