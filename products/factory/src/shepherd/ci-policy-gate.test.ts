@@ -37,7 +37,7 @@ async function evidenceFor(files: PrFile[], ciPolicy?: CiPolicy) {
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, files);
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...(ciPolicy && { ciPolicy }) }, null, noFreezeStoreUntilTp523, { kind: "correctness" });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...(ciPolicy && { ciPolicy }) }, noFreezeStoreUntilTp523, { kind: "correctness" });
 }
 
 const modified = (path: string): PrFile[] => [{ path, status: "modified" }];
@@ -190,7 +190,7 @@ describe("a decision replayed on stored evidence", () => {
   it("decides on the line, not the decision recorded with it", async () => {
     const evidence = await evidenceFor(modified(CI_YML), UNCHANGED);
 
-    expect(decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "weakened", keys: ["other"] } }, { visualDemotion: null }).rule).toEqual(guard("ci-policy-weakened"));
+    expect(decideAutoMerge(HEAD, { ...evidence, ciPolicy: { kind: "weakened", keys: ["other"] } }).rule).toEqual(guard("ci-policy-weakened"));
   });
 });
 

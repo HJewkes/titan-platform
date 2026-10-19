@@ -2,69 +2,23 @@ import type { GitHubPort } from "@titan-design/github";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
-import { configPath, loadConfig } from "../config.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import { loadSeatBook, seatBaselineGlobs, type SeatBook } from "./seats.js";
 
 /**
- * Owner gates the owner approved every time they were asked (2026-10-05 to 10-19: D2 72/72, D7 63/63, D13 35/35), so each
- * now passes on its guard and leaves an audit record instead. Set a class to false to restore its owner gate (TP-3697).
+ * Owner gates the owner approved every time they were asked (2026-10-05 to 10-19: D7 63/63, D13 35/35), so each now
+ * passes on its guard and leaves an audit record instead. Set a class to false to restore its owner gate (TP-3697).
  */
 export interface GateDemotions {
-  /** D2: a visual-path head or a gate-2-visual registration passes when `VISUAL_DEMOTION`'s guard holds at the head. */
-  visual: boolean;
   /** D7: failed review rounds take a standing MERGE on infrastructure failures, else one fresh reviewer, before the owner. */
   failedRounds: boolean;
   /** D13: a red or unread main with no freeze path is an FYI line, never an acknowledge-only gate. */
   mainRed: boolean;
 }
 
-export const GATE_DEMOTIONS: GateDemotions = { visual: true, failedRounds: true, mainRed: true };
+export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true };
 
-/** What a visual head must leave untouched, and which checks must be green at it, to merge without the owner. */
-export interface VisualDemotion {
-  /** Rendered and contrast baselines, and design tokens: any change to one is a rendered diff the owner reviews. */
-  ownerPaths: string[];
-  /** Checks that each need a green run at the head. */
-  checks: string[];
-  /** Checks run as shards named `<name> <i>/<n>`: every shard 1..n needs a green run at the head. */
-  shardedChecks: string[];
-}
-
-export const VISUAL_DEMOTION: VisualDemotion = {
-  ownerPaths: ["**/*.png", "**/*-snapshots/**", "**/*contrast*.json", "**/tokens/**", "**/*token*.*"],
-  checks: ["visual"],
-  shardedChecks: ["contrast"],
-};
-
-/** The D2 guard production decides with; `GATE_DEMOTIONS.visual` false restores every visual gate. */
-const DEFAULT_VISUAL_DEMOTION: VisualDemotion | null = GATE_DEMOTIONS.visual ? VISUAL_DEMOTION : null;
-
-/**
- * The D2 guard for `repo`, built from the seat book as it reads at decision time: every baseline glob any seat on the
- * remote declares joins the paths the owner reviews. A book that cannot be read keeps every visual gate for the owner.
- */
-export function seatVisualDemotion(seats: () => SeatBook, repo: string, demotion: VisualDemotion | null = DEFAULT_VISUAL_DEMOTION): VisualDemotion | null {
-  if (demotion === null) return null;
-  let globs: string[];
-  try {
-    globs = seatBaselineGlobs(seats(), repo);
-  } catch {
-    return null;
-  }
-  return globs.length === 0 ? demotion : { ...demotion, ownerPaths: [...new Set([...demotion.ownerPaths, ...globs])] };
-}
-
-/** `seatVisualDemotion` over the configured seat book, re-read per call as registration reads it. */
-export function configuredVisualDemotion(repo: string, env: NodeJS.ProcessEnv = process.env): VisualDemotion | null {
-  return seatVisualDemotion(() => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
-}
-
-/** Marks an allow whose visual gate the D2 guard passed, so the evidence comment and the owner see what passed without them. */
-export const VISUAL_DEMOTION_NOTE = "; auto-pass D2/visual-unchanged (TP-3697)";
-
-const AUTO_PASS_RULES = ["D2/visual-unchanged", "D7/infra-standing-merge", "D7/fallback-reviewer", "D13/main-red-fyi"] as const;
+const AUTO_PASS_RULES = ["D7/infra-standing-merge", "D7/fallback-reviewer", "D13/main-red-fyi"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
 
 const AUTO_PASS_STEP = "sh-auto-pass";
@@ -89,7 +43,6 @@ const AutoPassResult = z.looseObject({
 type AutoPassRecord = z.infer<typeof AutoPassResult>;
 
 const RULE_WORDS: Record<AutoPassRule, string> = {
-  "D2/visual-unchanged": "visual change with no baseline or token change, its visual checks green and a MERGE at this head",
   "D7/infra-standing-merge": "review rounds failed on infrastructure only, and the run's MERGE at this head stands with CI green",
   "D7/fallback-reviewer": "review rounds failed, so a fresh reviewer goes first instead of the owner",
   "D13/main-red-fyi": "main CI is red or unread after this merge; FYI only, nothing waits on you",

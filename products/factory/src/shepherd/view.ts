@@ -287,7 +287,6 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   };
 }
 
-
 /** Step entries in completion order, a running step last, every gate the run opened at its creation time, and every hold, release, freeze and thaw at its time. */
 export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], events: readonly ShepherdEvent[] = []): TimelineEntry[] {
   const done = completedSteps(run).map((result) => ({ at: result.completedAt, entry: stepEntry(result) }));
