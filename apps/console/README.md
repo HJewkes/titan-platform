@@ -377,6 +377,7 @@ row. A video with neither file lists with only what its file and folder give (be
 | `subject` | `{ kind: "repo" \| "day" \| "initiative", id }`: what the video is about |
 | `parent` | for a clip, the id or alias of the video it was cut from |
 | `posterAtS` | seconds, at or above 0: the frame to use as the poster |
+| `poster` | a jpg or png file name in the video's folder (no path), served by the poster route below |
 | `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
 | `series`, `take` | 1-200 characters each |
 | `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
@@ -390,6 +391,18 @@ Both files are opened with O_NOFOLLOW and read up to 64 KB. A file that is bigge
 not a strict match is skipped and counted as a gap ("1 video sidecar could not be read", "1 video
 folder manifest could not be read"); the videos still list. A parsed file is cached by its device,
 inode, size and mtime, so the per-request rescan reads only files that changed.
+
+### Poster and resolve
+
+`GET /media/videos/:id/poster` serves the video's cover, found beside the video: the sidecar's
+`poster`, else `<stem>-poster.jpg`, else `<stem>-poster.png`, else 404. It resolves the id and
+root as the video route does, opens nothing outside the root, and refuses a symlink or a file that
+is not regular. A contact sheet is never a poster, and nothing is resized: writers produce 480 w
+JPEGs. It sends the image type and `Cache-Control: private, no-cache`, like the video.
+
+**`videos.resolve`** (read) takes `{ series?, tag?, subject? }` (`subject` is the subject's `id`) and
+returns `{ found: true, id }` for the newest non-superseded video that matches every filter, or
+`{ alias }` and returns that video's id. When nothing matches it returns `{ found: false, reason }`.
 
 ### Media fields, derived fields and copies
 
