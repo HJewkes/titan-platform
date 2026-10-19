@@ -1,7 +1,7 @@
 import type { GuardedPath } from "../paths.js";
 import type { SimpleCommand } from "../shell/commands.js";
-import { resolveValue } from "../shell/path.js";
 import type { ClassifyContext } from "../types.js";
+import { runnerReadings, SCRIPT_RUNNERS } from "./console-script.js";
 
 const COORDINATOR_DOC = "coordinator.json";
 const CONSOLE_STATE = "~/.local/state/titan-console";
@@ -32,11 +32,6 @@ function consoleDir(name: string, sample: string): GuardedPath {
 }
 
 const CONSOLE_BIN = "titan-console";
-/** The console's own CLI script, run from a checkout or an installed package rather than through its bin. */
-const CONSOLE_SCRIPT_RE = /(?:^|\/)(?:titan-)?console\/(?:server\/cli\.[cm]?[jt]s|dist\/cli\.[cm]?js)$/;
-/** With no known cwd a relative script could sit in any directory, so any `cli` script counts. */
-const UNPLACED_SCRIPT_RE = /(?:^|\/)cli\.[cm]?[jt]s$/;
-const SCRIPT_RUNNERS = new Set(["node", "tsx", "bun", "deno", "ts-node"]);
 
 /**
  * Two-word owner verbs by group: `token rotate` resets the owner's LAN session (TP-3579 K2), and `config import`
@@ -52,9 +47,14 @@ interface ConsoleWord {
 
 /** `titan-console login-link`, `token rotate` or `config import`, as the subject pattern; null for any other verb. */
 export function consoleOwnerVerb(cmd: SimpleCommand, ctx: ClassifyContext): string | null {
-  const words = consoleArgs(cmd, ctx);
-  if (words === null) return null;
-  const [first, second] = words;
+  for (const words of consoleArgs(cmd, ctx)) {
+    const verb = ownerVerb(asReceived(words));
+    if (verb !== null) return verb;
+  }
+  return null;
+}
+
+function ownerVerb([first, second]: ConsoleWord[]): string | null {
   if (first === undefined) return null;
   if (first.dynamic || first.value === "login-link") return "titan-console:login-link";
   const verb = Object.hasOwn(GROUPED_OWNER_VERBS, first.value) ? GROUPED_OWNER_VERBS[first.value] : undefined;
@@ -62,21 +62,10 @@ export function consoleOwnerVerb(cmd: SimpleCommand, ctx: ClassifyContext): stri
   return second.dynamic || second.value === verb ? `titan-console:${first.value}-${verb}` : null;
 }
 
-/** The words after the console's command word or script path, or null when the command does not run the console. */
-function consoleArgs(cmd: SimpleCommand, ctx: ClassifyContext): ConsoleWord[] | null {
-  if (cmd.name === CONSOLE_BIN) return asReceived(cmd.args);
-  if (cmd.name === null || !SCRIPT_RUNNERS.has(cmd.name)) return null;
-  const dir = cmd.movesDir ? null : cmd.dir;
-  const at = cmd.args.findIndex((a) => !a.dynamic && isConsoleScript(a.value, dir, ctx));
-  return at < 0 ? null : asReceived(cmd.args.slice(at + 1));
-}
-
-/** Tested where the runner finds it: resolved from the command's cwd, and through a symlink to the script. */
-function isConsoleScript(value: string, dir: string | null, ctx: ClassifyContext): boolean {
-  const path = resolveValue(dir, value, ctx.home);
-  if (path === null) return UNPLACED_SCRIPT_RE.test(value);
-  const real = ctx.readLink(path);
-  return CONSOLE_SCRIPT_RE.test(path) || (real !== null && CONSOLE_SCRIPT_RE.test(real));
+/** Each argument list the console may receive from this command; none when it does not run the console. */
+function consoleArgs(cmd: SimpleCommand, ctx: ClassifyContext): SimpleCommand["args"][] {
+  if (cmd.name === CONSOLE_BIN) return [cmd.args];
+  return cmd.name !== null && SCRIPT_RUNNERS.has(cmd.name) ? runnerReadings(cmd, ctx) : [];
 }
 
 /** The CLI matches its verbs against `argv.join(" ")`, so one argument `"token rotate"` is the two words `token rotate`. */

@@ -3,6 +3,7 @@ import { commandMentions, pathMentions } from "../mentions.js";
 import type { Mention } from "../mentions.js";
 import { GUARDED_PATHS } from "../paths.js";
 import type { SimpleCommand } from "../shell/commands.js";
+import type { WordToken } from "../shell/lexer.js";
 import { parseGit } from "../shell/git.js";
 import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
@@ -64,9 +65,36 @@ function writesTo(cmd: SimpleCommand, m: Mention): boolean {
 
 /** A hard link shares the source's inode, so a later write through it rewrites the source where no path names it. */
 function hardLinks(cmd: SimpleCommand): boolean {
-  const options = cmd.args.map((a) => a.value).filter((v) => v.startsWith("-"));
-  if (cmd.name === "cp") return options.some((v) => /^-[A-Za-z]*l/.test(v) || /^--li/.test(v));
-  return cmd.name === "ln" && !options.some((v) => /^-[A-Za-z]*s/.test(v) || /^--sy/.test(v));
+  if (cmd.name === "ln") return !lnSymbolic(cmd.args);
+  if (cmd.name !== "cp") return false;
+  // GNU cp reads options anywhere before `--`; counting one BSD would read as a file only adds a deny.
+  const end = cmd.args.findIndex((a) => a.value === "--");
+  const options = (end < 0 ? cmd.args : cmd.args.slice(0, end)).map((a) => a.value).filter((v) => v.startsWith("-"));
+  return options.some((v) => /^-[A-Za-z]*l/.test(v) || /^--li/.test(v));
+}
+
+/**
+ * Whether ln makes a symbolic link, read by position: only from the options before its first operand and before `--`,
+ * as BSD ln reads them, skipping the values of `-S` and `-t`. After that, `-s` is a file name (`ln -- doc -s` hard-links
+ * `doc` to `./-s`). A GNU `-s` after an operand, or one only known at run time, reads as a hard link, which only adds a deny.
+ */
+function lnSymbolic(args: readonly WordToken[]): boolean {
+  for (let i = 0, word = args[0]; word !== undefined; word = args[++i]) {
+    const { value, dynamic } = word;
+    if (dynamic || value === "--" || value === "-" || !value.startsWith("-")) return false;
+    if (value.startsWith("--")) {
+      const name = value.split("=", 1)[0] ?? value;
+      if (name.length >= 4 && "--symbolic".startsWith(name)) return true;
+      const valued = (name.length >= 4 && "--suffix".startsWith(name)) || (name.length >= 3 && "--target-directory".startsWith(name));
+      if (valued && !value.includes("=")) i++;
+      continue;
+    }
+    const valueAt = value.search(/[St]/);
+    const flags = valueAt < 0 ? value : value.slice(0, valueAt);
+    if (flags.includes("s")) return true;
+    if (valueAt === value.length - 1) i++;
+  }
+  return false;
 }
 
 /** `cp /tmp/settings.json ~/.claude/` writes `~/.claude/settings.json`: the destination joined with each source's name. */
