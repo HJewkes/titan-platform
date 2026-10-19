@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.6.1
+
+### Patch Changes
+
+- 2b90758: The `#/config` page gains a Hosts section from `config.hosts`: each other host's name and last report time. A host whose report is older than 25 hours is marked "not reported". The section is read-only.
+- 28aa920: Extract the owner-tap kernel (confirm store, digest, write-once record and outcome files) from the inbox actions into `owner-tap.ts`, and turn the inbox confirm sheet into a generic `TapSheet`. No behaviour change.
+- 30b0b10: Every routed console view renders inside a page shell that gives it a gutter beside the rail, a width cap and, on list views, the view's title as its heading.
+- 847d56e: `inbox.list` gains `derived`: machine-raised rows for Shepherd stalls past 15 minutes in phase, runs that failed in the last day, and agents blocked for more than 15 minutes. Each row carries its evidence (what was observed, the source, and since when) and the threshold it crossed, and links to the run's timeline or the agent page. Derived rows have no action and sit beside `items`, so `inbox.act` never acts on them. A row without evidence is refused at construction. The inbox page shows them under "Raised by the console" with no button.
+  - @titan-design/session-analytics@0.17.3
+
 ## 0.6.0
 
 ### Minor Changes
