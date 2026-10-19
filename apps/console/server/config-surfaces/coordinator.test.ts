@@ -254,6 +254,16 @@ describe("coordinatorSurfaces", () => {
     ]);
   });
 
+  it("reads no seat from a README or a dotfile in the seats directory", async () => {
+    await writeFile(path.join(root, "autonomy", "seats", "README.md"), SEAT.replace("name: seat-k", "name: readme"));
+    await writeFile(path.join(root, "autonomy", "seats", ".draft.md"), SEAT.replace("name: seat-k", "name: draft"));
+
+    const surfaces = await coordinatorSurfaces(roots)();
+
+    expect([...new Set(surfaces.rows.map((entry) => entry.surface).filter((surface) => surface.startsWith("seat:")))]).toEqual(["seat:seat-k"]);
+    expect(surfaces.gaps).toEqual([]);
+  });
+
   it("answers the agent-chat files and one gap when no autonomy tree is configured", async () => {
     const surfaces = await coordinatorSurfaces({ ...roots, autonomyDir: null })();
 

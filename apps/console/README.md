@@ -26,6 +26,7 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 | Dev | `pnpm --filter titan-console dev` | Vite on :5173 proxies `/rpc` to the console daemon on :7500 |
 | Served | `pnpm --filter titan-console serve`, or `node apps/console/dist/cli.js` (the `titan-console` bin) | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
 | From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon. It records the status and the portfolio, with no personal initiative |
+| Twin captures | `pnpm --filter titan-console capture` | Builds the page, renders every route from the typed twin fixtures with no daemon, and writes PNGs to `dist/twin`; see [Twin captures](#twin-captures) |
 
 `serve` prints the address, and the LAN address too in LAN mode, and answers until SIGINT or SIGTERM:
 
@@ -527,6 +528,35 @@ existing piece, not worked around with local styles.
 | No scrolling page container for `AppShell`'s content region | A long view overflows the frame and the document scrolls, top bar included |
 | `NavItem` sets `accessibilityState`, which react-native-web 0.21 does not turn into `aria-selected` | The active item is marked visually only; the test finds it by the accent bar |
 
+## Twin captures
+
+`pnpm --filter titan-console capture` builds the page and embeds a twin snapshot in it. It
+then opens the page from disk in headless Chromium, with every request off disk refused, and
+shoots each route in `server/twin/routes.ts` at phone (375x812) and desktop (1440x900) widths.
+Each route is shot twice, in fresh contexts, and the command fails if the two PNGs differ by
+one byte. `--out <dir>` writes somewhere other than `dist/twin`.
+
+What it writes is what a console PR's visual review packet reads:
+
+```
+dist/twin/manifest.json          format titan-console-twin/v1: now, viewports, and per frame its route, hash, file and sha256
+dist/twin/<viewport>/<route>.png phone/ and desktop/
+dist/twin/<viewport>/<route>.second.png  only for a route whose two shots differed
+```
+
+What holds a frame still:
+
+| Source of drift | How the twin pins it |
+| --- | --- |
+| Data | `server/twin/answers.ts` answers the broker, sessions, Shepherd, inbox, reviews, theater and task reads by hand. Each `answer()` is typed by the command's own args and result from `ConsoleCommands`, so a fixture that drifts fails `pnpm typecheck`. Work and rounds reads are the real commands over `server/fixtures.ts` and `fixtures/rounds`, recorded in process. |
+| The clock | `Date` is frozen at 2031-03-05 12:00:30 UTC (`server/twin/clock.ts`) and `Math.random` is seeded; the server-side reads take the same clock. The second shot runs one second later, so a page that prints the clock fails. Ages to the minute do not move. |
+| Fonts | react-ui imports its web fonts from Google Fonts, which the twin refuses, so text is set in the system sans. Frames are stable on one machine; another machine's sans may differ. |
+| Motion and media | Reduced motion, animations stopped at the shot, the caret hidden, and a video's native controls hidden (their loading spinner never stops). |
+| Locale and layout | UTC, `en-US`, device scale 1, dark colour scheme. Round fixtures are read from a copy with pinned mtimes. |
+
+A new route goes in `TWIN_ROUTES`. `src/twin.test.tsx` fails until every call it makes has an
+answer, and fails on an answer no route asks for.
+
 ## Layout
 
 ```
@@ -536,7 +566,7 @@ server/   config.ts (ports and paths), paths.ts (the built page and export locat
           approval-items.ts (spool and round queue items), approvals.ts (approvals.flow), work.ts
           (the work.* read models), agents.ts (the agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
           daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
-          test-support.ts (a fake daemon for tests)
+          test-support.ts (a fake daemon for tests), twin/ (the twin fixtures and capture)
 src/      main.tsx, App.tsx (the shell), router.ts, refs.ts (refToRoute), views.tsx (the rail and
           its placeholders), pages/ (index.ts is the page registry), data/rpc.ts (typed hooks)
 ```

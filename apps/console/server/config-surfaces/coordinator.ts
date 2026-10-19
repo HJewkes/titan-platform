@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { expandHome } from "@titan-design/session-read";
-import { BURNDOWN_SURFACE, CHARTER_SURFACE, SEAT_SURFACE, SEAT_WATCHDOG_SURFACE, joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { BURNDOWN_SURFACE, CHARTER_SURFACE, SEAT_SURFACE, SEAT_WATCHDOG_SURFACE } from "./specs.js";
 import { readTarget, type Target } from "./files.js";
 
 export interface CoordinatorRoots {
@@ -21,13 +22,16 @@ export function coordinatorRootsFrom(env: NodeJS.ProcessEnv, home: string): Coor
   };
 }
 
+/** A README or a dotfile beside the seats documents them; read as a seat it would show as one with no front matter. */
+const isSeatFile = (name: string): boolean => name.endsWith(".md") && !name.startsWith(".") && name.toLowerCase() !== "readme.md";
+
 async function autonomyTargets(autonomyDir: string): Promise<{ targets: Target[]; gaps: string[] }> {
   const charter: Target = { spec: CHARTER_SURFACE, surface: "charter", file: path.join(autonomyDir, "charter.md") };
   const seatsDir = path.join(autonomyDir, "seats");
   const names = await readdir(seatsDir).catch(() => null);
   if (names === null) return { targets: [charter], gaps: [`${seatsDir}: not readable`] };
   const seats = names
-    .filter((name) => name.endsWith(".md"))
+    .filter(isSeatFile)
     .sort()
     .map((name) => ({ spec: SEAT_SURFACE, surface: `seat:${path.basename(name, ".md")}`, file: path.join(seatsDir, name) }));
   return { targets: [charter, ...seats], gaps: [] };
