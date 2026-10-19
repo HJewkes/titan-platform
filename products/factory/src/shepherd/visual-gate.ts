@@ -1,6 +1,7 @@
 import type { MergeFacts } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
 import { oneLine } from "../gate-brief.js";
+import type { VisualDemotion } from "./auto-pass.js";
 
 /** A check that diffs rendered output against committed baselines: a rendered change must change a file under `paths`. */
 export interface VisualBaselines {
@@ -11,6 +12,8 @@ export interface VisualBaselines {
 export interface VisualPolicy {
   visualPaths: readonly string[] | undefined;
   visualBaselines: VisualBaselines | undefined;
+  /** The D2 guard a gated visual head may pass on; null keeps every visual gate for the owner. */
+  visualDemotion?: VisualDemotion | null;
 }
 
 const SHOWN_VISUAL_PATHS = 10;
@@ -70,4 +73,52 @@ export function visualClearance(changedPaths: readonly string[], head: string, {
   const visual = visualMatches(changedPaths, visualPaths);
   if (visual.length === 0) return "";
   return `; visual files ${shownPaths(visual)} changed no baseline and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${head}`;
+}
+
+type DemotionRead = { holds: true; evidence: string[] } | { holds: false; why: string };
+
+const SHARD = /^(.*) (\d+)\/(\d+)$/;
+
+/** Every allowed-app run of `name` at the head; pending reads as not green. */
+function runsAt(merge: MergeFacts, allowedApps: readonly number[], name: (run: string) => boolean): MergeFacts["checkRuns"] {
+  return merge.checkRuns.filter((run) => name(run.name) && allowedApps.includes(run.appId) && run.headSha === merge.head);
+}
+
+/** Shards `<name> i/n` share one n, and every i in 1..n has a run, each green; none at all is not green. */
+function shardsGreen(merge: MergeFacts, check: string, allowedApps: readonly number[]): string | undefined {
+  const runs = runsAt(merge, allowedApps, (name) => SHARD.exec(name)?.[1] === check);
+  const totals = new Set(runs.map((run) => SHARD.exec(run.name)![3]));
+  if (runs.length === 0 || totals.size !== 1) return undefined;
+  const total = Number([...totals][0]);
+  const names = Array.from({ length: total }, (_, i) => `${check} ${i + 1}/${total}`);
+  const green = names.every((shard) => runs.some((run) => run.name === shard) && runs.filter((run) => run.name === shard).every((run) => run.conclusion === "success"));
+  return green ? names.join(", ") : undefined;
+}
+
+function demotionChecks(merge: MergeFacts, demotion: VisualDemotion, allowedApps: readonly number[]): { green: string[] } | { why: string } {
+  const green: string[] = [];
+  for (const check of demotion.checks) {
+    if (!baselineCheckGreen(merge, check, allowedApps)) return { why: `${check} is not green at ${merge.head}` };
+    green.push(check);
+  }
+  for (const check of demotion.shardedChecks) {
+    const shards = shardsGreen(merge, check, allowedApps);
+    if (shards === undefined) return { why: `not every ${check} shard is green at ${merge.head}` };
+    green.push(shards);
+  }
+  return { green };
+}
+
+/**
+ * D2 (TP-3697): a gated visual head passes without the owner only when it changes no baseline or token path, every
+ * demotion check is green at the head, and the MERGE it stands on was written at this very head, not carried to it.
+ */
+export function visualDemotionAt(merge: MergeFacts, demotion: VisualDemotion, allowedApps: readonly number[]): DemotionRead {
+  const owned = merge.changedPaths.filter(caseFoldedMatcher(demotion.ownerPaths));
+  if (owned.length > 0) return { holds: false, why: `it changes baseline or token files ${shownPaths(owned)}` };
+  const checks = demotionChecks(merge, demotion, allowedApps);
+  if ("why" in checks) return { holds: false, why: checks.why };
+  if (merge.verdict.value !== "MERGE" || merge.verdict.head !== merge.head || merge.carry !== undefined) return { holds: false, why: `no MERGE was written at ${merge.head}` };
+  const by = `${merge.resolver.agentId}/${merge.resolver.sessionId}`;
+  return { holds: true, evidence: [`head ${merge.head}`, `no baseline or token file changed`, `green at the head: ${checks.green.join(", ")}`, `MERGE at ${merge.head} by ${by}`] };
 }

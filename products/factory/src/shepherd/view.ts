@@ -3,6 +3,8 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
+import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
+import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
@@ -58,6 +60,7 @@ export const WatchRowSchema = z.object({
   /** Why the newest head-level review step ended in `none`; null for a finished run or one whose last review gave a verdict. Absent in rows older than the field. */
   lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
   repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
+  autoPassed: AutoPassedSchema.optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -167,22 +170,6 @@ function admissionWait({ repo, pr }: Registration): string | undefined {
   return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
 }
 
-/**
- * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit
- * does not apply. The phase stays `merging` until CC-791: agent-chat's burndown rejects a status array with any phase
- * it does not know. Only a hold satisfied at the run's own head lets the merge through.
- */
-function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string | null): boolean {
-  const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);
-  return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
-}
-
-function holdWait({ holdReason, holdReviewer, ownerHold }: Registration, headSha: string | null): string {
-  if (ownerHold) return `waiting for the owner to release their hold (${ownerHold.reason})`;
-  const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
-  return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
-}
-
 const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
 /** While a head waits for its PR to be retargeted, the refused base is the next action. */
@@ -268,14 +255,6 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
-/** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. No satisfaction passes an owner hold, so it shows none. */
-function heldView({ held, holdReason, holdSatisfied, ownerHold }: Registration): WatchRow["held"] {
-  if (!held) return null;
-  if (ownerHold || holdSatisfied === null) return { reason: ownerHold?.reason ?? holdReason ?? "held" };
-  const { reviewer, agentId, sessionId } = holdSatisfied.by;
-  return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
-}
-
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
@@ -304,9 +283,10 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
-    lastNone: liveLastNone(run, steps),
+    lastNone: liveLastNone(run, steps), ...autoPassField(steps),
   };
 }
+
 
 /** Step entries in completion order, a running step last, every gate the run opened at its creation time, and every hold, release, freeze and thaw at its time. */
 export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], events: readonly ShepherdEvent[] = []): TimelineEntry[] {

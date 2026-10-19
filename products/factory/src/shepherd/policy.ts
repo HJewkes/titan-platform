@@ -5,8 +5,9 @@ import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
-import { shownPaths } from "./visual-gate.js";
+import { ALLOWED_CHECK_APPS, decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { DEFAULT_VISUAL_DEMOTION, VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
+import { shownPaths, visualDemotionAt } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
@@ -147,15 +148,37 @@ function parseRequest(request: unknown): RequestedPolicy {
  * the MERGE review collected at the exact head being decided, and none of those facts' changed files is visual; anything
  * else gates. `verdictFor` is the review taken at that head.
  */
-export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined = () => undefined): GatePolicy {
+export function shepherdGatePolicy(
+  effective: EffectivePolicy,
+  verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
+  visualDemotion: VisualDemotion | null = DEFAULT_VISUAL_DEMOTION,
+): GatePolicy {
   const rule: PolicyRule = { table: SHEPHERD_POLICY_TABLE, rowId: effective.seat, version: 1 };
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
-      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
+      const headSha = action === "merge" ? target?.headSha : undefined;
+      if (effective.merge === "auto" && headSha !== undefined) return decideAutoMerge(headSha, mergeEvidenceAt(headSha, verdictFor), effective.visualPaths, undefined, visualDemotion);
+      const passed = headSha === undefined ? undefined : gate2VisualPass(effective, headSha, verdictFor, visualDemotion);
+      if (passed) return passed;
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
   };
+}
+
+/**
+ * D2 (TP-3697): a gate-2-visual registration on a seat with visual paths, whose ceiling is therefore auto, merges without
+ * the owner when the auto decision allows at the head and the D2 guard holds there, whether or not a visual glob matched.
+ */
+function gate2VisualPass(effective: EffectivePolicy, headSha: string, verdictFor: (headSha: string) => Verdict | undefined, demotion: VisualDemotion | null): GateDecision | undefined {
+  if (demotion === null || effective.ownerGateReason !== "gate-2-visual" || effective.visualPaths === undefined) return undefined;
+  const evidence = mergeEvidenceAt(headSha, verdictFor);
+  const decision = decideAutoMerge(headSha, evidence, effective.visualPaths, undefined, demotion);
+  if (decision.outcome !== "allow" || evidence === undefined) return undefined;
+  const read = visualDemotionAt(evidence.merge, demotion, ALLOWED_CHECK_APPS);
+  if (!read.holds) return undefined;
+  const note = decision.reason.includes(VISUAL_DEMOTION_NOTE) ? "" : `${VISUAL_DEMOTION_NOTE}: ${read.evidence.join("; ")}`;
+  return { ...decision, reason: `${decision.reason}${note}; the gate-2-visual registration of seat ${effective.seat} passed on the D2 guard` };
 }
 
 /**

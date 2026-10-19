@@ -212,3 +212,23 @@ describe("proof-fixture runs", () => {
     expect(model.proofFixtures).toBeUndefined();
   });
 });
+
+describe("owner gates passed on a demotion rule", () => {
+  const passed = (at: string) => ({ rule: "D13/main-red-fyi" as const, headSha: "a".repeat(40), detail: "Main CI on acme/widgets is red. No freeze store is wired.", at });
+
+  it("are listed as FYI lines, never as asks, when they passed in the window", async () => {
+    const row = watchRow({ pr: 3, autoPassed: [passed(NOW.toISOString()), passed("2020-01-01T00:00:00Z")] });
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => [row] }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou).toEqual([]);
+    expect(model.autoPassed).toEqual([{ ref: "acme/widgets#3", rule: "D13/main-red-fyi", headSha: "a".repeat(40), detail: passed("").detail }]);
+    expect(renderMarkdown(rankDigest(model))).toContain(`## Passed without you (FYI)\n- acme/widgets#3 D13/main-red-fyi at ${"a".repeat(12)}: Main CI on acme/widgets is red.`);
+  });
+
+  it("add no section when no run passed a gate in the window", async () => {
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => [watchRow({})] }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.autoPassed).toBeUndefined();
+  });
+});
