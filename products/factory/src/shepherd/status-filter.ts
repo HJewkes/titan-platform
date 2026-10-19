@@ -7,7 +7,7 @@ const TERMINAL_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelle
 /** The `shepherd status` filters as commander parses them onto the verb's options. */
 export interface StatusFilter {
   active?: boolean;
-  /** Every run, terminal ones included; `statusRows` reads it once the default drops terminal runs (TP-2516 c). */
+  /** Every run, terminal ones included; serve drops terminal runs from a status read without it (TP-3517). */
   all?: boolean;
   phase?: readonly Phase[];
   branchPrefix?: string;

@@ -1,0 +1,64 @@
+import type { WorkspaceGraph } from '../session-index/graph.js';
+import type { DocumentFrequency } from './derive-query.js';
+import { orExpression } from './terms.js';
+
+/**
+ * A cheap document frequency off the span index: matching spans, capped.
+ *
+ * The store kit exposes no term statistics. Distinct owners among the first N
+ * spans was tried first and misranked: a common word whose best spans sit in a
+ * few long transcripts counts as rare, which picked `work` and `active` over
+ * `introspection` on a live loop. A capped span count is monotone up to the
+ * cap, and past it a term is too common for the exact count to matter.
+ */
+const SPAN_CAP = 2000;
+
+/** Per database file, for the life of the process; the daemon keeps one graph open. */
+const cache = new Map<string, Map<string, number>>();
+
+/** Bounded so a long-lived daemon cannot grow the cache without limit. */
+const CACHE_TERMS = 20_000;
+
+/** The kit's default span FTS table; `spans.search` reads it too, but ranks every match first. */
+const SPAN_FTS = 'search_fts';
+
+/** Drop the cached counts for one database; a pass that indexed spans has made them stale. */
+export function clearDocumentFrequency(dbName: string): void {
+  cache.delete(dbName);
+}
+
+/**
+ * min(matches, cap) without bm25 ordering: the count never needs a rank.
+ *
+ * Joined to the span table because a purged span strands its contentless FTS
+ * row; counting the FTS table alone would keep a deleted span in the count.
+ */
+export function countMatches(graph: WorkspaceGraph, expression: string, cap: number): number {
+  const row = graph.db
+    .prepare(
+      `SELECT count(*) AS n FROM (
+        SELECT ${SPAN_FTS}.rowid FROM ${SPAN_FTS}
+        JOIN search_span ON search_span.span_id = ${SPAN_FTS}.rowid
+        WHERE ${SPAN_FTS} MATCH ? LIMIT ?)`,
+    )
+    .get(expression, cap) as { n: number };
+  return row.n;
+}
+
+function countSpans(graph: WorkspaceGraph, term: string): number {
+  return countMatches(graph, orExpression([term]), SPAN_CAP);
+}
+
+export function graphDocumentFrequency(graph: WorkspaceGraph): DocumentFrequency {
+  const key = graph.db.name;
+  return (term) => {
+    const counts = cache.get(key) ?? new Map<string, number>();
+    cache.set(key, counts);
+    const known = counts.get(term);
+    if (known !== undefined) return known;
+    if (counts.size >= CACHE_TERMS) counts.clear();
+    const count = countSpans(graph, term);
+    counts.set(term, count);
+    return count;
+  };
+}

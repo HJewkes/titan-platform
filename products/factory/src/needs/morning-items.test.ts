@@ -1,6 +1,6 @@
 import { ownerItemSchema } from "@titan-design/owner-queue";
 import { describe, expect, it } from "vitest";
-import { morningIds, morningOwnerItem, numberedMorningItems } from "./morning-items.js";
+import { morningDeployHolds, morningIds, morningOwnerItem, numberedMorningItems } from "./morning-items.js";
 
 const SHA = "ab".repeat(20);
 const OPENED = "2026-10-05T08:00:00.000Z";
@@ -41,5 +41,35 @@ describe("morningIds", () => {
     const entries = numberedMorningItems("## Morning queue (owner only)\n3. a\n4. b\n3. c\n");
 
     expect(morningIds("seat-a", entries)).toEqual(["morning:seat-a:3", "morning:seat-a:4", "morning:seat-a:3.2"]);
+  });
+});
+
+describe("morningDeployHolds", () => {
+  const queue = (...items: string[]) =>
+    ["# Seat A", "## In flight", "1. DEPLOY HOLD: an in-flight line is the seat's own", "## Morning queue (owner only)", ...items, "## Next", "9. DEPLOY HOLD: a next line is the seat's own", ""].join("\n");
+
+  it("reads each DEPLOY HOLD item as its Morning id and a reason without the door word", () => {
+    const markdown = queue(
+      "7. DEPLOY HOLD: copy the widget db before migration 4 deploys (T-12). One-way.",
+      "8. **DEPLOY HOLD:** wait for the vendor window (one-way)",
+    );
+
+    expect(morningDeployHolds("seat-a", markdown)).toEqual([
+      { id: "morning:seat-a:7", reason: "copy the widget db before migration 4 deploys (T-12)" },
+      { id: "morning:seat-a:8", reason: "wait for the vendor window" },
+    ]);
+  });
+
+  it("ignores an item that only discusses a deploy hold, and the wrong case", () => {
+    const markdown = queue(
+      "5. Run `widgets service deploy --expect abc` once the owner lifts the DEPLOY HOLD: the owner said no dispatch. One-way.",
+      "6. Deploy hold: lower case is prose, not the marker.",
+    );
+
+    expect(morningDeployHolds("seat-a", markdown)).toEqual([]);
+  });
+
+  it("gives a bare marker a placeholder reason", () => {
+    expect(morningDeployHolds("seat-a", queue("3. DEPLOY HOLD: One-way."))).toEqual([{ id: "morning:seat-a:3", reason: "(no reason given)" }]);
   });
 });

@@ -13,7 +13,9 @@ import {
   findDeadExports,
   formatReport,
   graphFromDb,
+  newlyAdopted,
   parseCliArgs,
+  readBaseAdoptedPaths,
   readBaseBaseline,
   ROOT_ROLES,
   updatedBaseline,
@@ -203,6 +205,24 @@ describe("the shrink-only baseline", () => {
     expect(baselineGrowth(["a.ts#old", "b.ts#added"], ["a.ts#old", "c.ts#fixed"])).toEqual(["b.ts#added"]);
   });
 
+  it("forgives growth under an adopted path", () => {
+    expect(baselineGrowth(["adopted/tree/a.ts#x"], [], ["adopted/tree"])).toEqual([]);
+  });
+
+  it("still reports growth outside an adopted path, including a sibling sharing its prefix", () => {
+    const baseline = ["adopted/treeish/b.ts#y", "src/c.ts#z"];
+    expect(baselineGrowth(baseline, [], ["adopted/tree"])).toEqual(["adopted/treeish/b.ts#y", "src/c.ts#z"]);
+  });
+
+  it("forgives growth only for a path the base branch does not already list", () => {
+    expect(newlyAdopted(["adopted/tree", "adopted/new"], ["adopted/tree"])).toEqual(["adopted/new"]);
+  });
+
+  it("adds findings on update only under an adopted path", () => {
+    const findings = [finding("a.ts#old"), finding("adopted/tree/b.ts#new"), finding("c.ts#new")];
+    expect(updatedBaseline(findings, ["a.ts#old"], ["adopted/tree"])).toEqual(["a.ts#old", "adopted/tree/b.ts#new"]);
+  });
+
   it("fails on baseline growth even in a report-only run", () => {
     expect(exitCode({ growth: ["b.ts#added"], fresh: [], reportOnly: true })).toBe(1);
     expect(exitCode({ growth: [], fresh: [finding("b.ts#new")], reportOnly: true })).toBe(0);
@@ -239,6 +259,15 @@ describe("reading the base branch's baseline", () => {
 
   it("throws on a ref that does not exist instead of passing silently", () => {
     expect(() => readBaseBaseline("no-such-branch", repoWith(["a.ts#x"]))).toThrow();
+  });
+
+  it("reads the adopted paths committed at the ref, and none when the file is absent", () => {
+    const dir = repoWith(["a.ts#x"]);
+    expect(readBaseAdoptedPaths("main", dir)).toEqual([]);
+    writeFileSync(path.join(dir, ".codewatch/dead-exports-adopted.json"), JSON.stringify({ adoptedPaths: ["adopted/tree"] }));
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "adopt");
+    expect(readBaseAdoptedPaths("main", dir)).toEqual(["adopted/tree"]);
   });
 });
 

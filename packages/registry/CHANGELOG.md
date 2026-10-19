@@ -1,5 +1,11 @@
 # @titan-design/registry
 
+## 0.5.0
+
+### Minor Changes
+
+- 54b6d69: Add `inProcessCaller(registry, context, options?)`: call commands by name in process, with an unknown name returning an `EXIT.USAGE` error envelope instead of throwing.
+
 ## 0.4.0
 
 ### Minor Changes

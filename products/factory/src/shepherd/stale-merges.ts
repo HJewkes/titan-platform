@@ -30,7 +30,7 @@ function activeMerges(host: FactoryHost): { runId: string; stepId: string; head:
 export async function supersedeStaleMerges(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededMerge[]> {
   const superseded: SupersededMerge[] = [];
   const merges = activeMerges(host);
-  const heads = await mapBounded(merges, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const heads = await mapBounded(merges, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   for (const [index, { runId, stepId, head }] of merges.entries()) {
     const current = readValue(heads[index]!);
     if (!current || current === head || !host.runtime.status(runId)?.activeSteps[stepId]) continue;

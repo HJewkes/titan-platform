@@ -201,7 +201,10 @@ a stale locator: the file is gone or shorter than the span, or the bytes there n
 match the hash, decode as UTF-8 or parse as JSON. Any other I/O error rejects, and
 `readSessionSourceText` behaves the same for Claude locators. `readSessionText({ path,
 byteOffset, byteLength, field })` provides the corresponding legacy Claude field projection
-for miner consumers.
+for miner consumers. `readSessionEventText({ session, byteOffset, byteLength }, { roots })`
+returns every string in one Claude transcript line's message content, for checking a quoted
+cite. It returns null when the session is not in exactly one transcript across `roots`
+(default `claudeTranscriptRoots()`), or when the span is not exactly one whole line.
 
 ## What stayed behind
 
@@ -291,3 +294,11 @@ the last assistant message, each capped at `RECOVERY_MESSAGE_CHARS`. Lists stop 
 `RECOVERY_LIST_CAP` and report `dropped`; `messageWindowTruncated` says older messages were
 outside the window. Argument text never reaches the result, so tokens and URL queries stay out
 of a session record.
+
+## Shared source contracts
+
+The existing normalized source, observation, locator, decoder and continuation
+types are canonical in @titan-design/agent-protocol/harness. Session-read retains
+compatibility type exports at its existing paths. Its parsing, discovery, reads,
+scoped item references and legacy session references retain their existing behavior.
+This DTO extraction is a partial TP-3426 checkpoint; it adds no decoder or runtime.

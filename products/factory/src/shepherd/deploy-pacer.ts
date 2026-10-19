@@ -239,6 +239,8 @@ export interface DeployPacerOptions {
   store?: WantedStore;
   /** How often the sweep runs; defaults to `PACER_SWEEP_MS`. */
   sweepMs?: number;
+  /** The seat queue files whose Morning `DEPLOY HOLD:` items set and clear the manual hold each tick; absent leaves the hold to `service pause`. */
+  morningQueuesDir?: string;
 }
 
 /** One sweep: read, decide, act. Never throws; a failed tick logs and waits for the next. */

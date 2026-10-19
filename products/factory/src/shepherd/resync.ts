@@ -1,13 +1,13 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { FactoryHost, PendingGate } from "../host.js";
 import type { ShepherdServices } from "./services.js";
-import type { Registration } from "./store.js";
 import { supersedeRebasedGates } from "./base-moved.js";
 import { failureOf } from "./error-class.js";
 import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
+import { keptForOwner, withoutOwnerHeld } from "./owner-kept.js";
 import { REREVIEW, cancelUnlessSettled } from "./stale-gates.js";
 import { supersedeStaleMerges, type SupersededMerge } from "./stale-merges.js";
 import { supersedeStaleReviews, type SupersededReview } from "./stale-reviews.js";
@@ -121,22 +121,6 @@ async function stillFrozen(services: ShepherdServices, repo: RepoSlug, pr: numbe
 }
 
 /**
- * Only an owner hold keeps its gate. Any other hold is read, and satisfied, only on the merge path, which a run parked at
- * a gate never reaches, so its gate is superseded and the merge step waits on the hold instead.
- */
-const keptForOwner = (registration: Registration | undefined): boolean => registration === undefined || registration.ownerHold !== null;
-
-/**
- * The services with every owner-held run unregistered, so the base sweep, which leaves a run it finds no registration
- * for, leaves an owner hold's gate with the owner as the transient sweep does.
- */
-function withoutOwnerHeld(services: ShepherdServices): ShepherdServices {
-  const store = services.store.get();
-  const visible = Object.create(store, { byRun: { value: (runId: string) => (keptForOwner(store.byRun(runId)) ? undefined : store.byRun(runId)) } });
-  return { ...services, store: { ...services.store, get: () => visible } };
-}
-
-/**
  * A pending MRG-AU approve-merge gate that failed only on transient conditions, on a PR the store no longer holds frozen.
  * An owner-asked hold's gate was left pending on purpose, so a thaw leaves it with the owner.
  */
@@ -201,7 +185,9 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
     await phase("superseded", async () => {
       report.superseded = await supersedeMovedGates(host, services, { dryRun });
       report.superseded.push(...(await supersedeTransientGates(host, services, { dryRun })));
-      report.superseded.push(...(await supersedeRebasedGates(host, withoutOwnerHeld(services), { dryRun })));
+      // A dry run cancels nothing, so a gate both sweeps would cancel is listed by the first only.
+      const listed = new Set(report.superseded.map((gate) => gate.gateId));
+      report.superseded.push(...(await supersedeRebasedGates(host, withoutOwnerHeld(services), { dryRun })).filter((gate) => !listed.has(gate.gateId)));
     });
     report.supersededReviews = await phase("supersededReviews", () => supersedeStaleReviews(host, services, { dryRun }));
     report.supersededMerges = await phase("supersededMerges", () => supersedeStaleMerges(host, services, { dryRun }));

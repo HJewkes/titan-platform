@@ -1,0 +1,28 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+*.log
+.DS_Store
+.env
+.env.local
+
+# Project-specific
+.active-work-test/
+*.bak
+*.tmp.*
+
+# Generated CLI reference (TP-34) — written at release, shipped in the package
+docs/cli-reference.md
+
+# Generated miner output (tools/)
+tools/out/
+/data/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.worktrees/

@@ -18,23 +18,30 @@ export interface ParkResult {
   lines: string[];
 }
 
-export function buildParkArgs(name: string): string[] {
-  return ["agent", "park", name];
+export interface ParkOptions {
+  /** Shepherd sets it: agent-chat would otherwise ask Shepherd itself whether the agent is in a fix round (CC-1470). */
+  noFixRoundCheck?: boolean;
+}
+
+export function buildParkArgs(name: string, options: ParkOptions = {}): string[] {
+  return ["agent", "park", name, ...(options.noFixRoundCheck === true ? ["--no-fix-round-check"] : [])];
 }
 
 /**
  * Remove the agent's worktree and keep its branch; rejects with `DispatchError` when the broker refuses. Async because
  * `agent park` may read the caller back (agent-chat asks Shepherd about a fix round), and a blocked caller cannot answer.
+ * The timeout has no default, so no call path can leave a park waiting on the broker without a bound it chose.
  */
 export async function parkAgent(
   agentChatBinPath: string,
   name: string,
-  timeoutMs = DEFAULT_PARK_TIMEOUT_MS,
+  timeoutMs: number,
+  options: ParkOptions = {},
 ): Promise<ParkResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
-  const result = await runAgentChatAsync(agentChatBinPath, buildParkArgs(name), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildParkArgs(name, options), timeoutMs);
   if (result.status !== 0) throw refusal("agent park", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, lines: lines.filter((line) => line !== "") };

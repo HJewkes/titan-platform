@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
@@ -6,7 +6,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { ghDeployNow } from "./deploy-pacer-sweep.js";
+import { ghDeployNow, startDeployPacer } from "./deploy-pacer-sweep.js";
 import { deployHoldPath, deployPausePath } from "./deploy-pause.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_NOW_LABEL, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./shepherd/deploy-pacer.js";
@@ -29,13 +29,13 @@ function tempDir(): string {
 }
 
 /** A pacer over a real state dir whose merge was queued at T0, counting the sweep's reads so a test can wait out ticks that spawn nothing. */
-function pacerWorld() {
+function pacerWorld(morningQueuesDir?: string) {
   const stateDir = tempDir();
   writeWanted(stateDir, nodeWantedStore, noteWanted(undefined, WANTED, T0));
   const spawned: string[] = [];
   let reads = 0;
   const store: WantedStore = { ...nodeWantedStore, readFile: (path) => ((reads += 1), nodeWantedStore.readFile(path)) };
-  const pacer: DeployPacerOptions = { stateDir, store, sweepMs: 10, spawn: (sha) => (spawned.push(sha), { pid: 4242 }) };
+  const pacer: DeployPacerOptions = { stateDir, store, sweepMs: 10, spawn: (sha) => (spawned.push(sha), { pid: 4242 }), ...(morningQueuesDir !== undefined && { morningQueuesDir }) };
   const clock = { now: T0 };
   const ticks = async (count: number) => {
     const until = reads + count;
@@ -166,6 +166,131 @@ describe("serve's deploy pacer sweep", () => {
     const server = await serve(undefined);
 
     expect(await health(server)).not.toHaveProperty("deployPending");
+  });
+});
+
+const HOLD_ITEM = "7. DEPLOY HOLD: copy the widget db before the migration deploys. One-way.";
+const SOURCE = "morning:seat-a:7";
+
+/** A queues dir whose one seat file carries `items` under the Morning heading. */
+function morningQueues() {
+  const dir = tempDir();
+  const write = (...items: string[]) => writeFileSync(join(dir, "seat-a.md"), ["# seat-a", "", "## Morning queue (owner only)", ...items, ""].join("\n"));
+  return { dir, write };
+}
+
+const holdOnDisk = (stateDir: string): unknown => (existsSync(deployHoldPath(stateDir)) ? JSON.parse(readFileSync(deployHoldPath(stateDir), "utf8")) : undefined);
+
+describe("serve's deploy pacer with a Morning DEPLOY HOLD item (TP-3519)", () => {
+  it("spawns nothing while the Morning hold item stands, and spawns as before once the item is gone", async () => {
+    const queues = morningQueues();
+    queues.write("6. Merge the docs PR. Two-way.", HOLD_ITEM);
+    const world = pacerWorld(queues.dir);
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await world.ticks(3);
+    const held = { spawned: [...world.spawned], hold: holdOnDisk(world.stateDir) };
+    queues.write("6. Merge the docs PR. Two-way.");
+    await vi.waitFor(() => expect(world.spawned).toEqual([WANTED]));
+    await world.ticks(3);
+
+    expect(held.spawned).toEqual([]);
+    expect(held.hold).toMatchObject({ source: SOURCE, reason: `Morning ${SOURCE}: copy the widget db before the migration deploys` });
+    expect(world.spawned).toEqual([WANTED]);
+    expect(holdOnDisk(world.stateDir)).toBeUndefined();
+  });
+
+  it("leaves the failure pause byte-identical and still spawns nothing after the Morning item is gone", async () => {
+    const queues = morningQueues();
+    queues.write(HOLD_ITEM);
+    const world = pacerWorld(queues.dir);
+    const pause = JSON.stringify({ pausedAt: new Date(T0).toISOString(), target: WANTED, from: "a".repeat(40), why: "watch failed", rollback: "verified" });
+    writeFileSync(deployPausePath(world.stateDir), pause);
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await vi.waitFor(() => expect(holdOnDisk(world.stateDir)).toMatchObject({ source: SOURCE }));
+    queues.write();
+    await vi.waitFor(() => expect(holdOnDisk(world.stateDir)).toBeUndefined());
+    await world.ticks(3);
+
+    expect(world.spawned).toEqual([]);
+    expect(readFileSync(deployPausePath(world.stateDir), "utf8")).toBe(pause);
+  });
+
+  it("keeps a hold set by hand, and spawns nothing, after the Morning item is gone", async () => {
+    const queues = morningQueues();
+    queues.write(HOLD_ITEM);
+    const world = pacerWorld(queues.dir);
+    const hand = JSON.stringify({ heldAt: new Date(T0).toISOString(), reason: "owner hold" });
+    writeFileSync(deployHoldPath(world.stateDir), hand);
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await world.ticks(3);
+    queues.write();
+    await world.ticks(3);
+
+    expect(world.spawned).toEqual([]);
+    expect(readFileSync(deployHoldPath(world.stateDir), "utf8")).toBe(hand);
+  });
+
+  it("still paces when the queues dir is missing, since a read failure keeps holds and sets none", async () => {
+    const world = pacerWorld(join(tempDir(), "missing"));
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    await serve(world);
+
+    await vi.waitFor(() => expect(world.spawned).toEqual([WANTED]));
+  });
+});
+
+describe("the deploy pacer's Morning empty-read count", () => {
+  const service = { now: () => T0 + DEPLOY_MAX_WAIT_MS + MIN, runningSha: "a".repeat(40), busy: () => 0 };
+
+  /** The first tick starts unawaited with the pacer, so wait for it before ticking by hand; the long sweep keeps the timer out. */
+  async function startPacer(world: ReturnType<typeof pacerWorld>) {
+    const sweep = startDeployPacer({ ...world.pacer, sweepMs: 3_600_000 }, service, silentLogger)!;
+    await sweep.inFlight();
+    return sweep;
+  }
+
+  it("keeps the hold on the first read without the item and clears it on the second", async () => {
+    const queues = morningQueues();
+    queues.write(HOLD_ITEM);
+    const world = pacerWorld(queues.dir);
+    const sweep = await startPacer(world);
+
+    queues.write();
+    await sweep.tick();
+    const afterOne = { hold: holdOnDisk(world.stateDir), spawned: [...world.spawned] };
+    await sweep.tick();
+    await sweep.stop();
+
+    expect(afterOne).toMatchObject({ hold: { source: SOURCE }, spawned: [] });
+    expect(holdOnDisk(world.stateDir)).toBeUndefined();
+    expect(world.spawned).toEqual([WANTED]);
+  });
+
+  it("restarts the count at 0 after a serve restart, which delays the clear by a read and never causes one", async () => {
+    const queues = morningQueues();
+    queues.write(HOLD_ITEM);
+    const world = pacerWorld(queues.dir);
+    await (await startPacer(world)).stop();
+    queues.write();
+
+    const before = await startPacer(world);
+    await before.stop();
+    const afterRestart = holdOnDisk(world.stateDir);
+    const after = await startPacer(world);
+    const afterOneRead = holdOnDisk(world.stateDir);
+    await after.tick();
+    await after.stop();
+
+    expect(afterRestart).toMatchObject({ source: SOURCE });
+    expect(afterOneRead).toMatchObject({ source: SOURCE });
+    expect(holdOnDisk(world.stateDir)).toBeUndefined();
+    expect(world.spawned).toEqual([WANTED]);
   });
 });
 

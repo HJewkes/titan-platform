@@ -4,6 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { isFullSha } from "@titan-design/evidence";
+import { readReviewPin } from "@titan-design/pm";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import { digestFacts } from "./digest-facts.js";
 import { ExplainerFactSchema, ReviewBundleSchema, type ExplainerFact, type FactSource, type ReviewBundle } from "./schemas.js";
@@ -140,11 +141,20 @@ interface PinCheck {
   readHead: (clonePath: string) => Promise<string>;
 }
 
+// The bundle schema's own rule, so a remote that passes here never throws in ReviewBundleSchema.parse.
+const REMOTE_URL = ReviewBundleSchema.shape.repo.shape.url;
+
+function remoteProblem(remote: string | undefined): string {
+  if (remote === undefined || remote === "") return `${FILES.readme} has no "Remote: <url>" line`;
+  return `${FILES.readme} remote "${remote}" is not a URL`;
+}
+
 async function checkPin({ readme, clonePath, readHead }: PinCheck, out: GatherDiagnostic[]) {
   const pin = readme === undefined ? undefined : readPin(readme);
-  const url = readme === undefined ? undefined : /^[-*\s]*Remote:\s*(\S+)/m.exec(readme)?.[1];
+  const remote = readme === undefined ? undefined : readReviewPin(readme).remote;
+  const url = remote !== undefined && REMOTE_URL.safeParse(remote).success ? remote : undefined;
   if (pin === undefined || !isFullSha(pin)) out.push(diag("E-PIN-UNKNOWN", `${FILES.readme} has no "HEAD: <40-hex>" pin`, FILES.readme));
-  if (url === undefined) out.push(diag("E-PIN-UNKNOWN", `${FILES.readme} has no "Remote: <url>" line`, FILES.readme));
+  if (url === undefined) out.push(diag("E-PIN-UNKNOWN", remoteProblem(remote), FILES.readme));
   let head: string | undefined;
   try {
     head = await readHead(clonePath);

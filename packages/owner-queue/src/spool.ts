@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { RevisionSource } from "@titan-design/evidence";
 import { verifyDepositAnchors, type QuotedAnchor } from "./deposit-anchors.js";
+import { verifyDepositCite, type SessionEventTextSource } from "./deposit-cite.js";
 import { fromDeposit, ownerItemDepositSchema, type OwnerItemDeposit } from "./deposit.js";
 import { forAudience } from "./audience.js";
 import { ownerItemSchema, type Audience, type OwnerAnswer, type OwnerItem } from "./schema.js";
 
 export { DepositAnchorError, type QuotedAnchor } from "./deposit-anchors.js";
+export { DepositCiteError, type SessionEventRef, type SessionEventTextSource } from "./deposit-cite.js";
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
 export const MAX_DEPOSIT_BYTES = 64 * 1024;
@@ -24,6 +26,8 @@ export type DepositWriteResult = WriteResult & { anchors?: QuotedAnchor[] };
 export interface WriteDepositOptions {
   /** File text at a pinned commit. With it, a deposit whose anchor does not hold is refused unwritten. */
   source?: RevisionSource;
+  /** Transcript event text. A locator cite is refused unwritten unless its quote matches; with no source it is refused. */
+  events?: SessionEventTextSource;
 }
 export type SpoolReject = { file: string; reason: string };
 export type SpoolContents = { items: OwnerItem[]; rejects: SpoolReject[] };
@@ -153,11 +157,13 @@ async function assertHeldBy(file: string, deposit: { asker: string; depositId: s
  * current or its legacy name, leaves the first file in place and returns `created: false`.
  * Throws on a refused or oversized deposit, and on a name held by a different deposit. With a
  * `source`, an anchor past EOF or on a path that is not a file at its pinned commit throws
- * DepositAnchorError before anything is written.
+ * DepositAnchorError before anything is written. A locator cite whose quote does not match its
+ * transcript event, through `events`, throws DepositCiteError before anything is written.
  */
 export async function writeDeposit(dir: string, deposit: OwnerItemDeposit, options: WriteDepositOptions = {}): Promise<DepositWriteResult> {
   const parsed = ownerItemDepositSchema.parse(deposit);
   const anchors = options.source ? verifyDepositAnchors(parsed, options.source) : [];
+  await verifyDepositCite(parsed.recommended?.cite, options.events);
   const body = JSON.stringify(parsed);
   if (Buffer.byteLength(body) > MAX_DEPOSIT_BYTES) {
     throw new RangeError(`deposit exceeds ${MAX_DEPOSIT_BYTES} bytes`);

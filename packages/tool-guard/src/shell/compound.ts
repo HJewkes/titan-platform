@@ -11,6 +11,8 @@ const COMMAND_PREFIXES = new Set(["if", "then", "elif", "else", "do", "while", "
 const EXTGLOB_PREFIXES = "?*+@!";
 /** Words that open a compound command, the only body bash accepts after a function header. */
 const COMPOUND_OPENERS = new Set(["{", "if", "for", "while", "until", "case", "select", "[["]);
+/** The control operators after which a `[[` is read the same by bash and zsh, with no prefix word before it. */
+const BARE_START_OPS = new Set([";", "&", "&&", "||", "|", "|&", "\n", "("]);
 const HEREDOC_OPENERS = new Set(["<<", "<<-", "<<<"]);
 const BLOCK_OPENERS =new Set(["if", "for", "while", "until", "select"]);
 const BLOCK_CLOSERS = new Set(["fi", "done"]);
@@ -23,6 +25,8 @@ export function newRegexScan(): RegexScan {
     depth: 0,
     commandStart: true,
     conditionalAt: -1,
+    joinsAt: -1,
+    bareStart: true,
     regexAt: -1,
     wordAtStart: false,
     timed: false,
@@ -102,6 +106,12 @@ export function refuseRedirect(s: LexState, op: string): void {
   if (s.regex.bodyPending) throw new ParseError("bash rejects a redirect between a function header and its body");
 }
 
+/** Whether the character at `s.i` sits directly in a `[[` opened at a bare command start, where `&&` and `||` join tests. */
+export function inJoiningConditional(s: LexState): boolean {
+  regexDepth(s);
+  return s.trials.joinsConditional && s.regex.joinsAt !== -1 && s.depth === s.regex.joinsAt;
+}
+
 /** Whether the tokens so far end inside a `[[ ]]`, where `<` and `>` compare strings. */
 export function inConditional(s: LexState): boolean {
   regexDepth(s);
@@ -134,14 +144,16 @@ function regexDepth(s: LexState): number {
 function scanToken(r: RegexScan, t: Token): void {
   if (t.type === "op") return scanOperator(r, t.value);
   const bare = bareWord(t);
-  if (r.conditionalAt === -1) scanCommandWord(r, t, bare);
+  const bareStart = r.bareStart;
+  r.bareStart = false;
+  if (r.conditionalAt === -1) scanCommandWord(r, t, bare, bareStart && t.type === "word" && !t.computed && !t.dynamic);
   else if (bare === "=~") r.regexAt = r.depth;
-  else if (bare === "]]" && r.depth === r.conditionalAt) Object.assign(r, { conditionalAt: -1, regexAt: -1, commandStart: false });
+  else if (bare === "]]" && r.depth === r.conditionalAt) Object.assign(r, { conditionalAt: -1, joinsAt: -1, regexAt: -1, commandStart: false });
 }
 
-function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
+function scanCommandWord(r: RegexScan, t: Token, bare: string | null, bareStart: boolean): void {
   if (caseWord(r, t, bare)) return void Object.assign(r, { commandStart: false, wordAtStart: false, timed: false, nameNext: false, named: false });
-  if (r.commandStart) noteKeyword(r, bare);
+  if (r.commandStart) noteKeyword(r, bare, bareStart);
   const timeOption = r.timed && (bare === "-p" || bare === "--");
   r.named = r.nameNext;
   r.nameNext = r.commandStart && (bare === "function" || bare === "coproc");
@@ -152,9 +164,9 @@ function scanCommandWord(r: RegexScan, t: Token, bare: string | null): void {
 }
 
 /** Counts the `case`s, `if`s and loops a word in command position opens or closes, and opens a `[[`. */
-function noteKeyword(r: RegexScan, bare: string | null): void {
+function noteKeyword(r: RegexScan, bare: string | null, bareStart: boolean): void {
   if (bare === null) return;
-  if (bare === "[[") r.conditionalAt = r.depth;
+  if (bare === "[[") Object.assign(r, { conditionalAt: r.depth, joinsAt: bareStart ? r.depth : -1 });
   if (bare === "case") openCase(r);
   if (bare === "esac") closeCase(r);
   noteCaseBlock(r, bare);
@@ -171,7 +183,8 @@ function scanOperator(r: RegexScan, op: string): void {
   if (op === ")" && !pattern) r.depth = Math.max(0, r.depth - 1);
   const paren = op === "(" || op === ")";
   if (r.depth < r.regexAt || (r.depth === r.regexAt && !paren)) r.regexAt = -1;
-  if (r.depth < r.conditionalAt || (r.depth === r.conditionalAt && !paren && op !== "&&" && op !== "||")) r.conditionalAt = -1;
+  if (r.depth < r.conditionalAt || (r.depth === r.conditionalAt && !paren && op !== "&&" && op !== "||")) Object.assign(r, { conditionalAt: -1, joinsAt: -1 });
+  r.bareStart = BARE_START_OPS.has(op);
   if (r.conditionalAt === -1) r.commandStart = op !== ")" || closesHeader || pattern;
   noteHeader(r, op, closesHeader);
 }

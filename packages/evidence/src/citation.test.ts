@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineSourceFromTexts, splitLines } from "./line-source.js";
-import { quoteInRange, verifyCitation } from "./citation.js";
+import { quoteInRange, quoteInText, verifyCitation } from "./citation.js";
 
 const FILE = ["def area(r):", "    return 3.14159 * r * r", "", "def unused():", "    pass"].join("\n") + "\n";
 const source = lineSourceFromTexts({ "geo.py": FILE, "other.py": "x = 1\n" });
@@ -29,6 +29,22 @@ describe("quote matching", () => {
   it("rejects a quote with no fragment long enough to carry evidence", () => {
     expect(verifyCitation(source, cite(2, 2, " r ... * "))).toMatchObject({ ok: false, reason: "quote-empty" });
     expect(quoteInRange(splitLines(FILE), { lineStart: 2, lineEnd: 2 }, "")).toBeNull();
+  });
+});
+
+describe("quoteInText", () => {
+  const text = "The flat layout keeps   every read\nto one lookup.";
+
+  it("matches a quote re-wrapped over different line breaks", () => {
+    expect(quoteInText(text, "The flat layout keeps every\nread to one lookup.")).toBe(true);
+  });
+
+  it("does not match a quote that is not in the text", () => {
+    expect(quoteInText(text, "The nested layout keeps every read")).toBe(false);
+  });
+
+  it("returns null for a quote with nothing to check", () => {
+    expect(quoteInText(text, "  \n ")).toBeNull();
   });
 });
 

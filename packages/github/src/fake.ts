@@ -7,6 +7,7 @@ import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { CheckRun, MergeMethod, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
+import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
@@ -84,7 +85,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },
-  } as Omit<FakeGitHub, "wire"> as FakeGitHub;
+  } as Omit<FakeGitHub, "wire" | "gitExec"> as FakeGitHub;
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
   const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
     const fault = (fake.calls.push(name), fake.readFaults[name]?.shift());
@@ -176,6 +177,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
       return record("listCommits", after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message })));
     },
+    compareAncestry: async (_repo, base, head) => read("compareAncestry", () => fakeAncestry({ commits: fake.commits, refs: fake.refs, prs }, base, head)),
     compareFiles: async (_repo, base, head) => {
       const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
       const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
@@ -199,6 +201,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("listForcePushes", { pushes: all.slice(0, FORCE_PUSHES_CAP).map((push) => ({ ...push })), more: all.length > FORCE_PUSHES_CAP });
     },
   };
+  fake.gitExec = fakeLsRemote(prs, () => read("lsRemote", () => undefined));
   return fake;
 }
 

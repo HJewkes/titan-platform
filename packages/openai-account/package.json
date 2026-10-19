@@ -1,0 +1,44 @@
+{
+  "name": "@titan-design/openai-account",
+  "version": "0.1.0",
+  "description": "Read-only Codex account state: login status, rollout quota readings, freshness and admission",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "packages/openai-account"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/anthropic-account": "workspace:^"
+  }
+}

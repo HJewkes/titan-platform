@@ -3,20 +3,6 @@ interface Nesting {
     depth: number;
 }
 
-/**
- * Shared by every lexer state reading one source: each `((` position, and the `$` of each `$((`,
- * is tried once. The spend and the nesting are shared further, with heredoc bodies and backticks
- * lexed from that source, so all trials of one command read at most a few times its length and
- * crafted nesting can neither stall the guard nor overflow its stack.
- */
-interface ArithTrials {
-    ends: Map<number, number>;
-    spend: {
-        left: number;
-    };
-    nesting: Nesting;
-}
-
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
 interface VarRef {
     name: string;
@@ -39,6 +25,8 @@ interface WordToken {
     codeAt?: number[];
     /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
     unquotedExpansion?: true;
+    /** The word is a `case` pattern, matched against the subject and never run. */
+    casePattern?: true;
     refs: VarRef[];
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
@@ -78,6 +66,37 @@ interface RedirectToken {
     subs: Token[][];
 }
 type Token = WordToken | OpToken | SubsToken | RedirectToken;
+
+/**
+ * Shared by every lexer state reading one source: each `((` position, and the `$` of each `$((`,
+ * is tried once. The spend and the nesting are shared further, with heredoc bodies and backticks
+ * lexed from that source, so all trials of one command read at most a few times its length and
+ * crafted nesting can neither stall the guard nor overflow its stack.
+ */
+interface ArithTrials {
+    ends: Map<number, number>;
+    /** The tokens of the arithmetic reading of the `$((` at each position, kept so a repeat visit reads nothing again. */
+    arithmetic: Map<number, Token[][]>;
+    /** The tokens of the `$( ( … ) )` reading of the `$((` at each position, lexed once so nested ones stay linear. */
+    subshells: Map<number, Token[][]>;
+    /** How many spans read two ways nest at each position that does. */
+    depths: Map<number, number>;
+    /**
+     * `deepest` is the deepest such nesting met so far under the span being read, and `level`, while a `$( ( … ) )`
+     * reading is lexed, how many such readings enclose the position being read. Both are shared with heredoc
+     * bodies and backticks like the nesting, so a span nested through one still counts toward the limit.
+     */
+    bothReadings: {
+        deepest: number;
+        level: number;
+    };
+    spend: {
+        left: number;
+    };
+    nesting: Nesting;
+    /** Whether a `[[` at a bare command start joins its `&&` and `||`, which only a text read as bash, zsh or ksh may do. */
+    joinsConditional: boolean;
+}
 
 declare class ParseError extends Error {
     name: string;
@@ -156,8 +175,12 @@ interface ExtractOptions {
      */
     stopPastCap?: boolean;
     aliases?: AliasTable;
+    /** Read `&&` and `||` in a bare-start `[[` as test words: only for text the caller knows bash, zsh or ksh reads. */
+    joinsConditional?: boolean;
     /** Called with each script text the walk reads (a `-c` string, eval text, a heredoc or piped script), before reading it. */
     onScript?: (text: string) => void;
+    /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
+    arithmetic?: boolean;
 }
 /**
  * Every simple command the shell would run, including ones nested in substitutions, `bash -c`
@@ -168,6 +191,14 @@ declare function extractCommands(src: string, options?: ExtractOptions): SimpleC
 
 /** A line whose dynamic wrapper words leave more readings that may decide than the budget walks; the hook denies it unchecked. */
 declare class ReadingLimitError extends Error {
+    constructor();
+}
+
+/**
+ * A line that defines a shell alias; the hook denies it unchecked. Eval text, `$( )` and sourced files that zsh parses
+ * later in the same process expand the alias, and the guard does not model the alias table.
+ */
+declare class AliasDefinitionError extends ReadingLimitError {
     constructor();
 }
 
@@ -201,4 +232,4 @@ declare function splitArgs(args: WordToken[], valueOpts?: Set<string>): SplitArg
 /** Absolute path a word names from `dir`, or null when the word is dynamic or the base is unknown. */
 declare function resolvePath(dir: string | null, word: WordToken | null | undefined, home: string | null): string | null;
 
-export { type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };
+export { AliasDefinitionError, type AliasTable, type Chain, CommandRebindingError, type ExtractOptions, type GitInvocation, type OpToken, ParseError, ReadingLimitError, type RedirectToken, type SimpleCommand, type SplitArgs, type SubsToken, type Token, type VarRef, type WordToken, type Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize };

@@ -1,7 +1,7 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import { advisoryGuard, type IsAdvisory } from "./advisory.js";
-import { isFixersPr, type FreezeGuard, type FreezeStore } from "./freeze.js";
+import { isFixersPr, repoFrozenReason, type FreezeGuard, type FreezeStore } from "./freeze.js";
 import { firstReason, heldCheck, type HeldCheck } from "./hold.js";
 import { releaseGuard } from "./release.js";
 import type { ShepherdStore } from "./store.js";
@@ -19,6 +19,8 @@ interface ShadowHeldDeps {
 function standingFreeze(deps: ShadowHeldDeps): FreezeGuard {
   return {
     reason: async (_port, repo, pr) => {
+      const manual = repoFrozenReason(deps.freezes(), repo);
+      if (manual !== undefined) return manual;
       const freeze = deps.freezes().get(repo);
       return freeze && !isFixersPr(freeze, deps.holds().byPr(repo, pr)) ? `${repo} is frozen: main is red at ${freeze.redSha}` : undefined;
     },

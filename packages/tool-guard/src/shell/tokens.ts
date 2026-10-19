@@ -23,6 +23,8 @@ export interface WordToken {
   codeAt?: number[];
   /** A `$` or backtick expansion sits outside double quotes, so it word-splits even when other parts are quoted. */
   unquotedExpansion?: true;
+  /** The word is a `case` pattern, matched against the subject and never run. */
+  casePattern?: true;
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
@@ -82,6 +84,10 @@ export interface RegexScan {
   depth: number;
   commandStart: boolean;
   conditionalAt: number;
+  /** Depth of a `[[` that opened at a bare command start, whose `&&` and `||` are words; -1 for none or any other `[[`. */
+  joinsAt: number;
+  /** No word or redirect has come since a line start or a control operator, so a `[[` here is at a bare command start. */
+  bareStart: boolean;
   regexAt: number;
   /** The last word stood in command position, so a `(` after it may open a function header `name ( )`. */
   wordAtStart: boolean;
