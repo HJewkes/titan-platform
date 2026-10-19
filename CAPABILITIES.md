@@ -758,7 +758,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.18.1`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.18.2`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
