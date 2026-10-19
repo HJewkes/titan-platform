@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { CLAUDE_JSON_SURFACE, CLAUDE_MD_SURFACE, CLAUDE_SETTINGS_SURFACE, EMPTY_SURFACES, joinSurfaces, namesOnly, type ConfigSurfaces, type SurfaceReader } from "./catalog.js";
+import { EMPTY_SURFACES, joinSurfaces, type ConfigSurfaces, type SurfaceReader } from "./catalog.js";
+import { CLAUDE_JSON_SURFACE, CLAUDE_MD_SURFACE, CLAUDE_SETTINGS_SURFACE, namesOnly } from "./specs.js";
 import { derivedRow, readSurfaceFile, readTarget } from "./files.js";
 
 /** `.claude.json` keeps every project ever opened, so it outgrows the walked files' cap; it is parsed, never walked. */
