@@ -6,6 +6,10 @@ import type { CodexRunRequest, HarnessRunFailure, HarnessRunProgress, HarnessRun
 
 export const DEFAULT_CODEX_KILL_GRACE_MS = 2_000;
 
+export function unrefTimer(timer: { unref?: () => void }): void {
+  timer.unref?.();
+}
+
 export async function runCodexExecSession<T>(
   request: CodexRunRequest<T>,
   processHandle: SupervisedCodexProcess,
@@ -58,7 +62,7 @@ class CodexExecSession<T> {
     try {
       this.request.signal?.addEventListener("abort", this.onAbort);
       this.timer = setTimeout(() => this.stop("timeout"), this.processWallTimeMs);
-      this.timer.unref?.();
+      unrefTimer(this.timer);
       this.emit({ kind: "execution_started", execution: { executionId: this.executionId } });
       const [, , exit] = await Promise.all([this.readStdout(), this.readStderr(), this.processHandle.completed]);
       let result = this.settle(exit);
@@ -207,7 +211,7 @@ class CodexExecSession<T> {
     this.processHandle.terminate("SIGTERM");
     if (this.forceTimer) return;
     this.forceTimer = setTimeout(() => this.processHandle.terminate("SIGKILL"), this.killGraceMs);
-    this.forceTimer.unref?.();
+    unrefTimer(this.forceTimer);
   }
 
   private async ignoreExitFailure(): Promise<void> {

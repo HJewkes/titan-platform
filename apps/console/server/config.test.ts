@@ -82,6 +82,12 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
   });
 
+  it("reads video roots as a path list, expanding ~, and refuses a relative entry", () => {
+    expect(resolveConfig({}, HOME).videoRoots).toEqual([]);
+    expect(resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["~/renders", "/var/clips"].join(path.delimiter) }, HOME).videoRoots).toEqual([path.join(HOME, "renders"), "/var/clips"]);
+    expect(() => resolveConfig({ TITAN_CONSOLE_VIDEO_ROOTS: ["/var/clips", "renders"].join(path.delimiter) }, HOME)).toThrow(/TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([
@@ -190,6 +196,11 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_ROUNDS_DIR: "~/rounds" }).roundsDir).toBe(path.join(HOME, "rounds"));
   });
 
+  it("reads repo reviews under the active-work root unless TITAN_CONSOLE_REVIEWS_DIR is given", () => {
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw" }, HOME, "linux").reviewsDir).toBe("/var/aw/titan-platform/sources/research/repo-review");
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw", TITAN_CONSOLE_REVIEWS_DIR: "~/reviews" }, HOME, "linux").reviewsDir).toBe(path.join(HOME, "reviews"));
+  });
+
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
@@ -199,6 +210,12 @@ describe("console LAN config", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_GATE_ANSWERS: "" }), lan({ TITAN_CONSOLE_GATE_ANSWERS: "0" })].map((c) => c.gateAnswers)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_GATE_ANSWERS: "1" }).gateAnswers).toBe(true);
     expect(() => lan({ TITAN_CONSOLE_GATE_ANSWERS: "yes" })).toThrow(/TITAN_CONSOLE_GATE_ANSWERS must be 1 or 0/);
+  });
+
+  it("keeps inbox actions off unless TITAN_CONSOLE_INBOX_ACTIONS is 1, and refuses a typo", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_INBOX_ACTIONS: "" }), lan({ TITAN_CONSOLE_INBOX_ACTIONS: "0" })].map((c) => c.inboxActions)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_INBOX_ACTIONS: "1" }).inboxActions).toBe(true);
+    expect(() => lan({ TITAN_CONSOLE_INBOX_ACTIONS: "on" })).toThrow(/TITAN_CONSOLE_INBOX_ACTIONS must be 1 or 0/);
   });
 
   it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {

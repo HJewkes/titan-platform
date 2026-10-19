@@ -220,7 +220,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]);
   });
 });
 
@@ -385,7 +385,7 @@ describe("gate rule migrations on a factory database from before them", () => {
     const versions = appliedVersions(db);
     db.close();
     expect(column).toBeDefined();
-    expect(versions.slice(-2)).toEqual([27, 28]);
+    expect(versions).toEqual(expect.arrayContaining([27, 28]));
   });
 
   it("stamps a merge gate land opens afterwards with the MRG-AU row and the coordinator delegate", async () => {

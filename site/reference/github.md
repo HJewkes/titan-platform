@@ -181,9 +181,10 @@ and exit 2.
 
 ## What it deliberately does not do
 
-- No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every
-  call is `gh api`; only those two post to `graphql`, because GitHub reports a review thread's
-  resolved state and a force-push's replaced head nowhere in REST.
+- No `gh pr view`, and no GraphQL but for `listReviewComments`, `listForcePushes` and
+  `readBackstopSnapshot`. Every call is `gh api`; only those post to `graphql`, because GitHub
+  reports a review thread's resolved state and a force-push's replaced head nowhere in REST,
+  and the backstop needs many PRs' rollups in one request.
 - No token handling. It runs on the caller's existing `gh` login.
 - No polling, timeouts or retry policy outside `ciWait`. Every other read leaves when to read
   again to the caller. The rate budget only paces calls; it never drops one.
@@ -269,6 +270,57 @@ A token split across stdout and stderr is cut from both halves. A wire built
 without `appToken` refuses `createCheckRun`. `fakeGitHub({ appId })` records the run under that
 app id (default `FAKE_APP_ID`), so `latestCheckRuns` returns it; each posted run is also
 appended to `fake.createdCheckRuns` as `{ id, repo, request }`.
+
+### Ancestry and pull-head reads
+
+`compareAncestry(repo, base, head)` is on the wire, the port and `fakeGitHub`. It answers the
+compare API's `status` for `base...head`: `ahead` (`base` is an ancestor of `head`), `behind`,
+`identical` or `diverged`. A 404 answers `missing`: GitHub has not got one of the commits, which
+just after a push can mean it has not caught up, so treat it as "read again", not as proof. A
+status it does not know and any other failed read throw. It reads one page of one commit, since
+only `status` matters.
+
+`lsRemotePullHead(exec, remoteUrl, n, { env, timeoutMs })` runs
+`git ls-remote -- <remoteUrl> refs/pull/<n>/head` through a `GitExec` (`execGit`, or
+`fake.gitExec`) and answers the sha, or null when the remote has no such ref. It reads git's
+transport, not REST, so it is a second, independent source for a PR head. A credential goes in
+`env` (for example `GIT_CONFIG_*` entries carrying an `http.extraHeader`), never on argv:
+`remoteUrl` must be an `https:` or `file:` URL with no user or password, and is refused with
+`GitHubInputError` before git runs otherwise. `GIT_TERMINAL_PROMPT=0` is always set. A git that
+cannot run, exits non-zero or prints no object id throws `LsRemoteError`, with the `env` values
+and token-shaped strings cut from the message; a failed read is never a sha. Only an exact
+`refs/pull/<n>/head` line counts, because git matches the pattern against the tail of each ref.
+
+The fake answers both from its own history: `compareAncestry` walks `fake.commits` parents
+(ref names resolve to their tips, and PR heads count as known), and `fake.gitExec` answers each
+PR's current head. `readFaults.compareAncestry` and `readFaults.lsRemote` fail the next read.
+
+### Backstop snapshot read
+
+`readBackstopSnapshot(api, { repo, branch, since, mainCursor, doneSince })` takes a `Rest`
+transport directly (it is not on the port) and reads one repo for a reconciler backstop with
+one GraphQL query:
+
+- `open`: every open PR with its head commit's rollup contexts (`kind: "check"` with
+  `databaseId, name, status, conclusion, completedAt`, or `kind: "status"` with
+  `context, state, createdAt`) and its reviews, oldest first.
+- `done`: merged and closed PRs, newest first, until `updatedAt` is older than `doneSince` less
+  `DONE_OVERLAP_MS` (10 min). `mergedBy` is the login.
+- `main`: the branch `tip` and its history since `since`, newest first, stopping before
+  `mainCursor`.
+- `rateLimit`: `cost` summed over every query sent, `remaining` and `resetAt` from the last,
+  and `queries`.
+
+Every range is read whole. A later page re-sends the same document with only the ranges that
+still have pages included, and a `contexts` or `reviews` connection with more pages is re-read
+for that one commit or PR. A range that would need a page past `BACKSTOP_CAPS` (main 20 pages
+= 1,000 commits, done 10 pages = 200 PRs, open 20, contexts and reviews 10 follow-up pages)
+throws `BackstopTruncated` with `range` and `cap`: treat it as "cannot decide", and do not move
+the cursor. Unlike `listForcePushes`, any GraphQL `errors` entry fails the read even when
+`data` came back beside it, because a partial snapshot reads as a PR with no CI or no review.
+GraphQL has no conditional requests, so the caller decides when a snapshot is worth sending.
+`snapshotRequests` and `graphqlPoints` compute GitHub's cost formula: a full page set of every
+range is 203 requests, 2 points.
 
 ## Where it came from
 

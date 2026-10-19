@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { isCodexThreadId } from "./codex-thread-id.js";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
-import { runCodexExecSession } from "./codex-exec-session.js";
+import { runCodexExecSession, unrefTimer } from "./codex-exec-session.js";
 import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
-  inspectCodexVersion,
   startCodexProcess,
   type CodexProcessInput,
   type CodexSchemaFile,
@@ -23,9 +23,15 @@ import type {
   LimitCapability,
 } from "./harness-contracts.js";
 import { preflightHarnessRun } from "./preflight.js";
+import {
+  CODEX_RUNTIME_CAPABILITIES, MIN_CODEX_EXEC_VERSION,
+  type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexCapabilityInspectionOptions,
+} from "./codex-runtime.js";
 
-export const DEFAULT_CODEX_EXECUTABLE = "/Applications/ChatGPT.app/Contents/Resources/codex";
-export const SUPPORTED_CODEX_EXEC_VERSION = "0.154.0-alpha.6.1";
+import { checkCodexAvailable, resolveCodexExecutable, DEFAULT_CODEX_EXECUTABLE } from "./codex-available.js";
+export { DEFAULT_CODEX_EXECUTABLE } from "./codex-available.js";
+/** @deprecated This is the minimum floor, not an exact version pin. */
+export const SUPPORTED_CODEX_EXEC_VERSION = MIN_CODEX_EXEC_VERSION;
 export const STRIPPED_CODEX_AUTH_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_ACCESS_TOKEN"] as const;
 
 export interface CodexExecAdapterOptions {
@@ -35,9 +41,16 @@ export interface CodexExecAdapterOptions {
   killGraceMs?: number;
   /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
   prices?: readonly CodexPriceRow[];
+  /** Extra runtime requirements, e.g. MCP/policy/rollout evidence for a managed peer. */
+  requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
 }
 
 export interface CodexExecDeps {
+  inspectCapabilities?: (
+    executablePath: string,
+    env: Record<string, string>,
+    options: CodexCapabilityInspectionOptions,
+  ) => Promise<CodexRuntimeInspection>;
   inspectVersion?: (
     executablePath: string,
     env: Record<string, string>,
@@ -55,7 +68,7 @@ export function createCodexExecAdapter(
   deps: CodexExecDeps = {},
 ): HarnessAdapter<"codex"> {
   validateOptions(options);
-  const executablePath = options.executablePath ?? DEFAULT_CODEX_EXECUTABLE;
+  const executablePath = resolveCodexExecutable(options.executablePath);
   const env = prepareCodexEnv(options.env ?? process.env);
   const descriptor = codexExecCapabilities();
   return {
@@ -66,7 +79,8 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices };
+        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices,
+          requiredRuntimeCapabilities: options.requiredRuntimeCapabilities };
         return await runSupervised(request, config, deps);
       } catch (error) {
         return failed({ kind: "runtime_error", reason: messageOf(error), native: error });
@@ -101,7 +115,7 @@ export function codexExecCapabilities(): HarnessCapabilityDescriptor<"codex"> {
   const limits = limitCapabilities(supported, unsupported);
   return {
     harness: "codex",
-    adapter: { name: "codex-exec-json", version: SUPPORTED_CODEX_EXEC_VERSION },
+    adapter: { name: "codex-exec-json", version: `>=${MIN_CODEX_EXEC_VERSION}` },
     capabilities,
     limits,
   };
@@ -133,15 +147,20 @@ function limitCapabilities(
 }
 
 function validateOptions(options: CodexExecAdapterOptions): void {
-  if (options.auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
-  if (options.executablePath !== undefined) {
-    if (options.executablePath.trim().length === 0) throw new TypeError("executablePath must be a nonempty string");
-    if (!isAbsolute(options.executablePath)) throw new TypeError("executablePath must be absolute");
+  if (options.requiredRuntimeCapabilities !== undefined &&
+      (!Array.isArray(options.requiredRuntimeCapabilities) || options.requiredRuntimeCapabilities.some(value => !CODEX_RUNTIME_CAPABILITIES.includes(value)))) {
+    throw new TypeError("requiredRuntimeCapabilities must contain recognized runtime capabilities");
   }
+  validateCodexAuth(options.auth);
+  resolveCodexExecutable(options.executablePath);
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
   if (options.prices !== undefined) validateCodexPrices(options.prices);
+}
+
+function validateCodexAuth(auth: unknown): void {
+  if (auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
 }
 
 function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailure | undefined {
@@ -154,26 +173,6 @@ function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailu
   return undefined;
 }
 
-async function checkVersion(
-  inspect: () => Promise<string>,
-  expected: string,
-): Promise<HarnessRunFailure | undefined> {
-  try {
-    const actual = parseVersion(await inspect());
-    if (actual === expected) return undefined;
-    return { kind: "runtime_error", reason: `unsupported Codex CLI version ${actual}; expected ${expected}` };
-  } catch (error) {
-    const reason = `could not verify Codex CLI version: ${messageOf(error)}`;
-    return { kind: "runtime_error", reason, native: error };
-  }
-}
-
-function parseVersion(output: string): string {
-  const match = /^codex-cli\s+(\S+)/m.exec(output.trim());
-  if (!match?.[1]) throw new Error(`unrecognized version output: ${output.trim()}`);
-  return match[1];
-}
-
 async function runSupervised<T>(
   request: CodexRunRequest<T>,
   config: {
@@ -181,6 +180,7 @@ async function runSupervised<T>(
     env: Record<string, string>;
     killGraceMs?: number;
     prices?: readonly CodexPriceRow[];
+    requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
   },
   deps: CodexExecDeps,
 ): Promise<HarnessRunResult<T, "codex">> {
@@ -189,16 +189,15 @@ async function runSupervised<T>(
   const remaining = () => Math.max(0, request.wallTimeMs - (deadlineNow() - startedAt));
   let schemaFile: CodexSchemaFile | undefined;
   try {
-    const versionOutput = await setupStep(
-      (deps.inspectVersion ?? inspectCodexVersion)(config.executablePath, config.env, {
-        signal: request.signal,
-        timeoutMs: remaining(),
-      }),
-      request.signal,
-      remaining(),
-    );
-    const versionFailure = await checkVersion(async () => versionOutput, SUPPORTED_CODEX_EXEC_VERSION);
-    if (versionFailure) return failed(versionFailure);
+    const args = buildCodexExecArgs(request, request.native?.outputSchema ? "preflight-schema" : undefined);
+    const required: CodexRuntimeCapability[] = [...capabilitiesForArgs(args),
+      ...(config.requiredRuntimeCapabilities ?? [])];
+    const available = await setupStep(checkCodexAvailable({
+      ...(config.executablePath === DEFAULT_CODEX_EXECUTABLE ? {} : { executablePath: config.executablePath }),
+      env: config.env, timeoutMs: remaining(), signal: request.signal, resume: request.target.kind === "resume",
+      sandbox: request.native?.sandbox ?? "read-only", requiredCapabilities: required,
+    }, deps), request.signal, remaining());
+    if (!available.ok) return failed(available.failure);
 
     if (request.native?.outputSchema) {
       schemaFile = await setupStep(
@@ -246,7 +245,21 @@ async function runSupervised<T>(
   }
 }
 
+function capabilitiesForArgs(args: readonly string[]): CodexRuntimeCapability[] {
+  const flags: readonly (readonly [string, CodexRuntimeCapability])[] = [
+    ["--json", "json_events"], ["--config", "config_overrides"],
+    ["--ignore-user-config", "user_config_isolation"], ["--strict-config", "strict_config"],
+    ["--model", "model_selection"], ["--cd", "working_directory"], ["--output-schema", "output_schema"],
+  ];
+  const options = args.slice(0, args.indexOf("--"));
+  return flags.filter(([flag]) => options.includes(flag)).map(([, capability]) => capability);
+}
+
 export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: string): string[] {
+  const resumeId = request.target.kind === "resume" ? request.target.conversation.nativeId : undefined;
+  if (request.target.kind === "resume" && !isCodexThreadId(resumeId)) {
+    throw new TypeError("Codex resume requires a canonical thread UUID");
+  }
   const native = request.native!;
   const args = ["exec"];
   if (request.target.kind === "resume") args.push("resume");
@@ -258,7 +271,7 @@ export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: 
   }
   if (request.target.kind === "fresh") args.push("--cd", request.cwd);
   if (schemaPath) args.push("--output-schema", schemaPath);
-  if (request.target.kind === "resume") args.push(request.target.conversation.nativeId);
+  if (resumeId !== undefined) args.push(resumeId);
   args.push("--", request.prompt);
   return args;
 }
@@ -302,7 +315,7 @@ function setupStep<T>(
       () => finish(() => reject(new SetupTimeoutError("Codex setup exceeded its wall deadline"))),
       Math.max(0, timeoutMs),
     );
-    timer.unref?.();
+    unrefTimer(timer);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
     work.then(

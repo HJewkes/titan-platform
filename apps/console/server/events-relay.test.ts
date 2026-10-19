@@ -3,7 +3,7 @@ import { createServer, type IncomingHttpHeaders, type ServerResponse } from "nod
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle, type SseMessage } from "@titan-design/daemon";
 import { liveSource, type Subscription } from "@titan-design/rpc-client";
 import type { ConsoleConfig } from "./config.js";
@@ -207,16 +207,34 @@ describe("the events relay", () => {
 
   it("resets the backoff only after a stream has stayed up for stableMs", async () => {
     const broker = await fake(TOKEN);
-    startRelay(brokerAt(broker.port), { baseDelayMs: 20, maxDelayMs: 320, stableMs: 30 });
-    await flap(broker, 2);
+    // Load stretches every wall-clock gap, so uptime is read from a clock only the test moves.
+    let clock = 0;
+    const relayed: SseMessage[] = [];
+    // Asserts the delay the relay asked for, not the wall-clock gap, which load stretches without bound.
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      relays.push(
+        startEventsRelay({
+          hub: { broadcast: (message) => relayed.push(message) },
+          upstreams: [brokerAt(broker.port)],
+          logger: silentLogger,
+          timing: { baseDelayMs: 20, maxDelayMs: 320, stableMs: 30 },
+          now: () => clock,
+        }),
+      );
+      await flap(broker, 2);
 
-    await until(() => broker.dials.length === 3 && broker.openCount() === 1);
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    broker.drop();
-    await until(() => broker.dials.length === 4);
+      // The relay announces each reopen once it has stamped the stream as open.
+      await until(() => broker.dials.length === 3 && broker.openCount() === 1 && relayed.length === 2);
+      clock += 30;
+      broker.drop();
+      await until(() => broker.dials.length === 4);
 
-    const afterStable = broker.dials[3]!.at - broker.dials[2]!.at - 60;
-    expect(afterStable).toBeLessThan(80);
+      const backoffs = spy.mock.calls.map(([, ms]) => ms).filter((ms) => ms !== undefined && [20, 40, 80, 160].includes(ms));
+      expect(backoffs).toEqual([40, 80, 20]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("backs off between refused dials, doubling to the cap, and relays nothing", async () => {

@@ -1,4 +1,4 @@
-import { parkAgent } from "@titan-design/agent-dispatch";
+import { DEFAULT_PARK_TIMEOUT_MS, parkAgent } from "@titan-design/agent-dispatch";
 import { configPath, loadConfig } from "./config.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
 import { agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
@@ -18,5 +18,5 @@ export function configuredFixerRetire(env: NodeJS.ProcessEnv): FixerRetirePorts 
   const { agentChatBin } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
   const agents = agentChatCleanupAgents(agentChatBin);
-  return { roster: () => agents.roster(), park: async (name) => void (await parkAgent(agentChatBin, name)), retire: (name) => agents.retire(name) };
+  return { roster: () => agents.roster(), park: async (name) => void (await parkAgent(agentChatBin, name, DEFAULT_PARK_TIMEOUT_MS)), retire: (name) => agents.retire(name) };
 }

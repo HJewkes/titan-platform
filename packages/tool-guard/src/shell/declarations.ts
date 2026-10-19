@@ -87,6 +87,7 @@ function op(tokens: Token[], i: number, p: Pass): number {
 function word(tokens: Token[], i: number, p: Pass): number {
   const w = tokens[i] as WordToken;
   const patternWord = p.patternWord;
+  const inPattern = p.pattern;
   p.patternWord = false;
   const bare = BARE_ASSIGNMENT.exec(w.value);
   const next = tokens[i + 1];
@@ -96,9 +97,11 @@ function word(tokens: Token[], i: number, p: Pass): number {
     return i + 1;
   }
   if (p.awaitIn && w.value === "in" && !w.quoted) [p.awaitIn, p.pattern] = [false, true];
+  else if (p.awaitIn && w.value === "{" && !w.quoted) p.awaitIn = false;
   else if (w.value === "esac" && !w.quoted && (p.start || (p.pattern && !patternWord))) endCase(p);
   else if (p.start && !ASSIGNMENT_RE.test(w.value)) commandWord(tokens, i, p);
-  p.out.push(p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w);
+  const pushed = p.local && APPEND_RE.test(w.value) ? withoutPlus(w) : w;
+  p.out.push(inPattern && p.pattern ? { ...pushed, casePattern: true } : pushed);
   return i + 1;
 }
 

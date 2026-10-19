@@ -63,7 +63,10 @@ declare const DEFAULT_FETCH_TIMEOUT_MS = 15000;
  * be dropped as incidental. They are not: both exist because work was lost.
  */
 declare const RECLAIM_GRACE_MS = 120000;
+type ReleaseProof = "git" | "git-or-merged-pr-tip";
 interface WorktreeOptions {
+    /** Git-only by default; opt in to exact merged PR head/commit evidence, never a dirty-check override. */
+    releaseProof?: ReleaseProof;
     /** Relative to the git root. */
     basePath?: string;
     /** Per-repository cap on allocated worktrees. A function is read on every allocation. */
@@ -193,6 +196,16 @@ declare class OriginUnreachableError extends Error {
  * tests of callers never shell out.
  */
 type GitRunner = (args: readonly string[], cwd: string) => Promise<string | null>;
+/** The transports git may use for agent-chat and its agents; `ext::` runs a shell command (CC-1095). */
+declare const SAFE_GIT_PROTOCOLS: readonly string[];
+/**
+ * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or the whole safe list when unset.
+ * git reads this list over every `protocol.*.allow` config scope, so a repo's config cannot re-enable `ext`.
+ * A caller list with nothing safe in it (`ext` alone) gives '', which git reads as allowing no transport.
+ */
+declare function pinGitProtocols(value: string | undefined): string;
+/** `env` with GIT_ALLOW_PROTOCOL pinned, for a child that may run git without going through `gitChildEnv`. */
+declare function withPinnedGitProtocols(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /** A git child that inherits a dispatcher's identity variables can register as the agent that spawned it. */
 declare const DEFAULT_STRIPPED_ENV_PREFIXES: readonly string[];
 declare function gitChildEnv(env?: NodeJS.ProcessEnv, stripPrefixes?: readonly string[]): NodeJS.ProcessEnv;
@@ -270,7 +283,7 @@ interface WorktreeReleaseSafety {
  * PR looks once the host deletes the remote branch. Nothing is fetched: a stale
  * local main makes this refuse until someone pulls.
  */
-declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string): Promise<WorktreeReleaseSafety>;
+declare function inspectForRelease(gitRoot: string, worktreePath: string, branch: string, baseRef: string, releaseProof?: ReleaseProof): Promise<WorktreeReleaseSafety>;
 /** The failed checks, as one line a coordinator can act on. */
 declare function describeRefusal(safety: WorktreeReleaseSafety): string;
 
@@ -361,4 +374,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, OriginUnreachableError, RECLAIM_GRACE_MS, type ReleaseCheck, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, sweepWorktrees };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, OriginUnreachableError, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, sweepWorktrees, withPinnedGitProtocols };

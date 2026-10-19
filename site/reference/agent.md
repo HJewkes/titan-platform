@@ -170,8 +170,23 @@ path.
 The additive `HarnessAdapter`, `HarnessRunRequest` and `dispatchHarnessRun` API
 separates Claude and Codex native options and checks declared capabilities and limits
 before invoking an adapter. `createCodexExecAdapter({ auth: "cached-cli" })` implements supervised Codex exec
-with an explicit model and mandatory wall deadline. The installed version is checked
-before launch. `runAgent` retains its existing Claude behavior.
+with an explicit model and mandatory wall deadline. It uses `codex` on PATH or an
+explicit absolute executable, requires version >=0.162.1, and probes command inputs
+and the requested sandbox before every launch. Extra `requiredRuntimeCapabilities`
+refuse missing/unverified MCP, tool-policy or rollout evidence; the default help
+probe cannot establish those semantics. This is runtime admission, not permission
+enforcement. `runAgent` retains its existing Claude behavior.
+
+`checkCodexAvailable(options?, deps?)` is the shared model-free runtime check for
+consumers. Default discovery uses PATH, explicit executable overrides must be
+absolute, and version plus required capabilities share a bounded deadline. It
+returns `{ ok: true, executablePath, versionOutput, inspection }` or a categorized
+failure. Supply additional requirements such as output_schema for a judge.
+Availability does not establish login state or permission enforcement.
+
+Resumes inspect their own flags and the sandbox values listed by `exec --help`:
+the adapter sets sandbox_mode through `--config` on either subcommand. Both help
+probes share the setup deadline; requirements follow the built arguments.
 
 See the [contract decision](/guides/multi-harness-contracts) for the staged migration.
 
@@ -194,3 +209,8 @@ uncertain native state requires recovery. A local deadline or abort without nati
 terminal evidence is `cancellation_unknown`. No transport reattachment or PID-based
 ownership is inferred. [`durableHarnessRunner`](/reference/workflow#execution-recovery)
 provides the workflow bridge.
+
+
+### Pricing compatibility
+
+Existing pricing exports re-export `@titan-design/agent-protocol/pricing`, which owns the unchanged catalog and accounting functions. Callers retain their existing input and output types. This extraction changes neither prices nor stored costs; native account and harness behavior is unaffected.

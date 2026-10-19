@@ -61,7 +61,7 @@ export function groupStdin(walk: object, op: string, words: WordToken[], redirec
   let closed = plain.length === 0 ? state.closed : undefined;
   state.closed = undefined;
   const [first] = rest;
-  if (first && plain.length === 1 && plain[0] === first && isBare(first, "}")) closed = anyShell(close(state, "{"));
+  if (first && plain[0] === first && plain.every((word) => isBare(word, "}"))) closed = anyShell(closeRun(state, plain.length));
   else if (!PIPES.has(op)) record(state, printedPiece(readings));
   if (op === "(") state.frames.push({ kind: "(", live: rest.length === 0, pieces: [] });
   if (op === ")") state.closed = anyShell(close(state, "("));
@@ -110,6 +110,13 @@ export function addRedirect(redirects: RedirectToken[], token: Token): RedirectT
 
 function isBare(word: WordToken, value: string): boolean {
   return word.value === value && !word.quoted && !word.dynamic;
+}
+
+/** A run of bare `}` words closes one group each, the last close handing on what the outer group printed. */
+function closeRun(state: GroupState, count: number): ShellTexts | undefined {
+  let texts: ShellTexts | undefined;
+  for (let i = 0; i < count; i++) texts = close(state, "{");
+  return texts;
 }
 
 function close(state: GroupState, kind: Frame["kind"]): ShellTexts | undefined {

@@ -1,6 +1,7 @@
 import type { PendingGate, FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded, readValue } from "./bounded.js";
 import { approveMergeRun, type SupersededGate } from "./head-moved.js";
+import { keptForOwner } from "./owner-kept.js";
 import { runPolicyCeiling, stricterPolicy } from "./policy.js";
 import type { ShepherdServices } from "./services.js";
 import { SUPERSEDED, cancelUnlessSettled } from "./stale-gates.js";
@@ -80,11 +81,13 @@ async function staleBase(services: ShepherdServices, defaults: DefaultBranches, 
 export async function supersedeRebasedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const asking = host.pendingGates().flatMap((pending) => baseGate(host, services, pending));
   const defaults = memoDefaultBranches(services);
-  const stale = await mapBounded(asking, RESYNC_CONCURRENCY, (gate) => staleBase(services, defaults, gate), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const stale = await mapBounded(asking, RESYNC_CONCURRENCY, (gate) => staleBase(services, defaults, gate), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   const superseded: SupersededGate[] = [];
   for (const [index, { runId, gateId, named }] of asking.entries()) {
     const base = readValue(stale[index]!);
     if (!base || host.gates.get(gateId)?.status !== "pending") continue;
+    // The reads above yield, so an owner hold placed meanwhile is read again here, right before the cancel.
+    if (keptForOwner(services.store.get().byRun(runId))) continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, gateId, `${SUPERSEDED}${base.reason}`)) continue;
     superseded.push({ runId, gateId, from: named, to: base.live, condition: "base-changed" });
   }

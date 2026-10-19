@@ -6,11 +6,12 @@ import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pu
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
 import { merge, rerunFailed } from "./merge-writes.js";
-import { closePr, closedSkip } from "./close-pr.js";
+import { closePr, closedSkip, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
 export { FileListTruncatedError } from "./pr-files.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
+import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
 import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
@@ -151,6 +152,8 @@ export interface GitHubWire {
   /** Commits on the default branch committed at or after `since`, newest first, every page. */
   listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
+  compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
   getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
   createComment(repo: RepoSlug, number: number, body: string): Promise<{ id: number }>;
@@ -227,6 +230,8 @@ export interface GitHubPort {
   listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+  /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
+  compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
   /**
    * Lists the PR's comments first; a comment by the authenticated user with `marker` on a line of its own skips as
    * `exists`. The body should carry the marker. Two concurrent callers can both post; there is no lock.
@@ -298,6 +303,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     listDefaultBranchCommits: async (repo, since) => wire.listCommits(repoOf(repo), checkTimestamp("since", since)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
+    compareAncestry: async (repo, base, head) => wire.compareAncestry(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
@@ -361,13 +367,5 @@ async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, ex
   const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
   if (skipped) return { done: false, skipped };
   return sendUpdateBranch(wire, repo, number, expectedHeadSha);
-}
-
-async function setPrBase(wire: GitHubWire, repo: RepoSlug, number: number, base: string): Promise<WriteResult> {
-  const pr = await wire.getPr(repo, number);
-  const skipped = closedSkip(pr) ?? (pr.baseRef === base ? "unchanged" : undefined);
-  if (skipped) return { done: false, skipped };
-  await wire.setPrBase(repo, number, base);
-  return { done: true };
 }
 

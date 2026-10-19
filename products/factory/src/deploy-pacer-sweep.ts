@@ -7,9 +7,12 @@ import { FACTORY_REPO } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
 import { readDeployHolds } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
+import { nodeMorningHoldPorts, syncMorningHold, type MorningHoldAction } from "./morning-deploy-hold.js";
+import { morningQueuesDir } from "./needs/morning-source.js";
 import type { CommandResult } from "./service-control.js";
 import { runCommand } from "./service-ports.js";
 import { DEPLOY_NOW_LABEL, nodeWantedStore, PACER_SWEEP_MS, pacerStatus, pacerTick, readWanted, type DeployPacerOptions, type ExpressProbe } from "./shepherd/deploy-pacer.js";
+import { failureOf } from "./shepherd/error-class.js";
 import { deployPacerPorts } from "./shepherd/redeploy.js";
 import { startSweep, type Sweep } from "./sweep.js";
 
@@ -64,12 +67,52 @@ async function settle(options: DeployPacerOptions, runningSha: string): Promise<
   return { ...(held && { held: wanted.sha }), ...(express && { express: wanted.sha }) };
 }
 
+function describeMorningAction(action: MorningHoldAction): string {
+  switch (action.kind) {
+    case "set":
+      return `set from ${action.hold.source}`;
+    case "replace":
+      return `moved from ${action.from} to ${action.hold.source}`;
+    case "clear":
+      return `cleared, ${action.source} is gone`;
+    case "keep":
+      return `kept: ${action.why}`;
+  }
+}
+
+/**
+ * Runs before `pacerTick`, so a tick that sets the hold spawns nothing. The empty-read count lives only here:
+ * a serve restart starts it at 0, which needs two fresh empty reads before a clear, so a restart can delay a clear but never cause one.
+ * A line is logged only when it differs from the last, so a hold that stands does not log every minute.
+ */
+function morningHoldStep(queuesDir: string | undefined, stateDir: string, now: () => number, log: Logger): () => void {
+  if (queuesDir === undefined) return () => undefined;
+  let emptyReads = 0;
+  let last: string | undefined;
+  const note = (line: string): void => {
+    if (line !== last) log.info({}, `deploy pacer: ${line}`);
+    last = line;
+  };
+  return () => {
+    try {
+      const synced = syncMorningHold(nodeMorningHoldPorts, { stateDir, queuesDir, now: new Date(now()).toISOString(), emptyBefore: emptyReads });
+      emptyReads = synced.emptyReads;
+      note(`Morning hold ${describeMorningAction(synced.action)}${synced.failed === undefined ? "" : `; ${synced.failed}`}`);
+    } catch (error) {
+      emptyReads = 0;
+      note(`the Morning hold sync failed: ${failureOf(error)}`);
+    }
+  };
+}
+
 /** The first tick is not awaited, so a record a restart already answered clears soon after start without holding it up. */
 export function startDeployPacer(options: DeployPacerOptions | undefined, service: ServiceView, log: Logger): Sweep | undefined {
   if (options === undefined) return undefined;
   const { stateDir, spawn } = options;
+  const syncMorning = morningHoldStep(options.morningQueuesDir, stateDir, service.now, log);
   const tick = async (): Promise<void> => {
     const settled = await settle(options, service.runningSha);
+    syncMorning();
     pacerTick({
       stateDir,
       store: options.store ?? nodeWantedStore,
@@ -99,5 +142,6 @@ export function deployPendingHealth(options: DeployPacerOptions | undefined): { 
 export const configuredDeployPacer = (env: NodeJS.ProcessEnv, checkout: string): DeployPacerOptions => ({
   ...deployPacerPorts({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) }),
   isAncestor: cachedAncestry(gitAncestry(checkout)),
+  morningQueuesDir: morningQueuesDir(env),
   ...(FACTORY_REPO !== undefined && { express: ghDeployNow(FACTORY_REPO) }),
 });

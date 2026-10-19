@@ -272,6 +272,18 @@ declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
 type FixProofUnverified = "error" | "untrusted" | "unread";
 
+/** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. `gh api` is denied in reviewer sessions, so the read is `gh pr view`, which reports the PR's current head rather than this one. */
+declare const CI_REVIEWER_TEST_RULE: string;
+/** One check-run Shepherd read at the reviewed head; `status` and `conclusion` are GitHub's words, and `missing` is a required check with no run at the head. */
+interface CiCheckRow {
+    name: string;
+    status: string;
+    conclusion: string | null;
+    required: boolean;
+}
+/** The most check-run rows a brief lists; a head with more is cut, never spilled into prose. */
+declare const MAX_CI_CHECK_ROWS = 40;
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
@@ -284,8 +296,7 @@ declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
 /** Shepherd's merge guard reads this line (TP-2407): a `.github/` change without it fails closed, and `weakened` reaches the owner. */
 declare const CI_POLICY_RULE: string;
-/** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. */
-declare const CI_REVIEWER_TEST_RULE: string;
+
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 interface ReviewerBriefInput {
     repo: RepoSlug;
@@ -299,14 +310,16 @@ interface ReviewerBriefInput {
     fixFirsts?: number;
     /** True when this run's verdict will reach the owner; the brief then also asks for an OWNER-BRIEF block. */
     ownerBrief?: boolean;
-    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`. */
+    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`, and `ciChecks` replaces it. */
     testRule?: string;
-    /** Names of the checks already green at this head; the brief asks the reviewer not to rerun them. */
-    greenChecks?: readonly string[];
+    /** The check-runs Shepherd read at this head; when set they replace `testRule`, so the reviewer judges CI from them and reads none itself. */
+    ciChecks?: readonly CiCheckRow[];
     /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
     fixProof?: string;
     /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
     fixProofUnverified?: FixProofUnverified;
+    /** The head the owner waived the fix-proof at; it replaces the fix-proof section only when it is this head. */
+    fixProofWaivedAt?: string;
     /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
     earlierFindings?: readonly EarlierFinding[];
     /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
@@ -495,10 +508,19 @@ declare function boundedFindings(text: string, max?: number): string;
  * messages their agent, session and dispatch guards let through; `fallback` is the verdict message, used when none says more.
  */
 declare function fixFirstFindings(target: ReviewTarget, messages: readonly ReviewerMessage[], fallback: string, heading?: string): string;
+/** The line a reviewer lists, as its own blocking item, when it could not read CI at this head; Shepherd re-reviews a FIX_FIRST holding only it. */
+declare const CI_UNREAD_LINE = "Blocking: CI unread";
 /** The line a reviewer adds for each blocking item that contradicts a recorded owner pick. */
 declare const OWNER_PICK_CONTRADICTED = "Owner pick contradicted:";
 /** The recorded pick ids a reviewer's text names on contradiction lines, each once; an id not recorded is ignored. */
 declare function contradictedPicks(text: string, ids: readonly string[]): string[];
+
+/**
+ * True only when every line of every joined message is one of the template's exact shapes and each message names the
+ * CI-unread line (TP-3050). It is structural, not a list of lookalikes: any other line, a `fixed:` earlier item included,
+ * may be a finding and keeps the FIX_FIRST, as does a cut that may have dropped one. A kept FIX_FIRST only wakes a fixer.
+ */
+declare function ciUnreadOnly(text: string): boolean;
 
 /** A verdict block names its target when repo (GitHub ignores case), PR number and head sha all match. */
 declare function namesTarget(block: {
@@ -539,6 +561,8 @@ interface AggregateInput {
      * only a line pinned to the head can.
      */
     fixProof?: string;
+    /** The head the owner waived the fix-proof at; only this head's waiver stops a bad fix-proof from making the tests member blocking. */
+    fixProofWaivedAt?: string;
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
     sonnetFor?: Record<string, string>;
 }
@@ -618,4 +642,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };
+export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CI_CHECK_ROWS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };

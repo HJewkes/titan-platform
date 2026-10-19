@@ -71,8 +71,35 @@ await recreateWorktree({ gitRoot: alloc.ref.gitRoot!, worktree: alloc.cwd, branc
 - Tests that create real repositories are named `*.repo.test.ts` and stay out of
   `pnpm test:watch`.
 
+## Git child transport policy
+
+`gitChildEnv`, the package's internal git calls, and `setupEnv` use the existing dispatcher's
+CC-1095 policy. `pinGitProtocols(value)` intersects an explicit colon-separated list with
+`file:git:http:https:ssh`; an unset value uses that list, while an empty value stays empty.
+Unknown and differently cased names are discarded. Local file remotes remain supported.
+Dispatcher identity prefix stripping and `GIT_TERMINAL_PROMPT=0` are preserved.
+The protocol pin is derived from the original caller list and restored after custom
+prefix stripping, so even a `GIT_` strip cannot erase it or widen that list.
+`withPinnedGitProtocols(env)` applies only the same transport pin without stripping fields.
+
+The existing policy is carried unchanged: when the caller leaves GIT_ALLOW_PROTOCOL unset,
+its default safe list can outrank a per-command `protocol.allow=never` or
+`protocol.<name>.allow=never` config. That separate inherited CC-1336 limitation is not fixed
+by this extraction. Callers needing no transports can supply `GIT_ALLOW_PROTOCOL=""`.
+The dispatcher retains its separate agent/shim/process environment wiring.
+
 ## Where it came from
 
 Extracted from agent-chat's `isolation/worktree.ts`, `worktree-setup.ts`, `git.ts` and the git
 halves of `park.ts` and `sweep.ts`. The strategy interface, the park blockers that read the
 roster, and runtime-state bookkeeping stay with the dispatcher.
+
+## Explicit merged PR tip evidence
+
+Release remains git-only by default. `createWorktreeAllocator({ releaseProof: "git-or-merged-pr-tip" })` opts into the existing dispatcher CC792/CC624 proof: when local content checks cannot prove landing, bounded `gh pr view --json state,headRefOid,commits` may establish that the exact local tip is the merged PR head or belongs to that merged PR's commits after its head moved. OPEN/CLOSED, mismatched or later local tips, malformed/missing output and command failure cannot establish landing. The GitHub CLI probe uses the caller's configured account and repository; tests use owned fake binaries only. No login or credentials are provisioned here.
+
+`inspectForRelease(root, tree, branch, base, "git-or-merged-pr-tip")` exposes the same explicit inspection. The `ReleaseProof` type is exported. Omitting the option or passing `"git"` preserves the previous git-only behavior and diagnostic-only GH query. Sweep and park defaults are unchanged.
+
+This changes commit-landing evidence only. Hidden untracked files, ignored files no build regenerates, unreadable status/ignored listings, grace and assigned-tree guards still refuse or exempt exactly as before. A nonforced git-remove refusal retains its tree and branch; there is no new force bridge or automatic force retry. Caller `force` semantics remain unchanged.
+
+The legacy product release path has weaker file-loss detection and auto-force retry; it is not claimed equivalent. A merged PR proof must never override these stronger generic checks. Product-specific refusal presentation remains outside this change. Native GitHub compatibility/account access, actual released consumption and TP640's remaining deletion acceptance are not certified by synthetic fixtures.

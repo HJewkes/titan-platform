@@ -35,7 +35,7 @@ const supersededOutput = (from: string, to: string): string =>
 export async function supersedeStaleReviews(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededReview[]> {
   const superseded: SupersededReview[] = [];
   const reviews = activeReviews(host);
-  const heads = await mapBounded(reviews, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const heads = await mapBounded(reviews, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   for (const [index, { runId, stepId, head }] of reviews.entries()) {
     const current = readValue(heads[index]!);
     if (!current || current === head || !host.runtime.status(runId)?.activeSteps[stepId]) continue;

@@ -52,3 +52,5 @@ export { DaemonAlreadyRunningError, DaemonPortInUseError, runDaemonUntilSignal, 
 export { systemdListenFd } from "./systemd-socket.js";
 export type { StaticAppOptions } from "./static-app.js";
 export { mountStaticApp } from "./static-app.js";
+export type { FileResponseOptions } from "./file-response.js";
+export { fileResponse } from "./file-response.js";

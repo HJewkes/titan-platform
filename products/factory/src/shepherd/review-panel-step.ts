@@ -107,6 +107,7 @@ export interface MemberBase extends ReviewTarget {
   fixFirsts?: number;
   fixProof?: string;
   fixProofUnverified?: FixProofUnverified;
+  fixProofWaivedAt?: string;
 }
 
 interface DispatchedMember {
@@ -184,6 +185,7 @@ const PanelInputSchema = z.object({
   plan: PanelPlanSchema,
   results: z.array(RecordedMemberSchema),
   fixProof: z.string().optional(),
+  fixProofWaivedAt: z.string().optional(),
 });
 const PanelVerdictRead = z.looseObject({
   outcome: z.enum(["MERGE", "FIX_FIRST", "no-verdict", "timeout"]),
@@ -206,18 +208,21 @@ async function citedSource(deps: Pick<ShepherdDeps, "port">, { repo, head }: Rev
   return { lines: (path) => files.get(path) };
 }
 
+type ProofFields = Pick<MemberBase, "fixProof" | "fixProofWaivedAt">;
+const proofFields = ({ fixProof, fixProofWaivedAt }: ProofFields): ProofFields => ({ ...(fixProof !== undefined && { fixProof }), ...(fixProofWaivedAt !== undefined && { fixProofWaivedAt }) });
+
 /** The aggregate over a recorded plan and member results, with cited files read at the head. */
 export async function aggregatePanel(deps: Pick<ShepherdDeps, "port">, raw: unknown): Promise<PanelVerdict> {
-  const { plan, results, fixProof, ...target } = PanelInputSchema.parse(raw);
+  const { plan, results, fixProof, fixProofWaivedAt, ...target } = PanelInputSchema.parse(raw);
   const members: MemberResult[] = results.filter(isMemberResult);
-  return aggregate(plan, members, { head: target.head, source: await citedSource(deps, target, members), ...(fixProof !== undefined && { fixProof }) });
+  return aggregate(plan, members, { head: target.head, source: await citedSource(deps, target, members), ...proofFields({ fixProof, fixProofWaivedAt }) });
 }
 
 export const panelVerdictRoute = (deps: Pick<ShepherdDeps, "port" | "now">): StepRoute => codeRoute(PANEL_VERDICT_STEP, deps.now, (raw: unknown) => aggregatePanel(deps, raw));
 
 /** The panel's verdict for one head over every member's recorded result. */
-function panelVerdict(ctx: WorkflowContext, target: ReviewTarget, plan: PanelIntent["plan"], results: readonly MemberResult[], fixProof: string | undefined): Promise<PanelVerdictRecord> {
-  return step(ctx, `${PANEL_VERDICT_STEP}:${target.head}`, { ...target, plan, results, ...(fixProof !== undefined && { fixProof }) }, PanelVerdictRead);
+function panelVerdict(ctx: WorkflowContext, target: ReviewTarget, plan: PanelIntent["plan"], results: readonly MemberResult[], proof: ProofFields): Promise<PanelVerdictRecord> {
+  return step(ctx, `${PANEL_VERDICT_STEP}:${target.head}`, { ...target, plan, results, ...proofFields(proof) }, PanelVerdictRead);
 }
 
 /**
@@ -271,7 +276,7 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
-  const verdict = await panelVerdict(ctx, target, intent.plan, results, base.fixProof);
+  const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);

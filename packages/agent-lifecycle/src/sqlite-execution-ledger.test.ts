@@ -2,10 +2,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { EXECUTION_PHASES, TERMINAL_EXECUTION_PHASES, isTerminalExecutionPhase } from "@titan-design/agent-protocol";
 import type { ExecutionRecord, ExecutionTransition } from "@titan-design/agent-protocol";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { executionLedgerMigration } from "./migration.js";
-import { SqliteExecutionLedger } from "./sqlite-execution-ledger.js";
+import { SqliteExecutionLedger, recoverableSql } from "./sqlite-execution-ledger.js";
 
 const start = "2026-09-11T00:00:00.000Z";
 const until = "2026-09-11T00:00:10.000Z";
@@ -166,4 +167,70 @@ it("returns invalid_transition for malformed JSON payloads without partial write
     expect(ledger.get("execution")).toEqual(record);
     expect(ledger.events("execution")).toHaveLength(1);
   } finally { db.close(); }
+});
+
+describe("listRecoverable query", () => {
+  const phases = EXECUTION_PHASES;
+  const notInSql = (snapshot: string) => `SELECT record FROM ${snapshot}
+    WHERE phase NOT IN (${TERMINAL_EXECUTION_PHASES.map(phase => `'${phase}'`).join(",")})
+    ORDER BY prepared_at,execution_id LIMIT ?`;
+
+  function column(rows: unknown[], key: "detail" | "record"): string[] {
+    return rows.map(row => {
+      const value = typeof row === "object" && row !== null ? Reflect.get(row, key) : undefined;
+      if (typeof value !== "string") throw new TypeError(`row has no ${key}`);
+      return value;
+    });
+  }
+  const oldRecords = (db: ReturnType<typeof setup>["db"], limit: number) =>
+    column(db.prepare(notInSql("agent_execution")).all(limit), "record").map(record => JSON.parse(record));
+
+  function seed(db: ReturnType<typeof setup>["db"], perPhase: number): void {
+    const insert = db.prepare(`INSERT INTO agent_execution
+      (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    let n = 0;
+    for (const phase of phases) {
+      const count = isTerminalExecutionPhase(phase) ? perPhase : 3;
+      for (let i = 0; i < count; i++, n++) {
+        const id = `exec-${String(n).padStart(5, "0")}`;
+        insert.run(id, `key-${id}`, phase, 1, null, 0, null, `2026-09-11T00:${String(n % 60).padStart(2, "0")}:00.000Z`, start, JSON.stringify({ id, phase }));
+      }
+    }
+  }
+
+  it("plans through the phase index instead of scanning the table", () => {
+    const { db } = setup();
+    try {
+      seed(db, 200);
+      const details = column(db.prepare(`EXPLAIN QUERY PLAN ${recoverableSql("agent_execution")}`).all(10), "detail").join("\n");
+      expect(details).not.toContain("SCAN agent_execution");
+      expect(details).toContain("agent_execution_phase");
+    } finally { db.close(); }
+  });
+
+  it("returns what the NOT IN query returned, with and without a limit", () => {
+    const { db, ledger } = setup();
+    try {
+      seed(db, 20);
+      for (const limit of [undefined, 1, 5, 1000]) {
+        const expected = oldRecords(db, limit ?? 100);
+        expect(ledger.listRecoverable(limit)).toEqual(expected);
+      }
+      expect(ledger.listRecoverable(1000)).toHaveLength(3 * phases.filter(phase => !isTerminalExecutionPhase(phase)).length);
+    } finally { db.close(); }
+  });
+
+  it("returns the same rows as NOT IN for each phase on its own", () => {
+    for (const phase of phases) {
+      const { db, ledger } = setup();
+      try {
+        db.prepare(`INSERT INTO agent_execution (execution_id,request_key,phase,revision,owner_id,owner_generation,lease_until,prepared_at,updated_at,record)
+          VALUES ('only','only',?,1,NULL,0,NULL,?,?,?)`).run(phase, start, start, JSON.stringify({ phase }));
+        const expected = oldRecords(db, 100);
+        expect(ledger.listRecoverable()).toEqual(expected);
+        expect(ledger.listRecoverable()).toHaveLength(isTerminalExecutionPhase(phase) ? 0 : 1);
+      } finally { db.close(); }
+    }
+  });
 });

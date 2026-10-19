@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { AnswersPage, AskRequest, ServiceAnswer } from "@titan-design/agent-dispatch";
 import type { GateRecord, GateRule } from "@titan-design/hitl";
-import { toJSONSchema } from "zod";
-import { approveMergeDecision, frozenDecision, visualAcceptDecision } from "./gate-brief.js";
+import { toJSONSchema, z } from "zod";
+import { approveMergeDecision, frozenDecision, sentBackDecision, visualAcceptDecision } from "./gate-brief.js";
 import { askable, answerPayload, notifyTick, type GateNotifyPorts } from "./gate-notify.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER } from "./test-support/resolver.js";
@@ -25,9 +25,9 @@ class FakeQueue {
     return this.append(`q${this.log.length + 1}`);
   }
 
-  answer(questionId: string, text: string, outcome: ServiceAnswer["outcome"] = "answered"): void {
+  answer(questionId: string, text: string, outcome: ServiceAnswer["outcome"] = "answered", provenance?: string): void {
     const msgId = this.append(`a${this.log.length + 1}`);
-    this.answers.push({ msgId, questionId, outcome, text, by: "human", channel: "phone", at: this.log.length });
+    this.answers.push({ msgId, questionId, outcome, text, by: "human", channel: "phone", ...(provenance !== undefined && { provenance }), at: this.log.length });
   }
 
   read(since: string | undefined): AnswersPage {
@@ -280,6 +280,81 @@ describe("gate notify: a visual accept gate", () => {
 
     expect(factory.gates.get(VISUAL_GATE)?.status).toBe("pending");
     expect(factory.asks.get(VISUAL_GATE)).toMatchObject({ state: "unmappable" });
+  });
+});
+
+describe("gate notify: a decided answer", () => {
+  it("never resolves a merge gate: the decider answered for the owner, and it is not the owner", async () => {
+    const factory = host();
+    const queue = new FakeQueue();
+    openMergeGate(factory);
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "merge", "answered", "decided");
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(GATE)?.status).toBe("pending");
+    expect(factory.asks.get(GATE)).toMatchObject({ state: "refused", detail: expect.stringContaining("decided") });
+  });
+});
+
+describe("gate notify: a waive-proof answer", () => {
+  const SENT_BACK = "run1/sh-sent-back";
+  const sentBack = sentBackDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, situation: "The fix-proof is vacuous.", waivable: true });
+  /** A send-back whose question pins the head, so an option alone maps to a full waive-proof payload. */
+  const pinnedHead = z.object({ decision: z.enum(["await-new-head", "abandon", "waive-proof"]), headSha: z.literal(HEAD) });
+
+  function askedSentBack(schema: Record<string, unknown>): { factory: FactoryHost; queue: FakeQueue } {
+    const factory = host();
+    const queue = new FakeQueue();
+    factory.gates.create({ id: SENT_BACK, prompt: "Wait for a new head?", schema, ...sentBack.brief });
+    return { factory, queue };
+  }
+
+  it.each([
+    ["decided", "decided"],
+    ["unmarked", undefined],
+  ])("refuses the %s waive-proof even when the question pins the head, so no waiver is resolved", async (_name, provenance) => {
+    const { factory, queue } = askedSentBack(toJSONSchema(pinnedHead));
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "waive-proof", "answered", provenance);
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(SENT_BACK)?.status).toBe("pending");
+    expect(factory.asks.get(SENT_BACK)).toMatchObject({ state: "refused" });
+  });
+
+  it("resolves a human-endorsed waive-proof at the pinned head", async () => {
+    const { factory, queue } = askedSentBack(toJSONSchema(pinnedHead));
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "waive-proof", "answered", "human-endorsed");
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(SENT_BACK)).toMatchObject({ status: "resolved", payload: { decision: "waive-proof", headSha: HEAD } });
+  });
+
+  it("refuses a decided waive-proof on Shepherd's own waivable send-back and leaves the gate pending", async () => {
+    const { factory, queue } = askedSentBack(toJSONSchema(sentBack.schema));
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "waive-proof", "answered", "decided");
+    await notifyTick(ports(factory, queue));
+
+    expect(queue.asked[0]?.options).toEqual(["await-new-head", "abandon", "waive-proof"]);
+    expect(factory.gates.get(SENT_BACK)?.status).toBe("pending");
+    expect(factory.asks.get(SENT_BACK)).toMatchObject({ state: "refused" });
+  });
+
+  it("still resolves an unmarked answer of another option", async () => {
+    const { factory, queue } = askedSentBack(toJSONSchema(sentBack.schema));
+    await notifyTick(ports(factory, queue));
+
+    queue.answer("q1", "abandon");
+    await notifyTick(ports(factory, queue));
+
+    expect(factory.gates.get(SENT_BACK)).toMatchObject({ status: "resolved", payload: { decision: "abandon" } });
   });
 });
 

@@ -1,7 +1,7 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
 import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
-import { inConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
+import { inConditional, inJoiningConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs } from "./parse-error.js";
 import { arithmeticExpansionEnd, lineReading, nestedReaders, scanBacktick } from "./nested-reading.js";
@@ -9,7 +9,7 @@ import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
-import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
+import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, noteTilde, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export { scanSubstitutions } from "./substitutions.js";
@@ -76,6 +76,7 @@ function step(s: LexState): void {
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
   if (op) return readOperator(s, op, end(op.length));
   if (s.word?.quoted) s.word.spliced = true;
+  if (c === "~") noteTilde(s);
   appendChar(s, c);
 }
 
@@ -157,6 +158,12 @@ function appendShift(s: LexState, end: number): void {
   s.i = end;
 }
 
+function appendWord(s: LexState, text: string, end: number): void {
+  ensureWord(s).value = text;
+  endWord(s);
+  s.i = end;
+}
+
 function readBlank(s: LexState): void {
   endWord(s);
   s.i++;
@@ -168,6 +175,8 @@ function readOperator(s: LexState, op: string, end: number): void {
   const start = s.i;
   const glued = op === "(" && s.word ? s.word.value.slice(-1) : null;
   endWord(s);
+  // A glued `]]` is a pending word until it ends, so the `[[` is judged only after `endWord`.
+  if ((op === "&&" || op === "||") && inJoiningConditional(s)) return appendWord(s, op, end);
   noteParen(s, op, glued);
   s.i = end;
   s.tokens.push(op === "(" && start === s.arithOpen ? { type: "op", value: op, arith: true } : { type: "op", value: op });

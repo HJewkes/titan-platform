@@ -3,16 +3,17 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { errorLine, messageOf } from "./context.js";
 import { judge, type JudgeReports } from "./judge.js";
+import { execMutants, MUTANTS_REPORT, type ExecMutantsOptions } from "./mutant-side.js";
 import { run, type RunOptions } from "./run.js";
 import { SANDBOX_FLAG, SANDBOX_USER_PATTERN } from "./sandbox.js";
-import { execSide, type ExecSideOptions, type Side } from "./side.js";
+import { execSide, type Side } from "./side.js";
 import { MAX_ENCODED_BYTES } from "./transport.js";
 
 const COMMON_USAGE = "--base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
 export const USAGE = `usage: fix-proof run|exec|judge ${COMMON_USAGE}`;
 const RUN_USAGE = `usage: fix-proof run ${COMMON_USAGE}`;
-const EXEC_USAGE = `usage: fix-proof exec --side base|head --out <dir> [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
-const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] ${COMMON_USAGE}`;
+const EXEC_USAGE = `usage: fix-proof exec --side base|head|mutants --out <dir> [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
+const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] ${COMMON_USAGE}`;
 
 type Values = Partial<Record<string, string>>;
 type Runner = typeof run;
@@ -36,13 +37,13 @@ function common(values: Values, cwd: string): RunOptions {
   return options;
 }
 
-function sideOf(value: string | undefined): Side {
-  if (value === "base" || value === "head") return value;
+function sideOf(value: string | undefined): Side | typeof MUTANTS_REPORT {
+  if (value === "base" || value === "head" || value === MUTANTS_REPORT) return value;
   throw new Error(EXEC_USAGE);
 }
 
-function execOptions(values: Values, cwd: string): ExecSideOptions {
-  const options: ExecSideOptions = { ...common(values, cwd), side: sideOf(values.side), out: path.resolve(cwd, values.out ?? "") };
+function execOptions(values: Values, cwd: string): ExecMutantsOptions {
+  const options: ExecMutantsOptions = { ...common(values, cwd), out: path.resolve(cwd, values.out ?? "") };
   const sandboxUser = values[SANDBOX_FLAG];
   if (sandboxUser === undefined) return options;
   if (!SANDBOX_USER_PATTERN.test(sandboxUser)) throw new Error(EXEC_USAGE);
@@ -68,6 +69,7 @@ function judgeReports(values: Values, cwd: string): JudgeReports {
     base: readReport(values["base-report"], cwd),
     baseRerun: readReport(values["base-rerun-report"], cwd),
     head: readReport(values["head-report"], cwd),
+    mutants: readReport(values["mutants-report"], cwd),
   };
 }
 
@@ -78,13 +80,15 @@ const COMMANDS: Readonly<Record<string, Command>> = {
     flags: ["side", "out", SANDBOX_FLAG],
     required: ["side", "out"],
     act: async (values, cwd) => {
-      await execSide(execOptions(values, cwd));
+      const side = sideOf(values.side);
+      const options = execOptions(values, cwd);
+      await (side === MUTANTS_REPORT ? execMutants(options) : execSide({ ...options, side }));
       return "";
     },
   },
   judge: {
     usage: JUDGE_USAGE,
-    flags: ["base-report", "head-report", "base-rerun-report"],
+    flags: ["base-report", "head-report", "base-rerun-report", "mutants-report"],
     required: ["base-report", "head-report"],
     act: (values, cwd) => judge({ ...common(values, cwd), reports: judgeReports(values, cwd) }),
   },

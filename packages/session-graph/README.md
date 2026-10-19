@@ -364,3 +364,13 @@ source ID. Source-local reset epochs cannot safely be summed across copies. This
 a conservative projection, not a claim of complete usage across disjoint partial
 sources. Response deltas still deduplicate across sources by native response ID.
 Codex commit/push analytics are currently unreported (`null`), rather than zero.
+
+## Explicit source adapters
+
+`indexSource(graph, source, sourcePort)` indexes normalized observations from an explicitly supplied `HarnessSourcePort` observation capability and reader. It has no harness selector. A supported reader preserves the existing staging, replay, atomic replacement and watermark behavior; an unsupported or unverified assessment returns `status: "unavailable"`, zero observations and that assessment before graph or file access.
+
+`indexCodexSource(graph, source)` remains a deprecated compatibility entry with its existing Codex reader, signature and result type. The generic entry's `SourceIndexResult` is separate from `NormalizedIndexResult` so existing callers' result counting stays valid. Descriptors and observations keep their scoped identities; an adapter owns source identity validation and complete-line resume evidence.
+
+Pass the same adapter's text capability/reader with `readIndexedText(graph, span, { sourcePort })`. Graph prefix and content-hash checks still run before semantic readback, and prompt framing is still stripped. An explicitly unsupported or unverified text capability returns null. Any explicit adapter also returns null for a legacy span lacking normalized locators; it never falls back to a native reader. Omitting `sourcePort`, including callers supplying only `homeDir`, retains existing native and legacy read behavior.
+
+The graph preserves method receivers for both adapter readers. A synthetic third format is exercised with physical source bytes, scoped conversation identity, semantic locators, append/reopen and rewrite convergence, partial failure, and transaction rollback. This entry does not install an adapter registry, enumerate a product corpus, migrate a live database, qualify native accounts, or make unavailable finality/policy capabilities supported. Bootstrap and session-miner source selection remain separate migration work.

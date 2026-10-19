@@ -4,6 +4,10 @@ const GROWTH = 8;
 const RUNS = 15;
 // Equal total work gives a ratio near 1 when linear and near GROWTH when quadratic, so this sits well between them.
 const MAX_RATIO = 5;
+const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
+// A check times best-of-RUNS at its top size, about 0.7 s alone at 20k words; four loaded CI workers stretched that
+// past vitest's 5 s default (TP-3487). The ratio assertion, not the clock, is what fails on a quadratic walk.
+export const LINEARITY_TIMEOUT_MS = 6 * VITEST_DEFAULT_TIMEOUT_MS;
 
 const bestOf = (run: () => void): number => {
   let best = Infinity;

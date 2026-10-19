@@ -10,6 +10,9 @@ export { resolveBranchBase, type BranchBase } from "./branch-base.js";
 export { OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 export {
   DEFAULT_STRIPPED_ENV_PREFIXES,
+  SAFE_GIT_PROTOCOLS,
+  pinGitProtocols,
+  withPinnedGitProtocols,
   findGitRoot,
   gitChildEnv,
   observedPresence,
@@ -25,6 +28,7 @@ export {
   DEFAULT_WORKTREE_BUDGET,
   RECLAIM_GRACE_MS,
   type WorktreeOptions,
+  type ReleaseProof,
 } from "./options.js";
 export { parkWorktree } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";

@@ -1,12 +1,13 @@
 {
   "name": "@titan-design/tool-guard",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "titan-tool-guard": "./dist/bin.js"
+    "titan-tool-guard": "./dist/bin.js",
+    "titan-merge-lint": "./dist/merge-lint-bin.js"
   },
   "exports": {
     ".": {
@@ -16,6 +17,10 @@
     "./shell": {
       "types": "./dist/shell/index.d.ts",
       "import": "./dist/shell/index.js"
+    },
+    "./merge-lint": {
+      "types": "./dist/merge-lint/index.d.ts",
+      "import": "./dist/merge-lint/index.js"
     }
   },
   "files": [

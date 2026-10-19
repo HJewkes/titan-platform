@@ -35,9 +35,12 @@ type CitationCheck = {
 /** Splits a quote on line breaks and "..." or "…" elisions into normalized, non-trivial fragments. */
 declare function quoteFragments(quote: string): string[];
 /**
- * True when every quote fragment occurs in the cited lines after whitespace normalization.
- * Returns null when the quote has no fragment long enough to check.
+ * True when every quote fragment occurs in `text` after whitespace normalization, so a quote
+ * re-wrapped over other line breaks still matches. Returns null when the quote has no fragment
+ * long enough to check.
  */
+declare function quoteInText(text: string, quote: string): boolean | null;
+/** {@link quoteInText} over a 1-based inclusive range of a file's lines. */
 declare function quoteInRange(fileLines: readonly string[], range: Omit<LineRange, "path">, quote: string): boolean | null;
 type RangeCheck = {
     ok: true;
@@ -174,4 +177,4 @@ declare function scoreControls(expected: readonly LabeledAnswer[], answered: rea
 /** A deterministic generator of floats in [0, 1) from a string or number seed (mulberry32). */
 declare function seededRandom(seed: string | number): () => number;
 
-export { type Anchor, type AnchorCheck, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RangeCheck, type RevisionAnchor, type RevisionSource, type ShownLines, type VerifyOptions, groupByOverlap, isAnchorForm, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, rangesOverlap, scoreControls, seededRandom, splitLines, verifyAnchorText, verifyCitation, verifyRange };
+export { type Anchor, type AnchorCheck, type AnchorParse, type AnchorPins, type AnchorRejection, type Citation, type CitationCheck, type CitationRejection, type ControlScore, type DiffAnchor, type DiffEndpoint, type GroupOptions, type LabelScore, type LabeledAnswer, type LineRange, type LineSource, type Placement, type Planted, type RangeCheck, type RevisionAnchor, type RevisionSource, type ShownLines, type VerifyOptions, groupByOverlap, isAnchorForm, isFullSha, lineSourceFromTexts, parseAnchor, pickControls, placeControls, quoteFragments, quoteInRange, quoteInText, rangesOverlap, scoreControls, seededRandom, splitLines, verifyAnchorText, verifyCitation, verifyRange };

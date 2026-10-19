@@ -55,6 +55,20 @@ describe("releaseDecision on the hourly schedule", () => {
   });
 });
 
+describe("releaseDecision on a manual dispatch", () => {
+  const dispatched = (facts) => releaseDecision({ event: "workflow_dispatch", tipGreen: true, ...facts }).run;
+
+  it("runs with changesets pending and a fresh Version Packages branch, since it publishes and never versions", () => {
+    expect(dispatched({ ...stale, branchAgeS: 5 })).toBe(true);
+    expect(dispatched({ ...stale, branchHasTip: true })).toBe(true);
+  });
+
+  it("never runs on a tip with no green push CI run", () => {
+    expect(dispatched({ ...stale, pending: 0, tipGreen: false })).toBe(false);
+    expect(dispatched({ ...stale, tipGreen: undefined })).toBe(false);
+  });
+});
+
 describe("the schedule's green-tip read", () => {
   const TIP = "a".repeat(40);
   const run = (fields) => ({ head_sha: TIP, event: "push", status: "completed", conclusion: "success", ...fields });
@@ -86,13 +100,13 @@ describe("the release workflow", () => {
   const job = workflow.jobs.release;
   const gateIndex = job.steps.findIndex((step) => step.id === "gate");
 
-  it("lets a workflow_run through only for a green push CI run at the tip, and otherwise only the schedule", () => {
+  it("lets a workflow_run through only for a green push CI run at the tip, and otherwise only the schedule or a dispatch on main", () => {
     const condition = job.if.replace(/\s+/g, " ").trim();
 
     expect(condition).toBe(
-      "github.event_name == 'schedule' || ( github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_sha == github.sha)",
+      "github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || ( github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_sha == github.sha)",
     );
-    expect(Object.keys(workflow.on).sort()).toEqual(["schedule", "workflow_run"]);
+    expect(Object.keys(workflow.on).sort()).toEqual(["schedule", "workflow_dispatch", "workflow_run"]);
   });
 
   it("decides in the tested gate script, before any step that installs, versions or publishes", () => {
@@ -105,7 +119,16 @@ describe("the release workflow", () => {
     const after = job.steps.slice(gateIndex + 1);
 
     expect(after.length).toBeGreaterThan(0);
-    expect(after.every((step) => step.if === "steps.gate.outputs.run == 'true'")).toBe(true);
-    expect(after.some((step) => step.uses?.startsWith("changesets/action@"))).toBe(true);
+    expect(after.every((step) => step.if.startsWith("steps.gate.outputs.run == 'true'"))).toBe(true);
+  });
+
+  it("versions only off a dispatch, and on a dispatch only publishes stranded versions, a dry run by default", () => {
+    const changesets = job.steps.find((step) => step.uses?.startsWith("changesets/action@"));
+    const stranded = job.steps.find((step) => step.run === "node scripts/release-stranded.mjs");
+
+    expect(changesets.if).toBe("steps.gate.outputs.run == 'true' && github.event_name != 'workflow_dispatch'");
+    expect(stranded.if).toBe("steps.gate.outputs.run == 'true' && github.event_name == 'workflow_dispatch'");
+    expect(stranded.env.DRY_RUN).toBe("${{ inputs.dry_run }}");
+    expect(workflow.on.workflow_dispatch.inputs.dry_run).toMatchObject({ type: "boolean", default: true });
   });
 });

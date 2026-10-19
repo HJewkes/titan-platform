@@ -170,10 +170,15 @@ function field(text: string, fallback: string, questionId: string, used = new Se
   return shown;
 }
 
+function citeText(cite: Recommended["cite"]): string | undefined {
+  if (typeof cite === "object") return cite.quote.trim() ? `Cite: "${cite.quote.trim()}" (session ${cite.session}, event ${cite.event})` : undefined;
+  return cite?.trim() ? `Cite: ${cite.trim()}` : undefined;
+}
+
 function recommendation(recommended: Recommended | undefined, labels: Record<string, string>): RecommendationInput {
   if (recommended === undefined || recommended.confidence === undefined || recommended.by.trim() === "") return undefined;
   const answer = Object.keys(labels).find((label) => labels[label] === recommended.optionId);
-  const cite = recommended.cite?.trim() ? `Cite: ${recommended.cite.trim()}` : undefined;
+  const cite = citeText(recommended.cite);
   const rationale = recommended.rationale?.trim() ? recommended.rationale.trim() : cite;
   if (answer === undefined || rationale === undefined) return undefined;
   return { answer, rationale, confidence: recommended.confidence, by: recommended.by.trim() };

@@ -19,6 +19,24 @@ It still fails the strict `ScriptSchema` (extra keys such as `band`, `origin`, `
 map_state `map`/`item`/`old`/`new`, and seven `video.invariants` against a cap of two). That is the point:
 `readSpikeScript` reads it without widening `ScriptSchema`.
 
+## `script-full.json`
+
+The whole 75-beat v4 script, from the same source as `script.json` (sha256
+`923d7ab3ea419d35e1f90197598f9a8c9f9b6ece7270c00be68e4933955219fd`). The frozen file's sha256 is
+`fd97cefcb7cc8a65a723444683aedd53a774c7275204617482cf5a794983ba16`.
+
+- Every key and beat is copied in source order, with the source's indentation, and verbatim apart from the one
+  substitution below.
+- One internal seat name is replaced with the generic label `lead-desk` (`Lead-desk` where it starts a
+  sentence), everywhere it occurs: the spoken text of `r6-1-seat` and `r10-5-q5-q6`, a pin and its cue on
+  `r6-1-seat`, an open cue on `r10-5-q5-q6`, and the `claim` of facts `R34` and `R54`. The source name is deliberately not
+  recorded here. Both words of the label occur nowhere else in the script, as both words of the source name did.
+- Pull request numbers are left in; they point at this repository.
+
+The M3 prefilter (`src/lint-gloss.ts`) needs whole chapters, because an item spoken again later in its chapter
+does not count as named only, and six of the beats script-method routes are not in the subset. `script.json`
+stays as it is: the E1, E2, E4 and calibrate tests pin sets computed on its 20 beats.
+
 ## `durations.json`
 
 A durations-only extract of motion-spike `examples/samples/redesign-explainer-v4.words.json` at commit

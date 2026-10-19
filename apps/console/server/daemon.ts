@@ -20,6 +20,7 @@ import { APP_VERSION } from "./paths.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { createSources } from "./upstreams.js";
+import { mountVideoMedia } from "./videos.js";
 
 export interface ConsoleDaemonOptions {
   config: ConsoleConfig;
@@ -51,7 +52,10 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
-    mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
+    mountRoutes: (app) => {
+      if (sources.videos) mountVideoMedia(app, sources.videos);
+      if (staticRoot) mountStaticApp(app, { root: staticRoot });
+    },
     logger,
   });
   void sources.listeners?.sweep();
