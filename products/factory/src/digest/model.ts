@@ -37,6 +37,14 @@ export interface ProofFixture {
   since: string;
 }
 
+/** An owner gate a run passed on a demotion rule in the window, shown so the owner sees what passed without them. */
+export interface AutoPassed {
+  ref: string;
+  rule: string;
+  headSha: string;
+  detail: string;
+}
+
 export interface SeatLine {
   seat: string;
   dispatches: number;
@@ -103,6 +111,8 @@ export interface DigestModel {
   spend: PoolLine[];
   /** Live `proof-fixture` runs with their gates; absent when there are none. They count in no section above. */
   proofFixtures?: ProofFixture[];
+  /** Owner gates passed on a demotion rule in the window (TP-3697); absent when none was. */
+  autoPassed?: AutoPassed[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
   /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */

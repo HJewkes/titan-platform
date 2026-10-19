@@ -4,3 +4,6 @@ export { priceRequest } from "./price-request.js";
 export type { RequestTokens, PricedRequest } from "./price-request.js";
 export { priceCodexUsage, validateCodexPrices } from "./codex-prices.js";
 export type { CodexPriceRow } from "./codex-prices.js";
+
+export { createCodexPricingPort } from "./codex-prices.js";
+export type { CodexPricingPortOptions } from "./codex-prices.js";

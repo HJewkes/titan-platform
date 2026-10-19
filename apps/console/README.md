@@ -135,7 +135,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
 | `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it), plus `dir`, the rounds dir the server reads. A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
-| `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
+| `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). A Ship round also carries `lineage`: `{known: true, provenSha, state, merged, mergeSha, headSha, baseRef, baseSha, behind}` read from GitHub's PR and base tip and cached per repo, PR and head for a minute (`behind` is null unless the PR is open and still at the proven head), or `{known: false, reason}`. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
 | `POST /rpc/rounds.frames` | `{ id }` in; `{ indexed, frames: [{ key, theme?, views, indexed }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for. The top `indexed` says the round has a `frames/frames.json`, and a frame's `indexed` says that file lists it. An invalid `frames.json` is refused (66) |
 | `POST /rpc/rounds.frame` | `{ id, key, view? }` in; `{ contentType: "image/png", bytes, sha256, base64 }` out for one listed frame. The client names a key and view, never a path. Refused (66) for an unlisted key or view, a path leaving the round, a symlink at any component, a non-regular file, a non-PNG, a file over 8 MiB or a sha256 the frames index does not match. Also served over `/mcp`, so an agent can read the images as the owner does |
 | `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general? }` in; `{ status: "submitted", path, sha256, headSha }` or `{ status: "already-submitted" }` out. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
@@ -334,7 +334,8 @@ the state dir.
   so loopback and bearer calls are refused.
 - **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
   carries `current`, and `verdict` is the latest verdict on the current render or null.
-- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render), an
+  `openNoteCount` (the open notes under the pickup rule below) and its `verdict`.
 
 Each line is a strict `titan-console/video-note@1` object:
 
@@ -357,6 +358,90 @@ count as a gap, and refuses a file over 1 MB.
 written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
+### Video metadata
+
+Agents describe a render in two files the console only reads. `<stem>.video.json` beside the
+video (`cut.mp4` gets `cut.video.json`) is a strict `titan-console/video-meta@1` object.
+`_videos.json` in a folder is a strict `titan-console/video-folder@1` object that covers a batch
+of clips without one sidecar each. `videos.list` adds every field that is set to the video's
+row. A video with neither file lists with only what its file and folder give (below).
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-meta@1"`; the only required field |
+| `title` | 1-200 characters, replacing the file stem; include the take ("Lantern walkthrough, take 2") |
+| `description` | 1-2000 characters |
+| `purpose` | one of `daily`, `repo-review`, `plan`, `design`, `explainer`, `test`, `clip` |
+| `tags` | up to 20 strings of 1-40 characters |
+| `subject` | `{ kind: "repo" \| "day" \| "initiative", id }`: what the video is about |
+| `parent` | for a clip, the id or alias of the video it was cut from |
+| `posterAtS` | seconds, at or above 0: the frame to use as the poster |
+| `poster` | a jpg or png file name in the video's folder (no path), served by the poster route below |
+| `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
+| `series`, `take` | 1-200 characters each |
+| `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
+
+The folder manifest carries `schema: "titan-console/video-folder@1"`, any of the fields above
+except `title` and `alias` as defaults for every video directly in that folder, and `items`, a
+map from a file name to its own fields (`{ "01-spin.mp4": { "title": "Spin" } }`). A field in
+the sidecar beats the manifest's item for that file, which beats the manifest's default.
+
+Both files are opened with O_NOFOLLOW and read up to 64 KB. A file that is bigger, not JSON, or
+not a strict match is skipped and counted as a gap ("1 video sidecar could not be read", "1 video
+folder manifest could not be read"); the videos still list. A parsed file is cached by its device,
+inode, size and mtime, so the per-request rescan reads only files that changed.
+
+### Poster and resolve
+
+`GET /media/videos/:id/poster` serves the video's cover, found beside the video: the sidecar's
+`poster`, else `<stem>-poster.jpg`, else `<stem>-poster.png`, else 404. It resolves the id and
+root as the video route does, opens nothing outside the root, and refuses a symlink or a file that
+is not regular. A contact sheet is never a poster, and nothing is resized: writers produce 480 w
+JPEGs. It sends the image type and `Cache-Control: private, no-cache`, like the video.
+
+**`videos.resolve`** (read) takes `{ series?, tag?, subject? }` (`subject` is the subject's `id`) and
+returns `{ found: true, id }` for the newest non-superseded video that matches every filter, or
+`{ alias }` and returns that video's id. When nothing matches it returns `{ found: false, reason }`.
+
+### Media fields, derived fields and copies
+
+Every row also carries what the video's own headers say: `durationS`, `width`, `height`,
+`orientation` (`landscape`, `portrait` or `square`) and `audio`. An mp4 is read box by box
+(`mvhd`, then each track's `tkhd` and `hdlr`, wherever the `moov` sits); a webm is read from its
+first 256 KB of EBML. A file whose headers cannot be parsed lists with those fields null and counts
+toward one gap line ("1 video header could not be read"). A recorder webm with no Duration lists
+with `durationS: null` and no gap. Results are cached by device, inode, size and mtime.
+
+When no sidecar or manifest sets them, the catalog derives:
+
+- `title`: the H1 of `render-notes.md` beside the video, then of `BRIEF.md`, then the file stem.
+  When siblings in one folder derive the same title, each gets its take appended
+  ("Lantern walkthrough (v2)"), or its stem when it has no take.
+- `description`: the first paragraph after the H1 that gave the title.
+- `series`, `take`: from a `-v2`, `_take3` or `-take-3` suffix on the stem (`lantern-v2` is take
+  `v2` of `lantern`).
+- `superseded`: the sidecar's `status` is `superseded` when one is set; otherwise true when a later
+  take (higher number, then newer file) of the same series sits in the same folder.
+
+A file under a `copies` or `intermediate` folder whose size and sha256 of its first and last 64 KB
+match another listed video folds into that video, whose `copies` counts it. Identical files
+outside those folders never fold. A folded copy's id still resolves on the media routes.
+
+### The feed
+
+`#/theater` sections the renders by day in the reader's own timezone (Today, Yesterday, a
+weekday within the week, then the date), newest first, each header counting its videos and their
+run time. A row shows the title, one purpose pill, at most one flag (Old take, else Phone for a
+portrait render), the verdict and note pills, and a byline. The purpose is the sidecar's
+`purpose`, else a tag naming one, else `clip` under 10 seconds, else `repo-review` or `daily`
+from the `subject` or series, else Other (`purposeOf()` in `src/pages/theater-feed.ts`). Its
+colour is only the dot beside the label, from the dataviz categorical hues.
+
+The state lives in the hash, so a filtered feed is a link: `?q=` searches the title, description,
+series, folder, subject and tags; `?tag=<purpose>` narrows to one purpose chip; `?old=1` shows
+superseded takes. Without a search or a chip, clips wait behind their chip and each day header
+links to its own.
 
 ## The approvals flow
 
@@ -488,7 +573,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
 | `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
-| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers through `rounds.submit`; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
+| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. A question round sends its picks and text through `rounds.submit` with Send answers, once its required questions hold an answer, and shows the sent state and its recommendations after; an owner-write refusal is shown as the server words it. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers the same way; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. Above the answer one line names the proven-at sha, merged or UNMERGED, the base tip and `N behind`, a stale head badged, or `lineage unknown` with its reason. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
 | `#/config` | Config | Every row `config.surfaces` reads, grouped by surface, after the `config.drift` rows whose copies disagree and those kept in step, and the `config.hosts` list: each other host's name and last report time, one silent for 25 hours marked "not reported". A row with a file line is `terminal`: it shows the exact command that opens that line, with a copy button. A hidden row (a secret or an undeclared key) shows only "present". The page has no edit control | TP-3640, TP-3643 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
@@ -21,6 +21,8 @@ interface RoundCounts extends FixFirstTrail {
   ctx: WorkflowContext;
   target: { repo: RepoSlug; pr: number };
   failedRounds: number;
+  /** The outcome of each round `failedRounds` counted, so a failed-rounds escalation knows whether only infrastructure failed. */
+  failedOutcomes: string[];
   throttledRounds: number;
   closer: CloserStreak;
   /** Rounds at each head that ended with Shepherd's own MERGE held by the seat. */
@@ -48,9 +50,11 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
+  run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : outcome);
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
   const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
+  const infra = run.failedOutcomes.every((failed) => INFRA_FAILURES.has(failed));
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }) };
 }
 
 /** A seat that never settles, say one whose reviewer exited on a WAIT, still reaches the owner's failed-rounds gate. */

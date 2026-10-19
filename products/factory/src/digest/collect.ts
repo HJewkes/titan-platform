@@ -7,7 +7,7 @@ import type { WatchRow } from "../shepherd/view.js";
 import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
-import type { AgentChatDigest, Ask, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
+import type { AgentChatDigest, Ask, AutoPassed, DecidedLine, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
 
 export interface GateFact {
   runId: string;
@@ -96,11 +96,17 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
     ...(chat && decidedSection(chat)),
-    ...waitingSection(rows, now),
+    ...waitingSection(rows, now), ...autoPassSection(rows, since),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
     ...measured,
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
+}
+
+function autoPassSection(rows: readonly WatchRow[], since: Date): Pick<DigestModel, "autoPassed"> {
+  const inWindow = (row: WatchRow) => (row.autoPassed ?? []).filter((line) => Date.parse(line.at) >= since.getTime());
+  const passed: AutoPassed[] = rows.flatMap((row) => inWindow(row).map(({ rule, headSha, detail }) => ({ ref: refOf(row), rule, headSha, detail })));
+  return passed.length > 0 ? { autoPassed: passed } : {};
 }
 
 function waitingSection(rows: readonly WatchRow[], now: Date): Pick<DigestModel, "waiting"> {

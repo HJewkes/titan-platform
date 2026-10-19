@@ -184,6 +184,57 @@ describe("finding what nobody is using", () => {
   });
 });
 
+describe("non-finite grace clocks still inspect the worktree", () => {
+  const clocks = [
+    { name: "NaN now", now: NaN, owner: identity(), inGrace: false },
+    { name: "NaN exit", now: RECLAIM_GRACE_MS, owner: identity({ exitedAt: NaN }), inGrace: false },
+    { name: "NaN last event", now: RECLAIM_GRACE_MS, owner: identity({ lastEventAt: NaN }), inGrace: false },
+    { name: "positive infinity minus itself", now: Infinity, owner: identity({ lastEventAt: Infinity }), inGrace: false },
+    { name: "negative infinity minus itself", now: -Infinity, owner: identity({ lastEventAt: -Infinity }), inGrace: false },
+    { name: "just below grace", now: RECLAIM_GRACE_MS - 1, owner: identity(), inGrace: true },
+    { name: "exactly grace", now: RECLAIM_GRACE_MS, owner: identity(), inGrace: false },
+    { name: "just above grace", now: RECLAIM_GRACE_MS + 1, owner: identity(), inGrace: false },
+  ];
+  const states = ["clean", "dirty", "unmerged", "both"] as const;
+
+  for (const clock of clocks) {
+    for (const state of states) {
+      it(clock.name + ", " + state, async () => {
+        const repo = makeRepo();
+        const worktree = await abandonedWorktree(repo);
+        if (state === "unmerged" || state === "both") {
+          fs.writeFileSync(path.join(worktree, "feature.ts"), "local work\n");
+          git(["add", "feature.ts"], worktree);
+          git(["commit", "-m", "local work"], worktree);
+        }
+        if (state === "dirty" || state === "both") {
+          fs.writeFileSync(path.join(worktree, "scratch.txt"), "unsaved\n");
+        }
+        const head = git(["rev-parse", "agent-chat/scout"], repo);
+
+        const swept = await sweep([clock.owner], { list: lister, now: () => clock.now });
+
+        expect(fs.existsSync(worktree)).toBe(true);
+        expect(git(["rev-parse", "agent-chat/scout"], repo)).toBe(head);
+        if (state === "dirty" || state === "both") {
+          expect(fs.readFileSync(path.join(worktree, "scratch.txt"), "utf8")).toBe("unsaved\n");
+        }
+        if (state === "unmerged" || state === "both") {
+          expect(fs.readFileSync(path.join(worktree, "feature.ts"), "utf8")).toBe("local work\n");
+        }
+        expect(swept).toHaveLength(1);
+        expect(swept[0]?.status).toBe(clock.inGrace ? "in-grace" : state === "clean" ? "reclaimable" : "holds-work");
+        if (!clock.inGrace && (state === "dirty" || state === "both")) {
+          expect(swept[0]?.detail).toContain("uncommitted or untracked changes");
+        }
+        if (!clock.inGrace && (state === "unmerged" || state === "both")) {
+          expect(swept[0]?.detail).toContain("commits that exist nowhere else");
+        }
+      });
+    }
+  }
+});
+
 describe("reclaiming", () => {
   it("removes the worktree and deletes the branch", async () => {
     const repo = makeRepo();

@@ -1,3 +1,4 @@
+import type { HarnessPricingPort } from "@titan-design/agent-protocol/harness";
 import { conversationItemRef } from "@titan-design/agent-protocol";
 import type { ConversationIdentity, ExecutionIdentity, TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
 import { priceCodexUsage, type CodexPriceRow } from "./codex-prices.js";
@@ -19,6 +20,7 @@ export async function runCodexExecSession<T>(
   processWallTimeMs = request.wallTimeMs,
   cleanup?: () => Promise<void>,
   prices?: readonly CodexPriceRow[],
+  pricingService?: HarnessPricingPort<"codex">,
 ): Promise<HarnessRunResult<T, "codex">> {
   return new CodexExecSession(
     request,
@@ -29,6 +31,7 @@ export async function runCodexExecSession<T>(
     processWallTimeMs,
     cleanup,
     prices,
+    pricingService,
   ).run();
 }
 
@@ -37,6 +40,7 @@ class CodexExecSession<T> {
   private finalText: string | undefined;
   private usageRaw: unknown;
   private usageAtMs = 0;
+  private serviceUsage: readonly UsageMeasurement[] | undefined;
   private nativeTurnId: string | undefined;
   private turnCompleted = false;
   private nativeTerminalObserved = false;
@@ -56,6 +60,7 @@ class CodexExecSession<T> {
     private readonly processWallTimeMs: number,
     private readonly cleanup: (() => Promise<void>) | undefined,
     private readonly prices: readonly CodexPriceRow[] | undefined,
+    private readonly pricingService: HarnessPricingPort<"codex"> | undefined,
   ) {}
 
   async run(): Promise<HarnessRunResult<T, "codex">> {
@@ -162,6 +167,7 @@ class CodexExecSession<T> {
   }
 
   private usage(): readonly UsageMeasurement[] {
+    if (this.pricingService && this.serviceUsage !== undefined) return this.serviceUsage;
     if (!this.conversation || !record(this.usageRaw)) return [];
     const measurement: UsageMeasurement = {
       kind: "snapshot",
@@ -175,7 +181,14 @@ class CodexExecSession<T> {
       source: "codex-exec.turn.completed.usage",
     };
     // Pricing here, before finish() emits progress, keeps live usage events and the result identical.
-    return this.prices ? priceCodexUsage([measurement], this.prices, this.usageAtMs) : [measurement];
+    if (!this.pricingService) return this.prices ? priceCodexUsage([measurement], this.prices, this.usageAtMs) : [measurement];
+    const raw = Object.freeze({ ...measurement, tokens: Object.freeze({ ...measurement.tokens }) });
+    // Cache raw evidence first: failure()->usage() must not recursively quote.
+    this.serviceUsage = Object.freeze([raw]);
+    const quote = this.pricingService.quote(raw, this.usageAtMs);
+    const cost = projectQuoteCost(quote);
+    if (cost !== null) this.serviceUsage = Object.freeze([Object.freeze({ ...raw, cost: Object.freeze({ ...cost }) })]);
+    return this.serviceUsage;
   }
 
   private turnScopeId(): string {
@@ -354,4 +367,19 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function projectQuoteCost(quote: unknown): UsageMeasurement["cost"] {
+  if (!record(quote)) throw new TypeError("pricingService returned an invalid quote");
+  if (quote.status === "unpriced") {
+    if (typeof quote.reason !== "string") throw new TypeError("unpriced quote needs a reason");
+    return null;
+  }
+  if (quote.status !== "priced" || !record(quote.cost)) throw new TypeError("pricingService returned an invalid quote");
+  const cost = quote.cost;
+  if (typeof cost.usd !== "number" || !Number.isFinite(cost.usd) || cost.usd < 0 ||
+      (cost.kind !== "reported" && cost.kind !== "estimate")) {
+    throw new TypeError("pricingService returned invalid USD cost");
+  }
+  return { usd: cost.usd, kind: cost.kind };
 }

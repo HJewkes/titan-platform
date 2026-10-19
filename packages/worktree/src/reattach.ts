@@ -2,10 +2,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { addWorktree, boundedAdd, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
 import { fetchTip, resolveBranchBase, type BranchBase } from "./branch-base.js";
-import { OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
+import { OriginUnreachableError, WorktreeInUseError } from "./errors.js";
+import { capacityError } from "./capacity.js";
 import { gitOrNull, gitText } from "./git.js";
-import { allocatedPaths, checkoutOf, copyClaudeDir, pruneStaleWorktrees } from "./layout.js";
-import { basePathOf, budgetOf, DEFAULT_FETCH_TIMEOUT_MS, type WorktreeOptions } from "./options.js";
+import { checkoutOf, copyClaudeDir, pruneStaleWorktrees } from "./layout.js";
+import { basePathOf, DEFAULT_FETCH_TIMEOUT_MS, type WorktreeOptions } from "./options.js";
 import { runWorktreeSetup, type SetupTarget } from "./setup.js";
 
 /** Where a worktree an allocator created sat, as its caller recorded it. */
@@ -25,6 +26,8 @@ export interface WorktreeAllocation {
   ref: Record<string, string>;
   /** Advisory lines for the requester. */
   warnings?: string[];
+  /** Opt-in data selected by this operation, not an origin-authentication claim. Absent when no setup base was selected. */
+  setupTarget?: SetupTarget;
 }
 
 /** How a re-attached worktree got its branch back. */
@@ -110,9 +113,8 @@ async function checkReattachable(record: WorktreeRecord, opts: WorktreeOptions):
   checkRecordPlacement(record, basePathOf(opts));
   if (existsSync(worktree)) throw new WorktreeInUseError(branch, worktree);
   await pruneStaleWorktrees(gitRoot);
-  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
-  const budget = budgetOf(opts);
-  if (allocated.length >= budget) throw new WorktreeBudgetExhaustedError(allocated.length, budget);
+  const exhausted = await capacityError(gitRoot, path.basename(worktree), opts);
+  if (exhausted !== undefined) throw exhausted;
   const holder = await checkoutOf(gitRoot, branch);
   if (holder !== null) throw new WorktreeInUseError(branch, holder);
 }
@@ -145,16 +147,18 @@ export async function reattachWorktree(
     base.sha,
     boundedAdd(opts.runWorktreeAdd, opts.addTimeoutMs ?? WORKTREE_ADD_TIMEOUT_MS)
   );
+  const target = setupTarget(gitRoot, worktree, base);
   const warnings = [
     ...copyClaudeDir(gitRoot, worktree),
     ...reattachWarnings(record, source, base),
-    ...(await runWorktreeSetup(setupTarget(gitRoot, worktree, base), opts.runSetup)),
+    ...(opts.skipSetup ? [] : await runWorktreeSetup(target, opts.runSetup)),
   ];
   return {
     cwd: worktree,
     note: `Your worktree at ${worktree} had been removed and was re-created on branch ${branch}. Commit your work there; nothing outside it is yours to change.`,
     ref: { branch, worktree, gitRoot, base: base.sha, base_ref: base.ref, reattached: source },
     ...(warnings.length === 0 ? {} : { warnings }),
+    ...(opts.includeSetupTarget === true ? { setupTarget: target } : {}),
   };
 }
 
