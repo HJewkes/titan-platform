@@ -1,5 +1,14 @@
 # @titan-design/worktree
 
+## 0.2.0
+
+### Minor Changes
+
+- 6dd2f97: Add an explicit merged-PR-tip release proof option, preserving default git-only
+  behavior and all existing dirty/ignored/unreadable and nonforced-remove guards.
+  Recognize the existing dispatcher exact-head and moved-head-membership evidence
+  without manufacturing force or changing product refusal presentation.
+
 ## 0.1.6
 
 ### Patch Changes

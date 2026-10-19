@@ -1,5 +1,21 @@
 # @titan-design/session-analytics
 
+## 0.17.4
+
+### Patch Changes
+
+- 9914239: Expose the existing dated catalog and pricing arithmetic through the pure agent-protocol/pricing subpath and replace higher-tier implementations with compatibility exports, preserving model matching, TTL and inclusive token accounting.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/session-graph@0.18.0
+  - @titan-design/agent-protocol@0.9.0
+  - @titan-design/session-read@0.16.1
+
 ## 0.17.3
 
 ### Patch Changes

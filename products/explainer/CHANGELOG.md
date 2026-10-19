@@ -1,5 +1,18 @@
 # @titan-design/explainer
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+  - @titan-design/agent@0.6.1
+
 ## 0.2.0
 
 ### Minor Changes
