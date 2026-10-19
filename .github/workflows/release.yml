@@ -25,6 +25,17 @@ name: Release
 # no pending changeset on a green tip the action publishes, from either trigger. Both
 # share the concurrency group below, so a scheduled run that replaces a queued publish
 # run publishes in its place.
+#
+# A version can still strand: if the CI run for a Version Packages merge is cancelled by a
+# newer push, and that push carries a changeset, every later run versions instead of
+# publishing. A manual dispatch on main publishes those: once CI is green at the tip it
+# runs scripts/release-stranded.mjs, which publishes every public version npm lacks, with
+# no `changeset version`, no git tags and no GitHub releases. A package npm has never seen,
+# and any package that depends on one, is skipped and reported, since trusted publishing
+# needs its first hand publish. The dispatch lives in this file because each npm trusted
+# publisher names this workflow file. dry_run (the default) lists what would publish:
+#   gh workflow run release.yml --ref main -f dry_run=true
+#   gh workflow run release.yml --ref main -f dry_run=false
 on:
   workflow_run:
     workflows: [CI]
@@ -32,6 +43,12 @@ on:
     branches: [main]
   schedule:
     - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List the stranded versions and publish nothing
+        type: boolean
+        default: true
 
 concurrency:
   group: release-${{ github.ref }}
@@ -47,9 +64,10 @@ jobs:
     # the main tip when the event fired. Requiring that it is the sha CI validated
     # keeps the commit and the tags on code that passed. If a newer push landed first,
     # its own CI run triggers the next Release.
-    # The gate step holds a scheduled run to the same bar: a green push CI run at the tip.
+    # The gate step holds a scheduled or dispatched run to the same bar: a green push CI run at the tip.
     if: >-
-      github.event_name == 'schedule' || (
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
@@ -98,7 +116,12 @@ jobs:
       # `pnpm version-packages` reads package sources, not dist.
       - if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
-      - if: steps.gate.outputs.run == 'true'
+      - if: steps.gate.outputs.run == 'true' && github.event_name == 'workflow_dispatch'
+        name: Publish stranded versions
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/release-stranded.mjs
+      - if: steps.gate.outputs.run == 'true' && github.event_name != 'workflow_dispatch'
         name: Version packages or publish
         uses: changesets/action@v1
         with:
