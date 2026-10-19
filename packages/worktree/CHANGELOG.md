@@ -1,5 +1,34 @@
 # @titan-design/worktree
 
+## 0.3.0
+
+### Minor Changes
+
+- a16ce17: Add optional host-defined allocation groups, name-aware budgets/error factories, strict requested origin-branch checkouts and branch-keeping release for parked allocations. Requested checkouts preserve fetched-default setup authority; an explicit skipSetup option supports caller-owned orchestration without running setup twice. Existing unconfigured allocation defaults remain unchanged.
+- a16ce17: Add an opt-in fresh DEFAULT ancestry proof for parking an unpushed branch whose actual HEAD is already backed by that fetched tip. Preserve default refusal behavior and recheck files, branch and HEAD after asynchronous proof and caller lifecycle checks.
+- a16ce17: Expose setup outcome reports while preserving the existing warnings-only helper, setup authority, execution and diagnostics.
+- a16ce17: Add opt-in setup target data while preserving default allocation shapes and setup behavior.
+- a16ce17: Allow synchronous presentation of already classified sweep holds-work entries from a frozen copy of the existing dirty/unmerged observation, preserving default details and safety classifications.
+
+### Patch Changes
+
+- a16ce17: Add an explicit lazy local commit backing reader for origin-head parking, with opaque selected correlation, complete commit validation and fresh safety rechecks. Preserve ordinary park defaults and keep provider policy in product adapters.
+- a16ce17: Recheck file and unbacked-commit safety before ordinary reclaim, retaining Git-only proof, caller force distinction and the sweep lifecycle gate.
+- a16ce17: Add an explicit actual-branch origin-head ancestry opt-in for parking, with typed branch metadata, fresh alternative-head proof and repeated file/HEAD guards while preserving default behavior.
+- a16ce17: Add an explicit park-only ignored-file policy with readonly observations,
+  validated synchronous protected subsets and presentation-only refusals. Keep
+  default behavior unchanged and recheck opt-in file policy around asynchronous
+  proof and lifecycle checks before nonforced removal.
+- a16ce17: Export the existing strict default-branch fetch helper so consumers can delete their copy without adopting allocation's local-HEAD fallback.
+- a16ce17: Restore transport-independent coverage of the shared fetch deadline without changing protocol policy or runtime behavior.
+- a16ce17: Preserve the existing dispatcher CC410 guard by disabling repository checkout
+  hooks for each worktree-add invocation, without persisting configuration or
+  changing later git hooks. Keep timeout and late cleanup aware of the invocation
+  prefix; retain child cleanup coverage with the existing filter-timeout fixture.
+- a16ce17: Expose listWorktreesPorcelain for callers that need Git's unfiltered, untrimmed worktree listing, preserving the existing Git environment and failure behavior.
+- a16ce17: Pin Playwright browser garbage collection off in the setup environment, preserving shared browser caches when setup runs outside permission profiles.
+- a16ce17: Export the existing guarded setup filenames from the package root for consumer compatibility.
+
 ## 0.2.1
 
 ### Patch Changes
