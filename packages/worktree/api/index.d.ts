@@ -28,12 +28,22 @@ interface SetupTarget {
     /** False when that commit is a local HEAD rather than origin's default branch as fetched. */
     fetched: boolean;
 }
+/** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
+declare const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
+/** npm exec exports this file's keys as npm_config_* over the env pins, and its registry picks what npx runs. */
+declare const NPMRC_FILE = ".npmrc";
 /** An allowlist of what an install needs: the step runs with the host's authority, outside any permission profile. */
 declare function setupEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /** Keys it does not know are ignored, so a newer declaration still runs on an older host. */
 declare function parseSetupStep(text: string): SetupStep | null | string;
 /** Its own process group, so a timeout also kills what the step spawned (npm runs scripts in children). */
 declare const runSetupCommand: SetupRunner;
+/** Whether a declared step reinstalled the tree's dependencies. */
+type SetupOutcome = "ran" | "none" | "skipped" | "failed";
+interface SetupReport {
+    outcome: SetupOutcome;
+    warnings: string[];
+}
 /**
  * Run the repository's declared setup step in a fresh worktree, before the agent launches.
  *
@@ -44,6 +54,8 @@ declare const runSetupCommand: SetupRunner;
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
  */
+declare function setupWorktree(target: SetupTarget, run?: SetupRunner): Promise<SetupReport>;
+/** The warnings of {@link setupWorktree}, for callers that record no outcome. */
 declare function runWorktreeSetup(target: SetupTarget, run?: SetupRunner): Promise<string[]>;
 
 declare const DEFAULT_WORKTREE_BUDGET = 3;
@@ -70,7 +82,13 @@ interface WorktreeOptions {
     /** Relative to the git root. */
     basePath?: string;
     /** Per-repository cap on allocated worktrees. A function is read on every allocation. */
-    budget?: number | (() => number);
+    budget?: number | ((name: string) => number);
+    /** Partition capacity by sanitized agent/directory name; the host owns group names and policy. */
+    allocationGroup?: (name: string) => string;
+    /** Preserve the host error class and wording when its capacity is exhausted. */
+    budgetError?: (allocated: number, budget: number, name: string) => Error;
+    /** Leave setup orchestration to the caller. Default behavior still runs the trusted declaration. */
+    skipSetup?: boolean;
     branchPrefix?: string;
     /** Bound on fetching origin's default branch before cutting a new one. */
     fetchTimeoutMs?: number;
@@ -78,6 +96,8 @@ interface WorktreeOptions {
     addTimeoutMs?: number;
     /** Runs each `git worktree add`; tests inject one to observe how adds interleave. */
     runWorktreeAdd?: WorktreeAddRunner;
+    /** Include the actual setup target selected for this operation; metadata alone does not suppress setup. */
+    includeSetupTarget?: boolean;
     /** Runs the repository's declared setup step; tests inject one so no real install runs. */
     runSetup?: SetupRunner;
 }
@@ -88,12 +108,16 @@ interface BranchBase {
     ref: string;
     warning?: string;
 }
+/** The timeout is one budget shared by every candidate, not one per candidate. */
+declare function fetchDefaultTip(gitRoot: string, timeoutMs: number): Promise<BranchBase | string>;
 /**
  * The main checkout's HEAD may lag origin or hold another session's unpushed
  * commits, and a branch cut from it ships both. So cut from a fresh fetch of
  * origin's default branch, and say so loudly when that is impossible.
  */
 declare function resolveBranchBase(gitRoot: string, timeoutMs: number): Promise<BranchBase>;
+/** Fetch a requested origin branch without silently substituting the default branch. */
+declare function resolveRequestedBase(gitRoot: string, ref: string, timeoutMs: number): Promise<BranchBase>;
 
 /** Where a worktree an allocator created sat, as its caller recorded it. */
 interface WorktreeRecord {
@@ -111,6 +135,8 @@ interface WorktreeAllocation {
     ref: Record<string, string>;
     /** Advisory lines for the requester. */
     warnings?: string[];
+    /** Opt-in data selected by this operation, not an origin-authentication claim. Absent when no setup base was selected. */
+    setupTarget?: SetupTarget;
 }
 /**
  * Put a removed worktree back at its recorded path, under the allocator's budget.
@@ -138,6 +164,8 @@ interface WorktreeRequest {
     exitedAt?: number;
     /** Discard a leftover branch instead of adopting it. Allocation can destroy commits as release can. */
     forceReset?: boolean;
+    /** Fetch this origin branch for the checkout, with no default-branch fallback. */
+    baseRef?: string;
 }
 interface WorktreeCheck {
     /** Reasons the allocation would fail. */
@@ -160,6 +188,7 @@ interface WorktreeAllocator {
         ref?: Record<string, string>;
     }, opts?: {
         force?: boolean;
+        keepBranch?: boolean;
     }): Promise<WorktreeReleaseOutcome>;
 }
 /** Worktree isolation for agents: one branch and one directory per agent name, under a per-repo budget. */
@@ -244,12 +273,74 @@ declare function observedPresence(cwd: string, git?: GitRunner): Promise<GitPres
  */
 declare function pruneStaleWorktrees(gitRoot: string): Promise<void>;
 
-/**
- * Refuse a tree that would lose anything; otherwise remove it without --force and keep the branch.
- * `recheck` runs after the git checks and right before the removal, so a spawn or resume that
- * started meanwhile is caught. Returns the parked head.
- */
-declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | undefined): Promise<{
+/** A copied snapshot of the actual local branch and commit being parked. */
+interface ParkLocalBackingObservation {
+    readonly branch: string;
+    readonly head: string;
+    readonly worktree: string;
+}
+/** Caller-supplied local commit and opaque correlation; not authenticated provider evidence. */
+interface ParkLocalBackingCandidate {
+    readonly oid: string;
+    readonly ref: string;
+}
+/** Called lazily only when ordinary origin backing did not prove the captured HEAD. */
+type ParkLocalBackingReader = (observation: Readonly<ParkLocalBackingObservation>) => Promise<readonly ParkLocalBackingCandidate[]>;
+
+/** A fresh package-owned ignored-file observation, not caller-supplied clearance. */
+interface ParkIgnoredFilesObservation {
+    readonly worktree: string;
+    readonly entries: readonly string[];
+}
+/** Product policy over ignored files only; dirty work and failed reads cannot be waived. */
+interface ParkIgnoredFilesPolicy {
+    readonly expandDirectories?: boolean;
+    readonly protectedEntries: (observation: ParkIgnoredFilesObservation) => readonly string[];
+    readonly formatRefusal?: (observation: ParkIgnoredFilesObservation) => string;
+}
+
+/** Parking keeps the local branch; an opt-in fresh default proof can establish its commits are already backed. */
+interface ParkOptions {
+    /** Lazy caller-supplied local commit backing; requires allowOriginHeadAncestor strictly true. */
+    localBackingCandidates?: ParkLocalBackingReader;
+    /** Explicit policy over fresh ignored files only; dirty status and failed observations always refuse. */
+    ignoredFiles?: ParkIgnoredFilesPolicy;
+    /** Retain the actual branch when tracking or a fresh origin-head ancestry proof backs its HEAD. */
+    allowOriginHeadAncestor?: boolean;
+    /** Permit a missing origin/branch only when a fresh DEFAULT fetch contains the actual HEAD. */
+    allowDefaultBranchAncestor?: boolean;
+    /** Positive finite fetch budget; invalid values refuse without fetching. Defaults to 15 seconds. */
+    fetchTimeoutMs?: WorktreeOptions["fetchTimeoutMs"];
+}
+
+/** A selected local candidate adds only its opaque correlation; ordinary origin success has no backingRef. */
+declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
+    allowOriginHeadAncestor: true;
+    localBackingCandidates: ParkLocalBackingReader;
+}): Promise<{
+    ok: true;
+    head: string;
+    branch: string;
+    containedIn?: string;
+    backingRef?: string;
+} | {
+    ok: false;
+    reason: string;
+}>;
+/** Explicit origin-head proof reports the actual retained branch and any differently named backing head. */
+declare function parkWorktree(target: WorktreeRecord, recheck: (() => string | undefined) | undefined, options: ParkOptions & {
+    allowOriginHeadAncestor: true;
+}): Promise<{
+    ok: true;
+    head: string;
+    branch: string;
+    containedIn?: string;
+} | {
+    ok: false;
+    reason: string;
+}>;
+/** Refuse file loss, recheck lifecycle immediately before nonforced removal, and always keep the local branch. */
+declare function parkWorktree(target: WorktreeRecord, recheck?: () => string | undefined, options?: ParkOptions): Promise<{
     ok: true;
     head: string;
 } | {
@@ -356,7 +447,10 @@ interface SweepOptions {
     branchPrefix?: string;
     list?: GitLister;
     now?: () => number;
+    /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
+    formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
+declare const porcelain: GitLister;
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
 declare function agentWorktreesIn(gitRoot: string, list?: GitLister, branchPrefix?: string): Promise<{
     worktree: string;
@@ -370,8 +464,9 @@ declare function sweepWorktrees(options?: SweepOptions): Promise<SweptWorktree[]
  * Destroy one swept worktree and its branch.
  *
  * Refuses anything not `reclaimable` unless forced, so the classification is the
- * guard rather than advice. The grace window and the safety check already ran in
- * the sweep, against the report the caller read, so they are not re-derived here.
+ * lifecycle guard rather than advice. File and commit safety is observed again
+ * before ordinary removal because the tree may have changed since the sweep.
+ * No new exit timestamp is inferred from the report.
  */
 declare function reclaimWorktree(entry: SweptWorktree, options?: {
     force?: boolean;
@@ -380,4 +475,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, OriginUnreachableError, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, NPMRC_FILE, OriginUnreachableError, PNPM_WORKSPACE_FILE, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingCandidate, type ParkLocalBackingObservation, type ParkLocalBackingReader, type ParkOptions, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupOutcome, type SetupReport, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, fetchDefaultTip, findGitRoot, gitChildEnv, inspectForRelease, isLive, porcelain as listWorktreesPorcelain, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, resolveRequestedBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, setupWorktree, sweepWorktrees, withPinnedGitProtocols };

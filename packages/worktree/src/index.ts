@@ -6,7 +6,7 @@ export {
   type WorktreeRequest,
 } from "./allocator.js";
 export { WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
-export { resolveBranchBase, type BranchBase } from "./branch-base.js";
+export { fetchDefaultTip, resolveBranchBase, resolveRequestedBase, type BranchBase } from "./branch-base.js";
 export { MissingAssignedWorktreeRecordError, OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 export {
   DEFAULT_STRIPPED_ENV_PREFIXES,
@@ -30,17 +30,22 @@ export {
   type WorktreeOptions,
   type ReleaseProof,
 } from "./options.js";
-export { parkWorktree } from "./park.js";
+export { parkWorktree, type ParkOptions, type ParkIgnoredFilesObservation, type ParkIgnoredFilesPolicy, type ParkLocalBackingObservation, type ParkLocalBackingCandidate, type ParkLocalBackingReader } from "./park.js";
 export { reattachWorktree, recreateWorktree, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 export { describeRefusal, inspectForRelease, type ReleaseCheck, type WorktreeReleaseSafety } from "./release-safety.js";
 export {
   DEFAULT_SETUP_TIMEOUT_MS,
+  NPMRC_FILE,
+  PNPM_WORKSPACE_FILE,
   parseSetupStep,
   runSetupCommand,
   runWorktreeSetup,
   SETUP_FILE,
   SETUP_LOG,
   setupEnv,
+  setupWorktree,
+  type SetupOutcome,
+  type SetupReport,
   type SetupResult,
   type SetupRunner,
   type SetupStep,
@@ -48,6 +53,7 @@ export {
 } from "./setup.js";
 export {
   agentWorktreesIn,
+  porcelain as listWorktreesPorcelain,
   isLive,
   reclaimWorktree,
   sweepWorktrees,

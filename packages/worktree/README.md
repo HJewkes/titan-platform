@@ -7,6 +7,12 @@ tree at its recorded path, and sweep for trees nobody released.
 Tier 1 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
+Optional allocation groups and name-aware budgets let the caller keep separate capacity
+policies without sharing slots. A requested `origin/<branch>` checkout never falls back to
+the default branch; setup declarations still come only from the fetched default branch.
+`release(..., { keepBranch: true })` completes a parked allocation without deleting its
+branch and refuses a tree still on disk. Callers owning setup policy can use `skipSetup`.
+
 Git and setup child environments retain the dispatcher's existing transport pin: caller
 lists are narrowed to `file:git:http:https:ssh`, and an unset list uses that same policy.
 This is the existing CC-1095 mechanism, including its known CC-1336 interaction with
@@ -34,3 +40,151 @@ A failed allocator release may additionally return `refusalCode: "unsaved-change
 `MissingAssignedWorktreeRecordError` is exported with `worktreePath`. Allocation throws it under the existing missing-assigned-tree/missing-or-mismatched-record condition, with the same generic message as before. A product can catch this specific class to present its own wording; it must rethrow unrelated errors. No additional adoption or removal authority is granted.
 
 `inspectForRelease` keeps its original object shape and diagnostics. The shared internal inspection records the existing file probes rather than running a second inspection for presentation. These additive fields/types do not certify agent-chat's remaining setup, park, sweep or dependency migration acceptance.
+
+## Strict default-branch fetch
+
+`fetchDefaultTip(gitRoot, timeoutMs)` fetches origin's current default branch and returns `{ sha, ref }`, or the existing failure-reason string. It never substitutes the local HEAD. It honors origin/HEAD when known; otherwise it tries main then master within one shared timeout budget. Fetch updates only the remote-tracking ref, leaving the main checkout's HEAD and files unchanged.
+
+This exposes the existing helper unchanged for callers such as park checks that must refuse when origin cannot establish containment. `resolveBranchBase` retains its separate local-HEAD fallback and warning for allocation. A successful fetch is only a commit observation; the caller must still perform its ancestry, ownership and file-loss checks. Setup, park and sweep policies are unchanged.
+
+## Setup browser cache protection
+
+Setup pins `PLAYWRIGHT_SKIP_BROWSER_GC=1`, including when the caller supplies `0` or leaves it unset. This preserves the product's standard Playwright browser-cache GC opt-out for setup running outside a permission profile; it does not change setup trust or command execution policy.
+
+## Setup outcome reports
+
+`setupWorktree(target, run?)` returns `{ outcome, warnings }`: `ran` after successful execution, `none` for no declared step, `skipped` for an existing trust/validation guard, or `failed` after an unsuccessful step. `runWorktreeSetup` remains the warnings-only wrapper and invokes setup once. Output remains in the existing setup log rather than the report.
+
+`SetupTarget.baseSha` and `fetched` are caller assertions, not origin authentication. Callers must derive the target from the approved fetched default branch; a requested checkout branch does not acquire setup authority. The allocator's default-branch selection and all existing guards are unchanged. Product dependency guidance and metadata remain the caller's responsibility.
+
+The root entry also exports the existing guarded filenames `NPMRC_FILE` (`.npmrc`) and `PNPM_WORKSPACE_FILE` (`pnpm-workspace.yaml`) for callers sharing setup diagnostics and fixtures. Their values and guard behavior are unchanged.
+
+## Opt-in setup target data
+
+`includeSetupTarget: true` includes `allocation.setupTarget` only when the operation selected a setup base. Omitted or false preserves the previous return shape; an existing assigned tree has no target. Recreation carries its actual selected target. The flag alone does not suppress automatic setup.
+
+The value reuses `SetupTarget` and describes this operation's selection; it is not authentication or a transferable permission. A diagnostic local-HEAD fallback remains `fetched: false`. Do not reconstruct or reassociate a target from persisted references or a requested checkout branch. The setup source, warnings, execution order and timeouts are unchanged.
+
+## Optional DEFAULT proof when parking
+
+The two-argument `parkWorktree(target, recheck)` behavior is unchanged. A caller may opt in
+with a third argument `{ allowDefaultBranchAncestor: true, fetchTimeoutMs: 1000 }`.
+When the branch has no origin tracking ref, this path requires a successful fresh fetch
+of origin's default branch and proves that the actual current HEAD is its ancestor.
+A failed fetch or a nonpositive or nonfinite budget retains the tree and branch with
+the existing missing-branch refusal. It never uses local HEAD as a fallback proof.
+
+This opt-in path checks files, branch and HEAD again after the fetch and after the
+synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
+These checks do not make removal atomic against external writers. Provider or lifecycle
+policy remains with the caller.
+
+## Sweep safety detail presentation
+
+`SweepOptions.formatSafetyDetail` may synchronously format an already classified
+`holds-work` entry. It receives a frozen copy containing only the observed `dirty`
+and `unmerged` booleans. Both can be true; formatting does not change safety status
+or cause another Git observation. Held, in-grace and reclaimable entries bypass it.
+Without the option, entry objects and diagnostics are unchanged.
+
+A throwing presenter rejects the report; a nonstring return throws `TypeError`.
+The sweep does not reclaim trees. Caller presentation is not release authority.
+
+Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.
+
+## Reclaim safety after a sweep
+
+Ordinary `reclaimWorktree(entry)` checks files and unbacked commits again before
+removing a reclaimable tree. It reuses allocator release with Git-only proof and
+the repository HEAD as the conservative comparison when no allocation base is
+available. It does not infer a new exit timestamp or restart the grace window.
+Ignored files that cannot be regenerated and failed status or ignored-file reads
+refuse removal. Only a literal caller `force: true` bypasses these checks.
+
+These observations do not make removal atomic against concurrent writers. The
+caller still owns assignment records, lifecycle decisions and runtime cleanup.
+
+## Optional actual-branch origin proof
+
+A literal `allowOriginHeadAncestor: true` opts into parking the actual current
+symbolic branch when its HEAD is backed by the existing tracking comparison or
+a currently listed origin head. The success result includes `branch`; a
+differently named proving origin head is returned as `containedIn`. The allocated
+record is not rewritten, and every local branch is retained.
+
+```ts
+const result = await parkWorktree(record, recheck, {
+  allowOriginHeadAncestor: true,
+  allowDefaultBranchAncestor: true,
+  fetchTimeoutMs: 30_000,
+});
+if (result.ok) console.log(result.branch, result.containedIn);
+```
+
+Default/no-option/false and DEFAULT-only calls keep their original result shape
+and static return type. Use a literal-true option when typed branch metadata is
+needed; a general boolean option retains the original structural return view.
+The existing DEFAULT opt-in remains separate. Omitted budgets use the existing
+15-second default; explicit invalid budgets refuse required fresh operations,
+while an unused fresh budget does not reject a tracking or local-copy fast path.
+
+Fresh alternatives are read from origin's current heads, with complete SHA1 or
+SHA256 IDs and locally usable ancestry. Missing objects, deleted heads and
+replaced heads do not authorize removal. Tracking evidence retains its existing
+semantics and is not a claim of fresh server state. Files, actual branch and HEAD
+are rechecked around asynchronous proof and before and after the lifecycle
+callback; removal is nonforced. These checks do not make external writes atomic.
+
+The caller keeps roster, process, tenancy, assignment and provider policy. This
+option adds no merged-PR reader, SQLite/cache exception or lifecycle authority.
+
+
+## Explicit ignored-file policy for parking
+
+A caller can supply a park-only policy over fresh ignored-file observations:
+
+    const result = await parkWorktree(record, recheck, {
+      ignoredFiles: {
+        expandDirectories: true,
+        protectedEntries: ({ entries }) =>
+          entries.filter(entry => !productCanRegenerate(entry)),
+        formatRefusal: ({ worktree, entries }) =>
+          "Keep " + worktree + ": " + entries.join(", "),
+      },
+    });
+
+The synchronous classifier receives a new frozen observation and readonly copy
+of candidate strings. It returns the unique string subset to protect. Invalid
+descriptors, thrown classifiers, nonarrays, holes, duplicates, invented entries,
+Promises and thenables refuse removal. A formatter only presents an already
+required refusal; an empty, nonstring or thrown result uses the generic refusal.
+
+Only literal expansion true lists the files inside collapsed ignored directories.
+A failed expansion protects its original directory unconditionally. Tracked or
+untracked changes, unreadable status or ignored listings, branch/HEAD changes,
+caller refusal and nonforced removal failure cannot be waived. Policy observations
+are repeated around asynchronous proof and before/after the caller recheck,
+including tracking and local-copy fast paths.
+
+The policy is caller-owned classification authority for ignored data, not an
+authentication or filesystem-atomicity guarantee. Keep application cache and
+database inspection in the product; the package has no SQLite or provider policy.
+The descriptor is copied without freezing its caller. Without ignoredFiles,
+existing result keys, static types and Git probe order are unchanged. This option
+alone adds no branch metadata and changes no release/reclaim/force behavior.
+
+### Optional local backing candidates
+
+With allowOriginHeadAncestor: true, localBackingCandidates can provide additional local commit candidates only after ordinary origin backing fails. The reader receives a frozen copy of the actual { branch, head, worktree } snapshot and runs at most once. It returns { oid, ref } entries: complete SHA-1 or SHA-256 commit IDs and opaque caller correlation strings. The first locally usable commit containing the captured HEAD supplies backingRef on success. Ordinary backing success never calls the reader or adds backingRef.
+
+The package validates the entire candidate list, rejects malformed entries and annotated tag IDs, and observes files, branch and HEAD again after asynchronous work and the caller recheck. Callback failures give no proof; all removal remains nonforced and retains the actual branch. Caller arrays and entries are copied rather than frozen in place.
+
+Candidates are caller-supplied backing assertions, not authenticated provider evidence. Provider status, fetches and correlation metadata belong to the product adapter. The option requires the origin-head flag to be strictly true; omitted options preserve the existing behavior and result shapes. This optional package callback does not wire any product provider reader.
+
+## Raw worktree listing
+
+listWorktreesPorcelain(gitRoot) returns a Promise of Git's exact worktree list
+--porcelain stdout. It preserves whitespace and every record, including the main
+checkout, foreign branches, detached HEADs, bare entries and locked worktrees.
+It performs no parsing or lifecycle classification. Git failures reject the
+Promise; callers choose whether to recover.

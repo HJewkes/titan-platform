@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { gitChildEnv } from "./git.js";
-import { parseWorktreeList, removeWorktree } from "./layout.js";
+import { parseWorktreeList } from "./layout.js";
+import { createWorktreeAllocator } from "./allocator.js";
 import { branchPrefixOf, RECLAIM_GRACE_MS } from "./options.js";
-import { inspectForRelease } from "./release-safety.js";
+import { inspectForRelease, type WorktreeReleaseSafety } from "./release-safety.js";
 
 /**
  * Find the worktrees an allocator is holding, and say which ones nobody is using.
@@ -69,9 +70,11 @@ export interface SweepOptions {
   branchPrefix?: string;
   list?: GitLister;
   now?: () => number;
+  /** Synchronous presentation of an already classified holds-work observation; cannot change its status. */
+  formatSafetyDetail?: (safety: Readonly<Pick<WorktreeReleaseSafety, "dirty" | "unmerged">>) => string;
 }
 
-const porcelain: GitLister = async (gitRoot) =>
+export const porcelain: GitLister = async (gitRoot) =>
   execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: gitRoot, encoding: "utf8", env: gitChildEnv() });
 
 /** Every unlocked worktree in `gitRoot` whose branch carries `branchPrefix`, from git itself. */
@@ -97,7 +100,7 @@ function classifyByOwner(
   if (owner === undefined) return undefined;
   if (isLive(owner.state)) return { status: "held", detail: `${owner.name} is ${owner.state}` };
   const since = now - (owner.exitedAt ?? owner.lastEventAt);
-  if (since >= RECLAIM_GRACE_MS) return undefined;
+  if (!(since < RECLAIM_GRACE_MS)) return undefined;
   return {
     status: "in-grace",
     detail: `${owner.name} stopped ${Math.round(since / 1000)}s ago; reclaimable after ${RECLAIM_GRACE_MS / 1000}s`,
@@ -115,7 +118,8 @@ async function classify(
   found: FoundWorktree,
   owner: SweepOwner | undefined,
   base: string,
-  now: number
+  now: number,
+  formatSafetyDetail: SweepOptions["formatSafetyDetail"]
 ): Promise<SweptWorktree> {
   const agent = owner && {
     agentId: owner.agentId,
@@ -133,6 +137,11 @@ async function classify(
   const detail = [unsaved, safety.unmerged && "commits that exist nowhere else"]
     .filter(Boolean)
     .join(" and ");
+  if (formatSafetyDetail !== undefined) {
+    const presented = formatSafetyDetail(Object.freeze({ dirty: safety.dirty, unmerged: safety.unmerged }));
+    if (typeof presented !== "string") throw new TypeError("formatSafetyDetail must return a string");
+    return { ...withAgent, status: "holds-work", detail: presented };
+  }
   return { ...withAgent, status: "holds-work", detail };
 }
 
@@ -147,7 +156,15 @@ export async function sweepWorktrees(options: SweepOptions = {}): Promise<SweptW
   for (const gitRoot of roots) {
     for (const { worktree, branch } of await agentWorktreesIn(gitRoot, options.list ?? porcelain, prefix)) {
       const found = { gitRoot, worktree, branch };
-      swept.push(await classify(found, options.ownerOf?.(found), held.get(branch)?.base ?? "HEAD", now));
+      swept.push(
+        await classify(
+          found,
+          options.ownerOf?.(found),
+          held.get(branch)?.base ?? "HEAD",
+          now,
+          options.formatSafetyDetail
+        )
+      );
     }
   }
   return swept;
@@ -157,8 +174,9 @@ export async function sweepWorktrees(options: SweepOptions = {}): Promise<SweptW
  * Destroy one swept worktree and its branch.
  *
  * Refuses anything not `reclaimable` unless forced, so the classification is the
- * guard rather than advice. The grace window and the safety check already ran in
- * the sweep, against the report the caller read, so they are not re-derived here.
+ * lifecycle guard rather than advice. File and commit safety is observed again
+ * before ordinary removal because the tree may have changed since the sweep.
+ * No new exit timestamp is inferred from the report.
  */
 export async function reclaimWorktree(
   entry: SweptWorktree,
@@ -166,6 +184,10 @@ export async function reclaimWorktree(
 ): Promise<{ ok: boolean; reason?: string }> {
   if (entry.status !== "reclaimable" && options.force !== true)
     return { ok: false, reason: `${entry.branch} is ${entry.status}: ${entry.detail}` };
-  const refused = await removeWorktree(entry.gitRoot, entry.worktree, entry.branch, options);
-  return refused === undefined ? { ok: true } : { ok: false, reason: refused };
+  const result = await createWorktreeAllocator().release(
+    {},
+    { ref: { gitRoot: entry.gitRoot, worktree: entry.worktree, branch: entry.branch } },
+    { force: options.force === true }
+  );
+  return result.released ? { ok: true } : { ok: false, reason: result.refusal };
 }
