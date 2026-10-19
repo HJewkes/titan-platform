@@ -1,5 +1,26 @@
 # titan-console
 
+## 0.6.0
+
+### Minor Changes
+
+- 60672e9: Show one shell-level status line while the console's live event stream is down: "Live updates are off. Data may be old since <time of the drop>." Every page gets it, and it clears when the stream reopens. A stream that never opened on load shows no line.
+- bf71eea: Add pause-to-comment, scrub markers and verdicts to the theater player. "Comment at m:ss" pauses the video and stamps the note with the presented frame's `mediaTime` from `requestVideoFrameCallback`, falling back to `currentTime`. On a phone the bar is fixed along the bottom of the screen. Ship and Needs changes append a verdict at the frame on screen. A refused owner write is shown verbatim. A strip under the video carries one tick per note on the current render, and tapping a tick seeks to it.
+
+### Patch Changes
+
+- 35b246d: Add the `config.drift` read command: one row per value kept in several config files (the worktree cap per repo across the home CLAUDE.md, the charter, agent-chat's `config.json` and `burndown.config.json`; the load5 hold; a lone roster seat's implementer cap against `maxAgents`), listing every copy's file, line and value. A row is `drift` when any two copies disagree. `config.surfaces` gains a `claude-md` row with the worktree cap the home CLAUDE.md states, and nothing else from that file.
+- 81e9f8e: Add the read-only `#/config` page: every `config.surfaces` row grouped by surface, led by the `config.drift` rows whose copies disagree. A row with a file line shows the exact command that opens that line, with a copy button; a hidden row shows only "present", never a value. The page has no edit control.
+
+  The console frame now grows with a long page instead of stopping at the viewport height, so the rail runs the full length of every page.
+
+- a6fd5c9: Add the `config.surfaces` read command: it lists the coordinator config files (charter and seat front matter, `burndown.config.json`, the owner switches in `seat-watchdog.json`) as rows with value, file, line, the inline comment and the decision numbers it names, plus each file's mtime and newest hand backup. Each surface declares an allowlist of safe fields; any other key is a hidden row with no value, and a parse failure names only the error code and line. `TITAN_CONSOLE_AUTONOMY_DIR` points it at the autonomy tree and `AGENT_CHAT_HOME` at the agent-chat files.
+- 24e56e2: `config.surfaces` no longer reads a `README.md` or a dotfile in the autonomy `seats/` directory as a seat. The surface specs move from `catalog.ts` to a sibling `specs.ts`, with no change in behaviour.
+- c5f0166: Add a structure test that walks the served registry: every `config.*` command is owner-write unless its verb only reads, and no read or deposit command changes a config file.
+- e6ef8da: Add `pnpm --filter titan-console capture`, deterministic twin captures of every console route. It renders the built page from disk with no daemon, from fixtures typed against `ConsoleCommands`, and shoots each route twice at phone and desktop widths. It fails on any byte difference between the two shots, and writes the frames and a `manifest.json` to `dist/twin` for visual review packets. `work.*` reads take an optional `now` clock for their `fetchedAt`.
+- 2e60fe4: Add the Reviews tab: a list of repo reviews newest first, and a review detail with the summary, findings filtered to P1 and P2 by default with sort chips and windowed rows, and the audited claims.
+  - @titan-design/session-analytics@0.17.2
+
 ## 0.5.0
 
 ### Minor Changes
