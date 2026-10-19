@@ -65,6 +65,9 @@ interface SupersededRun {
   /** An owner-gated escalation the head moved past: it gates every head until an owner answer to an approve-merge gate consumes it. */
   carried?: Escalated;
   failedRounds: number;
+  failedOutcomes: string[];
+  /** Whether the D7 fallback reviewer was already sent for the rounds counted so far. */
+  fallbackReviewed: boolean;
   updateBound: UpdateBound;
 }
 
@@ -79,7 +82,7 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
   else if (gated !== undefined) {
     const here = run.escalations.get(gated);
     const escalated = run.carried ?? here;
-    if (here?.escalation === "failed-rounds") run.failedRounds = 0;
+    if (here?.escalation === "failed-rounds") Object.assign(run, { failedRounds: 0, failedOutcomes: [], fallbackReviewed: false });
     if (escalated) run.carried = { ...escalated, carriedFrom: gated };
   }
 }

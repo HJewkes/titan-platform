@@ -97,6 +97,11 @@ function proofFixtureLines(fixtures: DigestModel["proofFixtures"], now: string):
   return section("Proof fixtures (not counted above)", fixtures.map(line), "");
 }
 
+function autoPassLines(passed: DigestModel["autoPassed"]): string[] {
+  if (passed === undefined) return [];
+  return section("Passed without you (FYI)", passed.map((p) => `- ${p.ref} ${p.rule} at ${p.headSha.slice(0, 12)}: ${clip(p.detail, REASON_WORDS)}`), "");
+}
+
 function body(d: RankedDigest, decidedShown: number): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
@@ -106,6 +111,7 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
     ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
     ...section("Spend", spend, "No pool readings."),
+    ...autoPassLines(d.autoPassed),
     ...proofFixtureLines(d.proofFixtures, d.generatedAt),
     ...waitingLines(d.waiting),
     ...flowLines(d.flow),
