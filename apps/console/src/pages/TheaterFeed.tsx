@@ -78,7 +78,7 @@ export function VideoBadges({ video }: { video: VideoRow }): ReactNode {
 function Highlighted({ text, q }: { text: string; q: string }): ReactNode {
   return splitMatches(text, q).map((part, index) =>
     part.match ? (
-      <Typography key={index} color="inherit" className="font-bold" testID="theater-match">
+      <Typography key={index} variant="body1" color="inherit" className="font-bold" testID="theater-match">
         {part.text}
       </Typography>
     ) : (
@@ -104,7 +104,7 @@ function FeedVideo({ row, q }: { row: FeedRow; q: string }): ReactNode {
   const { video, purpose } = row;
   return (
     <VStack gap={1} className="border-b border-divider px-inset-md py-inset-sm" testID={`theater-video-${video.id}`}>
-      <Link color="primary" onPress={() => open({ view: "theater", id: video.id })}>
+      <Link color="primary" className="text-base" onPress={() => open({ view: "theater", id: video.id })}>
         <Highlighted text={video.title} q={q} />
       </Link>
       <HStack gap={2} align="center" wrap>
