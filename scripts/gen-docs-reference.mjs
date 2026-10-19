@@ -22,7 +22,7 @@ export const TIER_LABELS = {
   1: { title: "Tier 1 — engines", blurb: "Reusable machinery over the primitives." },
   2: { title: "Tier 2 — domain", blurb: "Modules that know about a subject: transcripts, code, rules." },
   ui: { title: "UI", blurb: "React bindings for the daemon wire. The design system, react-ui, is listed here but published from a separate repository." },
-  product: { title: "Products", blurb: "Thin compositions of the tiers. Private, not published." },
+  product: { title: "Products", blurb: "Thin compositions of the tiers. A linked product is published; the rest are private." },
 };
 
 /**
@@ -124,8 +124,8 @@ function indexPage(entries) {
     "# Packages",
     "",
     "Every package below is published to npm under `@titan-design/` and versions independently.",
-    "A package in this repo may import only its own tier or a lower one. Products are private",
-    "compositions; the design system is published from a separate repository.",
+    "A package in this repo may import only its own tier or a lower one. Products are compositions,",
+    "private unless linked; the design system is published from a separate repository.",
     "",
   ];
   for (const tier of TIERS) {

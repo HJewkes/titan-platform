@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { contentHash } from "@titan-design/locator";
 import { conversationRef } from "@titan-design/agent-protocol";
-import { SPAN_TEXT_CAP, readCodexObservations, type CodexReadResult, type NormalizedSessionObservation, type SessionSourceDescriptor, type SourceTextLocator } from "@titan-design/session-read";
+import { SPAN_TEXT_CAP, readCodexObservations, type SessionObservationReadResult, type NormalizedSessionObservation, type SessionSourceDescriptor, type SourceTextLocator } from "@titan-design/session-read";
+import type { CapabilityAssessment, HarnessSourcePort } from "@titan-design/agent-protocol/harness";
 import type { SessionGraph } from "./graph.js";
 import { ensureNormalizedSchema } from "./normalized-schema.js";
 import { unreadableStatus } from "./unreadable.js";
@@ -10,8 +11,30 @@ import { insertObservation, observationText } from "./normalized-project.js";
 
 export interface NormalizedIndexResult { status: "indexed" | "unchanged" | "missing" | "quarantined"; conversationRef: string; observations: number; reason?: string }
 
-/** Replay changed sources into temporary staging; swap rows and watermark atomically. */
+/** Only observation capability and the bound reader are needed by the graph. */
+export type SourceIndexPort = Pick<HarnessSourcePort, "capabilities" | "readObservations">;
+
+export type SourceIndexResult = NormalizedIndexResult | {
+  status: "unavailable";
+  conversationRef: string;
+  observations: 0;
+  assessment: Exclude<CapabilityAssessment, { status: "supported" }>;
+};
+
+/** The explicit adapter owns decoding; unavailable observation capabilities have no graph or file effects. */
+export async function indexSource(graph: SessionGraph, source: SessionSourceDescriptor, sourcePort: SourceIndexPort): Promise<SourceIndexResult> {
+  const assessment = sourcePort.capabilities.observations;
+  if (assessment.status !== "supported") return { status: "unavailable", conversationRef: conversationRef(source.conversation), observations: 0, assessment };
+  return indexNormalizedSource(graph, source, (...args) => sourcePort.readObservations(...args));
+}
+
+/** @deprecated Supply a source port to indexSource; this entry retains the original Codex reader semantics. */
 export async function indexCodexSource(graph: SessionGraph, source: SessionSourceDescriptor): Promise<NormalizedIndexResult> {
+  return indexNormalizedSource(graph, source, readCodexObservations);
+}
+
+/** Replay changed sources into temporary staging; swap rows and watermark atomically. */
+async function indexNormalizedSource(graph: SessionGraph, source: SessionSourceDescriptor, readObservations: HarnessSourcePort["readObservations"]): Promise<NormalizedIndexResult> {
   ensureNormalizedSchema(graph.db);
   const ref = conversationRef(source.conversation);
   const base = { conversationRef: ref, observations: 0 };
@@ -26,13 +49,13 @@ export async function indexCodexSource(graph: SessionGraph, source: SessionSourc
   // and avoids trusting mtime alone. Equality of the resulting prefix is the fast no-op.
   const stage = `stage_${randomUUID().replaceAll("-", "")}`;
   graph.db.exec(`CREATE TEMP TABLE ${stage}(seq INTEGER PRIMARY KEY, observation TEXT NOT NULL)`);
-  let result: CodexReadResult | undefined;
+  let result: SessionObservationReadResult | undefined;
   try {
     const fingerprint = await contentHash(source.path);
     const insert = graph.db.prepare(`INSERT INTO ${stage}(observation) VALUES (?)`);
-    for await (const observation of readCodexObservations(source, {}, done => { result = done; })) insert.run(JSON.stringify(observation));
+    for await (const observation of readObservations(source, {}, done => { result = done; })) insert.run(JSON.stringify(observation));
     if (!result) throw new Error("decoder completed without a resume boundary");
-    const boundary = (result as CodexReadResult).resumeBoundary;
+    const boundary = (result as SessionObservationReadResult).resumeBoundary;
     const prior = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(row.sourceId) as { descriptor: string } | undefined;
     if (prior && row.contentHash === fingerprint && row.prefixHash === boundary.prefixHash && row.lastOffset === boundary.byteOffset) {
       graph.db.prepare("UPDATE normalized_source SET descriptor = ? WHERE transcript_id = ?").run(JSON.stringify(source), row.sourceId);

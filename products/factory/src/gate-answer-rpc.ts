@@ -65,6 +65,8 @@ interface GateAnswerDeps {
 
 export interface ConsoleAnswersOptions {
   roundsDir: string;
+  /** The console inbox's action records; set, it mounts the console-action route. */
+  actionsDir?: string;
 }
 
 /** `shepherd.consoleAnswers` from the factory config; absent means the route is not mounted. */

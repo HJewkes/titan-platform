@@ -1,5 +1,22 @@
 # @titan-design/agent
 
+## 0.6.0
+
+### Minor Changes
+
+- 9f24b7f: Discover Codex on PATH and require version 0.162.1 or newer with a bounded capability
+  probe before every execution. Reject missing command/sandbox capabilities and any
+  unverified extra MCP, policy or rollout requirements without starting a model.
+
+### Patch Changes
+
+- 108b7f4: Reject malformed Codex resume thread IDs before runtime probing and direct argv construction, preventing thread IDs from injecting CLI options.
+- a79cffd: A `cancellation_unknown` execution terminal now carries the optional `usage` the harness reported before it was aborted, timed out or lost its cancellation acknowledgement, the same way a `failed` terminal does. `terminalFromHarnessResult` copies non-empty harness usage onto it and omits the key when nothing was spent.
+- Updated dependencies [f4bd7c6]
+- Updated dependencies [a79cffd]
+  - @titan-design/agent-lifecycle@0.1.8
+  - @titan-design/agent-protocol@0.8.0
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,5 +1,70 @@
 # @titan-design/session-analytics
 
+## 0.17.2
+
+### Patch Changes
+
+- Updated dependencies [27f8d12]
+  - @titan-design/review-panel@0.7.0
+
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/session-read@0.16.0
+  - @titan-design/review-panel@0.6.2
+  - @titan-design/session-graph@0.17.1
+
+## 0.17.0
+
+### Minor Changes
+
+- 79754af: `taskActuals` takes a `prDiffs` cache keyed by PR ref and adds `prClass`, `touches` and `changedLines` from review-panel's `classifyPr` and `changedLineCount` over all of a task's merged PR files; a merged PR missing from the cache gives nulls and the `pr-diff-missing` flag. New exports `prFeaturesFor`, `listMergedPrRefs`, `parsePrRef` and the `PrDiff`/`PrFeatures` types (TP-2162 a).
+- 91ea294: Price Haiku 5.5's long-prompt tier. `PriceRow` gains an optional `longPrompt`, `priceRequest` bills every component at the long rates once the prompt (input + cache read + cache write) is strictly above `abovePromptTokens`, and the `claude-haiku-5-5` row carries its 5x tier above 100K prompt tokens. `PRICE_TABLE_VERSION` is 4.
+- 1c956dd: Add Q12 `insights data-quality`: one row per fault to clear before any analysis, each with a severity, its evidence and a suggested task title. It flags a graph whose newest request trails `--until` (or now) by more than `--max-lag` minutes (default 60), transcripts discovered but not indexed, an audit facet backlog, and unpriced models with requests. With `--assignments <file>` (CLI only) it also flags lines that fail `assignmentSchema`, outcomes outside `merged`, `done` and any `--known-outcome`, and agents with no session in the graph. session-analytics exports `DEFAULT_MERGED_OUTCOMES` and `DEFAULT_DONE_OUTCOMES`, the outcome words `costPerOutcome` counts by default.
+- f03dea7: Add `seatGenerations`, which lists a seat's generations from handoff rows, completed teleports, spawns and exits, and `readHandoffs` for agent-chat's `agent_handoff` rows. Export `readAgentSessions`.
+- 811e8ac: `costPerOutcome` buckets carry `requests` (window requests split over each agent's assignments like `costUsd`) and `requestsPerFinished` (requests over merged plus done, null at zero). The text renderer adds a `req/finished` column.
+- 55cdd43: Add `compareWindows` with `REVIEW_FILL_COMPARISON` and `SUCCESSOR_REWORK_COMPARISON`: one guardrail report over a before and an after window, with null-safe after-minus-before deltas per row.
+- 2467880: Add `renderReviewFillText`, `renderSuccessorReworkText` and `renderWindowComparisonText`: the review-fill and successor-rework guardrails and their before/after comparisons as plain-text tables, with nulls as `-` and the list-price caveat only where dollars appear.
+
+### Patch Changes
+
+- fe65aaa: Price `claude-haiku-5-5` at its list base rates (0.1 input, 0.01 cache read, 0.125 and 0.2 cache writes, 0.5 output per Mtok), from the Claude Code 2.1.296 bundled model catalog. Haiku 5.5 requests were reported as unpriced. Prompts over 100K tokens are still priced at base rates until the long-prompt tier lands. `PRICE_TABLE_VERSION` is now 3.
+- 4ec603a: `taskActuals` reads peak context and context at first deliverable for every implementer session in one batched pass over `request` (first copies only) and `session_signal`, instead of two `request_cost` view reads per task.
+- Updated dependencies [cd013d1]
+- Updated dependencies [089ac2c]
+- Updated dependencies [7b9baf5]
+- Updated dependencies [f171698]
+- Updated dependencies [30c7ab5]
+- Updated dependencies [9abae48]
+- Updated dependencies [cf7c870]
+- Updated dependencies [b0a3f7b]
+- Updated dependencies [ed7042a]
+- Updated dependencies [a79cffd]
+- Updated dependencies [eae2dc4]
+- Updated dependencies [2503c0c]
+- Updated dependencies [28df3a2]
+- Updated dependencies [ca49f58]
+- Updated dependencies [2ea3f8a]
+- Updated dependencies [adfec4b]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [4ba57bf]
+- Updated dependencies [7dbe2bb]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [29e51f1]
+- Updated dependencies [4dc300d]
+- Updated dependencies [ac8bf42]
+- Updated dependencies [5f5dce9]
+- Updated dependencies [7a47bb3]
+- Updated dependencies [6b222d0]
+  - @titan-design/review-panel@0.6.0
+  - @titan-design/agent-protocol@0.8.0
+  - @titan-design/session-graph@0.17.0
+  - @titan-design/session-read@0.15.0
+
 ## 0.16.0
 
 ### Minor Changes

@@ -40,6 +40,21 @@ describe("parkAgent", () => {
     expect(parked).toEqual({ name: "impl-a", lines: ["Parked impl-a.", "Bring it back with: agent-chat agent resume impl-a"] });
   });
 
+  it("adds --no-fix-round-check only for a caller that opts in", async () => {
+    const bin = fakeAgentChat(`echo "Parked impl-a."\n`);
+
+    await parkAgent(bin, "impl-a", 10_000, { noFixRoundCheck: true });
+
+    expect(recordedArgv()).toEqual(["agent", "park", "impl-a", "--no-fix-round-check"]);
+  });
+
+  it("cannot be called without a timeout", () => {
+    // @ts-expect-error the timeout is required, so every park call bounds its wait on the broker
+    const unbounded = () => parkAgent("agent-chat", "impl-a");
+
+    expect(unbounded).toBeTypeOf("function");
+  });
+
   it("leaves the caller's event loop free while the broker works", async () => {
     const bin = fakeAgentChat(`sleep 1\necho "Parked impl-a."\n`);
     let ticks = 0;

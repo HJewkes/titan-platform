@@ -2,24 +2,10 @@ import { readClaudeObservations, readClaudeText } from "./claude-read.js";
 import { CLAUDE_TRANSCRIPT_FORMAT } from "./claude-source.js";
 import { readCodexObservations, readCodexText } from "./codex-read.js";
 import { CODEX_ROLLOUT_FORMAT } from "./codex-discover.js";
-import type { NormalizedSessionObservation, ResumeBoundary, SessionSourceDescriptor, SourceTextLocator } from "./normalized.js";
+import type { NormalizedSessionObservation, SessionSourceDescriptor, SourceTextLocator } from "./normalized.js";
 
-export interface ReadSessionObservationOptions {
-  from?: ResumeBoundary;
-  /** Test seam for ending after a complete line in a growing source. */
-  untilByteOffset?: number;
-}
-
-export interface SessionObservationReadResult {
-  startByteOffset: number;
-  resumeBoundary: ResumeBoundary;
-  restartedFromZero: boolean;
-}
-
-export interface ReadSessionSourceTextOptions {
-  /** Fresh discovery results used to resolve a source whose path moved. */
-  sources?: readonly SessionSourceDescriptor[];
-}
+import type { ReadSessionObservationOptions, ReadSessionSourceTextOptions, SessionObservationReadResult } from "@titan-design/agent-protocol/harness";
+export type { ReadSessionObservationOptions, ReadSessionSourceTextOptions, SessionObservationReadResult } from "@titan-design/agent-protocol/harness";
 
 /** Dispatch authoritative normalized observation reads by explicit source format and harness. */
 export async function* readSessionObservations(

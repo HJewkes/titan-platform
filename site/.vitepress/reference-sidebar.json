@@ -258,5 +258,15 @@
         "link": "/reference/react-ui"
       }
     ]
+  },
+  {
+    "text": "Products",
+    "collapsed": false,
+    "items": [
+      {
+        "text": "active-work",
+        "link": "/reference/active-work"
+      }
+    ]
   }
 ]

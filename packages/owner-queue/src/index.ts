@@ -7,10 +7,11 @@ export {
   ON_SILENCE_ACTIONS,
   ROUTE_TARGETS,
   SOURCE_SYSTEMS,
+  locatorCiteSchema,
   ownerItemSchema,
   sourceRefSchema,
 } from "./schema.js";
-export type { Audience, ItemStatus, OnSilence, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
+export type { Audience, ItemStatus, LocatorCite, OnSilence, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
 export { CARD_RULES, cardLint, ownerCardSchema } from "./card.js";
 export type { CardRule } from "./card.js";
 export { audienceOf, forAudience } from "./audience.js";

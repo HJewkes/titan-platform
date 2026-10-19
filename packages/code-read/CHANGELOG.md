@@ -1,5 +1,23 @@
 # @titan-design/code-read
 
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies [178ad42]
+- Updated dependencies [54b6d69]
+- Updated dependencies [c33b063]
+- Updated dependencies [a8be5f4]
+- Updated dependencies [b5d304f]
+- Updated dependencies [7a3800a]
+- Updated dependencies [5716d14]
+- Updated dependencies [d084831]
+- Updated dependencies [03a8d23]
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [adaf424]
+  - @titan-design/code-graph@0.18.0
+  - @titan-design/registry@0.5.0
+
 ## 0.3.3
 
 ### Patch Changes

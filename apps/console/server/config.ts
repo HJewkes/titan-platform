@@ -1,10 +1,12 @@
 import { BlockList, isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { activeWorkGraphPath } from "@titan-design/app-paths";
+import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
+import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
@@ -14,6 +16,9 @@ const AGENT_CHAT_PORT = 7600;
 const FACTORY_PORT = 7410;
 /** Codewatch's `CODE_REPORT_PORT`. */
 export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
+
+/** Where the repo-review skill writes its folders, under the active-work root. */
+const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-review"];
 
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
@@ -51,12 +56,28 @@ export interface ConsoleConfig {
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
   /**
+   * Repo reviews, one folder with a README.md each; `TITAN_CONSOLE_REVIEWS_DIR` overrides.
+   * Optional so a config built by hand serves no `reviews.list`; `resolveConfig` always sets it.
+   */
+  reviewsDir?: string;
+  /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
    */
   decisionsFile: string | null;
   /** `TITAN_CONSOLE_GATE_ANSWERS=1` relays a submitted Ship or Send back to the factory's gate; off, the console only writes feedback.json. */
   gateAnswers: boolean;
+  /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
+  coordinatorRoots?: CoordinatorRoots;
+  /**
+   * `TITAN_CONSOLE_INBOX_ACTIONS=1` lets `inbox.act` write an action record and post it to the factory's console-action route.
+   * Optional so a config built by hand reads as off; `resolveConfig` always sets it.
+   */
+  inboxActions?: boolean;
+  /** Where `config.surfaces` reads this host's agent-chat, factory, console and Claude Code config. */
+  hostSurfaces?: HostSurfaceRoots;
+  /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
+  videoRoots?: string[];
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -105,21 +126,37 @@ export function resolveConfig(
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTls: lanTlsFrom(env, home),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
-    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
-    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
+    ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
 }
 
+/** The dirs other processes write and the console reads from or files into. */
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+  return {
+    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
+    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
+    reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
+  };
+}
+
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots"> {
   return {
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
+    videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
+    inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),
   };
+}
+
+/** Where `config.surfaces` reads the coordinator files and this host's own config. */
+function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
+  return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
@@ -154,6 +191,17 @@ function decisionsFileFrom(raw: string | undefined, home: string): string | null
   const file = expandHome(raw, home);
   if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
   return file;
+}
+
+/** A `path.delimiter` list; a relative entry would resolve against whatever directory the service started in. */
+function videoRootsFrom(raw: string | undefined, home: string): string[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  const roots = raw.split(path.delimiter).map((entry) => entry.trim()).filter((entry) => entry !== "");
+  return roots.map((entry) => {
+    const root = expandHome(entry, home);
+    if (!path.isAbsolute(root)) throw new Error(`TITAN_CONSOLE_VIDEO_ROOTS entries must be absolute or ~/ paths, got "${entry}"`);
+    return root;
+  });
 }
 
 /** Only `1` turns a flag on; any other value is refused rather than read as off, so a typo is never silent. */

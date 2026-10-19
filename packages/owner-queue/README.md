@@ -43,6 +43,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `writeDeposit(dir, deposit, { source })`, where `source(rev)` is a `LineSource` at that
   commit, refuses with `DepositAnchorError` and writes nothing when an anchor is past EOF or
   not a file there; on success `result.anchors` quotes each anchor's first and last line.
+- Verified cites: `recommended.cite` is legacy free text or `{ session, event, quote }`, with
+  `event` as `<byteOffset>:<byteLength>` of one transcript line. `writeDeposit(dir, deposit,
+  { events })` throws `DepositCiteError` and writes nothing when the quote does not match the
+  event text, the event cannot be read, the quote is empty, or no `events` source was passed.
+  Matching is evidence's `quoteInText`, so a re-wrapped quote still matches. session-read's
+  `readSessionEventText` is the source for Claude transcripts.
 - `QueueSource` is the adapter port: `open()`, `tail(cursor, signal)` and `resolve(ref, answer)`.
 - `mergeByKeys(items)` joins items that share an exact key: `pr:<owner>/<repo>#<n>@<sha>`
   with the full 40-hex head sha (compared case-insensitively), `task:<id>`, `gate:<id>` or

@@ -4,7 +4,8 @@ import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
-import { describeHolds, readDeployHolds, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { deployHeld } from "./deploy-hold-gate.js";
+import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
 import { buildLog, detail, writeBuildLog, writeUnreadableHold, writeWindowRecord } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, type WatchHeld, type WatchIntent, type WatchWindow } from "./deploy-watch-window.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -22,6 +23,8 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
   removeTree: (path: string) => void;
+  /** The file names in `dir`; undefined when it is missing or cannot be read. */
+  listFiles: (dir: string) => string[] | undefined;
   /** Tells the hub seat and the owner queue about a rollback that paused deploys; absent means only stderr carries it. */
   incident?: (incident: DeployIncident) => Promise<void>;
 }
@@ -40,6 +43,8 @@ export interface DeployOptions {
   drain: RestartDrain;
   /** How long a restarted build is watched after its sha checks out; absent keys keep `DEFAULT_WATCH_WINDOW`. */
   watch?: Partial<WatchWindow>;
+  /** The seat queue files whose Morning `DEPLOY HOLD:` items set the manual hold before it is read; absent skips the sync. */
+  morningQueuesDir?: string | undefined;
 }
 
 /** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
@@ -108,7 +113,8 @@ export async function deployService(ports: DeployPorts, io: ServiceIo, options: 
   }
   try {
     const deploy = { ports, io, options };
-    const plan = pauseHold(deploy) ?? (await planDeploy(deploy));
+    const held = deployHeld(ports, io.stderr, { ...options, now: ports.now() });
+    const plan: Plan = held === undefined ? await planDeploy(deploy) : { kind: "stop", code: FAILURE, message: held };
     return plan.kind === "go" ? await execute(deploy, plan.go) : stop(deploy, plan);
   } finally {
     releaseLock(ports, lock);
@@ -123,12 +129,6 @@ function stop({ ports, io, options }: Deploy, plan: Stop): number {
 
 function record(deploy: Deploy, fields: Omit<DeployRecord, "at">): DeployRecord {
   return { ...fields, at: new Date(deploy.ports.now()).toISOString() };
-}
-
-/** Read under the lock and before any sha is resolved, so no target, however new, gets past a pause. */
-function pauseHold({ ports, options }: Deploy): Stop | undefined {
-  const state = readDeployHolds(ports, options.stateDir);
-  return state.held ? { kind: "stop", code: FAILURE, message: `deploy held: ${describeHolds(state).join("; ")}; clear with titan-factory service pause --clear` } : undefined;
 }
 
 function refuse(why: string): Stop {
