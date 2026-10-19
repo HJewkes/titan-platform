@@ -29,7 +29,8 @@ import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
-import { FIX_PROOF_STEPS, fixProofRoute, fixProofStanding, fixProofVerdict, readFixProofAt } from "./fix-proof.js";
+import { FIX_PROOF_STEPS, fixProofStanding, fixProofVerdict, readFixProofAt } from "./fix-proof.js";
+import { PROOF_WAIVER_STEPS, fixProofRoutes, proofWaivedAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
@@ -48,6 +49,7 @@ export { AWAIT_VERDICT_STEP };
 export { LATE_VERDICT_STEP, mergeVerdict };
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...FIX_PROOF_STEPS,
+  ...PROOF_WAIVER_STEPS,
   { id: REVIEW_INTENT_STEP, kind: "dispatch" },
   { id: REVIEW_STEP, kind: "dispatch" },
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
@@ -299,7 +301,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
   };
   const seatWait = { ...brokerTiming(deps), timeoutMs: wiring?.seatWaitMs ?? DEFAULT_SEAT_WAIT_MS };
   return [
-    fixProofRoute(deps),
+    ...fixProofRoutes(deps),
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait, ownerIn(deps.store))),
@@ -329,7 +331,8 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 
 /**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
- * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started; an
+ * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
+ * the owner waived it at this head: then the review proceeds and its MERGE goes only to the owner gate. An
  * unverified one goes to the reviewer marked unverified, and its MERGE records that standing but keeps the policy's grant (decision 303).
  * The resolver comes from the verdict step and the dispatched reviewer from the dispatch step, so a mismatch between them gates.
  * An intent recorded under `review.panel` on runs the panel; one recorded with no plan, before the flag or under off or shadow, runs one reviewer.
@@ -338,9 +341,9 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
   const proof = await readFixProofAt(ctx, target);
   const noRepro = fixProofVerdict(proof, target.head);
-  if (noRepro) return noRepro;
+  if (noRepro && !(await proofWaivedAt(ctx, target.head))) return noRepro;
   const unverified = fixProofStanding(proof, target.head);
-  const standing: ProofStanding = unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  const standing: ProofStanding = noRepro ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);

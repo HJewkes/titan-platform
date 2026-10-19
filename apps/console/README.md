@@ -205,6 +205,10 @@ reads on an `agent-chat` frame, and all of them after the browser's own stream r
 source refetches at most once per 300 ms, at the end of the window, so a burst of broker
 appends costs one refetch per tab rather than one per append.
 
+While that stream is down after having opened, the shell shows one warning line above every
+page, "Data may be old since" the time it dropped (`useStaleSince`, `src/data/stale.ts`). The
+line clears when the stream reopens.
+
 ## Who may run a command
 
 Every command the registry serves carries a class, set by `server/owner-guard.ts`. A refusal
