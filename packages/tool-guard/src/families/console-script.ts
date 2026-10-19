@@ -31,7 +31,25 @@ export function runnerReadings(cmd: SimpleCommand, ctx: ClassifyContext): WordTo
   const readings = cmd.args.flatMap((a, i) => (!a.dynamic && isConsole(a.value) ? [cmd.args.slice(i + 1)] : []));
   const { loaded, rest } = optionRun(cmd.args, isConsole);
   const fromStdin = cmd.redirects.some((r) => r.op === "<" && (r.fd === null || r.fd === "0") && r.target !== null && !r.target.dynamic && isConsole(r.target.value));
-  return loaded || fromStdin ? [...readings, rest, rest.slice(1)] : readings;
+  const positional = loaded || fromStdin ? [rest, rest.slice(1)] : [];
+  return [...readings, ...positional, ...pairedReadings(cmd.args, isConsole)];
+}
+
+/**
+ * A node option this parser does not know may take a word and end the positional run early, so a console preload or eval
+ * pair counts wherever it sits, and every run of words after it is read as the argv. This only over-denies.
+ */
+function pairedReadings(args: readonly WordToken[], isConsole: (value: string) => boolean): WordToken[][] {
+  const options = args.map((word, i) => optionValue(word, args[i + 1]));
+  const at = options.findIndex((option, i) => !args[i]?.dynamic && loadsConsole(option, isConsole));
+  if (at < 0) return [];
+  const after = at + (options[at]?.attached ? 1 : 2);
+  return args.slice(after).map((_, k) => args.slice(after + k));
+}
+
+function loadsConsole({ name, value }: ReturnType<typeof optionValue>, isConsole: (value: string) => boolean): boolean {
+  if (value === null || value.dynamic) return false;
+  return (PRELOADS.has(name) && isConsole(value.value)) || (EVALS.has(name) && EVAL_LOADS_RE.test(value.value));
 }
 
 /** Node's options before the entry script, read by position: whether one loads the console, and the words after them all. */
