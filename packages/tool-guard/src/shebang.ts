@@ -21,6 +21,11 @@ export function parseShebang(text: string): Shebang {
   return envShell === "" ? { kind: "opaque" } : { kind: "shell", shell: envShell, flags: "" };
 }
 
+/** Whether the first line hands the file to `env` to find its shell, which looks it up on the PATH the line leaves behind. */
+export function resolvesShellViaPath(text: string): boolean {
+  return ENV_LINE_RE.test(text.slice(0, text.indexOf("\n") === -1 ? undefined : text.indexOf("\n")));
+}
+
 const HEADER_BYTES = 4096;
 /** bash's own test for a binary: a NUL in the first line, looked for in at most 80 bytes. */
 const BINARY_LINE_BYTES = 80;

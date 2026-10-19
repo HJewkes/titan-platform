@@ -209,3 +209,8 @@ uncertain native state requires recovery. A local deadline or abort without nati
 terminal evidence is `cancellation_unknown`. No transport reattachment or PID-based
 ownership is inferred. [`durableHarnessRunner`](/reference/workflow#execution-recovery)
 provides the workflow bridge.
+
+
+### Pricing compatibility
+
+Existing pricing exports re-export `@titan-design/agent-protocol/pricing`, which owns the unchanged catalog and accounting functions. Callers retain their existing input and output types. This extraction changes neither prices nor stored costs; native account and harness behavior is unaffected.

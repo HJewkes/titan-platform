@@ -1,5 +1,18 @@
 # @titan-design/factory
 
+## 0.24.0
+
+### Minor Changes
+
+- 8af5ad7: TP-3639: `titan-factory shepherd freeze <owner/repo> --reason <text>` and `shepherd unfreeze <owner/repo>` set and lift a coordinator's merge freeze on a whole repo; `shepherd freezes` lists them. While a repo is frozen no Shepherd run merges into it, though runs keep reviewing and CI keeps running; unfreeze lets waiting runs merge on their next step. The freeze is stored in the factory database (migration 33, `shepherd_repo_freeze`), is checked by the same merge guard as the main-red freeze, and is independent of it. `status`, `list` and `timeline` rows carry it as `repoFrozen`.
+
+### Patch Changes
+
+- e7601ef: TP-3642: the panel aggregate honours the owner's fix-proof waiver. `AggregateInput.fixProofWaivedAt` keeps a vacuous, missing or failed fix-proof from making the tests member blocking, or from counting an unplanned tests member as missing, only when it equals the head; a waiver at any other head changes nothing. `reviewPullRequest` and Shepherd's sh-review-panel step pass it through.
+- Updated dependencies [e7601ef]
+  - @titan-design/review-panel@0.8.0
+  - @titan-design/session-analytics@0.17.3
+
 ## 0.23.5
 
 ### Patch Changes

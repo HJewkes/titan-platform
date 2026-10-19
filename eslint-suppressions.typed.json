@@ -370,9 +370,6 @@
     }
   },
   "packages/agent/src/codex-exec-session.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     }
@@ -386,9 +383,6 @@
     }
   },
   "packages/agent/src/codex-exec.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

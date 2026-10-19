@@ -20,7 +20,11 @@ export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
  */
 export const RECLAIM_GRACE_MS = 120_000;
 
+export type ReleaseProof = "git" | "git-or-merged-pr-tip";
+
 export interface WorktreeOptions {
+  /** Git-only by default; opt in to exact merged PR head/commit evidence, never a dirty-check override. */
+  releaseProof?: ReleaseProof;
   /** Relative to the git root. */
   basePath?: string;
   /** Per-repository cap on allocated worktrees. A function is read on every allocation. */

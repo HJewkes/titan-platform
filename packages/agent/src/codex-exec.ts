@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isCodexThreadId } from "./codex-thread-id.js";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
-import { runCodexExecSession } from "./codex-exec-session.js";
+import { runCodexExecSession, unrefTimer } from "./codex-exec-session.js";
 import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
@@ -151,12 +151,16 @@ function validateOptions(options: CodexExecAdapterOptions): void {
       (!Array.isArray(options.requiredRuntimeCapabilities) || options.requiredRuntimeCapabilities.some(value => !CODEX_RUNTIME_CAPABILITIES.includes(value)))) {
     throw new TypeError("requiredRuntimeCapabilities must contain recognized runtime capabilities");
   }
-  if (options.auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
+  validateCodexAuth(options.auth);
   resolveCodexExecutable(options.executablePath);
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
   if (options.prices !== undefined) validateCodexPrices(options.prices);
+}
+
+function validateCodexAuth(auth: unknown): void {
+  if (auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
 }
 
 function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailure | undefined {
@@ -311,7 +315,7 @@ function setupStep<T>(
       () => finish(() => reject(new SetupTimeoutError("Codex setup exceeded its wall deadline"))),
       Math.max(0, timeoutMs),
     );
-    timer.unref?.();
+    unrefTimer(timer);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
     work.then(
