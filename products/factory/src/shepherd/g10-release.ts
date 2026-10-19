@@ -158,9 +158,9 @@ async function lineageRoster(deps: ShepherdDeps): Promise<readonly LineageRow[] 
 async function releaseOnTwoMerges(deps: ShepherdDeps, mode: TwoMergeMode | undefined, raw: unknown) {
   const input = TwoMergeInput.parse(raw);
   const target = { repo: input.repo, pr: input.pr };
+  const roster = await lineageRoster(deps);
   const prHead = (await deps.port.getPr(target.repo, target.pr)).headSha;
   const files = await pinnedPaths(deps.port, { ...target, head: prHead }, prHead);
-  const roster = await lineageRoster(deps);
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
   const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined, roster);
