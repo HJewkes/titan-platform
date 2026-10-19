@@ -140,14 +140,18 @@ function walkFrom(list: Token[], start: number, w: Walk): void {
       redirects = [];
       continue;
     }
-    if (token.type === "word") words.push(noteWord(token, w.marks));
-    words = withProcsub(words, token);
+    words = gatherWords(words, token, w);
     redirects = gather(redirects, token, w);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   noteValues(null, words, w);
   emit(words, redirects, w, null);
   for (const fork of forks) fork();
+}
+
+function gatherWords(words: WordToken[], token: Token, w: Walk): WordToken[] {
+  if (token.type === "word") words.push(noteWord(token, w.marks));
+  return withProcsub(words, token);
 }
 
 function gather(redirects: RedirectToken[], token: Token, w: Walk): RedirectToken[] {
