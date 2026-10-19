@@ -42,8 +42,9 @@ async function renderAt(hash: string): Promise<void> {
 
 /** The ancestor of `element` (or itself) that sits directly in a wrapping flex row: the box a phone's width must bound. */
 function rowItemOf(element: Element): Element | null {
-  for (let node: Element | null = element; node?.parentElement; node = node.parentElement) {
-    if (node.parentElement.classList.contains("flex-wrap")) return node;
+  let node = element;
+  for (let parent = node.parentElement; parent; node = parent, parent = parent.parentElement) {
+    if (parent.classList.contains("flex-wrap")) return node;
   }
   return null;
 }
