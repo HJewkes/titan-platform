@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
+import { readMergedTipProof } from "./gh-landing.js";
+import type { ReleaseProof } from "./options.js";
 import { unsavedWork } from "./unsaved-work.js";
 
 const execFileAsync = promisify(execFile);
@@ -117,7 +119,8 @@ export async function inspectForRelease(
   gitRoot: string,
   worktreePath: string,
   branch: string,
-  baseRef: string
+  baseRef: string,
+  releaseProof: ReleaseProof = "git"
 ): Promise<WorktreeReleaseSafety> {
   const unsaved = existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
   const dirty = unsaved !== undefined;
@@ -133,11 +136,27 @@ export async function inspectForRelease(
   const targets = await landingTargets(gitRoot);
   const target = await landedOn(gitRoot, branch, targets);
   checked.push(landedCheck(target, targets));
-  if (target === null) {
+  if (target === null && releaseProof === "git-or-merged-pr-tip") {
+    const proof = await readMergedTipProof(gitRoot, branch);
+    if (proof !== null) {
+      checked.push(proof.check);
+      return withPostProofFileSafety({ dirty, unmerged: !proof.merged, landed: proof.merged, ahead, checked }, worktreePath);
+    }
+  } else if (target === null) {
     const state = await ghPrState(gitRoot, branch);
     if (state !== null) checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
   }
   return { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
+}
+
+/** The external proof may outlive the first file check; retain earlier refusals too. */
+async function withPostProofFileSafety(
+  safety: WorktreeReleaseSafety,
+  worktreePath: string
+): Promise<WorktreeReleaseSafety> {
+  const afterProof = safety.landed && existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
+  if (afterProof !== undefined) safety.checked.push(dirtyCheck(afterProof));
+  return { ...safety, dirty: safety.dirty || afterProof !== undefined };
 }
 
 /** The failed checks, as one line a coordinator can act on. */
