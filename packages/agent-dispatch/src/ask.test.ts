@@ -117,6 +117,15 @@ describe("readAnswers", () => {
     expect(page).toEqual({ answers: [] });
   });
 
+  it("keeps the broker's provenance on an answer, so a decided answer reads as one", async () => {
+    const decided = { ...answered, msgId: "m-52", provenance: "decided" };
+    const bin = printing(JSON.stringify({ answers: [decided] }));
+
+    const page = await readAnswers(bin, "titan-factory", undefined, 5_000);
+
+    expect(page.answers[0]?.provenance).toBe("decided");
+  });
+
   it("throws on malformed JSON rather than returning an empty page", async () => {
     const bin = printing("answered m-41 m-50: merge\n");
 

@@ -452,3 +452,8 @@ in from the worker and coordinator forensics reports and `wf_analyze.py` / `co_a
 
 The session timeline is TP-843. It replaces the precompute and binary-search helpers of an
 earlier dashboard, and a timeline regex behind them that read clock times with no date.
+
+
+### Pricing compatibility
+
+Existing pricing exports re-export `@titan-design/agent-protocol/pricing`, which owns the unchanged catalog and accounting functions. Callers retain their existing input and output types. This extraction changes neither prices nor stored costs; native account and harness behavior is unaffected.

@@ -1,5 +1,29 @@
 # @titan-design/session-read
 
+## 0.16.1
+
+### Patch Changes
+
+- 9914239: Move the existing pure transcript source, observation and continuation declarations into agent-protocol/harness, preserving session-read compatibility exports and all decoder/read behavior. This is a further partial TP-3426 S01 checkpoint; account, pricing, policy and bus ports remain unfinished.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+
+## 0.16.0
+
+### Minor Changes
+
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
 ## 0.15.0
 
 ### Minor Changes

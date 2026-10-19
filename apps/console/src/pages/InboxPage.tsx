@@ -5,10 +5,12 @@ import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open, parseRoute } from "../router.js";
 import { openExternal } from "./homeLinks.js";
-import { InboxConfirm } from "./InboxConfirm.js";
+import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
+import { TapSheet, type TapCommands } from "./TapSheet.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
+type DerivedRow = ConsoleCommands["inbox.list"]["result"]["derived"][number];
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -80,13 +82,14 @@ export function InboxPage(): ReactNode {
   const inbox = useQuery("inbox.list");
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
-  const { items, gaps, fyiCount } = inbox.data;
+  const { items, gaps, fyiCount, derived } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
     <VStack gap={6}>
       <GapBanners gaps={gaps} />
-      <BlockingSection items={blocking} quiet={planning.length === 0} gapped={gaps.length > 0} />
+      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0} gapped={gaps.length > 0} />
+      {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
       {planning.length > 0 ? <PlanningSection items={planning} /> : null}
       <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
     </VStack>
@@ -105,6 +108,48 @@ function BlockingSection({ items, quiet, gapped }: { items: readonly InboxItem[]
       <SectionHeader title={`Blocking (${items.length})`} subtitle="Newest first" />
       <SectionContent>{items.length === 0 ? empty : <InboxRows items={items} />}</SectionContent>
     </Section>
+  );
+}
+
+const DERIVED_LABEL: Record<DerivedRow["kind"], string> = { "stalled-run": "stalled", "failed-run": "failed", "blocked-agent": "blocked" };
+
+/** Exceptions the console derived itself, kept apart from what producers filed; each is a "go look" link with no action. */
+function DerivedSection({ rows }: { rows: readonly DerivedRow[] }): ReactNode {
+  return (
+    <Section testID="inbox-derived">
+      <SectionHeader title={`Raised by the console (${rows.length})`} subtitle="Machine-derived, with evidence; go look" />
+      <SectionContent>
+        <VStack gap={3}>
+          {rows.map((row) => (
+            <DerivedRowCard key={row.id} row={row} />
+          ))}
+        </VStack>
+      </SectionContent>
+    </Section>
+  );
+}
+
+function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
+  const { evidence, threshold } = row;
+  return (
+    <Card variant="outline" testID={`inbox-derived-${row.id}`}>
+      <CardContent>
+        <VStack gap={2}>
+          <Typography variant="subtitle2">{row.summary}</Typography>
+          <HStack gap={2} align="center" wrap>
+            <Badge color="warning" variant="subtle" size="sm">
+              <BadgeText>{`machine: ${DERIVED_LABEL[row.kind]}`}</BadgeText>
+            </Badge>
+            <Typography variant="caption" color="secondary">{ageOf(evidence.at)}</Typography>
+          </HStack>
+          <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
+          <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
+          <Link color="primary" onPress={() => open(parseRoute(row.link))}>
+            {row.kind === "blocked-agent" ? "Open the agent" : "Open the run"}
+          </Link>
+        </VStack>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -169,6 +214,8 @@ function RowAction({ item }: { item: InboxItem }): ReactNode {
 
 const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${VERB[action.kind]} from the console comes later; run it on the terminal for now.`);
 
+const inboxTap = (itemId: string): TapCommands => ({ prepare: "inbox.prepare", act: "inbox.act", args: { itemId }, invalidates: ["inbox.list"] });
+
 /** One primary button labelled with the verb; the sheet it opens holds the second tap. */
 function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
   const [confirming, setConfirming] = useState(false);
@@ -180,7 +227,7 @@ function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
-      {confirming ? <InboxConfirm itemId={item.id} verb={verb} command={command} onClose={() => setConfirming(false)} /> : null}
+      {confirming ? <TapSheet<InboxReady> commands={inboxTap(item.id)} verb={verb} reading="Reading the live gate and head" command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} testID="inbox-confirm" onClose={() => setConfirming(false)} /> : null}
     </HStack>
   );
 }
@@ -221,9 +268,9 @@ function TerminalDetail({ command, reason }: { command: string | undefined; reas
 }
 
 /** A page served over plain http on the LAN is not a secure context, so it has no clipboard; the command still shows. */
-const canCopy = (): boolean => "clipboard" in navigator;
+export const canCopy = (): boolean => "clipboard" in navigator;
 
-function CopyButton({ command }: { command: string }): ReactNode {
+export function CopyButton({ command }: { command: string }): ReactNode {
   const [copied, setCopied] = useState(false);
   const copy = async (): Promise<void> => {
     await navigator.clipboard.writeText(command);

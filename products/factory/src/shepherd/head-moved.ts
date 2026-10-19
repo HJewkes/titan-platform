@@ -188,7 +188,7 @@ export async function supersedeMovedGates(host: FactoryHost, services: ShepherdS
     const asked = supersedableHead(host, pending);
     return asked ? [{ ...pending, asked }] : [];
   });
-  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId, asked }) => movedHead(services, runId, asked), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId, asked }) => movedHead(services, runId, asked), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   for (const [index, { runId, gate, asked }] of asking.entries()) {
     const head = readValue(heads[index]!);
     if (!head || host.gates.get(gate.id)?.status !== "pending") continue;

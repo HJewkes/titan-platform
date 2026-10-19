@@ -54,11 +54,11 @@ export function reviewState(facts: ReviewFacts): ReviewState {
   return STATE_RULES.find((rule) => rule.when(facts))?.state ?? "pinned";
 }
 
-/** The coverage line's `unread=N`, from a bullet or a table row; null when no coverage line carries one. */
-export function coverageUnread(summary: string): number | null {
+/** The coverage line, a bullet or a table row naming coverage and `unread=N`; null when the SUMMARY has none. */
+export function coverageOf(summary: string): { line: string; unread: number } | null {
   for (const line of summary.split(/\r?\n/)) {
     const unread = /(?<![\w-])unread=(\d+)(?!\w)/.exec(line);
-    if (unread !== null && /coverage/i.test(line)) return Number(unread[1]);
+    if (unread !== null && /coverage/i.test(line)) return { line: line.trim(), unread: Number(unread[1]) };
   }
   return null;
 }

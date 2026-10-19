@@ -44,7 +44,6 @@ function SessionsPage({ agent }: { agent: string | undefined }): ReactNode {
   const { sessions, degraded } = first.data;
   return (
     <VStack gap={4}>
-      <Typography variant="h4">Sessions</Typography>
       {agent ? <AgentFilter agent={agent} /> : null}
       {degraded ? <ListDegraded reason={degraded.reason} detail={degraded.detail} /> : <SessionsBody agent={agent} first={sessions} />}
     </VStack>

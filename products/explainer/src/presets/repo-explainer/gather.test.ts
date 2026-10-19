@@ -110,6 +110,55 @@ describe("gatherReview over the whiteboard fixture", () => {
     expect(codes(result)).toEqual(["E-CLONE"]);
   });
 
+  it("resolves the pin from a README that writes its bullets in lower case", async () => {
+    const dir = await fixtureCopy();
+    await editFile(dir, "README.md", (text) => text.replace("- Remote:", "- remote:").replace("- HEAD:", "- head:"));
+
+    const result = await gather({ reviewDir: dir });
+
+    expect(codes(result)).not.toContain("E-PIN-UNKNOWN");
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.bundle.repo).toEqual({ url: "https://github.com/devdotfast/whiteboard", sha: PIN, clone: "/clone/whiteboard" });
+  });
+
+  it("refuses a README with no remote bullet with E-PIN-UNKNOWN", async () => {
+    const dir = await fixtureCopy();
+    await editFile(dir, "README.md", (text) => text.replace(/^- Remote:.*\n/m, ""));
+
+    const result = await gather({ reviewDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(codes(result)).toEqual(["E-PIN-UNKNOWN"]);
+  });
+
+  it("refuses a remote that is not a URL with E-PIN-UNKNOWN naming it, instead of throwing", async () => {
+    const dir = await fixtureCopy();
+    await editFile(dir, "README.md", (text) => text.replace(/^- Remote:.*$/m, "- remote: local only, /srv/checkouts/widget"));
+
+    const result = await gather({ reviewDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "E-PIN-UNKNOWN", message: expect.stringContaining('"local only, /srv/checkouts/widget"') }),
+    ]);
+  });
+
+  it("skips a topics row a dropped tab has shortened, with W-BAD-ROW, and keeps the bundle", async () => {
+    const dir = await fixtureCopy();
+    await editFile(dir, "synthesis/final/topics-judged.tsv", (text) => {
+      const [header, first, ...rest] = text.split("\n");
+      return [header, first!.slice(0, first!.lastIndexOf("\t")), ...rest].join("\n");
+    });
+
+    const result = await gather({ reviewDir: dir });
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "W-BAD-ROW", selector: "synthesis/final/topics-judged.tsv:L2" }),
+    );
+    expect(result.bundle.counts.topic).toBe(2);
+  });
+
   it("refuses a review with no topics-judged.tsv with E-TOPICS", async () => {
     const dir = await fixtureCopy();
     await rm(join(dir, "synthesis/final/topics-judged.tsv"));

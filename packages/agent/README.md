@@ -327,3 +327,8 @@ native terminal acknowledgment after a deadline or abort, the ledger records
 `cancellation_unknown`. Lease-renewal, stale-owner, and local persistence failures
 settle completion promptly even when the adapter ignores abort; they cannot write a
 terminal result through a newer owner's fence. Durable results must be JSON-safe.
+
+
+### Shared pricing implementation
+
+The existing pricing exports now delegate to `@titan-design/agent-protocol/pricing`. Their signatures, dated rows, matching, arithmetic and unavailable-result behavior remain unchanged; this package retains its compatibility entrypoints. The canonical pure implementation is shared with session-analytics. No current prices are fetched and no stored costs are rewritten.

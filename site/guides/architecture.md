@@ -194,6 +194,7 @@ graph TD
   explainer --> agentProtocol
   explainer --> evidence
   explainer --> graphLayout
+  explainer --> pm
   explainer --> speechVet
   factory --> agent
   factory --> agentDispatch

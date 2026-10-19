@@ -24,6 +24,8 @@ export interface WordToken {
   /** The word is a `case` pattern, matched against the subject and never run. */
   casePattern?: true;
   refs: VarRef[];
+  /** Where in `value` an unquoted `~` opens a tilde prefix the shell expands; trusted only while `value` is still `text`. */
+  tildes?: { text: string; at: number[] };
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
   /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
