@@ -1,5 +1,5 @@
 // Hand-written twin answers for the sources with no file fixture: the broker, the session graph, Shepherd, the
-// inbox, repo reviews and the theater. Every value is synthetic; each is typed by the command the page calls.
+// inbox, repo reviews, the theater and the config reads. Every value is synthetic; each is typed by the command the page calls.
 import type { ServedCommands } from "../../src/data/rpc.js";
 import { TWIN_NOW } from "./clock.js";
 
@@ -186,6 +186,37 @@ const VIDEO_NOTE = {
   atS: 12.5, createdAt: at(2 * HOUR), kind: "comment", text: "Hold the title card a beat longer", current: true,
 } as const;
 
+const SEAT_FILE = "/synthetic/autonomy/seats/relay-seat.md";
+const AGENT_CHAT_FILE = "/synthetic/agent-chat/config.json";
+
+function configFile(surface: string, kind: string, group: Served["config.surfaces"]["result"]["files"][number]["group"], file: string) {
+  return { surface, kind, group, inventory: 1, file, mtime: at(6 * HOUR), newestBackup: null };
+}
+
+const CONFIG_SURFACES: Served["config.surfaces"]["result"] = {
+  files: [configFile("seat:relay-seat", "seat", "coordinator", SEAT_FILE), configFile("agent-chat-config", "agent-chat-config", "agent-chat", AGENT_CHAT_FILE)],
+  rows: [
+    { surface: "seat:relay-seat", file: SEAT_FILE, field: "concurrency.implementers", line: 12, hidden: false, value: 6, comment: "owner decision 12", decisions: ["12"] },
+    { surface: "seat:relay-seat", file: SEAT_FILE, field: "notify_token", line: 14, hidden: true, decisions: [] },
+    { surface: "agent-chat-config", file: AGENT_CHAT_FILE, field: "worktreeBudget", line: 3, hidden: false, value: 8, decisions: [] },
+  ],
+  gaps: ["/synthetic/factory/config.json: missing"],
+};
+
+const CONFIG_DRIFT: Served["config.drift"]["result"] = {
+  rows: [
+    {
+      id: "worktrees-per-repo", label: "Worktree cap per repo", status: "drift", values: [8, 10],
+      sources: [
+        { surface: "agent-chat-config", field: "worktreeBudget", file: AGENT_CHAT_FILE, line: 3, value: 8 },
+        { surface: "burndown", field: "maxWorktreesPerRepo", file: "/synthetic/agent-chat/burndown.config.json", line: 4, value: 10 },
+      ],
+      absent: [],
+    },
+  ],
+  gaps: [],
+};
+
 /** The answers for every source the file fixtures do not cover. */
 export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("upstreams.health", {}, {
@@ -223,4 +254,6 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   }),
   answer("videos.list", {}, { videos: [{ ...VIDEO, noteCount: 1, verdict: null }], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
+  answer("config.surfaces", {}, CONFIG_SURFACES),
+  answer("config.drift", {}, CONFIG_DRIFT),
 ];
