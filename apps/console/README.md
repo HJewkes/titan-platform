@@ -59,6 +59,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from; unset, that command answers a gap for them. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
 | `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
 | `TITAN_CONSOLE_REVIEWS_DIR` | `<active-work root>/titan-platform/sources/research/repo-review` | Repo reviews, read by `reviews.list`: each direct subfolder with a `README.md` is one review, and only fixed paths inside it are opened (no-follow, 1 MB cap). A file that fails to read or parse is a gap line, never a hidden review |
 | `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
@@ -140,6 +141,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. A `deposit` (see "Owner inbox deposits") |
 | `POST /rpc/config.report` | Another host's `titan config report` in; `{ host, receivedAt }` out. A `deposit` taken only over a bearer from another machine (see "Host config reports") |
+| `POST /rpc/config.drift` | `{ rows: [{ id, label, status, values, sources: [{ surface, field, file, line, value }], absent }], gaps }`: each value kept in more than one config file on this host (the worktree cap per repo, the load5 hold, and a lone roster seat's implementer cap against `maxAgents`). `status` is `drift` when any two copies disagree; drift rows come first. The home `CLAUDE.md` is read only for the "<n> per repo" it states |
 | `POST /rpc/config.hosts` | `{ hosts: [{ host, status, reportedAt, receivedAt, platform, surfaces }], gaps }`: each other host's last report. One older than 25 hours is `not reported`, with no surfaces |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
@@ -201,6 +203,10 @@ pages' active-work reads (`work.*`, `graph.ego`) on an `active-work` frame and t
 reads on an `agent-chat` frame, and all of them after the browser's own stream reopens. Each
 source refetches at most once per 300 ms, at the end of the window, so a burst of broker
 appends costs one refetch per tab rather than one per append.
+
+While that stream is down after having opened, the shell shows one warning line above every
+page, "Data may be old since" the time it dropped (`useStaleSince`, `src/data/stale.ts`). The
+line clears when the stream reopens.
 
 ## Who may run a command
 

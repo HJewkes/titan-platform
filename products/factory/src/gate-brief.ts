@@ -202,16 +202,26 @@ export function stuckBehindDecision(target: { repo: string; pr: number; headSha:
   return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
 }
 
-export function sentBackDecision(target: PrHead & { situation: string }) {
+/** The `sh-sent-back` answer by which the owner lets a NO_REPRO head go to review; the console tap selects it by this id. */
+export const WAIVE_PROOF = "waive-proof";
+
+/**
+ * `waivable` marks a fix-proof send-back (NO_REPRO), the only kind that offers the owner's `waive-proof`, never recommended. Its
+ * answer must name the gate's head, which only the `anyOf` shapes pin: a top-level `headSha.const` would change the abandon a
+ * coordinator's pr-gone evidence must match.
+ */
+export function sentBackDecision(target: PrHead & { situation: string; waivable?: boolean }) {
+  const waive = target.waivable ? [{ id: WAIVE_PROOF, label: "Waive the fix-proof at this head and review it; the merge stays the owner's" } as const] : [];
   const { schema, questions } = decisionGate({
     question: `Wait for a new head of PR #${target.pr}?`,
-    options: [
-      { id: "await-new-head", label: "Wait for a new head", recommended: true },
-      { id: "abandon", label: "Abandon the PR" },
-    ],
+    options: [{ id: "await-new-head", label: "Wait for a new head", recommended: true }, { id: "abandon", label: "Abandon the PR" }, ...waive],
   });
   const summary = summarize(`${where(target)} needs a decision.`, target.situation, "Recommend waiting for a new head.");
-  return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
+  return { schema: target.waivable ? schema.meta({ anyOf: waiveShapes(target.headSha) }) : schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
+}
+
+function waiveShapes(headSha: string): Record<string, unknown>[] {
+  return answerShapes([z.object({ decision: z.enum(["await-new-head", "abandon"]) }), z.object({ decision: z.literal(WAIVE_PROOF), headSha: z.literal(headSha) })]);
 }
 
 const ACCEPT_SET = "accept-set";

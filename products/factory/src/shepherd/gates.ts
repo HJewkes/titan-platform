@@ -1,8 +1,9 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { RepoSlug } from "@titan-design/github";
-import { conflictDecision, sentBackDecision } from "../gate-brief.js";
+import { WAIVE_PROOF, conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
+import { waiveProof } from "./proof-waiver.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
 
@@ -18,6 +19,8 @@ export interface GateRun {
   state: { waits: number };
   /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
   carried?: Escalated;
+  /** The verdict taken at each head; a waived fix-proof drops its head's NO_REPRO, so the next round reviews that head. */
+  reviews?: Map<string, unknown>;
 }
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
@@ -98,11 +101,17 @@ export async function conflictGate(run: GateRun, headSha: string): Promise<LandO
   return awaitNewHead(run, headSha);
 }
 
-/** A human chooses between waiting for a fix and abandoning; a pushed head answers for them. Undefined lands the next round. */
-export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt): Promise<LandOutcome | undefined> {
-  const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation });
+/**
+ * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO) send-back
+ * the owner may instead waive this head's fix-proof, and the next round reviews it. Undefined lands the next round.
+ */
+export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false): Promise<LandOutcome | undefined> {
+  const { schema, brief } = sentBackDecision({ ...run.target, headSha, situation, waivable });
   const answered = await askAtHead(run.ctx, "sh-sent-back", prompt, { schema, brief });
   const answer = answered ? schema.parse(answered.data) : { decision: "await-new-head" };
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: abandoned };
-  return awaitNewHead(run, headSha);
+  if (answer.decision !== WAIVE_PROOF) return awaitNewHead(run, headSha);
+  await waiveProof(run.ctx, headSha);
+  run.reviews?.delete(headSha);
+  return undefined;
 }
