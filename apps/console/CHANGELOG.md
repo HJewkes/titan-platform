@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.11.0
+
+### Minor Changes
+
+- 3267b54: Add `GET /media/videos/:id/poster` and the `videos.resolve` command for the Theater, and a `poster` field in the video sidecar (TP-3707, TP-3711).
+
+### Patch Changes
+
+- fc9e56d: Round notes read as text: a section's changed and context lines, and the round's own context, show as body text in the primary colour with their line breaks kept, and each "LABEL:" (such as WHY WAITING) is a quiet label row above its value. The "Context only:" prefix is gone.
+
 ## 0.10.0
 
 ### Minor Changes
