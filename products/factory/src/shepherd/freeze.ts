@@ -4,6 +4,7 @@ import { z } from "zod";
 import { consoleTextOf } from "./error-class.js";
 import { appendEvent, SHEPHERD_ACTOR } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
+import { repoFreezes, type RepoFreezes } from "./repo-freeze.js";
 
 export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
 
@@ -91,8 +92,12 @@ const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 /** One freeze row per repo in the factory database; the table comes from `freezeMigration`. */
 export class FreezeStore {
   private readonly rechecked = new Map<string, number>();
+  /** The coordinator's freezes, in their own table, so no thaw here lifts one and no unfreeze there thaws a red main. */
+  readonly repoFreezes: RepoFreezes;
 
-  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onThaw: (repo: RepoSlug) => void = () => undefined) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onThaw: (repo: RepoSlug) => void = () => undefined) {
+    this.repoFreezes = repoFreezes(db, now);
+  }
 
   /** Claims `repo`'s re-read of its default branch at `at`; false within `FREEZE_RECHECK_MS` of the last claim, so every reader of this store shares one limit. */
   claimRecheck(repo: RepoSlug, at: number): boolean {
@@ -317,11 +322,20 @@ export interface FreezeGuard {
   reason(port: GitHubPort, repo: RepoSlug, pr: number, baseRef: string, head?: string, branch?: string): Promise<string | undefined>;
 }
 
+/** Why a coordinator's freeze holds `repo`; it holds every PR, the main-red fixer's included, until `shepherd unfreeze`. */
+export function repoFrozenReason(freezes: FreezeStore, repo: RepoSlug): string | undefined {
+  const frozen = freezes.repoFreezes.get(repo);
+  return frozen && `${repo} is frozen by ${frozen.actor} since ${frozen.since}: ${frozen.reason}`;
+}
+
+/** The one check every merge passes: the coordinator's freeze first, then the main-red freeze. */
 export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
   const now = deps.now ?? Date.now;
   return {
     async reason(port, repo, pr, baseRef) {
       const freezes = deps.freezes();
+      const manual = repoFrozenReason(freezes, repo);
+      if (manual !== undefined) return manual;
       const freeze = freezes.get(repo);
       if (!freeze) return undefined;
       const frozen = await frozenAfterRecheck({ port, freezes, registrations: deps.registrations(), at: now() }, repo, pr, async () => baseRef);

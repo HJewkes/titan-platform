@@ -45,6 +45,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerRunVerbs(verb, verbs);
   registerHoldVerbs(verb, verbs);
   registerRepairStopVerbs(verb, verbs);
+  registerRepoFreezeVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
@@ -106,6 +107,18 @@ function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "clear", ref, actor: callerOf(verbs.io.env) }), opts));
   verb("repair-stops [repo]", "every repair stop, or only owner/repo's")
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
+}
+
+/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze; neither verb touches that one. */
+function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("freeze <repo>", "freeze owner/repo so no Shepherd run merges into it until unfreeze; runs keep reviewing, and a repeat replaces the reason")
+    .requiredOption("--reason <text>", "why the repo is frozen")
+    .action((repo: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.freeze", () => ({ action: "freeze", repo, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("unfreeze <repo>", "lift the freeze on owner/repo, so waiting runs merge on their next step; a red main's freeze stays")
+    .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
+  verb("freezes", "every repo freeze: repo, reason, who set it and since when")
+    .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {
