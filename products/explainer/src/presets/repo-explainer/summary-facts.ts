@@ -1,3 +1,4 @@
+import { readReviewPin } from "@titan-design/pm";
 import { parseCites } from "./cite.js";
 import type { EvidenceSpan, ExplainerFact, FactKind, FactSource } from "./schemas.js";
 
@@ -312,9 +313,9 @@ export function entryPointFacts(readme: string, options: FactOptions = {}): Expl
   );
 }
 
-/** The 40-hex commit after the README's `HEAD:`; anything shorter or longer is no pin. */
+/** The 40-hex commit of the README's `HEAD:` bullet, in any case; anything shorter or longer is no pin. */
 export function readPin(readme: string): string | undefined {
-  return /^[-*\s]*HEAD:\s*`?([0-9a-f]{40})(?![0-9a-zA-Z])/m.exec(readme)?.[1];
+  return /^`?([0-9a-f]{40})(?![0-9a-zA-Z])/.exec(readReviewPin(readme).head ?? "")?.[1];
 }
 
 /** The coverage line's `unread=N`, from a bullet or a table row; undefined when no line has both. */

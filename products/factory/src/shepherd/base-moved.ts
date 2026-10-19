@@ -81,7 +81,7 @@ async function staleBase(services: ShepherdServices, defaults: DefaultBranches, 
 export async function supersedeRebasedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const asking = host.pendingGates().flatMap((pending) => baseGate(host, services, pending));
   const defaults = memoDefaultBranches(services);
-  const stale = await mapBounded(asking, RESYNC_CONCURRENCY, (gate) => staleBase(services, defaults, gate), { timeoutMs: RESYNC_READ_TIMEOUT_MS });
+  const stale = await mapBounded(asking, RESYNC_CONCURRENCY, (gate) => staleBase(services, defaults, gate), { timeoutMs: RESYNC_READ_TIMEOUT_MS, timer: services.readTimer });
   const superseded: SupersededGate[] = [];
   for (const [index, { runId, gateId, named }] of asking.entries()) {
     const base = readValue(stale[index]!);

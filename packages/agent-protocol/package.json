@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent-protocol",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "description": "Harness-neutral identity and usage contracts for execution and session readers",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,14 @@
     "./worker-facts": {
       "types": "./dist/worker-facts.d.ts",
       "import": "./dist/worker-facts.js"
+    },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "import": "./dist/harness/index.js"
+    },
+    "./pricing": {
+      "types": "./dist/pricing/index.d.ts",
+      "import": "./dist/pricing/index.js"
     }
   },
   "files": [

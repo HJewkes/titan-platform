@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 /** The rail, in rail order. */
-export const VIEW_KEYS = ["home", "initiatives", "tasks", "sessions", "agents", "knowledge", "rounds", "shepherd"] as const;
+export const VIEW_KEYS = ["home", "inbox", "initiatives", "tasks", "sessions", "agents", "knowledge", "rounds", "reviews", "theater", "shepherd", "config"] as const;
 export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export interface Route {
   view: ViewKey;
-  /** The record a detail route names: an initiative slug, task id, session id, agent name, knowledge ref, round id or `owner/repo#pr`. */
+  /** The record a detail route names: an initiative slug, task id, session id, agent name, knowledge ref, round id, review name, video id or `owner/repo#pr`. */
   id?: string;
   /** The text after `?`, kept whole so deep links such as `?task=` and `?tab=graph` reach the page. */
   query?: string;
@@ -46,6 +46,11 @@ export function navigate(key: string): void {
 
 export function open(route: Route): void {
   window.location.hash = href(route);
+}
+
+/** For state that changes per keystroke, such as a search box: Back should leave the page, not undo a letter. */
+export function replace(route: Route): void {
+  window.location.replace(href(route));
 }
 
 function subscribe(onChange: () => void): () => void {

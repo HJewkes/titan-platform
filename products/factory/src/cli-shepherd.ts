@@ -4,7 +4,7 @@ import type { CliIo, Verbs } from "./cli.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
-import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
+import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdStats } from "./cli-stats.js";
@@ -44,6 +44,8 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
       .option("--json", "print the result as JSON");
   registerRunVerbs(verb, verbs);
   registerHoldVerbs(verb, verbs);
+  registerRepairStopVerbs(verb, verbs);
+  registerRepoFreezeVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
@@ -61,7 +63,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--task <slug/id>", "the task this PR delivers; defaults to the id in an agent-chat/<name> head branch")
     .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
-    .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
+    .option("--kind <kind>", "correctness, security, feature, refactor, test-only (the PR changes only tests) or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
@@ -69,7 +71,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
   withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy and reviewer-slot lines"))
     .option("--deploy", "with --json, print { rows, deploy, reviewSlots } so serve's deploy block and reviewer-slot reading ride along; without it --json stays the bare row array")
-    .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
+    .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => statusArgs(target ? parseTarget(target) : undefined, opts), opts));
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
@@ -93,6 +95,30 @@ function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
+}
+
+/** A repair stop is the seat's stop on fixers short of an owner hold; it is not a hold, so these verbs never touch the release path. */
+function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("repair-stop <ref>", "stop every fixer wake and resume for owner/repo#N, or for each PR touching owner/repo:<path glob>; a stop is not a hold and leaves the release path as it is")
+    .requiredOption("--reason <text>", "why fixers are stopped")
+    .action((ref: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "set", ref, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("repair-go <ref>", "clear the repair stop on owner/repo#N or owner/repo:<path glob>, so the next wake repairs as before")
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "clear", ref, actor: callerOf(verbs.io.env) }), opts));
+  verb("repair-stops [repo]", "every repair stop, or only owner/repo's")
+    .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
+}
+
+/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze; neither verb touches that one. */
+function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("freeze <repo>", "freeze owner/repo so no Shepherd run merges into it until unfreeze; runs keep reviewing, and a repeat replaces the reason")
+    .requiredOption("--reason <text>", "why the repo is frozen")
+    .action((repo: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.freeze", () => ({ action: "freeze", repo, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("unfreeze <repo>", "lift the freeze on owner/repo, so waiting runs merge on their next step; a red main's freeze stays")
+    .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
+  verb("freezes", "every repo freeze: repo, reason, who set it and since when")
+    .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {

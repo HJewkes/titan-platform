@@ -261,6 +261,10 @@ describe("readPin", () => {
     expect(readPin(`# r\n\n- Remote: x\n- HEAD: ${SHA} (2026-10-11 "Hide diff chrome (#1087)")\n`)).toBe(SHA);
   });
 
+  it("reads a lower-case head: bullet and a backticked sha", () => {
+    expect(readPin(`- remote: x\n- head: \`${SHA}\` (2026-10-11)\n`)).toBe(SHA);
+  });
+
   it("returns nothing for a short or overlong sha", () => {
     expect(readPin("- HEAD: 2ddf3eb6 (2026-10-11)")).toBeUndefined();
     expect(readPin(`- HEAD: ${SHA}0`)).toBeUndefined();

@@ -6,6 +6,7 @@ import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import type { CommandResult } from "./service-control.js";
 import { UNAVAILABLE, type Probe } from "./deploy-watch-window.js";
+import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const GIT_TIMEOUT_MS = 120_000;
@@ -112,6 +113,7 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     git: (args) => runCommand("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
     pnpm: (args) => runCommand("pnpm", args, checkout, PNPM_TIMEOUT_MS, deployPnpmEnv(process.env, args)),
     listDirs,
+    listFiles: nodeMorningHoldPorts.listFiles,
     copyTree: (from, to) => cpSync(from, to, { recursive: true }),
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
     createExclusive,

@@ -34,7 +34,6 @@ function AgentsPage({ route }: { route: Route }): ReactNode {
   const tab = tabFrom(route, TABS.map(([key]) => key));
   return (
     <VStack gap={4}>
-      <Typography variant="h4">Agents</Typography>
       <RouteTabs route={route} tabs={TABS} current={tab} />
       {tab === "roster" ? <Roster /> : <MessageFeed empty="No messages in the broker's last 1,000 events." />}
     </VStack>

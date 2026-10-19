@@ -111,6 +111,16 @@ describe("the tests brief and fix-proof", () => {
     expect(brief).toContain("The fix-proof/v1 result given could not be read");
   });
 
+  it("the tests member reads an owner waiver at this head once, in place of the blocking reading, and ignores one at another head", () => {
+    const vacuous = { ...target, fixProof: fixProof({ verdict: "vacuous" }) };
+    const waived = shapeBrief("tests", { ...vacuous, fixProofWaivedAt: target.head });
+    const stale = shapeBrief("tests", { ...vacuous, fixProofWaivedAt: "f".repeat(40) });
+
+    expect(waived.split("fix-proof waived by owner")).toHaveLength(2);
+    expect(waived).not.toContain("verdict for this head: vacuous");
+    expect(stale).toBe(shapeBrief("tests", vacuous));
+  });
+
   it("leaves the other shapes' briefs unchanged by a fix-proof result", () => {
     expect(shapeBrief("adversary", { ...target, fixProof: fixProof() })).toBe(shapeBrief("adversary", target));
   });

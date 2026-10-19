@@ -1,5 +1,28 @@
 # @titan-design/worktree
 
+## 0.2.1
+
+### Patch Changes
+
+- 8049d2e: Expose an optional ordinary-changes refusal code and a typed missing-assigned-record error for product presentation, preserving release checks, generic messages and public inspection shape.
+
+## 0.2.0
+
+### Minor Changes
+
+- 6dd2f97: Add an explicit merged-PR-tip release proof option, preserving default git-only
+  behavior and all existing dirty/ignored/unreadable and nonforced-remove guards.
+  Recognize the existing dispatcher exact-head and moved-head-membership evidence
+  without manufacturing force or changing product refusal presentation.
+
+## 0.1.6
+
+### Patch Changes
+
+- c50e702: Preserve the dispatcher's existing CC-1095 git transport guard during worktree consumption. Internal git calls and setup child environments now narrow caller protocol lists to file:git:http:https:ssh, or use that list when unset. Export the unchanged pin helpers for thin consumer adapters; retain and document the separate inherited CC-1336 config-precedence limitation.
+
+  The mandatory protocol pin survives caller-provided identity-prefix stripping, including GIT\_, without recomputing or widening the original caller list.
+
 ## 0.1.5
 
 ### Patch Changes

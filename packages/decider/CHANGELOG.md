@@ -1,5 +1,23 @@
 # @titan-design/decider
 
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/session-read@0.16.0
+
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [6881274]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [ba8f25e]
+  - @titan-design/memory@0.3.0
+  - @titan-design/session-read@0.15.0
+
 ## 0.6.4
 
 ### Patch Changes

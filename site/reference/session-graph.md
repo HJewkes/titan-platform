@@ -382,3 +382,11 @@ reads `priced = 0` and shows under the cost report's `unpricedModels`.
 The normalized tables are now opt-in. `openSessionGraph(path, { normalized: true })` creates
 them when absent; without it a graph holds none unless migration 3 left rows in them.
 `normalized` is ignored with `readonly: true`. Open with it before calling `indexCodexSource`.
+
+## Injected normalized source indexing
+
+Call `indexSource(graph, source, sourcePort)` with an explicit observation capability and reader from `HarnessSourcePort`. Its `SourceIndexResult` preserves normal indexing outcomes or returns a typed `unavailable` assessment before graph/file effects. The deprecated two-argument `indexCodexSource` keeps its original reader, signature and `NormalizedIndexResult`.
+
+`ReadIndexedTextOptions.sourcePort` injects a semantic text capability and reader while retaining the graph's prefix/content checks and prompt stripping. An explicit adapter has no native fallback: unavailable text and legacy spans without normalized locators return null. Existing omitted-port and `homeDir` behavior stays unchanged.
+
+The shared core retains staging, complete-line boundaries, atomic swap, quarantine/missing preservation and watermark semantics. Adapters remain responsible for descriptor/observation identity and selected-text validation. This slice adds no schema, stored-data rewrite, registry/bootstrap or live corpus operation.

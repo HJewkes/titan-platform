@@ -7,8 +7,10 @@ import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
+import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
+import { ShipLineageLine } from "./ShipLineage.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -25,8 +27,6 @@ interface ShipFrame {
 
 const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
 const sha7 = (sha: string): string => sha.slice(0, 7);
-
-type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
 
 /** A merge gate: each changed image as before | after | diff, then the round's questions in order, the Ship or Send back pick bound to the PR head among them. */
 export function ShipRound({ round }: { round: ValidRound }): ReactNode {
@@ -57,6 +57,7 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
           <Typography variant="subtitle1">{question.prompt}</Typography>
           {section?.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
           <QuestionFacts question={question} />
+          <ShipLineageLine lineage={round.lineage} />
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
         </VStack>
       </CardContent>
@@ -155,9 +156,9 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
   const comment = note.trim();
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: "" };
   const sideAnswers = submittedAnswers(sideQuestions, side);
-  const missing = sideQuestions.filter((other) => other.required && !sideAnswers.some((answer) => answer.questionId === other.id));
-  const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: inOrder(round, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
-  const back = () => submit({ ...sent, answers: inOrder(round, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
+  const missing = missingRequired(sideQuestions, sideAnswers);
+  const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
+  const back = () => submit({ ...sent, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
   const disabled = !available || state.status === "sending" || missing.length > 0;
   return (
     <Card variant="outline">
@@ -227,18 +228,3 @@ function SideQuestion({ question, position, side }: { question: Question; positi
     />
   );
 }
-
-function submittedAnswers(questions: readonly Question[], answers: Record<string, QuestionAnswer>): SubmittedAnswer[] {
-  return questions.flatMap((question): SubmittedAnswer[] => {
-    const answer = answers[question.id];
-    if (answer === undefined) return [];
-    if ("picks" in answer && answer.picks.length === 0) return [];
-    if ("text" in answer && answer.text.trim() === "") return [];
-    return [{ questionId: question.id, ...answer }];
-  });
-}
-
-const inOrder = (round: ValidRound, answers: SubmittedAnswer[]): SubmittedAnswer[] => {
-  const order = round.manifest.questions.map((question) => question.id);
-  return [...answers].sort((left, right) => order.indexOf(left.questionId) - order.indexOf(right.questionId));
-};

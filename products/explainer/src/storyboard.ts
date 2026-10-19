@@ -16,6 +16,8 @@ const BeatSchema = z
   .object({
     id: z.string().regex(BEAT_ID, "expected beat-NN"),
     type: kebab,
+    // A visual-router type id (doctrine/visual-router.json); the packet carries that type's card.
+    kind: kebab.optional(),
     chapter: kebab.optional(),
     duration_s: z.number().positive(),
     // Seconds from the beat start. A format change adds an optional field, never a version bump alone.

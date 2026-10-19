@@ -1,15 +1,23 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { brokerReader } from "./broker.js";
+import { brokerAnswerer } from "./broker-answer.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { factoryOwnerAction } from "./owner-action.js";
 import { shepherdReader } from "./shepherd.js";
+import { shipLineageReader } from "./ship-lineage.js";
+import { videoCatalog } from "./videos.js";
+
+/** Under the state dir; the factory's `consoleAnswers.actionsDir` must name the same directory. */
+const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
 export type UpstreamId = (typeof UPSTREAM_IDS)[number];
@@ -107,22 +115,47 @@ export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> 
   };
 }
 
+function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inboxActions"]> {
+  return {
+    enabled: config.inboxActions ?? false,
+    actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
+    client: factoryOwnerAction(config.factoryPort),
+    answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+  };
+}
+
+function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+  return {
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    eventsDbPath: config.agentChatEventsDbPath,
+    seatPrefixes: config.seatPrefixes,
+  };
+}
+
+/** The sources that read dirs on this machine, which other processes write. */
+function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+  return {
+    inbox: { dir: config.inboxDir },
+    rounds: { dir: config.roundsDir, lineage: shipLineageReader() },
+    hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
+    videos: videoCatalog({ roots: config.videoRoots ?? [] }),
+    ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
+  };
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
   return {
     upstreams: createUpstreams(config),
     activeWork,
-    agents: {
-      broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
-      eventsDbPath: config.agentChatEventsDbPath,
-      seatPrefixes: config.seatPrefixes,
-    },
+    agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir },
+    ...localDirSourcesOf(config),
     shepherd,
+    coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
+    hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: createRoundListeners({
       enabled: config.gateAnswers,
@@ -131,5 +164,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       answer: factoryGateAnswer(config.factoryPort),
       logger,
     }),
+    inboxActions: inboxActionsOf(config),
   };
 }

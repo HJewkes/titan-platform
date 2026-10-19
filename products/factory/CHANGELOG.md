@@ -1,5 +1,486 @@
 # @titan-design/factory
 
+## 0.24.2
+
+### Patch Changes
+
+- 653ecf6: Shepherd's two-MERGE release of a `g10-adversary` hold no longer requires the correctness reviewer and the adversary to run at different profiles. Decision 457 runs both on `bd-reviewer`, and under the old rule no such hold could release. Two MERGEs now count as independent when the broker roster shows the reviewers share no conversation: separate sessions, and no resume, context fork, takeover or common spawning session between them. An unread roster fails closed. Correctness must still run on an Opus profile (TP-3524).
+
+## 0.24.1
+
+### Patch Changes
+
+- d82852a: TP-3637: a decided answer never waives a fix-proof. `ServiceAnswer` now carries the broker's `provenance` marker when agent-chat sets one. gateNotify refuses a `decided` answer on every gate, because it would resolve as owner-remote and the decider is not the owner. It also refuses a `waive-proof` answer unless it is `human-endorsed`, so an unmarked relay fails closed. A refused answer leaves the gate pending, settles the ask as `refused`, and writes no waiver row. The owner's own terminal answer still waives.
+- 4bfc8a3: Resync PR-read deadlines now arm through an optional `readTimer` on `ShepherdServices`, defaulting to the wall clock. A test can pass a deadline in by hand instead of faking global timers, which also captured the seed host's gate polls and made the hung-read test time out on a loaded runner (TP-3647).
+- Updated dependencies [d82852a]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [6dd2f97]
+  - @titan-design/agent-dispatch@0.9.0
+  - @titan-design/agent@0.6.1
+  - @titan-design/session-read@0.16.1
+  - @titan-design/session-analytics@0.17.4
+  - @titan-design/worktree@0.2.0
+  - @titan-design/coordinator@0.5.3
+  - @titan-design/workflow@0.13.1
+
+## 0.24.0
+
+### Minor Changes
+
+- 8af5ad7: TP-3639: `titan-factory shepherd freeze <owner/repo> --reason <text>` and `shepherd unfreeze <owner/repo>` set and lift a coordinator's merge freeze on a whole repo; `shepherd freezes` lists them. While a repo is frozen no Shepherd run merges into it, though runs keep reviewing and CI keeps running; unfreeze lets waiting runs merge on their next step. The freeze is stored in the factory database (migration 33, `shepherd_repo_freeze`), is checked by the same merge guard as the main-red freeze, and is independent of it. `status`, `list` and `timeline` rows carry it as `repoFrozen`.
+
+### Patch Changes
+
+- e7601ef: TP-3642: the panel aggregate honours the owner's fix-proof waiver. `AggregateInput.fixProofWaivedAt` keeps a vacuous, missing or failed fix-proof from making the tests member blocking, or from counting an unplanned tests member as missing, only when it equals the head; a waiver at any other head changes nothing. `reviewPullRequest` and Shepherd's sh-review-panel step pass it through.
+- Updated dependencies [e7601ef]
+  - @titan-design/review-panel@0.8.0
+  - @titan-design/session-analytics@0.17.3
+
+## 0.23.5
+
+### Patch Changes
+
+- 454eb53: A `NO_REPRO` `sh-sent-back` gate now offers the owner a `waive-proof` answer bound to the gate's head. It is never recommended, and no coordinator or decider answer can select it. The waiver is stored per run and head in `shepherd_proof_waiver`. The next round then reviews that head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again. `FIX_FIRST` send-backs do not offer it.
+- 1581171: Shepherd's test-only diff reading now flags a PR that deletes a test or changes no test, and reads every listed path's blob first: a gitlink, a large file, a missing blob or more than 100 paths reads `unread`. A move into test-only is refused for every reading but `test-only`.
+- 27f8d12: TP-3638: the reviewer brief says "fix-proof waived by owner" when the owner's waive-proof names the head under review. `ReviewerBriefInput.fixProofWaivedAt` replaces the fix-proof reading (and the tests member's) only when it equals the head; a waiver at any other head leaves the brief unchanged. Shepherd's review phase passes the waived head to `sh-review`.
+- Updated dependencies [27f8d12]
+  - @titan-design/review-panel@0.7.0
+  - @titan-design/session-analytics@0.17.2
+
+## 0.23.4
+
+### Patch Changes
+
+- 53d153a: Answer a console owner-release whose PR head moves during the release itself with 409 `moved` and GitHub's head, not 410 `gone`. The hold is kept, as before.
+- Updated dependencies [4d131dc]
+- Updated dependencies [41fce70]
+  - @titan-design/fix-proof@0.7.0
+  - @titan-design/owner-queue@0.5.0
+  - @titan-design/session-read@0.16.0
+  - @titan-design/review-panel@0.6.2
+  - @titan-design/hitl@0.9.1
+  - @titan-design/session-analytics@0.17.1
+
+## 0.23.3
+
+### Patch Changes
+
+- 6a847ae: `shepherd register --kind test-only` reads the PR's test-only diff before refreshing or restarting a run, so the kind guard names the first source path when it refuses (TP-2732 e). Once the kind is live, a correctness registration on a tests-only PR prints a hint to re-register as test-only. The CLI help and the Shepherd guide name the kind.
+- Updated dependencies [6aa69f2]
+  - @titan-design/fix-proof@0.6.0
+  - @titan-design/review-panel@0.6.1
+
+## 0.23.2
+
+### Patch Changes
+
+- Updated dependencies [48fc4c0]
+- Updated dependencies [9b5d49f]
+  - @titan-design/coordinator@0.5.2
+  - @titan-design/daemon@0.8.0
+
+## 0.23.1
+
+### Patch Changes
+
+- c60f812: Add `POST /owner/console-action`, mounted when `shepherd.consoleAnswers.actionsDir` is set. It resolves an approve-merge gate (the `shepherd-release` Version Packages gate included) as owner-remote from the console inbox's action record, read O_NOFOLLOW and size-capped from that dir; the body names only `{ actionId }`. Hardware, after-stages and other gates are refused, as is a record whose head GitHub has moved past.
+- 3592aa2: `POST /owner/console-action` also takes an `owner-release` action record: it lifts the owner-asked hold on the record's PR, and only that hold, as owner-remote from the console inbox at the head the owner confirmed. The answer is `released` (with any hold still in force as `stillHeld`), `already` for a replay of the same record, `moved` when GitHub's head differs, `gone` for a PR with no owner-asked hold, and `refused` for a record that names its own resolver.
+- 17a0fe6: Shepherd: when the owner accepted a red head's regenerated baselines, a later head that commits exactly that set (every changed path in the set, each file at its accepted blob, each removed file gone, nothing else) has its visual approve-merge gate answered `merge` by code and logged as step `sh-approval-carry:set:<head>`. Under `shepherd.visualSetCarry: shadow` the step records whether the set would carry and the owner is still asked. With the flag `off`, the default, nothing changes. The set carries only onto a gate into the base its red head's CI read was judged on. It is used up once it is checked, or once the owner answers a visual gate themselves, and a later answer at the accept gate replaces it. An approval that came from a set does not yet follow a later merge-up.
+- Updated dependencies [7a4d313]
+  - @titan-design/coordinator@0.5.1
+
+## 0.23.0
+
+### Minor Changes
+
+- e3e42a0: The owner-presence helper gains `keygen`, `pubkey` and `sign` for a Secure Enclave P-256 key that needs Touch ID or the login password for every signature. `keygen [--tag <tag>] [--replace]` writes the key's opaque enclave blob with mode 0600 to `~/Library/Application Support/titan-factory/<tag>.se` (tag `owner-key` by default) and refuses to overwrite it without `--replace`. `pubkey [--id]` prints the SPKI PEM, or a 16-hex key id from sha256 over the SPKI DER. `sign [--] <reason>` signs the bytes on stdin and prints a base64url DER ECDSA P-256 SHA-256 signature. With one argument the helper still shows the presence dialog and prints a proof id. `signStatement(bytes, reason)` runs `sign` through the same helper path checks as `confirmOwner` and returns the signature, or undefined. Rerun `pnpm factory:install`, and the root `install` if you use one, to rebuild the helper.
+- 6a733e1: Shepherd exports its reviewer-slot reading (TP-2828). The spawn gate keeps the last roster reading of running `rv-` reviewers, and serve reports it in `/health` as `reviewSlots: { running, cap, readAt }`. A failed roster read keeps `rosterError` and no `running` list. `shepherd status --json --deploy` carries the block as `reviewSlots`, or `null` when serve has none. Text `shepherd status` ends with `reviewers R/cap`, or `reviewers unread (<why>)`, never 0.
+- 65287ec: `titan-factory shepherd prs [owner/repo] --json` lists every open PR of each seat repo, or of the one named, from Shepherd's PR snapshot, plus the PRs Shepherd merged in the last 24 hours. Each row carries the branch, head, base, state, title, body, draft flag, whether Shepherd has it registered (with its run id and phase), the snapshot's cached CI for the head when it holds one, its source and when it was read. Open rows answer with no GitHub call while the open list is under a minute old, and concurrent callers share one list read. A merged row's `mergeSha` comes from the run's merge step, never from a PR read. A seat repo with no run in it is still listed.
+
+  `@titan-design/github`: `PullRequest` gains optional `title` and `body`, which the gh wire now fills from the REST answer (a null body reads as an empty string).
+
+- c0af8a0: `buildOwnerSection` builds the owner PR section (link, what it does, why it reaches you, pros, cons, before and after, next steps) plus a round@2 section and a pick-one question with a recommendation, from the PR facts, the pending gate, the run's owner-gate reason and the reviewer's verdict and owner brief. `whyAsked` maps every gate rule (seat owner-gate, every merge-guard row, authority MRG-AU unmet conditions, route escalations, release rows and the factory default) to one plain sentence labelled deliberate, accidental or unclassified. The gate head and the review head are read apart: a missing review, a review behind the PR head and a gate behind the PR head are each stated, and none recommends merge. A merge-tree-clean failure is called transient only when the evidence recorded mergeable_state unknown.
+- fcb7748: Add `shepherd.review.panel` (`off`, `shadow` or `on`; absent means `off`). Under `shadow` the `sh-review-intent` step also records the head's class, touches and review-panel plan, built with `classifyPr` and `planPanel` from the registered kind and the PR's file list; the reviewer dispatch and every later step stay as under `off`. Until per-member review lands, `on` behaves as `shadow`.
+- b0a3f7b: `shepherd.review.panel: on` now reviews a head with its planned panel. The correctness member keeps `sh-review:<head>` and `sh-await-verdict:<head>`; every other member runs `sh-review:<head>:<shape>` and `sh-await-verdict:<head>:<shape>` at its planned profile with its shape's brief, and `sh-review-panel:<head>` records the aggregate. A panel MERGE carries `panel: {satisfiesG10, degraded, members}`, and a panel FIX_FIRST carries each member's findings and the panel's defect class. A run whose intent recorded no plan continues as a single reviewer. `ReviewerFacts` gains `profile`, which a reviewer dispatch spawns at in place of the class's profile.
+- 8dcc60f: Add a toolchain adoption sweep: `serve` runs it hourly (`toolchainSweepMs` overrides), and `titan-factory toolchain fanout [--dry-run]` runs it or previews it on demand. It reads every consumer repo's Node and pnpm toolchain against titan-platform's, opens one adoption PR per drifted repo through the contents API, and registers it with Shepherd with no fixer and an owner-gated merge, because these PRs edit other repos' release workflows. An existing PR on the toolchain branch is registered if Shepherd does not know it yet, and a closed one is never reopened.
+- 7f21489: `titan-factory scorecard --spec <file> [--since YYYY-MM-DD] [--until <time>] [--json]` prints the factory scorecard: the ledger rows (merges per day, task ready to merged, register to merge, change failure rate, time main stays red, seat merge share, approved and waiting over 60 minutes) plus session-analytics' journal rows, with each row's baseline and target read from the spec. A row with no source prints `not measured`; a missing spec or unset `AUTONOMY_ROOT` and `ACTIVE_ROOT` exits 2.
+- 7f6205a: Add an owner-signed `titan-factory.hold-release` statement, `verifyHoldRelease`, `applyHoldRelease` and serve's `POST /holds/release-proof`, which lifts one Shepherd hold bound to its run, reason digest, PR head and audience (TP-2378 a).
+- 857c1f9: Shepherd never re-dispatches a reviewer at a head that already took a MERGE (TP-2392 d): a resync review-again re-reads the merge evidence with the standing MERGE and records `sh-review-refused`, and `shepherd review` at a MERGE head exits DATAERR.
+- 3f3d477: Shepherd stops a run at its third FIX_FIRST review (was six) and opens approve-merge with a reason that routes the task to the planner for a redesign or split; the cap is checked before `no-progress`, and no third fix round is dispatched (TP-2394 c).
+- 01ff3ee: `shepherd register` returns an advisory `sizeFlag`, and the text output prints a warning line, when a PR registered with kind `security` or touching a guard area is over the 400 non-generated line slice cap (review-panel `securitySliceFlag`). The flag never holds a PR. A failed read, or one that runs past 15 s, gives no flag and never fails the registration.
+- e4ce510: Add `titan-factory service pause --set <reason>`: a manual deploy hold in `deploy-hold.json`, honoured under `deploy.lock` and by the deploy pacer like the failure pause; `service pause` and the deploy refusal show both reasons, and `--clear` lifts both.
+- 1286557: `shepherd stats --gates --since 7d` meters gates by policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered) with decisions by value, cancelled-unanswered, pending, and median and max wait hours, as text or `--json` (TP-2402 b). The owner-friction report and the SLO owner-load queries now share `isOwnerTouch`, which leaves out an owner-class resolve made under a grant. History does not change, because no older row carries grant evidence. Only delegate resolves recorded from now on drop out of owner touches, so a drop next week reflects that change and is not a meter regression.
+- e69cef1: Factory gates become full owner cards: `decisionClassOf` maps each gate's policy row or step to its decision-routing D-row, and hitl owner items carry `class`, `irreversible`, `shown`, `onSilence` and a consequence per option, with `lint` naming any card rule a gate still breaks. `titan-factory needs` prints the class, door, on-silence line and consequences.
+- 799f267: `titan-factory owner-gates report` prints, per decision class over a trailing 14-day window, the owner-answered gates, approve rate, cancelled-unanswered and median wait, built on the `shepherd stats --gates` meter. A resolve made under a grant is not counted as the owner's. A class at 95% or more approve over 20 or more answered is flagged with a proposed demotion to a rule, the reviewer or the decider, unless the audit found a bad outcome in it. The report lists the standing grants with the gates resolved under each, and `--deposit` files one two-way owner card per proposed class, once per ISO week.
+- dba7139: `shepherd status` accepts `--all` (every run, terminal ones included). Output is unchanged for now; a later release makes the bare form leave out done, failed and cancelled runs, and `--all` keeps them (TP-2516 a).
+- 36b4295: Shepherd cascades a stacked parent's new head into each child by update-branch, wakes a conflicted child, and `shepherd status` rows carry `stackFrozen` past 2 parent fix rounds (TP-2528 c); the cascade is not wired into the run yet.
+- 0920da2: Opt-in per repo with `shepherd.repos.<repo>.stackRestack: true` (off by default): after Shepherd's own squash merge of a stacked parent, each direct `agent-chat/*` child is restacked with a merge-onto commit and a plain fast-forward push, then retargeted to the default branch while its base is still the parent's branch, and recorded as `sh-restack:<pr>:<head>`; a conflict, guard miss or moved head pushes nothing and wakes the child's implementer, and a failed child-list read records `skipped` so post-merge continues (TP-2528 e).
+- 954a5af: Shepherd's head waits end on the seat clone's push reflog instead of a 30 s GitHub poll (TP-2555 g). A new
+  `shepherd/push-signal.ts` reads `logs/refs/remotes/origin/agent-chat/*` since a cursor; a reflog push is confirmed
+  with one snapshot `getPr` after the repo is marked stale, and with no reflog movement the PR is read once per
+  `AWAIT_HEAD_BACKSTOP_MS` (5 min) for pushes from outside the clone. `untilGreen` and `sh-fix-proof` read checks at
+  the snapshot's 3 min pending cadence. `AWAIT_HEAD_POLL_MS` is no longer exported; `AWAIT_HEAD_BACKSTOP_MS` replaces it.
+- f2703bd: `shepherd register` takes `--head` and `--base`. With `--branch` and `--head` it trusts the branch and does not read the pull request from GitHub. The registration stores the head and base (store migration 24), and Shepherd classes the PR's G10 hold, its review panel and its reviewer's size from `git diff --name-status -M <base>...<head>` in its git cache, cached by head. A registration with no base, or a head git cannot fetch, still reads GitHub's file list.
+- 027f0f2: Serve reaches GitHub through `octokitWire` on one shared client per process, and so does the review-check publish (TP-2561 b1). Two new RPCs:
+
+  - `shepherd.ghRead` answers whitelisted GET routes through that client's ETag cache, or from the PR snapshot. It refuses any other route or method.
+  - `shepherd.ghBudget` reports the client's rate windows and cooldowns.
+
+  Each real gateway call logs one `shepherd: gh-call` line.
+
+- ac8bf42: Shepherd no longer withholds the merge-on-green grant for an unverified fix-proof (owner decision 303, reversing TP-2434). A fix-proof read that errors is read once more at the same head first. The unverified standing and its read reason are recorded on the merge evidence (`proofUnverified`) and in the evidence PR comment, and an unverified proof no longer asks the reviewer for an owner brief. The reviewer's unverified-proof brief no longer says a MERGE goes to the owner.
+- bf1a082: `shepherd.ghRead` takes `raw: true`, which skips the PR snapshot so `repos/{o}/{r}/pulls/{n}` answers with GitHub's REST JSON through the budgeted path.
+- 14f1997: Shepherd can spawn a review packager when it opens a visual approve-merge gate (a `shepherd-merge-guard/visual-path` gate, or any land gate of a `gate-2-visual` registration), once per run and head, behind the new `shepherd.visualPacket` flag: `off` (default), `shadow` (records where it would spawn) or `on`. `shepherd.visualPacketProfile` names the profile, default `review-packager`. A refused spawn is recorded as `visual-packet-spawn-failed` and the gate opens as usual (TP-3227).
+- 7873703: Add `POST /gates/answer-ship`, mounted by serve only when `shepherd.consoleAnswers.roundsDir` is configured. It resolves an approve-merge gate as `owner-remote` (`titan-console`, `console:ship`) from a console Ship answer once the gate, GitHub's head and tree, the round's packet and the owner's feedback all agree, and appends a `pick-later` line to `follow-ups.jsonl` for `merge-pick-later`. It is no registry command and no MCP tool.
+- ceb20d1: Let the owner send a PR back from the approve-merge gate. With `shepherd.consoleAnswers` configured, each shepherd-pr approve-merge gate offers `send-back`, whose payload `{decision: "send-back", headSha, note}` the gate store refuses without a note. Land stops `sent-back`, and Shepherd wakes the implementer's review fix with the note, then waits for a new head and never merges the sent-back one. `POST /gates/answer-ship` now resolves an agreed send-back, taking the note from the owner's `feedback.json` (the round's `general` text, then the Ship question's `comment`).
+- 4b03e77: The factory config gains a strict top-level `github` block: `sources` (`webhook` or `polling`, default `polling`), the `ingress` kill switch (`on` or `off`, default `off`), `pollingIntervalMs` (30 s to 10 min, default 60 s) and `backstopIntervalMs` (5 to 10 min, default 5 min). A polling interval longer than the backstop, or ingress on under polling, fails the load. Serve's health gains a `sources` field with the configured and effective mode, the reason, the interval and, when the file on disk has turned invalid since start, the `configError` that kept the last good value in force. Nothing acts on the effective mode yet.
+- 5e8d988: Shepherd repair stop: `shepherd repair-stop <owner/repo#N | owner/repo:<glob>> --reason`, `repair-go` and `repair-stops` set, clear and list a seat's stop on fixer dispatch. While a stop covers a run, Shepherd wakes and resumes no fixer for it and spends no repair, even under `heldRepair: on` with a g10 hold, and the release path is unchanged. Migration 31 adds `shepherd_repair_stop` and the `repair-stop` and `repair-go` event kinds.
+- 03ea942: `titan-factory serve` broadcasts versioned `shepherd` frames on `/events` (`{v:1,kind,repo?,pr?,runId?,stepId?,at}`) from host workflow events, Shepherd registration writes and a `PRAGMA data_version` poll that marks another process's commit `external`, coalesced 250 ms per run (TP-493). `ShepherdStoreRef` gains an optional `onChange`.
+- 4e4613c: Land stamps an approve-merge gate with its table.json row: `authority/MRG-AU` gets that row's resolvers plus `coordinator` as a rule delegate; release and every other table open rule-less. The factory host runs `gateRuleMigration(27)` and `gateDelegateMigration(28)`, and `deviceGateAuthorize` refuses a rule delegate only when nothing but the rule admitted it, so TP-1904 evidence resolves still pass (TP-533).
+- 359301b: The owner digest has a "Decided for you" section after Needs you. It lists the questions the decider answered in the window, read from `agent-chat digest --json` (`ledger.decided`). Each line shows the answer, the class, and, when agent-chat sends them, the confidence, the principle ids and how to reverse the decision. A decision awaiting audit also shows its overrule command. The section ends with the 7-day reversal rate per class. Decisions only use the words left under the 400-word limit, and the "and N more" line counts the rest. With an older agent-chat the section is left out.
+- d0c584f: `shepherd stats --gates` reports visual-gate latency (count, median and p90 hours from open to resolve, open gates counted apart) and re-asks per PR, as a new `visual` JSON field and two text lines.
+
+### Patch Changes
+
+- 6b5ff45: await-new-head: a wait that carries its failing checks and an `inheritedRed` hook re-asks, at most every 5 min, whether the unchanged head's red is the base's, and ends with `baseRed: true` once it is. `LandPrDeps.inheritedRed` passes the hook to land-pr's route. With no hook or no failing checks the wait is unchanged.
+- 3108023: `shepherd resync` and serve's startup resync now cancel an approve-merge gate whose PR base moved, or whose base the run may not merge into, as the head-moved sweep does each tick. A run with an owner hold keeps its gate.
+- 6654aa7: Add an operator HOLD reader over `agent-chat machine status --json` for Shepherd (CC-1037 a); not wired yet.
+- 13cbaba: Shepherd waits 90 s, not 30 s, for agent-chat roster and spawn calls, so a loaded broker no longer leaves a PR without a reviewer (CC-1310 a). Goes live on the next factory serve restart.
+- 616d699: `titan-factory serve` warns on each agent-chat call over 5 s and logs an hourly per-verb "agent-chat calls" line with count, over5s, p95Ms and maxMs.
+- 5d67fb0: Add the gate-ask store and `notifyTick`: each gate the owner can answer is posted once to agent-chat's human queue, and an answer applies at most once. The factory database gains a `gate_ask` table and a `gate_ask_cursor` table in migration 20.
+- 50950cc: Add `shepherd.gateNotify`: with it set, serve runs a sweep that asks pending decision gates on agent-chat's human queue and resolves them from the answer as `owner-remote`. `/health` gains a `gateNotify` block naming stuck and unasked gates and an answers read error. Off by default.
+- 41ad016: `titan-factory needs` shows a gate and the notifier's agent-chat ask for it as one item: an ask whose task is `gate:<id>` keys as that gate instead of `task:gate:<id>`.
+- 6327db9: Read a console Ship-view Send back, the pick of the question's one non-ship option, as a send-back; the factory refused every one because it only read `revisionRequested`.
+- c832620: The deploy block and the deploy pacer count a running build that descends from an asked or wanted sha as having landed it, so a later commit deployed by hand no longer reads as a stalled deploy. When git cannot settle ancestry the ask stays behind and the block says why.
+- a71cc2a: `service deploy` keeps a failed install or build's redacted last 200 lines of stderr and stdout in `deploy-build.log` under the state dir, and the rollback record's `why` names it.
+- 51fcac6: The deploy watch's docs say why it has no start-up grace: the sha poll already waits for a first answer, and three live-pid misses take about 135 s, past the 120 s window and the 17–32 s Shepherd resync after a restart.
+- e84df44: The deploy watch now tells a slow serve from a down one. A `/health` probe that times out while the restarted pid is still alive is retried once with a 30 s timeout; an answer on the retry is slow and does not count toward the miss limit, while no answer still does, whether or not the pid is alive. A watch window in which every probe was slow rolls back with "serve answered slowly" and the latencies it saw.
+- 4af14bf: The factory database gains migration 30, `factory:event_log`: an append-only `factory_event` table, with UPDATE and DELETE aborted by triggers. Internal `appendEvent`, `headSeq` and `readEvents` write and read it. Nothing reads it yet.
+- 939b8e4: `shepherd status --deploy` reads how far origin/main is past serve's running build from git, so merges that never asked for a deploy count as behind, `behindMinutes` runs from the oldest of them, and an unreadable git or an unknown running sha alarms instead of reading behind 0.
+- 071bb72: Push an ntfy line when a visual packet's round is delivered to the console, and withdraw the round (with a second line for a new head or a closed PR) when its gate leaves; `visualDelivery` gains `push`, `origins` and `url`.
+- 1307977: Fence the PR head branch in the successor brief so a backtick in a ref name cannot close a code span and read as brief prose.
+- a00fec2: Add the owner-gate auditor library (TP-2404 d): a week-seeded sample of up to 5 owner-resolved gates, their 72 h outcomes (revert, red main, linked deploy incident), a sonnet judge note per item, and a no-clobber writer for `sources/owner-gate-audit-<YYYY-Www>.md`. Not wired to a verb yet.
+- f2a492d: An unhandled owner send-back now opens a sent-back gate in plain words, with the PR, the head and the owner's capped, fenced note.
+- 1c7fde2: Shepherd's PR snapshot keeps the open list's ETag across `invalidate`. An invalidate now marks the list and the check runs stale and drops the PR details, but keeps the ETag, so the read after a write is a conditional GET: a 304 keeps the rows and a 200 replaces them. Check runs are read again after an invalidate, so a re-run of failed jobs is seen at once. A list read that an invalidate overtakes is dropped and read again.
+- bf43cf7: The deploy watch no longer rolls back on a rate-limited probe. A 403, 422 or 429 from `/health` reads as unavailable, which is neither healthy nor an error: the window extends, restarts on fresh probes once reads return, and at a 10-minute cap the deploy is held with an alarm instead of rolled back. TP-3085.
+- 9c6d6c4: Shepherd no longer parks forever when CI at the same head turns green. A cancelled run's reds beside a live or passed run at that head no longer read as red, and a wait for a new head after a ci-red also ends once every required check passes at the unchanged head (a rerun or a late run), so the run goes on to review and land there.
+- 50062e0: `shepherd status` marks a run stalled when it is held `g10-review` and no reviewer MERGE is recorded at its head, once it has waited more than 60 minutes in its merge step or in `sh-held-wait`. Only that MERGE releases such a hold, so before this change the run waited silently with no end. Owner holds, other hold classes, and holds satisfied at the head still have no limit.
+- c0e20df: Shepherd: a held run that woke on red CI no longer waits in `sh-held-wait` forever when a rerun turns the held head green. The wait now also ends, once per head, when every required check at the held head passes; the next round reads CI afresh and goes on to review with the hold kept. FIX_FIRST and conflict wakes still wait for a push or a release, and a repo with no required checks keeps the old behaviour.
+- f52f65c: Shepherd: a held run woken by a red head reruns that head's failed jobs once, sharing the once-per-head rerun budget with unheld runs, before it tells the seat and waits. A head the rerun turns green is reviewed with the hold kept, so a held red head no longer waits on someone else's rerun (TP-2836). The seat notice for a head still red says Shepherd's one rerun is spent. A run recorded before this change replays its old path.
+- bb86d3f: A `g10-adversary` hold the seat released is re-held when the PR's head then moves to anything but a clean merge-up of the released head (a fix round, a fixer's push, or a merge-up whose conflicts were resolved by hand). Shepherd records a hold event naming the old and new head and tells the seat; a head whose tree equals the merge-tree of its parents stays released. `shepherd release` now requires `--head <sha>`, the head the seat reviewed, refuses it when the PR is at another head or the head cannot be read, and records it. A re-hold is written by a compare-and-swap, so a hold or release made while the probe runs is never overwritten. The merge check enforces the rule too, so a head no CI read saw (a hold of another class released after the last read) is refused and re-held at the merge. `shepherd release` refuses a run that is not held. A chain of clean merge-ups stays released at both the CI read and the merge, which share one recorded line of proven heads. A hold of another class placed beside a `g10-adversary` hold is kept, and gates once the adversary hold is released; each release lifts one hold. The rule fails closed: a repoint keeps the run's hold history and proofs, the registration row decides whether a hold gates, a proof counts only on the base branch it was made on, and an adversary release with no head is re-held. `shepherd release` takes `--class <class>` to name the hold it lifts; while a `g10-adversary` hold sits over another, a release that names no class is refused, and every release reports the hold still in force.
+- f014023: Shepherd's rerun step no longer gives up on a failed job whose Actions run is still in progress. It polls until the run completes, within a 20-minute `rerunQueueMs` bound, then reruns it. If another actor's rerun already replaced the failure, it settles without rerunning. The next ci-wait then reads the rerun's result, not the stale red.
+- b899b0e: Shepherd waits out a seat reviewer's WAIT over its own MERGE for up to `seatWaitMs` (30 minutes by default). If the WAIT outlasts the bound, the review ends as `external-hold`, with the own MERGE kept as `seatHeld`. It is no longer a `timeout` that spawns a fresh reviewer, and it skips the late read and the correction turn.
+- be5000e: The seat check can wait out a seat reviewer's WAIT over Shepherd's own MERGE: given a seat-wait timing, it re-reads the seat until the WAIT ends, lets the MERGE stand on a seat MERGE, records a `g10-disagree` override on a seat FIX_FIRST, and holds the MERGE as `seatHeld` when the WAIT outlasts the bound. Without the timing the WAIT still vetoes at once; nothing passes the timing yet.
+- 238f901: Shepherd merges up a ci-red head whose failing checks all failed at the base its CI ran against, once that base has moved on, with no wake, repair or seat notice (TP-2562 a). The base-red hold record gains `stale`, and a freeze or base-red refresh records its own head so it is no foreign merge-up.
+- 9f5407c: `shepherd stats` counts a freeze-hold update that followed a red-base wait as its own `mergeUps.baseRed` class, printed as `base` in `merge-ups land/strict/freeze/base/retry`.
+- 4e9cc64: `service check` names an advisory `stale CLI` when the `titan-factory` on PATH carries a build behind the deploy checkout's HEAD (TP-2265); it still exits 0.
+- 82cab44: `shepherd.status` takes an optional `all` arg. Without it, and with no PR named, serve leaves finished runs out before loading any, so a bare `shepherd status` no longer parses every run's step results. `shepherd status --all`, or a `--phase` naming a finished phase, sends `all`.
+- 4fa6379: Serve's head-moved sweep no longer cancels the approve-merge gate of a run under an owner hold when its PR base moved, so the gate is kept for both serve and `shepherd resync`. The owner hold is read again right before the cancel. A dry-run resync also lists a gate once when both the transient and the base sweeps would cancel it.
+- 91a6242: Shepherd follows a merged Version Packages PR to npm once main CI is green: it records the published versions, files one fix task when the release job fails, and ends without a gate on a failure or timeout (TP-1004 S2).
+- 9abae48: Reviewers run no tests: the default reviewer test rule, now exported as `CI_REVIEWER_TEST_RULE`, has them cite the CI check-runs (name and conclusion) at the reviewed head and treat a missing, running or red required check as blocking. Shepherd uses it on every host, and its fixer rules name `pnpm test:affected` (TP-1727 slice 3). The review-pr eval's offline trial brief swaps in its own no-CI test rule.
+- e58a580: Add the PR reads for `titan-factory review` (TP-1925 b): `parseTarget` for `owner/repo#N`, `readPrFacts` over the GitHub port, and `ghLineSource`, a lazy, cached file reader over `gh api` capped at 20 files. Not wired to a command yet.
+- 36af0d9: Land reads classic branch protection when the rulesets require no status checks, and a base with no required checks no longer lands a head whose Actions runs were all skipped.
+- ad1101b: Add `ownerKeyId`, which reads the owner's Secure Enclave key id through the checked owner-presence helper (`pubkey --id`) so the Mac client can refuse before prompting when its key is not installed on the remote factory.
+- 7731c3a: Add the owner proof statement builder (TP-2036 b): `gateItem`, `buildGateStatement` (240 s window, schema-checked) and `signReason` (the Touch ID dialog text, at most 256 characters); not wired yet.
+- 83d4e91: Add `remoteFactory(base, fetch)`, an HTTP client for the live factory named by the `remoteFactory` config: it reads `factory.gates-review` and the owner key ids in `/health`, and posts owner proofs to the two proof routes. Every request carries the client header, a 20 s timeout and never follows a redirect. The base must be a bare origin and paths plain absolute paths. Non-2xx reads, oversized or duplicate gate lists, control characters, and proof answers without outcomes are failures; a refused or timed-out connection is an `UnavailableError` naming the URL (TP-2036 c). Not wired yet.
+- 517ea4b: Add `shipAtHead` to Shepherd's round-merge: a review-round Ship at a PR's exact head is the owner's merge approval (decisions item 97), with no open gate needed (TP-2078 a); not wired yet.
+- 052a68e: The ci-red wake brief tells the fixer not to merge the base branch to re-run CI or to bring the PR up to date: Shepherd reruns flaky checks and merges the base itself at land time, so the fixer pushes only its fix. The conflict brief is unchanged.
+- 6b0d06f: Shepherd records one observe-only `sh-head-origin` step for every head it did not make (`merge-of-base`, `merge-other`, `push` or `unknown`), read from the head commit's parents and a compare of its second parent against the base. `shepherd stats` counts the `merge-of-base` ones as `foreignMergeUps`.
+- 0de505f: `shepherd stats` reports, per repo and ISO week, Shepherd's merge-ups by class (`landTime`, `strictChase`, `freezeHold`, `retry`), `strictRounds` (land-rules reads that found the repo strict), `slowOwnerGated` (slow merges whose wait held an owner `approve-merge` gate) and `foreignMergeUps` (0 until head origins are recorded), in `--json` and in the text line.
+- d47c842: `shepherd register` now places the G10 hold itself when it starts a new run for a PR, recorded as a Shepherd hold event: `g10-adversary` for an authority, policy or security touch (a `security` kind counts), otherwise `g10-review` for over 400 changed lines, a file with no line counts, or a store migration (factory's `store-migrations.ts`, `*-migration*.ts`, `*-store.ts` and Shepherd's `store.ts`, `events.ts` and `train.ts` count as one). Shepherd's merge-policy files (`g10-*.ts`, `adversary-*.ts`, `merge-evidence-gate.ts`, `task-kind.ts`, `registration-hold.ts`) count as a policy touch. A file list Shepherd cannot read whole, from an API error or a list past GitHub's cap, fails closed to `g10-adversary`. The G10 hold stacks on any hold the run already has, so that hold gates again once the G10 hold is released; a `g10-review` hold over another class goes in as `g10-adversary`, since only an adversary hold keeps a second hold under it. The hold is a compare-and-swap retried on a fresh read of the run, so a hold placed while the file list is read stands under it. A repeat registration, or a restart whose events already carry a G10 hold, is left as it is. The register output names the hold.
+- 15cf37a: Shepherd drops a carried conflict escalation once the head it would merge reads a mergeable state other than `dirty` or `unknown`, so the owner is no longer asked about a conflict that is gone (TP-2247 a).
+- 5ce0d17: Shepherd now keeps a security run's owner approve-merge answer across its own clean merge-up of the base branch (TP-2252). The new head must be a two-parent merge whose first parent is the approved head and whose second parent is on the base, its tree must equal `git merge-tree` of the two, and the base side must touch none of the pull request's files; any other head asks the owner again. The `sh-approval-carry` step records the rule `own-merge-up` and its proof.
+- c182337: Add a reader of the GitHub Actions checks green at a head for Shepherd's reviewer brief (TP-2277 a); not wired yet.
+- 5de76d4: The Shepherd evidence comment for an allowed head now reads "Shepherd cleared to merge" instead of "Shepherd merged", because it is posted before the merge step runs. `evidenceComment(record, { mergeSha })` adds a `**Merged** at <sha7>` line after the headline for a caller that saw the merge land.
+- c5e64dc: The deploy pacer has an express lane. A merge whose PR carries the `deploy:now` label skips the 15 minute quiet window and spawns the deployer on the next sweep. Busy runs, the deploy pause and a deployer already started still hold it, as they do for any other merge.
+- 06506bc: serve shuts down in bounded time. On SIGTERM it halts every sweep, then releases its runs' leases before waiting on anything. Sweep ticks that are still running get at most `SHUTDOWN_SWEEP_GRACE_MS` (5 s) together. A tick still running at the end of the grace has its signal aborted, which kills the gate notifier's agent-chat child. Serve then closes the daemon and the database, and the serve verb exits the process. The `closed` log line carries the close time and any abandoned sweep, and the resync-at-start line carries `phaseMs`.
+- c01010d: `titan-factory service check` reports a titan-factory.service that is activating, deactivating or waiting to auto-restart as cause `restarting` (exit 75, detail `activeState`, `subState`, `socket`) instead of `stale pid`, and reports a loaded but inactive titan-factory.socket as `socket down`.
+- 4be0bcd: Shepherd resync: each PR read in the gone, head-moved, stale-review and stale-merge sweeps now times out after 20 s and counts as unreadable, so one hung read no longer stalls a whole phase; a dry run no longer reports a review or merge step that finished during its read.
+- 59952a1: sh-fix-proof gates a fix/ PR registered by number, reading its head branch from the PR, and settles a head with no GitHub Actions run as missing after a 3-minute grace instead of the 25-minute deadline.
+- 82d8c0a: Bind the sh-fix-proof run to the registered PR and base branch, so a run for another PR at the same head cannot supply the result (TP-2357 b). `CheckRun.pullRequests` is a new required field, so an external implementer of `GitHubWire` or a hand-built `CheckRun` must add it (an empty array when the run names no PR).
+- 82d8c0a: sh-fix-proof trusts a result line only from a fix-proof run that concluded success on a PR that leaves the harness (workflows, actions, fix-proof.json, scripts/fix-proof-run.sh) alone; anything else is recorded as untrusted, so the reviewer brief gets no proof and a vacuous line cannot end the review as NO_REPRO. The newest fix-proof run at the head is always the one read.
+- b0fb3e6: The Shepherd account wait releases the run's own hold only when the PR reads `closed`; any other or failed read keeps the hold (TP-2358 a).
+- ac3de02: Split the CLI by command group: `land` registers from `cli-land.ts` and `resume`, `gate` and `serve` from `cli-host-verbs.ts`; no behaviour change.
+- ace501c: Split the CLI by command group: the shepherd verbs register from `cli-shepherd.ts` and `postRpc` lives in `cli-shepherd-rpc.ts`; no behaviour change.
+- d0e501f: A held Shepherd run's wait records the PR head it moved to, so `shepherd status` names the pushed head while CI runs at it.
+- dc9ec0b: A held Shepherd run's seat notice says a pushed head runs CI and review while the hold stays, so no release is needed.
+- 4bbe41d: Shepherd's head-moved supersede reads PR heads through the PR snapshot and calls GitHub for a PR only when its snapshot row differs from the gated head, cancelling only once that read confirms the move.
+- e50502e: `titan-factory serve` supersedes head-bound gates whose PR head moved on its own 60 s head-moved sweep (`headMovedSweepMs`), instead of only on the 5 min merged-elsewhere sweep, so a failing merged-elsewhere read no longer skips it.
+- 367a47c: Shepherd stores a settled park retry (migration 21, `shepherd_park_settled`) before it tells the seat, and a replay after a serve restart no longer re-arms a refusal that already settled at that head, so a dirty tree is reported once instead of once per restart.
+- dfffc6c: Add the MRG-AU-RS allow row and its `verdict-merge-carried-merge-up-disjoint` condition: an automation merge may carry the dispatched reviewer's MERGE, for any kind including security, to a clean merge-up whose base side shares no case-folded path with the PR's changed files. `CarryFact` gains the optional `merge-up-disjoint` rule, `basePaths` and `firstParent`. Factory's mechanical MRG-AU gate reason reader accepts the new row's unmet clause.
+- b94555c: Shepherd now holds a reviewer's account until its reset when the reviewer's `<synthetic>` usage-limit notice is read late or as the reply to its correction, not only on time (TP-2393). Such a round no longer becomes a timeout that spawns a fresh reviewer and counts toward the failed-rounds escalation.
+- f4df76c: `shepherd stats --per-run` `reviewRounds` leaves out a head whose only rounds ended in a usage limit, whether the limit was read on time, late or as the correction reply.
+- d5ddaba: Shepherd's fix-round wake brief carries every earlier FIX_FIRST of the run, each fenced with its defect class, from the 2nd FIX_FIRST on. When the current review names the same defect class as an earlier round, the brief requires one class-level, table-driven test corpus instead of another point patch (TP-2394 b).
+- 0943d2d: `sh-fix-proof` waits 35 minutes by default, up from 25, so it covers the three-job fix-proof run: two 15-minute exec jobs, then the 8-minute judge job created only after they finish (TP-2406 d).
+- c2d805b: Shepherd's merge guard reads the reviewer's `CI-policy:` line (TP-2407 b): `weakened` gates any PR on `shepherd-merge-guard/ci-policy-weakened`, a present but malformed or repeated line gates any PR on `shepherd-merge-guard/ci-policy-malformed`, and a `.github/` change with no line gates on `shepherd-merge-guard/github-path`. The line survives re-reads, carried MERGEs and external reviews.
+- 567caaa: Add the `owner-asked` Shepherd hold class, kept in its own slot on the registration (migration 22, additive). The merge guard checks it before any satisfaction, so `sh-g10-release`, a `--reviewer` MERGE (at the head or carried to a tree-equal head), `release`, and a re-hold of another class all leave it in force. `shepherd release` refuses `--class owner-asked` and a bare release of a PR held by the owner alone; `shepherd hold` refuses an owner-asked hold with `--reviewer`. Only `ShepherdStore.releaseOwnerHold` lifts it. Cleanup of a PR merged around one records `owner hold bypassed: merged outside Shepherd`.
+- 8ea5ba8: `shepherd register` on an open PR whose run ended abandoned now starts a new run at the current head instead of returning the dead run (TP-2415).
+- d97ce5d: `service check`, `service status` and the deploy and rollback health waits probe `/health` with a 6 s per-request timeout instead of the daemon's 500 ms default, so a loaded serve is no longer reported as a stale pid or a failed restart. Each wait keeps its nominal wall-time budget.
+- e22d2fd: Count runs per status without loading them (TP-2419). `WorkflowRunStore.countByStatus` reads the status index alone. Serve's `/health` counts through it instead of parsing every run's step results on each probe, which held the event loop for most of a second per request.
+- cbc3107: Stop parsing every registered run on serve's hot paths (TP-2420). `WorkflowRunStore.statuses` reads each run's status without its step results, and `WorkflowRunStore.page` reads runs an id-ordered page at a time, optionally only those finished since a cutoff; the factory host exposes the store as `runs`. Shepherd's watch rows load only the runs a read wants: `list` by state, `status` by repo and PR, `waiting` the unfinished and gated runs, and the seat digest only finished runs their seat has not heard of. Pending gates are read once per call instead of once per registration. Those reads and the reverts sweep, which now pages the revert window's completed runs, yield the event loop every 10 ms.
+- 4ba57bf: TP-2422: Shepherd's G10 registration hold now covers a branch registration when `sh-await-pr` finds its PR, and a repeat registration whose diff grew past 400 lines or into a stronger class. A weaker G10 hold, placed during the file read or inherited, no longer blocks escalation to `g10-adversary`. `release-head.ts` and Shepherd's `commands.ts`, `operator-hold.ts`, `seats.ts`, `release.ts` and `reviewer-choice.ts` count as policy paths, and a rename is classed by its old path as well as its new one. A hold history that cannot be read holds `g10-adversary`. `ReviewerFacts` gains `g10Hold`, so a run that holds or held a G10 hold gets the g10 reviewer.
+- 5cda7c1: TP-2428: when Shepherd cannot read a run's hold history at registration, its fail-closed `g10-adversary` hold no longer replaces an adversary hold already in force, so a seat's hold keeps its reason and `--reviewer`. A new `ShepherdStore.holdUnlessAdversary` makes that check and the write one transaction.
+- ccdb771: Shepherd's `sh-fix-proof` read fails closed on reads a head can force: a completed run with no result line for the head, a fix-proof run still incomplete at the deadline, and a missing run on a PR that touches the fix-proof harness (or whose changed files cannot be read in full) now read as `error` instead of `missing`. A new pure `fixProofStanding` maps an `error` result, an `untrusted` read and an `error` read to an unverified reason; reviewPhase wiring follows in TP-2434 c.
+- 2fecffa: Shepherd sends a gated head whose fix-proof is unverified (an error verdict, an untrusted run, or an unread result) to the reviewer marked unverified, asks for the owner brief, and gives its MERGE no merge-on-green grant, so the merge waits at the owner gate even under an `auto` policy (TP-2434 c).
+- 8f81511: Shepherd parks through the async `parkAgent` (TP-2435). `ParkPort`, the live-retry attempt and the fixer-retire park are async, so a park whose `agent-chat agent park` reads `titan-factory shepherd status` back from serve no longer blocks serve's event loop, starves lease renewal and replays `sh-park` on re-adoption.
+- 7330b11: Shepherd's agent-chat adapters await the now-async spawn, resume, message and retire verbs, so serve no longer blocks on them, and a refused cleanup retire rejects instead of going unobserved.
+- 2efc8a6: `titan-factory serve` logs an "event loop stalled" warning, with p99Ms and maxMs, for each 60 s window whose worst event-loop delay passes 5 s. A block that long starves workflow lease renewal, so the log now shows when one happened.
+- 8dbc84e: The operator HOLD reader reads `agent-chat machine status` asynchronously and shares one in-flight read across a burst, and a structure test fails on any sync exec import in serve code outside the CLI, with `spawn-gate.ts` the one allowlisted file (TP-2436 b).
+- c86b32e: Shepherd's local-git file read finds copies against every base file, so a fresh-name copy of a policy file is classed by its source and held `g10-adversary`; a diff whose copy detection git skipped fails closed to the unread-files hold (TP-2441 a).
+- 407a6d7: Shepherd gates any head whose changed files touch `.claude/skills` with owner-only rule `shepherd-merge-guard/skill-path` (TP-2442 a).
+- befbae7: The approve-merge brief at a head that changes repo skills names each skill path, links the pull request's files view, and drops the merge recommendation; an owner-gate seat's gate reason lists the skill paths too (TP-2442 b).
+- 1b7d1cb: Shepherd never carries an owner merge approval to a later head at a skill-path gate, or when the carry proof's paths hold a repo skill path.
+- 61fad4e: Shepherd gains `sh-no-reviewer-hold` and `sh-no-reviewer-wait` steps, not yet wired into the review phase. When the reviewer dispatch is refused, the hold step holds the run as `no-reviewer: <refusal> at <head>; TP-2446` and alerts the repo's seat once. If another hold is already in place, it leaves that hold alone and sends no alert. The wait resumes on release, head move, close or a 60-minute expiry. `noReviewerHeld` answers none with cause `not-started`, so a refused review is retried without counting a failed round.
+- 325e3a0: Shepherd no longer counts a refused reviewer dispatch as a failed review round. When `sh-review` is refused for any reason other than a still-busy broker (for example `ReviewCheckoutUnusable` for a repo with no bound checkout), the run is held as `no-reviewer: <refusal> at <head>; TP-2446` and the seat is alerted once. The review is retried after a release or a head move, so three refusals no longer open a `failed-rounds` approve-merge gate on an unreviewed head. A refused step result now carries `refused: <failure class>`.
+- d792cd0: Shepherd ci-wait re-reads the base's required contexts on every poll, so a context the ruleset dropped mid-wait no longer times the run out. An unreadable or newly empty live read keeps the list recorded at round start, and each snapshot records the contexts it judged.
+- cd013c8: Key Shepherd's held check and held wait by round and head (`sh-held-check:r<round>:<sha>`), so a back-filled `{held:false}` memo from a restart replay can no longer answer a live ci-failed wake on a held run (TP-2452 a). A replay whose record goes on with the bare `sh-held-check` keeps the bare ids.
+- 5b270f5: Shepherd: a ci-failed head whose every failing check also fails at the PR's base head wakes no fixer and spends no repair. The seat gets one `base-red` notice and the run waits in `sh-base-wait` until the base or the head moves, then refreshes the head and reads CI again. Unreadable base checks wake as before.
+- 5446cc0: `service check` prints within a 20 s budget (`SERVICE_CHECK_BUDGET_MS`) across all its `/health` probes, and reports the new cause `unresponsive` when the launchd or systemd pid is alive but every probe timed out, with each probe's latency in `detail.probeLatenciesMs`. A dead pid, a foreign pid on the port or no process stays `stale pid`.
+- 0d9399e: `service restart` and `service deploy` (rollback included) on Linux queue `systemctl --user restart --no-block`, wait 45 s for a new MainPID, then fence a main that ignores SIGTERM with `systemctl --user kill --signal=SIGKILL` and log `fenced pid N`; the /health wait starts once the new main exists (TP-2456 a).
+- 3cb4a36: `service restart` and `service deploy` (rollback included) first clear a `titan-factory serve` that holds the service port from outside the unit or launchd job: identity is proven by its command line, cgroup or job pid and start time, then it gets SIGTERM, 15 s, a start-time re-check and SIGKILL, logged as `fenced pid N`. Any other holder is refused by pid and argv, and nothing is signalled (TP-2456 b).
+- 652488d: On macOS, `service restart` and `service deploy` (rollback included) wait 45 s for a new launchd pid after `launchctl kickstart -k`, then SIGKILL the job through `launchctl kill SIGKILL` and log `fenced pid N`, as the systemd path already does. The rendered systemd unit sets `TimeoutStopSec=60`; run `titan-factory service install` once to rewrite an installed unit (TP-2456 c).
+- 6f5b2cb: `shepherd status` shows a run the workflow runtime parked in `recovery_required` after it recorded `sh-landed` or `sh-stopped` in phase `done` with its outcome. The stall reason stays in `stalled.reason` and the text `[stalled: ...]` note, and `phaseSince`, `totalMinutes` and `stage` stop at the outcome step, so a merged run no longer reads as "in review" for days. A recovery run with no outcome, and a paused run watching main CI after its merge, keep their live phase.
+- 0a8cc4f: Shepherd's freeze store records one seat-marked fix PR per freeze episode (`markFixPr`, migration 23), and `isFixersPr` lets that registered PR through the freeze; a new episode clears the mark (TP-2462 a).
+- 22f5192: Shepherd spawns no fixer and opens no `main-frozen` gate while a seat's fix PR is marked for the freeze episode (TP-2462 b); a red while the mark is set goes to `main-red-again`, naming the PR.
+- 414b9a4: The in-process command fallbacks (`localEnvelope`, the digest's local call) use `inProcessCaller`, so an unknown command name returns a usage envelope (code 64) instead of throwing.
+- af96f70: Coordinator evidence judges main-green runs with `isPassingConclusion` from `@titan-design/github` instead of its own copy of the passing-conclusion set (TP-2465 e). Admissions are unchanged: success, neutral and skipped pass; cancelled, stale, failure and any unknown conclusion do not.
+- cc37a2d: Move `ShepherdServices` and `SHEPHERD_WORKFLOW` to `shepherd/services.ts` so host and the sweeps stop importing the shepherd command registry (TP-2466 a); no behaviour change.
+- 964415b: Import the reviewer port types (`ReviewerAgent`, `ReviewerReader`, `ReviewerDispatch`, `ReviewerMessage`, `ReviewTarget`, `AwaitVerdictInput`) from `@titan-design/review-panel` instead of through `shepherd/review.ts` (TP-2466 c); no behaviour change.
+- fd3c51a: `service check` on Linux reports a failed `systemctl --user show` (no user bus, permission, timeout) as `unreadable` with systemctl's stderr, instead of `not loaded`.
+- dfdb8ff: Shepherd no longer carries a security run's owner approval across its own merge-up when main's side touches a carry-fenced path (authority, tool-guard, workflows). A recorded own-merge-up answer with fenced or absent `mainPaths` asks the owner again (TP-2495 a).
+- 8f48dcd: The agent-chat queue source sends `X-Titan-Client: titan-factory` on every broker request, so answering or dismissing an owner item is no longer refused with 403 by the broker's request guard.
+- 588ba6f: Shepherd's fix-proof read no longer settles to `missing` while the `fix-proof-base`/`fix-proof-head` exec jobs exist at the head: it waits for the judge, and a judge still absent at the deadline reads `error` (TP-2520 a).
+- f605422: Add `restackOnto` for Shepherd (TP-2528 b): the merge-onto commit a stacked child takes after its parent squash-lands, built with `merge-tree --merge-base` and `commit-tree`; it moves no ref and pushes nothing, and is not wired yet.
+- 8a60a30: Add the review-stats store (`review-stats.sqlite3`: `review` table, `pr_review` view, `refreshed_through` watermark) and its incremental refresh from Shepherd's ledger and agent-chat retire rows, with a one-time transcript-priced fallback (TP-2529 b); not wired to a command yet.
+- 23e28b7: Add `titan-factory shepherd stats --reviews [--from --to --repo --json --rows]`: refreshes `review-stats.sqlite3` and prints the v1 report of per-review cost, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model and verdict, and per-PR rounds, cost and review minutes (TP-2529 c).
+- ebc4fde: Shepherd's reviewer dispatch reports an agent-chat call that timed out (roster, spawn or resume) as `ReviewerAskTimedOut` instead of a raw `DispatchTimeoutError`, and adds `timedOutUnseen`, the not-started result for a timed-out ask whose reviewer never appeared (TP-2537 a). Routing is unchanged until slice b wires it.
+- f788c21: Post-merge main CI makes fewer GitHub calls. Every live post-merge run on a repo now reads check runs through one shared per-repo ledger (`MainCiReads` in main-watch), so several runs on the same tip make one `checkRuns` per poll between them. `sh-main-ci` takes the base branch from the run's own merge, and `sh-cleanup` takes merged, head ref, head repo and merge sha from it. After Shepherd's own merge, neither step reads the PR. A PR merged outside the run, or a step recorded before these fields, still reads the PR as before.
+- 878e0d9: Mark the read-only land and observe steps (`land-rules`, `ci-wait`, `base-check`, `sh-observe`) orphan-safe and pass the predicate to the runtime at register, so a restart's recovered read-only step that the replay never reaches no longer parks a run whose workflow returned.
+- 6a13d77: Shepherd: add `isUnreadRegistrationHold`, `ShepherdStore.reclassIfHeld` and an adversary-rule exemption for an unread-files hold Shepherd re-classed (TP-2564 a); not wired yet. Migration 25 adds `shepherd_event.reclass`, the mark only the re-class release carries.
+- 99fbfc8: Shepherd's fix-proof read no longer settles to `missing` when `.github/workflows/fix-proof.yml` exists at the PR's base ref (a head whose message carries a skip-ci marker, every run settled with no fix-proof run, or a deadline with no run): it reads `error`, as it does when the base branch or the workflow file cannot be read or the base branch is gone (TP-2572 a).
+- 693b478: Register every factory workflow with `strictReplay` (TP-2574 b): a run adopted by a build whose call sequence diverged from the one that recorded it parks as `recovery_required` with `replay diverged` evidence, instead of running a gate such as `approve-merge` live where the original drive recorded nothing.
+- 15c4c0b: Shepherd's verdict steps (`sh-await-verdict`, `sh-late-verdict`, `sh-seat-recheck`) record a verdict only if its author is the reviewer Shepherd dispatched, matched by agent and session. A verdict by anyone else, or a step input that names no dispatched reviewer, is recorded as no verdict. External mode, which starts no reviewer, is exempt.
+- 88a7732: `parseReport` reads a `Proposed tasks:` block and sets `refused` for an item with no destination (`filed <id>`, `pending: <reason>`, or `dropped: <reason>` from `DROP_REASONS`), per decision 331 (TP-2603 c).
+- 9f2ef60: Shepherd keeps its own reviewer's MERGE when a seat reviewer's WAIT, or a seat read that can clear, outlasts the seat-wait window. The next round at that head runs only the seat check again (`sh-seat-recheck`): it starts no reviewer and counts no failed round. Held rounds have a limit of their own: after six at one head, the owner's failed-rounds gate opens, naming the seat and its standing reason. A clear seat lets the MERGE go to the merge decision, a seat FIX_FIRST sends the head back, and a WAIT that still stands holds the MERGE again. Nothing merges until the seat check clears. A seat roster or transcript read that failed for a known-transient reason (a broker timeout, an unreachable or busy broker, or HTTP 5xx) is retried inside the seat-wait window instead of dropping the MERGE at once. A permission, missing-file or parse failure is not retried and blocks the head with no hold. A damaged transcript still blocks with no hold. While a seat holds the MERGE, `shepherd view` shows the hold as the PR's review wait.
+- 028f110: A g10-review hold releases at a clean merge-up head whose CI reads behind with its own checks green, and the unreviewed-hold stall line counts a FIX_FIRST or a carried MERGE as a verdict (TP-2624 a).
+- a44cc6b: Shepherd's await records why a no-verdict wait ended (`ended: deadline | reviewer-gone`) and which seat said WAIT (`seat`) (TP-2625 a).
+- 711e95c: Name why the last review await ended with no verdict: `shepherd list` and `shepherd status` rows carry `lastNone` and print `last await: <reason>`, the g10-review stall line reads `no reviewer MERGE (last await: <reason>)`, and the digest's stuck line appends it (TP-2625 b).
+- 8908ccf: Shepherd registration holds a `kind=security` PR with no sensitive path `g10-review`, not `g10-adversary`, and holds agent-chat's leak-guard, self-grant, permission-hook and host-directory paths `g10-adversary` (TP-2626 b).
+- 0facd7d: Port the burndown leaf helpers the dispatch F2 and F3 slices both import into `src/dispatch` (TP-2627): report and slice lint, ops, owns fence, spend cap, review diff, and the leaf parts of plan, collision, observe, brief, trust gate and PR adoption; not wired yet.
+- 608b103: `Commit` gains an optional `message`, which the gh adapter reads from the git commits API. Shepherd's ci-wait no longer waits out its 45 minutes on a head GitHub Actions started no run for: past a 5 minute grace, a conflicting head goes to the conflict fix round, and a skip token in the head commit message wakes the fixer to push a fresh commit. An unsettled mergeable state or a failed read keeps the wait as before.
+- a1b8cde: A MERGE whose merge-on-green-approve grant is withheld records which half failed (`grantWithheld: { policy, proof }`, the proof half with the fix-proof read's reason). The MRG-AU gate reason, the evidence comment and the owner's why-asked sentence name it, so a bare `unmet: seat-grants-merge-on-green-approve` no longer reaches the owner (TP-2658).
+- 24f0cf9: Shepherd: a carried fix-first-runaway, no-progress or conflict escalation no longer gates a head with a fresh dispatched-reviewer MERGE at that head under MRG-AU-RV; the decision records `shepherd-route/<escalation>/cleared-by-merge` (TP-2660 c, ac#823).
+- a7ba1df: Shepherd no longer opens approve-merge when GitHub leaves `mergeable_state` unknown (TP-2660 e). Land re-reads with backoff for up to 20 minutes at the same head, then sends the repo's seat one `merge-unsettled` notice and keeps re-reading on each CI read. A new head starts its own wait. The owner gate opens only if the notice could not be sent.
+- 5b1efb4: Shepherd's visual-path gate counts only files that can render (TP-2660 g). Tests and specs (`*.test.*`, `*.spec.*`), markdown (`*.md`) and type declarations (`*.d.ts`) under a seat's `visual_paths` no longer gate a merge. A rendering file beside them still gates, and the gate reason lists only that file. An empty or unread file list still counts as visual.
+- afd4289: Shepherd's `asksOwnerBrief` now requires the round's fix-proof standing, and type tests pin that it and the seat recheck are always given one, since an empty standing reads as verified (TP-2661 a).
+- 9502e62: `decideAutoMerge` takes optional `visualBaselines { check, paths }` (also on `MergeEvidenceInput`). A head whose changed files match `visualPaths` gates on `shepherd-merge-guard/visual-path` naming the baseline files when it adds, changes or removes a file under `paths`; with no baseline change and the named check at `success` from GitHub Actions at the head it clears, and the allow reason records the clearance. Any other check state, or no `visualBaselines`, keeps the glob gate (TP-2662 a).
+- 0249e03: An autonomy-seat/v1 seat file may declare `visual_baselines: { check, paths }` beside `visual_paths`, and `Seat` carries it as `visualBaselines`. The seat book refuses it without `visual_paths`, with an empty `check`, or with a baseline glob that matches no repo-relative path (the message names `visual_baselines`). A remote several seats share keeps it only when every seat with visual paths declares the same check and paths. Nothing reads it yet (TP-2662).
+- b32e619: Shepherd's seat-held approve-merge gate now reads "the seat held Shepherd's own MERGE for 6 rounds at one head" instead of "3 review rounds failed"; its rule id stays `shepherd-route/failed-rounds`, and the why-asked line uses the same words.
+- 8438a4e: Read Actions job logs with `--allow-escape-sequences` and strip the colour codes, so `jobLogTail` stops failing with "HTTP 200" (TP-2665); `failureOf` no longer reports a 2xx as an HTTP error.
+- 5f5dce9: review-panel: the adversary brief asks for a `Probes:` line above the verdict, and `acceptVerdict` refuses an adversary verdict without one as `probes_missing` (one correction, whose prompt restates the form; the correction cap rises to 1700 characters). `AwaitVerdictInput.shape` names the member awaited. `ShapeBriefInput.holdContext` puts a hold's reason, matched files, done-when and last report into the adversary brief, fenced as data. `ShapeRule.always` plans a shape whatever the files touch.
+
+  factory: with `shepherd.gateReset.twoMergeRelease` set to `shadow` or `on`, a run held `g10-adversary:` gets Shepherd's own adversary member beside correctness, whatever `review.panel` says, at `review.adversaryProfile` (default `fable-reviewer`) and under `review.adversaryConfigDir` when set. Its brief carries the hold reason, and a verdict with no `Probes:` line gets one correction turn. Nothing releases on it yet. Absent or `off` changes nothing.
+
+- c322ff8: factory: with `shepherd.gateReset.twoMergeRelease` set to `on`, a run held `g10-adversary:` releases with no seat when Shepherd's opus correctness MERGE and its adversary member's MERGE stand at the PR's current head, written there or carried by a recorded clean merge-up, with required CI green. The two must come from different sessions and different profiles. The hold stays if it names a reviewer, if the diff touches `packages/authority/src/table.json` (rename sources included), or if the file list cannot be read whole. The `sh-g10-release` step records the rule `g10-adversary/two-merge` and both verdict refs and profiles. The release event carries the head, so later heads must stay on its clean merge-up line. Under `shadow` the step records `wouldRelease` and releases nothing. A panel MERGE now records each member's verdict, head and spawn profile.
+- 8073e98: Basement fixer briefs run dag:check once instead of dead:check plus dag:check.
+- 651ce09: Shepherd's `takeVerdict` and `verdictOf` now require the round's fix-proof standing (and `takeVerdict` its account), so a caller can no longer drop `proofUnverified` from a MERGE by omitting it.
+- 7390743: shepherd register restarts a run that strict replay parked as `replay diverged`: the registration (task, implementer, kind, holds) moves to a fresh run whose headSha is the old run's last read head unless the register names one, and the old run is cancelled as superseded. Closed pull requests and other recovery_required parks are left alone.
+- 30a8373: The adoption sweep restarts replay-diverged Shepherd runs at serve start and on every lease tick: the registration moves to a fresh run as `shepherd register` does, and a diverged run whose pull request closed is cancelled. Branch-only registrations and other recovery_required parks are left alone.
+- 21a5e6f: Add the Shepherd `test-only` kind, gated like correctness and inert: no run may move into it until `TEST_ONLY_GATED` is lifted (TP-2732 d). Add `testOnlyDiff`, a fail-closed classifier of a PR's diff by the base ref's fix-proof globs.
+- ddaf75f: The Shepherd main-CI watcher reads a queued main run that a newer push superseded as superseded. Concurrency cancels such a run before any job starts, so the merge sha has no check run. Once main has moved past it, the watcher follows the newer push that contains the merge. A newer push still waiting behind the running main CI gets the queued re-checks, so it no longer opens a main-ci-timeout gate.
+- 2f75ade: A wake brief for a red `dag-check` now names `lint:types` among the scripts to rerun, since CI runs the type-aware lint as a step of that job instead of a separate `lint-types` job.
+- 51ce2b9: Shepherd reviewer stopgap (TP-2804). A reviewer ask that times out is looked for during the session-start wait and, if it is still unseen, retried on the next round rather than held through the 1 h no-reviewer wait. A reviewer that exits with no verdict at the head gets one correction turn in its own session, which names the Verdict, PR and Head lines. A fresh reviewer follows only if that resume fails.
+- 84530cc: Shepherd accepts a g10-adversary release at the reviewed head when the PR's current head is Shepherd's own clean merge-up of it (TP-2826). The run's update-branch record must show Shepherd made the head, and a tree probe must prove it is a clean merge of the base into the reviewed head. The release event keeps the reviewed head, and the probe's proof is recorded as a vouch to the current head. A conflicted merge, an extra commit, a merge Shepherd did not make or a hold of another class still needs a release at the current head.
+- 197064c: Shepherd no longer closes a sliced task when an unsliced PR merges (TP-2829). A task whose plan has a `burndown-slices` block, or that is tagged `epic`, gets a note naming its unlanded slices and stays open.
+- 8c25894: Add `jobSteps(repo, jobId)` to `GitHubPort` (wire: `getJobSteps`): an Actions job's steps in run order, each with its name and conclusion. The fake answers from `fake.jobSteps` and 404s a job with none seeded.
+
+  Shepherd's frozen-main and base-red holds now count a head's failing check as the base's only when it fails there at the same job step, and every failing test id (or, with no vitest heading, every error line) in the head's job log also fails there. A check that fails at another step, fails a test the base does not, or whose step or log cannot be read, wakes the fixer. So does one whose log may hold a failure it does not name: an unhandled error or worker crash, a tail cut inside vitest's failure output, headings that number other than the summary's failed tests and suites, or a step that timed out or was cancelled.
+
+- d0017c5: Land checks the PR's base before the merge decision. A PR whose base is not the default branch (and whose run may not merge into a feature base) now waits at `base-wait` with no `merge-policy` step and no approve-merge gate; after a retarget it re-reads the rules and decides on the new base. Merge evidence read on another base is re-read before the decision (`LandOptions.evidenceBase`). Runs recorded before this replay without the new check.
+- 1f7474f: Shepherd passes the base its MERGE evidence was read on (`evidenceBase`) to land. A stacked PR that GitHub retargets to main before land looks now has its evidence re-read on main, so a MERGE with green required contexts auto-merges under MRG-AU-RV instead of being judged on the parent branch's record.
+- 3d780fd: Shepherd's head-moved sweep also cancels, as superseded with condition `base-changed`, a pending approve-merge gate whose named base differs from the PR's live base, or whose base is not the default branch on a run without the feature-base grant (`supersedeRebasedGates`). A Shepherd merge decision whose MERGE evidence was read on another base than the one land just checked gates instead of allowing.
+- bdae82b: Deploy drain and watch (TP-2846). The restart drain no longer waits on a shepherd-pr run at `merge` behind another run on its repo's train, or on a run reading a seat's verdict (`sh-await-verdict`, `sh-late-verdict`, `sh-seat-recheck`). The 120 s watch judges run errors once, at the window's end, on the last two answers, against the drain's last pre-restart `/health`: a run the restart interrupted may stay recovery_required, but any new failed run, or a newly parked run that was idle at the restart, still rolls back. `/health` lists recovery_required run ids as `recoveryRequired`, and the deployer records the window's `{sha, windowEnd}` in `deploy-window.json`.
+- a3fb3df: Shepherd: a seat reviewer's failed transcript read no longer blocks every PR on the machine.
+  - A read that may clear, including the broker's "did not answer <frame>\_result" refusal, blocks with a retry, so the seat wait holds Shepherd's MERGE.
+  - A read that fails the same every time clears with a warning only when the failing session's own complete records name a PR with another number (never a sibling session's, never a ref that may be this PR, and never for a hard failure), or the failing sessions' name stem or worktree is another registered PR's implementer or branch, read from Shepherd's registrations rather than from the shape of a path.
+  - The read blocks when the reviewer's name or worktree is the PR's registered implementer's. With no evidence either way, it blocks with a retry, and the reason (kept when the seat wait holds the MERGE) names the reviewer and the evidence that was missing.
+  - The seat-check reason carries agent-dispatch's own message, with credentials, URLs and home paths scrubbed and the length capped (TP-2872).
+- bed3ea1: The seat check reads the agent-chat roster once and hands those rows to each seat transcript read, so a slow broker no longer multiplies `agent ls` calls. Rows without transcript fields still fall back to the reader's own roster. The text match for "broker did not answer" is removed; agent-dispatch now classes that reply timeout as `DispatchTimeoutError`.
+- f1c9e3e: `redactCredentials` also scrubs npm tokens, `sk-` keys, three-segment JWTs and the `user:pass@` userinfo of any `scheme://` URL, so stored evidence and Shepherd reasons no longer carry them (TP-2877).
+- 7eaf072: Seat roster rows may carry `transcriptExists`, and `awaitingTranscript` names a seat reviewer's newest row when it has no session or no transcript yet.
+- 4c21b34: The seat check blocks, with a retry, on a seat reviewer the roster ties to this PR that has no transcript yet, so Shepherd's MERGE is held for it instead of landing before it can say FIX_FIRST (TP-2887 b).
+- da06d0f: Shepherd no longer counts a refused `sh-review-intent` as a failed review round: a timed-out roster read is read again for the session-start window and then retried as not-started, and any other refusal holds the run as no-reviewer (TP-2966 a).
+- 7875e10: A run recorded before TP-2966 a replays a refused `sh-review-intent` as the no-verdict it recorded instead of diverging into the no-reviewer hold step, so a deploy no longer parks in-flight runs as recovery_required (TP-3015).
+- 9847b5f: Shepherd's base-side path lister (`changedPathsBetween`) is one shared helper that lists both sides of a rename, so a rename into or out of a carry-fenced path always meets the fence; the own-merge-up and remerge probes use it.
+- 6b222d0: Reviewers no longer read CI with `gh api`, which reviewer sessions deny (TP-3050). `ReviewerBriefInput.ciChecks` carries the check-runs serve read at the reviewed head (name, status, conclusion, required) and replaces the test rule with a filtered table the reviewer judges CI from. Without it, `CI_REVIEWER_TEST_RULE` falls back to `gh pr view --json headRefOid,statusCheckRollup` and has the reviewer list `CI_UNREAD_LINE` when it cannot read CI at the head; `ciUnreadOnly` tells a FIX_FIRST whose only item is that line. `greenChecks`, which no caller set, is removed.
+
+  Shepherd's reviewers get the new fallback rule through `suiteRules`.
+
+- 0794c64: A FIX_FIRST from a reviewer Shepherd dispatched whose only blocking item is the CI-unread line now counts as no verdict (TP-3050). The same head goes to a fresh reviewer, no fixer is woken, and the failed-rounds cap still applies. A new `sh-ci-unread` step records the decision. A run recorded before the step existed replays its FIX_FIRST as it was taken, because its record goes on without the step.
+- 8f56f6e: Shepherd's `sh-review` step reads CI at the reviewed head itself and puts it in the reviewer brief (TP-3050). `ciChecksAt` reads the PR's base, the required contexts the same way land reads them, and the head's check-runs. It returns the newest Actions run for each check name, the required contexts other apps post, and a `missing` row for each required context with no run. `shepherd/review` is left out. When any of those reads fails it returns no table, and the brief falls back to the reviewer reading `statusCheckRollup` itself. `greenChecksAt`, which had no caller, is replaced.
+- e677787: `testOnlyDiff` refuses as unread a PR whose base is not the default branch. It reads `.github/fix-proof.json` at both the merge base of the default branch and the PR head and the default branch's tip, and calls a diff test-only only when both configs agree. A stacked parent branch, an old fork point that has wider globs, or one that predates the config can no longer loosen what counts as a test (TP-3057).
+- d3eb096: A run recorded before the fix-proof cap existed replays its fix-proof wakes without diverging (TP-3067): when the record goes on without an `sh-wake-fix-proof` step, the replay neither records one nor counts it, so strict replay no longer parks the run in recovery.
+- 5e23aed: Shepherd's approve-merge carry now judges the whole range from the approved head by tree equality with `git merge-tree` of the approved head and the base. A fixer commit after the approval, however small, asks the owner again (TP-3070); a pure merge-up still carries. The small-fix rule and `SMALL_FIX_LIMITS` are removed.
+- db49b49: Shepherd: a route-table approve-merge gate the head moves past, failed-rounds included, carries its escalation to the new head, so the owner is asked there again and the cancel never stands as an answer. New hold class `owner-review` records a review the owner assigned to a person; no Shepherd MERGE releases it. A `g10-review` hold with no hold event on record, or an unreadable history, no longer releases itself.
+- 9c0d7f7: The review packager's brief now points at the `titan-review` CLI: it runs `packet from-ci --clone <seat checkout>` once and first, follows `packet prompt`, never re-runs from-ci (it replaces the packet dir, `prose.json` with it), and finishes with `packet lint <dir> --gate-head <head> --require prose --clone <seat checkout>`, which must exit 0. The packager starts in the seat checkout. Every command names the binary by absolute path: new `shepherd.titanReviewBin`, default `$HOME/.local/bin/titan-review`. A head with no visual CI run, or a repo with no usable seat checkout, spawns no packager and records `visual-packet-spawn-failed` with the reason, in `shadow` as in `on` (TP-3196).
+- 0bc8131: Shepherd: with `shepherd.gateReset.heldRepair: "on"`, a run held only under `g10-review` or `g10-adversary` wakes its fixer on ci-red, conflict, FIX_FIRST and NO_REPRO. The hold stays, so each new head is reviewed again and nothing merges while it is held (TP-3198). The flag is absent by default, which keeps today's wait. A MERGE at a green head now releases its g10-review hold before a conflict leaves the round. A seat notice that times out is sent again after a backoff.
+- f793fc7: Add `checkAnswer`, the binding check a console Ship answer must pass before it resolves an approve-merge gate: the request's own gate, GitHub's head and tree, the packet hash and binding, and the owner's feedback must all name the same head.
+- 21c5535: The console's Ship on a red head's `sh-visual-accept` gate resolves it as `accept-set`, carrying the approved set built from the factory's own packet for that head.
+- a98941e: Shepherd can ask the owner, at a head red only on its seat's visual baseline check, whether CI's regenerated set is the one to commit, before any fixer is woken. Off unless `shepherd.visualSetCarry` is `shadow` or `on`; with it off a run records no new step.
+- 8556b76: A pending `sh-visual-accept` gate is superseded by a push to the PR, and the visual packet trigger and delivery sweep treat it as a visual gate, so the owner's round for the red head reaches the console.
+- cd42d7a: Add the `shepherd.visualDelivery` sweep: a finished visual packet is rounded, linted and, in `on`, imported into the console, with cancel checks on the live PR head before and after the lint.
+- aa69748: `shepherd release --class g10-review` now accepts a PR whose head is Shepherd's own clean merge-up of the reviewed head, as a `g10-adversary` release already did. Land's update-branch merges main into a held PR whenever it reads behind, so every main move used to reset the review bar on g10-review holds. A merge no update-branch step of the run recorded, or one whose tree is not the clean merge-tree of the reviewed head and its base parent, is still refused.
+- 35121c1: A red main that fails the same checks with the same failing tests as an earlier red now links to that red's standing fixer (still running, or with its fix PR open) and its fix task, instead of filing a new task and spawning another fixer.
+- 83f3433: Shepherd retargets every open child of a landed stack parent onto the parent's base before cleanup deletes the parent's branch, whether or not the stack restack is on, and cleanup keeps the branch while any open PR is still based on it.
+- ccf1c6e: A thaw no longer supersedes the approve-merge gate of a run with an owner-asked hold: the gate stays with the owner. Lifting or reclassing that hold queues the run's repo for the thaw sweep, so the gate is superseded then, and a later head moves it as before with the hold kept. A gate on a run with any other hold is still superseded on thaw, and the merge step waits on that hold, where its reviewer's verdict is read.
+- 71887e9: A `g10-review` or `g10-adversary` release no longer refuses Shepherd's own land-time merge-up just because the release runs before the step has recorded it. GitHub shows the update-branch merge seconds before the `update-branch` step records the head as Shepherd's own. If the run's own update-branch step is still running, `shepherd release` now waits up to 60 seconds for that record, then reads the PR again and applies the same clean merge-up proof. If the step is still running after the wait, the release is refused with exit 75 and the caller retries. A head the step did not record as its own, a tree that is not the clean merge-tree, and a push that lands during the wait are all still refused.
+- ca0dd12: `buildSpawnArgs`, `dispatchToAgentChat`, `buildResumeAgentArgs` and `resumeAgent` take an opt-in `launchedBy: "shepherd"` and optional `launchReason`, sent as `--launched-by shepherd [--launch-reason <text>]` (TP-3514, CC-1466). It is a roster record, never the `--spawned-as` gate input. A caller that does not opt in sends exactly the argv it sent before. Shepherd's spawns and resumes opt in; they need an agent-chat CLI that knows `--launched-by`.
+- ca0dd12: `parkAgent(bin, name, timeoutMs, options?)` now requires its timeout, so no park call waits on the broker unbounded; pass `DEFAULT_PARK_TIMEOUT_MS` for the old default. `buildParkArgs` and `parkAgent` take an opt-in `{ noFixRoundCheck: true }`, sent as `--no-fix-round-check` (TP-3515, CC-1470); a caller that leaves it out sends the same argv as before. Shepherd's park step opts in, since agent-chat would otherwise call back into Shepherd to ask about a fix round; it needs an agent-chat CLI that knows the flag.
+- 54d98e0: Add the Morning `DEPLOY HOLD:` item parser, a pure reconcile and sync onto the manual deploy hold, an optional `source` on `deploy-hold.json`, and `clearManualHold` (TP-3519 a); not wired into the pacer or `service deploy` yet.
+- 9a58f91: A Morning `DEPLOY HOLD:` item now holds deploys: serve's deploy pacer syncs the manual hold from the seat queue files before each tick, and `service deploy` syncs it under `deploy.lock` before it reads the holds. Removing the item clears the hold after two ticks in a row find none; the failure pause is never touched. `DeployPorts` gains `listFiles`.
+- faa55fe: Shepherd's fix-proof wake brief names the NO_REPRO reason, the merge base, the head branch and the carry globs read at the merge base, with the head branch, globs and result fenced (TP-545 a).
+- 8a31c7f: Shepherd caps fix-proof bounces at two wakes per run (TP-545 b): each fix-proof wake records an `sh-wake-fix-proof` step before it is asked, and the third returns unhandled so the owner gate decides.
+- f704deb: `titan-factory needs` maps chat_ask v2 meta onto the owner item (door, option descriptions, a label-only default, category, initiative, header, parked and reversible notes). A question with no declared door, or an unknown one, is now one-way (TP-695 b).
+- 4f4db62: Read a `--reviewer` hold's named reviewer the way a seat reviewer is read: at any presence, `chat_send` verdicts counted, cached until the transcript changes. A live or detached reviewer's MERGE at the head now releases the hold with no `shepherd release` (TP-737 a).
+- 6620d0b: Shepherd's post-merge cleanup now records who satisfied a hold in its release event (TP-737 b). `ShepherdStore.release` takes an optional event reason, and the cleanup release names its actor `shepherd:cleanup` and the merged head.
+- 881f82e: Ledger replay regressions 18 and 19 (TP-737 c): a `--reviewer` hold placed after Shepherd's own MERGE at the head merges on the live named reviewer's `chat_send` MERGE with one dispatched reviewer and no gate, and stays held in the merge step with no gate while that reviewer sends no MERGE. Both sit outside the 17-gate set.
+- 129f6d2: Shepherd keeps one FIX_FIRST count (TP-797): each FIX_FIRST round records `sh-wake-fix-first` before any hold or wake, and the runaway cap, the re-review brief and the wake text all read `fixFirstCount`. A held FIX_FIRST that woke no fixer no longer leaves the brief and wake a count behind the cap.
+- 67bde18: `titan-factory serve` exits 0 beside a verified live factory; the launchd job restarts only on failure (`KeepAlive` `SuccessfulExit` false, `ThrottleInterval` 60) and the systemd unit uses `Restart=on-failure` (TP-811 a).
+- 09aee81: Deploy liveness now uses `isProcessAlive` from `@titan-design/daemon`, so a pid of 0 or a negative or non-finite pid reads as dead instead of signalling the deploy's own process group.
+- 6a7219b: Shepherd's cleanup records a short scrubbed message beside the class of a failed child retarget.
+- fa23feb: TP-3340: Shepherd opens no visual accept offer at a step the old host left in flight, so a flag turned on between hosts cannot end an adopted run short of that step. The workflow context gains `recoveredInFlight()`.
+- a811816: TP-3393: an adopting host whose old host left the visual accept offer itself in flight claims that offer and asks the owner, instead of skipping the offer for the whole drive. Another recovered step still holds the offer back.
+- 31a7c73: A g10-adversary record from before the two-MERGE ask now replays as it ran instead of parking replay-diverged. The diverged sweep and a superseded restart end a parked run with steps in flight as cancelled at once, so adoption no longer replays it into a loop. `/health` lists `recoveryPrClosed`, and the deploy watch does not count those runs against a build.
+- a72daee: Shepherd records a merge-train shadow at each land-time refresh: the peers a batch sealed at that moment would take (same repo, unheld, on the default branch, waiting on a refresh or the train), the waiting runs it would refuse and why, and a unit-level disjoint verdict between the PR and main's delta. The rows go to a new `shepherd_train_shadow` table (migration 26), and the update itself is unchanged. The shadow reads holds through its own check, which writes nothing: it never satisfies, withdraws or re-adds a hold, and reads a freeze without rechecking it. `shepherd stats` gains a `trainShadow` section with mean and max batch size, merges that landed outside the batch before the run's own merge, and the refresh-red rate.
+- ec1036b: sh-wake-implementer: a wake whose asks the spawn gate only deferred now waits up to 30 minutes (`WAKE_DEFER_MS`), not the 5-minute ask deadline, so a finished implementer is resumed once the machine has room (TP-3238). A wake no agent took messages the session that spawned the implementer's lineage with the reason and whom to resume, and the step records that as `notice`.
+- 093822f: A wait that a restart re-dispatches now resumes its deadline from the step's first start, so it gets only the time it had left. This covers ci-wait (with its backlog ceiling), sh-fix-proof, sh-late-verdict, and sh-review's session-start wait for a reviewer that was already asked for. `codeRoute` bodies now receive a `StepClock`, and a step with a restart counts as a repeat even at attempt 0.
+- b0f35f6: The post-merge chore now runs in its own transient unit (`systemd-run --user`, or a detached process off Linux) and writes its result to `<stateDir>/chores`, so restarting serve no longer kills it. After a restart the post-merge route reconciles the step from those files. A finished chore is recorded and a running one is awaited. A chore that never started is retried. Only a chore that is gone and wrote no result parks the run.
+- Updated dependencies [0dd6186]
+- Updated dependencies [3189a46]
+- Updated dependencies [6a0952d]
+- Updated dependencies [108b7f4]
+- Updated dependencies [9f24b7f]
+- Updated dependencies [9ebb9ba]
+- Updated dependencies [741313f]
+- Updated dependencies [448bcea]
+- Updated dependencies [8c89092]
+- Updated dependencies [6281b49]
+- Updated dependencies [cd013d1]
+- Updated dependencies [089ac2c]
+- Updated dependencies [cfc6614]
+- Updated dependencies [54b6d69]
+- Updated dependencies [7b9baf5]
+- Updated dependencies [f171698]
+- Updated dependencies [30c7ab5]
+- Updated dependencies [65287ec]
+- Updated dependencies [3fafd2e]
+- Updated dependencies [8a027ad]
+- Updated dependencies [9abae48]
+- Updated dependencies [cf7c870]
+- Updated dependencies [b0a3f7b]
+- Updated dependencies [ed7042a]
+- Updated dependencies [79754af]
+- Updated dependencies [556b5e2]
+- Updated dependencies [1476172]
+- Updated dependencies [102a9df]
+- Updated dependencies [be96d75]
+- Updated dependencies [06506bc]
+- Updated dependencies [a79cffd]
+- Updated dependencies [8f37474]
+- Updated dependencies [eae2dc4]
+- Updated dependencies [2503c0c]
+- Updated dependencies [82d8c0a]
+- Updated dependencies [b0fb3e6]
+- Updated dependencies [fe65aaa]
+- Updated dependencies [91ea294]
+- Updated dependencies [dfffc6c]
+- Updated dependencies [ca49f58]
+- Updated dependencies [2ea3f8a]
+- Updated dependencies [3e94b0b]
+- Updated dependencies [59131da]
+- Updated dependencies [62adbb2]
+- Updated dependencies [adfec4b]
+- Updated dependencies [adfec4b]
+- Updated dependencies [c2d805b]
+- Updated dependencies [336aaf2]
+- Updated dependencies [e22d2fd]
+- Updated dependencies [cbc3107]
+- Updated dependencies [4ba57bf]
+- Updated dependencies [7499737]
+- Updated dependencies [069c3b2]
+- Updated dependencies [7dbe2bb]
+- Updated dependencies [8f81511]
+- Updated dependencies [7330b11]
+- Updated dependencies [d754d5b]
+- Updated dependencies [a914535]
+- Updated dependencies [c278211]
+- Updated dependencies [4ffd52a]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [ba8f25e]
+- Updated dependencies [15b5395]
+- Updated dependencies [462e693]
+- Updated dependencies [69f323c]
+- Updated dependencies [c0bdde5]
+- Updated dependencies [027f0f2]
+- Updated dependencies [4ec603a]
+- Updated dependencies [c4fc339]
+- Updated dependencies [29e51f1]
+- Updated dependencies [4dc300d]
+- Updated dependencies [608b103]
+- Updated dependencies [ac8bf42]
+- Updated dependencies [8438a4e]
+- Updated dependencies [5f5dce9]
+- Updated dependencies [7a47bb3]
+- Updated dependencies [7d93a92]
+- Updated dependencies [edcb589]
+- Updated dependencies [abadd64]
+- Updated dependencies [abadd64]
+- Updated dependencies [216db04]
+- Updated dependencies [8c25894]
+- Updated dependencies [0acca69]
+- Updated dependencies [b6072b5]
+- Updated dependencies [e6dafd1]
+- Updated dependencies [d79a135]
+- Updated dependencies [77e2c4d]
+- Updated dependencies [6b222d0]
+- Updated dependencies [1b2c974]
+- Updated dependencies [ef109f3]
+- Updated dependencies [6eab4e8]
+- Updated dependencies [ca0dd12]
+- Updated dependencies [ca0dd12]
+- Updated dependencies [a2e2a70]
+- Updated dependencies [dbc8a21]
+- Updated dependencies [45d312c]
+- Updated dependencies [ff27157]
+- Updated dependencies [1c956dd]
+- Updated dependencies [f03dea7]
+- Updated dependencies [811e8ac]
+- Updated dependencies [55cdd43]
+- Updated dependencies [2467880]
+- Updated dependencies [fa23feb]
+- Updated dependencies [31a7c73]
+- Updated dependencies [c50e702]
+- Updated dependencies [2892aad]
+- Updated dependencies [d79f48e]
+  - @titan-design/github@0.11.0
+  - @titan-design/agent-dispatch@0.8.0
+  - @titan-design/agent@0.6.0
+  - @titan-design/coordinator@0.5.0
+  - @titan-design/daemon@0.7.0
+  - @titan-design/review-panel@0.6.0
+  - @titan-design/owner-queue@0.4.0
+  - @titan-design/registry@0.5.0
+  - @titan-design/workflow@0.13.0
+  - @titan-design/session-analytics@0.17.0
+  - @titan-design/authority@0.5.0
+  - @titan-design/fix-proof@0.5.0
+  - @titan-design/session-read@0.15.0
+  - @titan-design/rpc-client@0.4.1
+  - @titan-design/hitl@0.9.0
+  - @titan-design/worktree@0.1.6
+
 ## 0.22.0
 
 ### Minor Changes

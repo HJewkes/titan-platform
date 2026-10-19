@@ -1,0 +1,549 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { describe, it, expect } from 'vitest';
+import taskAdd from '../../src/commands/task-add.js';
+import taskDone from '../../src/commands/task-done.js';
+import taskList from '../../src/commands/task-list.js';
+import taskEdit from '../../src/commands/task-edit.js';
+import taskReorder from '../../src/commands/task-reorder.js';
+import taskDelete from '../../src/commands/task-delete.js';
+import { withTempActiveRoot } from '../setup/test-helpers.js';
+import { NotFoundError, UsageError } from '../../src/errors.js';
+import type { CommandContext } from '../../src/registry/index.js';
+import { readRawFrontmatter } from '../../src/utils/gray-matter-io.js';
+import { withFileLock } from '../../src/utils/fs-atomic.js';
+import { getLockPath } from '../../src/utils/paths.js';
+
+function ctx(activeRoot: string): CommandContext {
+  return { activeRoot, warnings: [], format: 'json' };
+}
+
+const SLUG = 'sample-initiative';
+
+describe('task.add', () => {
+  it('assigns next sequential ID and auto priority', async () => {
+    await withTempActiveRoot(async (root) => {
+      const created = await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root));
+      expect(created.id).toBe('SI-3');
+      // Existing priorities are 1 and 2, so next is 3.
+      expect(created.priority).toBe(3);
+      expect(created.status).toBe('open');
+      expect(created.done_at).toBeNull();
+
+      const onDisk = await fs.readFile(path.join(root, SLUG, 'tasks', 'SI-3.yml'), 'utf8');
+      expect(onDisk).toContain('id: SI-3');
+    });
+  });
+
+  it('respects an explicit priority and stores tags/notes', async () => {
+    await withTempActiveRoot(async (root) => {
+      const created = await taskAdd.run(
+        {
+          slug: SLUG,
+          title: 'Specific priority',
+          priority: 7,
+          severity: 'low',
+          tags: ['alpha', 'beta'],
+          notes: 'remember to test',
+        },
+        ctx(root),
+      );
+      expect(created.priority).toBe(7);
+      expect(created.severity).toBe('low');
+      expect(created.tags).toEqual(['alpha', 'beta']);
+      expect(created.notes).toBe('remember to test');
+    });
+  });
+
+  it('throws NotFoundError when the initiative does not exist', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(
+        taskAdd.run({ slug: 'no-such-initiative', title: 'irrelevant' }, ctx(root)),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  it('never reissues an id after the task that held it is deleted', async () => {
+    await withTempActiveRoot(async (root) => {
+      // Fixture starts at SI-1/SI-2. Add SI-3, the current highest.
+      const third = await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root));
+      expect(third.id).toBe('SI-3');
+
+      await taskDelete.run({ slug: SLUG, id: 'SI-3' }, ctx(root));
+
+      // Naively recomputing max(on-disk) + 1 would reissue SI-3 here.
+      const fourth = await taskAdd.run({ slug: SLUG, title: 'Fourth sample task' }, ctx(root));
+      expect(fourth.id).toBe('SI-4');
+
+      // task.delete (not task.add) is what persisted the high-water mark
+      // here, since SI-3 was the highest id at the time it was removed (AW-94).
+      const { frontmatter } = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
+      expect(frontmatter.task_seq).toBe(3);
+    });
+  });
+
+  it('falls back to the on-disk max when brief.md has no task_seq', async () => {
+    await withTempActiveRoot(async (root) => {
+      // The fixture brief.md predates task_seq; confirm it still allocates
+      // correctly from the on-disk tasks (SI-1, SI-2) alone.
+      const before = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
+      expect(before.frontmatter.task_seq).toBeUndefined();
+
+      const created = await taskAdd.run({ slug: SLUG, title: 'Back-compat task' }, ctx(root));
+      expect(created.id).toBe('SI-3');
+    });
+  });
+
+  // AW-52: a corrupt task_seq used to fall back to max(on-disk) + 1 — the exact
+  // allocator the field replaced — or throw an anonymous zod dump.
+  describe('corrupt task_seq (AW-52)', () => {
+    // Written as raw text: the validating writer would refuse these values,
+    // which is precisely how they only ever arrive by hand-editing.
+    async function injectTaskSeq(root: string, literal: string): Promise<void> {
+      const briefPath = path.join(root, SLUG, 'brief.md');
+      const text = await fs.readFile(briefPath, 'utf8');
+      await fs.writeFile(
+        briefPath,
+        text.replace('task_prefix: SI', `task_prefix: SI\ntask_seq: ${literal}`),
+        'utf8',
+      );
+    }
+
+    it.each([
+      ['negative', '-4'],
+      ['zero', '0'],
+      ['a string', "'twelve'"],
+      ['null', 'null'],
+      ['a float', '3.7'],
+      ['beyond the safe integer range', '9007199254740993'],
+      ['infinite', '1e400'],
+    ])('refuses to allocate when task_seq is %s', async (_label, literal) => {
+      await withTempActiveRoot(async (root) => {
+        await injectTaskSeq(root, literal);
+
+        await expect(taskAdd.run({ slug: SLUG, title: 'blocked' }, ctx(root))).rejects.toThrow(
+          /Invalid task_seq/,
+        );
+
+        // The message must name the field, the file, and the repair.
+        await expect(taskAdd.run({ slug: SLUG, title: 'blocked' }, ctx(root))).rejects.toThrow(
+          /brief\.md.*active-work set sample-initiative task_seq <n>/s,
+        );
+
+        // Nothing is allocated, so no id can be reissued below the mark.
+        const files = await fs.readdir(path.join(root, SLUG, 'tasks'));
+        expect(files.sort()).toEqual(['SI-1.yml', 'SI-2.yml']);
+      });
+    });
+
+    it('names the on-disk high-water mark as the repair floor', async () => {
+      await withTempActiveRoot(async (root) => {
+        await injectTaskSeq(root, '-4');
+        await expect(taskAdd.run({ slug: SLUG, title: 'blocked' }, ctx(root))).rejects.toThrow(
+          /highest id on disk is SI-2.*at least 2/s,
+        );
+      });
+    });
+
+    it('still allocates from a valid persisted mark', async () => {
+      await withTempActiveRoot(async (root) => {
+        await injectTaskSeq(root, '12');
+        const created = await taskAdd.run({ slug: SLUG, title: 'fine' }, ctx(root));
+        expect(created.id).toBe('SI-13');
+      });
+    });
+  });
+
+  it('serializes concurrent adds under the initiative lock', async () => {
+    await withTempActiveRoot(async (root) => {
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          taskAdd.run({ slug: SLUG, title: `Concurrent ${i}` }, ctx(root)),
+        ),
+      );
+      const ids = results.map((t) => t.id).sort();
+      expect(ids).toEqual(['SI-3', 'SI-4', 'SI-5', 'SI-6', 'SI-7']);
+
+      // task.add never writes task_seq (AW-94); no delete happened, so the
+      // brief's mark is untouched here.
+      const { frontmatter } = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
+      expect(frontmatter.task_seq).toBeUndefined();
+    });
+  });
+
+  it('waits out a lock held longer than the old 660ms retry budget (CC-339)', async () => {
+    await withTempActiveRoot(async (root) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      let acquired!: () => void;
+      const holding = new Promise<void>((resolve) => (acquired = resolve));
+      const holder = withFileLock(getLockPath(SLUG), async () => {
+        acquired();
+        await held;
+      });
+      await holding;
+
+      const pending = taskAdd.run({ slug: SLUG, title: 'Waits for lock' }, ctx(root));
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      release();
+      await holder;
+
+      expect((await pending).id).toBe('SI-3');
+    });
+  });
+
+  it('never rewrites brief.md across a run of adds with no deletes (AW-94)', async () => {
+    await withTempActiveRoot(async (root) => {
+      const briefPath = path.join(root, SLUG, 'brief.md');
+      const before = await fs.stat(briefPath);
+
+      for (let i = 0; i < 5; i++) {
+        await taskAdd.run({ slug: SLUG, title: `Sequential ${i}` }, ctx(root));
+      }
+
+      const after = await fs.stat(briefPath);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+    });
+  });
+});
+
+describe('task.done', () => {
+  it('flips status and sets done_at to the current instant', async () => {
+    await withTempActiveRoot(async (root) => {
+      const updated = await taskDone.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+      expect(updated.status).toBe('done');
+      expect(updated.done_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(updated.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
+  it('throws NotFoundError for a missing task', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(taskDone.run({ slug: SLUG, id: 'SI-99' }, ctx(root))).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+  });
+});
+
+describe('task.list', () => {
+  it('defaults to open status only', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run({ slug: SLUG }, ctx(root));
+      expect(tasks.map((t) => t.id)).toEqual(['SI-1']);
+    });
+  });
+
+  it('returns done tasks when status=done', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'done' }, ctx(root));
+      expect(tasks.map((t) => t.id)).toEqual(['SI-2']);
+    });
+  });
+
+  it('returns everything when status=all', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'all' }, ctx(root));
+      expect(tasks.map((t) => t.id).sort()).toEqual(['SI-1', 'SI-2']);
+    });
+  });
+
+  it('sorts by priority ascending', async () => {
+    await withTempActiveRoot(async (root) => {
+      // Add a task at priority 5; SI-1 has priority 1, SI-2 has priority 2.
+      await taskAdd.run({ slug: SLUG, title: 'Later', priority: 5 }, ctx(root));
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'all' }, ctx(root));
+      const priorities = tasks.map((t) => t.priority);
+      const sorted = [...priorities].sort((a, b) => a - b);
+      expect(priorities).toEqual(sorted);
+    });
+  });
+
+  it('scans all initiatives when all_initiatives is true', async () => {
+    await withTempActiveRoot(async (root) => {
+      // Scaffold a second initiative directory by hand.
+      const otherDir = path.join(root, 'other-initiative');
+      await fs.mkdir(path.join(otherDir, 'tasks'), { recursive: true });
+      await fs.writeFile(
+        path.join(otherDir, 'brief.md'),
+        `---\nschema_version: 1\ntitle: Other\nupdated: 2026-05-10\nstate: backburner\ntask_prefix: OI\n---\n\nother\n`,
+      );
+      await fs.writeFile(
+        path.join(otherDir, 'tasks', 'OI-1.yml'),
+        `id: OI-1\ntitle: Other open\npriority: 1\nstatus: open\ncreated: 2026-05-01\nupdated: 2026-05-01\ndone_at: null\n`,
+      );
+      const { tasks } = await taskList.run({ all_initiatives: true }, ctx(root));
+      const ids = tasks.map((t) => `${t.slug}:${t.id}`).sort();
+      expect(ids).toEqual(['other-initiative:OI-1', 'sample-initiative:SI-1']);
+    });
+  });
+
+  it('filters by tag', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run({ slug: SLUG, tag: 'example' }, ctx(root));
+      expect(tasks.map((t) => t.id)).toEqual(['SI-1']);
+
+      const empty = await taskList.run({ slug: SLUG, tag: 'missing' }, ctx(root));
+      expect(empty.tasks).toEqual([]);
+    });
+  });
+
+  it('filters by severity', async () => {
+    await withTempActiveRoot(async (root) => {
+      const high = await taskList.run({ slug: SLUG, severity: 'high' }, ctx(root));
+      expect(high.tasks.map((t) => t.id)).toEqual(['SI-1']);
+
+      const low = await taskList.run({ slug: SLUG, severity: 'low' }, ctx(root));
+      expect(low.tasks).toEqual([]);
+    });
+  });
+
+  it('keeps only the ids given to --id, done ones included', async () => {
+    await withTempActiveRoot(async (root) => {
+      await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root));
+      // Parse like the CLI and MCP do, so a schema-level status default would show up here.
+      const args = taskList.args.parse({ slug: SLUG, id: 'SI-2, SI-3' });
+      const { tasks } = await taskList.run(args, ctx(root));
+      expect(tasks.map((t) => t.id)).toEqual(['SI-2', 'SI-3']);
+    });
+  });
+
+  it('still honours an explicit status alongside --id', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run(
+        { slug: SLUG, id: 'SI-1,SI-2', status: 'open' },
+        ctx(root),
+      );
+      expect(tasks.map((t) => t.id)).toEqual(['SI-1']);
+    });
+  });
+
+  it('matches --search case-insensitively on title', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run(
+        { slug: SLUG, search: 'ALREADY done', status: 'all' },
+        ctx(root),
+      );
+      expect(tasks.map((t) => t.id)).toEqual(['SI-2']);
+    });
+  });
+
+  it('matches --search on id', async () => {
+    await withTempActiveRoot(async (root) => {
+      const { tasks } = await taskList.run({ slug: SLUG, search: 'si-1' }, ctx(root));
+      expect(tasks.map((t) => t.id)).toEqual(['SI-1']);
+    });
+  });
+
+  it('throws when neither slug nor all_initiatives is provided', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(taskList.run({}, ctx(root))).rejects.toBeInstanceOf(UsageError);
+    });
+  });
+});
+
+describe('task.edit', () => {
+  it('edits each editable field and stamps updated', async () => {
+    await withTempActiveRoot(async (root) => {
+      const t1 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'title', value: 'New title' },
+        ctx(root),
+      );
+      expect(t1.title).toBe('New title');
+      expect(t1.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      const t2 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'priority', value: 9 },
+        ctx(root),
+      );
+      expect(t2.priority).toBe(9);
+
+      const t3 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'severity', value: 'critical' },
+        ctx(root),
+      );
+      expect(t3.severity).toBe('critical');
+
+      const t4 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'estimate', value: 4 },
+        ctx(root),
+      );
+      expect(t4.estimate).toBe(4);
+
+      const t5 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'done_when', value: 'ship it', force: true },
+        ctx(root),
+      );
+      expect(t5.done_when).toBe('ship it');
+
+      const t6 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'tags', value: ['x', 'y'], force: true },
+        ctx(root),
+      );
+      expect(t6.tags).toEqual(['x', 'y']);
+
+      const t7 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'notes', value: 'updated note', force: true },
+        ctx(root),
+      );
+      expect(t7.notes).toBe('updated note');
+
+      const t8 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'status', value: 'done' },
+        ctx(root),
+      );
+      expect(t8.status).toBe('done');
+      expect(t8.done_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
+  });
+
+  it('coerces stringly-typed values from the CLI/MCP boundary', async () => {
+    await withTempActiveRoot(async (root) => {
+      // The dispatcher can't statically type `value` (it depends on `field` at
+      // runtime), so commander/MCP callers may pass numbers/arrays as raw
+      // strings. The command must coerce them itself before validation.
+      const t1 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'priority', value: '9' },
+        ctx(root),
+      );
+      expect(t1.priority).toBe(9);
+
+      const t2 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'estimate', value: '4' },
+        ctx(root),
+      );
+      expect(t2.estimate).toBe(4);
+
+      const t3 = await taskEdit.run(
+        { slug: SLUG, id: 'SI-1', field: 'tags', value: 'x, y', force: true },
+        ctx(root),
+      );
+      expect(t3.tags).toEqual(['x', 'y']);
+    });
+  });
+
+  it('rejects unknown fields', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(
+        taskEdit.run({ slug: SLUG, id: 'SI-1', field: 'id', value: 'SI-99' }, ctx(root)),
+      ).rejects.toBeInstanceOf(UsageError);
+      await expect(
+        taskEdit.run({ slug: SLUG, id: 'SI-1', field: 'created', value: '2026-01-01' }, ctx(root)),
+      ).rejects.toBeInstanceOf(UsageError);
+    });
+  });
+
+  it('throws NotFoundError for a missing task', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(
+        taskEdit.run({ slug: SLUG, id: 'SI-99', field: 'title', value: 'x' }, ctx(root)),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+});
+
+describe('task.reorder', () => {
+  it('shifts other tasks down when moving a task up', async () => {
+    await withTempActiveRoot(async (root) => {
+      // Add SI-3 with priority 3 so we have priorities 1, 2, 3.
+      await taskAdd.run({ slug: SLUG, title: 'third' }, ctx(root));
+      // Move SI-3 (priority 3) to priority 1; SI-1 and SI-2 should shift +1.
+      const res = await taskReorder.run({ slug: SLUG, id: 'SI-3', new_priority: 1 }, ctx(root));
+      expect(res.from).toBe(3);
+      expect(res.to).toBe(1);
+      const shiftedIds = res.shifted.map((s) => s.id).sort();
+      expect(shiftedIds).toEqual(['SI-1', 'SI-2']);
+      for (const s of res.shifted) {
+        expect(s.to).toBe(s.from + 1);
+      }
+
+      // Verify on disk.
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'all' }, ctx(root));
+      const byId = new Map(tasks.map((t) => [t.id, t.priority]));
+      expect(byId.get('SI-3')).toBe(1);
+      expect(byId.get('SI-1')).toBe(2);
+      expect(byId.get('SI-2')).toBe(3);
+    });
+  });
+
+  it('is a no-op when target is already at the new priority', async () => {
+    await withTempActiveRoot(async (root) => {
+      const res = await taskReorder.run({ slug: SLUG, id: 'SI-1', new_priority: 1 }, ctx(root));
+      expect(res.from).toBe(1);
+      expect(res.to).toBe(1);
+      expect(res.shifted).toEqual([]);
+
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'all' }, ctx(root));
+      const byId = new Map(tasks.map((t) => [t.id, t.priority]));
+      expect(byId.get('SI-1')).toBe(1);
+      expect(byId.get('SI-2')).toBe(2);
+    });
+  });
+
+  it('throws NotFoundError when the task is missing', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(
+        taskReorder.run({ slug: SLUG, id: 'SI-99', new_priority: 1 }, ctx(root)),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+});
+
+describe('task.delete', () => {
+  it('removes the task file', async () => {
+    await withTempActiveRoot(async (root) => {
+      const res = await taskDelete.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+      expect(res).toEqual({ id: 'SI-1', deleted: true });
+      await expect(fs.access(path.join(root, SLUG, 'tasks', 'SI-1.yml'))).rejects.toThrow();
+    });
+  });
+
+  it('throws NotFoundError when the task is missing', async () => {
+    await withTempActiveRoot(async (root) => {
+      await expect(taskDelete.run({ slug: SLUG, id: 'SI-99' }, ctx(root))).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+  });
+
+  // AW-94: task_seq only needs to move on delete, and only when the deleted
+  // id was the highest on disk — that's the one case where a later task.add's
+  // on-disk scan could otherwise reissue it.
+  it('bumps task_seq when deleting the current highest id', async () => {
+    await withTempActiveRoot(async (root) => {
+      await taskDelete.run({ slug: SLUG, id: 'SI-2' }, ctx(root));
+
+      const { frontmatter } = await readRawFrontmatter(path.join(root, SLUG, 'brief.md'));
+      expect(frontmatter.task_seq).toBe(2);
+
+      const next = await taskAdd.run({ slug: SLUG, title: 'After max delete' }, ctx(root));
+      expect(next.id).toBe('SI-3');
+    });
+  });
+
+  it('does not write brief.md when deleting an id that is not the highest', async () => {
+    await withTempActiveRoot(async (root) => {
+      const briefPath = path.join(root, SLUG, 'brief.md');
+      const before = await fs.stat(briefPath);
+
+      await taskDelete.run({ slug: SLUG, id: 'SI-1' }, ctx(root));
+
+      const after = await fs.stat(briefPath);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+    });
+  });
+
+  it('does not write brief.md when the task is missing', async () => {
+    await withTempActiveRoot(async (root) => {
+      const briefPath = path.join(root, SLUG, 'brief.md');
+      const before = await fs.stat(briefPath);
+
+      await expect(taskDelete.run({ slug: SLUG, id: 'SI-99' }, ctx(root))).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+
+      const after = await fs.stat(briefPath);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+    });
+  });
+});

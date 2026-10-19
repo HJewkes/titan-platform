@@ -1,0 +1,138 @@
+import { z } from 'zod';
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const isValidIsoDate = (value: string): boolean => {
+  if (!ISO_DATE_REGEX.test(value)) return false;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  // Reject dates like 2026-02-30 that JS happily rolls forward.
+  return parsed.toISOString().slice(0, 10) === value;
+};
+
+const isoDate = z
+  .string()
+  .refine(isValidIsoDate, { message: 'Must be a valid zero-padded YYYY-MM-DD date' });
+
+const positiveInt = z.number().int().positive();
+
+// Exported so `task add` can validate a hand-edited `task_seq` against the same
+// rule the brief is written with, and reject it with a message that names the
+// field — whole-brief validation only ever produces an anonymous zod dump.
+export const TaskSeqSchema = positiveInt;
+
+// `worktrees` lived here until schema v4 (AW-67). It now shares one list with
+// the swept worktrees in `artifacts.yml`; see `src/schemas/artifacts.ts`.
+
+// An MCP push-channel target enabled at `aw`/`open` launch via
+// `claude --dangerously-load-development-channels <target>`. Accepts an
+// explicit `server:<name>` / `plugin:<name>@<marketplace>` target, or a bare
+// server name that is normalized to `server:<name>` by the launcher. Exported
+// so the global config schema (`utils/global-config.ts`) validates its own
+// `channels` list against the same rule instead of a hand-rolled copy.
+export const channelTarget = z
+  .string()
+  .min(1)
+  .regex(/^(?:(?:server|plugin):.+|[A-Za-z0-9_-]+)$/, {
+    message:
+      'channel must be a target like "server:voltras", "plugin:name@marketplace", or a bare server name',
+  });
+
+// Actions a brief may unlock for agent-chat's burndown tick (burndown design, section 5).
+export const AUTONOMY_GRANTS = [
+  'merge-on-green-approve',
+  'task-close-on-merged-pr',
+  'release-through-ci',
+] as const;
+
+const profileName = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9._-]+$/, {
+    message: 'profile must be a bare directory name (letters, digits, dot, dash, underscore)',
+  })
+  .refine((v) => v !== '.' && v !== '..', { message: 'profile must not be "." or ".."' });
+
+// Opt-in to unattended dispatch, read by agent-chat's `burndown` tick. Strict so
+// a misspelled key or grant fails loudly instead of silently granting nothing.
+// Defaults stay unset here: the tick applies them, so a rewrite never adds keys.
+export const AutonomySchema = z
+  .object({
+    mode: z.literal('burndown', {
+      error: 'autonomy.mode must be "burndown"; remove the autonomy block to opt out',
+    }),
+    lanes: positiveInt.optional(),
+    accounts: z.array(profileName).optional(),
+    grants: z
+      .array(
+        z.enum(AUTONOMY_GRANTS, {
+          error: `autonomy.grants entries must be one of: ${AUTONOMY_GRANTS.join(', ')}`,
+        }),
+      )
+      .optional(),
+    repo: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type Autonomy = z.infer<typeof AutonomySchema>;
+
+export const BriefFrontmatterSchema = z
+  .object({
+    schema_version: positiveInt,
+    title: z.string().min(1),
+    updated: isoDate,
+    state: z.enum(['focused', 'backburner', 'paused', 'done']),
+    rank: positiveInt.optional(),
+    paused_since: isoDate.optional(),
+    restart_trigger: z.string().min(1).optional(),
+    ship_target: z.string().optional(),
+    owner: z.string().optional(),
+    task_prefix: z
+      .string()
+      .min(1)
+      .regex(/^[A-Z][A-Z0-9]*$/, {
+        message: 'task_prefix must be uppercase letters/digits starting with a letter',
+      }),
+    channels: z.array(channelTarget).optional(),
+    // Claude account profile this initiative runs under. The launcher resolves
+    // it to a CLAUDE_CONFIG_DIR, so a workstream stays on its own account and
+    // usage budget without the caller remembering to switch first. Restricted
+    // to a bare directory name — it is joined onto the profile root, so path
+    // separators and traversal must not survive validation.
+    profile: profileName.optional(),
+    // High-water mark for task ids: the largest numeric suffix ever issued
+    // for this initiative's task_prefix. Optional so pre-existing brief.md
+    // files (written before this field existed) keep validating; task.add
+    // falls back to scanning on-disk task files when it's absent. Only
+    // task.delete writes this field (AW-94) — and only when removing the
+    // current highest id — so task.add itself never rewrites brief.md.
+    task_seq: TaskSeqSchema.optional(),
+    autonomy: AutonomySchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.state === 'focused' && value.rank === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['rank'],
+        message: 'rank is required when state is "focused"',
+      });
+    }
+    if (value.state === 'paused') {
+      if (value.paused_since === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['paused_since'],
+          message: 'paused_since is required when state is "paused"',
+        });
+      }
+      if (value.restart_trigger === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['restart_trigger'],
+          message: 'restart_trigger is required when state is "paused"',
+        });
+      }
+    }
+  });
+
+export type BriefFrontmatter = z.infer<typeof BriefFrontmatterSchema>;

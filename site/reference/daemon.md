@@ -274,8 +274,32 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
   the root's real path, so a symlink leading out also gets 403. Dotfiles are never served.
 - Only `GET` is registered, after the core routes and behind the same guards. It cannot
   shadow `/rpc`, `/events`, or `/health`, and the Host check applies to every file.
-- Range requests are not honoured: every file comes back whole, with no `Accept-Ranges`,
-  so byte-range use such as large source maps or media is out of scope.
+- `mountStaticApp` does not honour Range requests: every file comes back whole, with no
+  `Accept-Ranges`. For media a browser must seek in, use `fileResponse` (next section).
+
+## Serving a file with byte ranges
+
+`fileResponse(request, file, { contentType, cacheControl? })` returns a `Response` for one
+file, for a route you write yourself:
+
+```ts
+app.on(["GET", "HEAD"], "/media/:id", async (c) =>
+  fileResponse(c.req.raw, await resolveCatalogEntry(c.req.param("id")), { contentType: "video/mp4" }),
+);
+```
+
+- `bytes=a-b`, `bytes=a-` and `bytes=-n` give `206` with `Content-Range: bytes a-b/size`
+  (both ends inclusive; an end past the size is clamped).
+- A start at or past the size, or `bytes=-0`, gives `416` with `Content-Range: bytes */size`.
+- No `Range`, a malformed one, or several ranges (`bytes=0-1,4-5`) gives `200` with the
+  whole file. Safari never sends several.
+- `HEAD` returns the headers and no body. `Accept-Ranges: bytes` and
+  `X-Content-Type-Options: nosniff` are always set.
+- The body streams from the open file for just the requested bytes. The file is opened with
+  `O_NOFOLLOW`; a symlink at the last path component or a non-regular file gets `403`, and a
+  missing file `404`, with fixed text that never names the path.
+- **Containment is the caller's job.** Pass an already-resolved real path from a catalog
+  you built; never a path the client named. `O_NOFOLLOW` only guards the final component.
 
 ## The seams
 

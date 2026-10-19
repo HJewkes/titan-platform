@@ -11,6 +11,7 @@ import { deployService, type DeployPorts } from "./deploy.js";
 import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, runningDeployer, writeManualHold } from "./deploy-pause.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
 import { configuredDeployIncident } from "./deploy-watch-ports.js";
+import { morningQueuesDir } from "./needs/morning-source.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
 import { servicePath, stableNodePath, type PlistOptions } from "./service.js";
@@ -151,7 +152,8 @@ function registerServiceDeploy(service: Command, verbs: Verbs): void {
     const remote = config.deployRemote ?? (deps.deploy === undefined && !existsSync(join(checkout, ".git")) ? await originOf(ownCheckout()) : undefined);
     const windowMs = opts.watchWindow ?? config.deployWatchMs;
     const stateDir = factoryStateDir(io.env);
-    const options = { checkout, remote, stateDir, logDir: stateDir, port: opts.port, expect: opts.expect, drain: drainOf(opts), ...(windowMs !== undefined && { watch: { windowMs } }) };
+    const watch = windowMs !== undefined && { watch: { windowMs } };
+    const options = { checkout, remote, stateDir, logDir: stateDir, port: opts.port, expect: opts.expect, drain: drainOf(opts), morningQueuesDir: morningQueuesDir(io.env), ...watch };
     setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS));
   });
 }

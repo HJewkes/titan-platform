@@ -42,16 +42,23 @@ await dispatchToAgentChat(
   `AGENT_CHAT_HOME`, so the CLI reaches the broker whose profiles the guard read.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
-- `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
+- `dispatchToAgentChat` and `resumeAgent` take an opt-in `launchedBy: "shepherd"` (and an
+  optional `launchReason`), sent as `--launched-by shepherd [--launch-reason <text>]` so the
+  agent's roster row records who started it. It is a record, not the `--spawned-as` gate
+  input. A caller that leaves it out sends the same argv as before.
+- `resumeAgent(bin, name, message, timeoutMs, launch?)` runs `agent-chat agent resume <name>
   --message <message>`, so the broker tracks the resumed session. It refuses a name outside
   agent-chat's name shape before running anything, and rejects with `DispatchError` on the
   broker's refusal. The message is in argv.
-- `parkAgent(bin, name, timeoutMs?)` runs `agent-chat agent park <name>`: the broker removes
+- `parkAgent(bin, name, timeoutMs, options?)` runs `agent-chat agent park <name>`: the broker removes
   an exited agent's clean, pushed worktree and keeps its branch, and `resumeAgent`
   re-creates it. A refusal (live, dirty, unpushed or shared tree) rejects with `DispatchError`
   carrying the broker's reason; a broker that cannot be reached rejects with
   `BrokerUnavailableError`. It is async: `agent park` may read the caller back (agent-chat asks
   Shepherd about a fix round), so a caller that serves HTTP must keep its event loop free.
+  The timeout is required (`DEFAULT_PARK_TIMEOUT_MS` is 60 s). Shepherd passes
+  `{ noFixRoundCheck: true }` for `--no-fix-round-check`, so agent-chat does not ask it back;
+  any other caller leaves it out and gets the same argv as before.
 - `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
   the broker delivers the text to a live agent as one channel message from the human seat,
   which starts a turn in an idle session. A name with no live session rejects with
