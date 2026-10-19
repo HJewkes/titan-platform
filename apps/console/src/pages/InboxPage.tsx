@@ -5,7 +5,8 @@ import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open, parseRoute } from "../router.js";
 import { openExternal } from "./homeLinks.js";
-import { InboxConfirm } from "./InboxConfirm.js";
+import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
+import { TapSheet, type TapCommands } from "./TapSheet.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -213,6 +214,8 @@ function RowAction({ item }: { item: InboxItem }): ReactNode {
 
 const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${VERB[action.kind]} from the console comes later; run it on the terminal for now.`);
 
+const inboxTap = (itemId: string): TapCommands => ({ prepare: "inbox.prepare", act: "inbox.act", args: { itemId }, invalidates: ["inbox.list"] });
+
 /** One primary button labelled with the verb; the sheet it opens holds the second tap. */
 function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
   const [confirming, setConfirming] = useState(false);
@@ -224,7 +227,7 @@ function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() ? <CopyButton command={command} /> : null}
-      {confirming ? <InboxConfirm itemId={item.id} verb={verb} command={command} onClose={() => setConfirming(false)} /> : null}
+      {confirming ? <TapSheet<InboxReady> commands={inboxTap(item.id)} verb={verb} reading="Reading the live gate and head" command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} testID="inbox-confirm" onClose={() => setConfirming(false)} /> : null}
     </HStack>
   );
 }
