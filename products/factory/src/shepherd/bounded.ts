@@ -12,22 +12,33 @@ export class ReadTimedOut extends Error {
   }
 }
 
+/** Arms `onTimeout` to run after `ms` and returns its cancel. */
+export type ReadTimer = (onTimeout: () => void, ms: number) => () => void;
+
+/** The wall clock's timer, unref'd so a pending deadline never keeps the process alive. */
+const wallTimer: ReadTimer = (onTimeout, ms) => {
+  const timer = setTimeout(onTimeout, ms);
+  timer.unref();
+  return () => clearTimeout(timer);
+};
+
 interface BoundedOptions {
   /** Settles an item that takes longer than this as a `ReadTimedOut` rejection, so its worker moves on. */
   timeoutMs?: number;
+  /** Arms each item's deadline; absent means the wall clock. A test passes its own so a deadline passes without global fake timers. */
+  timer?: ReadTimer;
 }
 
-/** Races `promise` against a timer that rejects with `ReadTimedOut`; the timer never keeps the process alive. */
-async function withDeadline<R>(promise: Promise<R>, timeoutMs: number): Promise<R> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+/** Races `promise` against a deadline that rejects with `ReadTimedOut`. */
+async function withDeadline<R>(promise: Promise<R>, timeoutMs: number, timer: ReadTimer): Promise<R> {
+  let cancel: (() => void) | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ReadTimedOut(timeoutMs)), timeoutMs);
-    timer.unref();
+    cancel = timer(() => reject(new ReadTimedOut(timeoutMs)), timeoutMs);
   });
   try {
     return await Promise.race([promise, deadline]);
   } finally {
-    clearTimeout(timer);
+    cancel?.();
   }
 }
 
@@ -35,9 +46,9 @@ async function withDeadline<R>(promise: Promise<R>, timeoutMs: number): Promise<
  * Maps every item through `fn` with at most `limit` calls in flight. Results come back in input order and settled, so one
  * rejection never cancels the others, and with `timeoutMs` one call that never answers never holds the rest.
  */
-export async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>, { timeoutMs }: BoundedOptions = {}): Promise<PromiseSettledResult<R>[]> {
+export async function mapBounded<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>, { timeoutMs, timer = wallTimer }: BoundedOptions = {}): Promise<PromiseSettledResult<R>[]> {
   const results: PromiseSettledResult<R>[] = new Array(items.length);
-  const call = (item: T): Promise<R> => (timeoutMs === undefined ? fn(item) : withDeadline(fn(item), timeoutMs));
+  const call = (item: T): Promise<R> => (timeoutMs === undefined ? fn(item) : withDeadline(fn(item), timeoutMs, timer));
   let next = 0;
   const worker = async (): Promise<void> => {
     while (next < items.length) {
