@@ -141,7 +141,7 @@ export interface DaySection {
   hiddenClips: number;
 }
 
-export interface Clock {
+interface Clock {
   now: Date;
   timeZone?: string;
 }

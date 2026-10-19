@@ -32,7 +32,7 @@ function Dot({ className }: { className: string }): ReactNode {
 }
 
 /** The label always reads on its own; the dot only repeats it in colour. */
-export function PurposePill({ purpose }: { purpose: Purpose }): ReactNode {
+function PurposePill({ purpose }: { purpose: Purpose }): ReactNode {
   const dot = PURPOSE_DOTS[purpose];
   return (
     <Pill variant="subtle" tone="neutral" size="sm" leading={dot === null ? undefined : <Dot className={dot} />}>
