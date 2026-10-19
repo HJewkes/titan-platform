@@ -117,6 +117,10 @@ for (const item of items) {
   needed, writes a 0600 temp file and links it into place. A link, unlike a rename, refuses
   to replace an existing file, so the first write of an asker and `depositId` wins; a repeat
   returns `created: false` and changes nothing, even when many writers race.
+- `writeFileOnce(dir, name, body)` is the same temp-file-and-link write for any file, for
+  example a round's `feedback.json`. The first write of `name` wins; a later or racing one
+  returns `created: false` with the existing path and changes nothing. A symlink already at
+  `name` counts as taken and is never followed. `name` must be a plain file name.
 - `writeDeposit(dir, deposit, { source })` also checks every `anchors` entry, on the item and
   on its options, at the item's `pins`. `source(rev)` returns a `LineSource` for that commit,
   for example `revisionLineSource` from `@titan-design/code-graph/history`. An anchor past

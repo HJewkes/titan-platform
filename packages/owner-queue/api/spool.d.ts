@@ -70,6 +70,11 @@ declare function depositFileNames(asker: string, depositId: string): string[];
 /** Every name an answer to `id` may already be filed under, current name first. */
 declare function answerFileNames(id: string): string[];
 /**
+ * Writes to a temp file, then hard-links it into place. Unlike rename, link refuses to replace
+ * an existing file, so the first writer of a name wins and a racing retry cannot clobber it.
+ */
+declare function writeFileOnce(dir: string, name: string, body: string): Promise<WriteResult>;
+/**
  * Validates a deposit and files it once. A repeat of the same asker and depositId, under its
  * current or its legacy name, leaves the first file in place and returns `created: false`.
  * Throws on a refused or oversized deposit, and on a name held by a different deposit. With a
@@ -91,7 +96,7 @@ declare function writeAnswer(dir: string, id: string, answer: OwnerAnswer): Prom
 /** Returns the answer to item `id`, or undefined if none is filed. Throws on a malformed answer. */
 declare function readAnswer(dir: string, id: string): Promise<OwnerAnswer | undefined>;
 
-export { DepositAnchorError, DepositCiteError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SessionEventRef, type SessionEventTextSource, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
+export { DepositAnchorError, DepositCiteError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SessionEventRef, type SessionEventTextSource, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit, writeFileOnce };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';

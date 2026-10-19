@@ -20,6 +20,8 @@ export const RPC_STATUS = {
   BAD_REQUEST: 400,
   /** A command refusing this caller with `EXIT.NOPERM`. */
   FORBIDDEN: 403,
+  /** A command refusing to overwrite what already exists with `EXIT.CANTCREAT`. */
+  CONFLICT: 409,
   /** No command by that name. */
   NOT_FOUND: 404,
   /** A command refusing a caller over its limit with `EXIT.TEMPFAIL`. */
@@ -33,6 +35,7 @@ type RpcFailureStatus = (typeof RPC_STATUS)[Exclude<keyof typeof RPC_STATUS, "NO
 const STATUS_BY_CODE: ReadonlyMap<number, RpcFailureStatus> = new Map([
   [EXIT.DATAERR, RPC_STATUS.BAD_REQUEST],
   [EXIT.NOPERM, RPC_STATUS.FORBIDDEN],
+  [EXIT.CANTCREAT, RPC_STATUS.CONFLICT],
   [EXIT.TEMPFAIL, RPC_STATUS.TOO_MANY_REQUESTS],
 ]);
 

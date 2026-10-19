@@ -19,6 +19,8 @@ declare const EXIT: {
     readonly NOINPUT: 66;
     readonly UNAVAILABLE: 69;
     readonly SOFTWARE: 70;
+    /** The output already exists and was not replaced; `POST /rpc/:name` answers 409. */
+    readonly CANTCREAT: 73;
     /** The caller is over a limit and may retry later; `POST /rpc/:name` answers 429. */
     readonly TEMPFAIL: 75;
     /** The caller may not run this command; `POST /rpc/:name` answers 403. */
@@ -44,6 +46,8 @@ declare const RPC_STATUS: {
     readonly BAD_REQUEST: 400;
     /** A command refusing this caller with `EXIT.NOPERM`. */
     readonly FORBIDDEN: 403;
+    /** A command refusing to overwrite what already exists with `EXIT.CANTCREAT`. */
+    readonly CONFLICT: 409;
     /** No command by that name. */
     readonly NOT_FOUND: 404;
     /** A command refusing a caller over its limit with `EXIT.TEMPFAIL`. */

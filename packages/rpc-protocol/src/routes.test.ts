@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT } from "./envelope.js";
-import { EVENTS_PATH, HEALTH_PATH, RPC_PREFIX, VERSION_PATH, rpcFailureStatus } from "./routes.js";
+import { EVENTS_PATH, HEALTH_PATH, RPC_PREFIX, RPC_STATUS, VERSION_PATH, rpcFailureStatus } from "./routes.js";
 import { SSE_EVENTS, SSE_HEARTBEAT_MS, SSE_READY_DATA } from "./sse.js";
 
 describe("routes", () => {
@@ -14,6 +14,12 @@ describe("routes", () => {
     expect(rpcFailureStatus(EXIT.TEMPFAIL)).toBe(429);
     expect(rpcFailureStatus(EXIT.USAGE)).toBe(500);
     expect(rpcFailureStatus(EXIT.CONFIG)).toBe(500);
+  });
+
+  it("maps CANTCREAT, a refused second write, to 409", () => {
+    expect(EXIT.CANTCREAT).toBe(73);
+    expect(RPC_STATUS.CONFLICT).toBe(409);
+    expect(rpcFailureStatus(EXIT.CANTCREAT)).toBe(409);
   });
 });
 

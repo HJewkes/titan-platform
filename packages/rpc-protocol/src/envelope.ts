@@ -21,6 +21,8 @@ export const EXIT = {
   NOINPUT: 66,
   UNAVAILABLE: 69,
   SOFTWARE: 70,
+  /** The output already exists and was not replaced; `POST /rpc/:name` answers 409. */
+  CANTCREAT: 73,
   /** The caller is over a limit and may retry later; `POST /rpc/:name` answers 429. */
   TEMPFAIL: 75,
   /** The caller may not run this command; `POST /rpc/:name` answers 403. */

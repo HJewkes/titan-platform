@@ -13,6 +13,7 @@ import {
   readAnswer,
   readSpool,
   writeAnswer,
+  writeFileOnce,
   writeDeposit,
 } from "./spool.js";
 
@@ -276,5 +277,52 @@ describe("writeAnswer and readAnswer", () => {
 
   it("refuses a malformed answer", async () => {
     await expect(writeAnswer(dir, "deposit:x", { at: "yesterday" } as unknown as OwnerAnswer)).rejects.toThrow();
+  });
+});
+
+describe("writeFileOnce", () => {
+  it("lets exactly one of many racing writers create the file and leaves no temp file", async () => {
+    const bodies = Array.from({ length: 12 }, (_, i) => `body-${i}`);
+
+    const results = await Promise.all(bodies.map((body) => writeFileOnce(dir, "feedback.json", body)));
+
+    const winners = results.filter((result) => result.created);
+    expect(winners).toHaveLength(1);
+    expect(results.every((result) => result.file === join(dir, "feedback.json"))).toBe(true);
+    expect(bodies).toContain(await readFile(join(dir, "feedback.json"), "utf8"));
+    expect(await readdir(dir)).toEqual(["feedback.json"]);
+  });
+
+  it("keeps the first body when a later write finds the file already there", async () => {
+    await writeFileOnce(dir, "a.json", "first");
+
+    const second = await writeFileOnce(dir, "a.json", "second");
+
+    expect(second).toEqual({ file: join(dir, "a.json"), created: false });
+    expect(await readFile(join(dir, "a.json"), "utf8")).toBe("first");
+  });
+
+  it("does not follow a symlink planted at the name and leaves its target untouched", async () => {
+    await mkdir(dir, { recursive: true });
+    const target = join(root, "target.txt");
+    await writeFile(target, "precious");
+    await symlink(target, join(dir, "a.json"));
+
+    const result = await writeFileOnce(dir, "a.json", "overwrite");
+
+    expect(result.created).toBe(false);
+    expect(await readFile(target, "utf8")).toBe("precious");
+    expect(await readdir(dir)).toEqual(["a.json"]);
+  });
+
+  it("does not follow a dangling symlink planted at the name", async () => {
+    await mkdir(dir, { recursive: true });
+    const target = join(root, "missing.txt");
+    await symlink(target, join(dir, "a.json"));
+
+    const result = await writeFileOnce(dir, "a.json", "overwrite");
+
+    expect(result.created).toBe(false);
+    await expect(stat(target)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

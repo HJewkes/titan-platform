@@ -106,7 +106,7 @@ function fittingNames(current: string, legacy: string): string[] {
  * Writes to a temp file, then hard-links it into place. Unlike rename, link refuses to replace
  * an existing file, so the first writer of a name wins and a racing retry cannot clobber it.
  */
-async function writeOnce(dir: string, name: string, body: string): Promise<WriteResult> {
+export async function writeFileOnce(dir: string, name: string, body: string): Promise<WriteResult> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const file = join(dir, name);
   const temp = join(dir, `.${name}.${randomUUID()}.tmp`);
@@ -171,7 +171,7 @@ export async function writeDeposit(dir: string, deposit: OwnerItemDeposit, optio
   const name = depositFileName(parsed.asker, parsed.depositId);
   const legacy = depositFileNames(parsed.asker, parsed.depositId).filter((each) => each !== name);
   const filedEarlier = await firstPresent(dir, legacy);
-  const result = filedEarlier ? { file: filedEarlier, created: false } : await writeOnce(dir, name, body);
+  const result = filedEarlier ? { file: filedEarlier, created: false } : await writeFileOnce(dir, name, body);
   if (!result.created) await assertHeldBy(result.file, parsed);
   return anchors.length > 0 ? { ...result, anchors } : result;
 }
@@ -236,7 +236,7 @@ export async function writeAnswer(dir: string, id: string, answer: OwnerAnswer):
   const name = answerFileName(id);
   const filedEarlier = await firstPresent(dir, answerFileNames(id).filter((each) => each !== name));
   if (filedEarlier) return { file: filedEarlier, created: false };
-  return writeOnce(dir, name, JSON.stringify(parsed));
+  return writeFileOnce(dir, name, JSON.stringify(parsed));
 }
 
 /** Returns the answer to item `id`, or undefined if none is filed. Throws on a malformed answer. */
