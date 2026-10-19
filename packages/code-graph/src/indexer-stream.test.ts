@@ -152,7 +152,8 @@ describe("indexPaths streams one syntax tree at a time (TP-747)", () => {
 
     const incremental = await runIndex(fixture.store, fixture.rootDir);
 
-    expect(incremental.reparsed).toBe(2);
+    // m8 imports the structurally changed m7, so it re-extracts too (TP-3636); m4 stays reused past m3's cosmetic edit.
+    expect(incremental.reparsed).toBe(3);
     expect(incremental.cosmetic).toBe(1);
     expect(trees.peak).toBe(1);
     expect(trees.live).toBe(0);

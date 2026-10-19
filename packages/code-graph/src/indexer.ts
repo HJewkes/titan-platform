@@ -10,8 +10,8 @@ import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { rootsAtRevision } from "./git-tree-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
-import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, streamFiles } from "./incremental.js";
-import { computeDeltaAffected } from "./reuse-delta.js";
+import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, streamFiles, structurallyChanged, type ReadFile, type ReuseBasis } from "./incremental.js";
+import { changedFileIds, computeContentAffected, computeDeltaAffected } from "./reuse-delta.js";
 import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
@@ -24,7 +24,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.31.0";
+export const INDEX_VERSION = "0.32.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -145,6 +145,18 @@ function historyOptions(options: IndexOptions, source: IndexSource): HistoryMetr
 }
 
 /**
+ * Byte-identical files that must still re-extract: those whose imports a
+ * file-membership delta re-resolves, and those whose edges land on a file whose
+ * structure changed, so a seeded index matches a cold one.
+ */
+async function reuseAffected(reuse: ReuseBasis, readFiles: readonly ReadFile[], idRoot: string): Promise<Set<string>> {
+  const currentHashes = new Map(readFiles.map((rf) => [fileId(idRoot, rf.filePath), rf.hash]));
+  const delta = computeDeltaAffected(reuse, new Set(currentHashes.keys()));
+  const changed = await structurallyChanged(readFiles, idRoot, reuse, changedFileIds(reuse, currentHashes));
+  return new Set([...delta, ...computeContentAffected(reuse, changed)]);
+}
+
+/**
  * Index one or more roots into a new snapshot: walk, read, parse what changed,
  * extract, annotate roles, compute metrics, and persist. Files unchanged since
  * the prior snapshot are carried forward rather than re-parsed, so the result
@@ -156,10 +168,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
   const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
-  const currentFileIds = new Set(readFiles.map((rf) => fileId(idRoot, rf.filePath)));
-  // On a file-membership delta, reuse every unchanged file except those whose
-  // imports the delta re-resolves; empty when membership is unchanged.
-  const affected = reuse ? computeDeltaAffected(reuse, currentFileIds) : new Set<string>();
+  const affected = reuse ? await reuseAffected(reuse, readFiles, idRoot) : new Set<string>();
   const { toParse, reusedFileIds } = classifyForReuse(readFiles, idRoot, reuse, affected);
 
   const requalify = needsRequalifyAliases(store);

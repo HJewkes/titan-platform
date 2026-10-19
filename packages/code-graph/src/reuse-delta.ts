@@ -20,6 +20,8 @@ import type { GraphEdge } from "./types.js";
  * relative import (which left no edge — a broken import in a file that didn't
  * compile) that an added file now satisfies is not detected, because there is no
  * stored specifier to re-resolve. Such a file is reused until it next changes.
+ *
+ * Content changes are handled by `computeContentAffected` below.
  */
 
 /** Posix dirname of a repo-relative file id (`a/b/c.ts` → `a/b`). */
@@ -109,6 +111,68 @@ export function computeDeltaAffected(
     }
   }
   return affected;
+}
+
+/**
+ * File ids whose content hash differs between the basis and the current files:
+ * modified, added, or removed.
+ */
+export function changedFileIds(
+  basis: ReuseBasis,
+  currentHashes: ReadonlyMap<string, string>,
+): Set<string> {
+  const changed = new Set<string>();
+  for (const [id, hash] of currentHashes) {
+    if (basis.fingerprints.get(id) !== hash) changed.add(id);
+  }
+  for (const id of basis.fingerprints.keys()) {
+    if (!currentHashes.has(id)) changed.add(id);
+  }
+  return changed;
+}
+
+/**
+ * Unchanged files whose edges a content change elsewhere can alter (TP-3636). An
+ * importer's `references` edges resolve, at extract time, through the target's
+ * export surface to the declaring file, and a reference that resolved to no
+ * symbol node is pruned and leaves no trace. So a byte-identical file whose edge
+ * lands on a changed file, or on a file that re-exports (transitively) from one,
+ * must re-extract; reusing it carried edges a full index no longer produces, and
+ * dropped ones it now does, which made a seeded index differ from a cold one.
+ */
+export function computeContentAffected(
+  basis: ReuseBasis,
+  changed: ReadonlySet<string>,
+): Set<string> {
+  const surface = reExportClosure(basis, changed);
+  const affected = new Set<string>();
+  for (const [srcId, edges] of basis.edgesBySrc) {
+    if (changed.has(srcId)) continue;
+    if (edges.some((edge) => surface.has(targetFileId(edge)))) affected.add(srcId);
+  }
+  return affected;
+}
+
+/** `changed` plus every file whose basis `re-exports` edges reach a changed file. */
+function reExportClosure(basis: ReuseBasis, changed: ReadonlySet<string>): Set<string> {
+  const reExporters = new Map<string, string[]>();
+  for (const [srcId, edges] of basis.edgesBySrc) {
+    for (const edge of edges) {
+      if (edge.kind !== "re-exports") continue;
+      const dst = targetFileId(edge);
+      reExporters.set(dst, [...(reExporters.get(dst) ?? []), srcId]);
+    }
+  }
+  const seen = new Set(changed);
+  const stack = [...changed];
+  for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+    for (const src of reExporters.get(id) ?? []) {
+      if (seen.has(src)) continue;
+      seen.add(src);
+      stack.push(src);
+    }
+  }
+  return seen;
 }
 
 function isEdgeAffected(

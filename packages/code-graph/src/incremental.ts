@@ -98,6 +98,34 @@ export function classifyForReuse(
   return { toParse, reusedFileIds };
 }
 
+/**
+ * The `changed` ids whose structure differs from the basis, plus removed ones. A
+ * COSMETIC edit yields the same edges and so the same export surface, which
+ * keeps its importers reusable; deciding that costs a tree-sitter parse of each
+ * changed file, far less than the ts-morph extract of every importer. Each tree
+ * is deleted before the next parse (TP-747).
+ */
+export async function structurallyChanged(
+  readFiles: readonly ReadFile[],
+  idRoot: string,
+  reuse: ReuseBasis,
+  changed: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const out = new Set(changed);
+  for (const rf of readFiles) {
+    const id = fileId(idRoot, rf.filePath);
+    const basisSig = reuse.structuralHashes.get(id);
+    if (!changed.has(id) || basisSig === undefined) continue;
+    const parsed = await parseFile(rf.content, rf.filePath, rf.language);
+    try {
+      if (structuralSignature(parsed) === basisSig) out.delete(id);
+    } finally {
+      parsed.tree.delete();
+    }
+  }
+  return out;
+}
+
 /** What the per-file stream leaves behind once every tree it parsed is deleted. */
 export interface StreamedFiles {
   /** Every file's fragments in walk order, so the merge dedup resolves shared nodes as a full index does. */

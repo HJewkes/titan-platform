@@ -57,8 +57,44 @@ describe("fingerprint-based incremental indexing", () => {
 
     const incremental = await index();
 
-    expect(incremental.reparsed).toBe(1);
-    expect(incremental.reused).toBe(incremental.files - 1);
+    // b.ts imports a.ts, so it re-extracts against a's new export surface.
+    expect(incremental.reparsed).toBe(2);
+    expect(incremental.reused).toBe(incremental.files - 2);
+    expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
+  });
+
+  it("re-points an unchanged importer when its symbol moves behind a re-export (TP-3636)", async () => {
+    await fs.writeFile(src("x.ts"), "export const X = 1;\nexport const keep = X;\n");
+    await fs.writeFile(src("x.test.ts"), 'import { X } from "./x.js";\nexport const seen = X;\n');
+    await index();
+    await fs.writeFile(src("y.ts"), "export const X = 1;\n");
+    await fs.writeFile(src("x.ts"), 'import { X } from "./y.js";\nexport { X } from "./y.js";\nexport const keep = X;\n');
+
+    const incremental = await index();
+
+    expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
+  });
+
+  it("restores an unchanged importer's reference when a symbol moves back from a re-export (TP-3636)", async () => {
+    await fs.writeFile(src("y.ts"), "export const X = 1;\n");
+    await fs.writeFile(src("x.ts"), 'import { X } from "./y.js";\nexport { X } from "./y.js";\nexport const keep = X;\n');
+    await fs.writeFile(src("x.test.ts"), 'import { X } from "./x.js";\nexport const seen = X;\n');
+    await index();
+    await fs.writeFile(src("x.ts"), "export const X = 1;\nexport const keep = X;\n");
+
+    const incremental = await index();
+
+    expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
+  });
+
+  it("re-extracts an importer of an unchanged barrel when the barrel's source changes (TP-3636)", async () => {
+    await fs.writeFile(src("idx.ts"), 'export * from "./a.js";\n');
+    await fs.writeFile(src("user.ts"), 'import { A2 } from "./idx.js";\nexport const U = A2;\n');
+    await index();
+    await fs.writeFile(src("a.ts"), "export const A = 1;\nexport const A2 = 2;\n");
+
+    const incremental = await index();
+
     expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
   });
 
