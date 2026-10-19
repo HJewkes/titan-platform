@@ -5,6 +5,7 @@ import { spawnExec, type Exec } from "./exec.js";
 import { judge, type JudgeReports } from "./judge.js";
 import { GIT_SAFETY } from "./context.js";
 import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
+import { provedByMutants } from "./result-line.js";
 import { encodeError, encodeMutantsReport, encodeReport } from "./transport.js";
 
 afterEach(removeRepos);
@@ -162,7 +163,42 @@ describe("judge with mutation specs", () => {
     const result = await judgeHead({ [SPEC]: specText(), ".changeset/x.md": "---\n---\n" }, killedMutants);
 
     expect(result.verdict).toBe("vacuous");
-    expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }] });
+    expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
+    expect(provedByMutants(result)).toBe(true);
+  });
+
+  describe("a changed test file with no spec of its own", () => {
+    const GUARD = "src/guard.test.ts";
+    const guardTest = (body: string) => `test("denies", () => { ${body} });\n`;
+    const bothPassed = (): string => {
+      const zero = zeroReport("passed") as { testResults: unknown[] };
+      const guard = { name: GUARD, status: "passed", assertionResults: [{ fullName: "denies", status: "passed", failureMessages: [] }] };
+      return encodeReport({ testResults: [...zero.testResults, guard] });
+    };
+    const judgeOver = async (baseFiles: Record<string, string>, headFiles: Record<string, string>) => {
+      const repo = makeRepo({}, undefined, baseFiles);
+      const head = repo.commit(headFiles);
+      const passed = bothPassed();
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: { base: passed, baseRerun: passed, head: passed, mutants: killedMutants } }));
+    };
+
+    it("a spec borrowed from an unchanged sibling test proves nothing about the gutted test the PR changed", async () => {
+      const result = await judgeOver(
+        { "src/math.test.ts": VACUOUS_TEST, [GUARD]: guardTest("expect(1).toBe(1); expect(2).toBe(2);") },
+        { [GUARD]: guardTest(""), [SPEC]: specText() },
+      );
+
+      expect(result.verdict).toBe("vacuous");
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [GUARD] });
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("one of two changed test files without a spec leaves the PR unproved", async () => {
+      const result = await judgeOver({}, { "src/math.test.ts": VACUOUS_TEST, [GUARD]: guardTest("expect(1).toBe(1);"), [SPEC]: specText() });
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [GUARD] });
+      expect(provedByMutants(result)).toBe(false);
+    });
   });
 
   it("attaches no mutants when the diff also changes source", async () => {

@@ -33,7 +33,7 @@ describe("provedByMutants", () => {
     ...result(),
     verdict: "vacuous",
     counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
-    mutants: { verdict: "killed", results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: "killed" }] },
+    mutants: { verdict: "killed", results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: "killed" }], uncovered: [] },
     ...overrides,
   });
 
@@ -51,6 +51,32 @@ describe("provedByMutants", () => {
     ["no test ran", { "passes-on-base": 0 }],
   ])("does not prove killed mutants when %s", (_, counts) => {
     expect(provedByMutants(testOnly({ counts: { ...testOnly().counts, ...counts } }))).toBe(false);
+  });
+
+  it("does not prove killed mutants with a changed test file no spec covers", () => {
+    const mutants = { ...testOnly().mutants!, uncovered: ["src/guard.test.ts"] };
+
+    expect(provedByMutants(testOnly({ mutants }))).toBe(false);
+  });
+
+  it("does not prove killed mutants from a judge that never checked coverage", () => {
+    const unchecked = { verdict: "killed" as const, results: testOnly().mutants!.results };
+
+    expect(provedByMutants(testOnly({ mutants: unchecked }))).toBe(false);
+  });
+
+  it("refuses a killed verdict that lists an uncovered test file", () => {
+    const mutants = { ...testOnly().mutants!, uncovered: ["src/guard.test.ts"] };
+
+    expect(() => formatResultLine(testOnly({ mutants }))).toThrow(/killed with an uncovered test file/);
+  });
+
+  it("round-trips the uncovered list on a not-killed line", () => {
+    const mutants = { ...testOnly().mutants!, verdict: "not-killed" as const, uncovered: ["src/guard.test.ts"] };
+
+    const line = parseResultLine(formatResultLine(testOnly({ mutants })));
+
+    expect(line.ok && line.result.mutants).toEqual(mutants);
   });
 
   it("does not prove a result with no mutation check or a mutants error", () => {

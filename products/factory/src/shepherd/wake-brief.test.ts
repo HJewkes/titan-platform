@@ -419,6 +419,15 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     expect(reason).not.toContain("fails at the merge base and passes at the head");
   });
 
+  it("fences the changed test files that still need a mutation spec", async () => {
+    const { wake } = proofScene(noRepro("vacuous", { mutants: { verdict: "not-killed", results: [], uncovered: ["src/guard.test.ts", "src/store.test.ts"] } }));
+
+    const { reason, payload } = await wake();
+
+    expect(reason).toContain("a changed test file has no mutation spec of its own");
+    expect(payload).toContain(fence("changed test files with no mutation spec", "src/guard.test.ts\nsrc/store.test.ts"));
+  });
+
   it("says no test was added for a no-tests verdict, without claiming tests ran", async () => {
     const { wake } = proofScene(noRepro("no-tests"));
 

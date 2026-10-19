@@ -16,7 +16,7 @@ const VERDICT_READING: Record<Verdict, string> = {
 };
 
 const MUTANTS_READING =
-  "The PR changes only tests, so base and head run the same code; instead every mutation its specs declare made the tests it names fail, and the tests pass at head. Check that each mutation is a bug a caller would see.";
+  "The PR changes only tests, so base and head run the same code; instead every changed test file has a mutation spec in this diff, every mutation its specs declare made the tests it names fail, and the tests pass at head. Check that each mutation is a bug a caller would see and that the tests it kills are the ones the PR changed.";
 
 function verdictLine(result: FixProofResult): string {
   const reading = provedByMutants(result) ? MUTANTS_READING : VERDICT_READING[result.verdict];

@@ -27,13 +27,15 @@ export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: fals
 
 /**
  * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
- * code on both sides, so it reads vacuous at best; it is proved when every declared mutation is killed and every selected
- * test ran and passed at head. A surviving mutation, a failing or unrun test, or a mutants error proves nothing.
+ * code on both sides, so it reads vacuous at best. It is proved when every changed test file has a spec of its own in the
+ * diff, every declared mutation is killed, and every selected test ran and passed at head. A line with no `uncovered`
+ * list comes from a judge that never checked coverage, so it proves nothing.
  */
 export function provedByMutants(result: FixProofResult): boolean {
-  const { counts } = result;
+  const { counts, mutants } = result;
   const headPasses = counts["passes-on-base"] > 0 && counts["fails-on-head"] === 0 && counts["not-run"] === 0;
-  return result.verdict === "vacuous" && result.mutants?.verdict === "killed" && headPasses;
+  const covered = mutants?.uncovered !== undefined && mutants.uncovered.length === 0;
+  return result.verdict === "vacuous" && mutants?.verdict === "killed" && covered && headPasses;
 }
 
 /** Joins a plan and its classification into the result a runner prints for head. */
@@ -81,6 +83,7 @@ function canonicalMutant(result: MutantResult): MutantResult {
 
 function canonicalMutants(mutants: MutantsResult): MutantsResult {
   const out: MutantsResult = { verdict: mutants.verdict, results: mutants.results.map(canonicalMutant) };
+  if (mutants.uncovered !== undefined) out.uncovered = [...mutants.uncovered];
   if (mutants.error !== undefined) out.error = mutants.error;
   return out;
 }
@@ -113,6 +116,8 @@ function dropMutant(results: MutantResult[]): void {
 function shrinkMutants(mutants: MutantsResult | undefined): boolean {
   if (mutants === undefined) return false;
   if (mutants.results.length > 0) dropMutant(mutants.results);
+  // One uncovered file is kept: it is what a not-killed verdict with every mutant killed rests on.
+  else if (mutants.uncovered !== undefined && mutants.uncovered.length > 1) mutants.uncovered.pop();
   else if (mutants.error !== undefined && mutants.error.length > MAX_ERROR_CHARS) mutants.error = mutants.error.slice(0, MAX_ERROR_CHARS);
   else return false;
   return true;
@@ -209,10 +214,12 @@ function validateMutant(value: unknown): string | null {
 function validateMutants(value: unknown, truncated: unknown): string | null {
   if (value === undefined) return null;
   if (!isRecord(value)) return "mutants must be an object";
-  const keys = checkKeys(value, ["verdict", "results"], ["error"], "mutants.");
+  const keys = checkKeys(value, ["verdict", "results"], ["uncovered", "error"], "mutants.");
   if (keys !== null) return keys;
   if (!(MUTANT_VERDICTS as readonly unknown[]).includes(value.verdict)) return "mutants.verdict is unknown";
   if (value.error !== undefined && typeof value.error !== "string") return "mutants.error must be a string";
+  if (value.uncovered !== undefined && !isStringList(value.uncovered)) return "mutants.uncovered must be a string array";
+  if (value.verdict === "killed" && isStringList(value.uncovered) && value.uncovered.length > 0) return "mutants verdict killed with an uncovered test file";
   if (!Array.isArray(value.results)) return "mutants.results must be an array";
   const problem = value.results.map(validateMutant).find((error) => error !== null);
   if (problem !== undefined) return problem;

@@ -33,8 +33,8 @@ function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
 }
 
 /** A test-only diff's line: base and head pass alike, so only the mutation check can prove it. */
-function mutantsLine(mutants: "killed" | "not-killed", counts: Partial<FixProofResult["counts"]> = {}): string {
-  const outcome = mutants === "killed" ? "killed" : "survived";
+function mutantsLine(mutants: "killed" | "not-killed", counts: Partial<FixProofResult["counts"]> = {}, uncovered: string[] = []): string {
+  const outcome = mutants === "killed" && uncovered.length === 0 ? "killed" : "survived";
   return formatResultLine({
     head: H,
     mergeBase: BASE,
@@ -45,7 +45,7 @@ function mutantsLine(mutants: "killed" | "not-killed", counts: Partial<FixProofR
     configEdited: false,
     tests: [],
     truncated: false,
-    mutants: { verdict: mutants, results: [{ spec: "packages/x/src/a.test.mutations.json", name: "drop the bound", outcome }] },
+    mutants: { verdict: mutants, results: [{ spec: "packages/x/src/a.test.mutations.json", name: "drop the bound", outcome: uncovered.length > 0 ? "killed" : outcome }], uncovered },
   });
 }
 const TEST_ONLY_FILES: PrFile[] = [
@@ -175,6 +175,25 @@ describe("sh-fix-proof in reviewPhase", () => {
     const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(mutantsLine("not-killed")), files: TEST_ONLY_FILES });
 
     expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { verdict: "vacuous", mutants: { verdict: "not-killed" } } }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("ends a test-only PR as NO_REPRO when every mutation is killed but a changed test file has no spec of its own", async () => {
+    const line = mutantsLine("not-killed", {}, ["packages/x/src/config-store.test.ts"]);
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(line), files: TEST_ONLY_FILES });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { mutants: { uncovered: ["packages/x/src/config-store.test.ts"] } } }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("ends a test-only PR as NO_REPRO on a killed line from a judge that never checked coverage", async () => {
+    const unchecked = mutantsLine("killed").replace(',"uncovered":[]', "");
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(unchecked), files: TEST_ONLY_FILES });
+
+    expect(unchecked).not.toContain("uncovered");
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
     expect(spawns).toEqual([]);
   });
 
