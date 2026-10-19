@@ -87,6 +87,7 @@ describe("an agent session writing the fleet config store", () => {
     ["hard-linking the Claude settings", "ln ~/.claude/settings.json ~/s"],
     ["ln with -s after --, which is a file name", "ln -- ~/.config/titan-coordinator/coordinator.json -s"],
     ["ln -f with -s after --", "ln -f -- ~/.local/state/titan-console/lan.token -s"],
+    ["ln with a file named -s right after --", "ln -- -s ~/.config/titan-coordinator/coordinator.json ~/links/"],
     ["ln with -s after an operand, a file to BSD ln", "ln ~/.config/titan-coordinator/coordinator.json -s"],
     ["ln whose -s is the -S suffix value", "ln -S -s ~/.config/titan-coordinator/coordinator.json ~/h"],
     ["ln whose -s is the -t target directory", "ln -t -s ~/.config/titan-coordinator/coordinator.json"],
