@@ -6,6 +6,8 @@ import { z } from "zod";
 import { fileResponse, type mountStaticApp } from "@titan-design/daemon";
 import { readCommand } from "./owner-guard.js";
 import { deriveFields, foldCopies, readFolderDocs, type Derived, type FolderDocs } from "./video-derived.js";
+import { posterContentType, posterNames } from "./video-poster.js";
+import { resolveVideo } from "./video-resolve.js";
 import { mediaFields, mediaOf, UNKNOWN_MEDIA, type Media } from "./video-media.js";
 import { mergeMeta, metaGaps, readFolderMeta, readVideoMeta, sidecarName, VIDEO_FOLDER_MANIFEST, videoMeta, type FolderMeta } from "./video-meta.js";
 
@@ -49,6 +51,18 @@ const noteSummary = z.object({ noteCount: z.number().int(), openNoteCount: z.num
 
 /** What the notes beside one video say about its current render; the file is the video's real path. */
 export type NoteSummarizer = (file: string) => Promise<z.infer<typeof noteSummary>>;
+
+/** One of the two lookups: `alias` alone, or any of the filters, at least one. */
+const resolveArgs = z
+  .strictObject({
+    series: z.string().min(1).optional(),
+    tag: z.string().min(1).optional(),
+    subject: z.string().min(1).optional(),
+    alias: z.string().min(1).optional(),
+  })
+  .refine((args) => args.alias === undefined ? Object.values(args).some((value) => value !== undefined) : Object.keys(args).length === 1, {
+    message: "Give an alias alone, or at least one of series, tag and subject",
+  });
 
 const NO_NOTES = { noteCount: 0, openNoteCount: 0, verdict: null } as const;
 
@@ -243,6 +257,13 @@ export function videosCommands(catalog: VideoCatalog = videoCatalog({ roots: [] 
         return { videos: await withNotes(scan, summarize), truncated: scan.truncated, gaps: scan.gaps };
       },
     }),
+    "videos.resolve": readCommand({
+      name: "videos.resolve",
+      description: "The newest non-superseded video matching a series, tag and subject, or the video an alias names; the result says when nothing matches",
+      args: resolveArgs,
+      result: z.discriminatedUnion("found", [z.object({ found: z.literal(true), id: z.string() }), z.object({ found: z.literal(false), reason: z.string() })]),
+      run: async (args) => resolveVideo((await catalog.current()).videos, args),
+    }),
   };
 }
 
@@ -258,12 +279,36 @@ function containedFile({ realRoot, relative }: Located): Promise<string | null> 
 }
 
 /**
- * `GET /media/videos/:id` and `/media/videos/:id/captions`, ahead of the static app, whose `/*`
+ * `GET /media/videos/:id`, `/captions` and `/poster`, ahead of the static app, whose `/*`
  * would answer a missing asset with 404. HEAD rides on GET. The daemon's auth gate covers both.
  */
 export function mountVideoMedia(app: DaemonApp, catalog: VideoCatalog): void {
   app.get("/media/videos/:id", async (c) => serve(c.req.raw, catalog, c.req.param("id"), "video"));
   app.get("/media/videos/:id/captions", async (c) => serve(c.req.raw, catalog, c.req.param("id"), "captions"));
+  app.get("/media/videos/:id/poster", async (c) => servePoster(c.req.raw, catalog, c.req.param("id")));
+}
+
+/** The sidecar's poster, then `<stem>-poster.jpg`, then `.png`; contact sheets are never candidates. */
+async function servePoster(request: Request, catalog: VideoCatalog, id: string): Promise<Response> {
+  if (!VIDEO_ID.test(id)) return notFound();
+  const current = await catalog.current();
+  const located = current.located.get(id);
+  if (located === undefined) return notFound();
+  const sidecarPoster = current.videos.find((video) => video.id === id)?.poster;
+  const dir = path.dirname(located.relative);
+  for (const name of posterNames(path.basename(located.relative), sidecarPoster)) {
+    const file = await containedPlainFile(located.realRoot, path.join(dir, name));
+    if (file === null) continue;
+    const response = await fileResponse(request, file, { contentType: posterContentType(file), cacheControl: "private, no-cache" });
+    return response.status === 403 || response.status === 404 ? notFound() : response;
+  }
+  return notFound();
+}
+
+/** Like `containedRealPath`, but a symlink at the leaf or a non-regular file is refused outright. */
+async function containedPlainFile(realRoot: string, relative: string): Promise<string | null> {
+  const info = await lstat(path.join(realRoot, relative)).catch(() => null);
+  return info?.isFile() === true ? containedRealPath(realRoot, relative) : null;
 }
 
 async function serve(request: Request, catalog: VideoCatalog, id: string, part: "video" | "captions"): Promise<Response> {

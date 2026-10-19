@@ -40,6 +40,8 @@ const videoFields = {
   title: label.optional(),
   /** Stable across a file move, unlike the id, which hashes the path. */
   alias: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,79}$/).optional(),
+  /** A jpg or png beside the video, by file name only, so a sidecar can never name a path elsewhere. */
+  poster: z.string().regex(/^[^/\\\0]{1,200}\.(?:jpe?g|png)$/i).optional(),
 };
 
 /** The fields one video carries; also what `videos.list` adds to a row. */
