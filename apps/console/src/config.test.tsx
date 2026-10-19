@@ -52,12 +52,22 @@ function snapshot(calls: Snapshot["calls"]): Snapshot {
   return { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls };
 }
 
+const HOSTS = {
+  hosts: [
+    { host: "node-a", status: "reported", reportedAt: "2031-03-04T22:00:00.000Z", receivedAt: "2031-03-04T22:00:05.000Z", platform: "darwin", surfaces: [] },
+    { host: "node-b", status: "not reported", reportedAt: "2031-03-03T08:00:00.000Z", receivedAt: "2031-03-03T08:00:05.000Z", platform: "linux", surfaces: [] },
+  ],
+  gaps: [],
+};
+
 const SURFACES_KEY = snapshotKey("config.surfaces", {});
 const DRIFT_KEY = snapshotKey("config.drift", {});
+const HOSTS_KEY = snapshotKey("config.hosts", {});
 
 const RECORDED = snapshot({
   [SURFACES_KEY]: successEnvelope({ files: FILES, rows: ROWS, gaps: ["/srv/fleet/factory.json: missing"] }),
   [DRIFT_KEY]: successEnvelope(DRIFT),
+  [HOSTS_KEY]: successEnvelope(HOSTS),
 });
 
 function renderConsole(recorded: Snapshot = RECORDED): void {
@@ -129,9 +139,25 @@ describe("the config page", () => {
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
+  it("lists each host with its last report and marks a stale one not reported", async () => {
+    renderConsole();
+    const hosts = await screen.findByTestId("config-hosts");
+    expect(within(hosts).getByText("Hosts (2)")).toBeTruthy();
+    const fresh = within(hosts).getByTestId("config-host-node-a");
+    expect(within(fresh).getByText("reported")).toBeTruthy();
+    expect(within(fresh).getByTestId("config-host-last-report").textContent).toBe("Last report 2031-03-04T22:00:00.000Z");
+    const stale = within(hosts).getByTestId("config-host-node-b");
+    expect(within(stale).getByText("not reported")).toBeTruthy();
+    expect(within(stale).getByTestId("config-host-last-report").textContent).toBe("Last report 2031-03-03T08:00:00.000Z");
+    expect(screen.getByTestId("config-drift").compareDocumentPosition(hosts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows each read's error when the daemon does not answer", async () => {
-    renderConsole(snapshot({ [SURFACES_KEY]: errorEnvelope("config read failed", 70), [DRIFT_KEY]: errorEnvelope("drift read failed", 70) }));
+    renderConsole(
+      snapshot({ [SURFACES_KEY]: errorEnvelope("config read failed", 70), [DRIFT_KEY]: errorEnvelope("drift read failed", 70), [HOSTS_KEY]: errorEnvelope("hosts read failed", 70) }),
+    );
     expect(await screen.findByText(/Could not load config: .*config read failed/)).toBeTruthy();
     expect(screen.getByText(/Could not load config drift: .*drift read failed/)).toBeTruthy();
+    expect(screen.getByText(/Could not load host reports: .*hosts read failed/)).toBeTruthy();
   });
 });
