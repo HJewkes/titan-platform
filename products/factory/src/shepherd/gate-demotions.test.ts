@@ -5,7 +5,7 @@ import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { GATE_DEMOTIONS, autoPassComment, autoPassesOf } from "./auto-pass.js";
-import { demoteFailedRounds, type FailedRoundsRun } from "./failed-rounds-demotion.js";
+import { demoteFailedRounds, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
 import { shepherdMainCi } from "./post-merge.js";
@@ -57,7 +57,6 @@ describe("D2 is unchanged (cut to TP-3716)", () => {
   });
 });
 
-
 const StepInput = z.record(z.string(), z.unknown());
 
 interface Recorded {
@@ -86,57 +85,52 @@ function recordingCtx(result: (stepId: string, input: Record<string, unknown>) =
 const FAILED: Escalated = { escalation: "failed-rounds", detail: `the last at ${HEAD} ended with no reviewer verdict` };
 const INFRA: Escalated = { ...FAILED, infraOnly: true };
 
-async function d7Run(over: Partial<FailedRoundsRun> = {}): Promise<FailedRoundsRun & Recorded> {
-  const recorded = recordingCtx();
-  const evidence = await evidenceFor([{ path: "src/x.ts", status: "modified" }]);
-  const merge: Verdict = { kind: "MERGE", headSha: HEAD, evidence };
+function d7Run(over: Partial<FailedRoundsRun> = {}): FailedRoundsRun & Recorded {
   return {
-    ...recorded,
-    ...{ target: { repo: REPO, pr: 1 }, reviews: new Map(), merged: new Map([[HEAD, merge]]), fresh: new Set<string>(), escalations: new Map(), failedRounds: 3 },
-    ...{ lastCi: { verdict: "green", headSha: HEAD, mergeableState: "clean", contexts: ["validate"] }, failedOutcomes: ["timeout", "no-verdict", "throttled"], fallbackReviewed: false },
+    ...recordingCtx(),
+    ...{ target: { repo: REPO, pr: 1 }, reviews: new Map(), fresh: new Set<string>(), escalations: new Map(), failedRounds: 3 },
+    ...{ failedOutcomes: ["timeout", "no-verdict", "throttled"], fallbackReviewed: false },
     ...over,
   };
 }
 
+const silentRound: Routed = { headSha: HEAD, verdict: { kind: "none" }, observed: partialFake<ObservedPr>(), outcome: "timeout", route: "fresh-reviewer" };
+
 describe("D7: failed review rounds", () => {
-  it("go on to the merge decision on the standing MERGE when only infrastructure failed and CI is green, recording the rule and evidence", async () => {
-    const run = await d7Run();
+  it("dispatch one fresh reviewer, not the owner, when every round failed on infrastructure, recording the rule and evidence", async () => {
+    const run = d7Run();
 
     const routed = await demoteFailedRounds(run, HEAD, INFRA);
-
-    expect(routed).toEqual({ route: "merge" });
-    expect(run.reviews.get(HEAD)?.kind).toBe("MERGE");
-    expect(run.steps).toHaveLength(1);
-    expect(run.steps[0]).toMatchObject({ stepId: `sh-auto-pass:D7-infra-standing-merge:${HEAD}`, input: { rule: "D7/infra-standing-merge", headSha: HEAD } });
-    expect(run.steps[0]?.input["evidence"]).toEqual([`head ${HEAD}`, "failed rounds: timeout, no-verdict, throttled", `MERGE standing at ${HEAD}`, `CI green at ${HEAD}: validate`]);
-  });
-
-  it("dispatch a fresh reviewer, not the owner, when a round failed on more than infrastructure", async () => {
-    const run = await d7Run({ failedOutcomes: ["timeout", "external-hold", "timeout"] });
-
-    const routed = await demoteFailedRounds(run, HEAD, FAILED);
 
     expect(routed).toEqual({ route: "review-again" });
     expect(run.fresh.has(HEAD)).toBe(true);
     expect(run.fallbackReviewed).toBe(true);
-    expect(run.steps[0]).toMatchObject({ input: { rule: "D7/fallback-reviewer" } });
+    expect(run.steps).toHaveLength(1);
+    expect(run.steps[0]).toMatchObject({ stepId: `sh-auto-pass:D7-fallback-reviewer:${HEAD}`, input: { rule: "D7/fallback-reviewer", headSha: HEAD } });
+    expect(run.steps[0]?.input["evidence"]).toEqual([`head ${HEAD}`, "failed rounds: timeout, no-verdict, throttled"]);
   });
 
-  it("dispatch a fresh reviewer when only infrastructure failed but CI is not green at the head", async () => {
-    const run = await d7Run({ lastCi: { verdict: "pending", headSha: HEAD, mergeableState: "clean" } });
+  it("review a head holding a carried MERGE and a seat request again after three infra failures, never merging it", async () => {
+    const evidence = await evidenceFor([{ path: "src/x.ts", status: "modified" }]);
+    const carried: Verdict = { kind: "MERGE", headSha: HEAD, evidence: { ...evidence, merge: { ...evidence.merge, carry: { fromHead: fakeSha("older"), head: HEAD, headTree: "t", mergeTree: "t" } } } };
+    const run = { ...d7Run({ failedRounds: 0, failedOutcomes: [] }), merged: new Map([[HEAD, carried]]), trail: { seatAsked: new Set([HEAD]) } };
+    run.reviews.set(HEAD, carried);
+    const counts = { ...run, throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] };
+    await countRound(counts, silentRound);
+    await countRound(counts, silentRound);
+    const escalated = await countRound(counts, silentRound);
 
-    expect(await demoteFailedRounds(run, HEAD, INFRA)).toEqual({ route: "review-again" });
+    const goesToMerge = await onEscalated({ ...run, failedRounds: counts.failedRounds, failedOutcomes: counts.failedOutcomes }, HEAD, escalated!);
+
+    expect(escalated).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
+    expect(goesToMerge).toBe(false);
+    expect(run.reviews.has(HEAD)).toBe(false);
     expect(run.fresh.has(HEAD)).toBe(true);
-  });
-
-  it("dispatch a fresh reviewer when only infrastructure failed but no MERGE stands at the head", async () => {
-    const run = await d7Run({ merged: new Map() });
-
-    expect(await demoteFailedRounds(run, HEAD, INFRA)).toEqual({ route: "review-again" });
+    expect(run.steps.map((recorded) => recorded.input["rule"])).toEqual(["D7/fallback-reviewer"]);
   });
 
   it("ask the owner once the fallback reviewer has failed too, saying so", async () => {
-    const run = await d7Run({ fallbackReviewed: true, merged: new Map() });
+    const run = d7Run({ fallbackReviewed: true });
 
     const routed = await demoteFailedRounds(run, HEAD, INFRA);
 
@@ -144,17 +138,25 @@ describe("D7: failed review rounds", () => {
     expect(run.steps).toEqual([]);
   });
 
+  it("ask the owner at once when a round failed on more than infrastructure", async () => {
+    const run = d7Run({ failedOutcomes: ["timeout", "external-hold", "timeout"] });
+
+    expect(await demoteFailedRounds(run, HEAD, FAILED)).toEqual({ route: "gate", escalated: FAILED });
+    expect(run.fresh.size).toBe(0);
+  });
+
   it("ask the owner at once for a seat-held escalation, which no review round failed", async () => {
-    const run = await d7Run();
+    const run = d7Run();
     const held: Escalated = { ...INFRA, words: "the seat held Shepherd's own MERGE for 6 rounds at one head" };
 
     expect(await demoteFailedRounds(run, HEAD, held)).toEqual({ route: "gate", escalated: held });
   });
 
   it("ask the owner at once with the demotion reverted", async () => {
-    const run = await d7Run();
+    const run = d7Run();
 
     expect(await demoteFailedRounds(run, HEAD, INFRA, { ...GATE_DEMOTIONS, failedRounds: false })).toEqual({ route: "gate", escalated: INFRA });
+    expect(run.fresh.size).toBe(0);
   });
 
   it("mark the escalation infra-only only when every counted round was throttled, timed out or silent", async () => {
@@ -162,10 +164,9 @@ describe("D7: failed review rounds", () => {
       ...{ ...recordingCtx(), target: { repo: REPO, pr: 1 }, failedRounds: 2, failedOutcomes: outcomes },
       ...{ throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] },
     });
-    const routed: Routed = { headSha: HEAD, verdict: { kind: "none" }, observed: partialFake<ObservedPr>(), outcome: "timeout", route: "fresh-reviewer" };
 
-    expect(await countRound(counts(["no-verdict", "throttled"]), routed)).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
-    expect(await countRound(counts(["external-hold", "timeout"]), routed)).not.toHaveProperty("infraOnly");
+    expect(await countRound(counts(["no-verdict", "throttled"]), silentRound)).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
+    expect(await countRound(counts(["external-hold", "timeout"]), silentRound)).not.toHaveProperty("infraOnly");
   });
 });
 
@@ -174,7 +175,7 @@ describe("D8 is unchanged", () => {
     ["fix-first-runaway", fixFirstEscalation(3, 0, HEAD)],
     ["no-progress", fixFirstEscalation(1, 2, HEAD)],
   ])("a %s escalation still asks the owner, with no fallback reviewer", async (escalation, escalated) => {
-    const run = await d7Run();
+    const run = d7Run();
 
     expect(escalated?.escalation).toBe(escalation);
     expect(await demoteFailedRounds(run, HEAD, escalated!)).toEqual({ route: "gate", escalated });

@@ -10,7 +10,7 @@ import { failureOf } from "./error-class.js";
  * passes on its guard and leaves an audit record instead. Set a class to false to restore its owner gate (TP-3697).
  */
 export interface GateDemotions {
-  /** D7: failed review rounds take a standing MERGE on infrastructure failures, else one fresh reviewer, before the owner. */
+  /** D7: review rounds that all failed on infrastructure get one fresh reviewer before the owner; D7 never merges. */
   failedRounds: boolean;
   /** D13: a red or unread main with no freeze path is an FYI line, never an acknowledge-only gate. */
   mainRed: boolean;
@@ -18,7 +18,7 @@ export interface GateDemotions {
 
 export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true };
 
-const AUTO_PASS_RULES = ["D7/infra-standing-merge", "D7/fallback-reviewer", "D13/main-red-fyi"] as const;
+const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
 
 const AUTO_PASS_STEP = "sh-auto-pass";
@@ -43,8 +43,7 @@ const AutoPassResult = z.looseObject({
 type AutoPassRecord = z.infer<typeof AutoPassResult>;
 
 const RULE_WORDS: Record<AutoPassRule, string> = {
-  "D7/infra-standing-merge": "review rounds failed on infrastructure only, and the run's MERGE at this head stands with CI green",
-  "D7/fallback-reviewer": "review rounds failed, so a fresh reviewer goes first instead of the owner",
+  "D7/fallback-reviewer": "review rounds failed on infrastructure only, so a fresh reviewer goes first instead of the owner",
   "D13/main-red-fyi": "main CI is red or unread after this merge; FYI only, nothing waits on you",
 };
 
