@@ -3,6 +3,7 @@ import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Sp
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { RoundNote } from "./RoundNote.js";
 import { DesignRound } from "./RoundDesign.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
@@ -50,7 +51,7 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
         <Pill variant="subtle" size="xs">{round.status}</Pill>
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </HStack>
-      {manifest.context ? <Typography variant="body2" color="secondary">{manifest.context}</Typography> : null}
+      {manifest.context ? <RoundNote text={manifest.context} /> : null}
     </VStack>
   );
 }
