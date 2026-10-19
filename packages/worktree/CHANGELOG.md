@@ -1,5 +1,11 @@
 # @titan-design/worktree
 
+## 0.2.1
+
+### Patch Changes
+
+- 8049d2e: Expose an optional ordinary-changes refusal code and a typed missing-assigned-record error for product presentation, preserving release checks, generic messages and public inspection shape.
+
 ## 0.2.0
 
 ### Minor Changes

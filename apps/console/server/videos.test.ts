@@ -7,11 +7,10 @@ import { createRpcClient, liveSource } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { closedPort } from "./test-support.js";
+import { closedPort, syntheticMp4 } from "./test-support.js";
 import { ROOTS_UNSET, scanVideos, videoCatalog, videoId } from "./videos.js";
 
-/** An `ftyp` box and padding: enough to look like an mp4, never a real render. */
-const SYNTHETIC_MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(52, 0x2e)]);
+const SYNTHETIC_MP4 = syntheticMp4();
 const SYNTHETIC_VTT = "WEBVTT\n\n00:00.000 --> 00:01.000\nA lantern flickers\n\n00:01.000 --> 00:02.000\nThe kettle sings\n";
 
 let dir: string;
@@ -78,7 +77,7 @@ describe("the video catalog", () => {
 
     expect({ truncated, gaps }).toEqual({ truncated: false, gaps: [] });
     expect(videos).toEqual([
-      expect.objectContaining({ id: videoId(first, path.join("orbit", "render", "cut.mp4")), title: "cut", group: "first/orbit/render", bytes: SYNTHETIC_MP4.length, captions: true, renderNotes: true }),
+      expect.objectContaining({ id: videoId(first, path.join("orbit", "render", "cut.mp4")), title: "notes", group: "first/orbit/render", bytes: SYNTHETIC_MP4.length, captions: true, renderNotes: true }),
     ]);
   });
 

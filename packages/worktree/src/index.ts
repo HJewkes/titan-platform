@@ -7,7 +7,7 @@ export {
 } from "./allocator.js";
 export { WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
 export { resolveBranchBase, type BranchBase } from "./branch-base.js";
-export { OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
+export { MissingAssignedWorktreeRecordError, OriginUnreachableError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 export {
   DEFAULT_STRIPPED_ENV_PREFIXES,
   SAFE_GIT_PROTOCOLS,
