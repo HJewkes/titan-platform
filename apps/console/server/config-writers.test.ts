@@ -33,6 +33,7 @@ const CONFIG_NAMESPACE = "config.";
  */
 const NON_WRITING_CONFIG_VERBS: ReadonlyMap<string, string> = new Map([
   ["surfaces", "read"],
+  ["drift", "read"],
   ["prepare", "read"],
   ["hosts", "read"],
   ["report", "deposit"],

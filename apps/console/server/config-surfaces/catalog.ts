@@ -171,6 +171,15 @@ export const CLAUDE_JSON_SURFACE: SurfaceSpec = {
   safeFields: ["trustedFolders", "mcpServers"],
 };
 
+/** The home CLAUDE.md is prose, so it is never walked: only the per-repo worktree cap it states is derived, for drift. */
+export const CLAUDE_MD_SURFACE: SurfaceSpec = {
+  kind: "claude-md",
+  group: "claude",
+  inventory: 17,
+  format: "derived",
+  safeFields: ["worktreesPerRepo"],
+};
+
 /** `TITAN_CONSOLE_CODEWATCH_URL` is left out: a URL can carry a credential. */
 export const CONSOLE_ENV_SURFACE: SurfaceSpec = {
   kind: "console-env",
