@@ -28,6 +28,7 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "theater-player", hash: "#/theater/v-relay-intro" },
   { name: "shepherd", hash: "#/shepherd" },
   { name: "shepherd-detail", hash: `#/shepherd/${encodeURIComponent("orbit/relay#12")}` },
+  { name: "config", hash: "#/config" },
 ];
 
 export const TWIN_VIEWPORTS = {
