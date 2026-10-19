@@ -1,5 +1,6 @@
 import path from "node:path";
-import { AGENT_CHAT_CONFIG_SURFACE, PROFILE_SURFACE, joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { AGENT_CHAT_CONFIG_SURFACE, PROFILE_SURFACE } from "./specs.js";
 import { jsonTargets, readTarget } from "./files.js";
 
 /**

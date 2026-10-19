@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { expandHome } from "@titan-design/session-read";
-import { BURNDOWN_SURFACE, CHARTER_SURFACE, SEAT_SURFACE, SEAT_WATCHDOG_SURFACE, joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { joinSurfaces, type SurfaceReader } from "./catalog.js";
+import { BURNDOWN_SURFACE, CHARTER_SURFACE, SEAT_SURFACE, SEAT_WATCHDOG_SURFACE } from "./specs.js";
 import { readTarget, type Target } from "./files.js";
 
 export interface CoordinatorRoots {
