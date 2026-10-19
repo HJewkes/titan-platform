@@ -9,6 +9,7 @@ import { InboxConfirm } from "./InboxConfirm.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
+type DerivedRow = ConsoleCommands["inbox.list"]["result"]["derived"][number];
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -80,13 +81,14 @@ export function InboxPage(): ReactNode {
   const inbox = useQuery("inbox.list");
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
-  const { items, gaps, fyiCount } = inbox.data;
+  const { items, gaps, fyiCount, derived } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
     <VStack gap={6}>
       <GapBanners gaps={gaps} />
-      <BlockingSection items={blocking} quiet={planning.length === 0} gapped={gaps.length > 0} />
+      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0} gapped={gaps.length > 0} />
+      {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
       {planning.length > 0 ? <PlanningSection items={planning} /> : null}
       <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
     </VStack>
@@ -105,6 +107,48 @@ function BlockingSection({ items, quiet, gapped }: { items: readonly InboxItem[]
       <SectionHeader title={`Blocking (${items.length})`} subtitle="Newest first" />
       <SectionContent>{items.length === 0 ? empty : <InboxRows items={items} />}</SectionContent>
     </Section>
+  );
+}
+
+const DERIVED_LABEL: Record<DerivedRow["kind"], string> = { "stalled-run": "stalled", "failed-run": "failed", "blocked-agent": "blocked" };
+
+/** Exceptions the console derived itself, kept apart from what producers filed; each is a "go look" link with no action. */
+function DerivedSection({ rows }: { rows: readonly DerivedRow[] }): ReactNode {
+  return (
+    <Section testID="inbox-derived">
+      <SectionHeader title={`Raised by the console (${rows.length})`} subtitle="Machine-derived, with evidence; go look" />
+      <SectionContent>
+        <VStack gap={3}>
+          {rows.map((row) => (
+            <DerivedRowCard key={row.id} row={row} />
+          ))}
+        </VStack>
+      </SectionContent>
+    </Section>
+  );
+}
+
+function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
+  const { evidence, threshold } = row;
+  return (
+    <Card variant="outline" testID={`inbox-derived-${row.id}`}>
+      <CardContent>
+        <VStack gap={2}>
+          <Typography variant="subtitle2">{row.summary}</Typography>
+          <HStack gap={2} align="center" wrap>
+            <Badge color="warning" variant="subtle" size="sm">
+              <BadgeText>{`machine: ${DERIVED_LABEL[row.kind]}`}</BadgeText>
+            </Badge>
+            <Typography variant="caption" color="secondary">{ageOf(evidence.at)}</Typography>
+          </HStack>
+          <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
+          <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
+          <Link color="primary" onPress={() => open(parseRoute(row.link))}>
+            {row.kind === "blocked-agent" ? "Open the agent" : "Open the run"}
+          </Link>
+        </VStack>
+      </CardContent>
+    </Card>
   );
 }
 
