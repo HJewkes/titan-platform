@@ -5,7 +5,8 @@
  * writes nothing.
  *
  * `round.json` and `feedback.json` are judged by the same parsers the console reads them with, so an
- * import never lands a round the page would list as invalid. `frames/frames.json` must name the
+ * import never lands a round the page would list as invalid, including one whose "Merge #N", "Ship" or
+ * "#N at <sha>" offer has no agreeing merge binding (`round-merge-binding.ts`). `frames/frames.json` must name the
  * round.json bytes it was built for; it is copied with only the files it lists, each read through
  * `round-frames.ts`'s reader and checked against its sha256. A `packet.json` or `prose.json` it names is
  * copied beside round.json, sha256-checked, and the packet must bind the PR and head the round's Ship

@@ -6,9 +6,12 @@
  * A blind-ab round is refused. Its takes name their engines, the page must never see them, and the console
  * keeps no blind key, so the review harness answers those rounds. Feedback with a blind-ab answer (`pairs`,
  * whose `engine` the harness fills in after the send) is refused for the same reason.
+ *
+ * A pick-one that offers a merge without an agreeing `merge` binding is refused (`round-merge-binding.ts`).
  */
 import { z } from "zod";
 import * as reviewSchema from "./review-schema-0.3/index.js";
+import { mergeBindingProblems } from "./round-merge-binding.js";
 
 export const BLIND_AB_REFUSED = "a blind-ab round is answered in the review harness";
 
@@ -16,6 +19,9 @@ const answeredHere = <Q extends { kind: string }>(question: Q): question is Excl
 
 export const RoundSchema = reviewSchema.RoundSchema.transform((manifest, ctx) => {
   const { questions } = manifest;
+  const unbound = mergeBindingProblems(questions);
+  for (const message of unbound) ctx.issues.push({ code: "custom", path: ["questions"], message, input: questions });
+  if (unbound.length > 0) return z.NEVER;
   if (questions.every(answeredHere)) return { ...manifest, questions };
   ctx.issues.push({ code: "custom", path: ["questions"], message: BLIND_AB_REFUSED, input: questions });
   return z.NEVER;

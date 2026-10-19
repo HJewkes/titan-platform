@@ -313,6 +313,12 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   `rounds.list` and the owner queue use. `frames/frames.json` must carry the sha256 of that
   `round.json` and its unit and round. Only the files it lists (`file`, `base`, `diff`, `after`)
   are copied, each sha256-checked through the `rounds.frame` reader.
+- **Every merge offer is bound.** A pick-one with an option matching `^Merge #N` or `Ship`, or a
+  signsOff naming `#N at <sha>`, must carry `merge: {repo, pr, headSha, ship}`. `repo` is the full
+  `owner/repo`; `headSha` is the 40-character head from `gh pr view <N> --repo <owner/repo> --json
+  headRefOid --jq .headRefOid`. A `#N` in the wording must equal `pr`, and a `<sha>` there must be
+  a prefix of `headSha`. A bound question offers exactly `Ship` and `Don't ship`. An unbound or
+  disagreeing offer is a schema problem: the import refuses it and `rounds.list` lists it invalid.
 - **CI packets.** A `packet.json` or `prose.json` that frames.json names is copied beside
   `round.json` after a sha256 and JSON check. The packet's repo, PR and head must equal every
   merge-bound Ship question in the round, because the factory's Ship answer route reads it there.
