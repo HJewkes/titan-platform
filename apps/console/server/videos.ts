@@ -60,7 +60,7 @@ const resolveArgs = z
     subject: z.string().min(1).optional(),
     alias: z.string().min(1).optional(),
   })
-  .refine((args) => args.alias === undefined ? Object.values(args).some((value) => value !== undefined) : Object.keys(args).length === 1, {
+  .refine(({ alias, ...filters }) => (alias === undefined ? Object.keys(filters).length > 0 : Object.keys(filters).length === 0), {
     message: "Give an alias alone, or at least one of series, tag and subject",
   });
 
@@ -289,7 +289,7 @@ export function mountVideoMedia(app: DaemonApp, catalog: VideoCatalog): void {
 }
 
 /** The sidecar's poster, then `<stem>-poster.jpg`, then `.png`; contact sheets are never candidates. */
-async function servePoster(request: Request, catalog: VideoCatalog, id: string): Promise<Response> {
+export async function servePoster(request: Request, catalog: VideoCatalog, id: string): Promise<Response> {
   if (!VIDEO_ID.test(id)) return notFound();
   const current = await catalog.current();
   const located = current.located.get(id);

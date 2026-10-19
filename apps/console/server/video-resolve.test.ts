@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { syntheticMp4 } from "./test-support.js";
+import type { ConsoleContext } from "./owner-guard.js";
 import { VIDEO_META_SCHEMA } from "./video-meta.js";
 import { videoCatalog, videosCommands } from "./videos.js";
 
+const ctx: ConsoleContext = { warnings: [], format: "json", surface: "in-process", auth: null, ownerWrites: false };
 let root: string;
 
 beforeEach(async () => {
@@ -26,10 +28,10 @@ async function put(relative: string, age: number, fields?: object): Promise<void
   if (fields !== undefined) await writeFile(file.replace(/\.mp4$/, ".video.json"), JSON.stringify({ schema: VIDEO_META_SCHEMA, ...fields }));
 }
 
-async function resolve(args: object) {
+async function resolve(args: { series?: string; tag?: string; subject?: string; alias?: string }) {
   const commands = videosCommands(videoCatalog({ roots: [root] }));
-  const list = await commands["videos.list"].run({});
-  const result = await commands["videos.resolve"].run(args as never);
+  const list = await commands["videos.list"].run({}, ctx);
+  const result = await commands["videos.resolve"].run(args, ctx);
   return { result, ids: Object.fromEntries(list.videos.map((video) => [video.title, video.id])) };
 }
 

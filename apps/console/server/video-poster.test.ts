@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { syntheticMp4 } from "./test-support.js";
 import { VIDEO_META_SCHEMA } from "./video-meta.js";
-import { mountVideoMedia, scanVideos, videoCatalog } from "./videos.js";
+import { scanVideos, servePoster, videoCatalog } from "./videos.js";
 
 let root: string;
 let outside: string;
@@ -30,10 +30,7 @@ const sidecar = (fields: object) => JSON.stringify({ schema: VIDEO_META_SCHEMA, 
 async function getPoster(): Promise<Response> {
   const catalog = videoCatalog({ roots: [root] });
   const [video] = (await scanVideos([root])).videos;
-  const routes = new Map<string, (c: unknown) => Promise<Response>>();
-  mountVideoMedia({ get: (route: string, handler: (c: unknown) => Promise<Response>) => routes.set(route, handler) } as never, catalog);
-  const request = new Request(`http://console.test/media/videos/${video!.id}/poster`);
-  return routes.get("/media/videos/:id/poster")!({ req: { raw: request, param: () => video!.id } });
+  return servePoster(new Request(`http://console.test/media/videos/${video!.id}/poster`), catalog, video!.id);
 }
 
 async function body(response: Response): Promise<string> {

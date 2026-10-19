@@ -8,14 +8,14 @@ interface Resolvable {
   modifiedAt: string;
 }
 
-export interface ResolveArgs {
+interface ResolveArgs {
   series?: string;
   tag?: string;
   subject?: string;
   alias?: string;
 }
 
-export type Resolved = { found: true; id: string } | { found: false; reason: string };
+type Resolved = { found: true; id: string } | { found: false; reason: string };
 
 /** `subject` matches the subject's id, so `lantern` finds a repo, day or initiative named so. */
 function matches(video: Resolvable, { series, tag, subject }: ResolveArgs): boolean {
