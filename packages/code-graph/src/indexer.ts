@@ -171,13 +171,15 @@ async function streamWithReuse(input: StreamInput): Promise<ReuseStream> {
   const parsedIds = new Set(toParse.map(idOf));
   const textChanged = new Set(toParse.filter((rf) => reuse.fingerprints.get(idOf(rf)) !== rf.hash).map(idOf));
   const surface = surfaceChangedIds(reuse, streamed.fragments, textChanged, parsedIds, currentFileIds);
-  const content = new Set([...computeContentAffected(reuse, surface)].filter((id) => !parsedIds.has(id)));
+  // Edges came from the seed for reused files and for cosmetic ones alike, so both re-extract.
+  const seedEdges = (id: string): boolean => !parsedIds.has(id) || streamed.cosmeticFileIds.has(id);
+  const content = new Set([...computeContentAffected(reuse, surface)].filter(seedEdges));
   if (content.size === 0) return { streamed, toParse, reusedFileIds };
   const files = readFiles.filter((rf) => content.has(idOf(rf)));
   const second = await streamFiles({ ...input, readFiles: files, toParse: files, reusedFileIds: [], affected: content });
   return {
     streamed: spliceStream(streamed, second, readFiles.map(idOf)),
-    toParse: [...toParse, ...files],
+    toParse: [...toParse, ...files.filter((rf) => !parsedIds.has(idOf(rf)))],
     reusedFileIds: reusedFileIds.filter((id) => !content.has(id)),
   };
 }

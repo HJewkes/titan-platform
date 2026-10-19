@@ -75,6 +75,19 @@ describe("fingerprint-based incremental indexing", () => {
     expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
   });
 
+  it("re-points a comment-only edited importer when its symbol moves behind a re-export (TP-3636)", async () => {
+    await fs.writeFile(src("x.ts"), "export const X = 1;\nexport const keep = X;\n");
+    await fs.writeFile(src("x.test.ts"), 'import { X } from "./x.js";\nexport const seen = X;\n');
+    await index();
+    await fs.writeFile(src("y.ts"), "export const X = 1;\n");
+    await fs.writeFile(src("x.ts"), 'import { X } from "./y.js";\nexport { X } from "./y.js";\nexport const keep = X;\n');
+    await fs.writeFile(src("x.test.ts"), '// a comment\nimport { X } from "./x.js";\nexport const seen = X;\n');
+
+    const incremental = await index();
+
+    expect(snapshot(incremental.snapshotId)).toEqual(await fullIndexSnapshot(project.rootDir));
+  });
+
   it("restores an unchanged importer's reference when a symbol moves back from a re-export (TP-3636)", async () => {
     await fs.writeFile(src("y.ts"), "export const X = 1;\n");
     await fs.writeFile(src("x.ts"), 'import { X } from "./y.js";\nexport { X } from "./y.js";\nexport const keep = X;\n');
