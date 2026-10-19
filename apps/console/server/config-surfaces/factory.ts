@@ -1,4 +1,5 @@
-import { CONSOLE_ENV_SURFACE, FACTORY_CONFIG_SURFACE, type ConfigRow, type ConfigSurfaces, type SurfaceReader } from "./catalog.js";
+import type { ConfigRow, ConfigSurfaces, SurfaceReader } from "./catalog.js";
+import { CONSOLE_ENV_SURFACE, FACTORY_CONFIG_SURFACE } from "./specs.js";
 import { readTarget } from "./files.js";
 
 /** titan-factory's `config.json`; its path follows the factory's own `configPath` rule. */

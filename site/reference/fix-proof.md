@@ -20,7 +20,9 @@ This package is the pure core of that gate. It adds three primitives:
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
   (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty.
+  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
+  `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
@@ -38,8 +40,8 @@ The bin has three subcommands. In CI each runs in its own job, so code from the 
 runs in the job that prints the verdict.
 
 ```sh
-fix-proof exec --side base|head --out <dir> [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
-fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof exec --side base|head|mutants --out <dir> [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 ```
 
@@ -85,12 +87,35 @@ able to `sudo`. Code running inside the sandbox during the
 run can still rewrite that run's own vitest output, as the test itself could by failing on
 purpose; the sandbox removes the survivors, not the test code's own reach.
 
+**`exec --side mutants`** writes one `mutants.report` for the mutation check (see
+[Test-only diffs and mutation specs](#test-only-diffs-and-mutation-specs)).
+
+1. A diff with no spec, or with any path in `plan.source`, writes a skipped marker and runs
+   nothing. A spec that does not parse or fails `checkMutation` writes an error marker.
+2. Like the base side, it adds a merge-base worktree, installs and builds it, and only then
+   overlays the head's tests and carried files.
+3. It runs the specs' test files once as the baseline.
+4. For each mutation in turn, it writes the merge-base text of `file` with `find` replaced, in
+   the runner process and never through a symlink, then rebuilds and runs the spec's own test
+   file. It then writes the merge-base text back and rebuilds again, so the next mutation runs
+   on an unmutated tree. A failed rebuild under the mutation records the run as unbuilt; a failed
+   rebuild after the restore is an error marker.
+5. The rebuild is `pnpm --filter ./<dir> run --if-present build` for the nearest directory above
+   `file` with a `package.json` at the merge base, in a tree with a `pnpm-lock.yaml`, because
+   packages resolve each other through `dist/`. Anything else reruns the config's `build`.
+
+With `--sandbox-user`, the tree is handed to the sandbox before the baseline, and every build and
+vitest call after it runs in the sandbox, because head test code has run in that tree by then.
+The deadline defaults to 13 minutes; an overrun is an error marker, never a kill.
+
 **`judge`** reads the report files and prints one `fix-proof/v1` line.
 
 - It plans the diff from git itself, so a report entry outside its own plan counts nowhere.
 - It decodes each file under a 900 KB encoded and an 8 MB inflated cap. A missing, oversized,
   malformed or error-marker report gives an `error` verdict naming the side.
 - It spawns nothing but git (`rev-parse`, `diff`, `ls-tree`, `show`) and builds neither commit.
+- `--mutants-report` carries the mutants side's report. The judge reads it only for a diff of
+  test material alone that adds a spec.
 - `dist/judge.js` is `fix-proof judge` as its own entry. It cannot run `exec` or `run`, and its
   presence in a merge-base build tells the CI script that the base supports the split.
 

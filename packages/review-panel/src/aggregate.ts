@@ -25,6 +25,8 @@ export interface AggregateInput {
    * only a line pinned to the head can.
    */
   fixProof?: string;
+  /** The head the owner waived the fix-proof at; only this head's waiver stops a bad fix-proof from making the tests member blocking. */
+  fixProofWaivedAt?: string;
   /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
   sonnetFor?: Record<string, string>;
 }
@@ -69,7 +71,7 @@ function badResultLine(line: string, head: string): boolean {
 
 /** A fix-proof this cannot read is treated as bad, so an unexpected form can only make the verdict stricter. */
 function badFixProof(input: AggregateInput): boolean {
-  if (input.fixProof === undefined) return false;
+  if (input.fixProof === undefined || input.fixProofWaivedAt === input.head) return false;
   if (typeof input.fixProof !== "string") return true;
   const text = input.fixProof.trim();
   if (text.startsWith(RESULT_PREFIX)) return badResultLine(text, input.head);

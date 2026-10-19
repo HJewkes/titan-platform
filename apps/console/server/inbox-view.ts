@@ -6,7 +6,9 @@
  */
 import { z } from "zod";
 import type { OwnerItem } from "@titan-design/owner-queue";
+import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
+import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -32,15 +34,23 @@ export interface InboxItem extends OwnerItem {
   evidence: string | undefined;
 }
 
-export interface InboxList {
+interface InboxList {
   items: InboxItem[];
   gaps: string[];
   fyiCount: number;
   readAt: string;
 }
 
+/** `inbox.list`'s answer: the owner queue, and the machine-derived rows that carry no action. */
+export interface InboxView extends InboxList {
+  derived: DerivedRow[];
+}
+
 export interface InboxSources extends ApprovalsSources {
   shepherd: ShepherdSource;
+  /** Optional so test sources need not build one; absent, the inbox derives no blocked-agent rows. */
+  agents?: AgentsSource;
+  now?: () => number;
 }
 
 const MERGE_STEP = "approve-merge";
@@ -165,27 +175,58 @@ export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[
   return order.map((item) => inboxItem(item, byRun)).sort(byInboxOrder);
 }
 
-async function shepherdRows(shepherd: ShepherdSource): Promise<{ rows: WatchRow[]; gaps: string[] }> {
+interface Read<T> {
+  value: T;
+  gaps: string[];
+}
+
+async function readOrGap<T>(label: string, read: () => Promise<T>, fallback: T): Promise<Read<T>> {
   try {
-    return { rows: await shepherd.list("active"), gaps: [] };
+    return { value: await read(), gaps: [] };
   } catch (error) {
-    return { rows: [], gaps: [`shepherd: ${error instanceof Error ? error.message : String(error)}`] };
+    return { value: fallback, gaps: [`${label}: ${error instanceof Error ? error.message : String(error)}`] };
   }
 }
 
-async function readInbox({ shepherd, ...sources }: InboxSources): Promise<InboxList> {
-  const [approvals, live] = await Promise.all([readFlow(sources), shepherdRows(shepherd)]);
-  return { items: inboxItems(approvals.flow.order, live.rows), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
+async function readOwnerQueue({ shepherd, ...sources }: InboxSources): Promise<{ list: InboxList; live: Read<WatchRow[]> }> {
+  const [approvals, live] = await Promise.all([readFlow(sources), readOrGap("shepherd", () => shepherd.list("active"), [])]);
+  const list = { items: inboxItems(approvals.flow.order, live.value), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
+  return { list, live };
+}
+
+export async function readInbox(sources: InboxSources): Promise<InboxList> {
+  return (await readOwnerQueue(sources)).list;
+}
+
+const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
+
+/** A Shepherd that just failed the active read already has its gap line, so the finished read is skipped, not doubled. */
+async function readDerived({ shepherd, agents, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
+  const [finished, roster] = await Promise.all([
+    live.gaps.length > 0 ? NOT_READ : readOrGap("shepherd finished", () => shepherd.list("finished"), []),
+    agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
+  ]);
+  const at = now();
+  const blocked = roster?.value === undefined ? [] : blockedAgentRows(roster.value);
+  const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked].sort(byDerivedOrder);
+  return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? [])] };
+}
+
+async function readInboxView(sources: InboxSources): Promise<InboxView> {
+  const { list, live } = await readOwnerQueue(sources);
+  const derived = await readDerived(sources, live);
+  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value };
 }
 
 export function inboxViewCommands(sources: InboxSources) {
   return {
     "inbox.list": readCommand({
       name: "inbox.list",
-      description: "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first",
+      description:
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action",
       args: z.object({}),
-      result: z.custom<InboxList>(),
-      run: () => readInbox(sources),
+      result: z.custom<InboxView>(),
+      run: () => readInboxView(sources),
     }),
   };
 }

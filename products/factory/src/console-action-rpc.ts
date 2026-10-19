@@ -227,6 +227,7 @@ async function releaseOnce(store: ShepherdStore, port: GitHubPort, { repo, pr, h
     const message = error instanceof Error ? error.message : String(error);
     if (code === EXIT.NOPERM) return refused("resolver", message);
     if (code === EXIT.UNAVAILABLE) return refused("github-unreadable", message);
+    if (error instanceof Error && "currentHead" in error && typeof error.currentHead === "string") return { outcome: "moved", currentHead: error.currentHead };
     if (code === EXIT.DATAERR || code === EXIT.NOINPUT) return releasedBefore(store, runId, confirmEvent) ?? { outcome: "gone", reason: message };
     throw error;
   }

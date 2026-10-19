@@ -1,5 +1,17 @@
 # @titan-design/fix-proof
 
+## 0.7.0
+
+### Minor Changes
+
+- 4d131dc: Add an optional `runtime` glob list to `.github/fix-proof.json` (TP-3056 a): matching paths stay carried but read as `source`. Add `testOnlyReading(plan)`, which refuses test-only with `source`, `deletes-tests` or `no-tests`.
+
+## 0.6.0
+
+### Minor Changes
+
+- 6aa69f2: Add the mutation check's exec side (TP-2732 c1). `fix-proof exec --side mutants` (`execMutants`) builds the merge base, overlays the head's tests, runs a baseline, then applies each declared mutation alone, rebuilds the package that owns its file, reruns the spec's test file and restores it, writing one `mutants.report`. With `--sandbox-user`, every build and vitest call after the overlay runs in the sandbox. `fix-proof judge --mutants-report <file>` reads that report into the result line's `mutants` field.
+
 ## 0.5.0
 
 ### Minor Changes

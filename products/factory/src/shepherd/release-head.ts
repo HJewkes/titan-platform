@@ -66,7 +66,8 @@ async function prAt(port: GitHubPort, at: ReleaseAt): Promise<{ headSha: string;
 function notReleasable(at: ReleaseAt, headSha: string, reads: ReleaseReads | undefined): Error {
   const ref = `${at.repo}#${at.pr} is at ${headSha}, not ${at.head}`;
   if (reads?.updating()) return refused(`${ref}, and Shepherd's own update-branch has not recorded it yet: release again once it has`, EXIT.TEMPFAIL);
-  return refused(`${ref}, and is no clean merge-up Shepherd made of it: review the new head, then release at it`, EXIT.DATAERR);
+  const moved = refused(`${ref}, and is no clean merge-up Shepherd made of it: review the new head, then release at it`, EXIT.DATAERR);
+  return Object.assign(moved, { currentHead: headSha });
 }
 
 /**

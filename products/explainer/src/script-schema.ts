@@ -118,7 +118,7 @@ const ScriptBeatSchema = z
     chapter: Id,
     function: z.enum(BEAT_FUNCTIONS),
     mode: z.enum(BEAT_MODES),
-    // A render hint only: no rule reads it.
+    // A render hint; when it names a visual-router type, the visual:gap-kind lint warns on a gap.
     kind: Text.optional(),
     plannedS: z.number().positive(),
     heldS: z.number().positive().optional(),

@@ -15,14 +15,23 @@ const TEST_ONLY_GATED: boolean = false;
 
 /**
  * Why a move from `from` into test-only is refused once the kind is live. Only a correctness run needs diff facts: test-only is
- * the one fix-proof kind it may move to, and only when the PR's diff, read in full, touches no non-test source.
+ * the one fix-proof kind it may move to, and only when the PR's diff, read in full, reads test-only; every other reading refuses.
  */
 export function testOnlyMoveRefusal(from: TaskKind, diff: TestOnlyDiff | undefined): string | undefined {
   if (from !== "correctness") return undefined;
   if (diff === undefined) return `kind ${from} cannot move to test-only without reading the PR's diff`;
-  if (diff.kind === "unread") return `kind ${from} cannot move to test-only: ${diff.reason}`;
-  if (diff.kind === "source") return `kind ${from} cannot move to test-only: the PR changes non-test source ${diff.paths[0] ?? "(unnamed)"}`;
+  if (diff.kind !== "test-only") return `kind ${from} cannot move to test-only: ${reasonOf(diff)}`;
   return undefined;
+}
+
+function reasonOf(diff: Exclude<TestOnlyDiff, { kind: "test-only" }>): string {
+  switch (diff.kind) {
+    case "source":
+      return `the PR changes non-test source ${diff.paths[0] ?? "(unnamed)"}`;
+    case "flagged":
+    case "unread":
+      return diff.reason;
+  }
 }
 
 /**

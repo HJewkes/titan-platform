@@ -15,12 +15,14 @@ import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-he
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
+import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
@@ -48,6 +50,8 @@ export interface Registered {
   g10Hold?: string;
   /** Set when a security-kind or guard-area PR is over the 400 non-generated line slice cap; advisory, never a hold. */
   sizeFlag?: SliceFlag;
+  /** Set when a correctness registration is on a PR that changes only tests, once the guard accepts test-only. */
+  kindHint?: string;
 }
 
 export interface MergeEvaluation {
@@ -67,10 +71,11 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
   return ctx.shepherd;
 }
 
-function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
+function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
+  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base };
   try {
-    store.update(runId, { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base });
+    store.update(runId, { ...meta, ...move });
   } catch (error) {
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
@@ -87,9 +92,10 @@ function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | unde
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
 export async function restartRegistered(ctx: FactoryContext, store: ShepherdStore, known: Registration, args: RegisterArgs, policy: EffectivePolicy): Promise<Registered> {
+  const move = await kindMove(servicesOf(ctx), known, args);
   const restart = await restartFor(ctx.host, servicesOf(ctx), known);
-  if (!restart) return refresh(store, known, args, policy);
-  refuseKindMove(known, args);
+  if (!restart) return refresh(store, known, args, policy, move);
+  refuseKindMove(known, args, move);
   const previousRunId = known.runId;
   const previousRun = ctx.host.runtime.status(previousRunId)!;
   const seeded = isDivergedEnd(previousRun) ? { ...args, head: args.head ?? lastReadHead(previousRun) } : args;
@@ -102,10 +108,10 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
       if (!store.byRun(previousRunId)) releaseFinishedBranch(ctx, store, args.repo, args.pr, known.branch ?? undefined);
       throw error;
     }
-    return refresh(store, winner, args, policy);
+    return refresh(store, winner, args, policy, move);
   }
   if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
-  return { ...refresh(store, store.byRun(runId)!, seeded, policy), created: true, previousRunId, ...restart };
+  return { ...refresh(store, store.byRun(runId)!, seeded, policy, move), created: true, previousRunId, ...restart };
 }
 
 /**
@@ -149,7 +155,9 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
  * The hold and the slice-cap flag share one git read of the head's files.
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
-  return classifyRegistered(ctx, await register(args, ctx));
+  const registered = await classifyRegistered(ctx, await register(args, ctx));
+  const kindHint = await testOnlyHint(servicesOf(ctx), registered.registration);
+  return kindHint === undefined ? registered : { ...registered, kindHint };
 }
 
 /** Holds and flags a registration for the diff it has now; a run Shepherd restarts is classed the way a live register would class it. */
@@ -361,6 +369,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
   "shepherd.repair-stop": repairStopCommand,
+  "shepherd.freeze": repoFreezeCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,

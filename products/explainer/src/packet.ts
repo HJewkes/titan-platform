@@ -1,5 +1,6 @@
 import { lexiconEntriesFor, type Lexicon, type LexiconEntry } from "./lexicon.js";
 import type { Beat } from "./storyboard.js";
+import { findVisualType, shippedVisualRouter, visualCard, type VisualCard, type VisualRouter } from "./visual-router.js";
 
 /** A beat source the route step resolved: a code excerpt cut at a verified citation, or a text fact. */
 export interface ResolvedSource {
@@ -18,6 +19,8 @@ export interface PacketInput {
   sources: ReadonlyMap<string, ResolvedSource>;
   lexicon?: Lexicon;
   maxBytes?: number;
+  /** Defaults to the pinned router in this package's doctrine dir. */
+  router?: VisualRouter;
 }
 
 /** Everything one beat builder sees: its beat, its component API and its facts, nothing about other beats. */
@@ -27,6 +30,8 @@ export interface Packet {
   chapter?: string;
   beat: Beat;
   component_api: string;
+  /** The router card for the beat's `kind`, gap warning included; absent when the beat names no kind. */
+  visual?: VisualCard;
   sources: ResolvedSource[];
   lexicon: LexiconEntry[];
 }
@@ -53,7 +58,14 @@ function resolveSources(beat: Beat, sources: PacketInput["sources"]): ResolvedSo
   return resolved;
 }
 
-/** Builds one beat's packet. Pure: it throws instead of writing a packet a builder cannot use. */
+function visualFor(beat: Beat, router: VisualRouter = shippedVisualRouter()): { visual?: VisualCard } {
+  if (beat.kind === undefined) return {};
+  const type = findVisualType(router, beat.kind);
+  if (!type) throw new Error(`${beat.id}: kind ${beat.kind} is not a visual-router type`);
+  return { visual: visualCard(type) };
+}
+
+/** Builds one beat's packet. Throws instead of writing a packet a builder cannot use. */
 export function buildPacket(input: PacketInput): BuiltPacket {
   const { beat, catalog, lexicon, maxBytes = DEFAULT_PACKET_MAX_BYTES } = input;
   const componentApi = catalog.get(beat.type);
@@ -64,6 +76,7 @@ export function buildPacket(input: PacketInput): BuiltPacket {
     ...(beat.chapter ? { chapter: beat.chapter } : {}),
     beat,
     component_api: componentApi,
+    ...visualFor(beat, input.router),
     sources: resolveSources(beat, input.sources),
     lexicon: lexicon ? lexiconEntriesFor(lexicon, [beat.spoken, beat.display ?? ""]) : [],
   };
