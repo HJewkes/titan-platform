@@ -1,5 +1,12 @@
 # @titan-design/hitl
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,51 @@
 # titan-console
 
+## 0.6.0
+
+### Minor Changes
+
+- 60672e9: Show one shell-level status line while the console's live event stream is down: "Live updates are off. Data may be old since <time of the drop>." Every page gets it, and it clears when the stream reopens. A stream that never opened on load shows no line.
+- bf71eea: Add pause-to-comment, scrub markers and verdicts to the theater player. "Comment at m:ss" pauses the video and stamps the note with the presented frame's `mediaTime` from `requestVideoFrameCallback`, falling back to `currentTime`. On a phone the bar is fixed along the bottom of the screen. Ship and Needs changes append a verdict at the frame on screen. A refused owner write is shown verbatim. A strip under the video carries one tick per note on the current render, and tapping a tick seeks to it.
+
+### Patch Changes
+
+- 35b246d: Add the `config.drift` read command: one row per value kept in several config files (the worktree cap per repo across the home CLAUDE.md, the charter, agent-chat's `config.json` and `burndown.config.json`; the load5 hold; a lone roster seat's implementer cap against `maxAgents`), listing every copy's file, line and value. A row is `drift` when any two copies disagree. `config.surfaces` gains a `claude-md` row with the worktree cap the home CLAUDE.md states, and nothing else from that file.
+- 81e9f8e: Add the read-only `#/config` page: every `config.surfaces` row grouped by surface, led by the `config.drift` rows whose copies disagree. A row with a file line shows the exact command that opens that line, with a copy button; a hidden row shows only "present", never a value. The page has no edit control.
+
+  The console frame now grows with a long page instead of stopping at the viewport height, so the rail runs the full length of every page.
+
+- a6fd5c9: Add the `config.surfaces` read command: it lists the coordinator config files (charter and seat front matter, `burndown.config.json`, the owner switches in `seat-watchdog.json`) as rows with value, file, line, the inline comment and the decision numbers it names, plus each file's mtime and newest hand backup. Each surface declares an allowlist of safe fields; any other key is a hidden row with no value, and a parse failure names only the error code and line. `TITAN_CONSOLE_AUTONOMY_DIR` points it at the autonomy tree and `AGENT_CHAT_HOME` at the agent-chat files.
+- 24e56e2: `config.surfaces` no longer reads a `README.md` or a dotfile in the autonomy `seats/` directory as a seat. The surface specs move from `catalog.ts` to a sibling `specs.ts`, with no change in behaviour.
+- c5f0166: Add a structure test that walks the served registry: every `config.*` command is owner-write unless its verb only reads, and no read or deposit command changes a config file.
+- e6ef8da: Add `pnpm --filter titan-console capture`, deterministic twin captures of every console route. It renders the built page from disk with no daemon, from fixtures typed against `ConsoleCommands`, and shoots each route twice at phone and desktop widths. It fails on any byte difference between the two shots, and writes the frames and a `manifest.json` to `dist/twin` for visual review packets. `work.*` reads take an optional `now` clock for their `fetchedAt`.
+- 2e60fe4: Add the Reviews tab: a list of repo reviews newest first, and a review detail with the summary, findings filtered to P1 and P2 by default with sort chips and windowed rows, and the audited claims.
+  - @titan-design/session-analytics@0.17.2
+
+## 0.5.0
+
+### Minor Changes
+
+- 2f149af: Add the theater's notes store. `videos.note` (owner-write) appends a timestamped comment or a Ship / Needs changes verdict to `<name>.notes.jsonl` beside the video. Each line is a strict `titan-console/video-note@1` object bound to the render's sha256. `videos.notes` reads them back, each marked `current` for the render now on disk, and `videos.list` gains `noteCount` and `verdict`. The README documents the schema and the agent pickup rule (`openNotes`).
+- 0c4f033: Add the Theater page: every rendered video grouped by folder with verdict and note badges, and a player with captions, a notes list that seeks on tap, earlier-render notes dimmed, and `#/theater/<id>?t=<seconds>` links that open paused at that time.
+
+### Patch Changes
+
+- 3aa4dc2: Add the `reviews.get` read. It returns one repo review: its SUMMARY markdown capped at 256 KB with a `truncated` flag, the coverage line, the recommendations (or a gap line when the SUMMARY has no recommendations heading), every topic row and the claims rows. The name is looked up in the scanned set of review folders and never joined as given, so an unknown name or a `../` path gets a NOT FOUND refusal that does not echo it.
+- a587427: Add `reviews.list`, the read side of the Reviews tab. It scans one level of `TITAN_CONSOLE_REVIEWS_DIR` (default: the repo-review folder under the active-work root). Each subfolder with a `README.md` is a review. The command reads fixed paths in each one, no-follow and capped at 1 MB, parses them with `@titan-design/pm`'s review-folder parsers and caches them by mtime and size. Each review comes back with its pin, its label (`current-label`, else `flat`), P1 and P2 counts, claims, coverage, headless cost, and a state that a rule table in `server/review-rules.ts` derives from the files. The README's status line is never used for the state. A label that is not a plain name, a symlinked file or dir, and a file that fails to parse each show up as a gap line instead.
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
+- Updated dependencies [41fce70]
+  - @titan-design/owner-queue@0.5.0
+  - @titan-design/session-read@0.16.0
+  - @titan-design/decider@0.6.6
+  - @titan-design/session-analytics@0.17.1
+  - @titan-design/session-graph@0.17.1
+
 ## 0.4.3
 
 ### Patch Changes

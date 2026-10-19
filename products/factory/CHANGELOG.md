@@ -1,5 +1,30 @@
 # @titan-design/factory
 
+## 0.23.5
+
+### Patch Changes
+
+- 454eb53: A `NO_REPRO` `sh-sent-back` gate now offers the owner a `waive-proof` answer bound to the gate's head. It is never recommended, and no coordinator or decider answer can select it. The waiver is stored per run and head in `shepherd_proof_waiver`. The next round then reviews that head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again. `FIX_FIRST` send-backs do not offer it.
+- 1581171: Shepherd's test-only diff reading now flags a PR that deletes a test or changes no test, and reads every listed path's blob first: a gitlink, a large file, a missing blob or more than 100 paths reads `unread`. A move into test-only is refused for every reading but `test-only`.
+- 27f8d12: TP-3638: the reviewer brief says "fix-proof waived by owner" when the owner's waive-proof names the head under review. `ReviewerBriefInput.fixProofWaivedAt` replaces the fix-proof reading (and the tests member's) only when it equals the head; a waiver at any other head leaves the brief unchanged. Shepherd's review phase passes the waived head to `sh-review`.
+- Updated dependencies [27f8d12]
+  - @titan-design/review-panel@0.7.0
+  - @titan-design/session-analytics@0.17.2
+
+## 0.23.4
+
+### Patch Changes
+
+- 53d153a: Answer a console owner-release whose PR head moves during the release itself with 409 `moved` and GitHub's head, not 410 `gone`. The hold is kept, as before.
+- Updated dependencies [4d131dc]
+- Updated dependencies [41fce70]
+  - @titan-design/fix-proof@0.7.0
+  - @titan-design/owner-queue@0.5.0
+  - @titan-design/session-read@0.16.0
+  - @titan-design/review-panel@0.6.2
+  - @titan-design/hitl@0.9.1
+  - @titan-design/session-analytics@0.17.1
+
 ## 0.23.3
 
 ### Patch Changes

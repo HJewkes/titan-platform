@@ -26,6 +26,7 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 | Dev | `pnpm --filter titan-console dev` | Vite on :5173 proxies `/rpc` to the console daemon on :7500 |
 | Served | `pnpm --filter titan-console serve`, or `node apps/console/dist/cli.js` (the `titan-console` bin) | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
 | From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon. It records the status and the portfolio, with no personal initiative |
+| Twin captures | `pnpm --filter titan-console capture` | Builds the page, renders every route from the typed twin fixtures with no daemon, and writes PNGs to `dist/twin`; see [Twin captures](#twin-captures) |
 
 `serve` prints the address, and the LAN address too in LAN mode, and answers until SIGINT or SIGTERM:
 
@@ -59,6 +60,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
+| `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from; unset, that command answers a gap for them. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
 | `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
 | `TITAN_CONSOLE_REVIEWS_DIR` | `<active-work root>/titan-platform/sources/research/repo-review` | Repo reviews, read by `reviews.list`: each direct subfolder with a `README.md` is one review, and only fixed paths inside it are opened (no-follow, 1 MB cap). A file that fails to read or parse is a gap line, never a hidden review |
 | `TITAN_CONSOLE_INBOX_ACTIONS` | `0` | `1` lets `inbox.act` write an action record and post it to the factory (see "The inbox and its actions"). Turning it on is an owner step. Any value but `0` or `1` is refused |
@@ -140,6 +142,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. A `deposit` (see "Owner inbox deposits") |
 | `POST /rpc/config.report` | Another host's `titan config report` in; `{ host, receivedAt }` out. A `deposit` taken only over a bearer from another machine (see "Host config reports") |
+| `POST /rpc/config.drift` | `{ rows: [{ id, label, status, values, sources: [{ surface, field, file, line, value }], absent }], gaps }`: each value kept in more than one config file on this host (the worktree cap per repo, the load5 hold, and a lone roster seat's implementer cap against `maxAgents`). `status` is `drift` when any two copies disagree; drift rows come first. The home `CLAUDE.md` is read only for the "<n> per repo" it states |
 | `POST /rpc/config.hosts` | `{ hosts: [{ host, status, reportedAt, receivedAt, platform, surfaces }], gaps }`: each other host's last report. One older than 25 hours is `not reported`, with no surfaces |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
@@ -201,6 +204,10 @@ pages' active-work reads (`work.*`, `graph.ego`) on an `active-work` frame and t
 reads on an `agent-chat` frame, and all of them after the browser's own stream reopens. Each
 source refetches at most once per 300 ms, at the end of the window, so a burst of broker
 appends costs one refetch per tab rather than one per append.
+
+While that stream is down after having opened, the shell shows one warning line above every
+page, "Data may be old since" the time it dropped (`useStaleSince`, `src/data/stale.ts`). The
+line clears when the stream reopens.
 
 ## Who may run a command
 
@@ -482,6 +489,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
 | `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
 | `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers through `rounds.submit`; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
+| `#/config` | Config | Every row `config.surfaces` reads, grouped by surface, after the `config.drift` rows whose copies disagree and those kept in step, and the `config.hosts` list: each other host's name and last report time, one silent for 25 hours marked "not reported". A row with a file line is `terminal`: it shows the exact command that opens that line, with a copy button. A hidden row (a secret or an undeclared key) shows only "present". The page has no edit control | TP-3640, TP-3643 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
 A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,
@@ -520,6 +528,35 @@ existing piece, not worked around with local styles.
 | No scrolling page container for `AppShell`'s content region | A long view overflows the frame and the document scrolls, top bar included |
 | `NavItem` sets `accessibilityState`, which react-native-web 0.21 does not turn into `aria-selected` | The active item is marked visually only; the test finds it by the accent bar |
 
+## Twin captures
+
+`pnpm --filter titan-console capture` builds the page and embeds a twin snapshot in it. It
+then opens the page from disk in headless Chromium, with every request off disk refused, and
+shoots each route in `server/twin/routes.ts` at phone (375x812) and desktop (1440x900) widths.
+Each route is shot twice, in fresh contexts, and the command fails if the two PNGs differ by
+one byte. `--out <dir>` writes somewhere other than `dist/twin`.
+
+What it writes is what a console PR's visual review packet reads:
+
+```
+dist/twin/manifest.json          format titan-console-twin/v1: now, viewports, and per frame its route, hash, file and sha256
+dist/twin/<viewport>/<route>.png phone/ and desktop/
+dist/twin/<viewport>/<route>.second.png  only for a route whose two shots differed
+```
+
+What holds a frame still:
+
+| Source of drift | How the twin pins it |
+| --- | --- |
+| Data | `server/twin/answers.ts` answers the broker, sessions, Shepherd, inbox, reviews, theater and task reads by hand. Each `answer()` is typed by the command's own args and result from `ConsoleCommands`, so a fixture that drifts fails `pnpm typecheck`. Work and rounds reads are the real commands over `server/fixtures.ts` and `fixtures/rounds`, recorded in process. |
+| The clock | `Date` is frozen at 2031-03-05 12:00:30 UTC (`server/twin/clock.ts`) and `Math.random` is seeded; the server-side reads take the same clock. The second shot runs one second later, so a page that prints the clock fails. Ages to the minute do not move. |
+| Fonts | react-ui imports its web fonts from Google Fonts, which the twin refuses, so text is set in the system sans. Frames are stable on one machine; another machine's sans may differ. |
+| Motion and media | Reduced motion, animations stopped at the shot, the caret hidden, and a video's native controls hidden (their loading spinner never stops). |
+| Locale and layout | UTC, `en-US`, device scale 1, dark colour scheme. Round fixtures are read from a copy with pinned mtimes. |
+
+A new route goes in `TWIN_ROUTES`. `src/twin.test.tsx` fails until every call it makes has an
+answer, and fails on an answer no route asks for.
+
 ## Layout
 
 ```
@@ -529,7 +566,7 @@ server/   config.ts (ports and paths), paths.ts (the built page and export locat
           approval-items.ts (spool and round queue items), approvals.ts (approvals.flow), work.ts
           (the work.* read models), agents.ts (the agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
           daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
-          test-support.ts (a fake daemon for tests)
+          test-support.ts (a fake daemon for tests), twin/ (the twin fixtures and capture)
 src/      main.tsx, App.tsx (the shell), router.ts, refs.ts (refToRoute), views.tsx (the rail and
           its placeholders), pages/ (index.ts is the page registry), data/rpc.ts (typed hooks)
 ```

@@ -1,5 +1,21 @@
 # @titan-design/review-panel
 
+## 0.7.0
+
+### Minor Changes
+
+- 27f8d12: TP-3638: the reviewer brief says "fix-proof waived by owner" when the owner's waive-proof names the head under review. `ReviewerBriefInput.fixProofWaivedAt` replaces the fix-proof reading (and the tests member's) only when it equals the head; a waiver at any other head leaves the brief unchanged. Shepherd's review phase passes the waived head to `sh-review`.
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [4d131dc]
+- Updated dependencies [41fce70]
+  - @titan-design/fix-proof@0.7.0
+  - @titan-design/evidence@0.4.0
+  - @titan-design/session-read@0.16.0
+
 ## 0.6.1
 
 ### Patch Changes

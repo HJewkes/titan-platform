@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { CLAUDE_JSON_SURFACE, CLAUDE_SETTINGS_SURFACE, EMPTY_SURFACES, joinSurfaces, namesOnly, type ConfigSurfaces, type SurfaceReader } from "./catalog.js";
+import { EMPTY_SURFACES, joinSurfaces, type ConfigSurfaces, type SurfaceReader } from "./catalog.js";
+import { CLAUDE_JSON_SURFACE, CLAUDE_MD_SURFACE, CLAUDE_SETTINGS_SURFACE, namesOnly } from "./specs.js";
 import { derivedRow, readSurfaceFile, readTarget } from "./files.js";
 
 /** `.claude.json` keeps every project ever opened, so it outgrows the walked files' cap; it is parsed, never walked. */
@@ -54,6 +55,28 @@ async function accountDirs({ dirs, profilesDir }: ClaudeAccounts): Promise<{ dir
 function accountSurfaces(dir: string): Promise<ConfigSurfaces>[] {
   const account = path.basename(dir).replace(/^\./, "");
   return [readTarget({ spec: CLAUDE_SETTINGS_SURFACE, surface: `claude-settings:${account}`, file: path.join(dir, "settings.json") }), claudeJson(account, dir)];
+}
+
+/** The first "<n> per repo" in the prose, with its 1-based line; nothing else in the file is read out. */
+function statedWorktreeCap(text: string): { value: number; line: number } | null {
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
+    const match = /\b(\d+) per repo\b/.exec(line);
+    if (match?.[1] !== undefined) return { value: Number(match[1]), line: index + 1 };
+  }
+  return null;
+}
+
+/** The home CLAUDE.md's stated worktree cap, the one copy of that value no program reads. */
+export function claudeMdSurfaces(file: string): SurfaceReader {
+  return async () => {
+    const surface = "claude-md";
+    const read = await readSurfaceFile({ spec: CLAUDE_MD_SURFACE, surface, file });
+    if ("gap" in read) return { ...EMPTY_SURFACES, gaps: [read.gap] };
+    const cap = statedWorktreeCap(read.text);
+    if (cap === null) return { files: [read.entry], rows: [], gaps: [`${file}: states no per-repo worktree cap`] };
+    return { files: [read.entry], rows: [{ ...derivedRow(surface, file, "worktreesPerRepo", cap.value), line: cap.line }], gaps: [] };
+  };
 }
 
 /** Each Claude Code account's `settings.json` and `.claude.json`. Hook scripts are shown as the commands settings runs. */
