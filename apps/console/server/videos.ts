@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import type { Dirent } from "node:fs";
+import type { Dirent, Stats } from "node:fs";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { fileResponse, type mountStaticApp } from "@titan-design/daemon";
 import { readCommand } from "./owner-guard.js";
+import { deriveFields, foldCopies, readFolderDocs, type Derived, type FolderDocs } from "./video-derived.js";
+import { mediaFields, mediaOf, UNKNOWN_MEDIA, type Media } from "./video-media.js";
 import { mergeMeta, metaGaps, readFolderMeta, readVideoMeta, sidecarName, VIDEO_FOLDER_MANIFEST, videoMeta, type FolderMeta } from "./video-meta.js";
 
 type DaemonApp = Parameters<typeof mountStaticApp>[0];
@@ -30,6 +32,11 @@ const videoEntry = z.object({
   modifiedAt: z.string(),
   captions: z.boolean(),
   renderNotes: z.boolean(),
+  ...mediaFields,
+  /** How many identical files under `copies` or `intermediate` folders were folded into this row. */
+  copies: z.number().int(),
+  /** The sidecar's `status` when it has one, else whether a later take of the same series sits beside it. */
+  superseded: z.boolean(),
 });
 
 type VideoEntry = z.infer<typeof videoEntry>;
@@ -37,12 +44,13 @@ type VideoEntry = z.infer<typeof videoEntry>;
 /** The owner's call on one render, from the theater's Ship and Needs changes buttons. */
 export const verdict = z.enum(["ship", "needs-changes"]);
 
-const noteSummary = z.object({ noteCount: z.number().int(), verdict: verdict.nullable() });
+/** `openNoteCount` is the agent pickup rule's count: comments on this render made after its latest Ship. */
+const noteSummary = z.object({ noteCount: z.number().int(), openNoteCount: z.number().int(), verdict: verdict.nullable() });
 
 /** What the notes beside one video say about its current render; the file is the video's real path. */
 export type NoteSummarizer = (file: string) => Promise<z.infer<typeof noteSummary>>;
 
-const NO_NOTES = { noteCount: 0, verdict: null } as const;
+const NO_NOTES = { noteCount: 0, openNoteCount: 0, verdict: null } as const;
 
 /** Where one listed video sits; server-side only, so the client names a video by id and never by path. */
 interface Located {
@@ -61,6 +69,29 @@ interface Catalog {
 interface Unreadable {
   sidecars: number;
   manifests: number;
+  headers: number;
+}
+
+/** One video as the walk found it, before copies fold and the derived fields, which compare siblings, are filled. */
+interface Draft {
+  id: string;
+  file: string;
+  relative: string;
+  info: Stats;
+  group: string;
+  stem: string;
+  modifiedAt: string;
+  meta: z.infer<typeof videoMeta>;
+  docs: FolderDocs;
+  media: Media;
+  captions: boolean;
+  renderNotes: boolean;
+}
+
+interface Scan {
+  catalog: Catalog;
+  unreadable: Unreadable;
+  drafts: Draft[];
 }
 
 export interface VideoCatalog {
@@ -97,26 +128,30 @@ export function videoCatalog({ roots, now = Date.now }: VideoCatalogOptions): Vi
 /** Every mp4 and webm under the roots' real paths, newest first, skipping dot-dirs, `node_modules`, `archive` and symlinks. */
 export async function scanVideos(roots: readonly string[]): Promise<Catalog> {
   const catalog: Catalog = { videos: [], truncated: false, gaps: roots.length === 0 ? [ROOTS_UNSET] : [], located: new Map() };
-  const unreadable: Unreadable = { sidecars: 0, manifests: 0 };
+  const scan: Scan = { catalog, unreadable: { sidecars: 0, manifests: 0, headers: 0 }, drafts: [] };
   for (const [index, root] of roots.entries()) {
     const realRoot = await realpath(root).catch(() => null);
     if (realRoot === null) catalog.gaps.push(`Video root ${index + 1} of ${roots.length} cannot be read`);
-    else await walk(catalog, unreadable, realRoot, realRoot, 0);
+    else await walk(scan, realRoot, realRoot, 0);
   }
-  catalog.gaps.push(...metaGaps(unreadable.sidecars, unreadable.manifests));
+  const { sidecars, manifests, headers } = scan.unreadable;
+  catalog.gaps.push(...metaGaps(sidecars, manifests), ...(headers > 0 ? [`${headers} video header${headers === 1 ? "" : "s"} could not be read`] : []));
+  catalog.videos = await finish(scan.drafts);
   catalog.videos.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
   return catalog;
 }
 
-async function walk(catalog: Catalog, unreadable: Unreadable, realRoot: string, dir: string, depth: number): Promise<void> {
+async function walk(scan: Scan, realRoot: string, dir: string, depth: number): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [] as Dirent[]);
   const names = new Set(entries.map((entry) => entry.name));
   const isVideo = (entry: Dirent) => entry.isFile() && path.extname(entry.name).toLowerCase() in VIDEO_TYPES;
-  const folder = await folderMetaOf(dir, names, entries.some((entry) => !entry.name.startsWith(".") && isVideo(entry)), unreadable);
+  const hasVideos = entries.some((entry) => !entry.name.startsWith(".") && isVideo(entry));
+  const folder = await folderMetaOf(dir, names, hasVideos, scan.unreadable);
+  const docs = hasVideos ? await readFolderDocs(dir, names) : {};
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue;
-    if (entry.isDirectory() && depth < MAX_DEPTH && !SKIPPED_DIRS.has(entry.name)) await walk(catalog, unreadable, realRoot, path.join(dir, entry.name), depth + 1);
-    else if (isVideo(entry)) await add(catalog, { realRoot, folder, siblings: names, unreadable }, path.join(dir, entry.name));
+    if (entry.isDirectory() && depth < MAX_DEPTH && !SKIPPED_DIRS.has(entry.name)) await walk(scan, realRoot, path.join(dir, entry.name), depth + 1);
+    else if (isVideo(entry)) await add(scan, { realRoot, folder, docs, siblings: names }, path.join(dir, entry.name));
   }
 }
 
@@ -131,12 +166,12 @@ async function folderMetaOf(dir: string, names: ReadonlySet<string>, hasVideos: 
 interface FolderContext {
   realRoot: string;
   folder: FolderMeta;
+  docs: FolderDocs;
   siblings: ReadonlySet<string>;
-  unreadable: Unreadable;
 }
 
-async function add(catalog: Catalog, { realRoot, folder, siblings, unreadable }: FolderContext, file: string): Promise<void> {
-  if (catalog.videos.length >= MAX_VIDEOS) {
+async function add({ catalog, unreadable, drafts }: Scan, { realRoot, folder, docs, siblings }: FolderContext, file: string): Promise<void> {
+  if (drafts.length >= MAX_VIDEOS) {
     catalog.truncated = true;
     return;
   }
@@ -147,18 +182,34 @@ async function add(catalog: Catalog, { realRoot, folder, siblings, unreadable }:
   const name = path.basename(file);
   const own = siblings.has(sidecarName(name)) ? await readVideoMeta(file) : null;
   if (own === "unreadable") unreadable.sidecars++;
-  const meta = mergeMeta(folder, name, own === "unreadable" ? null : own);
+  const media = await mediaOf(file, info);
+  if (media === "unreadable") unreadable.headers++;
   catalog.located.set(id, { realRoot, relative });
-  catalog.videos.push({
-    ...meta,
+  drafts.push({
     id,
-    title: meta.title ?? path.parse(name).name,
+    file,
+    relative,
+    info,
     group: groupOf(realRoot, relative),
-    bytes: info.size,
+    stem: path.parse(name).name,
     modifiedAt: info.mtime.toISOString(),
+    meta: mergeMeta(folder, name, own === "unreadable" ? null : own),
+    docs,
+    media: media === "unreadable" ? UNKNOWN_MEDIA : media,
     captions: siblings.has(captionsName(name)),
     renderNotes: siblings.has("render-notes.md"),
   });
+}
+
+/** Folded copies stay in `located`, so an id listed before a copy appeared still resolves. */
+async function finish(drafts: readonly Draft[]): Promise<VideoEntry[]> {
+  const kept = await foldCopies(drafts);
+  const derived = deriveFields(kept.map(({ row }) => row));
+  return kept.map(({ row, copies }, index) => entryOf(row, derived[index]!, copies));
+}
+
+function entryOf({ id, group, info, modifiedAt, meta, media, captions, renderNotes }: Draft, derived: Derived, copies: number): VideoEntry {
+  return { ...meta, ...derived, id, group, bytes: info.size, modifiedAt, captions, renderNotes, ...media, copies };
 }
 
 /** The root's own name, then the relative directory: names the initiative a render belongs to, never an absolute path. */

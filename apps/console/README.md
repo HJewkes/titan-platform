@@ -334,7 +334,8 @@ the state dir.
   so loopback and bearer calls are refused.
 - **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
   carries `current`, and `verdict` is the latest verdict on the current render or null.
-- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render), an
+  `openNoteCount` (the open notes under the pickup rule below) and its `verdict`.
 
 Each line is a strict `titan-console/video-note@1` object:
 
@@ -364,7 +365,7 @@ Agents describe a render in two files the console only reads. `<stem>.video.json
 video (`cut.mp4` gets `cut.video.json`) is a strict `titan-console/video-meta@1` object.
 `_videos.json` in a folder is a strict `titan-console/video-folder@1` object that covers a batch
 of clips without one sidecar each. `videos.list` adds every field that is set to the video's
-row. A video with neither file lists exactly as before.
+row. A video with neither file lists with only what its file and folder give (below).
 
 | Field | Value |
 | --- | --- |
@@ -389,6 +390,30 @@ Both files are opened with O_NOFOLLOW and read up to 64 KB. A file that is bigge
 not a strict match is skipped and counted as a gap ("1 video sidecar could not be read", "1 video
 folder manifest could not be read"); the videos still list. A parsed file is cached by its device,
 inode, size and mtime, so the per-request rescan reads only files that changed.
+
+### Media fields, derived fields and copies
+
+Every row also carries what the video's own headers say: `durationS`, `width`, `height`,
+`orientation` (`landscape`, `portrait` or `square`) and `audio`. An mp4 is read box by box
+(`mvhd`, then each track's `tkhd` and `hdlr`, wherever the `moov` sits); a webm is read from its
+first 256 KB of EBML. A file whose headers cannot be parsed lists with those fields null and counts
+toward one gap line ("1 video header could not be read"). A recorder webm with no Duration lists
+with `durationS: null` and no gap. Results are cached by device, inode, size and mtime.
+
+When no sidecar or manifest sets them, the catalog derives:
+
+- `title`: the H1 of `render-notes.md` beside the video, then of `BRIEF.md`, then the file stem.
+  When siblings in one folder derive the same title, each gets its take appended
+  ("Lantern walkthrough (v2)"), or its stem when it has no take.
+- `description`: the first paragraph after the H1 that gave the title.
+- `series`, `take`: from a `-v2`, `_take3` or `-take-3` suffix on the stem (`lantern-v2` is take
+  `v2` of `lantern`).
+- `superseded`: the sidecar's `status` is `superseded` when one is set; otherwise true when a later
+  take (higher number, then newer file) of the same series sits in the same folder.
+
+A file under a `copies` or `intermediate` folder whose size and sha256 of its first and last 64 KB
+match another listed video folds into that video, whose `copies` counts it. Identical files
+outside those folders never fold. A folded copy's id still resolves on the media routes.
 
 ## The approvals flow
 
