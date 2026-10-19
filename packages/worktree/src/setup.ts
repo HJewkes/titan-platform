@@ -87,6 +87,11 @@ const PINNED_COREPACK: Readonly<Record<string, string>> = {
   COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: "0",
 };
 
+/** Setup runs outside a permission profile; do not garbage-collect shared browser caches. */
+const PINNED_ENV: Readonly<Record<string, string>> = {
+  PLAYWRIGHT_SKIP_BROWSER_GC: "1",
+};
+
 /** pnpm 10 ranks this file's ignorePnpmfile and ignoreScripts above every env pin. */
 export const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
 /** npm exec exports this file's keys as npm_config_* over the env pins, and its registry picks what npx runs. */
@@ -109,7 +114,12 @@ export function setupEnv(
     out[`npm_config_${key}`] = value;
     out[`NPM_CONFIG_${key.toUpperCase()}`] = value;
   }
-  return { ...out, ...PINNED_COREPACK, GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL) };
+  return {
+    ...out,
+    ...PINNED_COREPACK,
+    ...PINNED_ENV,
+    GIT_ALLOW_PROTOCOL: pinGitProtocols(env.GIT_ALLOW_PROTOCOL),
+  };
 }
 
 const isCommand = (value: unknown): value is string[] =>
@@ -168,7 +178,10 @@ const declarationAt = (gitRoot: string, sha: string): Promise<string | null> =>
   gitOutput(["cat-file", "blob", `${sha}:${SETUP_FILE}`], gitRoot);
 
 /** The tree's entry for `file`: absent, a regular file, or anything else, which is never read. */
-function kindInTree(worktree: string, file: string): "absent" | "regular" | "other" {
+function kindInTree(
+  worktree: string,
+  file: string
+): "absent" | "regular" | "other" {
   try {
     return lstatSync(path.join(worktree, file)).isFile() ? "regular" : "other";
   } catch {
@@ -202,7 +215,9 @@ async function differsFromBase(
 }
 
 /** The first file the env pins cannot outrank whose tree copy differs from base, or null. */
-async function changedBaseOnlyFile(target: SetupTarget): Promise<string | null> {
+async function changedBaseOnlyFile(
+  target: SetupTarget
+): Promise<string | null> {
   const changed = await Promise.all(
     BASE_ONLY_FILES.map((file) => differsFromBase(target, file))
   );
@@ -274,6 +289,19 @@ function describeFailure(
   return `worktree setup step \`${name}\` ${how}${where}; the worktree may be missing its dependencies`;
 }
 
+/** Whether a declared step reinstalled the tree's dependencies. */
+export type SetupOutcome = "ran" | "none" | "skipped" | "failed";
+
+export interface SetupReport {
+  outcome: SetupOutcome;
+  warnings: string[];
+}
+
+const skipped = (warning: string): SetupReport => ({
+  outcome: "skipped",
+  warnings: [warning],
+});
+
 /**
  * Run the repository's declared setup step in a fresh worktree, before the agent launches.
  *
@@ -284,24 +312,25 @@ function describeFailure(
  * Never throws: a failed step is a warning and the spawn proceeds, since whatever
  * depended on it (the egress pre-push hook) fails closed on its own.
  */
-export async function runWorktreeSetup(
+export async function setupWorktree(
   target: SetupTarget,
   run: SetupRunner = runSetupCommand
-): Promise<string[]> {
+): Promise<SetupReport> {
   const declared = await declarationAt(target.gitRoot, target.baseSha);
-  if (declared === null) return [];
+  if (declared === null) return { outcome: "none", warnings: [] };
   if (!target.fetched)
-    return [
-      `worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`,
-    ];
+    return skipped(
+      `worktree setup skipped: ${SETUP_FILE} is trusted only from origin's fetched default branch`
+    );
   const step = parseSetupStep(declared);
-  if (step === null) return [];
-  if (typeof step === "string") return [`worktree setup skipped: ${step}`];
+  if (step === null) return { outcome: "none", warnings: [] };
+  if (typeof step === "string")
+    return skipped(`worktree setup skipped: ${step}`);
   const changed = await changedBaseOnlyFile(target);
   if (changed !== null)
-    return [
-      `worktree setup skipped: the tree's ${changed} differs from origin's default branch`,
-    ];
+    return skipped(
+      `worktree setup skipped: the tree's ${changed} differs from origin's default branch`
+    );
   const result = await run(step.command, target.worktree, step.timeoutMs).catch(
     (err: unknown): SetupResult => ({
       exitCode: null,
@@ -309,12 +338,24 @@ export async function runWorktreeSetup(
       output: String(err),
     })
   );
-  if (result.exitCode === 0 && !result.timedOut) return [];
-  return [
-    describeFailure(
-      step,
-      result,
-      await writeSetupLog(target.worktree, result.output)
-    ),
-  ];
+  if (result.exitCode === 0 && !result.timedOut)
+    return { outcome: "ran", warnings: [] };
+  return {
+    outcome: "failed",
+    warnings: [
+      describeFailure(
+        step,
+        result,
+        await writeSetupLog(target.worktree, result.output)
+      ),
+    ],
+  };
+}
+
+/** The warnings of {@link setupWorktree}, for callers that record no outcome. */
+export async function runWorktreeSetup(
+  target: SetupTarget,
+  run?: SetupRunner
+): Promise<string[]> {
+  return (await setupWorktree(target, run)).warnings;
 }

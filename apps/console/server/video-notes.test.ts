@@ -130,7 +130,15 @@ describe("videos.note and videos.notes", () => {
 
     expect(stored.envelope).toMatchObject({ ok: true, data: { schema: VIDEO_NOTE_SCHEMA, videoId: cutId(), video: "cut.mp4", atS: 7, kind: "comment" } });
     expect(read.envelope).toMatchObject({ ok: true, data: { video: "cut.mp4", verdict: null, gaps: [], notes: [{ text: "tighten the outro", current: true }] } });
-    expect(listed.envelope).toMatchObject({ ok: true, data: { videos: [{ id: cutId(), noteCount: 1, verdict: null }] } });
+    expect(listed.envelope).toMatchObject({ ok: true, data: { videos: [{ id: cutId(), noteCount: 1, openNoteCount: 1, verdict: null }] } });
+  });
+
+  it("counts as open only the comments made after the current render's latest Ship", async () => {
+    await appendNote(video, "v_0", comment("before the ship"));
+    await appendNote(video, "v_0", { kind: "verdict", verdict: "ship", atS: 2 });
+    await appendNote(video, "v_0", comment("after the ship"));
+
+    expect(await summarizeNotes(video)).toEqual({ noteCount: 2, openNoteCount: 1, verdict: "ship" });
   });
 
   it(`refuses text over ${MAX_NOTE_TEXT} characters and writes nothing`, async () => {

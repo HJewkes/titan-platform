@@ -107,6 +107,16 @@ describe("the Ship view", () => {
     expect(screen.queryByText("design round: open in the harness")).toBeNull();
   });
 
+  it("shows the proven head's lineage before the Ship answer, and lineage unknown where none was read", async () => {
+    const lineage = { known: true, provenSha: HEAD, state: "open", merged: false, mergeSha: null, headSha: HEAD, baseRef: "main", baseSha: "1".repeat(40), behind: 3 } as const;
+    await renderShip({ detail: { lineage } });
+    expect(screen.getByTestId("ship-lineage").textContent).toBe("proven at 89abcdeUNMERGEDmain 11111113 behind");
+    cleanup();
+
+    await renderShip();
+    expect(screen.getByTestId("ship-lineage").textContent).toBe("lineage unknownno GitHub reader is wired");
+  });
+
   it("labels the Ship round in the rounds list", async () => {
     const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: { [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(source)) } }), "text/html");
     window.location.hash = "#/rounds";

@@ -22,9 +22,12 @@ import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
+import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 
 export interface RoundsSource {
   dir: string;
+  /** Absent, a Ship round's lineage reads as unknown; fixtures and tests never reach GitHub. */
+  lineage?: LineageReader;
 }
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
@@ -76,6 +79,8 @@ const roundDetail = z.discriminatedUnion("valid", [
     storybookUrl: z.string().nullable(),
     manifest: z.custom<Manifest>(),
     answer: gateAnswer.optional(),
+    /** A Ship round's proven head against its PR base now; absent on any other round. */
+    lineage: shipLineage.optional(),
   }),
   invalidRound,
 ]);
@@ -193,7 +198,7 @@ function withoutRecommendation(question: Question): Question {
   return stripped;
 }
 
-function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAnswer | undefined): RoundDetail {
+function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAnswer | undefined, lineage: ShipLineage | undefined): RoundDetail {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
@@ -201,7 +206,14 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAn
     id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
     recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
     ...(answer !== undefined && { answer }),
+    ...(lineage !== undefined && { lineage }),
   };
+}
+
+async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLineage | undefined> {
+  const binding = parsed.ok ? parsed.manifest.questions.flatMap((question) => (question.kind === "pick-one" && question.merge ? [question.merge] : []))[0] : undefined;
+  if (binding === undefined) return undefined;
+  return source.lineage ? source.lineage(binding) : UNWIRED_LINEAGE;
 }
 
 const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
@@ -220,10 +232,11 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
   return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
-export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
+export async function getRound(source: RoundsSource, id: string): Promise<RoundDetail> {
+  const { dir } = source;
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const [round, answer] = await Promise.all([loadRound(dir, id), readAnswer(path.join(dir, id))]);
-  return detailOf(round, answer);
+  return detailOf(round, answer, await lineageOf(source, round.parsed));
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });
@@ -339,7 +352,7 @@ export function roundsCommands(source: RoundsSource) {
     }),
     "rounds.get": readCommand({
       name: "rounds.get",
-      description: "One review round's manifest; an unsent after-answer round comes without its recommendations",
+      description: "One review round's manifest; an unsent after-answer round comes without its recommendations, and a Ship round with its proven head's lineage",
       args: z.object({ id: z.string().min(1).max(64) }),
       result: roundDetail,
       run: ({ id }) => getRound(source, id),

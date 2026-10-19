@@ -187,7 +187,24 @@ const TASK_DETAIL: Served["work.task"]["result"] = {
   deliverablesDegraded: null,
 };
 
-const VIDEO = { id: "v-relay-intro", title: "Relay intro", group: "orbit-relay", bytes: 4_200_000, modifiedAt: at(3 * HOUR), captions: true, renderNotes: false };
+const VIDEO = { id: "v-relay-intro", title: "Relay intro", group: "orbit-relay", bytes: 4_200_000, modifiedAt: at(3 * HOUR), captions: true, renderNotes: false,
+  durationS: 42.5, width: 1920, height: 1080, orientation: "landscape", audio: true, copies: 0, superseded: false,
+} as const;
+
+const DAY = 24 * HOUR;
+
+/** Enough of a feed to show every day name, purpose, flag and the hidden-clip, old-take and copy affordances. */
+const FEED_VIDEOS = [
+  { ...VIDEO, purpose: "explainer", copies: 1, noteCount: 1, openNoteCount: 1, verdict: null },
+  { ...VIDEO, id: "v-daily-digest", title: "Daily digest", group: "daily", modifiedAt: at(5 * HOUR), durationS: 312, purpose: "daily", captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: "ship" },
+  { ...VIDEO, id: "v-widget-review", title: "Widget kit repo review", group: "reviews", modifiedAt: at(DAY + 2 * HOUR), durationS: 488, purpose: "repo-review", subject: { kind: "repo", id: "widget-kit" }, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-relay-plan", title: "Relay retry plan", group: "orbit-relay", modifiedAt: at(DAY + 4 * HOUR), durationS: 201, purpose: "plan", captions: false, copies: 0, noteCount: 2, openNoteCount: 2, verdict: "needs-changes" },
+  { ...VIDEO, id: "v-tile-motion", title: "Tile motion study", group: "design", modifiedAt: at(DAY + 6 * HOUR), durationS: 58, purpose: "design", orientation: "portrait", width: 1080, height: 1920, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-tile-motion-v1", title: "Tile motion study (v1)", group: "design", modifiedAt: at(DAY + 7 * HOUR), durationS: 61, purpose: "design", superseded: true, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-sting", title: "Logo sting", group: "design/clips", modifiedAt: at(DAY + 8 * HOUR), durationS: 4, audio: false, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-voice-test", title: "Voice level test", group: "scratch", modifiedAt: at(3 * DAY), durationS: 22, purpose: "test", captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-backoff", title: "Backoff ceiling explainer", group: "orbit-relay", modifiedAt: at(9 * DAY), durationS: 264, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+] as const;
 
 const VIDEO_NOTE = {
   schema: "titan-console/video-note@1", id: "0123456789abcdef", videoId: VIDEO.id, video: "relay-intro.mp4", renderSha256: "ab".repeat(32),
@@ -271,7 +288,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
     gaps: [],
     readAt: new Date(TWIN_NOW).toISOString(),
   }),
-  answer("videos.list", {}, { videos: [{ ...VIDEO, noteCount: 1, verdict: null }], truncated: false, gaps: [] }),
+  answer("videos.list", {}, { videos: [...FEED_VIDEOS], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
   answer("config.surfaces", {}, CONFIG_SURFACES),
   answer("config.drift", {}, CONFIG_DRIFT),

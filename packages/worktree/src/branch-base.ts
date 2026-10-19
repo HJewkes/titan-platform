@@ -25,7 +25,7 @@ export async function fetchTip(gitRoot: string, branch: string, timeoutMs: numbe
 }
 
 /** The timeout is one budget shared by every candidate, not one per candidate. */
-async function fetchDefaultTip(gitRoot: string, timeoutMs: number): Promise<BranchBase | string> {
+export async function fetchDefaultTip(gitRoot: string, timeoutMs: number): Promise<BranchBase | string> {
   if ((await gitOrNull(["remote", "get-url", "origin"], gitRoot)) === null)
     return "the repository has no origin remote";
   const deadline = Date.now() + timeoutMs;
@@ -66,4 +66,15 @@ async function resolveBranchBaseNow(gitRoot: string, timeoutMs: number): Promise
       `worktree branched from the local HEAD at ${sha} because ${reason}; ` +
       "it may lag origin or carry unpushed commits",
   };
+}
+
+/** Fetch a requested origin branch without silently substituting the default branch. */
+export async function resolveRequestedBase(gitRoot: string, ref: string, timeoutMs: number): Promise<BranchBase> {
+  const branch = ref.startsWith("origin/") ? ref.slice("origin/".length) : "";
+  const valid = branch !== "" && !branch.startsWith("-") &&
+    (await gitOrNull(["check-ref-format", "--branch", branch], gitRoot)) !== null;
+  if (!valid) throw new Error(`base ${ref} is not a branch on origin; not spawned`);
+  const sha = await fetchTip(gitRoot, branch, timeoutMs);
+  if (sha === null) throw new Error(`fetching base ${ref} failed or timed out; not cut from the default branch instead`);
+  return { sha, ref };
 }

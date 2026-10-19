@@ -42,7 +42,7 @@ const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(Round
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
-const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage));
+const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
 
 const WIDE: Layout = { maxWidth: "wide" };
 const NARROW: Layout = { maxWidth: "narrow" };
