@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.12.0
+
+### Minor Changes
+
+- 14e5db5: A question round can be answered in the console. It sends its picks and text through `rounds.submit` with the same Send answers card a design round uses, shows the sent or already-answered state and the revealed recommendations afterwards, and shows the server's refusal when the session cannot write. The "Read-only" notice is gone.
+
+### Patch Changes
+
+- fc50f10: Add the round feedback adapter: it builds a feedback@1 document from the owner's posted answers, with each recommendation echoed and `agreed` set only on an answered question, mirroring the review harness (TP-1988).
+
 ## 0.11.0
 
 ### Minor Changes
