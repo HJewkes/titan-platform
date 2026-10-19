@@ -960,6 +960,31 @@ changed file's contents read at registration, and Shepherd does not read them. W
 it: the `g10-review` hold past 400 changed lines, the `g10-adversary` hold a `security` kind
 places, and the seat's own review of the pull request.
 
+### Freeze a whole repo {#repo-freeze}
+
+```sh
+titan-factory shepherd freeze owner/repo --reason "Version Packages merges first"
+titan-factory shepherd freezes
+titan-factory shepherd unfreeze owner/repo
+```
+
+A coordinator's freeze stops every Shepherd merge into one repo, for example while a Version
+Packages pull request must land with no other merge ahead of it. It is not a hold, so it needs no
+charter class. While the repo is frozen, runs keep reviewing and CI keeps running, but a run that
+would merge waits in `merging` instead. `unfreeze` lifts it, and each waiting run merges on its next
+step. `status`, `list` and `timeline` show the freeze on every row of the repo, with its reason,
+who set it and since when. `freezes` lists every repo freeze.
+
+`--reason` is required and must not be blank. Freezing a frozen repo replaces the reason and who
+set it, and keeps the time it started. Unfreezing a repo that is not frozen changes nothing and
+says so. It is not an error.
+
+The freeze is a row in the factory database (`shepherd_repo_freeze`), so it survives a restart of
+serve. Every merge goes through the same check as the main-red freeze (`freezeGuard` in
+`products/factory/src/shepherd/freeze.ts`), which reads this freeze first. The two freezes are
+independent. `unfreeze` never thaws a red main, and a green main never lifts this freeze. This
+freeze holds the main-red fixer's pull request too.
+
 ### Ask for Shepherd's own review {#own-review}
 
 ```sh
