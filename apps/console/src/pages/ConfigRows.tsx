@@ -12,10 +12,10 @@ type EditState = { kind: "terminal"; command: string; reason: string } | { kind:
 const shellQuote = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
 
 /** The command that opens the row's own line, so the owner edits exactly the line the page shows. */
-export const editCommandOf = (row: Pick<ConfigRow, "file" | "line">): string => `"\${EDITOR:-vi}" +${row.line} ${shellQuote(row.file)}`;
+const editCommandOf = (row: Pick<ConfigRow, "file" | "line">): string => `"\${EDITOR:-vi}" +${row.line} ${shellQuote(row.file)}`;
 
 /** The console takes no config write yet (TP-3579 W slices), so every line a person can edit is a terminal row. */
-export function editStateOf(row: ConfigRow): EditState {
+function editStateOf(row: ConfigRow): EditState {
   if (row.hidden) return { kind: "read-only", reason: "A secret or undeclared key: the console never reads its value." };
   if (row.surface === "console-env") return { kind: "read-only", reason: "Set in the console daemon's environment; a change applies at its next restart." };
   if (row.line === 0) return { kind: "read-only", reason: "Derived from the whole file, so no one line holds it." };
@@ -25,10 +25,11 @@ export function editStateOf(row: ConfigRow): EditState {
   return { kind: "terminal", command: editCommandOf(row), reason };
 }
 
-export function formatValue(value: unknown): string {
+function formatValue(value: unknown): string {
+  if (value === undefined) return "unset";
   if (typeof value === "string") return value;
   if (Array.isArray(value) && value.every((item) => item === null || typeof item !== "object")) return value.map(String).join(", ");
-  return JSON.stringify(value) ?? "unset";
+  return JSON.stringify(value);
 }
 
 /** A hidden row names its key and nothing else; its value is never rendered, even if a reply carried one. */

@@ -22,7 +22,7 @@ interface SurfaceBlock {
 }
 
 /** Surfaces in the order the files were read, within the catalog's group order; a row whose file is unlisted still shows, under Other. */
-export function groupSurfaces({ files, rows }: Pick<Surfaces, "files" | "rows">): { title: string; surfaces: SurfaceBlock[] }[] {
+function groupSurfaces({ files, rows }: Pick<Surfaces, "files" | "rows">): { title: string; surfaces: SurfaceBlock[] }[] {
   const fileOf = new Map(files.map((file) => [file.surface, file]));
   const surfaces = [...new Set([...files.map((file) => file.surface), ...rows.map((row) => row.surface)])];
   const blocks = surfaces.map((surface) => ({ surface, file: fileOf.get(surface), rows: rows.filter((row) => row.surface === surface) }));
