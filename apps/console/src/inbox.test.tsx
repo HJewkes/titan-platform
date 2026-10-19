@@ -75,9 +75,20 @@ interface Inbox {
   items?: Record<string, unknown>[];
   gaps?: string[];
   fyiCount?: number;
+  derived?: Record<string, unknown>[];
 }
 
-const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42 }: Inbox = {}): JsonEnvelope<unknown> => successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString() });
+const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [] }: Inbox = {}): JsonEnvelope<unknown> =>
+  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived });
+
+const BLOCKED_AGENT = {
+  id: "derived:blocked-agent:relay-worker@1",
+  kind: "blocked-agent",
+  summary: "relay-worker is blocked",
+  evidence: { observed: "presence blocked, silent for 40 min", source: "agent-chat presence", at: ago(40 * 60 * 1000) },
+  threshold: { name: "blocked longer than 15 min", limitMs: 15 * 60 * 1000, ageMs: 40 * 60 * 1000 },
+  link: "#/agents/relay-worker",
+};
 
 type Tap = (args: unknown) => Promise<JsonEnvelope<unknown>>;
 
@@ -237,6 +248,24 @@ describe("the inbox page", () => {
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await screen.findByTestId("inbox-row-gate-1");
     expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list"]));
+  });
+
+  it("shows a derived row's evidence, threshold and age with a link to the agent and no button, even on a live page", async () => {
+    renderInbox(inboxAnswer({ derived: [BLOCKED_AGENT] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const row = await screen.findByTestId(`inbox-derived-${BLOCKED_AGENT.id}`);
+    expect(within(row).getByText("machine: blocked")).toBeTruthy();
+    expect(within(row).getByText("40m")).toBeTruthy();
+    expect(within(row).getByText(`presence blocked, silent for 40 min (agent-chat presence, since ${BLOCKED_AGENT.evidence.at})`)).toBeTruthy();
+    expect(within(row).getByText("Crossed: blocked longer than 15 min")).toBeTruthy();
+    expect(within(row).queryAllByRole("button")).toEqual([]);
+    fireEvent.click(within(row).getByText("Open the agent"));
+    await waitFor(() => expect(window.location.hash).toBe("#/agents/relay-worker"));
+  });
+
+  it("does not claim nothing needs the owner while a derived row is showing", async () => {
+    renderInbox(inboxAnswer({ items: [], derived: [BLOCKED_AGENT] }));
+    await screen.findByTestId("inbox-derived");
+    expect(screen.queryByText("Nothing needs you")).toBeNull();
   });
 });
 

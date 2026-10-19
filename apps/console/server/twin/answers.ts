@@ -117,6 +117,14 @@ const WATCHED = [
   watch(9, "review", { stalled: { reason: "no reviewer verdict in 3h" }, phaseSince: at(3 * HOUR) }),
 ];
 
+const INBOX_DERIVED: Served["inbox.list"]["result"]["derived"] = [
+  {
+    id: "derived:stalled-run:run-9", kind: "stalled-run", summary: "orbit/relay#9 is stalled in review", link: "#/shepherd/orbit%2Frelay%239",
+    evidence: { observed: "stalled: no reviewer verdict in 3h", source: "shepherd row run-9", at: at(3 * HOUR) },
+    threshold: { name: "Shepherd stall verdict, phase older than 15 min", limitMs: 15 * MINUTE, ageMs: 3 * HOUR },
+  },
+];
+
 const TIMELINE_ENTRIES = [
   { kind: "step", stepId: "sh-ci", iteration: 1, startedAt: at(3 * HOUR), completedAt: at(3 * HOUR - 10 * MINUTE), signal: null, status: "done" },
   { kind: "verdict", stepId: "sh-review", verdict: "MERGE", headSha: HEAD.slice(0, 16), locator: null, reviewer: "relay-reviewer" },
@@ -237,7 +245,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
   answer("work.tasks", {}, { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks: TASKS, evidence: EVIDENCE }),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
-  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString() }),
+  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED }),
   answer("shepherd.list", { state: "active" }, WATCHED),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),
   answer("shepherd.timeline", { repo: "orbit/relay", pr: 12 }, { row: WATCHED[0]!, entries: TIMELINE_ENTRIES }),
