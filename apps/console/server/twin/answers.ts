@@ -187,7 +187,9 @@ const TASK_DETAIL: Served["work.task"]["result"] = {
   deliverablesDegraded: null,
 };
 
-const VIDEO = { id: "v-relay-intro", title: "Relay intro", group: "orbit-relay", bytes: 4_200_000, modifiedAt: at(3 * HOUR), captions: true, renderNotes: false };
+const VIDEO = { id: "v-relay-intro", title: "Relay intro", group: "orbit-relay", bytes: 4_200_000, modifiedAt: at(3 * HOUR), captions: true, renderNotes: false,
+  durationS: 42.5, width: 1920, height: 1080, orientation: "landscape", audio: true, copies: 0, superseded: false,
+} as const;
 
 const VIDEO_NOTE = {
   schema: "titan-console/video-note@1", id: "0123456789abcdef", videoId: VIDEO.id, video: "relay-intro.mp4", renderSha256: "ab".repeat(32),
@@ -271,7 +273,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
     gaps: [],
     readAt: new Date(TWIN_NOW).toISOString(),
   }),
-  answer("videos.list", {}, { videos: [{ ...VIDEO, noteCount: 1, verdict: null }], truncated: false, gaps: [] }),
+  answer("videos.list", {}, { videos: [{ ...VIDEO, noteCount: 1, openNoteCount: 1, verdict: null }], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
   answer("config.surfaces", {}, CONFIG_SURFACES),
   answer("config.drift", {}, CONFIG_DRIFT),

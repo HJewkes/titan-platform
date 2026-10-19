@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { syntheticMp4 } from "./test-support.js";
 import { MAX_META_BYTES, VIDEO_FOLDER_SCHEMA, VIDEO_META_SCHEMA } from "./video-meta.js";
 import { scanVideos } from "./videos.js";
 
-/** An `ftyp` box and padding: enough to look like an mp4, never a real render. */
-const SYNTHETIC_MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(52, 0x2e)]);
+const SYNTHETIC_MP4 = syntheticMp4();
 
 let root: string;
 
@@ -34,13 +34,15 @@ async function onlyVideo() {
 }
 
 describe("video sidecars", () => {
-  it("lists a video with no sidecar exactly as before", async () => {
+  it("lists a video with no sidecar with only the fields its file gives", async () => {
     await put("orbit/cut.mp4");
 
     const { video, gaps } = await onlyVideo();
 
     expect(gaps).toEqual([]);
-    expect(Object.keys(video).sort()).toEqual(["bytes", "captions", "group", "id", "modifiedAt", "renderNotes", "title"]);
+    expect(Object.keys(video).sort()).toEqual(
+      ["audio", "bytes", "captions", "copies", "durationS", "group", "height", "id", "modifiedAt", "orientation", "renderNotes", "superseded", "title", "width"],
+    );
     expect(video.title).toBe("cut");
   });
 
