@@ -150,6 +150,7 @@ type WorktreeReleaseOutcome = {
 } | {
     released: false;
     refusal: string;
+    refusalCode?: "unsaved-changes";
 };
 interface WorktreeAllocator {
     check(req: WorktreeRequest): Promise<WorktreeCheck>;
@@ -186,6 +187,11 @@ declare class WorktreeInUseError extends Error {
 declare class OriginUnreachableError extends Error {
     readonly branch: string;
     constructor(branch: string, detail: string);
+}
+/** A missing assigned tree cannot be re-created without its caller's matching allocation record. */
+declare class MissingAssignedWorktreeRecordError extends Error {
+    readonly worktreePath: string;
+    constructor(worktreePath: string);
 }
 
 /**
@@ -374,4 +380,4 @@ declare function reclaimWorktree(entry: SweptWorktree, options?: {
     reason?: string;
 }>;
 
-export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, OriginUnreachableError, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, sweepWorktrees, withPinnedGitProtocols };
+export { BRANCH_PREFIX, type BranchBase, DEFAULT_BASE_PATH, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_SETUP_TIMEOUT_MS, DEFAULT_STRIPPED_ENV_PREFIXES, DEFAULT_WORKTREE_BUDGET, type FoundWorktree, type GitLister, type GitPresence, type GitRunner, type HeldWorktree, MissingAssignedWorktreeRecordError, OriginUnreachableError, RECLAIM_GRACE_MS, type ReleaseCheck, type ReleaseProof, SAFE_GIT_PROTOCOLS, SETUP_FILE, SETUP_LOG, type SetupResult, type SetupRunner, type SetupStep, type SetupTarget, type SweepOptions, type SweepOwner, type SweepStatus, type SweptWorktree, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner, type WorktreeAllocation, type WorktreeAllocator, WorktreeBudgetExhaustedError, type WorktreeCheck, WorktreeInUseError, type WorktreeOptions, type WorktreeRecord, type WorktreeReleaseOutcome, type WorktreeReleaseSafety, type WorktreeRequest, agentWorktreesIn, createWorktreeAllocator, describeRefusal, findGitRoot, gitChildEnv, inspectForRelease, isLive, observedPresence, parkWorktree, parseSetupStep, pinGitProtocols, pruneStaleWorktrees, reattachWorktree, reclaimWorktree, recreateWorktree, resolveBranchBase, runGit, runSetupCommand, runWorktreeSetup, setupEnv, sweepWorktrees, withPinnedGitProtocols };

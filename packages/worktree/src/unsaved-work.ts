@@ -15,16 +15,29 @@ const isRegenerable = (entry: string): boolean => {
  * `-uall` so `status.showUntrackedFiles=no` cannot hide an untracked file the removal would take.
  * A status git cannot read counts as dirty: a broken gitdir says nothing about what is on disk.
  */
-export async function unsavedWork(worktree: string): Promise<string | undefined> {
+export interface UnsavedObservation {
+  detail: string;
+  kind: "changes" | "other";
+}
+
+/** Internal typed observation; the string wrapper keeps existing callers unchanged. */
+export async function observeUnsavedWork(worktree: string): Promise<UnsavedObservation | undefined> {
   const status = await gitOrNull(["status", "--porcelain", "-uall"], worktree);
-  if (status === null) return `could not read git status in ${worktree}`;
-  if (status !== "") return `uncommitted or untracked changes in ${worktree}`;
+  if (status === null) return { detail: `could not read git status in ${worktree}`, kind: "other" };
+  if (status !== "") return { detail: `uncommitted or untracked changes in ${worktree}`, kind: "changes" };
   const ignored = await gitOrNull(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory"], worktree);
-  if (ignored === null) return `could not list ignored files in ${worktree}`;
+  if (ignored === null) return { detail: `could not list ignored files in ${worktree}`, kind: "other" };
   const kept = ignored.split("\n").filter((entry) => entry !== "" && !isRegenerable(entry));
   if (kept.length === 0) return undefined;
-  return (
+  return {
+    kind: "other",
+    detail:
     `ignored files in ${worktree} would be deleted (${kept.slice(0, 3).join(", ")}); ` +
-    `only ignored ${REGENERABLE_DIRS.join(", ")} and a top-level .claude are removed`
-  );
+    `only ignored ${REGENERABLE_DIRS.join(", ")} and a top-level .claude are removed`,
+  };
+}
+
+/** The existing diagnostic-only contract. */
+export async function unsavedWork(worktree: string): Promise<string | undefined> {
+  return (await observeUnsavedWork(worktree))?.detail;
 }
