@@ -7,6 +7,7 @@ import { rawValue, safePathDirs } from "./path-entries.js";
 import type { RawValue } from "./path-entries.js";
 import { isPathName, notePathForgotten, notePathWrite, observePath } from "./path-writes.js";
 import type { PathObserver } from "./path-writes.js";
+import { OPTION_LETTERS, OPTION_WORD_RE, READONLY_FLAG_RE, SCALAR_DECLARERS } from "./declare-options.js";
 import { printedText } from "./printed.js";
 import { numericKey, numericValue } from "./numeric-names.js";
 import { carryPathLine, notePathLine } from "./path-commands.js";
@@ -36,24 +37,6 @@ const ASSIGNMENT_PARTS_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(\+?)=/s;
 export const DECLARED_RE = /^([A-Za-z_][A-Za-z0-9_]*)(\[.*\])?(?:\+?=|$)/s;
 const ANY_READONLY = "readonly@*";
 export const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
-/** Bash rejects a subscripted name here as no valid identifier, so the variable keeps its value. */
-const SCALAR_DECLARERS = new Set(["export", "readonly"]);
-/** An `r` in an option word, even one bash must still expand, may make every name the declaration lists readonly. */
-const READONLY_FLAG_RE = /^-.*r/s;
-/** Bash reads options only up to `--` or the first word that is none. */
-const OPTION_WORD_RE = /^[-+]./s;
-const DECLARE_LETTERS = new Set("airtx");
-/**
- * The option letters that assign the value as written in bash 3.2 and 5 alike. Any other may assign nothing
- * (`-f` names a function, `-p` prints, bash 3.2 rejects `-g`, `-A`, `-n` and `-I`) or change the value (`-l`, `-u`).
- */
-const OPTION_LETTERS: Record<string, Set<string>> = {
-  declare: DECLARE_LETTERS,
-  typeset: DECLARE_LETTERS,
-  local: DECLARE_LETTERS,
-  export: new Set("n"),
-  readonly: new Set("a"),
-};
 
 export function lookup(vars: Vars, home: string | null, name: string): string | null | CaseUnsure {
   return caseChecked(vars, name, vars.has(name) ? (vars.get(name) ?? null) : name === "HOME" ? home : null);
