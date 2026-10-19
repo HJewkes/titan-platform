@@ -334,7 +334,8 @@ the state dir.
   so loopback and bearer calls are refused.
 - **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
   carries `current`, and `verdict` is the latest verdict on the current render or null.
-- **`videos.list`** gives each video a `noteCount` (comments on the current render) and its `verdict`.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render), an
+  `openNoteCount` (the open notes under the pickup rule below) and its `verdict`.
 
 Each line is a strict `titan-console/video-note@1` object:
 
@@ -357,6 +358,77 @@ count as a gap, and refuses a file over 1 MB.
 written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
+### Video metadata
+
+Agents describe a render in two files the console only reads. `<stem>.video.json` beside the
+video (`cut.mp4` gets `cut.video.json`) is a strict `titan-console/video-meta@1` object.
+`_videos.json` in a folder is a strict `titan-console/video-folder@1` object that covers a batch
+of clips without one sidecar each. `videos.list` adds every field that is set to the video's
+row. A video with neither file lists with only what its file and folder give (below).
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-meta@1"`; the only required field |
+| `title` | 1-200 characters, replacing the file stem; include the take ("Lantern walkthrough, take 2") |
+| `description` | 1-2000 characters |
+| `purpose` | one of `daily`, `repo-review`, `plan`, `design`, `explainer`, `test`, `clip` |
+| `tags` | up to 20 strings of 1-40 characters |
+| `subject` | `{ kind: "repo" \| "day" \| "initiative", id }`: what the video is about |
+| `parent` | for a clip, the id or alias of the video it was cut from |
+| `posterAtS` | seconds, at or above 0: the frame to use as the poster |
+| `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
+| `series`, `take` | 1-200 characters each |
+| `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
+
+The folder manifest carries `schema: "titan-console/video-folder@1"`, any of the fields above
+except `title` and `alias` as defaults for every video directly in that folder, and `items`, a
+map from a file name to its own fields (`{ "01-spin.mp4": { "title": "Spin" } }`). A field in
+the sidecar beats the manifest's item for that file, which beats the manifest's default.
+
+Both files are opened with O_NOFOLLOW and read up to 64 KB. A file that is bigger, not JSON, or
+not a strict match is skipped and counted as a gap ("1 video sidecar could not be read", "1 video
+folder manifest could not be read"); the videos still list. A parsed file is cached by its device,
+inode, size and mtime, so the per-request rescan reads only files that changed.
+
+### Media fields, derived fields and copies
+
+Every row also carries what the video's own headers say: `durationS`, `width`, `height`,
+`orientation` (`landscape`, `portrait` or `square`) and `audio`. An mp4 is read box by box
+(`mvhd`, then each track's `tkhd` and `hdlr`, wherever the `moov` sits); a webm is read from its
+first 256 KB of EBML. A file whose headers cannot be parsed lists with those fields null and counts
+toward one gap line ("1 video header could not be read"). A recorder webm with no Duration lists
+with `durationS: null` and no gap. Results are cached by device, inode, size and mtime.
+
+When no sidecar or manifest sets them, the catalog derives:
+
+- `title`: the H1 of `render-notes.md` beside the video, then of `BRIEF.md`, then the file stem.
+  When siblings in one folder derive the same title, each gets its take appended
+  ("Lantern walkthrough (v2)"), or its stem when it has no take.
+- `description`: the first paragraph after the H1 that gave the title.
+- `series`, `take`: from a `-v2`, `_take3` or `-take-3` suffix on the stem (`lantern-v2` is take
+  `v2` of `lantern`).
+- `superseded`: the sidecar's `status` is `superseded` when one is set; otherwise true when a later
+  take (higher number, then newer file) of the same series sits in the same folder.
+
+A file under a `copies` or `intermediate` folder whose size and sha256 of its first and last 64 KB
+match another listed video folds into that video, whose `copies` counts it. Identical files
+outside those folders never fold. A folded copy's id still resolves on the media routes.
+
+### The feed
+
+`#/theater` sections the renders by day in the reader's own timezone (Today, Yesterday, a
+weekday within the week, then the date), newest first, each header counting its videos and their
+run time. A row shows the title, one purpose pill, at most one flag (Old take, else Phone for a
+portrait render), the verdict and note pills, and a byline. The purpose is the sidecar's
+`purpose`, else a tag naming one, else `clip` under 10 seconds, else `repo-review` or `daily`
+from the `subject` or series, else Other (`purposeOf()` in `src/pages/theater-feed.ts`). Its
+colour is only the dot beside the label, from the dataviz categorical hues.
+
+The state lives in the hash, so a filtered feed is a link: `?q=` searches the title, description,
+series, folder, subject and tags; `?tag=<purpose>` narrows to one purpose chip; `?old=1` shows
+superseded takes. Without a search or a chip, clips wait behind their chip and each day header
+links to its own.
 
 ## The approvals flow
 
