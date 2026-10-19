@@ -318,15 +318,19 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     adversary: { verdict: { ...by(head, adversary.sessionId ?? "s-adversary"), value: adversary.value ?? "MERGE" }, profile: adversary.profile ?? "fable-reviewer" },
   });
   const twoInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, ...merges(head), checks: green(head), ...extra });
-  const row = (sessionId: string, name: string, extra: Partial<LineageRow> = {}): LineageRow => ({ name, agentId: `agent-${sessionId}`, sessionId, spawnedBy: "human", teleportFrom: null, ...extra });
+  const row = (sessionId: string, name: string, extra: Partial<LineageRow> = {}): AgentRow => ({
+    ...{ name, agentId: `agent-${sessionId}`, sessionId, spawnedBy: "human", teleportFrom: null },
+    ...{ state: "exited", presence: "exited", status: "finished", profile: "bd-reviewer", surface: "headless", cwd: "/work", generation: 1 },
+    ...extra,
+  });
   const SPAWNED = [row("s-correctness", "rv-demo-1"), row("s-adversary", "rv-demo-1-adversary")];
-  const rosterOf = (rows: readonly LineageRow[] | "unread"): RosterReader => ({
-    read: async () => (rows === "unread" ? { kind: "unknown", error: new Error("broker down") } : { kind: "known", rows: rows as AgentRow[] }),
-    rows: async () => (rows === "unread" ? [] : rows) as AgentRow[],
+  const rosterOf = (rows: readonly AgentRow[] | "unread"): RosterReader => ({
+    read: async () => (rows === "unread" ? { kind: "unknown", error: new Error("broker down") } : { kind: "known", rows }),
+    rows: async () => (rows === "unread" ? [] : rows),
     invalidate: () => undefined,
   });
 
-  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }], rows: readonly LineageRow[] | "unread" = SPAWNED) {
+  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }], rows: readonly AgentRow[] | "unread" = SPAWNED) {
     const rigged = rig(ADVERSARY_HOLD, prHead, "shepherd", files);
     const deps = { ...rigged.deps, roster: rosterOf(rows) };
     return { ...rigged, deps, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(deps, mode)[0]! };
