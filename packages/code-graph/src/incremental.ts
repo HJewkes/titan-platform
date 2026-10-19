@@ -98,38 +98,12 @@ export function classifyForReuse(
   return { toParse, reusedFileIds };
 }
 
-/**
- * The `changed` ids whose structure differs from the basis, plus removed ones. A
- * COSMETIC edit yields the same edges and so the same export surface, which
- * keeps its importers reusable; deciding that costs a tree-sitter parse of each
- * changed file, far less than the ts-morph extract of every importer. Each tree
- * is deleted before the next parse (TP-747).
- */
-export async function structurallyChanged(
-  readFiles: readonly ReadFile[],
-  idRoot: string,
-  reuse: ReuseBasis,
-  changed: ReadonlySet<string>,
-): Promise<Set<string>> {
-  const out = new Set(changed);
-  for (const rf of readFiles) {
-    const id = fileId(idRoot, rf.filePath);
-    const basisSig = reuse.structuralHashes.get(id);
-    if (!changed.has(id) || basisSig === undefined) continue;
-    const parsed = await parseFile(rf.content, rf.filePath, rf.language);
-    try {
-      if (structuralSignature(parsed) === basisSig) out.delete(id);
-    } finally {
-      parsed.tree.delete();
-    }
-  }
-  return out;
-}
-
 /** What the per-file stream leaves behind once every tree it parsed is deleted. */
 export interface StreamedFiles {
   /** Every file's fragments in walk order, so the merge dedup resolves shared nodes as a full index does. */
   fragments: GraphFragment[];
+  /** The file each fragment came from, index for index. */
+  fragmentFileIds: string[];
   /** Parsed files whose structure matches the basis — reuse edges, skip extract. */
   cosmeticFileIds: Set<string>;
   /** fileId → structural signature, for every parsed file and every reused file. */
@@ -160,13 +134,14 @@ export interface StreamFilesInput {
  */
 export async function streamFiles(input: StreamFilesInput): Promise<StreamedFiles> {
   const toParse = new Set(input.toParse.map((rf) => rf.filePath));
-  const out: StreamedFiles = { fragments: [], cosmeticFileIds: new Set(), structuralByFileId: new Map(), digests: [] };
+  const out: StreamedFiles = { fragments: [], fragmentFileIds: [], cosmeticFileIds: new Set(), structuralByFileId: new Map(), digests: [] };
   for (const rf of input.readFiles) {
     const id = fileId(input.idRoot, rf.filePath);
     if (toParse.has(rf.filePath)) {
       await streamParsedFile(input, rf, id, out);
     } else if (input.reuse) {
       out.fragments.push(reconstructFragment(input.idRoot, rf.filePath, id, input.reuse));
+      out.fragmentFileIds.push(id);
     }
   }
   carryReusedSignatures(input.reuse, input.reusedFileIds, out.structuralByFileId);
@@ -184,6 +159,7 @@ async function streamParsedFile(input: StreamFilesInput, rf: ReadFile, id: strin
       : input.extractor.extract(parsed);
     if (basis) out.cosmeticFileIds.add(id);
     out.fragments.push(...fragments);
+    out.fragmentFileIds.push(...fragments.map(() => id));
     if (input.digest) out.digests.push(digestParsedFile(parsed, id, ownSymbolNames(fragments, id)));
   } finally {
     parsed.tree.delete();
@@ -198,6 +174,37 @@ async function streamParsedFile(input: StreamFilesInput, rf: ReadFile, id: strin
 function cosmeticBasis(input: StreamFilesInput, id: string, sig: string): ReuseBasis | null {
   const { reuse, affected } = input;
   return reuse && !affected.has(id) && reuse.structuralHashes.get(id) === sig ? reuse : null;
+}
+
+/**
+ * `first` with the files `second` re-extracted put in place of what `first` gave
+ * them, at the same walk positions, so the merge sees the order one stream gives.
+ */
+export function spliceStream(first: StreamedFiles, second: StreamedFiles, walkOrder: readonly string[]): StreamedFiles {
+  const replacement = new Map<string, GraphFragment[]>();
+  second.fragments.forEach((f, i) => {
+    const id = second.fragmentFileIds[i] ?? "";
+    replacement.set(id, [...(replacement.get(id) ?? []), f]);
+  });
+  const out: StreamedFiles = {
+    fragments: [],
+    fragmentFileIds: [],
+    cosmeticFileIds: new Set([...first.cosmeticFileIds, ...second.cosmeticFileIds]),
+    structuralByFileId: new Map([...first.structuralByFileId, ...second.structuralByFileId]),
+    digests: [],
+  };
+  first.fragments.forEach((f, i) => {
+    const id = first.fragmentFileIds[i] ?? "";
+    const swapped = replacement.get(id);
+    const fragments = swapped ?? [f];
+    if (swapped) replacement.delete(id);
+    out.fragments.push(...fragments);
+    out.fragmentFileIds.push(...fragments.map(() => id));
+  });
+  const position = new Map(walkOrder.map((id, i) => [id, i]));
+  const at = (d: FileDigest): number => position.get(d.fileId) ?? 0;
+  out.digests = [...first.digests, ...second.digests].sort((a, b) => at(a) - at(b));
+  return out;
 }
 
 /** Names of the symbol nodes a file's own fragments declare; symbols always hang off their declaring file. */

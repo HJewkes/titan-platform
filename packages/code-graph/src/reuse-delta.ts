@@ -1,7 +1,7 @@
 import { RESOLVABLE_EXTS } from "./extractors/module-resolution.js";
 import { parseSymbolId } from "./extractors/ids.js";
 import type { ReuseBasis } from "./incremental.js";
-import type { GraphEdge } from "./types.js";
+import type { GraphEdge, GraphFragment, GraphNode } from "./types.js";
 
 /**
  * Partial reuse across a file-membership delta (C-20). PR #28 fell back to a full
@@ -21,7 +21,7 @@ import type { GraphEdge } from "./types.js";
  * compile) that an added file now satisfies is not detected, because there is no
  * stored specifier to re-resolve. Such a file is reused until it next changes.
  *
- * Content changes are handled by `computeContentAffected` below.
+ * Export-surface changes are handled by `computeContentAffected` below.
  */
 
 /** Posix dirname of a repo-relative file id (`a/b/c.ts` → `a/b`). */
@@ -114,29 +114,66 @@ export function computeDeltaAffected(
 }
 
 /**
- * File ids whose content hash differs between the basis and the current files:
- * modified, added, or removed.
+ * A file's export surface as importers resolve against it: the ids of its
+ * exported symbols and of their members, then its re-export edges. A re-export
+ * edge carries a count, not the names, so when the file's own text changed and
+ * it re-exports anything, the surface is unknown (null) and counts as changed.
  */
-export function changedFileIds(
+function exportSurface(symbols: readonly GraphNode[], edges: readonly GraphEdge[], textChanged: boolean): string[] | null {
+  const reExports = edges.filter((e) => e.kind === "re-exports");
+  if (textChanged && reExports.length > 0) return null;
+  const exported = new Set(symbols.filter((n) => isExported(n)).map((n) => ownerName(n.id)));
+  const members = symbols.filter((n) => exported.has(ownerName(n.id))).map((n) => n.id);
+  return [...members, ...reExports.map((e) => `${e.dstId} ${JSON.stringify(e.attrs ?? {})}`)].sort();
+}
+
+/** The top-level declaration a symbol id belongs to: `f#Class.method` → `Class`. */
+const ownerName = (id: string): string => id.slice(id.indexOf("#") + 1).split(".")[0] ?? "";
+
+const isExported = (n: GraphNode): boolean => (n.attrs as { exported?: boolean } | undefined)?.exported === true;
+
+function sameSurface(a: string[] | null, b: string[] | null): boolean {
+  return a !== null && b !== null && a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/**
+ * Parsed or removed files whose export surface differs from the basis. A body
+ * edit leaves the surface as it was, so importers of that file stay reused.
+ * `textChanged` names the parsed files whose bytes differ from the basis.
+ */
+export function surfaceChangedIds(
   basis: ReuseBasis,
-  currentHashes: ReadonlyMap<string, string>,
+  fragments: readonly GraphFragment[],
+  textChanged: ReadonlySet<string>,
+  parsedIds: ReadonlySet<string>,
+  currentFileIds: ReadonlySet<string>,
 ): Set<string> {
-  const changed = new Set<string>();
-  for (const [id, hash] of currentHashes) {
-    if (basis.fingerprints.get(id) !== hash) changed.add(id);
+  const symbols = new Map<string, GraphNode[]>();
+  const edges = new Map<string, GraphEdge[]>();
+  for (const fragment of fragments) {
+    for (const n of fragment.nodes) if (n.kind === "symbol" && n.parentId && parsedIds.has(n.parentId)) push(symbols, n.parentId, n);
+    for (const e of fragment.edges) if (parsedIds.has(e.srcId)) push(edges, e.srcId, e);
   }
-  for (const id of basis.fingerprints.keys()) {
-    if (!currentHashes.has(id)) changed.add(id);
+  const changed = new Set([...basis.fingerprints.keys()].filter((id) => !currentFileIds.has(id)));
+  for (const id of parsedIds) {
+    const text = textChanged.has(id);
+    const before = exportSurface(basis.symbolsByFile.get(id) ?? [], basis.edgesBySrc.get(id) ?? [], text);
+    const after = exportSurface(symbols.get(id) ?? [], edges.get(id) ?? [], text);
+    if (!sameSurface(before, after)) changed.add(id);
   }
   return changed;
 }
 
+function push<V>(map: Map<string, V[]>, key: string, value: V): void {
+  map.set(key, [...(map.get(key) ?? []), value]);
+}
+
 /**
- * Unchanged files whose edges a content change elsewhere can alter (TP-3636). An
+ * Unchanged files whose edges an export-surface change elsewhere can alter (TP-3636). An
  * importer's `references` edges resolve, at extract time, through the target's
  * export surface to the declaring file, and a reference that resolved to no
  * symbol node is pruned and leaves no trace. So a byte-identical file whose edge
- * lands on a changed file, or on a file that re-exports (transitively) from one,
+ * lands on a surface-changed file, or on a file that re-exports (transitively) from one,
  * must re-extract; reusing it carried edges a full index no longer produces, and
  * dropped ones it now does, which made a seeded index differ from a cold one.
  */
@@ -159,8 +196,7 @@ function reExportClosure(basis: ReuseBasis, changed: ReadonlySet<string>): Set<s
   for (const [srcId, edges] of basis.edgesBySrc) {
     for (const edge of edges) {
       if (edge.kind !== "re-exports") continue;
-      const dst = targetFileId(edge);
-      reExporters.set(dst, [...(reExporters.get(dst) ?? []), srcId]);
+      push(reExporters, targetFileId(edge), srcId);
     }
   }
   const seen = new Set(changed);

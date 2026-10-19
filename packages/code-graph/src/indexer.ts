@@ -10,8 +10,8 @@ import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { rootsAtRevision } from "./git-tree-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
-import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, streamFiles, structurallyChanged, type ReadFile, type ReuseBasis } from "./incremental.js";
-import { changedFileIds, computeContentAffected, computeDeltaAffected } from "./reuse-delta.js";
+import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, spliceStream, streamFiles, type ReadFile, type StreamedFiles, type StreamFilesInput } from "./incremental.js";
+import { computeContentAffected, computeDeltaAffected, surfaceChangedIds } from "./reuse-delta.js";
 import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
@@ -144,16 +144,41 @@ function historyOptions(options: IndexOptions, source: IndexSource): HistoryMetr
   };
 }
 
+type StreamInput = Omit<StreamFilesInput, "toParse" | "reusedFileIds" | "affected">;
+
+interface ReuseStream {
+  streamed: StreamedFiles;
+  toParse: ReadFile[];
+  reusedFileIds: string[];
+}
+
 /**
- * Byte-identical files that must still re-extract: those whose imports a
- * file-membership delta re-resolves, and those whose edges land on a file whose
- * structure changed, so a seeded index matches a cold one.
+ * Streams every file, reusing what the basis allows. A byte-identical file still
+ * re-extracts when a file-membership delta re-resolves its imports, or when it
+ * has an edge to a file whose export surface the parsed files changed (TP-3636).
+ * The surface is known only after the parse, so those files re-extract in a
+ * second, small stream spliced into the first.
  */
-async function reuseAffected(reuse: ReuseBasis, readFiles: readonly ReadFile[], idRoot: string): Promise<Set<string>> {
-  const currentHashes = new Map(readFiles.map((rf) => [fileId(idRoot, rf.filePath), rf.hash]));
-  const delta = computeDeltaAffected(reuse, new Set(currentHashes.keys()));
-  const changed = await structurallyChanged(readFiles, idRoot, reuse, changedFileIds(reuse, currentHashes));
-  return new Set([...delta, ...computeContentAffected(reuse, changed)]);
+async function streamWithReuse(input: StreamInput): Promise<ReuseStream> {
+  const { reuse, readFiles, idRoot } = input;
+  const idOf = (rf: ReadFile): string => fileId(idRoot, rf.filePath);
+  const currentFileIds = new Set(readFiles.map(idOf));
+  const delta = reuse ? computeDeltaAffected(reuse, currentFileIds) : new Set<string>();
+  const { toParse, reusedFileIds } = classifyForReuse(readFiles, idRoot, reuse, delta);
+  const streamed = await streamFiles({ ...input, toParse, reusedFileIds, affected: delta });
+  if (!reuse) return { streamed, toParse, reusedFileIds };
+  const parsedIds = new Set(toParse.map(idOf));
+  const textChanged = new Set(toParse.filter((rf) => reuse.fingerprints.get(idOf(rf)) !== rf.hash).map(idOf));
+  const surface = surfaceChangedIds(reuse, streamed.fragments, textChanged, parsedIds, currentFileIds);
+  const content = new Set([...computeContentAffected(reuse, surface)].filter((id) => !parsedIds.has(id)));
+  if (content.size === 0) return { streamed, toParse, reusedFileIds };
+  const files = readFiles.filter((rf) => content.has(idOf(rf)));
+  const second = await streamFiles({ ...input, readFiles: files, toParse: files, reusedFileIds: [], affected: content });
+  return {
+    streamed: spliceStream(streamed, second, readFiles.map(idOf)),
+    toParse: [...toParse, ...files],
+    reusedFileIds: reusedFileIds.filter((id) => !content.has(id)),
+  };
 }
 
 /**
@@ -168,17 +193,11 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
   const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
-  const affected = reuse ? await reuseAffected(reuse, readFiles, idRoot) : new Set<string>();
-  const { toParse, reusedFileIds } = classifyForReuse(readFiles, idRoot, reuse, affected);
-
   const requalify = needsRequalifyAliases(store);
-  const streamed = await streamFiles({
+  const { streamed, toParse, reusedFileIds } = await streamWithReuse({
     readFiles,
     idRoot,
-    toParse,
     reuse,
-    reusedFileIds,
-    affected,
     extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig, source }),
     digest: requalify || options.computeMetrics !== false,
   });
