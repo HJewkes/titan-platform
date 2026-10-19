@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { launch, settleFonts, type Viewport } from "@titan-design/frame-capture";
-import type { Browser } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 import { SECOND_SHOT_SKEW_MS, TWIN_NOW, frozenClockScript } from "./clock.js";
 import type { TwinRoute } from "./routes.js";
 
@@ -93,8 +93,8 @@ function assertFontsLoaded(fonts: Awaited<ReturnType<typeof settleFonts>>, where
   if (unloaded.length > 0) throw new Error(`${where}: fonts not loaded: ${unloaded.map((font) => `${font.family} (${font.status})`).join(", ")}`);
 }
 
-/** One shot in a fresh context: frozen clock at `nowMs`, UTC, en-US, reduced motion, animations stopped at capture. */
-async function shoot(browser: Browser, url: string, viewport: Viewport, nowMs: number, where: string): Promise<Buffer> {
+/** Opens `url` in a fresh context (frozen clock at `nowMs`, UTC, en-US, reduced motion), waits for it to settle, then runs `use` on it. */
+async function onSettledPage<T>(browser: Browser, url: string, viewport: Viewport, nowMs: number, where: string, use: (page: Page) => Promise<T>): Promise<T> {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1, timezoneId: "UTC", locale: "en-US", reducedMotion: "reduce", colorScheme: "dark" });
   try {
     await context.addInitScript({ content: frozenClockScript(nowMs) });
@@ -111,10 +111,15 @@ async function shoot(browser: Browser, url: string, viewport: Viewport, nowMs: n
     await page.evaluate(SETTLE_SCRIPT);
     if (errors[0]) throw new Error(`${where}: ${errors[0].message}`);
     if ((await page.textContent("body"))?.includes(SNAPSHOT_MISS)) throw new Error(`${where}: the page asked for a call the twin snapshot does not hold`);
-    return await page.screenshot({ type: "png", caret: "hide", animations: "disabled" });
+    return await use(page);
   } finally {
     await context.close();
   }
+}
+
+/** One shot, animations stopped at capture. */
+function shoot(browser: Browser, url: string, viewport: Viewport, nowMs: number, where: string): Promise<Buffer> {
+  return onSettledPage(browser, url, viewport, nowMs, where, (page) => page.screenshot({ type: "png", caret: "hide", animations: "disabled" }));
 }
 
 interface Job {
@@ -171,6 +176,38 @@ export async function captureTwin(options: CaptureOptions): Promise<TwinManifest
     const differing = results.filter((result) => !result.same).map(({ frame }) => `${frame.route}@${frame.viewport}`);
     if (differing.length > 0) throw new NondeterministicCaptureError(differing);
     return manifest;
+  } finally {
+    await browser.close();
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+interface OverflowOptions {
+  html: string;
+  routes: readonly TwinRoute[];
+  viewport: Viewport;
+  parallel?: number;
+}
+
+export interface RouteOverflow {
+  route: string;
+  /** Pixels the document is wider than the viewport; 0 when nothing scrolls sideways. */
+  overflowPx: number;
+}
+
+const OVERFLOW_SCRIPT = "Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)";
+
+/** How far each route's settled document scrolls sideways at `viewport`. */
+export async function measureOverflow(options: OverflowOptions): Promise<RouteOverflow[]> {
+  const scratch = await mkdtemp(path.join(tmpdir(), "titan-console-overflow-"));
+  const pageFile = path.join(scratch, "console.html");
+  await writeFile(pageFile, options.html);
+  const browser = await launch();
+  try {
+    return await runAll(options.routes, options.parallel ?? 4, async (route) => ({
+      route: route.name,
+      overflowPx: await onSettledPage(browser, `${pathToFileURL(pageFile).href}${route.hash}`, options.viewport, TWIN_NOW, route.name, (page) => page.evaluate<number>(OVERFLOW_SCRIPT)),
+    }));
   } finally {
     await browser.close();
     await rm(scratch, { recursive: true, force: true });
