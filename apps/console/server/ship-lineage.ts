@@ -13,13 +13,15 @@ export const shipLineage = z.discriminatedUnion("known", [
     known: z.literal(true),
     /** The head the round's verdict and CI proved: the merge binding's `headSha`. */
     provenSha: sha40,
+    /** GitHub's PR state; a closed PR that did not merge was never compared, so its `behind` is null. */
+    state: z.enum(["open", "closed"]),
     merged: z.boolean(),
     mergeSha: sha40.nullable(),
     /** The PR's head now; another sha than `provenSha` means it moved after the proof. */
     headSha: sha40,
     baseRef: z.string().min(1),
     baseSha: sha40,
-    /** Base commits the proven head lacks; null once merged, or when the head moved and only its new head was compared. */
+    /** Base commits the proven head lacks; null unless the PR is open and still at the proven head, the only case GitHub compares. */
     behind: z.number().int().nonnegative().nullable(),
   }),
   z.strictObject({ known: z.literal(false), reason: z.string() }),
@@ -53,9 +55,10 @@ export async function readLineage(github: LineagePort, { repo, pr, headSha }: Me
     const read = await github.getPr(repo, pr);
     const baseSha = await github.getHeadSha(repo, read.baseRef);
     if (baseSha === null) return { known: false, reason: `${read.baseRef} has no tip on ${repo}` };
-    const comparedProven = !read.merged && read.headSha === headSha && read.behindBy !== undefined;
+    // `getPr` fills `behindBy` with 0 for a PR that is not open, so only an open one at the proven head was compared.
+    const comparedProven = read.state === "open" && read.headSha === headSha && read.behindBy !== undefined;
     const lineage = {
-      known: true, provenSha: headSha, merged: read.merged, mergeSha: read.merged ? read.mergeSha : null,
+      known: true, provenSha: headSha, state: read.state, merged: read.merged, mergeSha: read.merged ? read.mergeSha : null,
       headSha: read.headSha, baseRef: read.baseRef, baseSha, behind: comparedProven ? (read.behindBy ?? null) : null,
     };
     const parsed = shipLineage.safeParse(lineage);

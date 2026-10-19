@@ -24,7 +24,7 @@ function github(pr: PullRequest | Error, tip: string | null = MAIN) {
 describe("a Ship round's lineage", () => {
   it("counts the base commits an open proven head lacks, against the base tip", async () => {
     expect(await readLineage(github(pull()), binding)).toEqual({
-      known: true, provenSha: PROVEN, merged: false, mergeSha: null, headSha: PROVEN, baseRef: "main", baseSha: MAIN, behind: 3,
+      known: true, provenSha: PROVEN, state: "open", merged: false, mergeSha: null, headSha: PROVEN, baseRef: "main", baseSha: MAIN, behind: 3,
     });
   });
 
@@ -32,6 +32,12 @@ describe("a Ship round's lineage", () => {
     const merged = pull({ state: "closed", merged: true, mergeSha: "c".repeat(40), behindBy: 0 });
 
     expect(await readLineage(github(merged), binding)).toMatchObject({ merged: true, mergeSha: "c".repeat(40), behind: null });
+  });
+
+  it("leaves behind unknown for a PR closed without merging, whose zero GitHub never measured", async () => {
+    const closed = pull({ state: "closed", merged: false, behind: false, behindBy: 0 });
+
+    expect(await readLineage(github(closed), binding)).toMatchObject({ known: true, state: "closed", merged: false, behind: null });
   });
 
   it("leaves behind unknown once the head moved past the proven sha", async () => {

@@ -9,7 +9,7 @@ afterEach(cleanup);
 const PROVEN = "abc1234".padEnd(40, "0");
 const MAIN = "def5678".padEnd(40, "1");
 const MERGE = "9876543".padEnd(40, "2");
-const open: ShipLineage = { known: true, provenSha: PROVEN, merged: false, mergeSha: null, headSha: PROVEN, baseRef: "main", baseSha: MAIN, behind: 0 };
+const open: ShipLineage = { known: true, provenSha: PROVEN, state: "open", merged: false, mergeSha: null, headSha: PROVEN, baseRef: "main", baseSha: MAIN, behind: 0 };
 
 const line = (lineage: ShipLineage | undefined): HTMLElement => {
   render(<ShipLineageLine lineage={lineage} />);
@@ -36,6 +36,13 @@ describe("the Ship lineage line", () => {
 
     expect(shown.textContent).toBe("proven at abc1234merged 9876543main def5678");
     expect(shown.dataset.state).toBe("merged");
+  });
+
+  it("names a PR closed without merging and leaves behind unknown, never up to date", () => {
+    const shown = line({ ...open, state: "closed", behind: null });
+
+    expect(shown.textContent).toBe("proven at abc1234closed UNMERGEDmain def5678behind unknown");
+    expect(shown.dataset.state).toBe("unknown");
   });
 
   it("says the head moved and leaves behind unknown rather than calling it fresh", () => {

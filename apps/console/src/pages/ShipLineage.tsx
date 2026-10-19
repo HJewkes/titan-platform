@@ -20,6 +20,11 @@ function behindText(lineage: KnownLineage): string | null {
   return lineage.behind === 0 ? "up to date" : `${lineage.behind} behind`;
 }
 
+function MergeBadge({ lineage }: { lineage: KnownLineage }): ReactNode {
+  if (lineage.merged) return <Badge color="success" size="sm">{`merged${lineage.mergeSha ? ` ${sha7(lineage.mergeSha)}` : ""}`}</Badge>;
+  return lineage.state === "closed" ? <Badge color="warning" size="sm">closed UNMERGED</Badge> : <Badge color="info" size="sm">UNMERGED</Badge>;
+}
+
 const Facts = ({ parts }: { parts: string[] }): ReactNode => <Typography variant="caption" color="secondary">{parts.join(" · ")}</Typography>;
 
 /** The three facts openrig prints before a Ship: proven-at sha, merged or UNMERGED, the base tip; freshness only beside them. */
@@ -38,7 +43,7 @@ export function ShipLineageLine({ lineage }: { lineage: ShipLineage | undefined 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="ship-lineage" data-state={state}>
       <Facts parts={[`proven at ${sha7(lineage.provenSha)}`]} />
-      <Badge color={lineage.merged ? "success" : "info"} size="sm">{lineage.merged ? `merged${lineage.mergeSha ? ` ${sha7(lineage.mergeSha)}` : ""}` : "UNMERGED"}</Badge>
+      <MergeBadge lineage={lineage} />
       <Facts parts={[...moved, `${lineage.baseRef} ${sha7(lineage.baseSha)}`]} />
       {behind === null ? null : state === "stale" ? <Badge color="warning" size="sm">{behind}</Badge> : <Facts parts={[behind]} />}
     </div>
