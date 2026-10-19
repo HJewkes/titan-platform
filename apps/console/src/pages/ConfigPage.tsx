@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Alert, EmptyState, Section, SectionContent, SectionHeader, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
+import { HostsSection } from "./ConfigHosts.js";
 import { ConfigRowCard, DuplicateCard, type ConfigRow, type DuplicateRow } from "./ConfigRows.js";
 
 type Surfaces = ConsoleCommands["config.surfaces"]["result"];
@@ -31,7 +32,7 @@ function groupSurfaces({ files, rows }: Pick<Surfaces, "files" | "rows">): { tit
   return titles.map((title) => ({ title, surfaces: blocks.filter((block) => titleOf(block) === title) })).filter((group) => group.surfaces.length > 0);
 }
 
-/** Every config row this host's console reads, drift first. Read-only: a terminal row shows the command that edits its line. */
+/** Every config row this host's console reads, drift first, then the other hosts' reports. Read-only: a terminal row shows the command that edits its line. */
 export function ConfigPage(): ReactNode {
   const surfaces = useQuery("config.surfaces");
   const drift = useQuery("config.drift");
@@ -44,6 +45,7 @@ export function ConfigPage(): ReactNode {
       ) : (
         <DriftSections rows={drift.data.rows} />
       )}
+      <HostsSection />
       {surfaces.status === "loading" ? (
         <Spinner size="sm" label="Loading config" />
       ) : surfaces.data === undefined ? (

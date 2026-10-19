@@ -217,6 +217,17 @@ const CONFIG_DRIFT: Served["config.drift"]["result"] = {
   gaps: [],
 };
 
+const CONFIG_HOSTS: Served["config.hosts"]["result"] = {
+  hosts: [
+    {
+      host: "relay-mini", status: "reported", reportedAt: at(3 * HOUR), receivedAt: at(3 * HOUR), platform: "darwin",
+      surfaces: [{ kind: "agent-chat-config", inventory: 2, file: "~/synthetic/agent-chat/config.json", present: true, secret: false, mode: "0644", bytes: 512, mtime: at(6 * HOUR), sha256: "cd".repeat(32) }],
+    },
+    { host: "relay-spare", status: "not reported", reportedAt: at(40 * HOUR), receivedAt: at(40 * HOUR), platform: "linux", surfaces: [] },
+  ],
+  gaps: [],
+};
+
 /** The answers for every source the file fixtures do not cover. */
 export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("upstreams.health", {}, {
@@ -256,4 +267,5 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
   answer("config.surfaces", {}, CONFIG_SURFACES),
   answer("config.drift", {}, CONFIG_DRIFT),
+  answer("config.hosts", {}, CONFIG_HOSTS),
 ];
