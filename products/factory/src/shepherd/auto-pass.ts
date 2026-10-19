@@ -2,8 +2,10 @@ import type { GitHubPort } from "@titan-design/github";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
+import { configPath, loadConfig } from "../config.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { loadSeatBook, seatBaselineGlobs, type SeatBook } from "./seats.js";
 
 /**
  * Owner gates the owner approved every time they were asked (2026-10-05 to 10-19: D2 72/72, D7 63/63, D13 35/35), so each
@@ -38,6 +40,26 @@ export const VISUAL_DEMOTION: VisualDemotion = {
 
 /** The D2 guard production decides with; `GATE_DEMOTIONS.visual` false restores every visual gate. */
 export const DEFAULT_VISUAL_DEMOTION: VisualDemotion | null = GATE_DEMOTIONS.visual ? VISUAL_DEMOTION : null;
+
+/**
+ * The D2 guard for `repo`, built from the seat book as it reads at decision time: every baseline glob any seat on the
+ * remote declares joins the paths the owner reviews. A book that cannot be read keeps every visual gate for the owner.
+ */
+export function seatVisualDemotion(seats: () => SeatBook, repo: string, demotion: VisualDemotion | null = DEFAULT_VISUAL_DEMOTION): VisualDemotion | null {
+  if (demotion === null) return null;
+  let globs: string[];
+  try {
+    globs = seatBaselineGlobs(seats(), repo);
+  } catch {
+    return null;
+  }
+  return globs.length === 0 ? demotion : { ...demotion, ownerPaths: [...new Set([...demotion.ownerPaths, ...globs])] };
+}
+
+/** `seatVisualDemotion` over the configured seat book, re-read per call as registration reads it. */
+export function configuredVisualDemotion(repo: string, env: NodeJS.ProcessEnv = process.env): VisualDemotion | null {
+  return seatVisualDemotion(() => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
+}
 
 /** Marks an allow whose visual gate the D2 guard passed, so the evidence comment and the owner see what passed without them. */
 export const VISUAL_DEMOTION_NOTE = "; auto-pass D2/visual-unchanged (TP-3697)";

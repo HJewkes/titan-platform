@@ -10,7 +10,7 @@ import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
-import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualDemotionAt, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
+import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualDemotionAt, visualMatches, type AutoMergeVisual, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { VISUAL_DEMOTION_NOTE, type VisualDemotion } from "./auto-pass.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
@@ -170,14 +170,6 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
 export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visual: AutoMergeVisual): GateDecision {
   const policy: VisualPolicy = { visualPaths: visual.visualPaths, visualBaselines: visual.visualBaselines, visualDemotion: visual.visualDemotion };
   return withUnreadFacts(decideOnFacts(headSha, evidence, policy), evidence);
-}
-
-/** What `decideAutoMerge` reads about visual files; the D2 guard has no default, so every caller passes the seat-built one. */
-interface AutoMergeVisual {
-  visualPaths?: readonly string[];
-  visualBaselines?: VisualBaselines;
-  /** `seatVisualDemotion` for the repo at decision time; null keeps every visual gate for the owner. */
-  visualDemotion: VisualDemotion | null;
 }
 
 function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy): GateDecision {

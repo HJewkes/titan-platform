@@ -16,6 +16,14 @@ export interface VisualPolicy {
   visualDemotion?: VisualDemotion | null;
 }
 
+/** What `decideAutoMerge` reads about visual files; the D2 guard has no default, so every caller passes the seat-built one. */
+export interface AutoMergeVisual {
+  visualPaths?: readonly string[];
+  visualBaselines?: VisualBaselines;
+  /** `seatVisualDemotion` for the repo at decision time; null keeps every visual gate for the owner. */
+  visualDemotion: VisualDemotion | null;
+}
+
 const SHOWN_VISUAL_PATHS = 10;
 const MAX_SHOWN_PATH = 200;
 

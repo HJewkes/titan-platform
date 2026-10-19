@@ -51,8 +51,7 @@ import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
-import { autoPassRoute } from "./auto-pass.js";
-import { configuredVisualDemotion } from "./seat-demotion.js";
+import { autoPassRoute, configuredVisualDemotion } from "./auto-pass.js";
 import { countConflictRound, onEscalated, type FailedRoundsState } from "./failed-rounds-demotion.js";
 
 export { SHEPHERD_STEPS };
@@ -127,8 +126,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 
 /** An unsettled mergeability past its bound is the seat's to hear about, never an owner gate, while land keeps re-reading. */
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
-  const demotion = () => run.phases.visualDemotion?.(run.target.repo) ?? null;
-  const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase, demotion);
+  const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase, () => run.phases.visualDemotion?.(run.target.repo) ?? null);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
   return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha), sendBackOffered: sendBackOffer() };
