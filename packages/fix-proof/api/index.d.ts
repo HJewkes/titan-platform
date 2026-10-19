@@ -318,8 +318,8 @@ type ParsedResultLine = {
 /**
  * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
  * code on both sides, so it reads vacuous at best. It is proved when every changed test file has a spec of its own in the
- * diff, every declared mutation is killed, and every selected test ran and passed at head. A line with no `uncovered`
- * list comes from a judge that never checked coverage, so it proves nothing.
+ * diff, every declared mutation is killed, every selected test ran and passed at head, and no test was deleted or renamed
+ * out of the tests. A line with no `uncovered` list comes from a judge that never checked coverage, so it proves nothing.
  */
 declare function provedByMutants(result: FixProofResult): boolean;
 /** Joins a plan and its classification into the result a runner prints for head. */

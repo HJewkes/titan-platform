@@ -114,7 +114,9 @@ coverage leaves the `vacuous` verdict standing, so the round ends as `NO_REPRO`,
 rather than for a test that fails at the merge base, fencing the test files that still need a
 spec. The judge adds `mutants` only when it reads
 the diff from git as test material alone, so a line from a diff with source in it never passes
-this way. A pull request with no spec reads `NO_REPRO` as before.
+this way. A diff that deletes a test, or renames one out of the test globs, gets no `mutants`
+either: no file is left at head for a spec to sit beside, and `provedByMutants` also refuses
+any line that lists `deletedTests`. A pull request with no spec reads `NO_REPRO` as before.
 
 A `feature`, `refactor` or `unknown` run may move into `test-only` freely, since that only adds
 the gate; a `security` run may not leave `security`. A `correctness` run may move there only

@@ -28,7 +28,7 @@ This package is the pure core of that gate. It adds three primitives:
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
   log line of at most 4 KB, for a CI job to print and Shepherd to read.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
-  its `uncovered` list is present and empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
+  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
 
 ## When to reach for it
@@ -282,7 +282,9 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
 - **Coverage.** A killed spec proves only the test file beside it. The judge lists every
   changed test file (`plan.tests`) that no spec in the diff sits beside as
   `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
-  before this check has no `uncovered` list, and `provedByMutants` reads it as unproved.
+  before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
+  diff that deletes a test or renames one out of the tests is not test-only
+  (`testOnlyReading`), so the judge attaches no `mutants` to it at all.
 - **Fitting the 4 KB line.** `failed` lists the failing tests only for `overkill` and
   `survived`. To fit the line, the judge drops `killed` results before the others and keeps
   the verdict.
