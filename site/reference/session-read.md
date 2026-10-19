@@ -367,3 +367,13 @@ wants to tell this apart from option-validation `TypeError`s (which stay plain) 
 check `instanceof SessionIdentityError` and read `.code`. session-graph quarantines a
 source on this error, as it does on `TranscriptParseError`, because both describe the
 file's contents rather than a fault in the caller.
+
+## Semantic text finality
+
+`assistantTextFinality()` projects assistant-text endings without declaring process
+completion, reviewer approval or authority. Consumers still check complete source
+framing and enforce their own review policy. `inSessionSourceOrder(source, observations)`
+opt-in buffers Codex observations into stable physical-record order before downstream
+counters run; Claude streaming/native content order stays unchanged. The existing
+`readSessionObservations` API is unchanged. See the package README for the contract
+and the distinction from live-tail reading.

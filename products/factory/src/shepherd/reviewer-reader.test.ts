@@ -733,3 +733,150 @@ describe("isInvestigativeCall", () => {
     expect(await bashCommand(command)).toBe(false);
   });
 });
+
+
+describe("same-record chat_send preserves product finality rules", () => {
+  const chatSend = (value: unknown): Json => ({
+    type: "tool_use", id: "chat-send-fixture", name: "mcp__agent_chat__chat_send",
+    input: { text: value },
+  });
+  it("keeps a valid chat_send before final text unfinished despite native content position", async () => {
+    const transcript = writeTranscript(SESSION, [assistantRecord(SESSION, [chatSend(BLOCK), text(BLOCK)])]);
+    expect(await read([row(transcript)])).toEqual([]);
+  });
+  it("lets a later separate assistant text finish after that sent verdict", async () => {
+    const transcript = writeTranscript(SESSION, [
+      assistantRecord(SESSION, [chatSend(BLOCK), text("Earlier text")]),
+      assistant(SESSION, [BLOCK]),
+    ]);
+    expect((await read([row(transcript)])).at(-1)?.text).toBe(BLOCK);
+  });
+  it("does not apply the valid sent-message rule to a non-text chat_send input", async () => {
+    const transcript = writeTranscript(SESSION, [assistantRecord(SESSION, [chatSend(7), text(BLOCK)])]);
+    expect((await read([row(transcript)])).at(-1)?.text).toBe(BLOCK);
+  });
+});
+
+
+describe("explicit descriptor reviewer ingress without production roster mapping", () => {
+  type Source = SessionRead.SessionSourceDescriptor;
+  let receipt = 0;
+  const event = (type: string, payload: Json): Json => ({ type, timestamp: LATER, payload });
+  const projected = (value: string): Json => event("event_msg", { type: "agent_message", message: value });
+  const canonical = (value: string): Json => event("response_item", {
+    type: "message", role: "assistant", content: [{ type: "output_text", text: value }],
+  });
+  const codex = (records: readonly Json[]): string => writeTranscript(SESSION, [
+    event("session_meta", { id: SESSION }),
+    event("event_msg", { type: "task_started", turn_id: "turn" }),
+    ...records,
+    event("event_msg", { type: "task_complete", turn_id: "turn" }),
+  ], "explicit-codex");
+  const descriptor = (file: string): Source => ({
+    sourceId: "codex:synthetic-source", harness: "codex", format: "codex-rollout-jsonl", formatVersion: "fixture-v1",
+    path: file, namespace: NAMESPACE,
+    conversation: { harness: "codex", namespace: NAMESPACE, nativeId: SESSION },
+    provenance: { kind: "codex-rollout", sessionTreeId: null, historyMode: "unknown" },
+  });
+  const capture = (name: string, value: unknown): void => {
+    const receipts = process.env.S09_FINALITY_RECEIPT_ROOT;
+    if (receipts === undefined) return;
+    if (!path.isAbsolute(receipts)) throw new Error("S09 receipt root must be absolute");
+    mkdirSync(receipts, { recursive: true });
+    writeFileSync(path.join(receipts, "reader-" + path.basename(dir) + "-" + (++receipt) + ".json"),
+      JSON.stringify({ name, value }, null, 2) + "\n", { flag: "wx" });
+  };
+  beforeEach(() => vi.mocked(readSessionObservations).mockClear());
+
+  it("reads explicit Codex fallback and canonical messages in physical source order", async () => {
+    const file = codex([projected("EARLIER"), canonical("LATER")]);
+    const source = descriptor(file);
+    const reader = transcriptReviewerReader({ roster: async () => [row(file)], namespace: NAMESPACE, sourceFor: () => source });
+    const messages = await reader.read(input);
+    capture("physical source order", messages);
+    expect(messages.map(message => message.text)).toEqual(["EARLIER", "LATER"]);
+    expect(messages.map(message => message.sessionId)).toEqual([SESSION, SESSION]);
+    expect(messages[0]?.locator.evidence.line.byteOffset).toBeLessThan(messages[1]?.locator.evidence.line.byteOffset ?? -1);
+    expect(messages.every(message => message.locator.source.harness === "codex")).toBe(true);
+  });
+
+  it("refuses stale fallback text before a physically later Codex tool", async () => {
+    const file = codex([projected("STALE"), event("response_item", {
+      type: "function_call", call_id: "call", name: "read", arguments: "{}",
+    })]);
+    const reader = transcriptReviewerReader({ roster: async () => [row(file)], namespace: NAMESPACE, sourceFor: () => descriptor(file) });
+    const messages = await reader.read(input);
+    capture("stale fallback", messages);
+    expect(messages).toEqual([]);
+  });
+
+  it("stamps each delayed Codex message with only physically prior investigative calls", async () => {
+    const file = codex([projected(BLOCK), event("response_item", {
+      type: "function_call", call_id: "investigate", name: "Read", arguments: JSON.stringify({ file_path: "synthetic.ts" }),
+    }), canonical("Later assistant text")]);
+    const reader = transcriptReviewerReader({ roster: async () => [row(file)], namespace: NAMESPACE, sourceFor: () => descriptor(file) });
+    const messages = await reader.read(input);
+    capture("physical investigative credit", messages);
+    expect(messages.map(message => message.text)).toEqual([BLOCK, "Later assistant text"]);
+    expect(messages.map(message => message.investigativeCalls)).toEqual([0, 1]);
+  });
+
+  const mismatches: readonly [string, (source: Source) => Source][] = [
+    ["path", source => ({ ...source, path: source.path + ".other" })],
+    ["namespace", source => ({ ...source, namespace: "other-host" })],
+    ["conversation namespace", source => ({ ...source, conversation: { ...source.conversation, namespace: "other-host" } })],
+    ["session", source => ({ ...source, conversation: { ...source.conversation, nativeId: "different-session" } })],
+    ["harness", source => ({ ...source, conversation: { ...source.conversation, harness: "claude-code" } })],
+  ];
+  for (const [label, mismatch] of mismatches) {
+    it("rejects explicit descriptor " + label + " mismatch without decoder fallback", async () => {
+      const file = codex([canonical("FINAL")]);
+      const reader = transcriptReviewerReader({ roster: async () => [row(file)], namespace: NAMESPACE,
+        sourceFor: () => mismatch(descriptor(file)) });
+      let error: unknown;
+      try { await reader.read(input); } catch (caught) { error = caught; }
+      capture("mismatch " + label, { message: error instanceof Error ? error.message : String(error),
+        decoderCalls: vi.mocked(readSessionObservations).mock.calls.length });
+      expect(error).toBeInstanceOf(TypeError);
+      expect(vi.mocked(readSessionObservations)).not.toHaveBeenCalled();
+    });
+  }
+
+  it("binds cached seats to a copied complete descriptor despite unchanged file stats", async () => {
+    const file = codex([canonical("FINAL")]);
+    const source = descriptor(file);
+    const reader = transcriptReviewerReader({ roster: async () => [row(file)], namespace: NAMESPACE, sourceFor: () => source });
+    const readSeat = reader.readSeat;
+    if (readSeat === undefined) throw new Error("seat reader unavailable");
+    await readSeat(input);
+    await readSeat(input);
+    capture("same descriptor hit", { calls: vi.mocked(readSessionObservations).mock.calls.length });
+    expect(vi.mocked(readSessionObservations)).toHaveBeenCalledTimes(1);
+    source.sourceId = "codex:second-source";
+    await readSeat(input);
+    capture("source identity collision refused cache hit", { calls: vi.mocked(readSessionObservations).mock.calls.length });
+    expect(vi.mocked(readSessionObservations)).toHaveBeenCalledTimes(2);
+    source.formatVersion = "fixture-v2";
+    await readSeat(input);
+    capture("format version collision refused cache hit", { calls: vi.mocked(readSessionObservations).mock.calls.length });
+    expect(vi.mocked(readSessionObservations)).toHaveBeenCalledTimes(3);
+    source.provenance = { kind: "codex-rollout", sessionTreeId: "another-tree", historyMode: "unknown" };
+    await readSeat(input);
+    capture("provenance collision refused cache hit", { calls: vi.mocked(readSessionObservations).mock.calls.length });
+    expect(vi.mocked(readSessionObservations)).toHaveBeenCalledTimes(4);
+    const returned = await readSeat(input);
+    const first = returned[0];
+    if (first === undefined) throw new Error("synthetic Codex fixture returned no locator");
+    first.locator.source.sourceId = "codex:third-source";
+    source.sourceId = "codex:third-source";
+    const reread = await readSeat(input);
+    capture("returned locator mutation cannot rewrite private cache identity", {
+      calls: vi.mocked(readSessionObservations).mock.calls.length,
+      sameMessages: reread === returned,
+      firstSource: first.locator.source.sourceId,
+      rereadSource: reread[0]?.locator.source.sourceId,
+    });
+    expect(vi.mocked(readSessionObservations)).toHaveBeenCalledTimes(5);
+    expect(reread).not.toBe(returned);
+  });
+});
