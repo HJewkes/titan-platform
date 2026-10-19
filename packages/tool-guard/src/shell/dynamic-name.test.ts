@@ -60,7 +60,7 @@ describe("a dynamic command word read per guarded family", () => {
 
   it.each([
     ["gh api merge", "\"$G\" api -X PUT repos/o/r/pulls/5/merge", "bash.merge.gh-api-merge"],
-    ["gh api graphql", "\"$G\" api graphql -f query=mergePullRequest", "bash.merge.gh-api-graphql"],
+    ["gh api graphql", "\"$G\" api graphql -fquery=mergePullRequest", "bash.merge.gh-api-graphql"],
     ["curl merge", "\"$C\" -X PUT https://api.github.com/repos/o/r/pulls/5/merge", "bash.merge.curl-api"],
     ["publish", "\"$P\" publish", "bash.release.npm-publish"],
   ])("reads the merge and release rows beyond verbs: %s", (_how, command, spelling) => {

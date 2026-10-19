@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createCodexExecAdapter, dispatchHarnessRun, prepareCodexEnv, DEFAULT_CODEX_EXECUTABLE, SUPPORTED_CODEX_EXEC_VERSION } from "../packages/agent/dist/index.js";
+import { createCodexExecAdapter, dispatchHarnessRun, prepareCodexEnv, checkCodexAvailable, SUPPORTED_CODEX_EXEC_VERSION } from "../packages/agent/dist/index.js";
 import { discoverCodexSources } from "../packages/session-read/dist/index.js";
 import { indexCodexSource, indexTranscript, normalizedUsage } from "../packages/session-graph/dist/index.js";
 import { createMinerContext, createMinerRegistry, resolveConfig } from "../products/session-miner/dist/index.js";
@@ -13,10 +13,13 @@ import { createMinerContext, createMinerRegistry, resolveConfig } from "../produ
 if (!process.argv.includes("--run")) throw new Error("Opt in with --run and TITAN_SMOKE_MODEL; this launches a real Codex agent.");
 const model = process.env.TITAN_SMOKE_MODEL;
 if (!model) throw new Error("TITAN_SMOKE_MODEL must explicitly select the smoke model");
+const availability = await checkCodexAvailable({env:prepareCodexEnv(process.env)});
+if (!availability.ok) throw new Error(availability.failure.reason);
+const binaryVersion = availability.versionOutput.trim();
 const codexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
 let observedAuth = "unknown";
 try {
-  const status = execFileSync(DEFAULT_CODEX_EXECUTABLE,["login","status"], {env:prepareCodexEnv(process.env),encoding:"utf8",timeout:5000,stdio:["ignore","pipe","pipe"]});
+  const status = execFileSync(availability.executablePath,["login","status"], {env:prepareCodexEnv(process.env),encoding:"utf8",timeout:5000,stdio:["ignore","pipe","pipe"]});
   observedAuth = /chatgpt/i.test(status) ? "cached ChatGPT login" : /api key/i.test(status) ? "cached API key" : "unknown";
 } catch { /* The launch still provides its own categorized auth/runtime outcome. */ }
 const scratch = await mkdtemp(path.join(os.tmpdir(), "titan-codex-smoke-"));
@@ -63,7 +66,7 @@ try {
   assert.ok(drain.clustered>0,"expected missing-file tool output must read back and cluster");
   assert.equal((await indexCodexSource(graph,source)).status,"unchanged");
   assert.deepEqual(normalizedUsage(graph,indexed.conversationRef),usage);
-  receipt = {ok:true,binaryVersion:SUPPORTED_CODEX_EXEC_VERSION,model,authMode:"cached-cli (provider key env stripped)",observedAuth,
+  receipt = {ok:true,binaryVersion,minimumBinaryVersion:SUPPORTED_CODEX_EXEC_VERSION,model,authMode:"cached-cli (provider key env stripped)",observedAuth,
     conversation:result.conversation,rollout:source.path,observations:indexed.observations,tools,usage,
     errorReadback:drain.clustered,wallTimeMs:90_000,limitations:["local deadline is not a billing cap","no live reattachment or steering"],scratchCleaned:true};
 } finally {ctx?.close();await rm(scratch,{recursive:true,force:true});}

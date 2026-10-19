@@ -1,5 +1,35 @@
 # @titan-design/owner-queue
 
+## 0.5.0
+
+### Minor Changes
+
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
+## 0.4.0
+
+### Minor Changes
+
+- cfc6614: Add an optional `audience` (`owner` | `operator`, absent means owner) to `OwnerItem` and `OwnerItemDeposit`, with `forAudience`/`audienceOf` and a `readSpool(dir, { audience })` filter, so a burndown can file operator steps without an `[operator]` summary prefix.
+- 3e94b0b: Add optional owner card fields to `OwnerItem` and `OwnerItemDeposit` (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`), plus `cardLint`, `ownerCardSchema`, `CARD_RULES` and `ON_SILENCE_ACTIONS`, so a card says what each answer costs and what happens on silence.
+- abadd64: Items and options gain optional `anchors` and item `pins`; `writeDeposit(dir, deposit, { source })` refuses, unwritten, a deposit whose anchor is past EOF at its pinned commit (TP-2767).
+
+### Patch Changes
+
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [abadd64]
+  - @titan-design/evidence@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

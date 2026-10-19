@@ -1,0 +1,509 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import Database from 'better-sqlite3';
+import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { openGraph, type SessionGraph } from '../../src/session-index/graph.js';
+import {
+  readRefreshLockHolder,
+  refreshLockHolderPath,
+  runRefresh,
+  withRefreshLock,
+  type RefreshSummary,
+} from '../../src/session-index/refresh.js';
+import { RefreshScheduler } from '../../src/session-index/scheduler.js';
+import type * as Preserve from '../../src/session-index/preserve.js';
+import type * as WorkspaceRefresh from '../../src/workspace-index/refresh.js';
+import { FIXTURE_LINES, SESSION, renderTranscript } from './fixture.js';
+
+const phases = vi.hoisted((): string[] => []);
+
+vi.mock('../../src/workspace-index/refresh.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkspaceRefresh>();
+  return {
+    ...actual,
+    refreshWorkspace: (...args: Parameters<typeof actual.refreshWorkspace>) => {
+      phases.push('workspace');
+      return actual.refreshWorkspace(...args);
+    },
+  };
+});
+
+vi.mock('../../src/session-index/preserve.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof Preserve>();
+  return {
+    ...actual,
+    replayPreserved: (...args: Parameters<typeof actual.replayPreserved>) => {
+      phases.push('preserved');
+      return actual.replayPreserved(...args);
+    },
+  };
+});
+
+let dir: string;
+let root: string;
+let graph: SessionGraph;
+
+beforeEach(() => {
+  dir = mkdtempSync(path.join(os.tmpdir(), 'aw-refresh-'));
+  root = path.join(dir, 'projects');
+  mkdirSync(path.join(root, 'demo'), { recursive: true });
+  graph = openGraph(path.join(dir, 'graph.sqlite3'));
+  vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  graph.db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+function writeTranscript(name: string, lines = FIXTURE_LINES): void {
+  writeFileSync(path.join(root, 'demo', name), renderTranscript(lines), 'utf8');
+}
+
+describe('runRefresh', () => {
+  it('a pass yields before the workspace half and before replaying preserved rows', async () => {
+    writeTranscript('a.jsonl');
+    phases.length = 0;
+    const yieldPoint = vi.fn(async () => {
+      phases.push('yield');
+    });
+
+    await runRefresh({ skipPrOutcomes: true, graph, root, activeRoot: dir, yieldPoint });
+
+    expect(phases.slice(-4)).toEqual(['yield', 'workspace', 'yield', 'preserved']);
+  });
+
+  it('indexes the corpus and rolls up the sessions it touched', async () => {
+    writeTranscript('a.jsonl');
+
+    const summary = await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(summary).toMatchObject({
+      transcripts: 1,
+      scanned: 1,
+      indexed: 1,
+      unchanged: 0,
+      quarantined: 0,
+      missing: 0,
+      errors: [],
+    });
+    expect(summary.factsAdded).toBe(FIXTURE_LINES.length);
+    expect(summary.turnsRolledUp).toBeGreaterThan(0);
+    // The rollup ran: turns are closed, which no single line can do.
+    expect(
+      graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NOT NULL').get(),
+    ).toEqual({ n: 2 });
+  });
+
+  it('reports an unchanged corpus without re-reading it', async () => {
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    const second = await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(second).toMatchObject({ indexed: 0, unchanged: 1, factsAdded: 0 });
+  });
+
+  it('honours --limit and surfaces a quarantined transcript as an error', async () => {
+    writeTranscript('a.jsonl');
+    writeFileSync(path.join(root, 'demo', 'b.jsonl'), 'not json\n', 'utf8');
+
+    const limited = await runRefresh({ skipPrOutcomes: true, graph, root, limit: 1 });
+    expect(limited).toMatchObject({ transcripts: 2, scanned: 1 });
+
+    const all = await runRefresh({ skipPrOutcomes: true, graph, root });
+    expect(all.quarantined).toBe(1);
+    expect(all.errors).toHaveLength(1);
+    expect(all.errors[0]).toMatch(/quarantined: .*b\.jsonl/);
+  });
+
+  it('marks a transcript missing once its file is deleted (AW-105)', async () => {
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+    rmSync(path.join(root, 'demo', 'a.jsonl'));
+
+    const summary = await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(summary.reconciledMissing).toBe(1);
+    expect(statusOf('a.jsonl')).toBe('missing');
+  });
+
+  it('keeps what a deleted transcript taught the index', async () => {
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+    const mined = counts();
+    rmSync(path.join(root, 'demo', 'a.jsonl'));
+
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(counts()).toEqual(mined);
+  });
+
+  it('leaves an indexed transcript alone when --limit skips visiting it', async () => {
+    writeTranscript('a.jsonl');
+    writeTranscript('b.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    const summary = await runRefresh({ skipPrOutcomes: true, graph, root, limit: 1 });
+
+    expect(summary).toMatchObject({ scanned: 1, reconciledMissing: 0 });
+    expect(statusOf('b.jsonl')).toBe('ok');
+  });
+
+  it('restores a transcript to ok when its file comes back', async () => {
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+    rmSync(path.join(root, 'demo', 'a.jsonl'));
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(statusOf('a.jsonl')).toBe('ok');
+  });
+
+  it('indexes transcripts from two roots and stores their account', async () => {
+    const configDirs = ['.claude', 'agents'].map((name) => path.join(dir, name));
+    configDirs.forEach((configDir, i) => {
+      const project = path.join(configDir, 'projects', 'demo');
+      mkdirSync(project, { recursive: true });
+      const body = renderTranscript(FIXTURE_LINES).replaceAll(SESSION, `sess-root-${i}`);
+      writeFileSync(path.join(project, 'a.jsonl'), body, 'utf8');
+    });
+    vi.stubEnv('CLAUDE_CONFIG_DIRS', configDirs.join(path.delimiter));
+
+    const summary = await runRefresh({ skipPrOutcomes: true, graph, skipWorkspace: true });
+
+    expect(summary).toMatchObject({ transcripts: 2, indexed: 2 });
+    const rows = graph.db
+      .prepare(
+        "SELECT session_id, account FROM session WHERE session_id LIKE 'sess-root-%' ORDER BY 1",
+      )
+      .all();
+    expect(rows).toEqual([
+      { session_id: 'sess-root-0', account: 'default' },
+      { session_id: 'sess-root-1', account: 'agents' },
+    ]);
+  });
+
+  it('a full refresh converges on the same row counts as an incremental one', async () => {
+    writeTranscript('a.jsonl');
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+    const incremental = counts();
+
+    await runRefresh({ skipPrOutcomes: true, graph, root, full: true });
+
+    expect(counts()).toEqual(incremental);
+  });
+
+  it('loads the price table before the pass', async () => {
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    const priced = graph.db
+      .prepare('SELECT COUNT(*) AS n, MIN(table_version) AS version FROM price')
+      .get();
+    expect(priced).toEqual({ n: PRICE_TABLE.length, version: PRICE_TABLE_VERSION });
+  });
+
+  it('records the agent-chat origin of a spawned session', async () => {
+    writeTranscript('a.jsonl');
+    writeSpawnRow(SESSION);
+
+    await runRefresh({ skipPrOutcomes: true, graph, root });
+
+    expect(graph.db.prepare('SELECT origin_system, agent_name FROM session_origin').all()).toEqual([
+      { origin_system: 'agent-chat', agent_name: 'worker-1' },
+    ]);
+  });
+});
+
+function writeSpawnRow(sessionId: string): void {
+  mkdirSync(path.join(dir, 'agent-chat'), { recursive: true });
+  const db = new Database(path.join(dir, 'agent-chat', 'events.db'));
+  db.exec(
+    'CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)',
+  );
+  db.prepare(
+    "INSERT INTO events (ts, kind, actor, meta) VALUES (1, 'agent_spawned', 'coord', ?)",
+  ).run(JSON.stringify({ name: 'worker-1', session_id: sessionId, depth: '1' }));
+  db.close();
+}
+
+function statusOf(name: string): string {
+  const row = graph.db
+    .prepare<[string], { status: string }>('SELECT status FROM transcript WHERE source_key LIKE ?')
+    .get(`%${name}`) as { status: string };
+  return row.status;
+}
+
+function counts(): Record<string, number> {
+  const scalar = (table: string): number =>
+    (
+      graph.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).get() as {
+        n: number;
+      }
+    ).n;
+  return {
+    facts: scalar('fact'),
+    sessions: scalar('session'),
+    turns: scalar('turn'),
+    edges: scalar('edge'),
+    spans: scalar('search_span'),
+    fts: scalar('search_fts'),
+  };
+}
+
+describe('RefreshScheduler', () => {
+  const summary = (): RefreshSummary => ({
+    startedAt: new Date().toISOString(),
+    durationMs: 0,
+    transcripts: 0,
+    scanned: 0,
+    indexed: 0,
+    rewound: 0,
+    unchanged: 0,
+    quarantined: 0,
+    missing: 0,
+    reconciledMissing: 0,
+    factsAdded: 0,
+    turnsRolledUp: 0,
+    tasksRequested: 0,
+    tasksApplied: 0,
+    errors: [],
+  });
+
+  /** A run that only resolves once the test lets it. */
+  function gatedRun(): {
+    run: () => Promise<RefreshSummary>;
+    release: () => void;
+    started: () => number;
+  } {
+    let starts = 0;
+    let unblock: (() => void) | null = null;
+    return {
+      started: () => starts,
+      release: () => unblock?.(),
+      run: () => {
+        starts += 1;
+        return new Promise<RefreshSummary>((resolve) => {
+          unblock = () => resolve(summary());
+        });
+      },
+    };
+  }
+
+  it('collapses triggers arriving mid-run into exactly one extra run', async () => {
+    const gate = gatedRun();
+    const scheduler = new RefreshScheduler(gate.run, { minIntervalMs: 0 });
+
+    scheduler.trigger();
+    for (let i = 0; i < 10; i++) scheduler.trigger();
+    expect(gate.started()).toBe(1);
+
+    gate.release();
+    await vi.waitFor(() => expect(gate.started()).toBe(2));
+    gate.release();
+    await scheduler.close();
+
+    expect(gate.started()).toBe(2);
+  });
+
+  it('never runs two passes concurrently', async () => {
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    let runs = 0;
+    const scheduler = new RefreshScheduler(
+      async () => {
+        concurrent += 1;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        runs += 1;
+        await Promise.resolve();
+        concurrent -= 1;
+        return summary();
+      },
+      { minIntervalMs: 0 },
+    );
+
+    scheduler.trigger();
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(2));
+
+    // A trigger arriving after the drain has finished starts a fresh run
+    // rather than being dropped.
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(3));
+    await scheduler.close();
+
+    expect(maxConcurrent).toBe(1);
+  });
+
+  it('close() awaits the in-flight run and drops what was queued', async () => {
+    const gate = gatedRun();
+    const scheduler = new RefreshScheduler(gate.run, { minIntervalMs: 0 });
+
+    scheduler.trigger();
+    scheduler.trigger();
+    const closing = scheduler.close();
+    gate.release();
+    await closing;
+
+    expect(gate.started()).toBe(1);
+    expect(scheduler.status()).toMatchObject({ running: false, pending: false });
+    // A trigger after close is inert.
+    scheduler.trigger();
+    expect(gate.started()).toBe(1);
+  });
+
+  it('survives a throwing run, backing off and recording the error', async () => {
+    const delays: number[] = [];
+    let runs = 0;
+    const scheduler = new RefreshScheduler(
+      () => {
+        runs += 1;
+        return Promise.reject(new Error(`boom ${runs}`));
+      },
+      {
+        minIntervalMs: 0,
+        sleep: async (ms) => void delays.push(ms),
+        baseBackoffMs: 10,
+        maxBackoffMs: 40,
+      },
+    );
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(1));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(2));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(3));
+    await scheduler.close();
+
+    expect(delays).toEqual([10, 20, 40]);
+    expect(scheduler.status()).toMatchObject({ consecutiveErrors: 3, lastError: 'boom 3' });
+  });
+
+  it('clears the error state once a run succeeds', async () => {
+    let runs = 0;
+    const scheduler = new RefreshScheduler(
+      () => {
+        runs += 1;
+        return runs === 1 ? Promise.reject(new Error('boom')) : Promise.resolve(summary());
+      },
+      { sleep: async () => {} },
+    );
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(1));
+    scheduler.trigger();
+    await vi.waitFor(() => expect(runs).toBe(2));
+    await scheduler.close();
+
+    expect(scheduler.status()).toMatchObject({ consecutiveErrors: 0, lastError: null });
+    expect(scheduler.status().last).not.toBeNull();
+  });
+});
+
+describe('withRefreshLock', () => {
+  beforeEach(() => {
+    vi.stubEnv('ACTIVE_ROOT', dir);
+  });
+
+  /** Enter the lock and hold it until the returned `release` is called. */
+  async function holdLock(
+    whileHeld: () => void = () => {},
+  ): Promise<{ release: () => Promise<void> }> {
+    let letGo!: () => void;
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    const done = withRefreshLock(async () => {
+      whileHeld();
+      entered();
+      await new Promise<void>((resolve) => (letGo = resolve));
+    });
+    await inside;
+    return { release: () => (letGo(), done) };
+  }
+
+  it('fails a caller that will not wait with ELOCKED naming the current holder', async () => {
+    const first = await holdLock();
+
+    const second = withRefreshLock(async () => 'ran', { retries: 0 });
+
+    await expect(second).rejects.toMatchObject({
+      code: 'ELOCKED',
+      holder: { pid: process.pid },
+    });
+    await first.release();
+  });
+
+  it('marks the holder stale when its pid is no longer running', async () => {
+    const deadPid = spawnSync(process.execPath, ['-e', '']).pid;
+    const first = await holdLock(() => {
+      const holder = { pid: deadPid, command: 'gone', startedAt: new Date().toISOString() };
+      writeFileSync(refreshLockHolderPath(), JSON.stringify(holder));
+    });
+
+    const second = withRefreshLock(async () => 'ran', { retries: 0 });
+
+    await expect(second).rejects.toMatchObject({ holder: { pid: deadPid, stale: true } });
+    await first.release();
+  });
+
+  it('marks a live pid stale when its holder file predates the last boot', async () => {
+    const startedAt = '2026-01-01T00:00:00.000Z';
+    const first = await holdLock(() => {
+      const holder = { pid: process.pid, command: 'before reboot', startedAt };
+      writeFileSync(refreshLockHolderPath(), JSON.stringify(holder));
+    });
+
+    const holder = await readRefreshLockHolder(Date.parse(startedAt) + 1);
+
+    expect(holder).toMatchObject({ pid: process.pid, stale: true });
+    await first.release();
+  });
+
+  it('stops waiting for a held lock once the signal aborts, without running fn', async () => {
+    const first = await holdLock();
+    const abort = new AbortController();
+    const fn = vi.fn(async () => 'ran');
+    const onWait = vi.fn();
+
+    const second = withRefreshLock(fn, { signal: abort.signal, onWait });
+    await vi.waitFor(() => expect(onWait).toHaveBeenCalled());
+    const started = Date.now();
+    abort.abort(new Error('closing'));
+
+    await expect(second).rejects.toThrow('closing');
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(fn).not.toHaveBeenCalled();
+    await first.release();
+  });
+
+  it('removes the holder file on release so the next caller gets the lock', async () => {
+    const first = await holdLock();
+    await first.release();
+
+    const result = await withRefreshLock(async () => 'ran', { retries: 0 });
+
+    expect(result).toBe('ran');
+    expect(existsSync(refreshLockHolderPath())).toBe(false);
+  });
+
+  it('tells a blocking caller who holds the lock once, then waits for it', async () => {
+    const first = await holdLock();
+    const onWait = vi.fn();
+
+    const second = withRefreshLock(async () => 'ran', { onWait });
+    await vi.waitFor(() => expect(onWait).toHaveBeenCalledTimes(1));
+    await first.release();
+
+    expect(await second).toBe('ran');
+    expect(onWait).toHaveBeenCalledWith(expect.objectContaining({ pid: process.pid }));
+    expect(onWait).toHaveBeenCalledTimes(1);
+  });
+});

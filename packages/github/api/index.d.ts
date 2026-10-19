@@ -59,6 +59,9 @@ declare class GhError extends Error {
 }
 /** Uses the caller's existing `gh` login; this module never sees a token. */
 declare const execGh: GhExec;
+/** Runs `git` with an argv array, never through a shell; a credential rides in `options.env`, never in argv. */
+type GitExec = (args: readonly string[], options?: GhExecOptions) => Promise<GhResult>;
+declare const execGit: GitExec;
 
 type Fields = Record<string, string>;
 /** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
@@ -141,6 +144,13 @@ interface ReviewComment {
     body: string;
     resolved: boolean;
 }
+
+/**
+ * Where `head` stands relative to `base`, as GitHub's compare `status` says: `ahead` means `base` is an ancestor of
+ * `head`, `behind` the reverse. `missing` is a 404: GitHub does not have one of the commits, which right after a push
+ * can mean it has not caught up yet, so it is not proof the commit never existed.
+ */
+type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
 
 interface Commit {
     sha: string;
@@ -378,6 +388,8 @@ interface GitHubWire {
     /** Commits on the default branch committed at or after `since`, newest first, every page. */
     listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** The compare API's `status` for `base...head`; a 404 answers `missing`. */
+    compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     getAuthenticatedLogin(): Promise<string>;
     listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
     createComment(repo: RepoSlug, number: number, body: string): Promise<{
@@ -470,6 +482,8 @@ interface GitHubPort {
     listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
     /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
     compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
+    /** Whether `head` is ahead of, behind, identical to or diverged from `base`; `missing` when GitHub has not got one of them (HTTP 404). Any other failure throws. */
+    compareAncestry(repo: RepoSlug, base: string, head: string): Promise<Ancestry>;
     /**
      * Lists the PR's comments first; a comment by the authenticated user with `marker` on a line of its own skips as
      * `exists`. The body should carry the marker. Two concurrent callers can both post; there is no lock.
@@ -505,6 +519,108 @@ declare class WriteRetriesExhaustedError extends Error {
     readonly status: number | undefined;
     constructor(step: string, attempts: number, last: unknown);
 }
+
+/** What GitHub charged for one query, read from the query itself. */
+interface RateLimit {
+    cost: number;
+    remaining: number;
+    resetAt: string;
+}
+interface GhReview {
+    databaseId: number;
+    state: string;
+    submittedAt: string | null;
+}
+/** GitHub's formula: the requests needed to fill every connection at its page size, over 100, rounded, at least 1. */
+declare function graphqlPoints(requests: number): number;
+/** The requests one snapshot page asks for, per included range; the nested connections count once per parent node. */
+declare function snapshotRequests(ranges: {
+    open: boolean;
+    done: boolean;
+    history: boolean;
+}): number;
+
+/** Page caps per range: past one, the read throws rather than answer a range cut short. */
+declare const BACKSTOP_CAPS: {
+    readonly open: 20;
+    readonly done: 10;
+    readonly main: 20;
+    readonly contexts: 10;
+    readonly reviews: 10;
+};
+type BackstopRange = keyof typeof BACKSTOP_CAPS;
+/** Re-reads `done` this far behind its cursor, so a PR closed as the last tick read is not missed. */
+declare const DONE_OVERLAP_MS: number;
+/** Named so a caller that reports only an error's class still says the range was cut short. */
+declare class BackstopTruncated extends Error {
+    readonly range: BackstopRange;
+    readonly cap: number;
+    constructor(range: BackstopRange, cap: number);
+}
+interface BackstopRequest {
+    repo: string;
+    branch: string;
+    /** The oldest main commit time to read (GitTimestamp). */
+    since: string;
+    /** The newest main commit already observed; history stops before it. Null reads back to `since`. */
+    mainCursor: string | null;
+    /** The closed-PR cursor: `done` pages until `updatedAt` is older than this, less `DONE_OVERLAP_MS`. */
+    doneSince: string;
+}
+type RollupContext = {
+    kind: "check";
+    databaseId: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    completedAt: string | null;
+} | {
+    kind: "status";
+    context: string;
+    state: string;
+    createdAt: string;
+};
+type BackstopReview = GhReview;
+interface BackstopCommit {
+    oid: string;
+    contexts: RollupContext[];
+}
+interface BackstopOpenPr {
+    number: number;
+    headRefOid: string;
+    baseRefName: string;
+    updatedAt: string;
+    /** The PR's last commit and its rollup; null on a PR GitHub answers with no commits. */
+    head: BackstopCommit | null;
+    /** Oldest first. */
+    reviews: BackstopReview[];
+}
+interface BackstopDonePr {
+    number: number;
+    merged: boolean;
+    mergedBy: string | null;
+    mergeCommit: string | null;
+    closedAt: string | null;
+    updatedAt: string;
+}
+interface BackstopSnapshot {
+    open: BackstopOpenPr[];
+    done: BackstopDonePr[];
+    /** `tip` is the branch head at the first page; `commits` are newest first, back to the cursor or `since`. */
+    main: {
+        tip: string;
+        commits: BackstopCommit[];
+    };
+    /** `cost` sums every query the read sent; `remaining` and `resetAt` are the last query's. */
+    rateLimit: RateLimit & {
+        queries: number;
+    };
+}
+/**
+ * One repo's backstop snapshot: open PRs with their head rollup and reviews, PRs closed since the cursor, and main's
+ * history since its cursor. Every range is read whole; GraphQL has no conditional requests, so the caller gates it.
+ */
+declare function readBackstopSnapshot(api: Rest, request: BackstopRequest): Promise<BackstopSnapshot>;
 
 declare function isPassingConclusion(conclusion: string | null): boolean;
 declare function isPassing(run: CheckRun): boolean;
@@ -718,6 +834,25 @@ declare function appInstallationToken(credentials: AppCredentials, exec?: GhExec
 /** The same exchange over Octokit, with the JWT as this one client's bearer token; no `gh` process and no child env. */
 declare function appInstallationTokenOverHttp(credentials: AppCredentials, clientOptions?: Omit<OctokitClientOptions, "token" | "reauthOn401">): Promise<InstallationToken>;
 
+interface LsRemoteOptions {
+    /**
+     * The credential for this one call, such as `GIT_ASKPASS` or `GIT_CONFIG_*` entries carrying an `http.extraHeader`.
+     * It rides in the child env only; its values and anything shaped like a GitHub token are cut from every error.
+     */
+    env?: Readonly<Record<string, string>>;
+    /** Defaults to 30 s, so an unreachable remote fails the read rather than hang the caller. */
+    timeoutMs?: number;
+}
+/** The read itself failed (git could not run, exited non-zero or printed something unparseable); it says nothing about the head. */
+declare class LsRemoteError extends Error {
+    constructor(message: string);
+}
+/**
+ * The sha `refs/pull/<n>/head` points at on `remoteUrl`, read from git's own transport rather than the REST API, so it
+ * is an independent second source for a head. Null when the remote has no such ref; a failed read throws `LsRemoteError`.
+ */
+declare function lsRemotePullHead(exec: GitExec, remoteUrl: string, n: number, options?: LsRemoteOptions): Promise<string | null>;
+
 interface GhCliOptions {
     /** Defaults to one budget per process, because GitHub counts calls per login. */
     budget?: RateBudget;
@@ -777,9 +912,11 @@ interface FakeEffects {
     rerunFailedJobs: number;
 }
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
-type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit";
+type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
 interface FakeGitHub {
     wire: GitHubWire;
+    /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
+    gitExec: GitExec;
     effects: FakeEffects;
     /** Every wire call in order, as `method` names; lets a test prove what was never called. */
     calls: string[];
@@ -831,6 +968,7 @@ interface FakeGitHub {
         repo: string;
         request: CreateCheckRunRequest;
     }[];
+    /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
     commits: Map<string, Commit>;
     /** Sha to its combined status, newest per context. */
     statuses: Map<string, CommitStatus[]>;
@@ -926,4 +1064,43 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };
+type CallClass = "core-read" | "graphql" | "mutation";
+type ResetSource = "retry-after" | "x-ratelimit-reset" | "backoff";
+interface GitHubFailureInput {
+    /** Absent for a network failure. */
+    status?: number;
+    /** Header names lower-cased. */
+    headers: Readonly<Record<string, string | undefined>>;
+    /** Redacted message; Octokit puts GitHub's `message` in it. */
+    message: string;
+    method: string;
+    networkError?: boolean;
+    /** True for `POST /graphql`, whose queries are reads against their own bucket. */
+    graphql?: boolean;
+    /** Consecutive unavailable answers already seen for this (identity, call class). */
+    streak: number;
+    /** Epoch milliseconds. */
+    now: number;
+}
+type GitHubFailure = {
+    kind: "ok";
+} | {
+    kind: "unavailable";
+    resetAt: number;
+    source: ResetSource;
+    bucket: string;
+    callClass: CallClass;
+    reason?: string;
+} | {
+    kind: "unknown";
+} | {
+    kind: "auth";
+} | {
+    kind: "error";
+};
+/** One list so a new GitHub phrasing is a one-line change. */
+declare const RATE_LIMIT_PHRASES: readonly RegExp[];
+declare function nextResetAt(now: number, streak: number): number;
+declare function classifyGitHubFailure(input: GitHubFailureInput): GitHubFailure;
+
+export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };

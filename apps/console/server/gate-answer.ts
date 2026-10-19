@@ -8,7 +8,7 @@ import { z } from "zod";
 const ANSWER_PATH = "/gates/answer-ship";
 const READ_TIMEOUT_MS = 10_000;
 
-export type AnswerChoice = "merge" | "send-back";
+export type AnswerChoice = "merge" | "send-back" | "accept-set";
 
 /** What the route takes; every field is read from the round's files, none from the browser. */
 export interface GateAnswerRequest {
@@ -59,7 +59,7 @@ function outcomeOf(status: number, body: RouteBody): AnswerOutcome | Unreachable
   if (status === 404) return { status: "off" };
   if (status >= 500) return unreachable(`factory answered ${status}: ${body.reason ?? body.error ?? "unavailable"}`);
   const outcome = body.outcome;
-  if (status === 200 && outcome === "resolved" && body.gateId && (body.choice === "merge" || body.choice === "send-back")) {
+  if (status === 200 && outcome === "resolved" && body.gateId && (body.choice === "merge" || body.choice === "send-back" || body.choice === "accept-set")) {
     return { status: "resolved", gateId: body.gateId, choice: body.choice };
   }
   if (status === 200 && outcome === "already" && body.gateId) return { status: "already", gateId: body.gateId };

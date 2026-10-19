@@ -16,7 +16,7 @@ export interface FakeDaemon {
 
 const closeServer = (server: Server): Promise<void> => new Promise((resolve) => server.close(() => resolve()));
 
-/** Answers one `POST /rpc/<command>`; a throw becomes a failure envelope. */
+/** Answers one `POST /rpc/<command>`; a throw becomes a failure envelope, with the error's numeric `code` when it has one. */
 export type RpcAnswer = (command: string, args: Record<string, unknown>) => unknown;
 
 async function answerRpc(req: IncomingMessage, command: string, rpc: RpcAnswer): Promise<unknown> {
@@ -25,7 +25,8 @@ async function answerRpc(req: IncomingMessage, command: string, rpc: RpcAnswer):
   try {
     return successEnvelope(rpc(command, JSON.parse(Buffer.concat(chunks).toString() || "{}") as Record<string, unknown>));
   } catch (err) {
-    return errorEnvelope(err instanceof Error ? err.message : String(err), EXIT.USAGE);
+    const code = err instanceof Error && "code" in err && typeof err.code === "number" ? err.code : EXIT.USAGE;
+    return errorEnvelope(err instanceof Error ? err.message : String(err), code);
   }
 }
 

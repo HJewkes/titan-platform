@@ -7,6 +7,7 @@ import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, typ
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, onUpdated, reviewable } from "./behind.js";
 import { followingApprovals } from "./approval-carry.js";
+import { setCarryOf } from "./approved-set-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
@@ -47,7 +48,7 @@ import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
-import { packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
+import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 
@@ -190,7 +191,6 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand()
   );
   const conflictCheck = (headSha: string) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha });
-  const packetRun = packetRunOf(run);
   return {
     runId: ctx.runId,
     workflowName: ctx.workflowName,
@@ -198,11 +198,12 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
-    resumedGate: () => ctx.resumedGate(), recoveredInFlight: () => ctx.recoveredInFlight(),
+    resumedGate: () => ctx.resumedGate(),
+    recoveredInFlight: () => ctx.recoveredInFlight(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
-      packetTriggering(packetRun, supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { target: run.target, reviewedMerge }),
+      packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {

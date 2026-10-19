@@ -7,8 +7,10 @@ import type { HookEvent, MalformedEvent } from "./event.js";
 import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
+import { OpaqueShebangError, ScriptDepthError } from "./scripts.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
+import { AliasDefinitionError } from "./shell/alias-definitions.js";
 import { CommandRebindingError } from "./shell/command-rebinding.js";
 import { ADDED_SCRIPT_WEIGHT, EnvSplitError, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UnknownStdinError, UnreadableScriptError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
@@ -70,12 +72,18 @@ const UNTRACKED_REASON =
   "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const REBIND_REASON =
   "authority-guard does not follow a command name the line rebinds (`hash y=/usr/bin/git; y push`, `commands[y]=…`, `functions[y]=…`, bash `hash -p`), so it refuses any command that does; run the program by its own name instead. A run-time word counts too where `print`, `printf`, `set`, `read`, `declare`, `wait` or another store builtin reads it. In an option slot (`print $x`) it may be `-v commands[y]`; `--` before it fixes that: `print -- $x`, but zsh `stat`, `zstat` and `zparseopts` skip one `--`, so write `stat ./\"$f\"`. In a name slot (`read \"$n\"`, `declare \"$x\"`) it may be any name, and `--` does not change that; write the name itself: `read line`.";
+const ALIAS_REASON =
+  "authority-guard does not follow shell aliases a command defines (`alias y=git; eval 'y push'`), so it refuses any command that defines one or writes the `aliases` parameter; run the command by its own name instead.";
 const ENV_SPLIT_REASON =
   "authority-guard does not check this `env -S` string: its words are only known at run time (a variable, an escape, an unclosed quote, or a `${NAME}` among env's options or as its command), so it refuses it; pass the command to env as separate words.";
 const STDIN_REASON =
   "authority-guard does not check this Bash command: a shell runs its stdin or another descriptor as its script, and the line does not show that text (`bash < $F`, `bash /dev/stdin <&3`, `bash /dev/fd/3`); run the script by a literal path, so the guard reads the file.";
 const UNREADABLE_SCRIPT_REASON =
   "authority-guard does not check this Bash command: a shell runs a file the guard cannot read in full (a FIFO, a directory, a missing or unreadable file, or one past 64 KiB); run a regular, readable script of at most 64 KiB by a literal path.";
+const OPAQUE_SHEBANG_REASON =
+  "authority-guard does not check a file run by path whose `#!` line names anything but a plain shell (`#!/bin/bash`, `#!/usr/bin/env bash`, sh or zsh, with at most one `-[euxvf]` word), as that interpreter or its options may run something other than the body; run it through its interpreter by name (`node ./x`, `python3 ./x`, `bash ./x`), where the guard reads the body.";
+const SCRIPT_DEPTH_REASON =
+  "authority-guard reads a script, and the scripts it runs by path, but not those one level further down, so it refuses a script nested that deep; run the innermost script in its own command.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const UNFINISHED_REASONS: Record<Unfinished, string> = {
   timeout: "authority-guard could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.",
@@ -164,6 +172,9 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof EnvSplitError) return ENV_SPLIT_REASON;
   if (error instanceof UnknownStdinError) return STDIN_REASON;
   if (error instanceof CommandRebindingError) return REBIND_REASON;
+  if (error instanceof ScriptDepthError) return SCRIPT_DEPTH_REASON;
+  if (error instanceof OpaqueShebangError) return OPAQUE_SHEBANG_REASON;
+  if (error instanceof AliasDefinitionError) return ALIAS_REASON;
   if (error instanceof UnreadableScriptError) return UNREADABLE_SCRIPT_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }

@@ -362,7 +362,7 @@ export function successorBrief(task: SuccessorTask, predecessor: string, name: s
   const { input, pr } = task;
   return [
     `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
-    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
+    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch, named in the fenced data below, and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.\n\n${dataFence("head branch", pr.headRef)}`,
     task.payload,
     `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), ${reportLine(seat)} ${HEAD_LINE}`,
   ].join("\n\n");

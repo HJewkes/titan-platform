@@ -418,3 +418,8 @@ Before that profile was mapped they fell into `worker:unknown`, and the `coordin
 only human-driven seats.
 
 Full reference: `site/reference/session-analytics.md`.
+
+
+### Shared pricing implementation
+
+The existing pricing exports now delegate to `@titan-design/agent-protocol/pricing`. Their signatures, dated rows, matching, arithmetic and unavailable-result behavior remain unchanged; this package retains its compatibility entrypoints. The canonical pure implementation is shared with agent. No current prices are fetched and no stored costs are rewritten.

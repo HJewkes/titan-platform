@@ -7,8 +7,8 @@
     <link rel="icon" href="data:," />
   </head>
   <body class="bg-surface-base text-text-primary">
-    <!-- AppShell fills its parent, so the mount point is the full-height frame. -->
-    <div id="root" class="flex h-screen"></div>
+    <!-- AppShell fills its parent; a minimum rather than a fixed height lets the frame, and the rail with it, grow with a long page. -->
+    <div id="root" class="flex min-h-screen"></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

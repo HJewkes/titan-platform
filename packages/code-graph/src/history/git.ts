@@ -16,18 +16,47 @@ export function discoveryEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Run a short git command and return its trimmed stdout, or null on any failure. */
-export function runGit(cwd: string, args: readonly string[]): string | null {
+const callerEnvChoice = new Map<string, boolean>();
+
+/**
+ * The env for a git call in `cwd`. Discovery from `cwd` with the stripped env wins, so a hook's
+ * GIT_DIR never redirects us. Only when that finds no repo and the caller set GIT_DIR (a work tree
+ * with no `.git`, its git dir elsewhere) is the caller's env used, for this and every later call in
+ * `cwd`. A `.git`-less work tree nested inside another repo therefore still resolves the outer repo.
+ */
+export function gitEnv(cwd: string): NodeJS.ProcessEnv {
+  const stripped = discoveryEnv();
+  const { GIT_DIR, GIT_WORK_TREE } = process.env;
+  if (GIT_DIR === undefined) return stripped;
+  const key = [cwd, GIT_DIR, GIT_WORK_TREE ?? ""].join("\0");
+  let useCaller = callerEnvChoice.get(key);
+  if (useCaller === undefined) {
+    useCaller = showToplevel(cwd, stripped) === null && showToplevel(cwd, process.env) !== null;
+    callerEnvChoice.set(key, useCaller);
+  }
+  return useCaller ? { ...process.env } : stripped;
+}
+
+function showToplevel(cwd: string, env: NodeJS.ProcessEnv): string | null {
+  return runGitWith(cwd, ["rev-parse", "--show-toplevel"], env);
+}
+
+function runGitWith(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): string | null {
   try {
     return execFileSync("git", [...args], {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
-      env: discoveryEnv(),
+      env,
     }).trim();
   } catch {
     return null;
   }
+}
+
+/** Run a short git command and return its trimmed stdout, or null on any failure. */
+export function runGit(cwd: string, args: readonly string[]): string | null {
+  return runGitWith(cwd, args, gitEnv(cwd));
 }
 
 export function detectGitToplevel(cwd: string): string | null {
@@ -49,7 +78,7 @@ export function runGitLargeResult(cwd: string, args: readonly string[], maxBuffe
       encoding: "utf-8",
       maxBuffer,
       stdio: ["ignore", "pipe", "pipe"],
-      env: discoveryEnv(),
+      env: gitEnv(cwd),
     });
     return { ok: true, out };
   } catch (error) {

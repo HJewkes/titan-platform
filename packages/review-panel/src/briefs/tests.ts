@@ -53,6 +53,14 @@ export function fixProofLines(head: string, line: string | undefined): string[] 
   return [`fix-proof/v1 verdict for this head: ${result.verdict}. ${VERDICT_READING[result.verdict]}`, countLine(result), ...cautionLines(result)];
 }
 
+const WAIVED_READING =
+  "Shepherd: fix-proof waived by owner at this head. Do not count a missing, vacuous or failed fix-proof against this PR, and do not ask for one; judge the tests on their own merits.";
+
+/** The owner's waiver, which replaces the fix-proof reading; one recorded at any other head, as before a merge-up, yields nothing. */
+export function waivedLines(head: string, waivedAt: string | undefined): string[] {
+  return waivedAt === head ? [WAIVED_READING] : [];
+}
+
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];

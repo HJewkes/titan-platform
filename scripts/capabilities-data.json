@@ -18,7 +18,7 @@
     {
       "path": "Codex exec: `createCodexExecAdapter({ auth: \"cached-cli\" })`",
       "package": "agent",
-      "credential": "A cached `codex login` (ChatGPT). API-key variables are stripped from the child. The binary must match `SUPPORTED_CODEX_EXEC_VERSION`.",
+      "credential": "A cached `codex login` (ChatGPT). API-key variables are stripped from the child. checkCodexAvailable resolves the installed CLI, requires >=0.162.1 and checks required command capabilities; availability is not a login or permission certificate.",
       "smoke": "`TITAN_SMOKE_MODEL=<model> pnpm smoke:codex --run`"
     },
     {

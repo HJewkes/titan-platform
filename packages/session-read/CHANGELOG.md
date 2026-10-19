@@ -1,5 +1,29 @@
 # @titan-design/session-read
 
+## 0.16.0
+
+### Minor Changes
+
+- 41fce70: Check a recommendation's cite against its transcript when the deposit is filed.
+
+  - `@titan-design/evidence`: `quoteInText(text, quote)` matches a quote against any text. It normalises whitespace and line wrapping the same way `quoteInRange` does, and `quoteInRange` now calls it.
+  - `@titan-design/owner-queue`: `recommended.cite` takes legacy free text or a strict `{session, event, quote}`, where `event` is `<byteOffset>:<byteLength>` of one transcript line (`locatorCiteSchema`, `LocatorCite`). A consumer that read `cite` as a string must now handle the object form too. `writeDeposit(dir, deposit, { events })` throws `DepositCiteError` and writes nothing for a locator cite whose quote does not match the event text, an event that cannot be read, an empty quote, or a call with no `events` source. Free text is never checked.
+  - `@titan-design/session-read`: `readSessionEventText({session, byteOffset, byteLength}, { roots })` returns the message text of one whole Claude transcript line. It returns null when the session is not in exactly one transcript or the span is not one whole line.
+  - `titan-console`: `inbox.deposit` checks locator cites through session-read and answers 400 when the check fails.
+
+## 0.15.0
+
+### Minor Changes
+
+- adfec4b: `parseVerdictBlock` reads an optional `CI-policy: unchanged | weakened <keys>` line directly after `Head:` on a MERGE block and returns it as `ciPolicy`. Keys come from the closed set `CI_POLICY_KEYS`; a malformed, duplicated, misplaced, fenced or quoted line reads as missing.
+- c2d805b: `parseVerdictBlock` reads the `CI-policy:` label on every raw line, fenced, indented or commented out, once each line is NFKC-folded, lower-cased and stripped of every non-alphanumeric character and any leading list number (TP-2407 b). A labelled `weakened` line with known keys reads weakened wherever it sits, `unchanged` counts only as the one exact visible line directly after `Head:`, and any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened (keys merged) over malformed over unchanged. Only a message with no labelled line leaves `ciPolicy` undefined.
+- ba8f25e: Export `visibleLines`, the verdict parser's visibility pass, so other reviewer-message parsers skip the same fenced, commented and indented lines (TP-2498 b).
+
+### Patch Changes
+
+- Updated dependencies [a79cffd]
+  - @titan-design/agent-protocol@0.8.0
+
 ## 0.14.0
 
 ### Minor Changes

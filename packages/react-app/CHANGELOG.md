@@ -1,5 +1,13 @@
 # @titan-design/react-app
 
+## 0.1.4
+
+### Patch Changes
+
+- a914535: The test-fixture `registryCaller` and the README's in-process export snippet use registry's `inProcessCaller` instead of a hand-rolled lookup (TP-2464 b).
+- Updated dependencies [a914535]
+  - @titan-design/rpc-client@0.4.1
+
 ## 0.1.3
 
 ### Patch Changes

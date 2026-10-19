@@ -96,3 +96,22 @@ export function morningIds(seat: string, entries: readonly NumberedItem[]): stri
     return `morning:${seat}:${number}${count === 1 ? "" : `.${count}`}`;
   });
 }
+
+const DEPLOY_HOLD = /^(?:\*\*)?DEPLOY HOLD:/;
+const TRAILING_DOOR = /[\s(.,;:-]*\b(?:one|two)-way\b[\s).]*$/i;
+
+export interface MorningDeployHold {
+  id: string;
+  reason: string;
+}
+
+/** A prefix rather than a search, so an item that only discusses a deploy hold in prose never sets one. */
+export function morningDeployHolds(seat: string, markdown: string): MorningDeployHold[] {
+  const entries = numberedMorningItems(markdown);
+  const ids = morningIds(seat, entries);
+  return entries.flatMap((entry, index) => {
+    if (!DEPLOY_HOLD.test(entry.text)) return [];
+    const reason = entry.text.replace(DEPLOY_HOLD, "").replace(/\*\*/g, "").replace(TRAILING_DOOR, "").replace(/[\s.]+$/, "").trim();
+    return [{ id: ids[index]!, reason: reason === "" ? "(no reason given)" : reason }];
+  });
+}

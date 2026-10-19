@@ -11,7 +11,15 @@ export {
   type FixProofConfig,
 } from "./config.js";
 export { compileGlobs, expandBraces } from "./glob.js";
-export { planFixProof, testOnlyOf, type FixProofPlan, type PlanInput, type PlanResult } from "./plan.js";
+export {
+  planFixProof,
+  testOnlyOf,
+  testOnlyReading,
+  type FixProofPlan,
+  type PlanInput,
+  type PlanResult,
+  type TestOnlyReading,
+} from "./plan.js";
 export {
   checkMutation,
   MAX_KILLS,
@@ -64,6 +72,7 @@ export { runCli, USAGE } from "./cli.js";
 export { spawnExec, type Exec, type ExecOptions, type ExecResult } from "./exec.js";
 export { DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_COMMAND, errorLine, run, type RunOptions } from "./run.js";
 export { execSide, SIDE_REPORTS, type ExecSideOptions, type Side } from "./side.js";
+export { DEFAULT_MUTANTS_BUDGET_MS, execMutants, MUTANTS_REPORT, type ExecMutantsOptions } from "./mutant-side.js";
 export { DEFAULT_JUDGE_BUDGET_MS, judge, type JudgeOptions, type JudgeReports } from "./judge.js";
 export {
   decodeMutantsReport,

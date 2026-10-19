@@ -1,6 +1,7 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
 import { parseGit, splits } from "../shell/git.js";
+import { continuesChain } from "../shell/reading-hand-on.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
@@ -224,7 +225,7 @@ type Switch = { dir: string | null; created: WordToken | null };
 /** The context `cmd` sees: a created branch trusted for its `&&` chain is dropped once the chain ends. */
 function inChain(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext {
   const held = ctx.chainTrust;
-  return held && held.chain !== cmd.chain ? held.fallback : ctx;
+  return held && !continuesChain(held.chain, cmd.chain) ? held.fallback : ctx;
 }
 
 /** Operators before a switch whose status the next `&&` may not see: `||` skips it, a pipe stage's status can be another's. */

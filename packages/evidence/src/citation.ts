@@ -46,14 +46,20 @@ export function quoteFragments(quote: string): string[] {
 }
 
 /**
- * True when every quote fragment occurs in the cited lines after whitespace normalization.
- * Returns null when the quote has no fragment long enough to check.
+ * True when every quote fragment occurs in `text` after whitespace normalization, so a quote
+ * re-wrapped over other line breaks still matches. Returns null when the quote has no fragment
+ * long enough to check.
  */
-export function quoteInRange(fileLines: readonly string[], range: Omit<LineRange, "path">, quote: string): boolean | null {
+export function quoteInText(text: string, quote: string): boolean | null {
   const fragments = quoteFragments(quote);
   if (fragments.length === 0) return null;
-  const cited = normalize(fileLines.slice(range.lineStart - 1, range.lineEnd).join("\n"));
+  const cited = normalize(text);
   return fragments.every((fragment) => cited.includes(fragment));
+}
+
+/** {@link quoteInText} over a 1-based inclusive range of a file's lines. */
+export function quoteInRange(fileLines: readonly string[], range: Omit<LineRange, "path">, quote: string): boolean | null {
+  return quoteInText(fileLines.slice(range.lineStart - 1, range.lineEnd).join("\n"), quote);
 }
 
 function reject(citation: Citation, reason: CitationRejection, detail: string): CitationCheck {

@@ -40,7 +40,7 @@ export interface ExecSideOptions {
   sandboxUser?: string;
 }
 
-async function addTree(ctx: Context, name: string, sha: string): Promise<string> {
+export async function addTree(ctx: Context, name: string, sha: string): Promise<string> {
   const dir = path.join(ctx.tmp, name);
   const result = await call(ctx, ctx.repo, "git", [...GIT_SAFETY, "worktree", "add", "--detach", dir, sha]);
   if (result.status !== 0) throw new RunError(`creating the ${name} worktree failed (exit ${result.status ?? "signal"})`);
@@ -48,7 +48,7 @@ async function addTree(ctx: Context, name: string, sha: string): Promise<string>
   return dir;
 }
 
-async function overlay(ctx: Context, tree: string, head: string, plan: FixProofPlan): Promise<void> {
+export async function overlay(ctx: Context, tree: string, head: string, plan: FixProofPlan): Promise<void> {
   const result = await call(ctx, tree, "git", [...GIT_SAFETY, "checkout", head, "--", ...plan.tests, ...plan.carried]);
   if (result.status !== 0) throw new RunError(`overlaying head files failed (exit ${result.status ?? "signal"})`);
   plan.overlayRemovals.forEach((file) => fs.rmSync(path.join(tree, file), { force: true }));
@@ -64,7 +64,7 @@ async function shell(ctx: Context, tree: string, script: string, what: string): 
 }
 
 /** Installs and builds the tree with its lockfile's toolchain and returns the test command it resolved. */
-async function prepare(ctx: Context, tree: string, side: Side, config: FixProofConfig): Promise<string> {
+export async function prepare(ctx: Context, tree: string, side: string, config: FixProofConfig): Promise<string> {
   const tools = toolchainOf(tree);
   if (tools.install !== null) await shell(ctx, tree, tools.install, `${side}: install`);
   await shell(ctx, tree, config.build ?? tools.build, `${side}: build`);
@@ -110,24 +110,37 @@ async function sudo(ctx: Context, args: readonly string[]): Promise<void> {
   if (result.status !== 0) throw new RunError(`base: sandbox setup failed (sudo ${args[0]} exit ${result.status ?? "signal"})`);
 }
 
-function vitest(ctx: Context, tree: string, script: string, args: readonly string[], sandboxUser: string | undefined) {
+/** Runs `sh -c <script> sh ...args` in tree, inside the sandbox when a sandbox user is given. */
+export function runInTree(ctx: Context, tree: string, script: string, args: readonly string[], sandboxUser: string | undefined) {
   if (sandboxUser === undefined) return sh(ctx, tree, script, args);
   const env = { PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: tree, CI: "1" };
   const command = sandboxCommand(sandboxUser, ctx.deadline - Date.now(), env, script, args);
   return call(ctx, tree, command.file, command.args);
 }
 
-async function runTests(ctx: Context, tree: string, plan: FixProofPlan, command: string, name: string, sandboxUser?: string): Promise<string> {
+/** Runs the given test files once and returns vitest's JSON report with repo-relative file names. */
+export async function testReport(
+  ctx: Context,
+  tree: string,
+  tests: readonly string[],
+  command: string,
+  name: string,
+  sandboxUser?: string,
+): Promise<unknown> {
   // A fresh dir per run, handed to the sandbox only now, so an earlier run cannot plant this run's report.
   const dir = path.join(ctx.tmp, `${name}-out`);
   fs.mkdirSync(dir);
   if (sandboxUser !== undefined) await sudo(ctx, ["chown", `${sandboxUser}:`, dir]);
   const out = path.join(dir, `${name}.json`);
-  const args = ["--reporter=json", "--outputFile", out, "--testTimeout", "30000", ...plan.tests];
-  const result = await vitest(ctx, tree, command, args, sandboxUser);
+  const args = ["--reporter=json", "--outputFile", out, "--testTimeout", "30000", ...tests];
+  const result = await runInTree(ctx, tree, command, args, sandboxUser);
   const json = readReportFile(out, name);
   if (json === null) throw new RunError(`${name}: vitest wrote no report (exit ${result.status ?? "signal"})`);
-  return encodeReport(relativeNames(JSON.parse(json), tree));
+  return relativeNames(JSON.parse(json), tree);
+}
+
+async function runTests(ctx: Context, tree: string, plan: FixProofPlan, command: string, name: string, sandboxUser?: string): Promise<string> {
+  return encodeReport(await testReport(ctx, tree, plan.tests, command, name, sandboxUser));
 }
 
 function runnerIds(): { uid: number; gid: number } {
@@ -147,7 +160,7 @@ async function assertSeparateUid(ctx: Context, user: string, runnerUid: number):
  * Hands the tree's directories to the sandbox user for body, then everything under ctx.tmp back to the runner so cleanup
  * can remove it. Only directories: pnpm hardlinks node_modules files to its store, which the runner keeps using.
  */
-async function withSandbox<T>(ctx: Context, tree: string, user: string, body: () => Promise<T>): Promise<T> {
+export async function withSandbox<T>(ctx: Context, tree: string, user: string, body: () => Promise<T>): Promise<T> {
   assertSandboxUser(user);
   const runner = runnerIds();
   await assertSeparateUid(ctx, user, runner.uid);

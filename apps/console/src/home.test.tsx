@@ -25,7 +25,25 @@ const session = (sessionId: string, title: string, startedAt: string, agentName:
 const agent = (name: string, stateSource: string) => ({ id: name, name, stateSource });
 const question = (msgId: string, text: string, asker: string) => ({ msgId, kind: "question", asker, text, at: NOW - HOUR, ageMs: HOUR, options: null, recommended: null, meta: {} });
 
-type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "queue" | "roster" | "sessions", JsonEnvelope<unknown>>>;
+const blocker = (id: string, summary: string, openedAt: string) => ({
+  id,
+  sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }],
+  kind: "approve",
+  door: "one-way",
+  summary,
+  context: "",
+  keys: [],
+  personal: false,
+  lens: "blocking-merge",
+  unblocks: [],
+  openedAt,
+  status: "open",
+  section: "blocking",
+  action: { kind: "terminal", reason: "fixture" },
+});
+const inbox = (items: unknown[], gaps: string[] = []) => ok({ items, gaps, fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [] });
+
+type Answers = Partial<Record<"health" | "portfolio" | "tasks" | "queue" | "roster" | "sessions" | "inbox", JsonEnvelope<unknown>>>;
 
 const ok = (data: unknown): JsonEnvelope<unknown> => successEnvelope(data);
 
@@ -45,6 +63,7 @@ function homeSnapshot(answers: Answers = {}): Snapshot {
       [snapshotKey("agents.roster", {})]: answers.roster ?? ok({ agents: [agent("relay-worker", "presence"), agent("old-worker", "history")], brokerUptimeMs: HOUR, reconnecting: false, generatedAt: NOW }),
       [snapshotKey("sessions.list", { limit: 200 })]:
         answers.sessions ?? ok({ nextBefore: null, degraded: null, sessions: [session("s-today", "Beacon routing", ago(HOUR), "relay-worker"), session("s-old", "Old session", ago(48 * HOUR))] }),
+      [snapshotKey("inbox.list", {})]: answers.inbox ?? inbox([]),
     },
   };
 }
@@ -55,6 +74,7 @@ const quiet = (): Answers => ({
   tasks: ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks: [] }),
   queue: ok({ items: [], hidden: {}, open: 0, generatedAt: NOW }),
   sessions: ok({ nextBefore: null, degraded: null, sessions: [] }),
+  inbox: inbox([]),
 });
 
 /** Renders Home from an embedded snapshot and records every command it calls. */
@@ -135,7 +155,22 @@ describe("the home page", () => {
   it("issues only reads", async () => {
     const called = renderHome(homeSnapshot());
     await screen.findByText("OR-7 Route beacons");
-    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list"]));
+    expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list"]));
+  });
+
+  it("shows the inbox's blocking count and its newest three, each opening the inbox", async () => {
+    const blockers = [1, 2, 3, 4].map((n) => blocker(`b-${n}`, `Merge example/repo#${n}`, ago(n * HOUR)));
+    renderHome(homeSnapshot({ inbox: inbox(blockers) }));
+    expect(await screen.findByText("Inbox: 4 blocking")).toBeTruthy();
+    expect(screen.getAllByTestId(/^home-inbox-/).map((row) => row.getAttribute("data-testid"))).toEqual(["home-inbox-b-1", "home-inbox-b-2", "home-inbox-b-3"]);
+    fireEvent.click(screen.getByText("Merge example/repo#2"));
+    await waitFor(() => expect(window.location.hash).toBe("#/inbox"));
+  });
+
+  it("never says nothing needs the owner while an inbox source is unreadable", async () => {
+    renderHome(homeSnapshot({ ...quiet(), inbox: inbox([], ["factory: connect ECONNREFUSED"]) }));
+    expect(await screen.findByText("Inbox: 0 blocking, 1 source unreadable")).toBeTruthy();
+    expect(screen.queryByText("Nothing needs you")).toBeNull();
   });
 });
 

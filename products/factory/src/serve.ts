@@ -2,18 +2,17 @@ import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
-import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
+import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
-import { factoryStateDir } from "./config.js";
-import { deployPendingHealth, startDeployPacer } from "./deploy-pacer-sweep.js";
-import { readLastDeploy } from "./deploy-ports.js";
+import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
-import { divergedPrClosed, restartDivergedLogged } from "./shepherd/diverged-sweep.js";
+import type { SourcesReader } from "./github-sources/mode.js";
+import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
-import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { busyRuns } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
 import { timestampConsole } from "./serve-log.js";
 import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
@@ -21,7 +20,8 @@ import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
-import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
+import { recordServeStart, type ServeStart } from "./serve-starts.js";
+import { serveHealth } from "./serve-health.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
@@ -32,7 +32,7 @@ import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
-import { startVisualDeliverySweep, visualDeliveryHealth } from "./shepherd/visual-delivery-sweep.js";
+import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
@@ -44,6 +44,7 @@ import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/r
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
 
 export type { FactoryContext } from "./registry.js";
+export { factoryHealth } from "./serve-health.js";
 
 export const FACTORY_PORT = 7410;
 /** Empty so registered commands keep their own names: `shepherd.register` becomes `shepherd__register`, not `factory__shepherd__register`. */
@@ -51,7 +52,6 @@ export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
 const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
-const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
@@ -70,6 +70,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
+  /** Behind health's `sources` field: where GitHub events come from and why; absent means no field. Nothing else reads it yet. */
+  sources?: SourcesReader;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
   build?: { sha: string; behindMain?: BehindMain };
   /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
@@ -228,44 +230,17 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => ({
-      ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
-      github: github.status(),
-      ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
-      build: { sha: build.sha, behindMain: build.status() },
-      lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
-      ...(options.deployWatch && { deploy: options.deployWatch.status() }),
-      ...(options.routes.shepherd?.reviewSlots && { reviewSlots: options.routes.shepherd.reviewSlots() }),
-      ...deployPendingHealth(options.deployPacer),
-      ...(notify && { gateNotify: notify.status() }),
-      ...visualDeliveryHealth(options.routes.shepherd),
-      ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
-      ...startHealth(start(), options),
-    }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify }),
     mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };
 }
-
-const startHealth = (start: ServeStart | undefined, options: FactoryServerOptions): Record<string, unknown> =>
-  start ? { ...serveStartsHealth(start, new Date((options.now ?? Date.now)())) } : {};
 
 function buildHealth(options: FactoryServerOptions): BuildHealth {
   const sha = options.build?.sha ?? buildSha();
   const probe = options.build?.behindMain ?? behindMain({ sha });
   void probe.refresh();
   return { sha, status: probe.status, refresh: probe.refresh };
-}
-
-/** Without `routeFor`, `busy` cannot see park-routed steps. Finished runs are counted, not listed, so a probe never parses every one (TP-2419); recovery_required
- * runs are listed by id, so a deploy's watch can tell a run its restart interrupted, or one on a closed PR, from one that broke after it. */
-export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate, prClosed: ReadonlySet<string> = new Set()): Record<string, unknown> {
-  const runs = Object.fromEntries(host.countRuns(STATUSES));
-  const running = host.runtime.list(["running"]);
-  const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
-  const recoveryRequired = host.runtime.list(["recovery_required"]).map((run) => run.id);
-  const busy = busyRuns(running, routeFor, isHeld);
-  return { runs, recoveryRequired, recoveryPrClosed: recoveryRequired.filter((id) => prClosed.has(id)), pendingGates: host.pendingGates().length, busy, heldSkipped: held };
 }
 
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {

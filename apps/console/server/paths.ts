@@ -11,4 +11,7 @@ export const PAGE_FILE = path.join(APP_DIR, "dist", "index.html");
 /** The same page with a snapshot embedded, written by `export`. */
 export const EXPORT_FILE = path.join(APP_DIR, "dist", "console.html");
 
+/** Where `capture` writes the twin frames and their manifest, for a console PR's visual review packet. */
+export const TWIN_DIR = path.join(APP_DIR, "dist", "twin");
+
 export const APP_VERSION = (JSON.parse(readFileSync(path.join(APP_DIR, "package.json"), "utf8")) as { version: string }).version;

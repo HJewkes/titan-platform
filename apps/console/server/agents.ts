@@ -6,6 +6,7 @@ import {
   foldRoster,
   historyWindow,
   historyWindowOf,
+  type AgentRosterSnapshot,
   type BrokerEvent,
   type SeatPrefix,
 } from "@titan-design/chat-protocol/agents";
@@ -83,18 +84,25 @@ const agentQueue = z.object({
 });
 type AgentQueue = z.infer<typeof agentQueue>;
 
+const foldAt = (source: AgentsSource, snapshot: BrokerSnapshot, at: number) =>
+  foldRoster({ ...snapshot, historyLimit: BROKER_HISTORY_LIMIT, now: at, seatPrefixes: source.seatPrefixes });
+
+/** The roster `agents.roster` serves, for a reader such as the inbox's derived rows. */
+export async function readRoster(source: AgentsSource): Promise<AgentRosterSnapshot> {
+  return foldAt(source, await source.broker.read(), (source.now ?? Date.now)());
+}
+
 /** Every command reads the broker or events.db; none writes to either. */
 export function agentsCommands(source: AgentsSource) {
   const now = source.now ?? Date.now;
-  const roster = (snapshot: BrokerSnapshot, at: number) =>
-    foldRoster({ ...snapshot, historyLimit: BROKER_HISTORY_LIMIT, now: at, seatPrefixes: source.seatPrefixes });
+  const roster = (snapshot: BrokerSnapshot, at: number) => foldAt(source, snapshot, at);
   return {
     "agents.roster": readCommand({
       name: "agents.roster",
       description: "Every agent the agent-chat broker knows: live presence, then exited and retired agents from its history",
       args: z.object({}),
       result: agentRosterSnapshot,
-      run: async () => roster(await source.broker.read(), now()),
+      run: () => readRoster(source),
     }),
     "agents.graph": readCommand({
       name: "agents.graph",

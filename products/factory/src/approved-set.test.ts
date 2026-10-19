@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { MAX_SET_FILES, acceptSetNote, approvedSetOf, gitBlobId } from "./approved-set.js";
+import { MAX_SET_FILES, acceptSetNote, approvedSetOf, gitBlobId, setMatch } from "./approved-set.js";
 import { AFTER_BYTES, COMPONENT, STORY, acceptImages, acceptPacket, afterDigests, setImage } from "./test-support/accept-set.js";
 
 const H = "a".repeat(40);
@@ -87,5 +87,24 @@ describe("acceptSetNote", () => {
 
     expect(acceptSetNote(built(), "run-1", length)).toEqual(expect.any(String));
     expect(acceptSetNote(built(), "run-1", length - 1)).toEqual({ reason: "set-too-large", detail: `the fixer's note for this set is ${length} characters, over ${length - 1}` });
+  });
+});
+
+describe("setMatch", () => {
+  it("refuses a carry-fenced changed path before naming it an extra path", () => {
+    const { set } = built();
+    const atHead = new Map(set.files.map((file) => [file.path, file.blob]));
+
+    expect(setMatch(set, { changed: [".github/workflows/ci.yml"], atHead })).toEqual({ carries: false, reason: "skill-or-fenced", paths: [".github/workflows/ci.yml"] });
+    expect(setMatch(set, { changed: set.files.map((file) => file.path), atHead })).toEqual({ carries: true });
+  });
+
+  it("reads a removed name that is a directory of a set file as present, since ls-tree lists only inside it", () => {
+    const { set } = built();
+    const [file] = set.files;
+    const removed = file!.path.slice(0, file!.path.lastIndexOf("/"));
+    const atHead = new Map(set.files.map((each) => [each.path, each.blob]));
+
+    expect(setMatch({ ...set, removed: [removed] }, { changed: set.files.map((each) => each.path), atHead })).toMatchObject({ carries: false, reason: "removed-present" });
   });
 });

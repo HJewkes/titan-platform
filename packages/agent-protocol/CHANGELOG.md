@@ -1,5 +1,11 @@
 # @titan-design/agent-protocol
 
+## 0.8.0
+
+### Minor Changes
+
+- a79cffd: A `cancellation_unknown` execution terminal now carries the optional `usage` the harness reported before it was aborted, timed out or lost its cancellation acknowledgement, the same way a `failed` terminal does. `terminalFromHarnessResult` copies non-empty harness usage onto it and omits the key when nothing was spent.
+
 ## 0.7.0
 
 ### Minor Changes

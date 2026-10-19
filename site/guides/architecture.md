@@ -33,6 +33,7 @@ graph TD
     evidence["evidence"]
     fixProof["fix-proof"]
     locator["locator"]
+    openaiAccount["openai-account"]
     ownerProof["owner-proof"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
@@ -85,6 +86,7 @@ graph TD
     reactApp["react-app"]
   end
   subgraph P["Products"]
+    activeWork["active-work"]
     evals["evals"]
     explainer["explainer"]
     factory["factory"]
@@ -124,6 +126,7 @@ graph TD
   memory --> embed
   memory --> retrieval
   memory --> storeSqlite
+  openaiAccount --> anthropicAccount
   ownerQueue --> evidence
   queueMirror --> hitl
   queueMirror --> matrixBus
@@ -164,6 +167,18 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  activeWork --> agentProtocol
+  activeWork --> clusterPkg
+  activeWork --> daemon
+  activeWork --> decider
+  activeWork --> locator
+  activeWork --> pm
+  activeWork --> registry
+  activeWork --> retrieval
+  activeWork --> sessionAnalytics
+  activeWork --> sessionGraph
+  activeWork --> sessionRead
+  activeWork --> storeSqlite
   evals --> agent
   evals --> authority
   evals --> evidence
@@ -179,6 +194,7 @@ graph TD
   explainer --> agentProtocol
   explainer --> evidence
   explainer --> graphLayout
+  explainer --> pm
   explainer --> speechVet
   factory --> agent
   factory --> agentDispatch
@@ -295,7 +311,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds eight units: `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds nine units: `active-work`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

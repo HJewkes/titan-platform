@@ -11,6 +11,7 @@ import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
 import { PUSH_WATCH_TICK_MS, headPoll, leftHead } from "./push-signal.js";
+import { stopCovering, type RepairStop } from "./repair-stop.js";
 import type { Registration, ShepherdStore } from "./store.js";
 
 const HELD_CHECK_STEP = "sh-held-check";
@@ -19,8 +20,8 @@ export const HELD_REPAIR_STEPS: readonly StepDeclaration[] = [
   { id: HELD_CHECK_STEP, kind: "dispatch" },
   { id: HELD_WAIT_STEP, kind: "dispatch" },
 ];
-/** `repairs` is recorded with the check, so a replay takes the path the live wake took whatever the flag reads now. */
-const HeldCheckResult = z.looseObject({ held: z.boolean(), reason: z.string().optional(), seat: z.string().optional(), repairs: z.boolean().optional() });
+/** `repairs` and `stop` are recorded with the check, so a replay takes the path the live wake took whatever the store reads now. */
+const HeldCheckResult = z.looseObject({ held: z.boolean(), reason: z.string().optional(), seat: z.string().optional(), repairs: z.boolean().optional(), stop: z.string().optional() });
 const HeldWaitResult = z.looseObject({ moved: z.boolean(), headSha: z.string().optional(), green: z.boolean().optional() });
 const RedPayload = z.looseObject({ failing: z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullish() })) });
 const VerdictPayload = z.looseObject({ kind: z.string() });
@@ -36,6 +37,8 @@ interface HeldWaitInput extends HeldInput {
   reason: string;
   /** Set after a ci-red wake: every required check passing at the held head, as after a rerun, also ends the wait. */
   untilGreen?: boolean;
+  /** The repair stop's scope when a stop, not a hold, keeps the wait: clearing it ends the wait, whatever the hold reads. */
+  stop?: string;
 }
 
 /** A joined seat or `none` names no one agent to message, so the hub seat stands in. */
@@ -54,12 +57,22 @@ function repairsWhileHeld(store: ShepherdStore, registration: Registration): boo
   return MERGE_ONLY_CLASSES.has(holdClassOf(registration.holdReason)) && !registration.holdReviewer && registration.ownerHold === null && store.parkedHold(registration.runId) === null;
 }
 
-function checkHold(deps: ShepherdDeps, runId: string): z.infer<typeof HeldCheckResult> {
+/** A seat's repair stop wins over every hold class and over `heldRepair`, so no fixer is woken or resumed while it stands. */
+async function checkHold(deps: ShepherdDeps, input: HeldInput): Promise<z.infer<typeof HeldCheckResult>> {
   const store = deps.store.get();
-  const registration = store.byRun(runId);
+  const registration = store.byRun(input.runId);
+  const stop = await stopCovering(deps.port, store.repairStops().list(input.repo), input);
+  if (stop) return stoppedCheck(stop, registration);
   const hold = heldCheck(registration);
   return hold.held && deps.heldRepair === "on" && registration && repairsWhileHeld(store, registration) ? { ...hold, repairs: true } : hold;
 }
+
+function stoppedCheck(stop: RepairStop, registration: Registration | undefined): z.infer<typeof HeldCheckResult> {
+  const seat = singleSeat(registration?.policy.seat);
+  return { held: true, reason: `repair stop ${stop.scope}: ${stop.reason}`, stop: stop.scope, ...(seat && { seat }) };
+}
+
+const stopStands = (deps: ShepherdDeps, input: HeldWaitInput): boolean => deps.store.get().repairStops().list(input.repo).some((stop) => stop.scope === input.stop);
 
 /**
  * With `untilGreen`, whether the held head's required checks all pass, read at once and then no more often than
@@ -92,8 +105,7 @@ async function awaitRelease(deps: ShepherdDeps, input: HeldWaitInput, signal: Ab
     const polled = await poll.next();
     const pr = polled.read ? polled.pr : undefined;
     if (leftHead(pr, input.headSha)) return movedTo(pr);
-    const now = heldCheck(deps.store.get().byRun(input.runId));
-    if (!now.held || now.reason !== input.reason) {
+    if (input.stop === undefined ? holdChanged(deps, input) : !stopStands(deps, input)) {
       // A push from outside the clone while held is seen by no reflog, so the release reads the PR before a repair goes ahead.
       const last = polled.read ? undefined : await read();
       return leftHead(last, input.headSha) ? movedTo(last) : { moved: false };
@@ -103,12 +115,17 @@ async function awaitRelease(deps: ShepherdDeps, input: HeldWaitInput, signal: Ab
   }
 }
 
+function holdChanged(deps: ShepherdDeps, input: HeldWaitInput): boolean {
+  const now = heldCheck(deps.store.get().byRun(input.runId));
+  return !now.held || now.reason !== input.reason;
+}
+
 const movedTo = (pr: PullRequest): z.infer<typeof HeldWaitResult> => ({ moved: true, ...(pr.state === "open" && { headSha: pr.headSha }) });
 
 /** The check reads the store at the moment of the wake; the wait only reads, so each repeats safely after a crash. */
 export function heldRepairRoutes(deps: ShepherdDeps): StepRoute[] {
   return [
-    codeRoute(HELD_CHECK_STEP, deps.now, async (input: HeldInput) => checkHold(deps, input.runId)),
+    codeRoute(HELD_CHECK_STEP, deps.now, async (input: HeldInput) => checkHold(deps, input)),
     codeRoute(HELD_WAIT_STEP, deps.now, async (input: HeldWaitInput, signal) => awaitRelease(deps, input, signal)),
   ];
 }
@@ -180,9 +197,9 @@ export async function heldRepair(run: GateRun & { state: LandPrState }, kind: Wa
     if (!hold.held || hold.repairs === true) return rerunUnlessRecorded(run, kind, headSha, payload);
     if (await rerunUnlessRecorded(run, kind, headSha, payload)) return true;
     const reason = hold.reason ?? "held";
-    const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}${spentRerun(run, kind, headSha)}`;
+    const why = `${hold.stop === undefined ? "the run is held" : "a seat stopped its fixers"} (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}${spentRerun(run, kind, headSha)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });
-    const waited = await step(run.ctx, ids.wait, { ...input, reason, ...(untilGreen && { untilGreen }) }, HeldWaitResult);
+    const waited = await step(run.ctx, ids.wait, { ...input, reason, ...(untilGreen && { untilGreen }), ...(hold.stop !== undefined && { stop: hold.stop }) }, HeldWaitResult);
     if (waited.green === true) headsGreen(run).add(headSha);
     if (waited.moved || waited.green === true) return true;
   }
