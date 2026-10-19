@@ -10,7 +10,7 @@ import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscr
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
 import { inArraySubscript } from "./arith-subscript.js";
-import { appendChar, appendLiteral, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
+import { appendChar, appendLiteral, endWord, ensureWord, markComputed, markCut, markQuoted, noteTilde, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export { scanSubstitutions } from "./substitutions.js";
@@ -78,6 +78,7 @@ function step(s: LexState): void {
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
   if (op) return readOperator(s, op, end(op.length));
   if (s.word?.quoted) s.word.spliced = true;
+  if (c === "~") noteTilde(s);
   appendChar(s, c);
 }
 

@@ -3,7 +3,7 @@ import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
 import { mayBeWritten } from "./line-writes.js";
-import { isNativeProgram, parseShebang } from "./shebang.js";
+import { isNativeProgram, parseShebang, resolvesShellViaPath } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
@@ -43,6 +43,11 @@ export class ScriptDepthError extends ReadingLimitError {
 /** Whether a script's first line is one the guard cannot follow, whoever runs it. */
 export function hasOpaqueShebang(text: string): boolean {
   return parseShebang(text).kind === "opaque";
+}
+
+/** Whether a script's `env` lookup of its shell is subject to a PATH the line changed. */
+export function isSwappableShebang(text: string): boolean {
+  return resolvesShellViaPath(text);
 }
 
 /** Refuses a by-path script found to have an opaque first line, as the interpreter it names may run something other than the body. */
