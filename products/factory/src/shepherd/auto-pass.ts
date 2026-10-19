@@ -39,7 +39,7 @@ export const VISUAL_DEMOTION: VisualDemotion = {
 };
 
 /** The D2 guard production decides with; `GATE_DEMOTIONS.visual` false restores every visual gate. */
-export const DEFAULT_VISUAL_DEMOTION: VisualDemotion | null = GATE_DEMOTIONS.visual ? VISUAL_DEMOTION : null;
+const DEFAULT_VISUAL_DEMOTION: VisualDemotion | null = GATE_DEMOTIONS.visual ? VISUAL_DEMOTION : null;
 
 /**
  * The D2 guard for `repo`, built from the seat book as it reads at decision time: every baseline glob any seat on the
