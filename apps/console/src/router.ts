@@ -48,6 +48,11 @@ export function open(route: Route): void {
   window.location.hash = href(route);
 }
 
+/** For state that changes per keystroke, such as a search box: Back should leave the page, not undo a letter. */
+export function replace(route: Route): void {
+  window.location.replace(href(route));
+}
+
 function subscribe(onChange: () => void): () => void {
   window.addEventListener("hashchange", onChange);
   return () => window.removeEventListener("hashchange", onChange);
