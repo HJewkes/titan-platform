@@ -137,3 +137,96 @@ the last Status or Verdict (`report`: message id, kind, text of at most 2,000 ch
 PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
 carries the exit facts only. The producer truncates the report; the schema rejects one over the
 cap. It is a subpath, like `./trace`, so the root entry stays free of zod.
+
+## Harness execution contracts
+
+Import @titan-design/agent-protocol/harness for SDK-free execution targets,
+capability and limit assessments, bounded-run progress, results and failures.
+Harness IDs are open strings; BoundedRunBase<H> carries the same harness type
+through its progress callback. Conversation identity retains its harness,
+namespace and native ID. Unsupported and unverified assessments remain explicit.
+
+Native request options and execution stay in agent. Its existing exports keep
+the legacy Claude/Codex defaults through compatibility aliases. This is the
+execution-contract checkpoint of TP-3426 (TP-3372 S01); account, pricing, policy and bus adapters and later consumer migration remain unfinished. TP-643 wire schemas are separate.
+
+The same subpath now exports the existing transcript source, semantic observation,
+locator, decoder and continuation DTOs. These declarations moved from session-read;
+its old import paths remain compatible. Parsing, discovery, text reads and identity
+helpers still run in session-read. Shared source DTOs do not register a new decoder
+or imply that a native format is supported.
+
+### Source port contracts
+
+The harness subpath also exports HarnessSourcePort, HarnessSourceCapabilities,
+HarnessSourceQuery and HarnessSourceLookup. Roots and account selection belong
+to the injected adapter; callers supply scoped conversation identity and an
+optional cwd hint. Found lookups contain one or more physical sources.
+Not-written lookups retain one or more expected paths; unavailable lookups carry
+a reason. An empty discovery result does not establish not-written evidence.
+
+Read operations keep the existing observation continuation callback and semantic
+text locator signatures. Null text stays unavailable, and unknown observations
+remain unknown. Required unsupported/unverified operations must refuse before
+invocation. Semantic finality remains unverified until decoder semantics are
+qualified: this port adds no classifier, adapter or claim that EOF, a native turn
+completion or the last assistant message proves session completion.
+
+This is another partial TP-3426 S01 checkpoint. It changes no existing source
+discovery, default account, billing, native execution, policy or bus behavior.
+
+### Execution service port
+
+`HarnessExecutionPort<H>` accepts a bounded `HarnessExecutionRequest<H, T>` and
+returns the existing run result. Its harness parameter is open: a third adapter
+can implement the port without extending a core vendor union. `HARNESS_CONTRACT_VERSION`
+is the interface version, independent of any native executable version.
+
+`HarnessExecutionBinding` carries the selected profile, host/account/billing-pool
+references, model intent and policy revision. Producers persist that binding for
+resume; fallback selects a new execution. These are structural TypeScript metadata
+and intent, without runtime validation, authenticated identity or permission grants.
+Keep native homes, credentials and SDK options inside the adapter. For structured
+output, the adapter validates the returned unknown value with the supplied parser;
+its JSON schema is an optional native constraint, not proof of valid output.
+
+`HarnessDispatchReceipt` distinguishes accepted, running and refused dispatches.
+Accepted or running receipts cannot stand in for completed results. Neither receipt
+nor an adapter capability assessment establishes broker delivery, cancellation,
+process reattachment or other native runtime evidence.
+
+The fixture adapter only demonstrates observable in-process work, scoped resume and
+output parsing. No native runtime is qualified by this port. Account/quota, policy and bus service ports remain unfinished; policy and bus capabilities stay
+unavailable pending their enforcement and identity gates. Existing provider SDK
+compatibility types and execution functions are unchanged by these declarations.
+
+### Pricing service port
+
+`HarnessPricingPort<H>` quotes one existing `UsageMeasurement` at an explicit
+event time in epoch milliseconds. Its adapter supplies a reported cost, a catalog
+estimate, or an explicit unpriced reason. A catalog estimate identifies the provider,
+model, effective date, catalog version and matching/accounting policy versions.
+Reported costs have their own source evidence and do not require a matching catalog.
+An actual reported zero remains distinct from unavailable pricing.
+
+These structural contracts provide no price table, matching algorithm, calculation,
+validation or usage aggregation. The adapter owns those behaviors. The fixture uses
+a synthetic flat request charge to exercise the injected service; it does not qualify
+existing provider arithmetic. The later shared pricing extraction must preserve
+Claude cache TTL/long-prompt behavior and Codex inclusive cached/reasoning subsets,
+with unknown costs explicit and existing compatibility results preserved.
+
+
+## Shared pricing engines
+
+The pure `@titan-design/agent-protocol/pricing` subpath owns the dated Claude price table, `findPrice`, `priceRequest`, and the supplied-row Codex `priceCodexUsage`/`validateCodexPrices` policies. Existing session-analytics and agent entrypoints re-export these implementations. The table stays at version 4; this extraction changes no rates, matching rules, arithmetic, stored costs or account configuration.
+
+Claude request pricing retains explicit 5-minute/1-hour cache writes, total-only fallback and the strict long-prompt threshold. Its compatibility result uses `priced: false` with zero components for an unknown model; callers must preserve that flag. Codex input includes cached input and output includes reasoning: subsets are not charged twice. Missing required counters leave cost null, and existing reported/estimated costs are retained. Supplied Codex rate rows are policy, with no runtime price fetch or built-in rate assumptions.
+
+These engines retain the rich legacy input contract. A harness-neutral usage quote also needs evidence for any known cache-write TTL split; a single total cannot reconstruct it. Shared account/harness composition, neutral quote integration, SQL projection generation and published consumer adoption remain separate work.
+
+### Pricing evidence context
+
+`HarnessPricingPort.quote` accepts an optional readonly `HarnessPricingContext` carrying the existing normalized `CacheWriteSplit`. Forward the split from the same usage observation to preserve known 5-minute and 1-hour write evidence; a total alone cannot reconstruct it. Existing two-argument callers and implementations remain valid. Total-only legacy fallback belongs to the selected accounting policy, rather than a new promise that missing data is zero.
+
+An existing source-provided estimate keeps estimate kind and the current normalized record source through the `existing_estimate` basis. This does not reconstruct or attest its original catalog. Existing reported or estimated costs, including zero, precede model/counter/event-time availability checks; only a new catalog computation needs those inputs. New catalog estimates still require dated catalog and matching/accounting revision metadata. These are structural contracts and a synthetic adapter proof over the shared pure arithmetic, without native account, policy, billing-reservation or quote-adapter qualification.
