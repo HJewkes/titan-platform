@@ -162,6 +162,7 @@ describe("an agent session minting or resetting the owner's console login", () =
     "node --require ./apps/console/dist/cli - login-link",
     "node --import=./apps/console/dist/cli.js x.js token rotate",
     "node -r ./apps/console/dist/cli.js -- x.js login-link",
+    "node -r ./apps/console/dist/cli.js -- -r login-link",
     "node - login-link < apps/console/dist/cli.js",
     `node -e "import('./apps/console/dist/cli.js')" x login-link`,
     "pnpm --filter titan-console exec node dist/cli.js login-link",
