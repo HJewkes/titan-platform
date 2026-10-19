@@ -1,4 +1,4 @@
-import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { formatResultLine, type FixProofResult, type Verdict as ProofVerdict } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
@@ -34,9 +34,9 @@ const JOB: Record<string, number> = { [A]: 77, [B]: 78 };
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-function vacuousLine(head: string): string {
-  const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+function proofLine(head: string, verdict: ProofVerdict): string {
+  const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
+  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 
 const fixProofRun = (head: string): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, JOB[head]!), headSha: head, pullRequests: [{ number: 1, baseRef: "main" }] });
@@ -48,13 +48,15 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
 });
 
 /** A dispatch whose every spawned reviewer says MERGE at the head it was asked about. */
-function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawns: string[] } {
+function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawns: string[]; briefs: Map<string, string> } {
   const agents: ReviewerAgent[] = [];
   const spawns: string[] = [];
+  const briefs = new Map<string, string>();
   const dispatch: ReviewerDispatch = {
     roster: async () => [...agents],
-    spawn: async (name, _brief, target) => {
+    spawn: async (name, brief, target) => {
       spawns.push(target.head);
+      briefs.set(target.head, brief);
       agents.push({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: null, predecessor: null });
     },
     resume: async () => undefined,
@@ -63,7 +65,7 @@ function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; read
     read: async (input) =>
       agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: now() + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`, locator: locatorIn(who.sessionId) })),
   };
-  return { dispatch, reader, spawns };
+  return { dispatch, reader, spawns, briefs };
 }
 
 /** The run reviews each head in turn; a NO_REPRO takes the unhandled send-back, and a waived head is reviewed again. */
@@ -76,14 +78,14 @@ async function reviewHeads(ctx: WorkflowContext, heads: readonly string[], verdi
   }
 }
 
-/** Real review steps over a fake GitHub where every head's fix-proof is vacuous; `answer` settles each sh-sent-back gate. */
-async function reviewScene(heads: readonly string[], answer: (host: FactoryHost, runId: string) => Promise<void>) {
+/** Real review steps over a fake GitHub where a head's fix-proof is vacuous unless `reproducedAt` names it; `answer` settles each sh-sent-back gate. */
+async function reviewScene(heads: readonly string[], answer: (host: FactoryHost, runId: string) => Promise<void>, reproducedAt: readonly string[] = []) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: heads[0]!, mergeSha: fakeSha("waiver-merge") });
   fake.prFiles.set(1, [{ path: "packages/x/src/a.test.ts", status: "modified" }]);
   for (const head of heads) {
     fake.setRuns(head, [successRun("validate", 1), successRun("dag-check", 2), fixProofRun(head)]);
-    fake.jobLogs.set(JOB[head]!, `2026-10-18T00:00:00.0000000Z ${vacuousLine(head)}`);
+    fake.jobLogs.set(JOB[head]!, `2026-10-18T00:00:00.0000000Z ${proofLine(head, reproducedAt.includes(head) ? "reproduced" : "vacuous")}`);
   }
   let clock = 10_000;
   const store = shepherdStoreRef();
@@ -100,7 +102,7 @@ async function reviewScene(heads: readonly string[], answer: (host: FactoryHost,
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo: fix a flaky test", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness" });
   await answer(host, runId);
   await host.runtime.wait(runId);
-  return { verdicts, spawns: reviewers.spawns, inputs, store, runId };
+  return { verdicts, spawns: reviewers.spawns, briefs: reviewers.briefs, inputs, store, runId };
 }
 
 const waiveAt = (head: string) => async (host: FactoryHost, runId: string) => {
@@ -140,6 +142,32 @@ describe("an owner's waive-proof on a NO_REPRO send-back", () => {
     ]);
     expect(spawns).toEqual([A]);
     expect(store.get().proofWaivers().waivedAt(runId, B)).toBe(false);
+  });
+});
+
+describe("the reviewer brief after an owner's waive-proof", () => {
+  it("tells the reviewer at the waived head that the fix-proof is waived by the owner", async () => {
+    const { briefs, inputs } = await reviewScene([A], waiveAt(A));
+
+    expect(inputs[`sh-review:${A}`]).toMatchObject({ fixProofWaivedAt: A });
+    expect(briefs.get(A)).toContain("fix-proof waived by owner");
+    expect(briefs.get(A)).not.toContain("verdict for this head: vacuous");
+  });
+
+  it("says nothing of the waiver at head A to the reviewer of a later head B", async () => {
+    const { briefs, inputs, spawns } = await reviewScene([A, B], waiveAt(A), [B]);
+
+    expect(spawns).toEqual([A, B]);
+    expect(inputs[`sh-review:${B}`]).not.toHaveProperty("fixProofWaivedAt");
+    expect(briefs.get(B)).toContain("verdict for this head: reproduced");
+    expect(briefs.get(B)).not.toContain("waived");
+  });
+
+  it("says nothing of a waiver to the reviewer of a head no one waived", async () => {
+    const { briefs, inputs } = await reviewScene([B], async () => undefined, [B]);
+
+    expect(inputs[`sh-review:${B}`]).not.toHaveProperty("fixProofWaivedAt");
+    expect(briefs.get(B)).not.toContain("waived");
   });
 });
 
