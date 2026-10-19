@@ -1,31 +1,28 @@
 import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { classifyPr, DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
+import { DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
-import { prChangedLines } from "./reviewer-roles.js";
+import { adversaryTouches, requiredSignoffs } from "./signoffs.js";
 import type { ShepherdStore } from "./store.js";
 
-const SHEPHERD_MIGRATION_FILES = ["store.ts", "events.ts", "train.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts"].map((name) => `**/${name}`);
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
-const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
+const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts", "owner-release.ts"].map((name) => `products/factory/src/shepherd/${name}`);
+/** The owner's own levers: the console's tap and inbox actions, gate resolution and owner release (titan-coord's E1 amendment to 458). */
+const OWNER_ACTION_FILES = ["apps/console/server/owner-tap.ts", "apps/console/server/inbox-actions.ts", "products/factory/src/gate-resolve*.ts", "products/factory/src/cli-owner-release.ts"];
 
-/** The one rule file decision 422(1) keeps with the owner: a diff touching it is never released on two MERGEs, whatever its class. */
-export const OWNER_PACKET_FILES: readonly string[] = ["packages/authority/src/table.json"];
+/** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5), and its agent profiles (458 E1); test files stay exempt in the panel. */
+const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];
 
-/** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5); test files stay exempt in the panel. */
-const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts"];
-
-/** Factory's store migrations and Shepherd's merge policy live in plain source files, which the panel's default globs miss. */
+/** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
-  migration: [...DEFAULT_CLASS_RULES.migration, "**/store-migrations.ts", "**/*-migration*.ts", "**/*-store.ts", ...SHEPHERD_MIGRATION_FILES],
 };
 
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
@@ -33,12 +30,9 @@ const CAS_ATTEMPTS = 5;
 
 export { isUnreadRegistrationHold } from "./g10-reclass-events.js";
 
-const ADVERSARY_TOUCHES = ["authority", "policy", "security"] as const;
-
 interface HoldTarget {
   repo: RepoSlug;
   pr: number;
-  kind: string;
   /** With `base`, the files come from Shepherd's git cache at this head instead of GitHub. */
   head?: string;
   base?: string;
@@ -52,30 +46,19 @@ interface HoldFiles {
 }
 
 /**
- * The panel's class reads an absent kind as unread; only these touches name a hold, so an unread kind alone holds nothing.
  * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
- * away keeps its class. Lines are counted from the real list, so the extra entries add none. `paths` are the touches the
- * files alone make: `touches` also holds the security touch that a security kind forces, which names no path.
+ * away keeps its class. Only path touches count, so a kind alone (security or unread) names no hold.
  */
-function classOf(files: readonly PrFile[], kind: string): { touches: readonly string[]; paths: readonly string[]; lines: number | undefined } {
-  const lines = prChangedLines(files, SHEPHERD_CLASS_RULES.largeLines);
-  const changedFiles = files.flatMap(({ path, previousPath, additions, deletions }) => [
-    { path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? 0, deletions: deletions ?? 0 },
-    ...(previousPath === undefined ? [] : [{ path: previousPath, additions: 0, deletions: 0 }]),
-  ]);
-  const { touches } = classifyPr({ repo: "", pr: 0, head: "", base: "", kind, changedFiles }, SHEPHERD_CLASS_RULES);
-  return { touches, paths: pathTouches(changedFiles, SHEPHERD_CLASS_RULES), lines };
+function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: string[] } {
+  const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
+  return { touches: pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES), paths };
 }
 
-function reasonFor(files: readonly PrFile[], kind: string): string | undefined {
-  const { touches, paths, lines } = classOf(files, kind);
-  const adversary = ADVERSARY_TOUCHES.filter((t) => paths.includes(t));
-  if (adversary.length > 0) return `g10-adversary: ${adversary.join(", ")} touch`;
-  // The 2026-10-13 G10 audit (decision 287): the kind alone held adversary for hours and caught nothing a review missed.
-  if (kind === "security") return "g10-review: security kind, no sensitive path";
-  if (lines === undefined) return "g10-review: changed lines unread";
-  if (lines > SHEPHERD_CLASS_RULES.largeLines) return `g10-review: ${lines} changed lines`;
-  return touches.includes("migration") ? "g10-review: store migration" : undefined;
+/** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
+function reasonFor(files: readonly PrFile[]): string | undefined {
+  const facts = signoffFactsOf(files);
+  if (!requiredSignoffs(facts).includes("adversary")) return undefined;
+  return `g10-adversary: ${adversaryTouches(facts.touches).join(", ")} touch`;
 }
 
 /** A failed read is tried once more, since a transient error would otherwise cost a seat review; a list past the cap stays past it. */
@@ -95,7 +78,7 @@ async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFil
  */
 export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
   try {
-    return reasonFor(await filesWithRetry(port, target, local), target.kind);
+    return reasonFor(await filesWithRetry(port, target, local));
   } catch (error) {
     return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
@@ -163,7 +146,7 @@ async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, run
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const head = files.head ?? registration.headSha ?? undefined;
-  const target = { repo: registration.repo, pr: registration.pr, kind: registration.kind, ...(head !== undefined && { head }), ...(registration.base !== null && { base: registration.base }) };
+  const target = { repo: registration.repo, pr: registration.pr, ...(head !== undefined && { head }), ...(registration.base !== null && { base: registration.base }) };
   const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {

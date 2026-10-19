@@ -198,16 +198,16 @@ describe("shepherd.register from facts", () => {
     expect(registration).toMatchObject({ headSha: H1, base: "main", branch: BRANCH });
   });
 
-  it("holds a large diff read from git, and a repeat at a new head stores that head", async () => {
-    const lines = new Map([[H1, 10], [H2, 500]]);
-    const w = world({ frozen: true, prFiles: async ({ head }) => [{ path: "packages/x/src/a.ts", status: "modified", additions: lines.get(head) ?? 0, deletions: 0 }] });
+  it("holds a policy diff read from git, and a repeat at a new head stores that head", async () => {
+    const paths = new Map([[H1, "packages/x/src/a.ts"], [H2, "products/factory/src/shepherd/g10-x.ts"]]);
+    const w = world({ frozen: true, prFiles: async ({ head }) => [{ path: paths.get(head) ?? "", status: "modified", additions: 10, deletions: 0 }] });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
 
     const first = await registered(w, facts);
     const second = await registered(w, { ...facts, head: H2 });
 
     expect(first.g10Hold).toBeUndefined();
-    expect(second).toMatchObject({ g10Hold: "g10-review: 500 changed lines", registration: { headSha: H2, base: "main" } });
+    expect(second).toMatchObject({ g10Hold: "g10-adversary: policy touch", registration: { headSha: H2, base: "main" } });
   });
 
   it("refuses a head that is not a full sha", async () => {
@@ -296,40 +296,54 @@ describe("shepherd.register kind", () => {
 
 describe("shepherd.register G10 hold", () => {
   const large = [{ path: "packages/x/src/a.ts", status: "modified", additions: 450, deletions: 0 }];
+  const authority = [{ path: "packages/authority/src/x.ts", status: "modified", additions: 5, deletions: 0 }];
 
-  it("a new registration of a PR over 400 lines comes back held g10-review by Shepherd", async () => {
+  it("a new registration of a PR over 400 lines comes back unheld", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     w.fake.prFiles.set(1, large);
 
     const result = await registered(w, pr1);
 
-    expect(result).toMatchObject({ created: true, g10Hold: "g10-review: 450 changed lines", registration: { held: true, holdReason: "g10-review: 450 changed lines" } });
+    expect(result).toMatchObject({ created: true, registration: { held: false } });
+    expect(result.g10Hold).toBeUndefined();
+    expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([]);
+  });
+
+  it("a new registration of an authority PR comes back held g10-adversary by Shepherd", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, authority);
+
+    const result = await registered(w, pr1);
+
+    expect(result).toMatchObject({ created: true, g10Hold: "g10-adversary: authority touch", registration: { held: true, holdReason: "g10-adversary: authority touch" } });
     expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([expect.objectContaining({ kind: "hold", actor: "shepherd" })]);
   });
 
-  it("a repeat registration whose diff grew past 400 lines stacks a G10 hold over the seat's hold", async () => {
+  it("a repeat registration whose diff grew into an authority path stacks a G10 hold over the seat's hold", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
-    w.fake.prFiles.set(1, large);
+    w.fake.prFiles.set(1, authority);
     const store = w.routes.shepherd!.store.get();
     store.hold(runId, "visual-gate2: screenshots pending");
 
     const repeat = await registered(w, pr1);
 
-    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: 450 changed lines, over a visual-gate2 hold" });
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: authority touch" });
     expect(store.release(runId).holdReason).toBe("visual-gate2: screenshots pending");
   });
 
-  it("a repeat registration whose diff grew into an authority path escalates a released g10-review hold to g10-adversary", async () => {
+  it("a repeat registration whose diff grew into an authority path escalates a released hand-placed g10-review hold to g10-adversary", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     w.fake.prFiles.set(1, large);
     const { runId } = await registered(w, pr1);
     const store = w.routes.shepherd!.store.get();
-    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
-    w.fake.prFiles.set(1, [...large, { path: "packages/authority/src/x.ts", status: "modified", additions: 5, deletions: 0 }]);
+    store.hold(runId, "g10-review: seat's own hold");
+    store.releaseIfHeld(runId, "g10-review: seat's own hold");
+    w.fake.prFiles.set(1, [...large, ...authority]);
 
     const repeat = await registered(w, pr1);
 
@@ -339,10 +353,10 @@ describe("shepherd.register G10 hold", () => {
   it("a repeat registration of an unchanged diff leaves a released G10 hold released", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
-    w.fake.prFiles.set(1, large);
+    w.fake.prFiles.set(1, authority);
     const { runId } = await registered(w, pr1);
     const store = w.routes.shepherd!.store.get();
-    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+    store.releaseIfHeld(runId, "g10-adversary: authority touch");
 
     const repeat = await registered(w, pr1);
 
