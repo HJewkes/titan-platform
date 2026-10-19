@@ -120,6 +120,16 @@ describe("the theater player", () => {
     expect(within(screen.getByTestId("theater-note-00000000000000a2")).queryByText("earlier render")).toBeNull();
   });
 
+  it("marks the current render's notes on the scrub strip once the duration is known", async () => {
+    renderConsole(`#/theater/${WITH_CAPTIONS}`);
+    const element = await screen.findByTestId<HTMLVideoElement>("theater-video");
+    await screen.findAllByTestId(/^theater-note-/);
+    Object.defineProperty(element, "duration", { configurable: true, value: 170 });
+    fireEvent(element, new Event("durationchange"));
+    expect((await screen.findByTestId("theater-marker-00000000000000a2")).style.left).toBe("25%");
+    expect(screen.queryByTestId("theater-marker-00000000000000a1")).toBeNull();
+  });
+
   it("opens paused at ?t= once the metadata has loaded", async () => {
     renderConsole(`#/theater/${WITH_CAPTIONS}?t=95.5`);
     const element = await screen.findByTestId<HTMLVideoElement>("theater-video");

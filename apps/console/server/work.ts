@@ -79,7 +79,11 @@ export interface WorkOptions {
   excludePersonal?: boolean;
   /** Open tasks sent for one initiative. Defaults to 200. */
   taskLimit?: number;
+  /** The clock each read's `fetchedAt` comes from; the twin capture pins it. Defaults to Date.now. */
+  now?: () => number;
 }
+
+const fetchedAt = (options: WorkOptions): string => new Date((options.now ?? Date.now)()).toISOString();
 
 const SESSION_LIMIT = 20;
 const TASK_LIMIT = 200;
@@ -140,7 +144,7 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
   const kept = options.excludePersonal ? rows.filter((row) => !row.personal) : rows;
   const keptSlugs = new Set(kept.map((row) => row.slug));
   return {
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: fetchedAt(options),
     personalKnown: inventory.human_only_known,
     initiatives: kept,
     parseErrors: options.excludePersonal ? list.parse_errors.filter((entry) => keptSlugs.has(entry.slug)) : list.parse_errors,
@@ -205,7 +209,7 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     activeWork.read("source.list", { slug }),
   ]);
   return {
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: fetchedAt(options),
     initiative,
     brief: { body: briefBody(brief.content), truncated: brief.truncated },
     // active-work answers in priority order, so the cap keeps the most urgent rows.
@@ -287,7 +291,7 @@ export async function readNotes(activeWork: ActiveWork, options: WorkOptions = {
     keepsSlug(activeWork, options),
   ]);
   const records = [...notes.notes.map(noteRow), ...sources.sources.map(sourceRow)];
-  return { fetchedAt: new Date().toISOString(), records: records.filter((row) => keeps(row.slug)).sort(newestFirst) };
+  return { fetchedAt: fetchedAt(options), records: records.filter((row) => keeps(row.slug)).sort(newestFirst) };
 }
 
 /** A `..` segment would step out of the notes or sources directory into the rest of the initiative. */
@@ -305,7 +309,7 @@ export async function readRecord(activeWork: ActiveWork, ref: string, options: W
   const { kind, slug, file } = parseRecordRef(ref);
   const keeps = await keepsSlug(activeWork, options);
   if (!keeps(slug)) throw failure(`No record ${ref}`, EXIT.NOINPUT);
-  const head = { fetchedAt: new Date().toISOString(), ref, kind, slug, file };
+  const head = { fetchedAt: fetchedAt(options), ref, kind, slug, file };
   if (kind === "note") {
     const note = await activeWork.read("note.read", { slug, note: `sources/notes/${file}` });
     return { ...head, title: note.title, type: note.kind, created: note.created, body: note.body, truncated: note.truncated };
@@ -319,7 +323,7 @@ export async function readRecord(activeWork: ActiveWork, ref: string, options: W
 export async function searchRecords(activeWork: ActiveWork, query: string, options: WorkOptions = {}): Promise<z.infer<typeof searchResult>> {
   const [answer, keeps] = await Promise.all([activeWork.read("search", { query, limit: SEARCH_LIMIT }), keepsSlug(activeWork, options)]);
   return {
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: fetchedAt(options),
     query: answer.query,
     hits: answer.hits.filter((hit) => keeps(hit.initiative)),
     degraded: answer.degraded,

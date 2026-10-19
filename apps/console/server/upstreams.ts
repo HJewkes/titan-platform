@@ -124,6 +124,14 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
   };
 }
 
+function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+  return {
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    eventsDbPath: config.agentChatEventsDbPath,
+    seatPrefixes: config.seatPrefixes,
+  };
+}
+
 /** The sources that read dirs on this machine, which other processes write. */
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
@@ -141,14 +149,11 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
   return {
     upstreams: createUpstreams(config),
     activeWork,
-    agents: {
-      broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
-      eventsDbPath: config.agentChatEventsDbPath,
-      seatPrefixes: config.seatPrefixes,
-    },
+    agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
+    coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),

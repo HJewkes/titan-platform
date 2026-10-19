@@ -431,11 +431,6 @@
       "count": 2
     }
   },
-  "packages/session-graph/src/normalized-query.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "packages/session-graph/src/refresh.ts": {
     "titan/max-function-lines": {
       "count": 1

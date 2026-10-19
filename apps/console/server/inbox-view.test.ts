@@ -9,8 +9,9 @@ import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { actionFor, inboxItems, type InboxItem, type InboxList, type WatchRow } from "./inbox-view.js";
-import { closedPort, send, startFakeDaemon, type FakeDaemon, type RpcAnswer } from "./test-support.js";
+import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
+import { actionFor, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
+import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 const REPO = "example/repo";
 const HEAD = "1234567890abcdef1234567890abcdef12345678";
@@ -20,12 +21,18 @@ const RUN_OWNER = "22222222-0000-4000-8000-000000000002";
 const RUN_G10 = "33333333-0000-4000-8000-000000000003";
 const RUN_GONE = "44444444-0000-4000-8000-000000000004";
 
+const TOKEN = "synthetic-token";
+const MINUTE = 60_000;
+
 let dir: string;
 let factory: FakeDaemon | undefined;
+let broker: FakeBroker;
 let handle: DaemonHandle | undefined;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-view-"));
+  await writeFile(path.join(dir, "ui.token"), TOKEN, { mode: 0o600 });
+  broker = await startFakeBroker({ token: TOKEN, sessions: [], items: [] });
 });
 
 afterEach(async () => {
@@ -33,6 +40,7 @@ afterEach(async () => {
   handle = undefined;
   await factory?.close();
   factory = undefined;
+  await broker.close();
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -134,7 +142,7 @@ function config(factoryPort: number): ConsoleConfig {
     port: 0,
     stateDir: path.join(dir, "state"),
     activeWorkPort: 1,
-    agentChatPort: 1,
+    agentChatPort: broker.port,
     factoryPort,
     agentChatTokenPath: path.join(dir, "ui.token"),
     agentChatEventsDbPath: path.join(dir, "events.db"),
@@ -159,9 +167,9 @@ const fixtureFactory: RpcAnswer = (command) => {
   throw new Error(`no fixture for ${command}`);
 };
 
-const okEnvelope = z.object({ ok: z.literal(true), data: z.custom<InboxList>() });
+const okEnvelope = z.object({ ok: z.literal(true), data: z.custom<InboxView>() });
 
-async function listInbox(factoryPort: number): Promise<InboxList> {
+async function listInbox(factoryPort: number): Promise<InboxView> {
   handle = await startConsoleDaemon({ config: config(factoryPort), logger: silentLogger });
   const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, "{}");
   return okEnvelope.parse(JSON.parse(reply.body)).data;
@@ -172,7 +180,7 @@ async function serveFactory(rpc: RpcAnswer): Promise<number> {
   return factory.port;
 }
 
-const byId = (list: InboxList, id: string): InboxItem | undefined => list.items.find((each) => each.id === id);
+const byId = (list: InboxView, id: string): InboxItem | undefined => list.items.find((each) => each.id === id);
 
 describe("inbox.list on a fixture factory", () => {
   it("returns every source kind with its action, blocking first and newest first", async () => {
@@ -232,6 +240,49 @@ describe("inbox.list on a fixture factory", () => {
     expect(list.gaps).toHaveLength(2);
     expect(list.gaps.map((gap) => gap.slice(0, gap.indexOf(":")))).toEqual(["factory", "shepherd"]);
     expect(list.items.map((each) => each.id)).toEqual([depositId, "round:ship-r1/ship"]);
+    expect(list.derived).toEqual([]);
+  });
+});
+
+describe("inbox.list's machine-derived rows", () => {
+  const ago = (ms: number): string => new Date(Date.now() - ms).toISOString();
+  const RUN_STALLED = "55555555-0000-4000-8000-000000000005";
+  const RUN_FAILED = "66666666-0000-4000-8000-000000000006";
+  const stalled = { ...row(RUN_STALLED, 5), phase: "ci", phaseSince: ago(75 * MINUTE), stalled: { reason: "75 min in ci, over the 60 min limit" } };
+  const failed = { ...row(RUN_FAILED, 6), phase: "failed", phaseSince: ago(2 * 60 * MINUTE), stalled: { reason: "sh-ci exited 1" } };
+  const shepherdByState: RpcAnswer = (command, args) => {
+    if (command === "needs.list") return { items: [], gaps: [] };
+    if (command === "shepherd.list") return args["state"] === "finished" ? [failed] : [stalled];
+    throw new Error(`no fixture for ${command}`);
+  };
+  const blocked = { name: "relay-worker", workingOn: "EX-3: wire the relay", cwd: "/synthetic/relay", status: "blocked", idleMs: 40 * MINUTE, registeredAt: 1_000 };
+
+  it("lists a stall, a failed run and a blocked agent, each with its evidence and crossed threshold and no action", async () => {
+    await broker.close();
+    broker = await startFakeBroker({ token: TOKEN, sessions: [blocked], items: [] });
+
+    const list = await listInbox(await serveFactory(shepherdByState));
+
+    expect(list.gaps).toEqual([]);
+    expect(list.items).toEqual([]);
+    expect(list.derived.map((each) => [each.kind, each.link])).toEqual([
+      ["failed-run", `#/shepherd/${encodeURIComponent(`${REPO}#6`)}`],
+      ["stalled-run", `#/shepherd/${encodeURIComponent(`${REPO}#5`)}`],
+      ["blocked-agent", "#/agents/relay-worker"],
+    ]);
+    expect(list.derived[0]).toMatchObject({ evidence: { observed: "phase failed: sh-ci exited 1", source: `shepherd row ${RUN_FAILED}`, at: failed.phaseSince }, threshold: { name: "a failed run", limitMs: 0 } });
+    expect(list.derived[1]).toMatchObject({ evidence: { observed: "stalled: 75 min in ci, over the 60 min limit", at: stalled.phaseSince }, threshold: { limitMs: STALLED_RUN_AFTER_MS } });
+    expect(list.derived[2]).toMatchObject({ evidence: { observed: "presence blocked, silent for 40 min", source: "agent-chat presence" }, threshold: { limitMs: BLOCKED_AGENT_AFTER_MS } });
+    expect(list.derived.every((each) => !("action" in each))).toBe(true);
+  });
+
+  it("names a dead broker as a gap and still derives Shepherd's rows", async () => {
+    await broker.close();
+
+    const list = await listInbox(await serveFactory(shepherdByState));
+
+    expect(list.gaps.map((gap) => gap.slice(0, gap.indexOf(":")))).toEqual(["agents"]);
+    expect(list.derived.map((each) => each.kind)).toEqual(["failed-run", "stalled-run"]);
   });
 });
 

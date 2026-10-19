@@ -31,6 +31,8 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-await-new-head": "fixing",
   "sh-park": "review",
   "sh-fix-proof": "review",
+  "sh-fix-proof-waive": "review",
+  "sh-fix-proof-waived": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-review-panel": "review",

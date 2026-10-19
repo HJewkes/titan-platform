@@ -22,6 +22,7 @@ import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
@@ -368,6 +369,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
   "shepherd.repair-stop": repairStopCommand,
+  "shepherd.freeze": repoFreezeCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,

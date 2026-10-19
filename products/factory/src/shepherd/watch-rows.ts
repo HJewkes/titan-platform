@@ -1,6 +1,7 @@
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { sliceClock } from "../loop-slice.js";
+import type { RepoFreeze } from "./repo-freeze.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 import { watchRow, type WatchRow } from "./view.js";
@@ -9,7 +10,18 @@ import { watchRow, type WatchRow } from "./view.js";
 export function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun, pendingGates: readonly PendingGate[] = host.pendingGates()): WatchRow {
   const pending = pendingGates.find((gate) => gate.runId === run.id);
   const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
+  const row = watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
+  const frozen = repoFreezeOf(services, registration.repo);
+  return frozen ? { ...row, repoFrozen: frozen } : row;
+}
+
+/** A freeze store the host has not bound reads as no freeze, so the watch list still answers. */
+function repoFreezeOf(services: ShepherdServices, repo: string): RepoFreeze | undefined {
+  try {
+    return services.freeze?.get().repoFreezes.get(repo);
+  } catch {
+    return undefined;
+  }
 }
 
 const FINISHED_RUN: ReadonlySet<WorkflowStatus> = new Set(["completed", "failed", "cancelled"]);

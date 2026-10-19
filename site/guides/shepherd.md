@@ -960,6 +960,31 @@ changed file's contents read at registration, and Shepherd does not read them. W
 it: the `g10-review` hold past 400 changed lines, the `g10-adversary` hold a `security` kind
 places, and the seat's own review of the pull request.
 
+### Freeze a whole repo {#repo-freeze}
+
+```sh
+titan-factory shepherd freeze owner/repo --reason "Version Packages merges first"
+titan-factory shepherd freezes
+titan-factory shepherd unfreeze owner/repo
+```
+
+A coordinator's freeze stops every Shepherd merge into one repo, for example while a Version
+Packages pull request must land with no other merge ahead of it. It is not a hold, so it needs no
+charter class. While the repo is frozen, runs keep reviewing and CI keeps running, but a run that
+would merge waits in `merging` instead. `unfreeze` lifts it, and each waiting run merges on its next
+step. `status`, `list` and `timeline` show the freeze on every row of the repo, with its reason,
+who set it and since when. `freezes` lists every repo freeze.
+
+`--reason` is required and must not be blank. Freezing a frozen repo replaces the reason and who
+set it, and keeps the time it started. Unfreezing a repo that is not frozen changes nothing and
+says so. It is not an error.
+
+The freeze is a row in the factory database (`shepherd_repo_freeze`), so it survives a restart of
+serve. Every merge goes through the same check as the main-red freeze (`freezeGuard` in
+`products/factory/src/shepherd/freeze.ts`), which reads this freeze first. The two freezes are
+independent. `unfreeze` never thaws a red main, and a green main never lifts this freeze. This
+freeze holds the main-red fixer's pull request too.
+
 ### Ask for Shepherd's own review {#own-review}
 
 ```sh
@@ -1146,7 +1171,7 @@ closed is skipped.
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved as is and refreshed once before the merge | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
-| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}` |
+| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |

@@ -190,3 +190,221 @@ describe("an ELF program-header table the Linux loader bounds", () => {
     expect(await decision(file("count", elf({ phnum, body: `${PUSH}\n`, padding: 70000 })))).toBe("deny");
   });
 });
+
+describe("a #!/usr/bin/env shell script on a line that changes PATH", () => {
+  const ENV_BASH = "#!/usr/bin/env bash\necho ok\n";
+
+  it.each([
+    ["a PATH= prefix", "PATH=.:$PATH ./envp"],
+    ["a PATH= prefix with a dynamic value", "PATH=$(pwd) ./envp"],
+    ["an earlier assignment", "PATH=.:$PATH; ./envp"],
+    ["export PATH=", "export PATH=.:$PATH; ./envp"],
+    ["a PATH+= append", "PATH+=:. ./envp"],
+    ["zsh's path=( )", "path=(. $path); ./envp"],
+    ["a PATH= prefix behind env", "env PATH=. ./envp"],
+    ["a quoted name in export", "export PA''TH=.:$PATH; ./envp"],
+    ["a quoted name behind env", "env PA''TH=. ./envp"],
+    ["a quoted assignment behind env", 'env "PATH"=. ./envp'],
+    ["eval of a quoted name", "eval PA''TH=.; ./envp"],
+    ["read", "read PATH <<< .; ./envp"],
+    ["printf -v", "printf -v PATH %s .; ./envp"],
+    ["a nameref", "declare -n r=PATH; r=.; ./envp"],
+    ["a for loop", "for PATH in .; do ./envp; done"],
+    ["a zsh path element", "path[1]=.; ./envp"],
+    ["a write after a function that runs the script", "f(){ ./envp; }; PATH=.:$PATH; f"],
+    ["a write after the script in a loop", "for i in 1 2; do ./envp; PATH=.:$PATH; done"],
+    ["a write after the script", "./envp; PATH=.:$PATH"],
+    ["an empty leading entry", "PATH=:$PATH; ./envp"],
+    ["an empty trailing entry", "PATH=$PATH:; ./envp"],
+    ["a relative entry", "PATH=bin:$PATH ./envp"],
+    ["a sourced write after a function that runs the script", "f(){ ./envp; }; . ./src.sh; f"],
+    ["a sourced write after the script in a loop", "for i in 1 2; do ./envp; . ./src.sh; done"],
+    ["an unreadable source after a function that runs the script", "f(){ ./envp; }; source <(echo PATH=.); f"],
+    ["a tilde under a relative HOME", "HOME=.; PATH=~/:$PATH ./envp"],
+    ["a bare tilde under a HOME set on the same command", "HOME=. PATH=~:$PATH ./envp"],
+    ["a tilde under an exported relative HOME", "export HOME=x; PATH=~/b:$PATH ./envp"],
+    ["the kernel's name for the working directory", "printf x >bash; PATH=/proc/self/cwd:$PATH ./envp"],
+    ["a numbered process's working directory", "PATH=/proc/1234/cwd:$PATH ./envp"],
+    ["a descriptor directory", "PATH=/dev/fd/3:$PATH ./envp"],
+    ["a doubled slash before the kernel's name", "PATH=/proc//self/./cwd:$PATH ./envp"],
+    ["a dynamic store", "declare $X=.; ./envp"],
+    ["declare -g", "declare -g PATH=.; ./envp"],
+    ["a nameref to PATH", "declare -n p=PATH; p=.; ./envp"],
+    ["printf -v through a name variable", 'p=PATH; printf -v "$p" .; ./envp'],
+    ["eval of an export", 'eval "export PATH=."; ./envp'],
+    ["a sourced process substitution", "source <(echo PATH=.); ./envp"],
+    ["a PATH= prefix on sh -c", "PATH=.:$PATH /bin/sh -c ./envp"],
+    ["a PATH= prefix on bash -c", "PATH=.:$PATH /bin/bash -c ./envp"],
+    ["a PATH= prefix on find -exec ;", "PATH=.:$PATH find . -name envp -exec ./envp \\;"],
+    ["a PATH= prefix on find -exec +", "PATH=.:$PATH find . -name envp -exec ./envp {} +"],
+    ["a PATH= prefix on flock -c", "PATH=.:$PATH flock /tmp/l -c ./envp"],
+    ["a PATH= prefix on watch", "PATH=. watch ./envp"],
+    ["a PATH= prefix on parallel", "PATH=. parallel ./envp ::: a"],
+    ["a subshell group", "{ PATH=.; }; ./envp"],
+    ["a PATH= prefix on a function that runs the script", "f(){ ./envp; }; PATH=. f"],
+    ["a HOME= prefix on a function that puts a tilde on PATH", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=. f"],
+    ["a PATH= prefix on : in sh -c", "sh -c 'PATH=. :; ./envp'"],
+    ["a PATH= prefix on export in sh -c", "sh -c 'PATH=. export X; ./envp'"],
+    ["a PATH= prefix on set in sh -c", "sh -c 'PATH=. set -e; ./envp'"],
+    ["a PATH= prefix on readonly in sh -c", "sh -c 'PATH=. readonly X; ./envp'"],
+    ["a PATH= prefix on unset in sh -c", "sh -c 'PATH=. unset X; ./envp'"],
+    ["a PATH= prefix on times in sh -c", "sh -c 'PATH=. times; ./envp'"],
+    ["a PATH= prefix on trap in sh -c", "sh -c 'PATH=. trap - INT; ./envp'"],
+    ["a PATH= prefix on shift in sh -c", "sh -c 'PATH=. shift 0; ./envp'"],
+    ["a PATH= prefix on break in a loop in sh -c", "sh -c 'for i in 1; do PATH=. break; done; ./envp'"],
+    ["a PATH= prefix on continue in a loop in sh -c", "sh -c 'for i in 1; do PATH=. continue; done; ./envp'"],
+    ["a PATH= prefix on return in a function in sh -c", "sh -c 'f(){ PATH=. return; }; f; ./envp'"],
+    ["a HOME= prefix naming the working directory through /proc on a function", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/proc/self/cwd f"],
+    ["a HOME= prefix climbing into /proc on a function", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/tmp/../proc/self/cwd f"],
+    ["a tilde under a HOME naming the working directory through /proc", "HOME=/proc/self/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a /proc HOME with a trailing slash", "HOME=/proc/self/cwd/; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a /proc HOME behind a . segment", "HOME=/./proc/self/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a numbered process's working directory", "HOME=/proc/1234/cwd; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a descriptor directory", "exec 3<.; HOME=/dev/fd/3; PATH=~/b:$PATH; ./envp"],
+    ["a .. segment climbing into /proc", "PATH=/tmp/../proc/self/cwd:$PATH; ./envp"],
+    ["a .. segment climbing into /dev", "exec 3<.; PATH=/tmp/../dev/fd/3/b:$PATH; ./envp"],
+    ["a . and a .. segment before /proc with a trailing slash", "PATH=/tmp/./../proc/self/cwd/:$PATH; ./envp"],
+    ["a single-quoted tilde", "PATH='~/b':$PATH; ./envp"],
+    ["a double-quoted tilde", 'PATH="~/b":$PATH; ./envp'],
+    ["an escaped tilde", "PATH=\\~/b:$PATH; ./envp"],
+    ["a tilde before a quoted slash", 'PATH=~"/b":$PATH; ./envp'],
+    ["a single-quoted $HOME", "PATH='$HOME/b':$PATH; ./envp"],
+    ["an escaped $HOME", "PATH=\\$HOME/b:$PATH; ./envp"],
+    ["another user's tilde", "PATH=~user/b:$PATH; ./envp"],
+    ["a variable that only starts with HOME", "PATH=$HOME_X/b:$PATH; ./envp"],
+    ["an alternate-value expansion of HOME", "PATH=${HOME:+.}/b:$PATH; ./envp"],
+    ["an alternate-value expansion of PATH", "PATH=${PATH:+.}; ./envp"],
+    ["a tilde after an escaped colon", "PATH=/x\\:~/b:$PATH; ./envp"],
+    ["a tilde after a quoted colon", 'PATH="/x:"~/b:$PATH; ./envp'],
+    ["a single-quoted $PATH", "PATH=/nope:'$PATH'; ./envp"],
+    ["a $( ) before a slash", "PATH=$(pwd)/b:$PATH; ./envp"],
+    ["a backquote before a slash", "PATH=`pwd`/b:$PATH; ./envp"],
+    ["a double-quoted backquote", 'PATH="`pwd`/b":$PATH; ./envp'],
+    ["a backquote after a literal directory", "PATH=/x`pwd`:$PATH; ./envp"],
+    ["a $( ) after a literal directory", "PATH=/x$(echo :.):$PATH; ./envp"],
+    ["a backquote that prints an entry after a literal directory", "PATH=/x`echo :.`:$PATH; ./envp"],
+    ["a $( ) in export", "export PATH=$(pwd)/b:$PATH; ./envp"],
+    ["a $( ) in a prefix", "PATH=$(pwd)/b:$PATH ./envp"],
+    ["a $( ) in an append", "PATH+=:$(pwd)/b; ./envp"],
+    ["a $( ) as a whole entry", "PATH=$(pwd):$PATH; ./envp"],
+    ["a tilde under a HOME symlinked to the working directory", "ln -s /proc/self/cwd L; HOME=L; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from a $( )", "HOME=$(pwd); PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from a backquote", "HOME=`pwd`; PATH=~/b:$PATH; ./envp"],
+    ["a $HOME under a HOME from a $( )", "HOME=$(pwd); PATH=$HOME/b:$PATH; ./envp"],
+    ["a ${HOME} under an exported HOME from a $( )", "export HOME=$(pwd); PATH=${HOME}/b:$PATH; ./envp"],
+    ["a tilde under an absolute HOME with a $( )", "HOME=/x$(pwd); PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME read from input", "read HOME <<< .; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME from an unknown variable", "HOME=$X; PATH=~/b:$PATH; ./envp"],
+    ["a tilde under a HOME prefix from a $( ) on the PATH command", "HOME=$(pwd) PATH=~/b:$PATH ./envp"],
+    ["a tilde in a function run after HOME is set relative", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=L; f"],
+    ["a $HOME in a function run after HOME is set relative", "f(){ PATH=$HOME/b:$PATH; ./envp; }; HOME=L; f"],
+    ["a ${HOME} in a function run after HOME is exported relative", "f(){ PATH=${HOME}/b:$PATH; ./envp; }; export HOME=L; f"],
+    ["a tilde in a function run after HOME is read", "f(){ PATH=~/b:$PATH; ./envp; }; read HOME <<< L; f"],
+    ["a tilde in a function run after HOME is set from a $( )", "f(){ PATH=~/b:$PATH; ./envp; }; HOME=$(pwd); f"],
+    ["a tilde in a function run after printf -v HOME", "f(){ PATH=~/b:$PATH; ./envp; }; printf -v HOME %s L; f"],
+    ["a tilde in a function run in a loop over HOME", "f(){ PATH=~/b:$PATH; ./envp; }; for HOME in L; do f; done"],
+  ])("denies the script after %s", async (_, line) => {
+    file("envp", ENV_BASH);
+    file("src.sh", "PATH=.:$PATH\n");
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it.each(["#!/usr/bin/env sh\necho ok\n", "#!/usr/bin/env zsh\necho ok\n"])("denies %j after a PATH change", async (text) => {
+    file("envp", text);
+    expect(await decision("PATH=.:$PATH ./envp")).toBe("deny");
+  });
+
+  it("reads the script as before when PATH is unchanged", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("./envp")).toBeNull();
+    file("envp2", `#!/usr/bin/env bash\n${PUSH}\n`);
+    expect(await decision("./envp2")).toBe("deny");
+  });
+
+  it("denies the script after a shell is written into a directory the line puts on PATH", async () => {
+    file("envp", ENV_BASH);
+    const dir = join(home, "pd");
+    expect(await decision(`echo x > ${dir}/bash; PATH=${dir}:$PATH ./envp`)).toBe("deny");
+  });
+
+  it.each([
+    'export PATH="$HOME/bin:$PATH"; ./envp',
+    "PATH=/usr/local/bin:$PATH ./envp",
+    "PATH+=:/opt/tools ./envp",
+    "PATH=$HOME/bin:$PATH:/usr/local/bin; ./envp",
+    "PATH=~/bin:$PATH ./envp",
+    "export PATH=\"$HOME/bin:$PATH\"; ./build.sh",
+    "PATH=/usr/local/bin:$PATH; ./envp",
+    "PATH=~/.local/bin:$PATH; ./envp",
+    "PATH=/opt/homebrew/bin:$PATH; ./envp",
+    "PATH=$HOME/.cargo/bin:$PATH; ./envp",
+    "PATH=${HOME}/bin:$PATH; ./envp",
+    'PATH="$HOME"/b:$PATH; ./envp',
+    "PATH=${HOME}'/b':$PATH; ./envp",
+    "PATH=~/dev/bin:$PATH; ./envp",
+    "PATH=/x:~/b:$PATH; ./envp",
+    "PATH=$PATH:~/bin; ./envp",
+    'PATH="/usr/local/bin":$PATH; ./envp',
+    "PATH=/usr/local/bin:$PATH; X=$(pwd); ./envp",
+    "HOME=/tmp/e; PATH=~/b:$PATH; ./envp",
+    "f(){ PATH=~/b:$PATH; ./envp; }; HOME=/tmp/e; f",
+    "HOME=L; PATH=/usr/local/bin:$PATH; ./envp",
+    "PATH=/usr/local/bin:$PATH; HOME=L; ./envp",
+    "f(){ PATH=/usr/local/bin:$PATH; ./envp; }; HOME=L; f",
+  ])("reads the script as before when the line puts only absolute directories on PATH: %s", async (line) => {
+    file("envp", ENV_BASH);
+    file("build.sh", ENV_BASH);
+    expect(await decision(line)).toBeNull();
+  });
+
+  it("denies the script after a sourced file writes PATH", async () => {
+    file("envp", ENV_BASH);
+    file("src.sh", "PATH=.:$PATH\n");
+    expect(await decision(". ./src.sh; ./envp")).toBe("deny");
+  });
+
+  it.each(["echo PATH=1 && ./envp", "./envp; echo PATH=x", "grep PATH= f; ./envp", "PATH=$PATH:~/bin ls; ./envp", 'export PATH="$HOME/bin:$PATH"', 'export PATH="$HOME/bin:$PATH"; git status', 'export PATH="$HOME/bin:$PATH"; npm test'])("reads the script as before for %s", async (line) => {
+    file("envp", ENV_BASH);
+    expect(await decision(line)).toBeNull();
+  });
+
+  it("does not take a variable that only ends in PATH for PATH", async () => {
+    file("envp", ENV_BASH);
+    expect(await decision("MYPATH=x ./envp")).toBeNull();
+  });
+
+  it("leaves a script with an absolute #! alone", async () => {
+    file("absp", "#!/bin/bash\necho ok\n");
+    expect(await decision("PATH=.:$PATH ./absp")).toBeNull();
+  });
+});
+
+describe("PATH writes in a script the line runs, which follow bash's shells", () => {
+  const ENV_BASH = "#!/usr/bin/env bash\necho ok\n";
+  const WRITES = "#!/bin/bash\nPATH=.:$PATH\n";
+
+  it.each([
+    ["a script that sources a writer and then runs the env script", "./outer", `#!/bin/bash\n. ./writer\n./envp\n`],
+    ["a sourced script that sources a writer, before the env script", ". ./outer; ./envp", `#!/bin/bash\n. ./writer\n`],
+    ["a script that writes PATH and then runs the env script", "./outer", `#!/bin/bash\nPATH=.:$PATH\n./envp\n`],
+    ["a script run with a PATH= prefix that runs the env script", "PATH=.:$PATH ./outer", "#!/bin/bash\n./envp\n"],
+    ["a script run plain, then again with a PATH= prefix", "./outer; PATH=.:$PATH ./outer", "#!/bin/bash\n./envp\n"],
+    ["a sourced writer after a script that runs the env script", "./outer; . ./writer", "#!/bin/bash\n./envp\n"],
+  ])("denies %s", async (_, line, outer) => {
+    file("envp", ENV_BASH);
+    file("writer", WRITES);
+    file("outer", outer);
+    expect(await decision(line)).toBe("deny");
+  });
+
+  it.each([
+    ["a script run by path that writes PATH", "./writer; ./envp"],
+    ["a script run by bash that writes PATH", "bash ./writer; ./envp"],
+    ["a script that runs a writer before the env script", "./outer"],
+  ])("keeps the writes of %s in its own shell", async (_, line) => {
+    file("envp", ENV_BASH);
+    file("writer", WRITES);
+    file("outer", "#!/bin/bash\n./writer\n./envp\n");
+    expect(await decision(line)).toBeNull();
+  });
+});
