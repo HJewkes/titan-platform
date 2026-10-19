@@ -1,7 +1,7 @@
 import { PermissionMode, AgentDefinition, McpServerConfig, HookEvent, HookCallbackMatcher, SettingSource, SDKMessage, ModelUsage, query, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { ZodType, ZodError } from 'zod';
 import * as Protocol from '@titan-design/agent-protocol/harness';
-import { HarnessRunFailure, HarnessRunOutput, TranscriptSourceHint } from '@titan-design/agent-protocol/harness';
+import { HarnessRunFailure, HarnessPricingPort, HarnessRunOutput, TranscriptSourceHint } from '@titan-design/agent-protocol/harness';
 export { CapabilityAssessment, EXECUTION_CAPABILITIES, ExecutionCapability, ExecutionLimit, HarnessRunFailure, HarnessRunOutput, LimitCapability, LimitEnforcement, LimitScope, LimitUnit, OptionalLimitUnit, RunTarget, TranscriptSourceHint } from '@titan-design/agent-protocol/harness';
 import { CodexPriceRow } from '@titan-design/agent-protocol/pricing';
 export { CodexPriceRow, priceCodexUsage } from '@titan-design/agent-protocol/pricing';
@@ -268,6 +268,8 @@ interface CodexExecAdapterOptions {
     killGraceMs?: number;
     /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
     prices?: readonly CodexPriceRow[];
+    /** Optional pure quote service; mutually exclusive with prices. */
+    pricingService?: HarnessPricingPort<"codex">;
     /** Extra runtime requirements, e.g. MCP/policy/rollout evidence for a managed peer. */
     requiredRuntimeCapabilities?: readonly CodexRuntimeCapability[];
 }

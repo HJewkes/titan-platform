@@ -258,7 +258,8 @@ requested cause and process exit evidence. Temporary schema cleanup completes
 before the terminal progress event, so cleanup failure cannot follow a reported
 successful finish.
 
-Turn usage carries `cost: null` unless the caller passes `prices`, a dated table of
+Turn usage carries `cost: null` unless the caller passes `prices` or `pricingService`.
+`prices` is a dated table of
 `CodexPriceRow` entries (`model`, `effectiveFrom` as a UTC `YYYY-MM-DD` date, and
 input, cached-input and output rates in USD per million tokens). The adapter then
 fills `cost: { usd, kind: "estimate" }` from the row for the run's model with the
@@ -332,3 +333,9 @@ terminal result through a newer owner's fence. Durable results must be JSON-safe
 ### Shared pricing implementation
 
 The existing pricing exports now delegate to `@titan-design/agent-protocol/pricing`. Their signatures, dated rows, matching, arithmetic and unavailable-result behavior remain unchanged; this package retains its compatibility entrypoints. The canonical pure implementation is shared with session-analytics. No current prices are fetched and no stored costs are rewritten.
+
+## Injected Codex pricing service
+
+`createCodexExecAdapter` accepts optional `pricingService: HarnessPricingPort<"codex">`. Supplying both `prices` and `pricingService` is a configuration error. The adapter validates the service harness/callability, then quotes normalized turn usage once at the captured turn-completed timestamp. Progress and returned usage share the same observation and cost. An unpriced quote leaves cost null. A thrown/malformed quote becomes a runtime failure retaining raw normalized usage; cleanup still runs with its existing failure precedence. Without a service, legacy caller-table and no-table behavior is unchanged.
+
+Pricing does not authorize execution, account access, policy/bus activation or native billing selection.
