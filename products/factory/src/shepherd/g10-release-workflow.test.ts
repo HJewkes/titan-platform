@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -20,6 +21,7 @@ import type { Presence } from "./presence.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { reviewPhase } from "./review.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
+import type { RosterReader } from "./roster.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 
 const hosts: FactoryHost[] = [];
@@ -36,15 +38,21 @@ const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
 
 const STANDING = "rv-standing";
 
+/** The broker's roster over the same agents; Shepherd spawns through the CLI, which the broker records as the human. */
+function rosterOver(agents: readonly ReviewerAgent[]): RosterReader {
+  const rows = (): AgentRow[] => agents.map((agent) => ({ ...agent, state: agent.presence, status: "finished", profile: agent.profile ?? "", surface: "headless", cwd: "/work", generation: 1 }));
+  return { read: async () => ({ kind: "known", rows: rows() }), rows: async () => rows(), invalidate: () => undefined };
+}
+
 /** Every reviewer Shepherd spawns or resumes says MERGE at the head it reads; the standing reviewer has ended with room to resume. */
-function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReader } {
+function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReader; roster: RosterReader } {
   const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), { ...row(STANDING), fillTokens: 1_000 }];
   const resume = async (name: string) => agents.forEach((agent, i) => agent.name === name && (agents[i] = { ...agent, presence: "live" }));
-  const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void agents.push(row(name)), resume };
+  const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void agents.push({ ...row(name), spawnedBy: "human" }), resume };
   const reader: ReviewerReader = {
     read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
   };
-  return { dispatch, reader };
+  return { dispatch, reader, roster: rosterOver(agents) };
 }
 
 interface World {
@@ -78,7 +86,8 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
 function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles, { silentAt, twoMerge, conflictsAfter, dbPath = ":memory:" }: Scene) {
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), review: { ...mergingReviewers(), roles, ...adversary } });
+  const { roster, ...reviewers } = mergingReviewers();
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary } });
   const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
   const review: ShepherdPhases["review"] = async (ctx, request) => {
     const verdict = await reviewed(ctx, request);

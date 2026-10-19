@@ -1,3 +1,4 @@
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -9,6 +10,8 @@ import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10ReleaseRoutes, holdClassOf, isOpus
 import type { CiSnapshot } from "../workflows/land.js";
 import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import type { LineageRow } from "./reviewer-lineage.js";
+import type { RosterReader } from "./roster.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -315,10 +318,22 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     adversary: { verdict: { ...by(head, adversary.sessionId ?? "s-adversary"), value: adversary.value ?? "MERGE" }, profile: adversary.profile ?? "fable-reviewer" },
   });
   const twoInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, ...merges(head), checks: green(head), ...extra });
+  const row = (sessionId: string, name: string, extra: Partial<LineageRow> = {}): AgentRow => ({
+    ...{ name, agentId: `agent-${sessionId}`, sessionId, spawnedBy: "human", teleportFrom: null },
+    ...{ state: "exited", presence: "exited", status: "finished", profile: "bd-reviewer", surface: "headless", cwd: "/work", generation: 1 },
+    ...extra,
+  });
+  const SPAWNED = [row("s-correctness", "rv-demo-1"), row("s-adversary", "rv-demo-1-adversary")];
+  const rosterOf = (rows: readonly AgentRow[] | "unread"): RosterReader => ({
+    read: async () => (rows === "unread" ? { kind: "unknown", error: new Error("broker down") } : { kind: "known", rows }),
+    rows: async () => (rows === "unread" ? [] : rows),
+    invalidate: () => undefined,
+  });
 
-  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }]) {
+  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }], rows: readonly AgentRow[] | "unread" = SPAWNED) {
     const rigged = rig(ADVERSARY_HOLD, prHead, "shepherd", files);
-    return { ...rigged, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(rigged.deps, mode)[0]! };
+    const deps = { ...rigged.deps, roster: rosterOf(rows) };
+    return { ...rigged, deps, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(deps, mode)[0]! };
   }
 
   describe("satisfiesTwoMerge", () => {
@@ -326,16 +341,24 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     const files = ["src/policy.ts"];
 
     it("releases only when the adversary says MERGE as well as the correctness reviewer", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD), HEAD, green(HEAD), files)).toBe(true);
-      expect(satisfiesTwoMerge(run, merges(HEAD, { value: "FIX_FIRST" }), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge(run, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
+      expect(satisfiesTwoMerge(run, merges(HEAD, { value: "FIX_FIRST" }), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+    });
+
+    it("releases two MERGEs at the same opus profile from separately spawned sessions (decision 457)", () => {
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
     });
 
     it("refuses a correctness MERGE from a profile that is not opus", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD, {}, "reviewer"), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }, "reviewer"), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+    });
+
+    it("refuses when the roster was not read", () => {
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, undefined)).toBe(false);
     });
 
     it("refuses a g10-review hold, which its own rule releases", () => {
-      expect(satisfiesTwoMerge({ ...run, holdReason: "g10-review: 900 changed lines" }, merges(HEAD), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge({ ...run, holdReason: "g10-review: 900 changed lines" }, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
     });
   });
 
@@ -367,11 +390,36 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
-  it.each([
-    ["two sessions of the same profile", { adversary: { ...merges(HEAD).adversary, profile: "bd-reviewer" } }],
-    ["one session under two profiles", { adversary: { ...merges(HEAD, { sessionId: "s-correctness" }).adversary } }],
-  ])("stays held on MERGEs from %s", async (_case, extra) => {
+  it("releases on MERGEs from two separately spawned bd-reviewer sessions (decision 457)", async () => {
     const { store, pr, route } = twoRig();
+
+    const done = await runStep(route("on"), twoInput(pr, HEAD, merges(HEAD, { profile: "bd-reviewer" })));
+
+    expect(done).toMatchObject({ released: true, correctness: { profile: "bd-reviewer" }, adversary: { profile: "bd-reviewer" } });
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  const sameProfile = (sessionId?: string) => merges(HEAD, { profile: "bd-reviewer", ...(sessionId !== undefined && { sessionId }) });
+  it.each([
+    ["one session", sameProfile("s-correctness"), SPAWNED],
+    ["an adversary forked from the correctness reviewer's context", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "rv-demo-1" })]],
+    ["a correctness reviewer forked from the adversary's context", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "rv-demo-1-adversary" }), SPAWNED[1]!]],
+    ["two forks of one session", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "seat" }), row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat")]],
+    ["an adversary that resumed the correctness reviewer's transcript", sameProfile(), [SPAWNED[0]!, SPAWNED[1]!, row("s-correctness", "rv-demo-1-adversary", { agentId: "agent-resumed" })]],
+    ["an adversary that took the correctness reviewer over", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-s-correctness" })]],
+    ["an adversary teleported from an agent the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-gone" })]],
+    ["an adversary whose name a fork of the correctness reviewer held in another generation", sameProfile(), [...SPAWNED, row("s-gen-2", "rv-demo-1-adversary", { agentId: "agent-gen-2", spawnedBy: "rv-demo-1" })]],
+    ["an adversary whose session a fork of the correctness reviewer continues", sameProfile(), [...SPAWNED, row("s-adversary", "rv-fork", { agentId: "agent-fork", spawnedBy: "rv-demo-1" })]],
+    [
+      "an adversary whose spawning agent, under another name, was forked from the correctness reviewer",
+      sameProfile(),
+      [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat"), row("s-seat-2", "seat-renamed", { agentId: "agent-s-seat", spawnedBy: "rv-demo-1" })],
+    ],
+    ["an adversary spawned by a session the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "gone-seat" })]],
+    ["an adversary the roster does not hold", sameProfile(), [SPAWNED[0]!]],
+    ["a roster that could not be read", sameProfile(), "unread" as const],
+  ])("stays held on MERGEs from %s", async (_case, extra, rows) => {
+    const { store, pr, route } = twoRig(HEAD, undefined, rows);
 
     const done = await runStep(route("on"), twoInput(pr, HEAD, extra));
 
