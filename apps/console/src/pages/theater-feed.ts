@@ -103,7 +103,7 @@ export function shownRows(searched: readonly FeedRow[], state: FeedState): FeedR
 }
 
 export function purposeCounts(searched: readonly FeedRow[]): Record<Purpose, number> {
-  const counts = Object.fromEntries(Object.keys(PURPOSE_LABELS).map((purpose) => [purpose, 0])) as Record<Purpose, number>;
+  const counts: Record<Purpose, number> = { daily: 0, "repo-review": 0, plan: 0, design: 0, explainer: 0, test: 0, clip: 0, other: 0 };
   for (const row of searched) counts[row.purpose] += 1;
   return counts;
 }
