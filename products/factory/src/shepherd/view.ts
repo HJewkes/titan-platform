@@ -57,6 +57,7 @@ export const WatchRowSchema = z.object({
   reviewer: z.string().nullable().optional(),
   /** Why the newest head-level review step ended in `none`; null for a finished run or one whose last review gave a verdict. Absent in rows older than the field. */
   lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
+  repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 

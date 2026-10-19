@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within, type RenderResult } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within, type RenderResult } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
-import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type EventHandlers, type LiveStatus, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
 import { VIEWS } from "./views.js";
 
@@ -37,7 +37,7 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 describe("the shell", () => {
   it("shows the rail and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd", "Config"]);
     // react-ui's NavItem sets no aria-selected on the web, so its accent bar is the only mark of the active item.
     expect(within(screen.getByRole("tab", { name: "Sessions" })).getByTestId("nav-item-accent")).toBeTruthy();
     expect(screen.getAllByTestId("nav-item-accent")).toHaveLength(1);
@@ -49,7 +49,42 @@ describe("the shell", () => {
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
     expect(await screen.findByRole("tab", { name: "Roster" })).toBeTruthy();
   });
+
+  it("says data may be old while the event stream is down and clears the line once it reopens", async () => {
+    const stream = renderWithStream("#/sessions", healthy());
+    act(() => stream.status("open"));
+    expect(screen.queryByText(STALE_LINE)).toBeNull();
+
+    act(() => stream.status("connecting"));
+    expect(screen.getAllByText(STALE_LINE)).toHaveLength(1);
+
+    act(() => stream.status("open"));
+    await waitFor(() => expect(screen.queryByText(STALE_LINE)).toBeNull());
+  });
 });
+
+const STALE_LINE = /^Live updates are off\. Data may be old since .+\.$/;
+
+/** Answers calls from the snapshot but hands the event stream's status to the test, as a dropped transport would. */
+function renderWithStream(hash: string, snapshot: Snapshot): { status(next: LiveStatus): void } {
+  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
+  const answers = pageDataSource({ doc: page });
+  let handlers: EventHandlers | undefined;
+  const source: DataSource = {
+    call: (name, args, options) => answers.call(name, args, options),
+    subscribe: (next) => {
+      handlers = next;
+      return { close: () => undefined };
+    },
+  };
+  window.location.hash = hash;
+  render(
+    <RpcProvider source={source}>
+      <App />
+    </RpcProvider>,
+  );
+  return { status: (next) => handlers?.onStatus?.(next) };
+}
 
 const planned = VIEWS.filter((view) => view.planned);
 

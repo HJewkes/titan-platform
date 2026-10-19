@@ -21,13 +21,23 @@ const verdict = (shape: ReviewShape, said: "MERGE" | "FIX_FIRST", text = ""): Re
 const none = (shape: ReviewShape): Recorded => ({ shape, result: { kind: "none" } });
 
 /** What the sh-review-panel step records for these member results, with `files` readable at the head. */
-async function aggregateStep(results: readonly Recorded[], files: Record<string, string> = {}): Promise<PanelVerdict> {
+async function aggregateStep(results: readonly Recorded[], files: Record<string, string> = {}, proof: { fixProof?: string; fixProofWaivedAt?: string } = {}): Promise<PanelVerdict> {
   const fake = fakeGitHub();
   for (const [path, content] of Object.entries(files)) fake.files.set(`${HEAD}:${path}`, { content, blobSha: fakeSha(path) });
-  return aggregatePanel({ port: githubPort(fake.wire) }, JSON.parse(JSON.stringify({ repo: REPO, pr: 1, head: HEAD, plan: PLAN, results })));
+  return aggregatePanel({ port: githubPort(fake.wire) }, JSON.parse(JSON.stringify({ repo: REPO, pr: 1, head: HEAD, plan: PLAN, results, ...proof })));
 }
 
 describe("the sh-review-panel step", () => {
+  it("reads the owner's waiver at the head from the recorded input, and ignores one at another head", async () => {
+    const results = [verdict("correctness", "MERGE"), verdict("adversary", "MERGE"), verdict("perf", "MERGE")];
+
+    const waived = await aggregateStep(results, {}, { fixProof: "vacuous", fixProofWaivedAt: HEAD });
+    const stale = await aggregateStep(results, {}, { fixProof: "vacuous", fixProofWaivedAt: fakeSha("older-head") });
+
+    expect(waived.outcome).toBe("MERGE");
+    expect(stale.outcome).toBe("no-verdict");
+  });
+
   it("merges when every blocking member says MERGE at the head, and records who reviewed", async () => {
     const results = [verdict("correctness", "MERGE"), verdict("adversary", "MERGE"), verdict("perf", "MERGE")];
 

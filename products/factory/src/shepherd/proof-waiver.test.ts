@@ -1,4 +1,5 @@
-import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import type { ServiceAnswer } from "@titan-design/agent-dispatch";
+import { formatResultLine, type FixProofResult, type Verdict as ProofVerdict } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
@@ -7,6 +8,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
+import { notifyTick, type GateNotifyPorts } from "../gate-notify.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -34,9 +36,9 @@ const JOB: Record<string, number> = { [A]: 77, [B]: 78 };
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-function vacuousLine(head: string): string {
-  const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+function proofLine(head: string, verdict: ProofVerdict): string {
+  const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
+  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 
 const fixProofRun = (head: string): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, JOB[head]!), headSha: head, pullRequests: [{ number: 1, baseRef: "main" }] });
@@ -48,13 +50,15 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
 });
 
 /** A dispatch whose every spawned reviewer says MERGE at the head it was asked about. */
-function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawns: string[] } {
+function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawns: string[]; briefs: Map<string, string> } {
   const agents: ReviewerAgent[] = [];
   const spawns: string[] = [];
+  const briefs = new Map<string, string>();
   const dispatch: ReviewerDispatch = {
     roster: async () => [...agents],
-    spawn: async (name, _brief, target) => {
+    spawn: async (name, brief, target) => {
       spawns.push(target.head);
+      briefs.set(target.head, brief);
       agents.push({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence: "live", spawnedBy: null, predecessor: null });
     },
     resume: async () => undefined,
@@ -63,7 +67,7 @@ function mergingReviewers(now: () => number): { dispatch: ReviewerDispatch; read
     read: async (input) =>
       agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: now() + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`, locator: locatorIn(who.sessionId) })),
   };
-  return { dispatch, reader, spawns };
+  return { dispatch, reader, spawns, briefs };
 }
 
 /** The run reviews each head in turn; a NO_REPRO takes the unhandled send-back, and a waived head is reviewed again. */
@@ -76,14 +80,14 @@ async function reviewHeads(ctx: WorkflowContext, heads: readonly string[], verdi
   }
 }
 
-/** Real review steps over a fake GitHub where every head's fix-proof is vacuous; `answer` settles each sh-sent-back gate. */
-async function reviewScene(heads: readonly string[], answer: (host: FactoryHost, runId: string) => Promise<void>) {
+/** Real review steps over a fake GitHub where a head's fix-proof is vacuous unless `reproducedAt` names it; `answer` settles each sh-sent-back gate. */
+async function reviewScene(heads: readonly string[], answer: (host: FactoryHost, runId: string) => Promise<void>, reproducedAt: readonly string[] = []) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: heads[0]!, mergeSha: fakeSha("waiver-merge") });
   fake.prFiles.set(1, [{ path: "packages/x/src/a.test.ts", status: "modified" }]);
   for (const head of heads) {
     fake.setRuns(head, [successRun("validate", 1), successRun("dag-check", 2), fixProofRun(head)]);
-    fake.jobLogs.set(JOB[head]!, `2026-10-18T00:00:00.0000000Z ${vacuousLine(head)}`);
+    fake.jobLogs.set(JOB[head]!, `2026-10-18T00:00:00.0000000Z ${proofLine(head, reproducedAt.includes(head) ? "reproduced" : "vacuous")}`);
   }
   let clock = 10_000;
   const store = shepherdStoreRef();
@@ -100,7 +104,7 @@ async function reviewScene(heads: readonly string[], answer: (host: FactoryHost,
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo: fix a flaky test", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "correctness" });
   await answer(host, runId);
   await host.runtime.wait(runId);
-  return { verdicts, spawns: reviewers.spawns, inputs, store, runId };
+  return { verdicts, spawns: reviewers.spawns, briefs: reviewers.briefs, inputs, store, runId };
 }
 
 const waiveAt = (head: string) => async (host: FactoryHost, runId: string) => {
@@ -143,6 +147,32 @@ describe("an owner's waive-proof on a NO_REPRO send-back", () => {
   });
 });
 
+describe("the reviewer brief after an owner's waive-proof", () => {
+  it("tells the reviewer at the waived head that the fix-proof is waived by the owner", async () => {
+    const { briefs, inputs } = await reviewScene([A], waiveAt(A));
+
+    expect(inputs[`sh-review:${A}`]).toMatchObject({ fixProofWaivedAt: A });
+    expect(briefs.get(A)).toContain("fix-proof waived by owner");
+    expect(briefs.get(A)).not.toContain("verdict for this head: vacuous");
+  });
+
+  it("says nothing of the waiver at head A to the reviewer of a later head B", async () => {
+    const { briefs, inputs, spawns } = await reviewScene([A, B], waiveAt(A), [B]);
+
+    expect(spawns).toEqual([A, B]);
+    expect(inputs[`sh-review:${B}`]).not.toHaveProperty("fixProofWaivedAt");
+    expect(briefs.get(B)).toContain("verdict for this head: reproduced");
+    expect(briefs.get(B)).not.toContain("waived");
+  });
+
+  it("says nothing of a waiver to the reviewer of a head no one waived", async () => {
+    const { briefs, inputs } = await reviewScene([B], async () => undefined, [B]);
+
+    expect(inputs[`sh-review:${B}`]).not.toHaveProperty("fixProofWaivedAt");
+    expect(briefs.get(B)).not.toContain("waived");
+  });
+});
+
 /** A shepherd-pr run over every factory route, with the review and wake phases scripted. */
 function shepherdWorld(review: (headSha: string, round: number) => Verdict) {
   const fake = fakeGitHub();
@@ -161,6 +191,23 @@ function shepherdWorld(review: (headSha: string, round: number) => Verdict) {
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   ref.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   return { host, runId, reviews, ref };
+}
+
+/** gateNotify over the host, where agent-chat answers every ask it filed with `answer`. */
+function relayedAnswer(host: FactoryHost, answer: Pick<ServiceAnswer, "text" | "provenance">): GateNotifyPorts {
+  const asked: string[] = [];
+  return {
+    label: "titan-factory",
+    resolverClass: "owner-remote",
+    pendingGates: () => host.gates.listPending(),
+    getGate: (id) => host.gates.get(id),
+    resolve: (id, payload, resolver) => void host.gates.resolve(id, payload, resolver),
+    asks: host.asks,
+    askHuman: async () => (asked.push(`q${asked.length + 1}`), asked.at(-1)!),
+    readAnswers: async () => ({ answers: asked.map((questionId, i) => ({ msgId: `a${i + 1}`, questionId, outcome: "answered", by: "human", at: i, ...answer })) }),
+    dismissAsk: async () => undefined,
+    log: () => undefined,
+  };
 }
 
 const NO_REPRO: Verdict = { kind: "NO_REPRO", headSha: A, result: { verdict: "vacuous" } };
@@ -202,6 +249,25 @@ describe("waive-proof in a shepherd-pr run", () => {
     expect(optionsOf(w.host, sentBack)?.map((option) => option.id)).toEqual(["await-new-head", "abandon"]);
     expect(() => w.host.runtime.signal(w.runId, "sh-sent-back", { decision: "waive-proof", headSha: A }, OWNER)).toThrow();
     expect(w.host.gates.get(sentBack)?.status).toBe("pending");
+  });
+
+  it("refuses a decided waive-proof relayed over agent-chat with no waiver written, then takes the owner's own tap", async () => {
+    const w = shepherdWorld((headSha, call) => (call === 1 ? NO_REPRO : { kind: "MERGE", headSha, evidence: {} }));
+    const sentBack = gateId(w.runId, "sh-sent-back");
+    await gateOpened(w.host, sentBack);
+    const relay = relayedAnswer(w.host, { text: "waive-proof", provenance: "decided" });
+
+    await notifyTick(relay);
+    await notifyTick(relay);
+
+    expect(w.host.asks.get(sentBack)?.state).toBe("refused");
+    expect(w.host.gates.get(sentBack)?.status).toBe("pending");
+    expect(w.ref.get().proofWaivers().waivedAt(w.runId, A)).toBe(false);
+
+    w.host.runtime.signal(w.runId, "sh-sent-back", { decision: "waive-proof", headSha: A }, OWNER);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.ref.get().proofWaivers().waivedAt(w.runId, A)).toBe(true);
   });
 
   it("refuses a decider's waive-proof: only the owner may waive, so no waiver is written and the head is not reviewed again", async () => {

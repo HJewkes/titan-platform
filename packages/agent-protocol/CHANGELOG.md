@@ -1,5 +1,19 @@
 # @titan-design/agent-protocol
 
+## 0.9.0
+
+### Minor Changes
+
+- 9914239: Add SDK-free execution service and request contracts with open harness IDs, account/profile binding references, structured output intent, an interface version and dispatch receipts distinct from completed results. Existing provider execution functions and compatibility types are unchanged.
+
+  Add a neutral pricing port that keeps reported costs, dated catalog estimates and unpriced outcomes distinct, without adding a price table or changing existing arithmetic.
+
+- 9914239: Allow neutral pricing ports to receive existing readonly cache-write TTL evidence and preserve source-provided estimates without relabeling them as reported or inventing catalog metadata.
+- 9914239: Extract SDK-free execution contracts into agent-protocol/harness with open harness identity parameters, preserving existing agent exports through compatibility aliases. This is the execution-only checkpoint of TP-3426; the remaining S01 ports are not implemented.
+- 9914239: Add SDK-free source-port contracts over the existing transcript DTOs, with plural nonempty found/expected-path lookups and explicit capability assessments. Existing source readers remain unchanged. This is a partial TP-3426 checkpoint and adds no runtime adapter or finality classifier.
+- 9914239: Move the existing pure transcript source, observation and continuation declarations into agent-protocol/harness, preserving session-read compatibility exports and all decoder/read behavior. This is a further partial TP-3426 S01 checkpoint; account, pricing, policy and bus ports remain unfinished.
+- 9914239: Expose the existing dated catalog and pricing arithmetic through the pure agent-protocol/pricing subpath and replace higher-tier implementations with compatibility exports, preserving model matching, TTL and inclusive token accounting.
+
 ## 0.8.0
 
 ### Minor Changes

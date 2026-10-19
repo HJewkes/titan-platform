@@ -4,7 +4,8 @@
  * (owner-write) admits only the owner, then re-reads the item and refuses when the digest no longer matches, so a stale screen
  * never posts. It writes the action record once (O_EXCL, 0600) as `<actionsDir>/<confirm>.json`, posts its id to the factory's
  * console-action route, which reads the record and decides, and writes the outcome once beside it. A replay of the same confirm
- * reposts the record it already wrote, byte for byte, so the factory recognises its own resolve and answers `already`.
+ * reposts the record it already wrote, byte for byte, so the factory recognises its own resolve and answers `already`. The
+ * confirm store and the record and outcome files are the shared kernel in `owner-tap.ts`.
  *
  * An `answer-chat` tap takes the owner's text, keeps it in the same record, and posts it to the agent-chat broker instead. A g10
  * `hold-release` tap reads back the verdicts Shepherd recorded (`g10-hold.ts`) and calls `shepherd.release` itself.
@@ -12,9 +13,6 @@
  * The inbox acts on `resolve-gate`, `owner-release`, `answer-chat` and a g10 `hold-release`; every other action, a deposit's
  * included, has no console action.
  */
-import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
@@ -24,12 +22,10 @@ import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } f
 import { readInbox, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
+import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
 export const ACTIONS_OFF = "inbox actions are off";
-export const CONFIRM_TTL_MS = 5 * 60_000;
-const MAX_PREPARED = 256;
 const ACTOR = { class: "owner-remote", id: "titan-console", channel: "console:inbox" } as const;
-const CONFIRM = /^[0-9a-f]{64}$/;
 const MAX_ANSWER = 8000;
 const CHANGED = "the item changed since it was read; read it again before confirming";
 
@@ -87,12 +83,6 @@ type ActResult = {
   log?: DecisionLogResult;
 };
 
-interface Prepared {
-  itemId: string;
-  readAt: string;
-  expiresAt: number;
-}
-
 const isPostedAction = (action: InboxAction): action is PostedAction => action.kind === "resolve-gate" || action.kind === "owner-release";
 
 const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefined): action is ConsoleAction => isPostedAction(action) || isG10Release(action) || (action.kind === "answer-chat" && answerer !== undefined);
@@ -100,11 +90,7 @@ const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefin
 const short = (sha: string | null): string => (sha === null ? "an unknown head" : sha.slice(0, 7));
 
 /** The read-back is in the digest, so a verdict recorded between the read and the tap refuses the stale confirm. */
-const digestOf = (item: InboxItem, readAt: string, readBack: ReadBack): string => createHash("sha256").update(JSON.stringify([item.id, item.action, item.hold ?? null, readBack, readAt])).digest("hex");
-
-const refuse = (message: string): never => {
-  throw failure(message, EXIT.DATAERR);
-};
+const itemDigest = (item: InboxItem, readAt: string, readBack: ReadBack): string => digestOf([item.id, item.action, item.hold ?? null, readBack, readAt]);
 
 function chatReadBackOf(item: InboxItem, action: ChatAction): ChatReadBack {
   const options = item.options?.map(({ id, label }) => ({ id, label }));
@@ -129,24 +115,6 @@ function noActionReason(action: InboxAction): string {
   return `a ${action.kind} item is not acted on from the inbox yet`;
 }
 
-/** Confirms this console issued, newest last; expired ones are dropped on each prepare, and the oldest past the cap. */
-function preparedStore(now: () => number) {
-  const issued = new Map<string, Prepared>();
-  return {
-    remember(confirm: string, entry: Prepared): void {
-      for (const [key, value] of issued) if (value.expiresAt <= now()) issued.delete(key);
-      issued.set(confirm, entry);
-      if (issued.size > MAX_PREPARED) issued.delete(issued.keys().next().value!);
-    },
-    lookup(confirm: string, itemId: string): Prepared | undefined {
-      const entry = issued.get(confirm);
-      return entry !== undefined && entry.itemId === itemId && entry.expiresAt > now() ? entry : undefined;
-    },
-  };
-}
-
-type PreparedStore = ReturnType<typeof preparedStore>;
-
 async function liveItem(sources: InboxSources, itemId: string): Promise<{ item: InboxItem; readAt: string }> {
   const list = await readInbox(sources);
   const item = list.items.find((each) => each.id === itemId);
@@ -158,9 +126,9 @@ async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, 
   const { action } = item;
   if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
   const readBack = await readBackOf(ctx.sources, item, action);
-  const confirm = digestOf(item, readAt, readBack);
+  const confirm = itemDigest(item, readAt, readBack);
   const expiresAt = ctx.now() + CONFIRM_TTL_MS;
-  store.remember(confirm, { itemId, readAt, expiresAt });
+  store.remember(confirm, { key: itemId, readAt, expiresAt });
   return { status: "ready", itemId, action, readBack, readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
 }
 
@@ -168,23 +136,6 @@ async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, 
 function decisionItemOf(item: InboxItem): DecisionItem {
   const { id, sources, kind, door, category, summary, options, recommended, keys, initiative, personal, route, openedAt } = item;
   return { id, sources, kind, door, class: item.class, category, summary, options, recommended, keys, initiative, personal, route, openedAt };
-}
-
-const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
-
-/** False when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
-async function writeOnce(file: string, bytes: string): Promise<boolean> {
-  const handle = await open(file, "wx", 0o600).catch((error: unknown) => (errnoOf(error) === "EEXIST" ? null : Promise.reject(error)));
-  if (handle === null) return false;
-  try {
-    await handle.writeFile(bytes);
-  } catch (error) {
-    await handle.close();
-    await rm(file, { force: true });
-    throw error;
-  }
-  await handle.close();
-  return true;
 }
 
 interface ActContext {
@@ -195,16 +146,15 @@ interface ActContext {
 }
 
 /** A fresh tap re-reads the item and writes its record; the digest must still match what the owner was shown. */
-async function writeRecord(ctx: ActContext, file: string, tap: Tap, prepared: Prepared): Promise<void> {
-  const { item } = await liveItem(ctx.sources, prepared.itemId);
+async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared: Prepared): Promise<void> {
+  const { item } = await liveItem(ctx.sources, prepared.key);
   const { action } = item;
   if (!isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
   const readBack = await readBackOf(ctx.sources, item, action);
-  if (digestOf(item, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
+  if (itemDigest(item, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
   const record = { itemId: item.id, action, readBack, ...(text !== undefined && { text }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
-  await mkdir(ctx.options.actionsDir, { recursive: true, mode: 0o700 });
-  await writeOnce(file, `${JSON.stringify(record, null, 2)}\n`);
+  await writeRecord(ctx.options.actionsDir, file, record);
 }
 
 const recordFile = z.looseObject({ action: z.custom<ConsoleAction>(), item: z.custom<DecisionItem>(), text: z.string().optional() });
@@ -216,11 +166,6 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
   const trimmed = text?.trim();
   if (action.kind !== "answer-chat") return trimmed === undefined ? undefined : refuse("only an answer to an agent's question takes text");
   return trimmed || refuse("an answer needs text");
-}
-
-async function readRecord(file: string): Promise<ActionRecord | undefined> {
-  const text = await readFile(file, "utf8").catch((error: unknown) => (errnoOf(error) === "ENOENT" ? undefined : Promise.reject(error)));
-  return text === undefined ? undefined : recordFile.parse(JSON.parse(text));
 }
 
 function messageOf(outcome: Outcome): string {
@@ -250,8 +195,7 @@ function messageOf(outcome: Outcome): string {
 
 /** Settled outcomes are written once, and only the call that wrote a landed one logs the decision. */
 async function settle(ctx: ActContext, file: string, record: ActionRecord, outcome: Outcome): Promise<DecisionLogResult | undefined> {
-  if (outcome.status === "unreachable" || outcome.status === "off") return undefined;
-  const wrote = await writeOnce(outcomeFile(file), `${JSON.stringify({ ...outcome, at: new Date(ctx.now()).toISOString() })}\n`);
+  const wrote = await settleOutcome(file, outcome, new Date(ctx.now()).toISOString());
   if (!wrote || (outcome.status !== "resolved" && outcome.status !== "released" && outcome.status !== "answered")) return undefined;
   const answer = { text: answerTextOf(record), by: ACTOR, at: new Date(ctx.now()).toISOString() };
   return ctx.options.decisionLog?.record(record.item, answer);
@@ -259,14 +203,9 @@ async function settle(ctx: ActContext, file: string, record: ActionRecord, outco
 
 const answerTextOf = ({ action, text }: ActionRecord): string => (action.kind === "answer-chat" ? (text ?? "") : action.kind === "resolve-gate" ? "merge" : "release");
 
-const outcomeFile = (file: string): string => file.replace(/\.json$/, ".outcome.json");
-
-const settledOutcome = z.looseObject({ status: z.string(), runId: z.string().optional() });
-
 /** Shepherd refuses a second release of a lifted hold, so a replay is answered from the outcome this record already settled. */
 async function releaseOnce(ctx: ActContext, file: string, confirm: string, action: G10Action): Promise<Outcome> {
-  const text = await readFile(outcomeFile(file), "utf8").catch(() => undefined);
-  const settled = text === undefined ? undefined : settledOutcome.safeParse(JSON.parse(text)).data;
+  const settled = await readSettled(file);
   if (settled?.status === "released") return { status: "already", ...(settled.runId && { runId: settled.runId }) };
   return releaseG10(ctx.sources.shepherd, action, confirm);
 }
@@ -288,10 +227,9 @@ interface Tap {
 }
 
 async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<ActResult> {
-  const prepared = store.lookup(tap.confirm, tap.itemId) ?? refuse("the confirmation is unknown or over five minutes old; read the item again");
-  const file = path.join(ctx.options.actionsDir, `${tap.confirm}.json`);
-  if ((await readRecord(file)) === undefined) await writeRecord(ctx, file, tap, prepared);
-  const record = (await readRecord(file)) ?? refuse("the action record could not be read back");
+  const stale = "the confirmation is unknown or over five minutes old; read the item again";
+  const write = (file: string, prepared: Prepared) => writeItemRecord(ctx, file, tap, prepared);
+  const { file, record } = await recordOnce({ store, actionsDir: ctx.options.actionsDir, confirm: tap.confirm, key: tap.itemId, stale, schema: recordFile, write });
   const outcome = await dispatch(ctx, file, tap.confirm, record);
   const log = await settle(ctx, file, record, outcome);
   return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }) };

@@ -318,6 +318,8 @@ interface ReviewerBriefInput {
     fixProof?: string;
     /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
     fixProofUnverified?: FixProofUnverified;
+    /** The head the owner waived the fix-proof at; it replaces the fix-proof section only when it is this head. */
+    fixProofWaivedAt?: string;
     /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
     earlierFindings?: readonly EarlierFinding[];
     /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
@@ -559,6 +561,8 @@ interface AggregateInput {
      * only a line pinned to the head can.
      */
     fixProof?: string;
+    /** The head the owner waived the fix-proof at; only this head's waiver stops a bad fix-proof from making the tests member blocking. */
+    fixProofWaivedAt?: string;
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
     sonnetFor?: Record<string, string>;
 }

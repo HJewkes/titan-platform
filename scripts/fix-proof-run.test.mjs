@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -482,5 +482,110 @@ describe("fix-proof workflow", () => {
     expect(text).toContain("ref: ${{ github.sha }}");
     expect(text).toMatch(/bash \.fix-proof-workflow\/scripts\/fix-proof-run\.sh /);
     expect(text).not.toMatch(/bash scripts\/fix-proof-run\.sh/);
+  });
+
+  describe("merge base", () => {
+    const jobs = ["fix-proof-base", "fix-proof-head", "fix-proof"];
+    const gate = "steps.merge-base.outputs.sha != ''";
+    const mergeBaseIndex = (steps) => steps.findIndex((step) => step.id === "merge-base");
+    const readsRunner = (step) =>
+      /^(pnpm\/action-setup|actions\/setup-node)@/.test(step.uses ?? "") || /worktree add|pnpm|fix-proof-run\.sh (exec|receive)/.test(step.run ?? "");
+
+    it.each(jobs)("%s takes its merge base from the refusing script mode, with branch names from the event payload", (id) => {
+      const step = workflow.jobs[id].steps.find((candidate) => candidate.id === "merge-base");
+
+      expect(step.run).toMatch(/bash \.fix-proof-workflow\/scripts\/fix-proof-run\.sh merge-base /);
+      expect(step.env).toEqual({
+        BASE_SHA: "${{ github.event.pull_request.base.sha }}",
+        HEAD_SHA: "${{ github.event.pull_request.head.sha }}",
+        BASE_REF: "${{ github.event.pull_request.base.ref }}",
+        DEFAULT_BRANCH: "${{ github.event.repository.default_branch }}",
+      });
+    });
+
+    it("no step computes a merge base with git directly", () => {
+      const runs = Object.values(workflow.jobs).flatMap((job) => job.steps.map((step) => step.run ?? ""));
+
+      expect(runs.some((run) => /git (-C \S+ )?merge-base/.test(run))).toBe(false);
+    });
+
+    it.each(jobs)("%s finds the merge base before any setup and gates every runner step on its sha", (id) => {
+      const steps = workflow.jobs[id].steps;
+      const merge = mergeBaseIndex(steps);
+
+      const runnerSteps = steps.map((step, index) => ({ step, index })).filter(({ step }) => readsRunner(step));
+
+      expect(merge).toBeGreaterThan(-1);
+      expect(runnerSteps.length).toBeGreaterThan(2);
+      expect(runnerSteps.every(({ index }) => index > merge)).toBe(true);
+      expect(runnerSteps.filter(({ step }) => !String(step.if ?? "").includes(gate)).map(({ step }) => step.name ?? step.uses)).toEqual([]);
+    });
+
+    it("the judge step runs whatever came before and carries the refusal, naming the event base when there is no sha", () => {
+      const step = judge.steps.find((candidate) => /fix-proof-run\.sh judge /.test(candidate.run ?? ""));
+
+      expect(step.if).toBe("${{ !cancelled() }}");
+      expect(step.env.FIX_PROOF_REFUSED).toBe("${{ steps.merge-base.outputs.refused }}");
+      expect(step.env.MERGE_BASE).toBe(
+        "${{ steps.merge-base.outputs.refused && github.event.pull_request.base.sha || steps.merge-base.outputs.sha }}",
+      );
+    });
+
+    describe("the merge-base step's script", () => {
+      let repo;
+      let shas;
+      const git = (...args) => spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" }).stdout.trim();
+      const commit = (file, message) => {
+        writeFileSync(path.join(repo, file), `${message}\n`);
+        git("add", file);
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message);
+        return git("rev-parse", "HEAD");
+      };
+      beforeEach(() => {
+        repo = mkdtempSync(path.join(tmpdir(), "fix-proof-step-"));
+        git("init", "-q", "-b", "main");
+        const main = commit("a.txt", "main");
+        git("checkout", "-qb", "feature");
+        const feature = commit("b.txt", "feature");
+        shas = { main, feature };
+        mkdirSync(path.join(repo, ".fix-proof-workflow/scripts"), { recursive: true });
+        cpSync(script, path.join(repo, ".fix-proof-workflow/scripts/fix-proof-run.sh"));
+        symlinkSync(".", path.join(repo, "src"));
+      });
+      afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+      const runStep = (id, env) => {
+        const step = workflow.jobs[id].steps.find((candidate) => candidate.id === "merge-base");
+        const output = path.join(repo, "github-output");
+        writeFileSync(output, "");
+        const result = spawnSync("bash", ["-e", "-c", step.run], {
+          cwd: repo,
+          encoding: "utf8",
+          env: { ...process.env, GITHUB_OUTPUT: output, BASE_REF: "main", DEFAULT_BRANCH: "main", ...env },
+        });
+        return { status: result.status, output: readFileSync(output, "utf8") };
+      };
+
+      it.each(jobs)("%s writes the merge base of a default-branch PR", (id) => {
+        const { status, output } = runStep(id, { BASE_SHA: shas.main, HEAD_SHA: shas.feature });
+
+        expect(status).toBe(0);
+        expect(output).toBe(`sha=${shas.main}\n`);
+      });
+
+      it.each(jobs)("%s refuses a stacked base and writes no sha", (id) => {
+        const { status, output } = runStep(id, { BASE_SHA: shas.main, HEAD_SHA: shas.feature, BASE_REF: "parent-branch" });
+
+        expect(status).toBe(0);
+        expect(output).toBe("refused=fix-proof runs only against the default branch: base parent-branch is not main\n");
+      });
+
+      it.each(jobs)("%s keeps an option-shaped base away from git, so it cannot pass the head off as the merge base", (id) => {
+        const { status, output } = runStep(id, { BASE_SHA: "--octopus", HEAD_SHA: shas.feature });
+
+        expect(status).not.toBe(0);
+        expect(output).toBe("");
+      });
+    });
   });
 });
