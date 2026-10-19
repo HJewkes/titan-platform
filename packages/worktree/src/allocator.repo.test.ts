@@ -491,16 +491,19 @@ describe("concurrent worktree adds", () => {
   it("kills the hook a timed-out add spawned, and cleans up only after it is gone", async () => {
     const repo = makeRepo();
     const target = path.join(repo, ".worktrees", "w1");
-    const marker = "sleep 61";
+    const pidFile = path.join(repo, ".git", "hook-sleep.pid");
     const hook = path.join(repo, ".git", "hooks", "post-checkout");
     fs.mkdirSync(path.dirname(hook), { recursive: true });
-    fs.writeFileSync(hook, `#!/bin/sh\n${marker} &\nwait\n`, { mode: 0o755 });
+    fs.writeFileSync(hook, `#!/bin/sh\nsleep 61 &\necho $! > '${pidFile}'\nwait\n`, { mode: 0o755 });
     const strategy = createWorktreeAllocator({ addTimeoutMs: 1_500 });
 
     await expect(strategy.allocate(ctxFor(repo, { agentName: "w1" }))).rejects.toThrow("timed out");
 
-    const survivors = spawnSync("pgrep", ["-f", marker]).stdout.toString().trim();
-    expect(survivors).toBe("");
+    // A host-wide pgrep matches any process whose argv mentions the sleep, so check only the
+    // pid this hook recorded. A zombie's args no longer read "sleep 61", so it counts as gone.
+    const hookPid = fs.readFileSync(pidFile, "utf8").trim();
+    const survivor = spawnSync("ps", ["-o", "args=", "-p", hookPid]).stdout.toString();
+    expect(survivor).not.toContain("sleep 61");
     expect(fs.existsSync(target)).toBe(false);
   }, 20_000);
 
