@@ -1,4 +1,4 @@
-import type { HarnessPricingPort, HarnessPriceQuote } from "@titan-design/agent-protocol/harness";
+import type { HarnessPricingPort } from "@titan-design/agent-protocol/harness";
 import { conversationItemRef } from "@titan-design/agent-protocol";
 import type { ConversationIdentity, ExecutionIdentity, TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
 import { priceCodexUsage, type CodexPriceRow } from "./codex-prices.js";
@@ -6,6 +6,10 @@ import type { CodexProcessExit, SupervisedCodexProcess } from "./codex-process.j
 import type { CodexRunRequest, HarnessRunFailure, HarnessRunProgress, HarnessRunResult } from "./harness-contracts.js";
 
 export const DEFAULT_CODEX_KILL_GRACE_MS = 2_000;
+
+export function unrefTimer(timer: { unref?: () => void }): void {
+  timer.unref?.();
+}
 
 export async function runCodexExecSession<T>(
   request: CodexRunRequest<T>,
@@ -63,7 +67,7 @@ class CodexExecSession<T> {
     try {
       this.request.signal?.addEventListener("abort", this.onAbort);
       this.timer = setTimeout(() => this.stop("timeout"), this.processWallTimeMs);
-      this.timer.unref?.();
+      unrefTimer(this.timer);
       this.emit({ kind: "execution_started", execution: { executionId: this.executionId } });
       const [, , exit] = await Promise.all([this.readStdout(), this.readStderr(), this.processHandle.completed]);
       let result = this.settle(exit);
@@ -220,7 +224,7 @@ class CodexExecSession<T> {
     this.processHandle.terminate("SIGTERM");
     if (this.forceTimer) return;
     this.forceTimer = setTimeout(() => this.processHandle.terminate("SIGKILL"), this.killGraceMs);
-    this.forceTimer.unref?.();
+    unrefTimer(this.forceTimer);
   }
 
   private async ignoreExitFailure(): Promise<void> {
@@ -365,7 +369,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function projectQuoteCost(quote: HarnessPriceQuote): UsageMeasurement["cost"] {
+function projectQuoteCost(quote: unknown): UsageMeasurement["cost"] {
   if (!record(quote)) throw new TypeError("pricingService returned an invalid quote");
   if (quote.status === "unpriced") {
     if (typeof quote.reason !== "string") throw new TypeError("unpriced quote needs a reason");

@@ -1,5 +1,7 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { widenEventKinds } from "./events.js";
+import { REPAIR_STOP_DDL } from "./repair-stop.js";
 
 const TABLE_DDL = `
   CREATE TABLE shepherd_registration (
@@ -127,4 +129,12 @@ const LINEAGE_DDL = `
 
 export function lineageMigration(version = 5): Migration {
   return { version, name: "factory:shepherd_lineage", up: (db) => db.exec(LINEAGE_DDL) };
+}
+
+/** A seat's per-PR and per-path stops on fixer dispatch, and the event kinds that record setting and clearing them. */
+export function repairStopMigration(version = 31): Migration {
+  return { version, name: "factory:shepherd_repair_stop", up: (db) => {
+    db.exec(REPAIR_STOP_DDL);
+    widenEventKinds(db);
+  } };
 }

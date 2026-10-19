@@ -41,7 +41,7 @@ error (exit 2) naming the flag to pass and the branch it read. The other flags:
 | Flag | Meaning |
 | --- | --- |
 | `--reviewer <name>` | the agent that reviews |
-| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor` or `unknown`; a new registration without it stores `correctness` |
+| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind) |
 | `--policy <json>` | narrows the seat policy; see [seat policy](#seat-policy) |
 
 Registration is idempotent (`products/factory/src/shepherd/commands.ts`). A repeat for the
@@ -69,15 +69,15 @@ head an earlier merge-up carried that MERGE to), its second parent is on the bas
 its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
 commit or a rebase gets a fresh review. The run log records each clean merge-up as an
 `sh-merge-up` step naming the reviewed head, the new head, the base commit and the rule
-`clean-merge-up`. The kind
-does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
-replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
-`unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
-reason naming both kinds. Moving `correctness` to `security`, or `feature`, `refactor` or
-`unknown` to any kind, still applies.
+`clean-merge-up`. The kind also opens the fix-proof gate described next: `correctness`,
+`security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
+`correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
+any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
+`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies,
+except a move into `test-only`.
 
-On a `correctness` or `security` run, or any `fix/` branch, Shepherd reads the head's
-fix-proof result before the review. A vacuous or test-less proof ends the round as
+On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
+head's fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
 could not be read although one was due. A read that fails is read once more at the same head
@@ -92,6 +92,27 @@ needs `gh`. A `--branch` that is not the pull request's head is refused.
 With no server running, the run is recorded and the verb says so on stderr:
 `no titan-factory serve answered on port 7410, so the run was recorded here; titan-factory
 serve drives it`.
+
+### The test-only kind
+
+A move into `test-only` is refused with exit 65 while the fix-proof gate does not yet read
+test-only diffs. Once it does, only a `correctness` run may move there, and only when the pull
+request's diff changes nothing but tests, carried test files, `*.mutations.json` sidecars and
+`.changeset/*.md`. Shepherd classifies the diff from GitHub under `.github/fix-proof.json` at the
+default branch's merge base and at its tip. It reads the diff before it refreshes the
+registration or replaces a dead run, so a refusal names the first source path and leaves the
+stored kind and the run as they were. The guard also refuses when the diff cannot be read in
+full: a file list at GitHub's cap, a harness path, a pull request based on another branch, or a
+read error. A new registration with `--kind test-only` is not refused, because a branch may have
+no diff yet. Until the gate reads test-only diffs, it gates a `test-only` run exactly like
+`correctness`; once it does, it re-checks the diff at every head, so the kind never loosens it.
+
+Once the kind is live, a `correctness` registration, stated or defaulted, on a pull request
+that changes only tests prints a hint after the run line:
+
+```
+hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO
+```
 
 ## Phases
 
@@ -1125,7 +1146,7 @@ closed is skipped.
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved as is and refreshed once before the merge | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
-| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}` |
+| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |

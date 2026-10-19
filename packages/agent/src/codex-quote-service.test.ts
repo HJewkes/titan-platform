@@ -212,3 +212,28 @@ describe("additional injected quote contract boundaries", () => {
       tokens: { input: 10, cachedInput: 4, output: 6 } });
   });
 });
+
+describe("pricing service capture compatibility", () => {
+  it("captures a get-only Proxy quote once and binds the original receiver without has traps", async () => {
+    let quoteReads = 0;
+    let hasCalls = 0;
+    let quoteCalls = 0;
+    const service: HarnessPricingPort<"codex"> = new Proxy({
+      harness: "codex" as const,
+      get quote(): HarnessPricingPort<"codex">["quote"] {
+        quoteReads++;
+        return function (this: HarnessPricingPort<"codex">) {
+          expect(this).toBe(service);
+          quoteCalls++;
+          return priced(0.125);
+        };
+      },
+    }, { has() { hasCalls++; return false; } });
+    const process = fakeProcess();
+    const result = await harness(process.handle, { killGraceMs: 10, pricingService: service }).adapter.run(request());
+    expect(result.ok).toBe(true);
+    expect(result.usage[0]?.cost).toEqual({ usd: 0.125, kind: "estimate" });
+    expect([quoteReads, quoteCalls, hasCalls]).toEqual([1, 1, 0]);
+    expect(process.signals).toEqual([]);
+  });
+});

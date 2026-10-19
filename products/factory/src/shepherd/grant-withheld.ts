@@ -18,17 +18,21 @@ export interface GrantStanding {
   unverified?: FixProofUnverified;
   /** Why the fix-proof read proves nothing, as the sh-fix-proof step recorded it. */
   reason?: string;
+  /** The head whose NO_REPRO the owner waived; it withholds the grant, so the MERGE goes only to the owner gate. */
+  waivedAt?: string;
 }
 
 const WITHHELD_PREFIX = "merge-on-green-approve withheld: ";
 const UNRECORDED = "the cause was not recorded at this head";
 
 /**
- * Only the policy half can withhold the grant now: an unverified proof is recorded, not gated (decision 303, TP-2660 b). `proof`
- * stays in the shape because evidence recorded before then may carry it.
+ * An unverified proof is recorded, not gated (decision 303, TP-2660 b), so the proof half withholds the grant only for an
+ * owner's waiver of a NO_REPRO; evidence recorded before TP-2660 b may also carry an unverified one there.
  */
-export function grantWithheldOf(merge: string): GrantWithheld | undefined {
-  return merge === "auto" ? undefined : { policy: merge, proof: null };
+export function grantWithheldOf(merge: string, standing: GrantStanding = {}): GrantWithheld | undefined {
+  const policy = merge === "auto" ? null : merge;
+  const proof = standing.waivedAt === undefined ? null : `waived by owner at ${standing.waivedAt}`;
+  return policy === null && proof === null ? undefined : { policy, proof };
 }
 
 /** The head's unverified fix-proof standing and its read reason, as the merge evidence records it; undefined when the proof stands. */

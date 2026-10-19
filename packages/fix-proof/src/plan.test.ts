@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planFixProof, testOnlyOf, type FixProofPlan, type PlanInput } from "./plan.js";
+import { planFixProof, testOnlyOf, testOnlyReading, type FixProofPlan, type PlanInput } from "./plan.js";
 
 function plan(input: PlanInput): FixProofPlan {
   const result = planFixProof(input);
@@ -124,6 +124,7 @@ describe("source and mutation buckets", () => {
   const repoConfig = JSON.stringify({
     tests: ["{packages,products,apps}/*/src/**/*.test.{ts,tsx}", "apps/*/{scripts,server}/**/*.test.ts", "scripts/**/*.test.mjs"],
     carry: ["**/fixtures/**", "**/__fixtures__/**", "**/test-support/**", "**/testdata/**", "**/*.test-helpers.ts", "**/*.fixture.ts"],
+    runtime: ["packages/agent-protocol/fixtures/**", "apps/console/fixtures/**"],
   });
   const planned = (...lines: string[]) => plan({ nameStatus: diff(...lines), baseConfig: repoConfig });
 
@@ -132,6 +133,7 @@ describe("source and mutation buckets", () => {
 
     expect(result.source).toEqual([]);
     expect(testOnlyOf(result)).toBe(true);
+    expect(testOnlyReading(result)).toEqual({ testOnly: true });
   });
 
   it("reads the Z8 diff, with test-support files, as test-only", () => {
@@ -145,6 +147,37 @@ describe("source and mutation buckets", () => {
     expect(result.source).toEqual([]);
     expect(result.carried).toEqual(["products/factory/src/test-support/serve-child-main.ts", "products/factory/src/test-support/serve-child.ts"]);
     expect(testOnlyOf(result)).toBe(true);
+    expect(testOnlyReading(result)).toEqual({ testOnly: true });
+  });
+
+  it("reads a changeset-only diff as no-tests", () => {
+    expect(testOnlyReading(planned("A\t.changeset/x.md"))).toEqual({ testOnly: false, reason: "no-tests" });
+  });
+
+  it("reads a fixture-only diff as no-tests", () => {
+    expect(testOnlyReading(planned("M\tpackages/pm/src/fixtures/a.json"))).toEqual({ testOnly: false, reason: "no-tests" });
+  });
+
+  it("reads a diff that adds one test and deletes another as deletes-tests", () => {
+    const result = planned("A\tproducts/factory/src/a.test.ts", "D\tproducts/factory/src/b.test.ts");
+
+    expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "deletes-tests", paths: ["products/factory/src/b.test.ts"] });
+  });
+
+  it("reads a deleted-tests-only diff as deletes-tests, not no-tests", () => {
+    const result = planned("D\tproducts/factory/src/b.test.ts");
+
+    expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "deletes-tests", paths: ["products/factory/src/b.test.ts"] });
+  });
+
+  it.each([
+    ["a published agent-protocol fixture", "packages/agent-protocol/fixtures/round.json"],
+    ["a console round fixture", "apps/console/fixtures/rounds/r1/round.json"],
+  ])("reads %s as source while still carrying it", (_label, path) => {
+    const result = planned(`M\t${path}`, "A\tproducts/factory/src/a.test.ts");
+
+    expect(result.carried).toEqual([path]);
+    expect(testOnlyReading(result)).toEqual({ testOnly: false, reason: "source", paths: [path] });
   });
 
   it("puts changed and deleted non-test files in source", () => {

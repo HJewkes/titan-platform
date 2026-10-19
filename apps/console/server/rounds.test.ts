@@ -63,7 +63,7 @@ let root: string;
 let dir: string;
 
 /** Oldest first, so the newest-first order is known without reading the fixture copy times. */
-const AGE_ORDER = ["legacy-r1", "unreadable-r1", "kiln-schedule-r1", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1", "kiln-schedule-r2"];
+const AGE_ORDER = ["legacy-r1", "unreadable-r1", "kiln-schedule-r1", "lantern-cards-r1", "beacon-states-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1", "kiln-schedule-r2"];
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "console-rounds-"));
@@ -252,7 +252,7 @@ describe("readQueueRounds", () => {
   it("reads every valid round with its feedback and reports each invalid one as a gap", async () => {
     const { rounds, gaps } = await readQueueRounds({ dir });
 
-    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
+    expect(rounds.map((round) => round.id)).toEqual(["beacon-states-r1", "kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
     expect(queueRound(rounds, "kiln-schedule-r1")?.feedback).toMatchObject({ unit: "kiln-schedule", round: 1 });
     expect(queueRound(rounds, "kiln-schedule-r2")).toMatchObject({ feedback: null, manifest: { unit: "kiln-schedule", round: 2 } });
     expect(gaps).toHaveLength(2);
@@ -301,7 +301,7 @@ describe("readQueueRounds", () => {
 
     const { rounds } = await readQueueRounds({ dir });
 
-    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
+    expect(rounds.map((round) => round.id)).toEqual(["beacon-states-r1", "kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1", "ship-tile-r1", "td920-packet-r1"]);
   });
 
   it("reads a round with a FIFO for feedback.json as unsent instead of hanging", async () => {

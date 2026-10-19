@@ -145,11 +145,18 @@ function quoteCodexUsage(
 
 function quoteExistingCodexCost(
   measurement: UsageMeasurement,
-  cost: NonNullable<UsageMeasurement["cost"]>,
+  cost: unknown,
 ): HarnessPriceQuote {
-  if (cost.kind !== "reported" && cost.kind !== "estimate") throw new TypeError("existing cost kind must be reported or estimate");
-  if (!Number.isFinite(cost.usd) || cost.usd < 0) throw new TypeError("existing USD must be finite and nonnegative");
+  assertExistingCodexCost(cost);
   return cost.kind === "reported"
     ? { status: "priced", cost: { ...cost, kind: "reported" }, basis: { kind: "reported", source: measurement.source } }
     : { status: "priced", cost: { ...cost, kind: "estimate" }, basis: { kind: "existing_estimate", source: measurement.source } };
+}
+
+function assertExistingCodexCost(cost: unknown): asserts cost is NonNullable<UsageMeasurement["cost"]> {
+  if (typeof cost !== "object" || cost === null || !("kind" in cost) ||
+      (cost.kind !== "reported" && cost.kind !== "estimate")) throw new TypeError("existing cost kind must be reported or estimate");
+  if (!("usd" in cost) || typeof cost.usd !== "number" || !Number.isFinite(cost.usd) || cost.usd < 0) {
+    throw new TypeError("existing USD must be finite and nonnegative");
+  }
 }

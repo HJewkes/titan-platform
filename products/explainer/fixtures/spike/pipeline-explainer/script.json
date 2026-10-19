@@ -1,0 +1,2913 @@
+{
+ "schema": "script/v1",
+ "id": "pipeline-explainer-2026-10-13",
+ "profile": "repo-tour",
+ "facts_pack": "audit.md (facts F1-F50 below)",
+ "video": {
+  "audience": {
+   "persona": "the owner: built the factory, knows its names, not every gate's live wiring",
+   "proximity": "builder",
+   "viewer_knows": [
+    "agent-chat",
+    "Shepherd",
+    "seats",
+    "active-work tasks"
+   ],
+   "viewer_needs": [
+    "order of checks",
+    "who enforces each limit",
+    "where work backs up"
+   ],
+   "gloss": "engineer"
+  },
+  "stake": {
+   "who": "the owner",
+   "loses_what": "throughput: 27 of 28 implementer slots idle while held PRs lock files",
+   "number": "1 of 28 slots in use; 69 of 97 Shepherd runs held",
+   "fact_ids": [
+    "F1",
+    "F2"
+   ]
+  },
+  "promise": "By the end, you can name the gate holding any stuck task, and whether software, an agent or you must open it.",
+  "thesis_mechanism": "The factory works by turning a ranked task into a claim, the claim into an agent with its own worktree, and the agent's pull request into a Shepherd run that ends in a merge.",
+  "thesis_refs": [
+   "c2-3-thesis",
+   "c7-0-pivot",
+   "c9-1-close"
+  ],
+  "generic_model": {
+   "name": "five stations",
+   "slots": [
+    "backlog",
+    "tick",
+    "broker",
+    "implementer",
+    "Shepherd"
+   ]
+  },
+  "predecessor": {
+   "name": "the coordinator-does-everything seat (charter §6-8, before 2026-10-05 and 10-07)",
+   "how_shaped_differently": "one LLM seat scored, spawned, reviewed and merged by judgement; now software runs the spine and the seat handles exceptions",
+   "fact_ids": [
+    "F5"
+   ]
+  },
+  "running_example": {
+   "scenario": "TP-2660, 'Shepherd merges clean PRs with no owner gate': estimate 17, planned into 11 slices; slice a merged and deployed, slices b, c and e sit in g10-adversary holds.",
+   "anchor": "twenty-six sixty",
+   "fact_ids": [
+    "F6",
+    "F11",
+    "F35",
+    "F38",
+    "F41"
+   ]
+  },
+  "invariants": [
+   "No pull request merges unless a merge verdict names its exact current head.",
+   "An open pull request locks its files against new slices until it merges or closes."
+  ],
+  "simplifications": [
+   "Leaves out the other seats, release pull requests, stacked slices, review panels and the decider."
+  ],
+  "scope": "coordinator-a's burndown seat and Shepherd as deployed on 2026-10-13",
+  "non_scope": [
+   "coordinator-b and coordinator-c dispatch",
+   "Version Packages releases",
+   "review panels",
+   "decider internals"
+  ],
+  "close_type": "callback",
+  "map": {
+   "id": "factory-map",
+   "layout_source": "hand"
+  }
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "label": "Line · Why is it idle?",
+   "question": "Why were twenty-eight slots idle?"
+  },
+  {
+   "id": "ch2",
+   "label": "Map · Who does what?",
+   "question": "Which parts are software, agents, and you?"
+  },
+  {
+   "id": "ch3",
+   "label": "Backlog · How is a task picked?",
+   "question": "How does one task rise to the top?"
+  },
+  {
+   "id": "ch4",
+   "label": "Tick · Why does a ready slice wait?",
+   "question": "What must a slice pass before it starts?"
+  },
+  {
+   "id": "ch5",
+   "label": "Implementer · What does the agent promise?",
+   "question": "What does an implementer owe the line?"
+  },
+  {
+   "id": "ch6",
+   "label": "Shepherd · How does a PR reach main?",
+   "question": "How does a pull request become a merge?"
+  },
+  {
+   "id": "ch7",
+   "label": "Back-pressure · Where does the time go?",
+   "question": "Why do slots sit empty while work is ready?"
+  },
+  {
+   "id": "ch8",
+   "label": "Gates · Who opens each one?",
+   "question": "Who must act at each gate?"
+  },
+  {
+   "id": "ch9",
+   "label": "Close",
+   "question": "What holds the line today?"
+  }
+ ],
+ "beats": [
+  {
+   "id": "c1-1-hook",
+   "chapter": "ch1",
+   "function": "HOOK",
+   "mode": "explain",
+   "band": "hook",
+   "spoken": "At ten this morning, the factory had twenty-eight implementer slots. It was using one. A hundred and ninety tasks were marked ready, and the tick dispatched none.",
+   "fact_ids": [
+    "F1"
+   ],
+   "visual": {
+    "assertion": "One of twenty-eight slots is busy",
+    "job": "numbers",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:28 slots",
+      "atCue": "twenty-eight"
+     },
+     {
+      "action": "V11",
+      "target": "card:1 in use",
+      "atCue": "one"
+     },
+     {
+      "action": "V11",
+      "target": "card:190 ready",
+      "atCue": "ninety"
+     },
+     {
+      "action": "V11",
+      "target": "card:0 dispatched",
+      "atCue": "none"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c1-2-stake",
+   "chapter": "ch1",
+   "function": "STAKE",
+   "mode": "explain",
+   "band": "hook",
+   "spoken": "Nothing had crashed, and the machine had room to spare. Yet ninety-seven pull requests sat inside Shepherd, and sixty-nine of them were on hold.",
+   "fact_ids": [
+    "F2",
+    "F4"
+   ],
+   "visual": {
+    "assertion": "Sixty-nine of ninety-seven runs are held",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:97 open runs",
+      "atCue": "machine"
+     },
+     {
+      "action": "V11",
+      "target": "stat:69 held",
+      "atCue": "sixty-nine"
+     }
+    ]
+   },
+   "plannedS": 9
+  },
+  {
+   "id": "c1-3-cost",
+   "chapter": "ch1",
+   "function": "STAKE",
+   "mode": "explain",
+   "band": "hook",
+   "connector_in": "and",
+   "spoken": "A held pull request also locks the files it touches. One conflicting pull request with no CI run once held back thirteen slices by itself.",
+   "fact_ids": [
+    "F3"
+   ],
+   "why": {
+    "need": "the owner wants throughput from the caps they raised",
+    "actor": "Shepherd and the tick",
+    "consequence": "held work blocks unrelated new work",
+    "fact_ids": [
+     "F3"
+    ]
+   },
+   "visual": {
+    "assertion": "One stuck PR blocks thirteen slices",
+    "job": "numbers",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:1 PR",
+      "atCue": "request"
+     },
+     {
+      "action": "V12",
+      "target": "fan:13 slices",
+      "atCue": "thirteen"
+     }
+    ]
+   },
+   "plannedS": 9
+  },
+  {
+   "id": "c1-4-promise",
+   "chapter": "ch1",
+   "function": "PROMISE",
+   "mode": "explain",
+   "band": "hook",
+   "connector_in": "so",
+   "spoken": "By the end, you can name the gate holding any stuck task, and whether software, an agent or you must open it.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Every wait has a named gate",
+    "job": "numbers",
+    "render": "TitleBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "legend:software",
+      "atCue": "name"
+     },
+     {
+      "action": "V11",
+      "target": "legend:agent",
+      "atCue": "agent"
+     },
+     {
+      "action": "V11",
+      "target": "legend:you",
+      "atCue": "you#2"
+     }
+    ]
+   },
+   "plannedS": 8
+  },
+  {
+   "id": "c2-1-model",
+   "chapter": "ch2",
+   "function": "GENERIC_MODEL",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "The factory has five stations. A backlog of tasks. A tick that picks work and dispatches it. A broker that spawns the agents.",
+   "fact_ids": [
+    "F5"
+   ],
+   "visual": {
+    "assertion": "Five stations carry work to main",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call",
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "camera": {
+      "fit": [
+       "backlog",
+       "tick",
+       "broker",
+       "implementer",
+       "shepherd",
+       "main"
+      ],
+      "atCue": "five"
+     },
+     "reveal": [
+      {
+       "id": "backlog",
+       "atCue": "backlog"
+      },
+      {
+       "id": "tick",
+       "atCue": "tasks"
+      },
+      {
+       "id": "broker",
+       "atCue": "broker"
+      }
+     ],
+     "edges": [
+      {
+       "id": "e:backlog->tick",
+       "atCue": "picks"
+      },
+      {
+       "id": "e:tick->broker",
+       "atCue": "spawns"
+      }
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 9
+  },
+  {
+   "id": "c2-2-model-b",
+   "chapter": "ch2",
+   "function": "GENERIC_MODEL",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Then implementers, which write each change in their own checkout. And Shepherd, which waits for CI, gets a review, and merges to main.",
+   "fact_ids": [
+    "F5"
+   ],
+   "visual": {
+    "assertion": "Shepherd turns a PR into a merge",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "reveal": [
+      {
+       "id": "implementer",
+       "atCue": "implementers"
+      },
+      {
+       "id": "shepherd",
+       "atCue": "Shepherd"
+      },
+      {
+       "id": "main",
+       "atCue": "main"
+      }
+     ],
+     "edges": [
+      {
+       "id": "e:broker->implementer",
+       "atCue": "checkout"
+      },
+      {
+       "id": "e:implementer->shepherd",
+       "atCue": "waits"
+      },
+      {
+       "id": "e:shepherd->main",
+       "atCue": "merges"
+      }
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 9
+  },
+  {
+   "id": "c2-3-thesis",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "It works by turning a ranked task into a claim, and the claim into an agent with its own worktree. The agent's pull request becomes a Shepherd run that ends in a merge.",
+   "fact_ids": [
+    "F5",
+    "F23"
+   ],
+   "visual": {
+    "assertion": "A task becomes claim, agent, run, merge",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "message_in_flight": {
+      "flow": "flow:happy",
+      "fromHop": 0,
+      "toHop": 7,
+      "atCue": "turning"
+     },
+     "pins": [
+      {
+       "anchor": "tick",
+       "text": "claim",
+       "atCue": "claim"
+      },
+      {
+       "anchor": "implementer",
+       "text": "agent",
+       "atCue": "agent"
+      },
+      {
+       "anchor": "shepherd",
+       "text": "run",
+       "atCue": "run"
+      }
+     ],
+     "active": [
+      "main"
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c2-4-actors",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Three kinds of actor share the work. Software, in blue, runs on timers and never tires. Agents, in amber, are model sessions that read and write. The human, in red, is you.",
+   "fact_ids": [
+    "F29",
+    "F40"
+   ],
+   "visual": {
+    "assertion": "Software, agents and one human share work",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "reveal": [
+      {
+       "id": "reviewer",
+       "atCue": "Agents"
+      },
+      {
+       "id": "seat",
+       "atCue": "amber"
+      },
+      {
+       "id": "owner",
+       "atCue": "human"
+      }
+     ],
+     "focus": {
+      "ids": [
+       "tick",
+       "broker",
+       "shepherd",
+       "main"
+      ],
+      "atCue": "Software"
+     },
+     "annotations": [
+      {
+       "kind": "marker",
+       "anchor": "owner",
+       "atCue": "you"
+      }
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c2-5-fence",
+   "chapter": "ch2",
+   "function": "FENCE",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "Until early October, one coordinator agent did most of this by hand. It ran the scorer, spawned the agents, read the diffs and merged.",
+   "fact_ids": [
+    "F5"
+   ],
+   "visual": {
+    "assertion": "One agent once ran the whole line",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:one coordinator agent",
+      "atCue": "coordinator",
+      "state": "neutral"
+     },
+     {
+      "action": "V12",
+      "target": "left:score, spawn, read, merge",
+      "atCue": "scorer",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c2-6-fence-b",
+   "chapter": "ch2",
+   "function": "FENCE",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "therefore",
+   "spoken": "Now software owns the spine. Since October fifth every pull request goes through Shepherd, and since the seventh the tick does scored dispatch. The coordinator keeps the exceptions.",
+   "fact_ids": [
+    "F5"
+   ],
+   "visual": {
+    "assertion": "Software owns the spine; agents handle exceptions",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "right:software spine",
+      "atCue": "spine",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "right:Shepherd 10-05",
+      "atCue": "fifth",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "right:tick 10-07",
+      "atCue": "seventh",
+      "state": "neutral"
+     },
+     {
+      "action": "V12",
+      "target": "right:coordinator = exceptions",
+      "atCue": "exceptions",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c2-7-example",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "Follow one task through it. Task twenty-six sixty asks Shepherd to merge clean pull requests without stopping for the owner.",
+   "fact_ids": [
+    "F6"
+   ],
+   "visual": {
+    "assertion": "Task 2660: merge clean PRs without owner",
+    "job": "artifact-filling",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:TP-2660",
+      "atCue": "task#2"
+     },
+     {
+      "action": "V12",
+      "target": "card:title",
+      "atCue": "sixty"
+     }
+    ]
+   },
+   "plannedS": 8
+  },
+  {
+   "id": "c3-1-score",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "One formula ranks the open tasks. Hundreds are open and slots are limited, so every ten minutes or sooner the tick scores each one.",
+   "fact_ids": [
+    "F7"
+   ],
+   "visual": {
+    "assertion": "One formula ranks every task",
+    "job": "code-proof",
+    "render": "CodeWalkBeat",
+    "cues": [
+     {
+      "action": "V9",
+      "target": "line:262",
+      "atCue": "formula"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c3-2-weights",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Severity carries forty percent of the base, priority thirty, what the task unblocks twenty, and its age ten. Kind, readiness and size then multiply it.",
+   "fact_ids": [
+    "F7"
+   ],
+   "visual": {
+    "assertion": "Severity weighs most in the score",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:severity 0.40",
+      "atCue": "Severity",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:priority 0.30",
+      "atCue": "thirty",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:unblocks 0.20",
+      "atCue": "twenty",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:age 0.10",
+      "atCue": "ten",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c3-3-scope",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "Most rows never get that far. This seat's scope is two initiatives, a few tags and the accepted plan, so about a thousand rows fall outside it each tick.",
+   "fact_ids": [
+    "F8"
+   ],
+   "visual": {
+    "assertion": "A thousand rows fall out of scope",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:1,054 out of scope",
+      "atCue": "scope"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c3-4-brief",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "A task in scope also needs a brief. A briefer agent writes one, and the tick approves it when its plan passes a lint. This task got its ready tag this morning.",
+   "fact_ids": [
+    "F9",
+    "F6"
+   ],
+   "visual": {
+    "assertion": "A brief must pass lint first",
+    "job": "artifact-filling",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "focus": {
+      "ids": [
+       "backlog",
+       "tick"
+      ],
+      "atCue": "brief"
+     },
+     "pins": [
+      {
+       "anchor": "backlog",
+       "text": "brief:wanted",
+       "atCue": "briefer"
+      },
+      {
+       "anchor": "backlog",
+       "text": "brief:proposed",
+       "atCue": "writes"
+      },
+      {
+       "anchor": "backlog",
+       "text": "ready=2026-10-13",
+       "atCue": "ready"
+      }
+     ],
+     "active": [
+      "tick"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c3-5-planner",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "It is estimated at seventeen points, far too big for one agent. Anything of three or more goes to a planner first, which splits it into slices.",
+   "fact_ids": [
+    "F10",
+    "F6"
+   ],
+   "visual": {
+    "assertion": "Big tasks go to a planner first",
+    "job": "artifact-filling",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:estimate 17",
+      "atCue": "seventeen"
+     },
+     {
+      "action": "V12",
+      "target": "rule:≥3 → planner",
+      "atCue": "three"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c3-6-slices",
+   "chapter": "ch3",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "therefore",
+   "spoken": "Its plan has eleven slices, each naming the files it will own. Each slice becomes a queued claim, and from then on the slices, not the task, are what dispatch.",
+   "fact_ids": [
+    "F11",
+    "F12"
+   ],
+   "visual": {
+    "assertion": "Eleven slices, each owning its files",
+    "job": "artifact-filling",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V12",
+      "target": "rows:slices a-k",
+      "atCue": "eleven",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "col:owns",
+      "atCue": "files",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "stamp:queued",
+      "atCue": "queued",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c4-1-order",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "A queued slice still faces a line of checks, in a fixed order. The first refusal wins and is logged with its reason, and the slice tries again next tick.",
+   "fact_ids": [
+    "F13"
+   ],
+   "visual": {
+    "assertion": "Checks run in order; first refusal wins",
+    "job": "artifact-filling",
+    "render": "StepRailBeat",
+    "cues": [
+     {
+      "action": "V12",
+      "target": "rail:stop-line, collision, orphan, trust, role cap, worktrees, budget",
+      "atCue": "checks"
+     },
+     {
+      "action": "V11",
+      "target": "rail:first refusal",
+      "atCue": "first"
+     }
+    ]
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c4-2-collision",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Collision comes first. Two agents editing one file leave a conflict for someone to untangle. So the tick refuses a slice whose files overlap an open pull request.",
+   "fact_ids": [
+    "F14"
+   ],
+   "visual": {
+    "assertion": "Overlapping files refuse the slice",
+    "job": "zoom",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "camera": {
+      "fit": [
+       "tick",
+       "broker",
+       "implementer",
+       "shepherd"
+      ],
+      "atCue": "Collision"
+     },
+     "edges": [
+      {
+       "id": "e:shepherd->tick",
+       "atCue": "overlap"
+      }
+     ],
+     "annotations": [
+      {
+       "kind": "box",
+       "anchor": "tick",
+       "atCue": "refuses"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c4-3-example",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "demo",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Slice a owned the file that decides the merge grant. Another open pull request touched it too. That one conflicted with main and never ran CI, so the tick refused slice a on every pass.",
+   "fact_ids": [
+    "F15",
+    "F3"
+   ],
+   "visual": {
+    "assertion": "A conflicting PR locked slice a out",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "message_in_flight": {
+      "flow": "flow:lock",
+      "fromHop": 0,
+      "toHop": 1,
+      "atCue": "refused"
+     },
+     "pins": [
+      {
+       "anchor": "shepherd",
+       "text": "#1345 · conflicting",
+       "atCue": "Another"
+      },
+      {
+       "anchor": "tick",
+       "text": "a: refused",
+       "atCue": "pass"
+      }
+     ],
+     "active": [
+      "tick"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c4-4-failclosed",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "connector_in": "and",
+   "spoken": "If the tick cannot read a pull request's files, it refuses too. A missed collision costs a whole agent run, while a refusal costs ten minutes.",
+   "fact_ids": [
+    "F14"
+   ],
+   "visual": {
+    "assertion": "An unreadable fact refuses, never passes",
+    "job": "code-proof",
+    "render": "CodeWalkBeat",
+    "cues": [
+     {
+      "action": "V9",
+      "target": "line:181",
+      "atCue": "cannot"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c4-5-caps",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Next come the caps. This seat may run twenty-eight implementers and twelve planners, and two of those implementer slots are kept back for the coordinator's own fix rounds.",
+   "fact_ids": [
+    "F16"
+   ],
+   "visual": {
+    "assertion": "Caps: twenty-eight builders, twelve planners",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:implementers 28",
+      "atCue": "twenty-eight",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:planners 12",
+      "atCue": "twelve",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:hand reserve 2",
+      "atCue": "two",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c4-6-worktrees",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Each implementer works in its own git worktree, so no two agents share a checkout. The seat may hold twelve per repository, and the broker refuses past thirty-two.",
+   "fact_ids": [
+    "F17"
+   ],
+   "visual": {
+    "assertion": "One worktree per agent, capped per repo",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:12 per repo per seat",
+      "atCue": "worktree",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:32 broker budget",
+      "atCue": "thirty-two",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c4-7-budget",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Then the budget. Agents bill shared accounts, and an empty account stalls every seat. The tick counts each spawn as ten points of five-hour use before it starts, so near the ceiling, only one spawn per tick gets through.",
+   "fact_ids": [
+    "F18"
+   ],
+   "why": {
+    "need": "keep a shared account from running dry",
+    "actor": "the tick's pool gate",
+    "consequence": "one spawn per tick near the ceiling",
+    "fact_ids": [
+     "F18"
+    ]
+   },
+   "visual": {
+    "assertion": "Near the ceiling, one spawn per tick",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "gauge:94 of 95",
+      "atCue": "budget"
+     },
+     {
+      "action": "V12",
+      "target": "gauge:+10 -> 104 closed",
+      "atCue": "ten"
+     }
+    ]
+   },
+   "plannedS": 15
+  },
+  {
+   "id": "c4-8-broker",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Only then does the tick ask the broker. The broker runs its own gates: a free agent slot, fewer than forty headless agents, and at least fifteen percent of memory free.",
+   "fact_ids": [
+    "F19"
+   ],
+   "visual": {
+    "assertion": "The broker re-checks slots and memory",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "focus": {
+      "ids": [
+       "tick",
+       "broker"
+      ],
+      "atCue": "broker"
+     },
+     "edges": [
+      {
+       "id": "e:tick->broker",
+       "atCue": "ask"
+      }
+     ],
+     "pins": [
+      {
+       "anchor": "broker",
+       "text": "slot free",
+       "atCue": "slot"
+      },
+      {
+       "anchor": "broker",
+       "text": "under 40 headless",
+       "atCue": "forty"
+      },
+      {
+       "anchor": "broker",
+       "text": "≥ 15% memory",
+       "atCue": "memory"
+      }
+     ],
+     "active": [
+      "broker"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c4-9-spawn",
+   "chapter": "ch4",
+   "function": "HOW",
+   "mode": "demo",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "Slice a passed. The broker cut a fresh worktree from main and started an Opus implementer, named for the task and slice, on the seat's account.",
+   "fact_ids": [
+    "F20"
+   ],
+   "visual": {
+    "assertion": "Slice a gets its own Opus implementer",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "message_in_flight": {
+      "flow": "flow:happy",
+      "fromHop": 1,
+      "toHop": 3,
+      "atCue": "passed"
+     },
+     "pins": [
+      {
+       "anchor": "implementer",
+       "text": "implementer-a",
+       "atCue": "named"
+      }
+     ],
+     "active": [
+      "implementer"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c5-1-contract",
+   "chapter": "ch5",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "The implementer's brief carries a fixed contract. Sync with main first. Run only the named tests. Push, open the pull request, register it with Shepherd, report, and exit.",
+   "fact_ids": [
+    "F21"
+   ],
+   "visual": {
+    "assertion": "The brief fixes every step in order",
+    "job": "artifact-filling",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:sync main",
+      "atCue": "Sync",
+      "state": "ok"
+     },
+     {
+      "action": "V11",
+      "target": "row:named tests",
+      "atCue": "named",
+      "state": "ok"
+     },
+     {
+      "action": "V11",
+      "target": "row:push + PR",
+      "atCue": "Push",
+      "state": "ok"
+     },
+     {
+      "action": "V11",
+      "target": "row:register",
+      "atCue": "register",
+      "state": "ok"
+     },
+     {
+      "action": "V11",
+      "target": "row:report + exit",
+      "atCue": "report",
+      "state": "ok"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c5-2-noci",
+   "chapter": "ch5",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "It never waits for CI. Waiting would hold an agent, and its account, idle for up to forty-five minutes. Shepherd waits instead, and waiting costs it no tokens.",
+   "fact_ids": [
+    "F21",
+    "F22"
+   ],
+   "visual": {
+    "assertion": "Shepherd waits on CI, not the agent",
+    "job": "numbers",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:idle up to 45 min",
+      "atCue": "Waiting"
+     },
+     {
+      "action": "V11",
+      "target": "right:waits: 0 tokens",
+      "atCue": "tokens"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c5-3-handoff",
+   "chapter": "ch5",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "When the agent exits, the next tick reads its final message. Done with a pull request moves the claim to Shepherd. Blocked stalls it. A question parks it until the answer arrives.",
+   "fact_ids": [
+    "F23"
+   ],
+   "visual": {
+    "assertion": "The final message decides the claim's fate",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "edges": [
+      {
+       "id": "e:implementer->shepherd",
+       "atCue": "Done"
+      }
+     ],
+     "pins": [
+      {
+       "anchor": "implementer",
+       "text": "DONE → shepherding",
+       "atCue": "final"
+      },
+      {
+       "anchor": "implementer",
+       "text": "BLOCKED → stalled",
+       "atCue": "Blocked"
+      },
+      {
+       "anchor": "implementer",
+       "text": "PARKED → wait",
+       "atCue": "parks"
+      }
+     ],
+     "active": [
+      "tick"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c5-4-tracking",
+   "chapter": "ch5",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Two records track the work. The tick's ledger holds each slice's phase, from queued to done, and marks a slice stalled after four hours implementing. Shepherd's database records every step of every run, so a restart replays it rather than starting over.",
+   "fact_ids": [
+    "F51"
+   ],
+   "visual": {
+    "assertion": "A ledger and a step log track everything",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "focus": {
+      "ids": [
+       "tick",
+       "shepherd"
+      ],
+      "atCue": "records"
+     },
+     "pins": [
+      {
+       "anchor": "tick",
+       "text": "queued → done",
+       "atCue": "ledger"
+      },
+      {
+       "anchor": "tick",
+       "text": "stall after 4 h",
+       "atCue": "stalled"
+      },
+      {
+       "anchor": "shepherd",
+       "text": "sqlite3: every step",
+       "atCue": "database"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 16
+  },
+  {
+   "id": "c6-1-register",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Registration fixes the rules for this pull request. A repository whose seat holds the merge grant may merge on its own. Every other repository waits for the owner.",
+   "fact_ids": [
+    "F24"
+   ],
+   "visual": {
+    "assertion": "The seat's grant sets the merge rule",
+    "job": "zoom",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "components",
+     "camera": {
+      "fit": [
+       "sh/register",
+       "sh/ci",
+       "sh/review",
+       "sh/merge",
+       "sh/post",
+       "sh/deploy"
+      ],
+      "atCue": "Registration"
+     },
+     "reveal": [
+      {
+       "id": "sh/register",
+       "atCue": "rules"
+      }
+     ],
+     "focus": {
+      "ids": [
+       "sh/register"
+      ],
+      "atCue": "grant"
+     },
+     "minimap": true
+    }
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c6-2-g10",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "It also sorts the change by risk. Over four hundred changed lines, or a store migration, earns a review hold. Touching authority, policy or security code earns the stronger adversary hold.",
+   "fact_ids": [
+    "F25"
+   ],
+   "visual": {
+    "assertion": "Risky changes are stamped with a hold",
+    "job": "artifact-filling",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:g10-review: over 400 lines, migration",
+      "atCue": "hundred",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:g10-adversary: authority, policy, security",
+      "atCue": "adversary",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c6-3-ci",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Then Shepherd waits for CI, checking every thirty seconds for up to forty-five minutes. A head that falls behind main is updated, within a budget shared by the whole run.",
+   "fact_ids": [
+    "F22",
+    "F26"
+   ],
+   "visual": {
+    "assertion": "Shepherd polls CI and updates stale heads",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "components",
+     "reveal": [
+      {
+       "id": "sh/ci",
+       "atCue": "CI"
+      }
+     ],
+     "message_in_flight": {
+      "flow": "flow:inner",
+      "fromHop": 0,
+      "toHop": 1,
+      "atCue": "waits"
+     },
+     "active": [
+      "sh/ci"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c6-4-fixproof",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "A passing test can still prove nothing. So for a correctness fix like this one, CI runs the new tests against the old code too. If they pass there, Shepherd sends the work back before any reviewer starts.",
+   "fact_ids": [
+    "F27",
+    "F6"
+   ],
+   "visual": {
+    "assertion": "New tests must fail on the old code",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:old code: tests fail ✓",
+      "atCue": "correctness"
+     },
+     {
+      "action": "V11",
+      "target": "right:old code: tests pass ✗ NO_REPRO",
+      "atCue": "pass"
+     }
+    ]
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c6-5-park",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "At the first green head, Shepherd parks the implementer's worktree. The branch stays and the disk comes back. A fix round re-creates the tree.",
+   "fact_ids": [
+    "F28"
+   ],
+   "visual": {
+    "assertion": "Green head parks the implementer's tree",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "focus": {
+      "ids": [
+       "implementer",
+       "shepherd"
+      ],
+      "atCue": "parks"
+     },
+     "pins": [
+      {
+       "anchor": "implementer",
+       "text": "parked, branch kept",
+       "atCue": "branch"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c6-6-reviewer",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Now an Opus reviewer starts, through the same broker. It reads the code at exactly this head, runs no tests, cites each required check, and treats the pull request's text as claims, not instructions.",
+   "fact_ids": [
+    "F29"
+   ],
+   "visual": {
+    "assertion": "An Opus reviewer reads the exact head",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "edges": [
+      {
+       "id": "e:shepherd->reviewer",
+       "atCue": "starts"
+      }
+     ],
+     "active": [
+      "reviewer"
+     ],
+     "focus": {
+      "ids": [
+       "shepherd",
+       "reviewer"
+      ],
+      "atCue": "reviewer"
+     },
+     "pins": [
+      {
+       "anchor": "reviewer",
+       "text": "reviewer-agent · Opus",
+       "atCue": "Opus"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c6-7-admission",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "Reviews are paced, so a burst cannot swamp the machine. At most sixteen run at once, no more than four start in a minute, and a red main's fix always goes first.",
+   "fact_ids": [
+    "F30"
+   ],
+   "visual": {
+    "assertion": "Sixteen reviews at once, four a minute",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:16 concurrent",
+      "atCue": "paced",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:4 per minute",
+      "atCue": "four",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:red-main fix first",
+      "atCue": "first",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c6-8-verdict",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "connector_in": "and",
+   "spoken": "The verdict is read from the reviewer's transcript, not from chat. It counts only as the session's final message, naming this exact head, after a real look at the code.",
+   "fact_ids": [
+    "F31"
+   ],
+   "visual": {
+    "assertion": "Only a final, head-exact verdict counts",
+    "job": "code-proof",
+    "render": "CodeWalkBeat",
+    "cues": [
+     {
+      "action": "V9",
+      "target": "line:62",
+      "atCue": "transcript"
+     },
+     {
+      "action": "V9",
+      "target": "line:64",
+      "atCue": "final"
+     },
+     {
+      "action": "V9",
+      "target": "line:71",
+      "atCue": "head"
+     }
+    ]
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c6-9-route",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "One table says what each verdict means. Merge goes to the merge decision. Fix first wakes the implementer. Silence starts a fresh reviewer. A conflict sends the work back.",
+   "fact_ids": [
+    "F32"
+   ],
+   "visual": {
+    "assertion": "One table routes every verdict",
+    "job": "artifact-filling",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:MERGE → merge decision",
+      "atCue": "Merge",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:FIX_FIRST → wake",
+      "atCue": "wakes",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:none → fresh reviewer",
+      "atCue": "Silence",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:dirty → wake",
+      "atCue": "conflict",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c6-10-rule",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "No pull request merges unless a merge verdict names its exact current head. The rule also needs the seat's grant, readable changed files, and known required checks. Any gap opens a gate for the owner.",
+   "fact_ids": [
+    "F50",
+    "F33"
+   ],
+   "visual": {
+    "assertion": "Merge needs a verdict at this head",
+    "job": "artifact-filling",
+    "render": "ChecklistBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "check:MERGE at this head",
+      "atCue": "exact"
+     },
+     {
+      "action": "V11",
+      "target": "check:seat grant",
+      "atCue": "grant"
+     },
+     {
+      "action": "V11",
+      "target": "check:files read",
+      "atCue": "readable"
+     },
+     {
+      "action": "V11",
+      "target": "check:required checks known",
+      "atCue": "known"
+     },
+     {
+      "action": "V12",
+      "target": "gate:approve-merge",
+      "atCue": "gate"
+     }
+    ]
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c6-11-train",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Each repository has a merge train that carries one run at a time. A held run gives up its place, so one stuck pull request cannot wedge the repository.",
+   "fact_ids": [
+    "F34"
+   ],
+   "visual": {
+    "assertion": "One merge at a time per repository",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "components",
+     "reveal": [
+      {
+       "id": "sh/merge",
+       "atCue": "train"
+      }
+     ],
+     "message_in_flight": {
+      "flow": "flow:inner",
+      "fromHop": 2,
+      "toHop": 3,
+      "atCue": "carries"
+     },
+     "active": [
+      "sh/merge"
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c6-12-merged",
+   "chapter": "ch6",
+   "function": "WHAT",
+   "mode": "demo",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "Slice a passed all of it. Shepherd squashed it into main two hundred and twelve minutes after it registered.",
+   "fact_ids": [
+    "F35"
+   ],
+   "visual": {
+    "assertion": "Slice a merged in 212 minutes",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:212 min to merge",
+      "atCue": "passed"
+     }
+    ]
+   },
+   "plannedS": 8
+  },
+  {
+   "id": "c6-13-main",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "After a merge, Shepherd watches main's CI on the merge commit. Green means done. Red freezes the repository, files one fix task, and starts one fixer, and only that fix may merge.",
+   "fact_ids": [
+    "F36"
+   ],
+   "visual": {
+    "assertion": "A red main freezes the repository",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "components",
+     "reveal": [
+      {
+       "id": "sh/post",
+       "atCue": "watches"
+      }
+     ],
+     "focus": {
+      "ids": [
+       "sh/post"
+      ],
+      "atCue": "Red"
+     },
+     "annotations": [
+      {
+       "kind": "marker",
+       "anchor": "sh/post",
+       "atCue": "freezes"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c6-14-cleanup",
+   "chapter": "ch6",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Cleanup follows. The implementer and reviewer are retired, the branch is deleted, and the task gets a note. The next tick marks the claim done.",
+   "fact_ids": [
+    "F37"
+   ],
+   "visual": {
+    "assertion": "Cleanup retires agents and closes the claim",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "focus": {
+      "ids": [
+       "shepherd",
+       "backlog",
+       "tick"
+      ],
+      "atCue": "Cleanup"
+     },
+     "pins": [
+      {
+       "anchor": "implementer",
+       "text": "retired",
+       "atCue": "retired"
+      },
+      {
+       "anchor": "tick",
+       "text": "claim done",
+       "atCue": "done"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c6-15-deploy",
+   "chapter": "ch6",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "A merge into this repository also asks for a deploy. The pacer waits for fifteen quiet minutes, or ninety at most, then builds and restarts. Slice a went live just before ten, and Shepherd runs it now.",
+   "fact_ids": [
+    "F38"
+   ],
+   "visual": {
+    "assertion": "Slice a is live in Shepherd now",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "components",
+     "reveal": [
+      {
+       "id": "sh/deploy",
+       "atCue": "deploy"
+      }
+     ],
+     "active": [
+      "sh/deploy"
+     ],
+     "pins": [
+      {
+       "anchor": "sh/deploy",
+       "text": "a1b8cdeb live 09:57",
+       "atCue": "live"
+      }
+     ],
+     "minimap": true
+    }
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c7-0-pivot",
+   "chapter": "ch7",
+   "function": "LEARNER_Q",
+   "mode": "explain",
+   "band": "diagram",
+   "pivot": true,
+   "spoken": "That is the path when nothing goes wrong. Now, where does the time actually go?",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "The happy path is not the slow part",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "camera": {
+      "fit": [
+       "backlog",
+       "tick",
+       "broker",
+       "implementer",
+       "shepherd",
+       "main",
+       "reviewer",
+       "seat",
+       "owner"
+      ],
+      "atCue": "path"
+     },
+     "minimap": false
+    }
+   },
+   "plannedS": 7
+  },
+  {
+   "id": "c7-1-locks",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Start with the locks. A pull request locks its files from the moment it opens until it merges or closes. Any slice that needs those files waits with it. This morning that refused sixty slices in one tick.",
+   "fact_ids": [
+    "F14",
+    "F39"
+   ],
+   "visual": {
+    "assertion": "Open PRs lock files; sixty slices wait",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call"
+    ],
+    "map_state": {
+     "level": "containers",
+     "edges": [
+      {
+       "id": "e:shepherd->tick",
+       "atCue": "locks"
+      }
+     ],
+     "message_in_flight": {
+      "flow": "flow:lock",
+      "fromHop": 0,
+      "toHop": 1,
+      "atCue": "waits"
+     },
+     "pins": [
+      {
+       "anchor": "tick",
+       "text": "60 refused",
+       "atCue": "sixty"
+      }
+     ],
+     "active": [
+      "shepherd"
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c7-2-holds",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Then the holds. Sixty-nine of the ninety-seven open runs were held. Forty-four carried the adversary class, and sixteen of those had already passed Shepherd's own review.",
+   "fact_ids": [
+    "F2"
+   ],
+   "visual": {
+    "assertion": "Forty-four runs wait on the adversary hold",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "bar:97 open",
+      "atCue": "ninety-seven"
+     },
+     {
+      "action": "V11",
+      "target": "bar:69 held",
+      "atCue": "Sixty-nine"
+     },
+     {
+      "action": "V11",
+      "target": "bar:44 adversary",
+      "atCue": "Forty-four"
+     },
+     {
+      "action": "V11",
+      "target": "bar:16 reviewed OK",
+      "atCue": "sixteen"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c7-3-adversary",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "One reviewer can miss a hole in the code that guards merging. So the adversary hold needs a second, independent reviewer. Shepherd never lifts it. Only the coordinator agent spawns that reviewer and releases the hold.",
+   "fact_ids": [
+    "F40"
+   ],
+   "why": {
+    "need": "a merge-policy bug could let unsafe code merge",
+    "actor": "the coordinator seat",
+    "consequence": "a second reviewer per risky PR, one agent's queue",
+    "fact_ids": [
+     "F40"
+    ]
+   },
+   "visual": {
+    "assertion": "Only the coordinator lifts adversary holds",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "edges": [
+      {
+       "id": "e:seat->shepherd",
+       "atCue": "releases"
+      }
+     ],
+     "active": [
+      "seat"
+     ],
+     "focus": {
+      "ids": [
+       "seat",
+       "shepherd",
+       "reviewer"
+      ],
+      "atCue": "reviewer"
+     },
+     "annotations": [
+      {
+       "kind": "circle",
+       "anchor": "seat",
+       "atCue": "Only"
+      }
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c7-4-example",
+   "chapter": "ch7",
+   "function": "WHAT",
+   "mode": "demo",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Three slices of twenty-six sixty wait there now. Slices c and e hold Shepherd's merge verdict and need only the coordinator. Slice b, which touches authority code, is held the same way.",
+   "fact_ids": [
+    "F41"
+   ],
+   "visual": {
+    "assertion": "Three slices of 2660 wait on one agent",
+    "job": "artifact-filling",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:#1421 slice c · MERGE · held",
+      "atCue": "c"
+     },
+     {
+      "action": "V11",
+      "target": "card:#1420 slice e · MERGE · held",
+      "atCue": "e"
+     },
+     {
+      "action": "V11",
+      "target": "card:#1452 slice b · authority · held",
+      "atCue": "authority"
+     }
+    ]
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c7-5-loop",
+   "chapter": "ch7",
+   "function": "LEARNER_Q",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "so",
+   "spoken": "So why do slots sit empty while work is ready? The two queues feed each other. A held pull request keeps its files locked, so the tick finds fewer slices it may start.",
+   "fact_ids": [
+    "F1",
+    "F42"
+   ],
+   "visual": {
+    "assertion": "Holds keep locks; locks empty the slots",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call",
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "message_in_flight": {
+      "flow": "flow:lock",
+      "fromHop": 0,
+      "toHop": 1,
+      "atCue": "feed"
+     },
+     "pins": [
+      {
+       "anchor": "shepherd",
+       "text": "69 held",
+       "atCue": "held"
+      },
+      {
+       "anchor": "tick",
+       "text": "1 of 28 slots",
+       "atCue": "slots"
+      }
+     ],
+     "active": [
+      "shepherd",
+      "tick"
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c7-6-floor",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "but",
+   "spoken": "The tick counts about a hundred and ninety tasks as ready, but only nine survive its checks. Below fifty-six, it sends briefers to write more, and a new brief that needs a locked file waits like the rest.",
+   "fact_ids": [
+    "F42",
+    "F1"
+   ],
+   "visual": {
+    "assertion": "Nine truly ready, against a floor of fifty-six",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:190 called ready",
+      "atCue": "ninety"
+     },
+     {
+      "action": "V11",
+      "target": "stat:9 survive",
+      "atCue": "nine"
+     },
+     {
+      "action": "V11",
+      "target": "line:floor 56",
+      "atCue": "fifty-six"
+     }
+    ]
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c7-7-wakes",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "When CI fails or a reviewer says fix first, Shepherd wakes the same implementer, or a successor if it cannot. The budgets are firm: three fix-first verdicts, or ten repairs in one run, and the decision is yours.",
+   "fact_ids": [
+    "F43",
+    "F49"
+   ],
+   "visual": {
+    "assertion": "Three fix-firsts or ten repairs reach you",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "edges": [
+      {
+       "id": "e:shepherd->implementer",
+       "atCue": "wakes"
+      },
+      {
+       "id": "e:shepherd->owner",
+       "atCue": "yours"
+      }
+     ],
+     "pins": [
+      {
+       "anchor": "shepherd",
+       "text": "3 FIX_FIRST",
+       "atCue": "firm"
+      },
+      {
+       "anchor": "shepherd",
+       "text": "10 repairs",
+       "atCue": "repairs"
+      }
+     ],
+     "active": [
+      "implementer"
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "c7-8-owner",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Some questions only you can answer. This morning ten approve-merge gates, six unanswered send-backs and one failed CI waited on you. A coordinator may resolve only a short list, like retrying a branch update.",
+   "fact_ids": [
+    "F44",
+    "F45"
+   ],
+   "visual": {
+    "assertion": "Seventeen gates waited on the owner",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:approve-merge 10",
+      "atCue": "ten",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:sent-back 6",
+      "atCue": "six",
+      "state": "problem"
+     },
+     {
+      "action": "V11",
+      "target": "row:ci-failed 1",
+      "atCue": "failed",
+      "state": "problem"
+     },
+     {
+      "action": "V11",
+      "target": "row:coordinator: allowance list only",
+      "atCue": "short",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "c7-9-machine",
+   "chapter": "ch7",
+   "function": "CAVEAT",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "Then the machine. The broker refuses spawns at forty headless agents or under fifteen percent free memory. Shepherd checks load for its own reviewers. The tick checks no load at all.",
+   "fact_ids": [
+    "F19",
+    "F46"
+   ],
+   "visual": {
+    "assertion": "Load is checked by Shepherd, not the tick",
+    "job": "map",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "pins": [
+      {
+       "anchor": "broker",
+       "text": "40 headless",
+       "atCue": "forty"
+      },
+      {
+       "anchor": "broker",
+       "text": "15% free memory",
+       "atCue": "memory"
+      },
+      {
+       "anchor": "shepherd",
+       "text": "load5 48 · build 40",
+       "atCue": "load"
+      },
+      {
+       "anchor": "tick",
+       "text": "no load check",
+       "atCue": "tick"
+      }
+     ],
+     "focus": {
+      "ids": [
+       "broker",
+       "shepherd",
+       "tick"
+      ],
+      "atCue": "machine"
+     },
+     "minimap": false
+    }
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "c7-10-stalls",
+   "chapter": "ch7",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "diagram",
+   "connector_in": "and",
+   "spoken": "And when a claim stalls, the retry ladder is switched off, so the stall goes to the owner. Thirty-six stalled claims wait for someone to release them by hand.",
+   "fact_ids": [
+    "F47"
+   ],
+   "visual": {
+    "assertion": "Thirty-six stalled claims wait for a hand",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:36 stalled",
+      "atCue": "stalls"
+     },
+     {
+      "action": "V11",
+      "target": "chip:ladder off",
+      "atCue": "ladder",
+      "state": "problem"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c8-1-who",
+   "chapter": "ch8",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "So who opens each gate? Software ranks, checks, spawns, merges and deploys. Agents plan, write, review and lift the adversary holds. You answer the merge questions the rules leave open.",
+   "fact_ids": [
+    "F5",
+    "F40",
+    "F45"
+   ],
+   "visual": {
+    "assertion": "Software, agents and you each own gates",
+    "job": "artifact-filling",
+    "render": "ScorecardBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "col:software",
+      "atCue": "Software"
+     },
+     {
+      "action": "V11",
+      "target": "col:agents",
+      "atCue": "Agents"
+     },
+     {
+      "action": "V11",
+      "target": "col:you",
+      "atCue": "You"
+     }
+    ]
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "c8-2-drift",
+   "chapter": "ch8",
+   "function": "CAVEAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "connector_in": "but",
+   "spoken": "The written rules lag the running ones. The charter still says six burndown agents and twelve worktrees per repository. The live config says twenty-eight and thirty-two.",
+   "fact_ids": [
+    "F48"
+   ],
+   "visual": {
+    "assertion": "The charter lags the live config",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:6 agents",
+      "atCue": "written"
+     },
+     {
+      "action": "V11",
+      "target": "left:12 worktrees",
+      "atCue": "twelve"
+     },
+     {
+      "action": "V11",
+      "target": "right:28 agents",
+      "atCue": "twenty-eight"
+     },
+     {
+      "action": "V11",
+      "target": "right:32 worktrees",
+      "atCue": "thirty-two"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c8-3-scope",
+   "chapter": "ch8",
+   "function": "CAVEAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "connector_in": "and",
+   "spoken": "This walk leaves out the other seats, release pull requests, stacked slices and the decider. Each adds a side branch; the main path stays the same.",
+   "fact_ids": [],
+   "simplification": true,
+   "visual": {
+    "assertion": "Side branches exist; the spine holds",
+    "job": "numbers",
+    "render": "ListBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "row:other seats",
+      "atCue": "seats",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:release PRs",
+      "atCue": "release",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:stacked slices",
+      "atCue": "stacked",
+      "state": "neutral"
+     },
+     {
+      "action": "V11",
+      "target": "row:decider",
+      "atCue": "decider",
+      "state": "neutral"
+     }
+    ]
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "c9-1-close",
+   "chapter": "ch9",
+   "function": "CLOSE",
+   "mode": "explain",
+   "band": "hook",
+   "spoken": "Twenty-eight slots, one in use. The line was not short of hands. It was waiting on locked files, and on one agent's second opinion.",
+   "fact_ids": [
+    "F1",
+    "F2",
+    "F40"
+   ],
+   "visual": {
+    "assertion": "Locks and one agent hold the line",
+    "job": "cast-in-motion",
+    "render": "StationMap",
+    "layout_source": "hand",
+    "edge_sources": [
+     "call",
+     "protocol"
+    ],
+    "map_state": {
+     "level": "containers",
+     "camera": {
+      "fit": [
+       "backlog",
+       "tick",
+       "broker",
+       "implementer",
+       "shepherd",
+       "main",
+       "reviewer",
+       "seat",
+       "owner"
+      ],
+      "atCue": "Twenty-eight"
+     },
+     "message_in_flight": {
+      "flow": "flow:lock",
+      "fromHop": 0,
+      "toHop": 1,
+      "atCue": "locked"
+     },
+     "annotations": [
+      {
+       "kind": "circle",
+       "anchor": "seat",
+       "atCue": "opinion"
+      }
+     ],
+     "minimap": false
+    }
+   },
+   "plannedS": 9
+  },
+  {
+   "id": "c9-2-outro",
+   "chapter": "ch9",
+   "function": "CLOSE",
+   "mode": "explain",
+   "band": "hook",
+   "connector_in": "so",
+   "spoken": "Find the hold, and you find the wait.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Find the hold, find the wait",
+    "job": "numbers",
+    "render": "OutroBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "title:find the hold",
+      "atCue": "hold"
+     }
+    ]
+   },
+   "plannedS": 4
+  }
+ ],
+ "map": {
+  "nodes": [
+   {
+    "id": "backlog",
+    "label": "Backlog",
+    "actor": "store",
+    "centre": [
+     210,
+     350
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "tick",
+    "label": "Burndown tick",
+    "actor": "software",
+    "centre": [
+     530,
+     350
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "broker",
+    "label": "Broker",
+    "actor": "software",
+    "centre": [
+     880,
+     260
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "implementer",
+    "label": "Implementer",
+    "actor": "agent",
+    "centre": [
+     1220,
+     280
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "shepherd",
+    "label": "Shepherd",
+    "actor": "software",
+    "centre": [
+     1360,
+     710
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "main",
+    "label": "main + deploy",
+    "actor": "software",
+    "centre": [
+     1755,
+     560
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "reviewer",
+    "label": "Reviewer",
+    "actor": "agent",
+    "centre": [
+     750,
+     770
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "seat",
+    "label": "Coordinator",
+    "actor": "agent",
+    "centre": [
+     1670,
+     210
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "owner",
+    "label": "Owner",
+    "actor": "human",
+    "centre": [
+     1760,
+     760
+    ],
+    "level": "containers"
+   },
+   {
+    "id": "sh/register",
+    "label": "Register",
+    "actor": "software",
+    "centre": [
+     1180,
+     520
+    ],
+    "level": "components"
+   },
+   {
+    "id": "sh/ci",
+    "label": "CI + fix-proof",
+    "actor": "software",
+    "centre": [
+     1340,
+     520
+    ],
+    "level": "components"
+   },
+   {
+    "id": "sh/review",
+    "label": "Review",
+    "actor": "software",
+    "centre": [
+     1500,
+     520
+    ],
+    "level": "components"
+   },
+   {
+    "id": "sh/merge",
+    "label": "Route + merge",
+    "actor": "software",
+    "centre": [
+     1660,
+     520
+    ],
+    "level": "components"
+   },
+   {
+    "id": "sh/post",
+    "label": "Main CI + cleanup",
+    "actor": "software",
+    "centre": [
+     1500,
+     760
+    ],
+    "level": "components"
+   },
+   {
+    "id": "sh/deploy",
+    "label": "Deploy",
+    "actor": "software",
+    "centre": [
+     1340,
+     760
+    ],
+    "level": "components"
+   }
+  ],
+  "edges": [
+   {
+    "id": "e:backlog->tick",
+    "from": "backlog",
+    "to": "tick",
+    "label": "reads tasks",
+    "source": "call"
+   },
+   {
+    "id": "e:tick->broker",
+    "from": "tick",
+    "to": "broker",
+    "label": "spawn",
+    "source": "protocol"
+   },
+   {
+    "id": "e:broker->implementer",
+    "from": "broker",
+    "to": "implementer",
+    "label": "worktree",
+    "source": "protocol"
+   },
+   {
+    "id": "e:implementer->shepherd",
+    "from": "implementer",
+    "to": "shepherd",
+    "label": "PR + register",
+    "source": "protocol"
+   },
+   {
+    "id": "e:shepherd->reviewer",
+    "from": "shepherd",
+    "to": "reviewer",
+    "label": "dispatch",
+    "source": "protocol"
+   },
+   {
+    "id": "e:reviewer->shepherd",
+    "from": "reviewer",
+    "to": "shepherd",
+    "label": "verdict (transcript)",
+    "source": "traced"
+   },
+   {
+    "id": "e:shepherd->main",
+    "from": "shepherd",
+    "to": "main",
+    "label": "merge",
+    "source": "protocol"
+   },
+   {
+    "id": "e:shepherd->implementer",
+    "from": "shepherd",
+    "to": "implementer",
+    "label": "wake",
+    "source": "protocol"
+   },
+   {
+    "id": "e:shepherd->owner",
+    "from": "shepherd",
+    "to": "owner",
+    "label": "gates",
+    "source": "protocol"
+   },
+   {
+    "id": "e:seat->shepherd",
+    "from": "seat",
+    "to": "shepherd",
+    "label": "release hold",
+    "source": "protocol"
+   },
+   {
+    "id": "e:shepherd->tick",
+    "from": "shepherd",
+    "to": "tick",
+    "label": "run state, locked files",
+    "source": "call"
+   }
+  ],
+  "flows": {
+   "flow:happy": [
+    "backlog",
+    "tick",
+    "broker",
+    "implementer",
+    "shepherd",
+    "reviewer",
+    "shepherd",
+    "main"
+   ],
+   "flow:lock": [
+    "shepherd",
+    "tick"
+   ],
+   "flow:inner": [
+    "sh/register",
+    "sh/ci",
+    "sh/review",
+    "sh/merge",
+    "sh/post",
+    "sh/deploy"
+   ]
+  }
+ }
+}

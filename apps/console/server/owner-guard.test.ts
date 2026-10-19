@@ -309,15 +309,18 @@ describe("classes fail closed", () => {
     );
   });
 
-  it("classes every console command at its definition: inbox.deposit a deposit, rounds.submit an owner-write, the rest reads", () => {
+  it("classes every console command at its definition: inbox.deposit and config.report deposits, rounds.submit, inbox.act and videos.note owner-writes, the rest reads", () => {
     const classes = createConsoleRegistry(createSources(syntheticConfig()))
       .list()
       .map((command) => [command.name, (command as ClassedCommand).commandClass]);
 
     expect(classes.length).toBeGreaterThan(1);
     expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([
+      ["config.report", "deposit"],
+      ["inbox.act", "owner-write"],
       ["inbox.deposit", "deposit"],
       ["rounds.submit", "owner-write"],
+      ["videos.note", "owner-write"],
     ]);
   });
 });

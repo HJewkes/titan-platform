@@ -1,5 +1,30 @@
 # @titan-design/hitl
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/evidence@0.4.0
+
+## 0.9.0
+
+### Minor Changes
+
+- abadd64: `snapshotBrief` takes an optional `{ pins, source }` and refuses an anchor-form `evidenceRef` that does not hold at its pinned commit (TP-2767).
+- ef109f3: `GateAuthorize` takes an optional third argument `{ admittedBy }` ("owner-class", "allowance", "evidence" or "delegate") so an authorizer can tell how the store admitted a resolver; it still only narrows, and a two-argument authorize is unchanged. `openGate` accepts a `rule`, and `ctx.assisted` takes `rule?: GateRule` and stores it on the gate it opens (TP-3289).
+
+### Patch Changes
+
+- Updated dependencies [dfffc6c]
+- Updated dependencies [d754d5b]
+- Updated dependencies [5cd4f1b]
+- Updated dependencies [abadd64]
+- Updated dependencies [d79a135]
+- Updated dependencies [1b2c974]
+  - @titan-design/authority@0.5.0
+  - @titan-design/evidence@0.3.0
+
 ## 0.8.0
 
 ### Minor Changes

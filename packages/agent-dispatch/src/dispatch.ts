@@ -134,7 +134,22 @@ export function agentChatEnv(): Record<string, string> {
   };
 }
 
-export interface DispatchRequest {
+/**
+ * Who started the agent, recorded on its roster row (CC-1466). A record only: agent-chat's gates read `--spawned-as`,
+ * never this, so it widens nothing. Omitted means the argv is exactly what it was before the option existed.
+ */
+export interface LaunchedBy {
+  launchedBy?: "shepherd";
+  /** Sent only alongside `launchedBy`. */
+  launchReason?: string;
+}
+
+export function launchedByArgs({ launchedBy, launchReason }: LaunchedBy): string[] {
+  if (launchedBy === undefined) return [];
+  return ["--launched-by", launchedBy, ...(launchReason === undefined ? [] : ["--launch-reason", launchReason])];
+}
+
+export interface DispatchRequest extends LaunchedBy {
   agentChatBinPath: string;
   /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
   peerName: string;
@@ -171,7 +186,7 @@ export interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-export function buildSpawnArgs(req: {
+export function buildSpawnArgs(req: LaunchedBy & {
   peerName: string;
   profile: string;
   briefing?: string;
@@ -184,6 +199,7 @@ export function buildSpawnArgs(req: {
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
+    ...launchedByArgs(req),
     "--brief-stdin",
   ];
 }

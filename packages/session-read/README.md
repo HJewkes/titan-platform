@@ -201,7 +201,10 @@ a stale locator: the file is gone or shorter than the span, or the bytes there n
 match the hash, decode as UTF-8 or parse as JSON. Any other I/O error rejects, and
 `readSessionSourceText` behaves the same for Claude locators. `readSessionText({ path,
 byteOffset, byteLength, field })` provides the corresponding legacy Claude field projection
-for miner consumers.
+for miner consumers. `readSessionEventText({ session, byteOffset, byteLength }, { roots })`
+returns every string in one Claude transcript line's message content, for checking a quoted
+cite. It returns null when the session is not in exactly one transcript across `roots`
+(default `claudeTranscriptRoots()`), or when the span is not exactly one whole line.
 
 ## What stayed behind
 

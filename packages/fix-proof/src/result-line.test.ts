@@ -13,7 +13,7 @@ const plan: FixProofPlan = {
   overlayRemovals: [],
   mutations: [],
   source: [],
-  config: { tests: ["**/*.test.ts"], carry: [] },
+  config: { tests: ["**/*.test.ts"], carry: [], runtime: [] },
   configEdited: false,
 };
 

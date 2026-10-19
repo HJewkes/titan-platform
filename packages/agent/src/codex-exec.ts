@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { isCodexThreadId } from "./codex-thread-id.js";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
-import { runCodexExecSession } from "./codex-exec-session.js";
+import { runCodexExecSession, unrefTimer } from "./codex-exec-session.js";
 import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
@@ -155,12 +155,16 @@ function validateOptions(options: CodexExecAdapterOptions): void {
       (!Array.isArray(options.requiredRuntimeCapabilities) || options.requiredRuntimeCapabilities.some(value => !CODEX_RUNTIME_CAPABILITIES.includes(value)))) {
     throw new TypeError("requiredRuntimeCapabilities must contain recognized runtime capabilities");
   }
-  if (options.auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
+  validateCodexAuth(options.auth);
   resolveCodexExecutable(options.executablePath);
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
   if (options.prices !== undefined) validateCodexPrices(options.prices);
+}
+
+function validateCodexAuth(auth: unknown): void {
+  if (auth !== "cached-cli") throw new TypeError("Codex exec adapter supports only cached-cli authentication");
 }
 
 function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailure | undefined {
@@ -317,7 +321,7 @@ function setupStep<T>(
       () => finish(() => reject(new SetupTimeoutError("Codex setup exceeded its wall deadline"))),
       Math.max(0, timeoutMs),
     );
-    timer.unref?.();
+    unrefTimer(timer);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
     work.then(
@@ -338,15 +342,23 @@ function isProcessTimeout(error: unknown): boolean {
 }
 
 function captureCodexPricingService(
-  service: HarnessPricingPort<"codex"> | undefined,
+  service: unknown,
   prices: readonly CodexPriceRow[] | undefined,
 ): HarnessPricingPort<"codex"> | undefined {
   if (service === undefined) return undefined;
   if (prices !== undefined) throw new TypeError("prices and pricingService are mutually exclusive");
-  if (typeof service !== "object" || service === null || service.harness !== "codex") {
+  if (!pricingServiceObject(service) || service.harness !== "codex") {
     throw new TypeError("pricingService must declare harness codex");
   }
   const quote = service.quote;
-  if (typeof quote !== "function") throw new TypeError("pricingService.quote must be callable");
+  assertCodexPricingQuote(quote);
   return Object.freeze({ harness: "codex" as const, quote: quote.bind(service) });
+}
+
+function assertCodexPricingQuote(quote: unknown): asserts quote is HarnessPricingPort<"codex">["quote"] {
+  if (typeof quote !== "function") throw new TypeError("pricingService.quote must be callable");
+}
+
+function pricingServiceObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

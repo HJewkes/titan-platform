@@ -1,5 +1,11 @@
 # @titan-design/rpc-client
 
+## 0.4.1
+
+### Patch Changes
+
+- a914535: The test-fixture `registryCaller` and the README's in-process export snippet use registry's `inProcessCaller` instead of a hand-rolled lookup (TP-2464 b).
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,16 +1,20 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
+import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } from "./hold-satisfaction.js";
 import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
-import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
-import { registrationFactsOf, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
-import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
+import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
+import { writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
+import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
+import type { KindMove } from "./register-kind.js";
 
 export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -30,7 +34,7 @@ export interface RegistrationInput extends RegistrationFactsInput {
   slice?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -66,7 +70,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -88,11 +92,7 @@ type RegistrationListener = (registration: Registration, change?: "hold-eased") 
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
-  constructor(
-    private readonly db: Db,
-    private readonly now: () => number = Date.now,
-    private readonly onChange: RegistrationListener = () => undefined,
-  ) {}
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onChange: RegistrationListener = () => undefined) {}
 
   register(input: RegistrationInput): Registration {
     if (input.pr === undefined && input.branch === undefined) throw new Error("a shepherd registration needs a pr or a branch");
@@ -124,13 +124,14 @@ export class ShepherdStore implements HoldLookup {
   /** Every registration, oldest first. */
   all(): Registration[] {
     const rows = this.db.prepare("SELECT * FROM shepherd_registration ORDER BY created_at, rowid").all() as Row[];
-    return rows.map(fromRow);
+    return rows.map(registrationOf);
   }
 
   /**
    * A repeat registration refreshes who and what the run is for; its merge mode and fixer only narrow the stored policy.
    * An omitted kind keeps the stored one, so a repeat without `--kind` cannot change whether the run carries a reviewed MERGE.
-   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`).
+   * An explicit kind that would move a correctness run outside the fix-proof kinds, or a security run to any other kind, is refused (`kindMoveRefusal`);
+   * a move into test-only also needs `diff`, the PR's test-only classification. `guard` replaces `kindMoveRefusal`.
    */
   update(runId: string, meta: RegistrationUpdate): Registration {
     const explicitKind = meta.kind === undefined ? undefined : KindSchema.parse(meta.kind);
@@ -139,7 +140,7 @@ export class ShepherdStore implements HoldLookup {
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
       const policy = repeatedPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
-      const refusal = kindMoveRefusal(stored.kind, kind);
+      const refusal = (meta.guard ?? kindMoveRefusal)(stored.kind, kind, meta.diff);
       if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
@@ -236,7 +237,13 @@ export class ShepherdStore implements HoldLookup {
     return vouchedLine(this.db, runId, fromHead, baseRef);
   }
 
-  /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
+  /** The seat's stops on fixer dispatch; apart from holds, so a stop never gates or releases a merge. */
+  readonly repairStops = (): RepairStopTable => repairStopTable(this.db, () => this.stamp());
+
+  /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
+  readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
+
+  /** The run's hold, release and repair-stop events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
     return registration ? eventsFor(this.db, runId, registration.repo) : [];
@@ -345,38 +352,12 @@ export class ShepherdStore implements HoldLookup {
 
   private one(where: string, ...args: unknown[]): Registration | undefined {
     const row = this.db.prepare(`SELECT * FROM shepherd_registration WHERE ${where}`).get(...args) as Row | undefined;
-    return row && fromRow(row);
+    return row && registrationOf(row);
   }
 
   private stamp(): string {
     return new Date(this.now()).toISOString();
   }
-}
-
-function fromRow(row: Row): Registration {
-  const ownerHold = ownerHoldOf(row);
-  return {
-    repo: row.repo,
-    pr: row.pr,
-    branch: row.branch,
-    runId: row.run_id,
-    task: row.task,
-    implementer: row.implementer,
-    reviewer: row.reviewer,
-    policy: EffectivePolicySchema.parse(JSON.parse(row.policy)),
-    kind: KindSchema.parse(row.kind),
-    slice: row.slice,
-    held: row.held === 1 || ownerHold !== null,
-    holdReason: row.hold_reason ?? ownerHold?.reason ?? null,
-    holdReviewer: row.hold_reviewer ?? null,
-    holdSatisfied: row.hold_satisfied_head && row.hold_satisfied_by ? { head: row.hold_satisfied_head, by: HoldSatisfiedBySchema.parse(JSON.parse(row.hold_satisfied_by)) } : null,
-    releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
-    reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
-    ownerHold,
-    ...registrationFactsOf(row),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge guard fails closed. */

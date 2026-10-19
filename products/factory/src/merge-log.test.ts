@@ -105,7 +105,7 @@ describe("merge_op migration", () => {
     const db = openDatabase(dbPath);
     dbs.push(db);
     expect(db.prepare("SELECT repo, pr, kind, head_sha FROM shepherd_event").all()).toEqual([{ repo: REPO, pr: 7, kind: "hold", head_sha: HEAD }]);
-    expect(afterFirst.slice(-2)).toMatchObject([{ version: 29, name: "factory:merge_op" }, { version: 30, name: "factory:event_log" }]);
+    expect(afterFirst).toEqual(expect.arrayContaining([expect.objectContaining({ version: 29, name: "factory:merge_op" }), expect.objectContaining({ version: 30, name: "factory:event_log" })]));
     expect(migrations()).toEqual(afterFirst);
   });
 });

@@ -108,6 +108,14 @@ describe("resumeAgent", () => {
     expect(result.lines).toEqual(["Resumed impl-7 on its existing conversation."]);
   });
 
+  it("passes an opted-in launcher through to agent-chat", async () => {
+    const bin = fakeAgentChat(`echo 'Resumed impl-7.'\n`);
+
+    await resumeAgent(bin, "impl-7", "msg", 5_000, { launchedBy: "shepherd" });
+
+    expect(recordedArgv()).toEqual(["agent", "resume", "impl-7", "--message", "msg", "--launched-by", "shepherd"]);
+  });
+
   it.each(["--force", "-x", "Impl", "a b", ""])(
     "refuses the name '%s' before running anything",
     async (name) => {

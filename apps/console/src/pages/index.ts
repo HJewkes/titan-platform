@@ -2,9 +2,12 @@ import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
 import { AgentsRoute } from "./AgentsPage.js";
 import { HomePage } from "./HomePage.js";
+import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
+import { ReviewDetailPage } from "./ReviewDetailPage.js";
+import { ReviewsPage } from "./ReviewsPage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
@@ -12,21 +15,27 @@ import { ShepherdDetailPage } from "./ShepherdDetailPage.js";
 import { ShepherdPage } from "./ShepherdPage.js";
 import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
+import { TheaterPage } from "./TheaterPage.js";
+import { TheaterPlayer } from "./TheaterPlayer.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
 const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage));
+const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 
 /** One entry per built view; a rail entry with none here renders its placeholder. */
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   home: HomePage,
+  inbox: InboxPage,
   initiatives: WorkPage,
   tasks: ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query })),
   sessions: SessionsRoute,
   knowledge: KnowledgePage,
   agents: AgentsRoute,
   rounds: RoundsView,
+  reviews: ReviewsView,
+  theater: ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage)),
   shepherd: ShepherdView,
 };

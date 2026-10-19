@@ -1,5 +1,17 @@
 # @titan-design/pm
 
+## 0.4.0
+
+### Minor Changes
+
+- a67d654: Add review-folder parsers: `parseTopicsJudged` (the seven common columns, any others kept in `extra`), `parseClaimsAudit` (`basis`, `note` and `wave` optional), `readReviewPin` (case-insensitive `- key: value` README bullets), `sumRunCost` (headless spend from `runs.tsv`), the `TOPIC_PRIORITIES` and `TOPIC_VERDICTS` vocabularies, and export `readTsv`.
+
+## 0.3.0
+
+### Minor Changes
+
+- d357882: Add the repo-review disposition gate: `summaryRecommendations` lists SUMMARY.md's recommendation bullets, `prioritizedTopics` lists a review's P1 and P2 topics, `parseDispositions` validates `dispositions.tsv` rows (task, dup, fold, drop or pending-owner), and `checkDispositions` matches rows to items by id and names each item with no row.
+
 ## 0.2.0
 
 ### Minor Changes
