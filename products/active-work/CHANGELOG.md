@@ -1,5 +1,15 @@
 # @titan-design/active-work
 
+## 0.24.3
+
+### Patch Changes
+
+- Updated dependencies [41fce70]
+  - @titan-design/session-read@0.16.0
+  - @titan-design/decider@0.6.6
+  - @titan-design/session-analytics@0.17.1
+  - @titan-design/session-graph@0.17.1
+
 ## 0.24.2
 
 ### Patch Changes
