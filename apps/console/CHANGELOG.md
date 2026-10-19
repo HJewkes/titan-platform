@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.7.0
+
+### Minor Changes
+
+- 940abfc: Show a Ship round's lineage before the owner taps Ship: the proven-at sha, merged or UNMERGED, the PR base's tip and how many base commits the proven head lacks, with a stale head marked. `rounds.get` carries it as `lineage`, read from GitHub and cached per binding for a minute; anything unread shows "lineage unknown" with its reason.
+
+### Patch Changes
+
+- 06feba3: The inbox action tests import `CONFIRM_TTL_MS` from `owner-tap.ts`, so `inbox-actions.ts` no longer re-exports it.
+
 ## 0.6.2
 
 ### Patch Changes
