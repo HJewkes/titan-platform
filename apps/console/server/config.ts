@@ -72,8 +72,8 @@ export interface ConsoleConfig {
   /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
   coordinatorRoots?: CoordinatorRoots;
   /**
-   * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_TREE` (no default, so
-   * nothing reads a tree the owner did not name) and the materialized document, by default in
+   * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_DIR`, the same one
+   * `config.surfaces` reads (no default, so nothing reads a tree the owner did not name) and the materialized document, by default in
    * titan-coordinator's app-paths config dir, `TITAN_CONSOLE_COORDINATOR_FILE` overriding.
    * Optional so a test config need not build one; absent, `config.compareTree` is `not-configured`.
    */
@@ -184,7 +184,7 @@ function absolutePathFrom(name: string, raw: string | undefined, home: string): 
 
 function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform): ConfigStorePaths {
   return {
-    autonomyTree: absolutePathFrom("TITAN_CONSOLE_AUTONOMY_TREE", env.TITAN_CONSOLE_AUTONOMY_TREE, home),
+    autonomyTree: absolutePathFrom("TITAN_CONSOLE_AUTONOMY_DIR", env.TITAN_CONSOLE_AUTONOMY_DIR, home),
     coordinatorFile: absolutePathFrom("TITAN_CONSOLE_COORDINATOR_FILE", env.TITAN_CONSOLE_COORDINATOR_FILE, home) ?? coordinatorFilePath({ env, home, platform }),
   };
 }

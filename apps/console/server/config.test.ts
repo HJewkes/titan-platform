@@ -84,8 +84,19 @@ describe("console config", () => {
 
   it("reads no autonomy tree unless one is named, and materializes into titan-coordinator's config dir", () => {
     expect(resolveConfig({}, HOME, "linux").configStore).toEqual({ autonomyTree: null, coordinatorFile: path.join(HOME, ".config", "titan-coordinator", "coordinator.json") });
-    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "~/tree", TITAN_CONSOLE_COORDINATOR_FILE: "/cfg/c.json" }, HOME).configStore).toEqual({ autonomyTree: path.join(HOME, "tree"), coordinatorFile: "/cfg/c.json" });
-    expect(() => resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "tree" }, HOME)).toThrow(/TITAN_CONSOLE_AUTONOMY_TREE must be an absolute/);
+    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "~/tree", TITAN_CONSOLE_COORDINATOR_FILE: "/cfg/c.json" }, HOME).configStore).toEqual({ autonomyTree: path.join(HOME, "tree"), coordinatorFile: "/cfg/c.json" });
+    expect(() => resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "tree" }, HOME)).toThrow(/TITAN_CONSOLE_AUTONOMY_DIR must be an absolute/);
+  });
+
+  it("compares the same autonomy tree that config.surfaces reads", () => {
+    const config = resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "~/autonomy" }, HOME);
+
+    expect(config.configStore?.autonomyTree).toBe(path.join(HOME, "autonomy"));
+    expect(config.configStore?.autonomyTree).toBe(config.coordinatorRoots?.autonomyDir);
+  });
+
+  it("ignores the retired TITAN_CONSOLE_AUTONOMY_TREE", () => {
+    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "/var/tree" }, HOME).configStore?.autonomyTree).toBeNull();
   });
 
   it("reads video roots as a path list, expanding ~, and refuses a relative entry", () => {
