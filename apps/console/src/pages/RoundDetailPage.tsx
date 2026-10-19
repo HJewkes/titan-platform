@@ -5,6 +5,7 @@ import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RoundNote } from "./RoundNote.js";
 import { DesignRound } from "./RoundDesign.js";
+import { RoundSend } from "./RoundSend.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
@@ -60,9 +61,9 @@ function QuestionRound({ round }: { round: ValidRound }): ReactNode {
   const state = useRoundAnswers(orderedQuestions(round.manifest).flatMap((group) => group.questions));
   return (
     <VStack gap={4}>
-      <Alert status="info" size="compact" message="Read-only: picks stay in this page and are not sent." />
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} />
+      <RoundSections manifest={round.manifest} state={state} textAnswers />
+      <RoundSend round={round} state={state} />
     </VStack>
   );
 }
