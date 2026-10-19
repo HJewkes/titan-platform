@@ -185,13 +185,24 @@ describe("Shepherd's own reviewer under the machine stop", () => {
     expect(resultsOf(w, "sh-review-stop")).toEqual([0, 1, 2].map(() => ({ kind: "stopped", reason: STOP, lifted: true })));
   });
 
-  it("opens the failed-rounds gate after three silent rounds on a healthy machine, as before", async () => {
+  it("sends one fallback reviewer after three silent rounds on a healthy machine, and merges on its MERGE with no owner gate", async () => {
     const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: silentThenMerge, machineStop: healthy });
 
     await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
 
-    expect(w.spawned).toHaveLength(3);
+    expect(w.spawned).toHaveLength(4);
+    expect(gatePrompt(w)).toBeUndefined();
+    expect(w.fake.pr(1).merged).toBe(true);
+  });
+
+  it("opens the failed-rounds gate on a healthy machine once the fallback reviewer is silent too", async () => {
+    const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: () => undefined, machineStop: healthy });
+
+    await vi.waitFor(() => expect(gatePrompt(w)).toBeDefined(), { timeout: 5_000 });
+
+    expect(w.spawned).toHaveLength(4);
     expect(gatePrompt(w)).toContain("failed-rounds");
+    expect(gatePrompt(w)).toContain("the fallback fresh reviewer failed too");
     expect(w.fake.pr(1).merged).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { addWorktree, boundedAdd, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
 import { resolveBranchBase } from "./branch-base.js";
-import { WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
+import { MissingAssignedWorktreeRecordError, WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 import { findGitRoot, gitOrNull } from "./git.js";
 import { allocatedPaths, checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
 import {
@@ -16,7 +16,7 @@ import {
   type ReleaseProof,
 } from "./options.js";
 import { readoptWorktree, setupTarget, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
-import { describeRefusal, inspectForRelease } from "./release-safety.js";
+import { describeRefusal, inspectForRelease, inspectReleaseDetails } from "./release-safety.js";
 import { runWorktreeSetup } from "./setup.js";
 
 /** One agent's request for a worktree. A caller's richer context record satisfies it structurally. */
@@ -43,7 +43,7 @@ export interface WorktreeCheck {
   warnings: string[];
 }
 
-export type WorktreeReleaseOutcome = { released: true } | { released: false; refusal: string };
+export type WorktreeReleaseOutcome = { released: true } | { released: false; refusal: string; refusalCode?: "unsaved-changes" };
 
 export interface WorktreeAllocator {
   check(req: WorktreeRequest): Promise<WorktreeCheck>;
@@ -103,20 +103,19 @@ async function refuseRelease(
   exitedAt: number | undefined,
   ref: { gitRoot: string; worktree: string; branch: string; base: string },
   releaseProof: ReleaseProof = "git"
-): Promise<string | null> {
+): Promise<{ refusal: string; refusalCode?: "unsaved-changes" } | null> {
   if (exitedAt !== undefined && Date.now() - exitedAt < RECLAIM_GRACE_MS)
-    return `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window`;
-  const safety = await inspectForRelease(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
-  return safety.dirty || safety.unmerged ? describeRefusal(safety) : null;
+    return { refusal: `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window` };
+  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
+  return safety.dirty || safety.unmerged
+    ? { refusal: describeRefusal(safety), ...(refusalCode === undefined ? {} : { refusalCode }) }
+    : null;
 }
 
 /** A gone assigned tree comes back only from the caller's record of allocating it. */
 function unrecoverableAssigned(assigned: string, record: WorktreeRecord | undefined): Error | undefined {
   if (existsSync(assigned) || (record !== undefined && path.resolve(record.worktree) === assigned)) return undefined;
-  return new Error(
-    `assigned worktree ${assigned} does not exist, and there is no record of allocating it ` +
-      "to re-create it from. Not spawned"
-  );
+  return new MissingAssignedWorktreeRecordError(assigned);
 }
 
 async function adoptAssigned(
@@ -228,7 +227,7 @@ async function release(
 
   if (!opts.force) {
     const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, releaseProof);
-    if (refusal !== null) return { released: false, refusal };
+    if (refusal !== null) return { released: false, ...refusal };
   }
   const refused = await removeWorktree(gitRoot, worktree, branch, opts);
   return refused === undefined ? { released: true } : { released: false, refusal: refused };

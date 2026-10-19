@@ -20,6 +20,7 @@ import { REVIEW_REFUSED_STEPS } from "./merge-standing.js";
 import { VISUAL_PACKET_STEPS } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_STEPS } from "./owner-send-back.js";
 import { VISUAL_ACCEPT_STEPS } from "./visual-accept.js";
+import { AUTO_PASS_STEPS } from "./auto-pass.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -50,4 +51,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...VISUAL_PACKET_STEPS,
   ...OWNER_SEND_BACK_STEPS,
   ...VISUAL_ACCEPT_STEPS,
+  ...AUTO_PASS_STEPS,
 ];
