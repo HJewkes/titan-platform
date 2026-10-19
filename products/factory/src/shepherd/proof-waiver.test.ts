@@ -1,3 +1,4 @@
+import type { ServiceAnswer } from "@titan-design/agent-dispatch";
 import { formatResultLine, type FixProofResult, type Verdict as ProofVerdict } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
@@ -7,6 +8,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
+import { notifyTick, type GateNotifyPorts } from "../gate-notify.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -191,6 +193,23 @@ function shepherdWorld(review: (headSha: string, round: number) => Verdict) {
   return { host, runId, reviews, ref };
 }
 
+/** gateNotify over the host, where agent-chat answers every ask it filed with `answer`. */
+function relayedAnswer(host: FactoryHost, answer: Pick<ServiceAnswer, "text" | "provenance">): GateNotifyPorts {
+  const asked: string[] = [];
+  return {
+    label: "titan-factory",
+    resolverClass: "owner-remote",
+    pendingGates: () => host.gates.listPending(),
+    getGate: (id) => host.gates.get(id),
+    resolve: (id, payload, resolver) => void host.gates.resolve(id, payload, resolver),
+    asks: host.asks,
+    askHuman: async () => (asked.push(`q${asked.length + 1}`), asked.at(-1)!),
+    readAnswers: async () => ({ answers: asked.map((questionId, i) => ({ msgId: `a${i + 1}`, questionId, outcome: "answered", by: "human", at: i, ...answer })) }),
+    dismissAsk: async () => undefined,
+    log: () => undefined,
+  };
+}
+
 const NO_REPRO: Verdict = { kind: "NO_REPRO", headSha: A, result: { verdict: "vacuous" } };
 const optionsOf = (host: FactoryHost, id: string) => host.gates.get(id)?.questions?.flatMap((question) => question.options.map((option) => ({ id: option.id, recommended: option.recommended === true })));
 
@@ -230,6 +249,25 @@ describe("waive-proof in a shepherd-pr run", () => {
     expect(optionsOf(w.host, sentBack)?.map((option) => option.id)).toEqual(["await-new-head", "abandon"]);
     expect(() => w.host.runtime.signal(w.runId, "sh-sent-back", { decision: "waive-proof", headSha: A }, OWNER)).toThrow();
     expect(w.host.gates.get(sentBack)?.status).toBe("pending");
+  });
+
+  it("refuses a decided waive-proof relayed over agent-chat with no waiver written, then takes the owner's own tap", async () => {
+    const w = shepherdWorld((headSha, call) => (call === 1 ? NO_REPRO : { kind: "MERGE", headSha, evidence: {} }));
+    const sentBack = gateId(w.runId, "sh-sent-back");
+    await gateOpened(w.host, sentBack);
+    const relay = relayedAnswer(w.host, { text: "waive-proof", provenance: "decided" });
+
+    await notifyTick(relay);
+    await notifyTick(relay);
+
+    expect(w.host.asks.get(sentBack)?.state).toBe("refused");
+    expect(w.host.gates.get(sentBack)?.status).toBe("pending");
+    expect(w.ref.get().proofWaivers().waivedAt(w.runId, A)).toBe(false);
+
+    w.host.runtime.signal(w.runId, "sh-sent-back", { decision: "waive-proof", headSha: A }, OWNER);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.ref.get().proofWaivers().waivedAt(w.runId, A)).toBe(true);
   });
 
   it("refuses a decider's waive-proof: only the owner may waive, so no waiver is written and the head is not reviewed again", async () => {

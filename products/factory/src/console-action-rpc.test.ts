@@ -301,6 +301,20 @@ describe("POST /owner/console-action", () => {
     expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
   });
 
+  it("refuses a record that asks for a waive-proof, a decided one included: the console tap waives no fix-proof", async () => {
+    const w = await world();
+    writeRecord(w, { stepId: "sh-sent-back", decision: "waive-proof" }, "waive");
+    writeRecord(w, { stepId: "sh-sent-back", decision: "waive-proof", provenance: "decided" }, "waive-decided");
+
+    const outcomes = await Promise.all(["waive", "waive-decided"].map(async (actionId) => reply(await post(w.server, { actionId }))));
+
+    expect(outcomes).toMatchObject([
+      [422, { outcome: "refused", reason: "record" }],
+      [422, { outcome: "refused", reason: "record" }],
+    ]);
+    expect(w.store().proofWaivers().waivedAt(w.runId, H)).toBe(false);
+  });
+
   it("takes only {actionId} in the body, and rejects an id that climbs out of the actions dir and a body over the cap", async () => {
     const w = await world();
     writeRecord(w);
