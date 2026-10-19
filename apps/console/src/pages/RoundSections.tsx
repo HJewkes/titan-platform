@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from "react";
-import { Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
+import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
 
 /** Questions in section order, then any no section claims. */
@@ -78,9 +79,9 @@ function QuestionSection({ section, children }: { section: RoundSection | null; 
 
 function SectionNotes({ section }: { section: RoundSection }): ReactNode {
   return (
-    <VStack gap={1}>
-      {section.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
-      {section.context ? <Typography variant="caption" color="secondary">{`Context only: ${section.context}`}</Typography> : null}
+    <VStack gap={3}>
+      {section.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
+      {section.context ? <RoundNote text={section.context} /> : null}
     </VStack>
   );
 }

@@ -2562,11 +2562,6 @@
       "count": 1
     }
   },
-  "packages/worktree/src/park.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/worktree/src/reattach.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 3

@@ -195,15 +195,15 @@ describe("restartDivergedRuns", () => {
 });
 
 describe("restartDivergedRuns reclassification", () => {
-  it("holds a restarted run over the size limit g10-review, as a live register would", async () => {
+  it("holds a restarted run on a policy path g10-adversary, as a live register would", async () => {
     const { next, oldRunIds } = await parkedRuns();
-    next.fake.prFiles.set(1, [{ path: "src/big.ts", status: "modified", additions: 450, deletions: 0 }]);
+    next.fake.prFiles.set(1, [{ path: "products/factory/src/shepherd/g10-x.ts", status: "modified", additions: 10, deletions: 0 }]);
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
     const restarted = next.routes.shepherd!.store.get().byRun(sweep.restarted[0]!.newRunId);
     expect(sweep.restarted[0]!.runId).toBe(oldRunIds[0]);
-    expect(restarted?.holdReason).toBe("g10-review: 450 changed lines");
+    expect(restarted?.holdReason).toBe("g10-adversary: policy touch");
   });
 
   it("classes a restarted run at the head the sweep read, not the last read head it was seeded with", async () => {
@@ -220,7 +220,7 @@ describe("restartDivergedRuns reclassification", () => {
   it("holds a restarted run g10-adversary when classing it throws, so it is not left unclassified", async () => {
     const { next } = await parkedRuns();
     const store = next.routes.shepherd!.store.get();
-    next.fake.prFiles.set(1, [{ path: "src/big.ts", status: "modified", additions: 450, deletions: 0 }]);
+    next.fake.prFiles.set(1, [{ path: "products/factory/src/shepherd/g10-x.ts", status: "modified", additions: 10, deletions: 0 }]);
     vi.spyOn(store, "changeMark").mockImplementation(() => {
       throw new Error("store unreadable");
     });

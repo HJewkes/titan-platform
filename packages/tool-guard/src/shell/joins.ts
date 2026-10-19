@@ -48,6 +48,21 @@ export function readAhead(src: string, at: number, n: number): { text: string; e
   return { text, ends };
 }
 
+/**
+ * Up to `n` characters bash reads from `at` on, joins dropped as `dropJoins` drops them, so a window never ends on
+ * half a join. An escaped pair is kept whole or not at all. `truncated` when raw text is left past the window.
+ */
+export function joinedWindow(src: string, at: number, n: number): { text: string; truncated: boolean } {
+  let text = "";
+  for (let i = pastJoins(src, at); ; i = pastJoins(src, i)) {
+    if (i >= src.length) return { text, truncated: false };
+    const width = src[i] === "\\" && i + 1 < src.length ? 2 : 1;
+    if (text.length + width > n) return { text, truncated: true };
+    text += src.slice(i, i + width);
+    i += width;
+  }
+}
+
 /** `src` with its joins dropped, as `dropJoins` gives it, and the raw index each kept character came from. */
 export function joinedWithIndex(src: string): { text: string; rawAt: Int32Array } {
   const rawAt = new Int32Array(src.length);

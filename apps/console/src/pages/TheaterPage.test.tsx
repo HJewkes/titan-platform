@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
@@ -7,6 +7,8 @@ import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-c
 import { App } from "../App.js";
 import { ROOTS_UNSET } from "../../server/videos.js";
 import { startTimeOf } from "./TheaterPlayer.js";
+import { DayFeedSection } from "./TheaterFeed.js";
+import { dayKeyOf, feedStateOf, groupByDay, purposeOf, type VideoRow } from "./theater-feed.js";
 
 afterEach(cleanup);
 
@@ -15,13 +17,21 @@ const WITHOUT_CAPTIONS = "v_fedcba9876543210fedc";
 const SHA_NOW = "a".repeat(64);
 const SHA_BEFORE = "b".repeat(64);
 
-function video(id: string, title: string, group: string, captions: boolean, modifiedAt: string) {
-  return { id, title, group, bytes: 5_500_000, modifiedAt, captions, renderNotes: false, noteCount: 0, verdict: null };
+const OLD_TAKE = "v_00000000000000000old";
+const CLIP = "v_0000000000000000clip";
+
+function video(id: string, title: string, group: string, captions: boolean, modifiedAt: string, extra: Partial<VideoRow> = {}): VideoRow {
+  return {
+    id, title, group, bytes: 5_500_000, modifiedAt, captions, renderNotes: false, noteCount: 0, openNoteCount: 0, verdict: null,
+    durationS: 125, width: 1920, height: 1080, orientation: "landscape", audio: true, copies: 0, superseded: false, ...extra,
+  };
 }
 
 const VIDEOS = [
-  { ...video(WITH_CAPTIONS, "lantern-explainer.mp4", "orbit/render", true, "2031-03-05T10:00:00.000Z"), noteCount: 1, verdict: "needs-changes" as const },
-  video(WITHOUT_CAPTIONS, "kiln-sample.webm", "kiln", false, "2031-03-04T10:00:00.000Z"),
+  { ...video(WITH_CAPTIONS, "lantern-explainer.mp4", "orbit/render", true, "2031-03-05T10:00:00.000Z", { purpose: "plan", copies: 2 }), noteCount: 1, verdict: "needs-changes" as const },
+  video(WITHOUT_CAPTIONS, "kiln-sample.webm", "kiln", false, "2031-03-04T10:00:00.000Z", { purpose: "repo-review", orientation: "portrait" }),
+  video(OLD_TAKE, "kiln-sample (v1)", "kiln", false, "2031-03-04T09:00:00.000Z", { purpose: "repo-review", superseded: true }),
+  video(CLIP, "kiln sting", "kiln/clips", false, "2031-03-04T08:00:00.000Z", { durationS: 4 }),
 ];
 
 function note(id: string, atS: number, text: string, current: boolean) {
@@ -69,25 +79,87 @@ function metadataLoaded(element: HTMLVideoElement): void {
 }
 
 describe("the theater list", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2031-03-05T12:00:00.000Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const dayOf = (iso: string) => `theater-day-${dayKeyOf(iso)}`;
+
   it("shows the gap line when no roots are set", async () => {
     renderConsole("#/theater", snapshotOf({ videos: [], truncated: false, gaps: [ROOTS_UNSET] }));
     expect((await screen.findByTestId("theater-gap")).textContent).toContain(ROOTS_UNSET);
     expect(screen.getByText("No videos yet")).toBeTruthy();
   });
 
-  it("groups videos by folder, newest group first, with verdict and note badges", async () => {
+  it("sections videos by day, newest first, with purpose, flag, verdict and note pills", async () => {
     renderConsole("#/theater");
-    await screen.findByTestId("theater-group-orbit/render");
-    expect(screen.getAllByTestId(/^theater-group-/).map((group) => group.getAttribute("data-testid"))).toEqual(["theater-group-orbit/render", "theater-group-kiln"]);
+    await screen.findByTestId(dayOf(VIDEOS[0]!.modifiedAt));
+    const days = screen.getAllByTestId(/^theater-day-/).map((day) => day.getAttribute("data-testid"));
+    expect(days).toEqual([...new Set(VIDEOS.map((row) => dayOf(row.modifiedAt)))]);
     const card = screen.getByTestId(`theater-video-${WITH_CAPTIONS}`);
-    expect(within(card).getByText("Needs changes")).toBeTruthy();
-    expect(within(card).getByText("1 note")).toBeTruthy();
+    for (const text of ["Plan", "Needs changes", "1 note"]) expect(within(card).getByText(text)).toBeTruthy();
+    expect(within(screen.getByTestId(`theater-video-${WITHOUT_CAPTIONS}`)).getByText("Phone")).toBeTruthy();
+  });
+
+  it("hides old takes and clips by default, and points at both", async () => {
+    renderConsole("#/theater");
+    await screen.findByTestId(`theater-video-${WITHOUT_CAPTIONS}`);
+    expect(screen.queryByTestId(`theater-video-${OLD_TAKE}`)).toBeNull();
+    expect(screen.queryByTestId(`theater-video-${CLIP}`)).toBeNull();
+    expect(screen.getByText("2 copies folded")).toBeTruthy();
+    fireEvent.click(screen.getByText("1 clip"));
+    await waitFor(() => expect(window.location.hash).toBe("#/theater?tag=clip"));
+    expect(await screen.findByTestId(`theater-video-${CLIP}`)).toBeTruthy();
+  });
+
+  it("shows old takes behind ?old=1, flagged", async () => {
+    renderConsole("#/theater?old=1");
+    expect(within(await screen.findByTestId(`theater-video-${OLD_TAKE}`)).getByText("Old take")).toBeTruthy();
+  });
+
+  it("filters by a purpose chip into ?tag=, and counts each purpose", async () => {
+    renderConsole("#/theater");
+    fireEvent.click(await screen.findByText("Repo review 1"));
+    await waitFor(() => expect(window.location.hash).toBe("#/theater?tag=repo-review"));
+    await waitFor(() => expect(screen.queryByTestId(`theater-video-${WITH_CAPTIONS}`)).toBeNull());
+    expect(screen.getByTestId(`theater-video-${WITHOUT_CAPTIONS}`)).toBeTruthy();
+  });
+
+  it("searches into ?q= and bolds the match", async () => {
+    renderConsole("#/theater");
+    fireEvent.change(await screen.findByLabelText("Search videos"), { target: { value: "lantern" } });
+    await waitFor(() => expect(window.location.hash).toBe("#/theater?q=lantern"));
+    await waitFor(() => expect(screen.queryByTestId(`theater-video-${WITHOUT_CAPTIONS}`)).toBeNull());
+    expect(within(screen.getByTestId(`theater-video-${WITH_CAPTIONS}`)).getByTestId("theater-match").textContent).toBe("lantern");
+  });
+
+  it("offers Clear when nothing matches", async () => {
+    renderConsole("#/theater?q=zzz&tag=plan");
+    expect(await screen.findByText("No matches")).toBeTruthy();
+    expect(screen.getByText("“zzz” in Plan")).toBeTruthy();
+    fireEvent.click(screen.getByText("Clear"));
+    await waitFor(() => expect(window.location.hash).toBe("#/theater"));
   });
 
   it("opens the player from a video's title", async () => {
     renderConsole("#/theater");
     fireEvent.click(await screen.findByText("kiln-sample.webm"));
     await waitFor(() => expect(window.location.hash).toBe(`#/theater/${WITHOUT_CAPTIONS}`));
+  });
+});
+
+describe("a day section", () => {
+  it("names the day, counts its videos and run time, and links its hidden clips", () => {
+    const rows = VIDEOS.map((entry) => ({ video: entry, purpose: purposeOf(entry) }));
+    const [day] = groupByDay(rows.slice(1, 2), rows.slice(3), { now: new Date("2031-03-05T12:00:00.000Z"), timeZone: "UTC" });
+    render(<DayFeedSection section={day!} state={feedStateOf("")} />);
+    expect(screen.getByText("Yesterday")).toBeTruthy();
+    expect(screen.getByText("Tue 4 Mar · 1 video, 2:05")).toBeTruthy();
+    expect(screen.getByText("1 clip")).toBeTruthy();
+    expect(screen.getByText("Repo review")).toBeTruthy();
+    expect(screen.getByText("kiln · 2:05")).toBeTruthy();
   });
 });
 

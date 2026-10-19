@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
-import { Alert, Button, ButtonText, Card, CardContent, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
-import { useSubmit } from "../data/submit.js";
-import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { FrameImage } from "./RoundFrame.js";
-import { RoundSections, orderedQuestions, useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
+import { RoundSend } from "./RoundSend.js";
+import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type FramesList = ConsoleCommands["rounds.frames"]["result"];
@@ -48,7 +47,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         textAnswers
         frames={(section) => <SectionFrames section={section} {...strip} />}
       />
-      <DesignSend round={round} state={state} />
+      <RoundSend round={round} state={state} />
     </VStack>
   );
 }
@@ -97,26 +96,5 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         );
       })}
     </div>
-  );
-}
-
-function DesignSend({ round, state }: { round: ValidRound; state: RoundAnswers }): ReactNode {
-  const { available, state: sending, submit } = useSubmit();
-  if (round.status === "withdrawn") return <Alert status="warning" message="Withdrawn: a newer round replaced this one." />;
-  if (round.status === "sent" || sending.status === "sent") return <Alert status="success" message={sending.status === "sent" && sending.already ? "Already answered" : "Answers sent"} />;
-  const answers = submittedAnswers(round.manifest.questions, state.answers);
-  const missing = missingRequired(round.manifest.questions, answers);
-  const send = () => submit({ id: round.id, manifestSha256: round.manifestSha256, general: "", answers: inOrder(round.manifest, answers) });
-  return (
-    <Card variant="outline">
-      <CardContent>
-        <VStack gap={3}>
-          <Button color="primary" isDisabled={!available || sending.status === "sending" || missing.length > 0} onPress={() => void send()}><ButtonText>Send answers</ButtonText></Button>
-          {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((question) => question.prompt).join("; ")}`} /> : null}
-          {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
-          {sending.status === "failed" ? <Alert status="error" message={`Not sent: ${sending.error}`} /> : null}
-        </VStack>
-      </CardContent>
-    </Card>
   );
 }

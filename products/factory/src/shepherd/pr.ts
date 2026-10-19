@@ -51,10 +51,12 @@ import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
+import { autoPassRoute } from "./auto-pass.js";
+import { countConflictRound, onEscalated, type FailedRoundsState } from "./failed-rounds-demotion.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -105,7 +107,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
     ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0 },
   };
@@ -153,7 +155,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   }
   if (isSentBack(outcome)) return (await woken(run, "review", outcome.headSha, ownerSendBack(outcome))) ? undefined : unhandledSendBack(run, OWNER_SEND_BACK_KIND, outcome.headSha, outcome.detail);
   if (!isConflict(run, outcome)) return outcome;
-  run.failedRounds += 1;
+  countConflictRound(run);
   return onConflict(run, outcome.headSha);
 }
 
@@ -247,10 +249,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
   const escalated = await countRound(run, routed);
-  if (escalated) {
-    run.escalations.set(headSha, escalated);
-    return true;
-  }
+  if (escalated) return onEscalated(run, headSha, escalated);
   switch (route) {
     case "merge":
       return true;
@@ -363,6 +362,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     visualAcceptOfferRoute(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
+    autoPassRoute(deps.port, deps.now),
   ];
 }
 

@@ -1,5 +1,35 @@
 # @titan-design/factory
 
+## 0.24.3
+
+### Patch Changes
+
+- ecc0f82: TP-3697: Shepherd demotes two always-approved owner gates, each leaving an audit record (PR comment, watch row `autoPassed`, owner digest FYI section). D7 failed-rounds: when every counted round failed on infrastructure, one fresh reviewer goes before the owner, and the owner is asked only if it fails too; D7 never merges by itself. D13 main-red: the acknowledge-only gate is an FYI record. `GATE_DEMOTIONS` reverts each class with one line. Visual and gate-2-visual gates (D2) still wait for the owner.
+- Updated dependencies [cda3cbe]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+  - @titan-design/agent@0.6.2
+  - @titan-design/worktree@0.3.0
+
+## 0.24.2
+
+### Patch Changes
+
+- 653ecf6: Shepherd's two-MERGE release of a `g10-adversary` hold no longer requires the correctness reviewer and the adversary to run at different profiles. Decision 457 runs both on `bd-reviewer`, and under the old rule no such hold could release. Two MERGEs now count as independent when the broker roster shows the reviewers share no conversation: separate sessions, and no resume, context fork, takeover or common spawning session between them. An unread roster fails closed. Correctness must still run on an Opus profile (TP-3524).
+
 ## 0.24.1
 
 ### Patch Changes
