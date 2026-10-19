@@ -5,6 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { fileResponse, type mountStaticApp } from "@titan-design/daemon";
 import { readCommand } from "./owner-guard.js";
+import { mergeMeta, metaGaps, readFolderMeta, readVideoMeta, sidecarName, VIDEO_FOLDER_MANIFEST, videoMeta, type FolderMeta } from "./video-meta.js";
 
 type DaemonApp = Parameters<typeof mountStaticApp>[0];
 
@@ -19,7 +20,9 @@ const VIDEO_ID = /^v_[0-9a-f]{20}$/;
 const NOT_FOUND = "Video not found";
 export const ROOTS_UNSET = "TITAN_CONSOLE_VIDEO_ROOTS is not set";
 
+/** The sidecar's fields come first so the row's own `title` stays required. */
 const videoEntry = z.object({
+  ...videoMeta.shape,
   id: z.string(),
   title: z.string(),
   group: z.string(),
@@ -52,6 +55,12 @@ interface Catalog {
   truncated: boolean;
   gaps: string[];
   located: Map<string, Located>;
+}
+
+/** Counted during a walk, then folded into one gap line each. */
+interface Unreadable {
+  sidecars: number;
+  manifests: number;
 }
 
 export interface VideoCatalog {
@@ -88,26 +97,45 @@ export function videoCatalog({ roots, now = Date.now }: VideoCatalogOptions): Vi
 /** Every mp4 and webm under the roots' real paths, newest first, skipping dot-dirs, `node_modules`, `archive` and symlinks. */
 export async function scanVideos(roots: readonly string[]): Promise<Catalog> {
   const catalog: Catalog = { videos: [], truncated: false, gaps: roots.length === 0 ? [ROOTS_UNSET] : [], located: new Map() };
+  const unreadable: Unreadable = { sidecars: 0, manifests: 0 };
   for (const [index, root] of roots.entries()) {
     const realRoot = await realpath(root).catch(() => null);
     if (realRoot === null) catalog.gaps.push(`Video root ${index + 1} of ${roots.length} cannot be read`);
-    else await walk(catalog, realRoot, realRoot, 0);
+    else await walk(catalog, unreadable, realRoot, realRoot, 0);
   }
+  catalog.gaps.push(...metaGaps(unreadable.sidecars, unreadable.manifests));
   catalog.videos.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
   return catalog;
 }
 
-async function walk(catalog: Catalog, realRoot: string, dir: string, depth: number): Promise<void> {
+async function walk(catalog: Catalog, unreadable: Unreadable, realRoot: string, dir: string, depth: number): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [] as Dirent[]);
   const names = new Set(entries.map((entry) => entry.name));
+  const isVideo = (entry: Dirent) => entry.isFile() && path.extname(entry.name).toLowerCase() in VIDEO_TYPES;
+  const folder = await folderMetaOf(dir, names, entries.some((entry) => !entry.name.startsWith(".") && isVideo(entry)), unreadable);
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue;
-    if (entry.isDirectory() && depth < MAX_DEPTH && !SKIPPED_DIRS.has(entry.name)) await walk(catalog, realRoot, path.join(dir, entry.name), depth + 1);
-    else if (entry.isFile() && path.extname(entry.name).toLowerCase() in VIDEO_TYPES) await add(catalog, realRoot, path.join(dir, entry.name), names);
+    if (entry.isDirectory() && depth < MAX_DEPTH && !SKIPPED_DIRS.has(entry.name)) await walk(catalog, unreadable, realRoot, path.join(dir, entry.name), depth + 1);
+    else if (isVideo(entry)) await add(catalog, { realRoot, folder, siblings: names, unreadable }, path.join(dir, entry.name));
   }
 }
 
-async function add(catalog: Catalog, realRoot: string, file: string, siblings: ReadonlySet<string>): Promise<void> {
+/** Read only where a manifest sits beside at least one video, so folders without one cost nothing. */
+async function folderMetaOf(dir: string, names: ReadonlySet<string>, hasVideos: boolean, unreadable: Unreadable): Promise<FolderMeta> {
+  if (!hasVideos || !names.has(VIDEO_FOLDER_MANIFEST)) return null;
+  const folder = await readFolderMeta(dir);
+  if (folder === "unreadable") unreadable.manifests++;
+  return folder;
+}
+
+interface FolderContext {
+  realRoot: string;
+  folder: FolderMeta;
+  siblings: ReadonlySet<string>;
+  unreadable: Unreadable;
+}
+
+async function add(catalog: Catalog, { realRoot, folder, siblings, unreadable }: FolderContext, file: string): Promise<void> {
   if (catalog.videos.length >= MAX_VIDEOS) {
     catalog.truncated = true;
     return;
@@ -117,10 +145,14 @@ async function add(catalog: Catalog, realRoot: string, file: string, siblings: R
   const relative = path.relative(realRoot, file);
   const id = videoId(realRoot, relative);
   const name = path.basename(file);
+  const own = siblings.has(sidecarName(name)) ? await readVideoMeta(file) : null;
+  if (own === "unreadable") unreadable.sidecars++;
+  const meta = mergeMeta(folder, name, own === "unreadable" ? null : own);
   catalog.located.set(id, { realRoot, relative });
   catalog.videos.push({
+    ...meta,
     id,
-    title: path.parse(name).name,
+    title: meta.title ?? path.parse(name).name,
     group: groupOf(realRoot, relative),
     bytes: info.size,
     modifiedAt: info.mtime.toISOString(),

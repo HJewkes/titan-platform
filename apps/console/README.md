@@ -358,6 +358,38 @@ written after its latest `ship` verdict, in file order: `openNotes(notes, curren
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
 
+### Video metadata
+
+Agents describe a render in two files the console only reads. `<stem>.video.json` beside the
+video (`cut.mp4` gets `cut.video.json`) is a strict `titan-console/video-meta@1` object.
+`_videos.json` in a folder is a strict `titan-console/video-folder@1` object that covers a batch
+of clips without one sidecar each. `videos.list` adds every field that is set to the video's
+row. A video with neither file lists exactly as before.
+
+| Field | Value |
+| --- | --- |
+| `schema` | `"titan-console/video-meta@1"`; the only required field |
+| `title` | 1-200 characters, replacing the file stem; include the take ("Lantern walkthrough, take 2") |
+| `description` | 1-2000 characters |
+| `purpose` | one of `daily`, `repo-review`, `plan`, `design`, `explainer`, `test`, `clip` |
+| `tags` | up to 20 strings of 1-40 characters |
+| `subject` | `{ kind: "repo" \| "day" \| "initiative", id }`: what the video is about |
+| `parent` | for a clip, the id or alias of the video it was cut from |
+| `posterAtS` | seconds, at or above 0: the frame to use as the poster |
+| `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
+| `series`, `take` | 1-200 characters each |
+| `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
+
+The folder manifest carries `schema: "titan-console/video-folder@1"`, any of the fields above
+except `title` and `alias` as defaults for every video directly in that folder, and `items`, a
+map from a file name to its own fields (`{ "01-spin.mp4": { "title": "Spin" } }`). A field in
+the sidecar beats the manifest's item for that file, which beats the manifest's default.
+
+Both files are opened with O_NOFOLLOW and read up to 64 KB. A file that is bigger, not JSON, or
+not a strict match is skipped and counted as a gap ("1 video sidecar could not be read", "1 video
+folder manifest could not be read"); the videos still list. A parsed file is cached by its device,
+inode, size and mtime, so the per-request rescan reads only files that changed.
+
 ## The approvals flow
 
 `approvals.flow` (`server/approvals.ts`) is a read. It merges three legs through
