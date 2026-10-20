@@ -238,6 +238,8 @@ export const FactoryConfigSchema = z.object({
       visualSetCarry: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
+      /** The profile of the planner failed review rounds with no adversary verdict spawn (TP-3796); absent means `bd-planner`. */
+      diagnosisProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
       titanReviewBin: absolutePath.optional(),
       /**

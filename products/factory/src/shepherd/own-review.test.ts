@@ -3,6 +3,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
+import { demotionOffForTest } from "../test-support/gate-demotions.js";
 import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -186,6 +187,7 @@ describe("Shepherd's own reviewer under the machine stop", () => {
   });
 
   it("sends one fallback reviewer after three silent rounds on a healthy machine, and merges on its MERGE with no owner gate", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: silentThenMerge, machineStop: healthy });
 
     await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
@@ -196,6 +198,7 @@ describe("Shepherd's own reviewer under the machine stop", () => {
   });
 
   it("opens the failed-rounds gate on a healthy machine once the fallback reviewer is silent too", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: () => undefined, machineStop: healthy });
 
     await vi.waitFor(() => expect(gatePrompt(w)).toBeDefined(), { timeout: 5_000 });

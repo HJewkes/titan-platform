@@ -16,7 +16,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
-import { withDemotionOff } from "../test-support/gate-demotions.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => {
@@ -405,6 +405,7 @@ describe("a pending shepherd-route failed-rounds approve-merge gate", () => {
   });
 
   it("counts the new head's failed rounds from zero, so the owner is asked again only after three rounds and a fallback reviewer there", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const { host, fake, services, runId, reviewed } = await escalatedAtGated();
     fake.pushHead(1, MOVED);
 

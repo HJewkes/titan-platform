@@ -63,6 +63,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-fix-proof-waived": `${RECORD}: whether the owner waived a head's fix-proof`,
   "sh-no-reviewer-hold": `${WRITE}: holds the run and alerts when no reviewer is wired`,
   "sh-no-reviewer-wait": `${READ}: waits for the no-reviewer hold to release`,
+  "sh-no-verdict-diagnosis": `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`,
   "sh-carry-scope": `${RECORD}: the scope an approval carried over`,
   "sh-carry-seat": `${RECORD}: the seat an approval carried under`,
   "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,

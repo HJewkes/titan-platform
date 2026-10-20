@@ -82,7 +82,7 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
   else if (gated !== undefined) {
     const here = run.escalations.get(gated);
     const escalated = run.carried ?? here;
-    if (here?.escalation === "failed-rounds") Object.assign(run, { failedRounds: 0, failedOutcomes: [], fallbackReviewed: false });
+    if (here?.escalation === "failed-rounds") Object.assign(run, { failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, failedReviewers: [], adversaryHeard: false });
     if (escalated) run.carried = { ...escalated, carriedFrom: gated };
   }
 }

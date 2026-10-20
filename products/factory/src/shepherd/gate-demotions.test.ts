@@ -5,6 +5,7 @@ import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { withDemotionOff } from "../test-support/gate-demotions.js";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -12,6 +13,7 @@ import { GATE_DEMOTIONS, autoPassComment, autoPassesOf } from "./auto-pass.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, noteReviewerAccount, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
+import { freshNoVerdictState, noteReviewerStep } from "./no-verdict-round.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
 import { shepherdMainCi } from "./post-merge.js";
@@ -97,7 +99,7 @@ function d7Run(over: Partial<FailedRoundsRun> = {}): FailedRoundsRun & Recorded 
   return {
     ...recordingCtx(),
     ...{ target: { repo: REPO, pr: 1 }, state: { waits: 0 }, reviews: new Map(), fresh: new Set<string>(), escalations: new Map(), failedRounds: 3 },
-    ...{ failedOutcomes: ["timeout", "no-verdict", "throttled"], fallbackReviewed: false },
+    ...{ failedOutcomes: ["timeout", "no-verdict", "throttled"], fallbackReviewed: false, ...freshNoVerdictState() },
     ...over,
   };
 }
@@ -124,9 +126,10 @@ describe("D7: failed review rounds", () => {
     const run = { ...d7Run({ failedRounds: 0, failedOutcomes: [] }), merged: new Map([[HEAD, carried]]), trail: { seatAsked: new Set([HEAD]) } };
     run.reviews.set(HEAD, carried);
     const counts = { ...run, throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] };
-    await countRound(counts, silentRound);
-    await countRound(counts, silentRound);
-    const escalated = await countRound(counts, silentRound);
+    const heardRound = () => (noteReviewerStep(counts, `sh-await-verdict:${HEAD}:adversary`, { kind: "verdict" }), countRound(counts, silentRound));
+    await heardRound();
+    await heardRound();
+    const escalated = await heardRound();
 
     const goesToMerge = await onEscalated({ ...run, failedRounds: counts.failedRounds, failedOutcomes: counts.failedOutcomes }, HEAD, escalated!);
 
@@ -180,7 +183,7 @@ describe("D7: failed review rounds", () => {
   it("mark the escalation infra-only only when every counted round was throttled, timed out or silent", async () => {
     const counts = (outcomes: string[]) => ({
       ...{ ...recordingCtx(), target: { repo: REPO, pr: 1 }, failedRounds: 2, failedOutcomes: outcomes },
-      ...{ throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] },
+      ...{ throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [], ...freshNoVerdictState() },
     });
 
     expect(await countRound(counts(["no-verdict", "throttled"]), silentRound)).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
@@ -275,7 +278,9 @@ const stepIds = ({ host, runId }: SilentWorld): string[] => Object.keys(host.run
 
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "repo-seat" };
 
-describe("D7 residual replays: no approve-merge for rounds that never got a verdict (TP-3734)", () => {
+describe("D7 residual replays: no approve-merge for rounds that never got a verdict (TP-3734), with TP-3796's diagnosis reverted", () => {
+  withDemotionOff("neverVerdictDiagnosis");
+
   it("tp#1948: three no-verdict rounds and a failed fallback tell the hub seat and wait for a new head, with no owner gate", async () => {
     const world = silentReviewWorld("no-verdict", AUTO);
 
@@ -372,8 +377,8 @@ describe("D13: a red main with no freeze store", () => {
 });
 
 describe("the demotion config", () => {
-  it("demotes D7, its residual, D8, D9 and D13, and asks the owner only over a reviewer MERGE", () => {
-    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true });
+  it("demotes D7, its residual, D8, D9 and D13, asks the owner only over a reviewer MERGE, and diagnoses never-verdict rounds", () => {
+    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true, neverVerdictDiagnosis: true });
   });
 });
 

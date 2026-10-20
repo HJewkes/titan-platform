@@ -53,7 +53,8 @@ import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, t
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 import { autoPassRoute } from "./auto-pass.js";
-import { countConflictRound, noteReviewerAccount, type FailedRoundsState } from "./failed-rounds-demotion.js";
+import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
+import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 
 export { SHEPHERD_STEPS };
@@ -109,7 +110,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
     ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
@@ -291,7 +292,7 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
   const request = { ...run.target, round: run.state.round, headSha, ...convergenceOf(run, headSha) };
-  const billing = tapped(run.ctx, (stepId, result) => noteReviewerAccount(run, stepId, result));
+  const billing = tappedReview(run);
   const verdict = await reviewKeepingSeatHold(run.seatHeld, headSha, (seatHeld) =>
     run.phases.review(billing, { ...request, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) }));
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
@@ -360,6 +361,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
     autoPassRoute(deps.port, deps.now),
+    ...diagnosisRoutes(deps),
   ];
 }
 
