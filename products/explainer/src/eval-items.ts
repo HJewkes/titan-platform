@@ -20,9 +20,17 @@ export interface ListRoute {
   items: string[];
 }
 
+/** A beat role the plain "explained" question does not fit. */
+export type ExplainRole = "promise" | "simplification";
+
+/** An M3 route, with its beat's role when that changes what the judge is asked. */
+export interface ItemExplainRoute extends ExplainRoute {
+  role?: ExplainRole;
+}
+
 /** The L0 route lists: the item judge asks about these beats and items and nothing else. */
 export interface ItemRoutes {
-  explain: readonly ExplainRoute[];
+  explain: readonly ItemExplainRoute[];
   seat: readonly SeatRoute[];
   lists: readonly ListRoute[];
 }
@@ -37,8 +45,22 @@ export function listRoutes(beats: readonly PaceBeat[]): ListRoute[] {
   });
 }
 
+// A PROMISE previews items later chapters deliver, and a CAVEAT voices the script's simplifications: what it leaves out.
+const EXPLAIN_ROLES = new Map<string, ExplainRole>([
+  ["PROMISE", "promise"],
+  ["CAVEAT", "simplification"],
+]);
+
+function explainItemRoutes(beats: readonly PaceBeat[]): ItemExplainRoute[] {
+  const fns = new Map(beats.map((b) => [b.id, b.fn]));
+  return explainRoutes(beats).map((r) => {
+    const role = EXPLAIN_ROLES.get(fns.get(r.beat) ?? "");
+    return role ? { ...r, role } : r;
+  });
+}
+
 export const itemRoutes = (beats: readonly PaceBeat[], invariants: readonly string[]): ItemRoutes => ({
-  explain: explainRoutes(beats),
+  explain: explainItemRoutes(beats),
   seat: seatRoutes(beats, invariants),
   lists: listRoutes(beats),
 });
@@ -54,17 +76,29 @@ export interface ItemQuestion {
 
 const explainedText = (beat: string, item: string): string =>
   `In ${beat}, is "${item}" explained: does this beat or the rest of the chapter say what it is and why it is there?`;
+const leftOutText = (beat: string, item: string): string =>
+  `In ${beat}, "${item}" is left out on purpose: does this beat or the rest of the chapter say why the picture holds without it?`;
 const seatedText = (beat: string, reason: SeatReason): string =>
   `${beat} states ${reason === "invariant" ? "an invariant" : "a finding"}. Does the map on screen show the mechanism that keeps it, or the failure that breaks it?`;
 const oddOneOutText = (beat: string, items: readonly string[]): string =>
   `In ${beat}, of ${items.map((i) => `"${i}"`).join(", ")}: which item is a different kind of thing, if any?`;
 
-const explainedQuestion = (beat: string, item: string): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: explainedText(beat, item) });
+const explainedQuestion = (beat: string, item: string, text = explainedText): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: text(beat, item) });
+
+/**
+ * A promise is not asked: its items are paid off in later chapters, which a chapter-scoped judge never sees. A
+ * simplification is asked why the picture holds without each item, since explaining what it left out is not its job.
+ */
+function explainedQuestions(route: ItemExplainRoute): ItemQuestion[] {
+  if (route.role === "promise") return [];
+  const text = route.role === "simplification" ? leftOutText : explainedText;
+  return route.items.map((item) => explainedQuestion(route.beat, item, text));
+}
 
 /** Every question is read off a route, so a script cannot pass on questions written to suit it. */
 export function itemQuestions(routes: ItemRoutes): ItemQuestion[] {
   return [
-    ...routes.explain.flatMap((r) => r.items.map((item) => explainedQuestion(r.beat, item))),
+    ...routes.explain.flatMap(explainedQuestions),
     ...routes.seat.map((r): ItemQuestion => ({ kind: "seated", beat: r.beat, subject: r.reason, options: [], text: seatedText(r.beat, r.reason) })),
     ...routes.lists.map((r): ItemQuestion => ({ kind: "odd-one-out", beat: r.beat, subject: r.items.join("; "), options: r.items, text: oddOneOutText(r.beat, r.items) })),
   ];
@@ -295,7 +329,14 @@ const spineQuestionTemplates = (): string[] => [
 
 export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
-    questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
+    questions: [
+      explainedText("<beat>", "<item>"),
+      leftOutText("<beat>", "<item>"),
+      seatedText("<beat>", "invariant"),
+      seatedText("<beat>", "finding"),
+      oddOneOutText("<beat>", ["<a>", "<b>", "<c>"]),
+    ],
+    explained_unasked_roles: ["promise"],
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),

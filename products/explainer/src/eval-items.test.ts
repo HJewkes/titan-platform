@@ -119,6 +119,51 @@ describe("item judge questions", () => {
   });
 });
 
+describe("item judge questions by beat role", () => {
+  /** ch1 promises three moves and names three skipped details; ch2 lists three bare jobs. Each beat routes on M3. */
+  const roleTrack = (): PaceBeat[] =>
+    buildPaceBeats([
+      { ...source("c1-1", "ch1", "The desk keeps, drops and adds bins.", ["card:keeps", "card:drops", "card:adds"]), fn: "PROMISE" },
+      { ...source("c1-2", "ch1", "Customs holds, returns and refunds are left out; each is data, so the flow holds.", ["open:customs holds", "open:returns", "open:refunds"]), fn: "CAVEAT" },
+      source("c2-1", "ch2", "Three jobs: scan, weigh and stack.", ["job:scan", "job:weigh", "job:stack"]),
+    ]);
+  const explainedOnly = (beats: PaceBeat[]): ItemRoutes => ({ ...itemRoutes(beats, []), seat: [], lists: [] });
+  /** The E9 judge: no beat in these chapters says what and why, so every plain "explained" is a no. */
+  const literalJudge = () => fakeJudge((q) => (q.canary ? {} : { pass: q.text.includes("left out on purpose") }));
+
+  it("routes all three beats on M3, so only the role decides what is asked", () => {
+    expect(explainRoutes(roleTrack()).map((r) => r.beat)).toEqual(["c1-1", "c1-2", "c2-1"]);
+  });
+
+  // Mutation: asking a PROMISE beat the plain question flags keeps, drops and adds.
+  it("never asks a promise beat whether its items are explained", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const asked = judge.calls.flatMap(promptQuestions).map((q) => beatOf(q.text));
+    expect(asked).not.toContain("c1-1");
+    expect(agreedFlags([result, result]).filter((f) => f.beat === "c1-1")).toEqual([]);
+  });
+
+  // Mutation: asking a CAVEAT beat the plain question flags all three skipped details.
+  it("asks a simplification beat why the picture holds without each item, which it can pass", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const verdicts = result.chapters.flatMap((c) => c.verdicts);
+    expect(verdicts.filter((v) => v.beat === "c1-2").map((v) => [v.kind, v.subject, v.pass])).toEqual([
+      ["explained", "customs holds", true],
+      ["explained", "returns", true],
+      ["explained", "refunds", true],
+    ]);
+    expect(agreedFlags([result, result]).map((f) => [f.beat, f.item])).toEqual([["c2-1", "scan"], ["c2-1", "weigh"], ["c2-1", "stack"]]);
+  });
+});
+
 describe("runItems", () => {
   it("makes one fresh call per chapter with a routed question, each with a name-only canary beat planted last", async () => {
     const judge = fakeJudge();
