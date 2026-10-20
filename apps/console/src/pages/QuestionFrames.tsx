@@ -52,7 +52,7 @@ function optionKey(question: Question, option: string, labels: ReadonlyMap<strin
  * A pick-one whose options pick exactly two frames is an A/B: those two options are its sides. Any other option, such as
  * "Both", is an extra answer beside them; the round's own revision option is never a side.
  */
-export function abSides(question: Question, labels: ReadonlyMap<string, string>): [ABSide, ABSide] | null {
+function abSides(question: Question, labels: ReadonlyMap<string, string>): [ABSide, ABSide] | null {
   if (question.kind !== "pick-one") return null;
   const sides = question.options.flatMap((option, index): ABSide[] => {
     const key = option === question.revisionOption ? undefined : optionKey(question, option, labels);
