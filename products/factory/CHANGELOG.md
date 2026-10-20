@@ -1,5 +1,18 @@
 # @titan-design/factory
 
+## 0.25.0
+
+### Minor Changes
+
+- 749bea7: A pull request that only adds or changes tests can now prove itself without an owner waiver (TP-3658). `@titan-design/fix-proof` exports `provedByMutants(result)`: true when a `vacuous` result's mutation check is `killed`, every changed test file has a spec of its own in the diff, no test was deleted or renamed out of the tests, and every selected test ran and passed at head. The judge attaches mutants only to a diff `testOnlyReading` calls test-only, so one that deletes a test never carries them. The judge lists changed test files without a spec as `mutants.uncovered` and demotes `killed` to `not-killed` when any remain, so a spec beside an unchanged test cannot vouch for a test the PR changed. The fix-proof workflow gains a `fix-proof-mutants` job that runs `exec --side mutants` in the sandbox when the diff adds or changes a `*.mutations.json` spec, and the judge reads its report. Shepherd's fix-proof gate lets such a head go to review; a surviving mutation, a failing or unrun test, or a mutants error still ends the round as `NO_REPRO`, and the wake asks for kills. The tests reviewer's brief reads a proved head as proved rather than as a blocking vacuous proof. A run may now move into `--kind test-only`, under the existing diff check.
+
+### Patch Changes
+
+- e9e4bb7: Shepherd's registration hold follows review policy 458's sign-off classes, given by the new pure `requiredSignoffs`. One correctness sign-off is the default. Size, a migration, a security kind with no sensitive path, and unread line counts no longer place a `g10-review` hold; they still pick the g10 (Opus) correctness reviewer. A store-migration touch now reaches that reviewer through its own `migrationTouch` reviewer fact, with Shepherd's migration globs (`store-migrations.ts`, `*-store.ts`, `*-migration*.ts` and Shepherd's store, events and train files), rather than through the hold it no longer gets. Only an adversarial path (authority, policy or security) places `g10-adversary`. That list now also covers the console's owner-tap and inbox actions, gate resolution, owner release (matched by name stem, so a helper split out of those files stays covered) and agent-chat's agent profiles. A hold placed by hand is unchanged, and so is the fail-closed `g10-adversary` hold for an unread file list.
+- Updated dependencies [749bea7]
+  - @titan-design/fix-proof@0.8.0
+  - @titan-design/review-panel@0.8.1
+
 ## 0.24.3
 
 ### Patch Changes
