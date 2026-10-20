@@ -10,11 +10,14 @@ type Body = Record<string, unknown>;
 const TRANSPORT = { source: "webhook", observedAt: "" } as const;
 
 function bare(event: IdentityEvent | TransitionEvent): Projected {
-  const rest: Partial<typeof event> = { ...event };
-  delete rest.source;
-  delete rest.deliveryId;
-  delete rest.observedAt;
-  return rest as Projected;
+  if (event.rule === "identity") {
+    const { source, deliveryId, observedAt, ...rest } = event;
+    void [source, deliveryId, observedAt];
+    return rest;
+  }
+  const { source, deliveryId, observedAt, ...rest } = event;
+  void [source, deliveryId, observedAt];
+  return rest;
 }
 
 const fromCi = (observation: CiObservation | undefined): Projected | "ignored" => (observation === undefined ? "ignored" : bare(ciEvent(observation, TRANSPORT)));
