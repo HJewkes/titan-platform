@@ -72,7 +72,7 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V8"] }
   - id: Q-V9
-    rule: "Sentences at most 25 words (a TTS guardrail, never a target)"
+    rule: "Sentences at most 25 words; 26 to 32 pass only when speech-vet reports the sentence clean to speak (a TTS guardrail, never a target)"
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
