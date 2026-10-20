@@ -147,6 +147,41 @@ describe("the G10 hold Shepherd places at registration", () => {
     },
   );
 
+  it("holds a PR touching only signoffs.ts g10-adversary, so emptying the adversary touches cannot lift every hold", async () => {
+    const r = rig([file("products/factory/src/shepherd/signoffs.ts", 1, 1)]);
+
+    const reason = await applyRegistrationHold(r.port, r.store, "run-1");
+
+    expect(reason).toBe("g10-adversary: policy touch");
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: reason });
+  });
+
+  it.each([
+    ...["reviewer-lineage.ts", "reviewer-roles.ts", "spawn-facts.ts", "auto-pass.ts", "failed-rounds-demotion.ts", "routed.ts", "stale-gates.ts", "fix-proof.ts", "merge-standing.ts", "review.ts"].map((name) => `products/factory/src/shepherd/${name}`),
+    "products/factory/src/shepherd/review-panel-plan.ts",
+    "products/factory/src/shepherd/review-panel-step.ts",
+    "packages/fix-proof/src/judge.ts",
+    "packages/fix-proof/src/deep/new-verdict.ts",
+    "packages/review-panel/src/classify.ts",
+    "scripts/fix-proof-run.sh",
+  ])("holds sign-off and fix-proof policy in %s g10-adversary", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["products/factory/src/shepherd/signoffs.test.ts", "packages/fix-proof/src/judge.test.ts", "packages/review-panel/src/classify.test.ts"])("leaves a test file %s of sign-off policy unheld", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
+  it("leaves a review.ts or pr.ts outside Shepherd unheld", async () => {
+    const r = rig([file("packages/x/src/review.ts", 10), file("packages/x/src/pr.ts", 10)]);
+
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
   it("leaves a small plain-source PR of an unknown kind unheld", async () => {
     const r = rig([file("packages/x/src/a.ts", 50)], "unknown");
 

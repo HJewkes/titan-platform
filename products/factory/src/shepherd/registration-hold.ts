@@ -13,6 +13,15 @@ const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.t
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
 const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 /**
+ * Code that decides sign-offs, reviewer picks, fix-proof verdicts and merge standing, or reads the G10 hold (TP-3764):
+ * emptying any of these lifts a hold as surely as editing this table. Exact paths, since several names are common elsewhere.
+ */
+const SIGNOFF_POLICY_FILES = [
+  ...["signoffs.ts", "reviewer-lineage.ts", "reviewer-roles.ts", "spawn-facts.ts", "auto-pass.ts", "failed-rounds-demotion.ts", "routed.ts", "stale-gates.ts", "fix-proof.ts"],
+  ...["merge-standing.ts", "review.ts", "review-panel-plan.ts", "review-panel-step.ts", "await-pr.ts", "coverage.ts", "external-review.ts", "held-repair.ts", "pr.ts", "shepherd-steps.ts"],
+].map((name) => `products/factory/src/shepherd/${name}`);
+const FIX_PROOF_POLICY_FILES = ["packages/fix-proof/src/**", "packages/review-panel/src/classify.ts", "scripts/fix-proof-run.sh"];
+/**
  * The owner's own levers: the console's tap and inbox actions, gate resolution and owner release (titan-coord's E1
  * amendment to 458). Globbed by name stem, so a helper split out of one of these files stays held.
  */
@@ -24,7 +33,7 @@ const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...SIGNOFF_POLICY_FILES, ...FIX_PROOF_POLICY_FILES, ...OWNER_ACTION_FILES],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
 

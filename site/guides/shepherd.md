@@ -989,6 +989,11 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
+The policy paths include Shepherd's sign-off, reviewer-pick, fix-proof and merge-standing code,
+`packages/fix-proof/src/**` and the panel's own `classify.ts`, since editing any of them can lift a
+hold. A test (`hold-table-coverage.test.ts`) fails when a Shepherd source file that imports
+`g10-release`, `signoffs` or `registration-hold` is not held; test files stay exempt.
+
 **Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
 edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
 added, so only its new path is matched. Classing by content or by import graph would need every
