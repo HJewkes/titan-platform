@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Alert, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
+import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend } from "./RoundSend.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
@@ -34,22 +35,25 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const state = useRoundAnswers(orderedQuestions(round.manifest).flatMap((group) => group.questions));
-  const indexed = new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key));
+  const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
+  const anchored = anchoredKeys(round.manifest);
   return (
-    <VStack gap={4}>
-      <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
-      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections
-        manifest={round.manifest}
-        state={state}
-        textAnswers
-        notes={round.notes}
-        frames={(section) => <SectionFrames section={section} {...strip} />}
-      />
-      <RoundSend round={round} state={state} />
-    </VStack>
+    <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
+      <VStack gap={4}>
+        <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
+        {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
+        <RoundSections
+          manifest={round.manifest}
+          state={state}
+          textAnswers
+          notes={round.notes}
+          frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
+        />
+        <RoundSend round={round} state={state} />
+      </VStack>
+    </RoundFramesProvider>
   );
 }
 
@@ -59,11 +63,13 @@ interface StripProps {
   labels: ReadonlyMap<string, string>;
 }
 
-function SectionFrames({ section, ...strip }: StripProps & { section: Section }): ReactNode {
-  if (section.variantKeys.length === 0 && section.seeAlso.length === 0) return null;
+/** A section's strip leaves out the frames a question draws above itself. */
+function SectionFrames({ section, anchored, ...strip }: StripProps & { section: Section; anchored: ReadonlySet<string> }): ReactNode {
+  const keys = section.variantKeys.filter((key) => !anchored.has(key));
+  if (keys.length === 0 && section.seeAlso.length === 0) return null;
   return (
     <VStack gap={3}>
-      {section.variantKeys.length > 0 ? <FrameStrip keys={section.variantKeys} size="strip" {...strip} /> : null}
+      {keys.length > 0 ? <FrameStrip keys={keys} size="strip" {...strip} /> : null}
       {section.seeAlso.length > 0 ? (
         <VStack gap={1}>
           <Typography variant="microLabel" color="secondary">SEE ALSO</Typography>

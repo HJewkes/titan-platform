@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { QuestionFrameLinks, QuestionFrames, useOptionFrame } from "./QuestionFrames.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string };
@@ -75,6 +76,7 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
     <Card variant={active ? "outline" : "subtle"} onPress={onActivate} testID={`round-question-${question.id}`}>
       <CardContent>
         <VStack gap={3}>
+          <QuestionFrames question={question} />
           <QuestionHeading question={question} position={position} active={active} />
           <Choices question={question} answer={answer} onChoose={choose} onText={onText} />
           <QuestionFacts question={question} />
@@ -95,11 +97,15 @@ function QuestionHeading({ question, position, active }: { question: Question; p
   );
 }
 
-/** A keyed choice carries its digit, so the label says which key picks it. */
-const choiceLabel = (index: number, choice: string): string => (index < MAX_KEYED_CHOICES ? `${index + 1}  ${choice}` : choice);
+/** A keyed choice carries its digit, so the label says which key picks it, and the frame it picks when it picks one. */
+function choiceLabel(index: number, choice: string, frame: string | undefined): string {
+  const keyed = index < MAX_KEYED_CHOICES ? `${index + 1}  ${choice}` : choice;
+  return frame === undefined ? keyed : `${keyed} (frame: ${frame})`;
+}
 
 function Choices({ question, answer, onChoose, onText }: { question: Question; answer: QuestionAnswer | undefined; onChoose: (choice: string) => void; onText?: (text: string) => void }): ReactNode {
   const choices = choicesOf(question);
+  const frameOf = useOptionFrame(question);
   if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
   if (question.kind === "text") {
     const text = answer && "text" in answer ? answer.text : "";
@@ -110,7 +116,7 @@ function Choices({ question, answer, onChoose, onText }: { question: Question; a
     return (
       <CheckboxGroup label="Pick any">
         {choices.map((choice, index) => (
-          <Checkbox key={choice} value={choice} label={choiceLabel(index, choice)} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
+          <Checkbox key={choice} value={choice} label={choiceLabel(index, choice, frameOf(choice))} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
         ))}
       </CheckboxGroup>
     );
@@ -120,7 +126,7 @@ function Choices({ question, answer, onChoose, onText }: { question: Question; a
     <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
       {choices.map((choice, index) => (
         <Radio key={choice} value={choice} aria-checked={value === choice}>
-          {choiceLabel(index, choice)}
+          {choiceLabel(index, choice, frameOf(choice))}
         </Radio>
       ))}
     </RadioGroup>
@@ -136,6 +142,7 @@ export function QuestionFacts({ question }: { question: Question }): ReactNode {
   const signsOff = question.kind === "pick-one" ? question.signsOff : undefined;
   return (
     <VStack gap={1}>
+      <QuestionFrameLinks question={question} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
       {recommendation ? (
