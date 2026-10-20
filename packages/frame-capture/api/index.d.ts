@@ -86,10 +86,17 @@ interface FramesOptions extends PageOptions {
     /** Frame count; defaults to the page's duration times fps. */
     frames?: number;
     /**
-     * Pages capturing contiguous chunks in parallel. A fixed count renders byte-identically run to run,
-     * but a chunk's first frames can differ from a sequential render by a few levels of anti-aliasing.
+     * Pages capturing contiguous chunks in parallel. A fixed count renders byte-identically run to run.
+     * Without `beatStartsS`, a chunk can start mid-beat, and its first frames can then differ from a
+     * sequential render by a few levels of anti-aliasing.
      */
     workers?: number;
+    /**
+     * Seconds at which the page lays out a fresh scene. Chunks then start only on these frames, so any
+     * worker count renders the same frames as one worker; fewer chunks than `workers` run when there are
+     * fewer beats.
+     */
+    beatStartsS?: readonly number[];
 }
 interface FramesResult {
     frames: number;
