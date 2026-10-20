@@ -53,6 +53,8 @@ const GIT_TIMEOUT_MS = 60_000;
 const MIN_WHY_WORDS = 4;
 // The clone is untrusted: its own config could otherwise make `git log` verify signatures with a program it names,
 // or, in a partial clone, lazily fetch missing objects through a remote and transport command it names.
+// The protocol pin only makes such a fetch fail; it does not make git work without the objects, so every git call
+// here must avoid needing them (see deletingShas).
 const PINNED_CONFIG = [
   "log.showSignature=false",
   "gpg.program=false",
@@ -105,9 +107,13 @@ function checkedSha(sha: string, seen: Set<string>): string {
   return sha;
 }
 
-/** Commits that delete at least one file; shas only, so no file name can pose as one. */
+/**
+ * Commits that delete at least one file; shas only, so no file name can pose as one.
+ * `--no-renames` keeps this off the clone's `diff.renames` and off blob reads: inexact rename detection needs blobs
+ * a blobless clone lacks and the protocol pin forbids fetching, which would throw.
+ */
 function deletingShas(git: Git, ref: string): Set<string> {
-  const out = git(["log", "--no-merges", "--diff-filter=D", "--format=%H", "--end-of-options", ref]);
+  const out = git(["log", "--no-merges", "--no-renames", "--diff-filter=D", "--format=%H", "--end-of-options", ref]);
   const seen = new Set<string>();
   for (const sha of out.split("\n").filter((line) => line !== "")) checkedSha(sha, seen);
   return seen;
