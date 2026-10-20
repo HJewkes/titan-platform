@@ -413,15 +413,15 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   - an image frame has no main frame, meaning no frames.json `base` and no `baseImage`, and is not
     marked one-sided. Mark a frame new at head with `change: "new"` on its variant or
     `(new at head)` in its label; `change: "removed"` marks a frame only main has;
-  - it carries exploration: a variant with an `alternate` column, a `lab-…` storyId (a Storybook
-    `Lab/…` story), an `image`, `baseImage` or `clip` under a `lab/` directory, or a key or label
-    with the word `A/B`, `proposal`, `alpha` or `lab`.
+  - it carries exploration, meaning alternatives shown side by side: a variant with an `alternate`
+    column, or a key or label with the word `A/B`, `proposal` or `alpha`. Where a story lives is not
+    exploration: a lab-only PR ships its `lab-…` story, marked new at head.
 
   The page shows each frame as BEFORE (main) and AFTER (head), with a "What ships" line naming the
   PR, the head and the changed-frame count. Changed frames come first. Pairs whose base and head
   share a sha256 in frames.json, or whose variant says `change: "unchanged"`, fold into an
   "N unchanged" disclosure.
-- **Exploration goes in a feedback round.** Variants, lab stories, A/B picks and proposals need a
+- **Exploration goes in a feedback round.** Alternatives side by side, A/B picks and proposals need a
   separate round with no `merge` binding: its own `unit`, sections that carry the frames, and
   pick-one, scale or text questions about them. Build it with the review harness like any design
   round, then import it the same way. It lands as a design round and sends feedback, never a merge.
