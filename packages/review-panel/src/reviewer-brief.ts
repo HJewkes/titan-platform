@@ -1,5 +1,6 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
+import { quoteLines } from "./briefs/quotes.js";
 import { fixProofLines, unverifiedLines, waivedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/ci.js";
@@ -36,7 +37,7 @@ export const CI_POLICY_RULE =
   "If your verdict is MERGE, add a fourth line directly after the Head line: `CI-policy: unchanged`, or `CI-policy: weakened <keys>` naming, comma-separated, each key that applies: " +
   "required-check (drops, renames or skips a required check), permissions (widens token permissions), pull_request_target (adds or widens that trigger), " +
   "secrets (exposes secrets to more code), ruleset (loosens a ruleset or branch protection), other (any other CI weakening). Write it on every MERGE, even with no .github/ change; never on a FIX_FIRST. " +
-  `${CI_POLICY_EXACT} No explanation, bold, list marker, code span or fence on it.`;
+  `${CI_POLICY_EXACT} No explanation, bold, list marker, code span or fence on it. No other line of your message may start with "CI policy" or "Verdict", markdown headings like "**CI policy:**" included: reword such a line or leave it out.`;
 
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
 
@@ -367,10 +368,19 @@ interface CorrectionPromptInput {
   refusal: MalformedRefusal;
   /** True when this run's verdict will reach the owner, as for the review brief. */
   ownerBrief?: boolean;
+  /** The lines of the reviewer's last message that made the refusal; shown to it so it knows which to reword. */
+  quotes?: readonly string[];
 }
 
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 export function correctionPrompt(input: CorrectionPromptInput): string {
+  const base = correctionLines(input);
+  const quoted = input.quotes ? quoteLines(input.quotes, MAX_CORRECTION_PROMPT_CHARS - base.join("\n").length - 1) : [];
+  if (quoted.length === 0) return base.join("\n");
+  return [base[0]!, ...quoted, ...base.slice(1)].join("\n");
+}
+
+function correctionLines(input: CorrectionPromptInput): string[] {
   const { repo, pr, head } = input;
   return [
     `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[input.refusal]}.`,
@@ -385,5 +395,5 @@ export function correctionPrompt(input: CorrectionPromptInput): string {
     ...(input.ownerBrief ? ownerBriefLines() : []),
     "",
     "This is your only correction. A reply that does not end this way goes to a fresh reviewer.",
-  ].join("\n");
+  ];
 }

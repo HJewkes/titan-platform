@@ -366,6 +366,8 @@ interface CorrectionPromptInput {
     refusal: MalformedRefusal;
     /** True when this run's verdict will reach the owner, as for the review brief. */
     ownerBrief?: boolean;
+    /** The lines of the reviewer's last message that made the refusal; shown to it so it knows which to reword. */
+    quotes?: readonly string[];
 }
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 declare function correctionPrompt(input: CorrectionPromptInput): string;
@@ -427,6 +429,7 @@ declare const MALFORMED_REFUSALS: Record<MalformedRefusal, true>;
 declare const MalformedSchema: z.ZodObject<{
     refusal: z.ZodString & z.ZodType<MalformedRefusal, string, z.core.$ZodTypeInternals<MalformedRefusal, string>>;
     writtenAt: z.ZodNumber;
+    quotes: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strip>;
 /** The record `acceptVerdict` leaves on a `none` whose final message was malformed; `writtenAt` is that message's time. */
 type Malformed = z.infer<typeof MalformedSchema>;

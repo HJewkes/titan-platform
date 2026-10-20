@@ -31,6 +31,15 @@ describe("event log reads", () => {
     expect(readers).toEqual([]);
   });
 
+  it("registers no consumer of the CI key derivation outside event-log/ and tests", () => {
+    const importers = sourceFiles(SRC)
+      .map((path) => relative(SRC, path).split(sep).join("/"))
+      .filter((path) => !mayRead(path))
+      .filter((path) => /event-log\/ci-keys/.test(readFileSync(join(SRC, path), "utf8")));
+
+    expect(importers).toEqual([]);
+  });
+
   it("scans a tree the log's own module is in", () => {
     const paths = sourceFiles(SRC).map((path) => relative(SRC, path).split(sep).join("/"));
 
