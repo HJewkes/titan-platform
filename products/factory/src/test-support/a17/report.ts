@@ -27,8 +27,8 @@ interface A17Report {
 interface ReportMeta {
   sha: string;
   generatedAt: string;
-  /** Base titles of A17 cases with no GitHub input; they stay single-mode. */
-  notEvent: readonly string[];
+  /** A17 cases with no GitHub input stay single-mode; an entry matches any test whose full name contains its title. */
+  notEvent: readonly { title: string }[];
 }
 
 const PREFIX = "A17: ";
@@ -50,8 +50,9 @@ export function checkA17Report(json: VitestJson, meta: ReportMeta): A17Report {
     for (const a of file.assertionResults) {
       if (!a.title.startsWith(PREFIX)) continue;
       const { key, title, mode } = split(a);
-      if (meta.notEvent.includes(title)) {
-        notEvent.add(title);
+      const allowed = meta.notEvent.find((entry) => a.fullName.includes(entry.title));
+      if (allowed) {
+        notEvent.add(allowed.title);
         continue;
       }
       const entry = grouped.get(key) ?? { title, webhook: "missing", polling: "missing" };

@@ -9,7 +9,7 @@ const meta = { sha: "f".repeat(40), generatedAt: "2026-10-20T12:00:00.000Z" };
 const run = (...results: Array<[title: string, status: string]>): VitestJson => ({
   testResults: [{ assertionResults: results.map(([title, status]) => ({ title, fullName: title, ancestorTitles: [], status })) }],
 });
-const check = (json: VitestJson, notEvent: string[] = []) => checkA17Report(json, { ...meta, notEvent });
+const check = (json: VitestJson, notEvent: string[] = []) => checkA17Report(json, { ...meta, notEvent: notEvent.map((title) => ({ title })) });
 
 describe("checkA17Report", () => {
   it("is ok when both modes of a case passed", () => {
@@ -65,6 +65,18 @@ describe("checkA17Report", () => {
 
     expect(report.notEvent).toEqual(["a rate-limited probe never rolls back"]);
     expect(report.ok).toBe(true);
+  });
+
+  it("matches an allow-listed describe title that is a prefix of the full test name", () => {
+    const json: VitestJson = {
+      testResults: [
+        { assertionResults: [{ title: "A17: probe stays quiet", fullName: "systemDeployPorts healthWithin (A17: probe stays quiet", ancestorTitles: ["systemDeployPorts healthWithin (A17: probe"], status: "passed" }] },
+      ],
+    };
+
+    const report = check(json, ["systemDeployPorts healthWithin (A17:"]);
+
+    expect(report).toMatchObject({ notEvent: ["systemDeployPorts healthWithin (A17:"], oneMode: [] });
   });
 
   it("treats a suffix-less A17 title outside the allow-list as a one-mode case", () => {
