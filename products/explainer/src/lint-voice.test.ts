@@ -104,6 +104,10 @@ describe("spoken register", () => {
     expect(voice(beats).get("Q-V5")?.detail_beats ?? []).not.toContain("w2");
   });
 
+  it("Q-V1 lets the narrator say let us follow", () => {
+    expect(voice(spoken("w2", "Let us follow one scan to the desk. We can trace it from there.")).get("Q-V1")?.detail_beats ?? []).not.toContain("w2");
+  });
+
   it("Q-V5 still counts a maker we as off the project", () => {
     const beats = spoken("w2", Array(12).fill("We built the scanner. Our team chose the desk.").join(" "));
 
