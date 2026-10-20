@@ -231,10 +231,10 @@ describe("paceCheck as an L0 check", () => {
     );
 
   const expectPaceFailedAndOthersReported = (results: ReturnType<typeof runL0>) => {
-    const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10", "Q-E11", "Q-E12", "Q-E13", "Q-E14"].includes(r.check_id));
+    const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10", "Q-E11", "Q-E12", "Q-E13", "Q-E14", "Q-E19"].includes(r.check_id));
 
     expect(results.map((r) => r.check_id)).toEqual(expect.arrayContaining(["Q-E1", "Q-F1"]));
-    expect(pace).toHaveLength(8);
+    expect(pace).toHaveLength(9);
     expect(pace.every((r) => !r.pass && r.detail_beats.join() === "c2-1-stations")).toBe(true);
     expect(l0HardPass(results.filter((r) => r.check_id === "Q-E7"))).toBe(false);
   };
@@ -249,5 +249,33 @@ describe("paceCheck as an L0 check", () => {
     const timing = readTiming({ beats: [{ id: "c2-1-stations", durationS: 9, words: [{ word: "every", start: 0 }, { word: "desk", start: 1.2 }] }] });
 
     expectPaceFailedAndOthersReported(runL0(oneCue("row:scanner"), undefined, L0_CHECKS, timing));
+  });
+});
+
+describe("Q-E19 declared new_terms versus on-screen items", () => {
+  const withReveals = (newTerms: string[]) =>
+    ScriptSchema.parse(
+      scriptWith({
+        new_terms: newTerms,
+        visual: {
+          assertion: "One server sits between every scanner and the ledger",
+          job: "map",
+          cues: ["Scanner", "Desk server", "Ledger"].map((label, i) => ({ action: "V11", target: `row:${label}`, atCue: ["every", "scan", "passes"][i] })),
+        },
+      }),
+    );
+  const q19 = (script: ReturnType<typeof withReveals>) => runL0(script).find((r) => r.check_id === "Q-E19");
+
+  it("warns, naming the beat, when 3 items are revealed and new_terms is empty", () => {
+    expect(q19(withReveals([]))).toMatchObject({ pass: false, severity: "warning", detail_beats: ["c2-1-stations"] });
+  });
+
+  // Mutation: comparing labels case-sensitively flags `scanner` against `Scanner`.
+  it("passes when new_terms lists them, whatever the case", () => {
+    expect(q19(withReveals(["scanner", "DESK SERVER", " Ledger "]))).toMatchObject({ pass: true, detail_beats: [] });
+  });
+
+  it("still warns when new_terms omits one of them", () => {
+    expect(q19(withReveals(["Scanner", "Ledger"]))).toMatchObject({ pass: false, detail_beats: ["c2-1-stations"] });
   });
 });
