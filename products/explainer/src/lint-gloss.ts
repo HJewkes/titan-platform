@@ -91,6 +91,14 @@ const spokenLater = (beats: readonly PaceBeat[], index: number, chapter: string)
 // of the count rather than scored as named only or as explained.
 const measurable = (beat: PaceBeat): PaceItem[] => beat.newItems.filter((i) => contentTerms(i.label).size > 0);
 
+/** Each measurable new item's own clause, keyed by label, read as the route reads it. */
+export function itemClauses(beat: PaceBeat): Map<string, string | undefined> {
+  const items = measurable(beat);
+  const clauses = clausesOf(beat.spoken);
+  const shared = sharedCues(items);
+  return new Map(items.map((i) => [i.label, ownClause(i, clauses, shared)]));
+}
+
 function beatRoute(beats: readonly PaceBeat[], beat: PaceBeat, index: number): ExplainRoute | undefined {
   const items = measurable(beat);
   if (items.length < MIN_NEW_ITEMS) return undefined;
