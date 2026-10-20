@@ -9,9 +9,11 @@ import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
 import { migrateSpike } from "./migrate.js";
+import { SPINE_CHECK_IDS } from "./lint-spine.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
+import { parseSpine } from "./spine-schema.js";
 import { readTiming } from "./timing.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -25,6 +27,7 @@ interface L0Flags {
   parent?: string;
   layout?: string;
   timing?: string;
+  spine?: string;
   failOnGhosts?: boolean;
   format: ScriptFormat;
 }
@@ -44,12 +47,12 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 
 /**
  * Check ids a rule claims that no run check emitted, one string per rule and id. The map lints
- * emit nothing without a layout, so their ids are not ghosts in a layout-free run.
+ * emit nothing without a layout, and the spine lints nothing without a spine, so those ids are not ghosts in such a run.
  */
-function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], hasLayout: boolean): string[] {
+function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], skipped: { layout: boolean; spine: boolean }): string[] {
   const emitted = new Set(results.map((result) => result.check_id));
   const claimed = new Map(registry.rules.map((rule) => [rule.id, rule.l0?.status === "implemented" ? rule.l0.checks : (rule.l0?.partial ?? [])]));
-  const known = (id: string): boolean => emitted.has(id) || (!hasLayout && id.startsWith("map:"));
+  const known = (id: string): boolean => emitted.has(id) || (skipped.layout && id.startsWith("map:")) || (skipped.spine && SPINE_CHECK_IDS.has(id));
   return unimplementedL0Rules(registry, new Set([...emitted, ...[...claimed.values()].flat().filter(known)])).flatMap((ruleId) =>
     [...new Set((claimed.get(ruleId) ?? []).filter((id) => !known(id)))].map((id) => `${ruleId}: claimed check id ${id} is never emitted`),
   );
@@ -67,14 +70,15 @@ function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
   const parsed = parseRuleRegistry(registry.toString("utf8"));
   const rules = rulesSha(registry);
   const timing = flags.timing ? readTiming(readJson(flags.timing)) : undefined;
+  const spine = flags.spine ? parseSpine(readFileSync(flags.spine, "utf8")) : undefined;
   const sha = freezeScript(bench, raw, flags.parent ?? null);
-  const results = runL0(script, layout, deps.checks, timing);
+  const results = runL0(script, layout, deps.checks, timing, spine);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
   const pass = l0HardPass(results);
   console.log(JSON.stringify({ script_sha: sha, rules_sha: rules, pass, checks: results.length, failed: failedChecks(results) }));
-  const ghosts = ghostCheckIds(parsed, results, layout !== undefined);
+  const ghosts = ghostCheckIds(parsed, results, { layout: layout === undefined, spine: spine === undefined });
   ghosts.forEach((ghost) => console.error(`warning: ghost L0 check: ${ghost}`));
   return pass && !(flags.failOnGhosts && ghosts.length > 0);
 }
@@ -89,6 +93,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--parent <sha>", "script_sha this script was derived from")
     .option("--layout <file>", "map layout JSON; without it the map lints are skipped")
     .option("--timing <file>", "words.json (or a durations-only extract); the pace lints read its heard durations, not plannedS")
+    .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
     .exitOverride()

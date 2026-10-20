@@ -134,6 +134,13 @@ that shows a new item the ledger lacks, or first shows an item whose defining be
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
 
+`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 (FB1)
+fails a chapter whose §8 row cites a §4 architecture row before the first chapter that cites a §3
+journey row, and a journey step whose "why" is empty; chapters are ordered by position in §8, never by
+id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`) that no §4 row states a
+mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
+reads the spine for all of these; without `--spine` a rule claiming Q-E15 or Q-E18 is not a ghost.
+
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
 (`fixtures/spike/redesign-explainer-v4/labels.json` for v4, `fixtures/spike/pipeline-explainer/labels.json`
