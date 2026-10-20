@@ -9,6 +9,7 @@ import { paceCheck } from "./lint-pace.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
+import { v4FullScript } from "./spike-fixtures.test-helpers.js";
 
 const RULES = "schema: rules/v1\nrules:\n  - { id: Q-D2, rule: one job per beat, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: pending, owner: SQ5 } }\n";
 const fourBoxes = scriptWith({
@@ -158,5 +159,29 @@ describe("explainer eval l0", () => {
       expect(code).toBe(0);
       expect(warnings()).toEqual([]);
     });
+  });
+});
+
+describe("explainer eval l0 --format", () => {
+  const spikeL0 = (script: string, ...extra: string[]) =>
+    runEvalCli(["eval", "l0", script, "--config", "spike/v4", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock() });
+  const checkIds = () => new Set(structureLines().slice(1).map((line) => line.split("\t")[3]));
+
+  // Mutation: defaulting --format to v1 for this call makes ScriptSchema throw on the spike file, so the exit is 2.
+  it("runs the voice, flow and pace checks on a spike script", async () => {
+    const code = await spikeL0(write("spike.json", v4FullScript()), "--format", "spike");
+
+    expect(code).toBe(1);
+    expect([...checkIds()]).toEqual(expect.arrayContaining(["Q-V1", "Q-F1", "Q-E7"]));
+  });
+
+  it("reads a spike script as script/v1 by default and exits 2", async () => {
+    const code = await spikeL0(write("spike.json", v4FullScript()));
+
+    expect(code).toBe(2);
+  });
+
+  it("rejects an unknown format", async () => {
+    expect(await spikeL0(write("spike.json", v4FullScript()), "--format", "tour")).toBe(2);
   });
 });
