@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
+import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -31,6 +32,8 @@ export interface InboxItem extends OwnerItem {
   action: InboxAction;
   /** A held gate's own action, taken once the hold is released. */
   then?: InboxAction;
+  /** Every other gate on the item's PR at its live head; only a hitl item joined to a pinned live row has one. */
+  gates?: GateStrip;
   evidence: string | undefined;
 }
 
@@ -58,9 +61,6 @@ const MERGE_STEP = "approve-merge";
 const HARDWARE_STEP = /device|hardware/;
 const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
-
-/** Read as Shepherd's `holdClassOf` reads it: the text before the first colon, untrimmed. */
-const holdClassOf = (reason: string): string | undefined => (reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : undefined);
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 function gateParts(gateId: string): { runId: string; stepId: string } | undefined {
@@ -157,10 +157,11 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   return runId === undefined ? undefined : rows.get(runId.toLowerCase());
 }
 
-function inboxItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): InboxItem {
+function inboxItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>, strips: ReadonlyMap<string, GateStrip>): InboxItem {
   const row = rowOfItem(item, rows);
   const evidence = evidenceOf(item, row);
-  return { ...item, section: sectionOf(item), ...actionFor(item, row, evidence), evidence };
+  const gates = row === undefined ? undefined : strips.get(row.runId);
+  return { ...item, section: sectionOf(item), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
 }
 
 /** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
@@ -170,9 +171,17 @@ function byInboxOrder(a: InboxItem, b: InboxItem): number {
   return opened !== 0 ? opened : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[]): InboxItem[] {
-  const byRun = new Map(rows.map((row) => [row.runId.toLowerCase(), row]));
-  return order.map((item) => inboxItem(item, byRun)).sort(byInboxOrder);
+const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(rows.map((row) => [row.runId.toLowerCase(), row]));
+
+export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], strips: ReadonlyMap<string, GateStrip> = new Map()): InboxItem[] {
+  const byRun = byRunId(rows);
+  return order.map((item) => inboxItem(item, byRun, strips)).sort(byInboxOrder);
+}
+
+/** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
+function joinedRows(order: readonly OwnerItem[], rows: readonly WatchRow[]): WatchRow[] {
+  const byRun = byRunId(rows);
+  return [...new Set(order.flatMap((item) => rowOfItem(item, byRun) ?? []))];
 }
 
 interface Read<T> {
@@ -188,9 +197,11 @@ async function readOrGap<T>(label: string, read: () => Promise<T>, fallback: T):
   }
 }
 
-async function readOwnerQueue({ shepherd, ...sources }: InboxSources): Promise<{ list: InboxList; live: Read<WatchRow[]> }> {
+async function readOwnerQueue({ shepherd, ...sources }: InboxSources, strips?: GateStripReader): Promise<{ list: InboxList; live: Read<WatchRow[]> }> {
   const [approvals, live] = await Promise.all([readFlow(sources), readOrGap("shepherd", () => shepherd.list("active"), [])]);
-  const list = { items: inboxItems(approvals.flow.order, live.value), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
+  const order = approvals.flow.order;
+  const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
+  const list = { items: inboxItems(order, live.value, gates), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
   return { list, live };
 }
 
@@ -212,21 +223,23 @@ async function readDerived({ shepherd, agents, now = Date.now }: InboxSources, l
   return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? [])] };
 }
 
-async function readInboxView(sources: InboxSources): Promise<InboxView> {
-  const { list, live } = await readOwnerQueue(sources);
+async function readInboxView(sources: InboxSources, strips: GateStripReader): Promise<InboxView> {
+  const { list, live } = await readOwnerQueue(sources, strips);
   const derived = await readDerived(sources, live);
   return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value };
 }
 
 export function inboxViewCommands(sources: InboxSources) {
+  const strips = gateStripReader(sources.shepherd, sources.now);
   return {
+    ...gateStripCommands(sources.shepherd, strips),
     "inbox.list": readCommand({
       name: "inbox.list",
       description:
-        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action",
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command and, for a gate on a live PR, its gate strip at that head; blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action",
       args: z.object({}),
       result: z.custom<InboxView>(),
-      run: () => readInboxView(sources),
+      run: () => readInboxView(sources, strips),
     }),
   };
 }

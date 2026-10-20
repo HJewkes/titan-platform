@@ -17,7 +17,10 @@ export type G10Action = Extract<InboxItem["action"], { kind: "hold-release" }>;
 
 export const isG10Release = (action: InboxItem["action"]): action is G10Action => action.kind === "hold-release" && Object.hasOwn(MERGES_NEEDED, action.holdClass);
 
-interface RecordedVerdict {
+/** The MERGEs a hold class releases on, or undefined for a class no reviewer verdict releases. */
+export const mergesNeededFor = (holdClass: string): number | undefined => (Object.hasOwn(MERGES_NEEDED, holdClass) ? MERGES_NEEDED[holdClass] : undefined);
+
+export interface RecordedVerdict {
   stepId: string;
   reviewer: string | null;
   verdict: "MERGE" | "FIX_FIRST";
@@ -36,7 +39,7 @@ export interface G10Signal {
 /** Pinned to the timeline's `verdict` entry; a `none` verdict, or any other entry, is no verdict to show. */
 const verdictEntry = z.looseObject({ kind: z.literal("verdict"), stepId: z.string(), verdict: z.enum(["MERGE", "FIX_FIRST"]), headSha: z.string().nullable(), reviewer: z.string().nullable() });
 
-function recordedVerdicts(entries: readonly unknown[], head: string): RecordedVerdict[] {
+export function recordedVerdicts(entries: readonly unknown[], head: string): RecordedVerdict[] {
   return entries.flatMap((entry) => {
     const parsed = verdictEntry.safeParse(entry);
     if (!parsed.success) return [];
@@ -46,7 +49,7 @@ function recordedVerdicts(entries: readonly unknown[], head: string): RecordedVe
 }
 
 /** Two MERGEs count as two only from two reviewers; one whose reviewer is not named counts once for its own step. */
-const mergesAt = (verdicts: readonly RecordedVerdict[]): number => new Set(verdicts.filter((each) => each.atHead && each.verdict === "MERGE").map((each) => each.reviewer ?? `step:${each.stepId}`)).size;
+export const mergesAt = (verdicts: readonly RecordedVerdict[]): number => new Set(verdicts.filter((each) => each.atHead && each.verdict === "MERGE").map((each) => each.reviewer ?? `step:${each.stepId}`)).size;
 
 function confirmLabelOf(merges: number, needed: number): string {
   if (merges >= needed) return "Release hold";
