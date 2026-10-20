@@ -37,10 +37,10 @@ describe("sandboxEnv", () => {
     expect(env).toEqual({ PATH: "/usr/bin", HOME: "/tmp/tree", CI: "1", PLAYWRIGHT_BROWSERS_PATH: "/opt/browsers" });
   });
 
-  it("falls back to the invoking user's default cache when the parent env names none", () => {
+  it("sets no browser path when the parent env names none", () => {
     const env = sandboxEnv("/tmp/tree", { HOME: "/home/runner" });
 
-    expect(env.PLAYWRIGHT_BROWSERS_PATH).toBe("/home/runner/.cache/ms-playwright");
+    expect(env).not.toHaveProperty("PLAYWRIGHT_BROWSERS_PATH");
     expect(env.HOME).toBe("/tmp/tree");
   });
 });

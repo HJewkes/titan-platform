@@ -1,5 +1,3 @@
-import * as os from "node:os";
-
 /** The exec flag naming the sandbox user; fix-proof-run.sh greps every merge-base dist/*.js chunk for it to tell an old runner apart. */
 export const SANDBOX_FLAG = "sandbox-user";
 /** A plain login name, so the value can never read as an option or carry shell syntax into sudo's argv. */
@@ -38,15 +36,11 @@ export function sandboxCommand(
 }
 
 /**
- * The sandboxed run's whole environment. HOME is the tree, so Playwright would look for browsers in a cache that
- * does not exist; the invoking user's cache is named explicitly instead.
+ * The sandboxed run's whole environment. HOME is the tree, so a browser cache must be named explicitly, and only the
+ * runner's own value is forwarded: the sandbox user cannot read the runner's home, so a guessed default would not help.
  */
 export function sandboxEnv(tree: string, parent: Readonly<Record<string, string | undefined>>): Record<string, string> {
-  const home = parent.HOME ?? os.homedir();
-  return {
-    PATH: parent.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-    HOME: tree,
-    CI: "1",
-    PLAYWRIGHT_BROWSERS_PATH: parent.PLAYWRIGHT_BROWSERS_PATH ?? `${home}/.cache/ms-playwright`,
-  };
+  const env: Record<string, string> = { PATH: parent.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: tree, CI: "1" };
+  if (parent.PLAYWRIGHT_BROWSERS_PATH !== undefined) env.PLAYWRIGHT_BROWSERS_PATH = parent.PLAYWRIGHT_BROWSERS_PATH;
+  return env;
 }
