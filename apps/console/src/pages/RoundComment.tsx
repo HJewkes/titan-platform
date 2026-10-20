@@ -31,6 +31,11 @@ export function SentComment({ questionId, text }: { questionId: string; text: st
   return <SentText label="Your comment" text={text ?? ""} testID={`round-comment-sent-${questionId}`} />;
 }
 
+/** A sent Ship decision's pick as feedback.json holds it, read-only; the outcome above says what the factory did with it. */
+export function SentPick({ questionId, pick }: { questionId: string; pick: string | undefined }): ReactNode {
+  return <SentText label="Your answer" text={pick ?? ""} testID={`round-pick-sent-${questionId}`} />;
+}
+
 /** A sent round's `general` text, read-only. */
 export function SentGeneral({ text }: { text: string | undefined }): ReactNode {
   return <SentText label="Your feedback on this round" text={text ?? ""} testID="round-general-sent" />;

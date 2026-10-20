@@ -31,17 +31,17 @@ import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
-import { buildRoundFeedback, feedbackProblems } from "./round-feedback.js";
+import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
-import { SubmittedAnswer } from "./round2-adapter.js";
+import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
+import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
-export const ADDRESSED_FILE = "addressed.json";
-const ADDRESSED_SCHEMA_ID = "titan-console/addressed@1";
+export { ADDRESSED_FILE };
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 
@@ -58,6 +58,8 @@ const submitArgs = z.strictObject({
   addressed: z.array(z.number().int()).max(100).default([]),
   /** The side questions the owner marked follow-up: filed for later, never blocking Ship. */
   followUps: z.array(z.string().min(1)).max(100).default([]),
+  /** The owner's verdict, comment and pins per frame (TP-3773); a frame left out is echoed undecided. */
+  variants: z.array(PostedVariant).max(200).default([]),
 });
 
 type SubmitArgs = z.infer<typeof submitArgs>;
@@ -154,6 +156,19 @@ function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
     seen.add(answer.questionId);
     const problem = answerProblem(question, answer);
     if (problem !== null) refuse(`question "${answer.questionId}": ${problem}`);
+  }
+}
+
+/** Each posted frame is one of the round's, once, and each of its pins is numbered on that frame. */
+function checkVariants(manifest: Manifest, variants: readonly PostedVariant[]): void {
+  const keys = new Set(manifest.variants.map((variant) => variant.key));
+  const seen = new Set<string>();
+  for (const { key, annotations = [] } of variants) {
+    if (!keys.has(key)) refuse(`no frame "${key}" in this round`);
+    if (seen.has(key)) refuse(`frame "${key}" is sent twice`);
+    seen.add(key);
+    const stray = annotations.find((pin, index) => !isPinOf(key, pin.id) || annotations.findIndex((each) => each.id === pin.id) !== index);
+    if (stray !== undefined) refuse(`frame "${key}": pin "${stray.id}" is not a pin of its own, numbered once`);
   }
 }
 
@@ -282,6 +297,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
+  checkVariants(manifest, args.variants);
   const shipped = shippedHeads(manifest, args);
   if (shipped.length > 0) await refuseBlockedShip(source, manifest, args, shipped);
   refuseSendBackWithoutNote(manifest, args);

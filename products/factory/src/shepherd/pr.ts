@@ -204,19 +204,21 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     historyNext: () => ctx.historyNext(),
     resumedGate: () => ctx.resumedGate(),
     recoveredInFlight: () => ctx.recoveredInFlight(),
+    capability: (name) => ctx.capability(name),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
       packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
       reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
-    dispatch: async (stepId, template, options) => {
-      const done = await ctx.dispatch(stepId, template, options);
-      if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
-      if (stepIdMatches("update-branch", stepId)) onUpdated(run, done.data?.result);
-      return done;
-    },
+    dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),
   };
+}
+
+async function readDispatch<R extends { data?: { result?: unknown } }>(run: ShepherdRun, stepId: string, done: R): Promise<R> {
+  if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
+  if (stepIdMatches("update-branch", stepId)) onUpdated(run, done.data?.result);
+  return done;
 }
 
 /** A reviewable head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */

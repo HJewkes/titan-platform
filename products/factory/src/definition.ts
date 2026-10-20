@@ -67,6 +67,7 @@ export function guardedContext(ctx: WorkflowContext, definition: WorkflowDefinit
     workflowName: ctx.workflowName,
     signal: ctx.signal,
     param: (key) => ctx.param(key),
+    capability: (name) => ctx.capability(name),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
     resumedGate: () => ctx.resumedGate(),
