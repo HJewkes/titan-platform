@@ -16,12 +16,22 @@ export function orderedQuestions(manifest: Manifest): { section: RoundSection | 
   return loose.length > 0 ? [...sections, { section: null, questions: loose }] : sections;
 }
 
-/** The page's picks, text, comments and option notes, and the active question that digit keys answer: at first the first one with choices. */
+/** A Ship round's Addressed ticks on earlier rounds (TP-3741) and the questions marked follow-up (TP-3346). */
+function useShipMarks() {
+  const [addressed, setAddressed] = useState<number[]>([]);
+  const [followUps, setFollowUps] = useState<string[]>([]);
+  const toggleAddressed = useCallback((round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]), []);
+  const setFollowUp = useCallback((questionId: string, followUp: boolean) => setFollowUps((current) => [...current.filter((each) => each !== questionId), ...(followUp ? [questionId] : [])]), []);
+  return { addressed, toggleAddressed, followUps, setFollowUp };
+}
+
+/** The page's picks, text, comments, option notes and Ship marks, and the active question that digit keys answer: at first the first one with choices. */
 export function useRoundAnswers(questions: readonly Question[]) {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
   const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>({});
   const [general, setGeneral] = useState("");
+  const marks = useShipMarks();
   const [activeId, setActiveId] = useState(() => questions.find((question) => choicesOf(question).length > 0)?.id);
   const active = questions.find((question) => question.id === activeId);
   const choose = useCallback(
@@ -37,7 +47,7 @@ export function useRoundAnswers(questions: readonly Question[]) {
   );
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note };
+  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note, ...marks };
 }
 
 export type RoundAnswers = ReturnType<typeof useRoundAnswers>;
@@ -54,7 +64,7 @@ interface RoundSectionsProps {
 }
 
 /** One question's A/B notes and "Neither" from the page's answers; choosing Neither makes the question the active one. */
-function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAnswers, question: Question, sent: boolean): ABAnswering {
+export function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAnswers, question: Question, sent: boolean): ABAnswering {
   return {
     notes: optionNotes[question.id] ?? {},
     onNote: (option, text) => note(question, option, text),
