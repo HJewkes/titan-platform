@@ -67,8 +67,8 @@ describe("a question with frames", () => {
     const card = questionCard("glow-pick");
     const back = within(card).getAllByText("To its question");
     expect(back.map((link) => targetOf(link)?.id)).toEqual([questionAnchor("glow-pick"), questionAnchor("glow-pick")]);
-    const frameLinks = within(card).getByText("Frames:").parentElement as HTMLElement;
-    expect(targetOf(within(frameLinks).getByText("As built"))?.id).toBe(frameAnchor("glow-pick", "lamp-built"));
+    const toFrame = within(card).getAllByRole("link").find((link) => link.textContent === "As built");
+    expect(toFrame && targetOf(toFrame)?.id).toBe(frameAnchor("glow-pick", "lamp-built"));
   });
 
   it("names the frame each option picks", () => {
