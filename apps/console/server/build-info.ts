@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { readCommand } from "./owner-guard.js";
@@ -34,6 +34,23 @@ interface GitFacts {
 
 export function buildInfoOf(git: GitFacts, now: Date): BuildInfo {
   return buildInfoSchema.parse({ sha: git.head.trim(), builtAt: now.toISOString(), dirty: git.status.trim() !== "" });
+}
+
+/**
+ * Stamps the commit the dist was built from. A build must not fail because git is unavailable (no `.git`,
+ * or a checkout owned by another user), so then the file is removed, never left stale, and readers see
+ * the unstamped build they already handle.
+ */
+export function stampBuildInfo(git: (args: string[]) => string, file: string, now: Date, warn: (message: string) => void): BuildInfo | null {
+  try {
+    const info = buildInfoOf({ head: git(["rev-parse", "HEAD"]), status: git(["status", "--porcelain", "--untracked-files=no"]) }, now);
+    writeFileSync(file, `${JSON.stringify(info, null, 2)}\n`);
+    return info;
+  } catch (error) {
+    rmSync(file, { force: true });
+    warn(`build not stamped: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+    return null;
+  }
 }
 
 export function buildInfoCommands(file: string = BUILD_INFO_FILE) {
