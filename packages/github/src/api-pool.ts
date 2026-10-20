@@ -82,107 +82,128 @@ export function isPoolUnavailable(value: unknown): value is PoolUnavailable {
 }
 
 export function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A> {
-  const { identity, send, clock } = options;
-  const store = options.state ?? memoryPoolStateStore();
-  const waiting: Waiter<C, A>[] = [];
-  const lane = { busy: false, lastStart: Number.NEGATIVE_INFINITY };
-  let seq = 0;
-  let pumpQueued = false;
-  let wakeAt: number | null = null;
-
-  const pairOf = (callClass: CallClass) => store.get(identity, callClass) ?? OPEN;
-  const closedUntil = (callClass: CallClass, now: number) => {
-    const pair = pairOf(callClass);
-    return pair.state === "closed" && pair.resetAt > now ? pair.resetAt : null;
+  const core: PoolCore<C, A> = {
+    ...options,
+    store: options.state ?? memoryPoolStateStore(),
+    waiting: [],
+    lane: { busy: false, lastStart: Number.NEGATIVE_INFINITY },
+    seq: 0,
+    pumpQueued: false,
+    wakeAt: null,
   };
-
-  function gate(waiter: Waiter<C, A>, now: number): Gate {
-    const own = closedUntil(waiter.callClass, now);
-    if (own !== null) return { grant: false, wakeAt: own };
-    if (waiter.priority !== 1) {
-      const others = CALL_CLASSES.map((callClass) => closedUntil(callClass, now)).filter((at): at is number => at !== null);
-      if (others.length > 0) return { grant: false, wakeAt: Math.min(...others) };
-    }
-    if (waiter.callClass !== "mutation") return { grant: true };
-    if (lane.busy) return { grant: false, wakeAt: null };
-    const spacedAt = lane.lastStart + MUTATION_SPACING_MS;
-    return spacedAt > now ? { grant: false, wakeAt: spacedAt } : { grant: true };
-  }
-
-  function pump(): void {
-    pumpQueued = false;
-    const now = clock.now();
-    let nextWake: number | null = null;
-    waiting.sort((a, b) => a.priority - b.priority || a.seq - b.seq);
-    for (const waiter of [...waiting]) {
-      const decision = gate(waiter, now);
-      if (decision.grant) {
-        waiting.splice(waiting.indexOf(waiter), 1);
-        start(waiter, now);
-      } else if (decision.wakeAt !== null) {
-        nextWake = Math.min(nextWake ?? decision.wakeAt, decision.wakeAt);
-      }
-    }
-    if (nextWake !== null) armWake(nextWake, now);
-  }
-
-  function schedulePump(): void {
-    if (pumpQueued) return;
-    pumpQueued = true;
-    queueMicrotask(pump);
-  }
-
-  function armWake(at: number, now: number): void {
-    if (wakeAt !== null && wakeAt <= at) return;
-    wakeAt = at;
-    void clock.sleep(at - now).then(() => {
-      if (wakeAt === at) wakeAt = null;
-      schedulePump();
-    });
-  }
-
-  function start(waiter: Waiter<C, A>, now: number): void {
-    const holdsLane = waiter.callClass === "mutation";
-    if (holdsLane) Object.assign(lane, { busy: true, lastStart: now });
-    send(waiter.call)
-      .then((answer) => settle(waiter.callClass, answer))
-      .then(waiter.resolve, waiter.reject)
-      .finally(() => {
-        if (holdsLane) lane.busy = false;
-        schedulePump();
-      });
-  }
-
-  function settle(callClass: CallClass, answer: A): A | PoolUnavailable {
-    const prior = pairOf(callClass);
-    const now = clock.now();
-    const failure = classify(callClass, answer, prior.streak, now);
-    if (failure.kind === "ok") {
-      if (prior.state !== "open" || prior.streak !== 0) store.set(identity, callClass, OPEN);
-      return answer;
-    }
-    if (failure.kind !== "unavailable") return answer;
-    // A call already in flight when its pair tripped hit the same limit; it must not double the streak again.
-    if (prior.state === "closed" && prior.resetAt > now) return unavailableOf(callClass, prior);
-    const closed: PoolPairState = {
-      state: "closed",
-      resetAt: failure.resetAt,
-      streak: prior.streak + 1,
-      bucket: failure.bucket,
-      reason: failure.reason ?? `${failure.bucket} limited (${failure.source})`,
-    };
-    store.set(identity, callClass, closed);
-    return unavailableOf(callClass, closed);
-  }
-
   return {
     run(priority, callClass, call) {
       return new Promise((resolve, reject) => {
-        waiting.push({ priority, callClass, seq: seq++, call, resolve, reject });
-        schedulePump();
+        core.waiting.push({ priority, callClass, seq: core.seq++, call, resolve, reject });
+        schedulePump(core);
       });
     },
   };
+}
+
+/** The part of a pool's state that reads and writes pairs; it does not depend on the call and answer types. */
+interface PairView {
+  identity: string;
+  clock: PoolClock;
+  store: PoolStateStore;
+  lane: { busy: boolean; lastStart: number };
+}
+
+interface PoolCore<C, A extends PoolAnswer> extends PairView {
+  send: (call: C) => Promise<A>;
+  waiting: Waiter<C, A>[];
+  seq: number;
+  pumpQueued: boolean;
+  wakeAt: number | null;
+}
+
+function pairOf(core: PairView, callClass: CallClass): PoolPairState {
+  return core.store.get(core.identity, callClass) ?? OPEN;
+}
+
+function closedUntil(core: PairView, callClass: CallClass, now: number): number | null {
+  const pair = pairOf(core, callClass);
+  return pair.state === "closed" && pair.resetAt > now ? pair.resetAt : null;
+}
+
+function gate(core: PairView, waiter: { priority: PoolPriority; callClass: CallClass }, now: number): Gate {
+  const own = closedUntil(core, waiter.callClass, now);
+  if (own !== null) return { grant: false, wakeAt: own };
+  if (waiter.priority !== 1) {
+    const others = CALL_CLASSES.map((callClass) => closedUntil(core, callClass, now)).filter((at): at is number => at !== null);
+    if (others.length > 0) return { grant: false, wakeAt: Math.min(...others) };
+  }
+  if (waiter.callClass !== "mutation") return { grant: true };
+  if (core.lane.busy) return { grant: false, wakeAt: null };
+  const spacedAt = core.lane.lastStart + MUTATION_SPACING_MS;
+  return spacedAt > now ? { grant: false, wakeAt: spacedAt } : { grant: true };
+}
+
+function pump<C, A extends PoolAnswer>(core: PoolCore<C, A>): void {
+  core.pumpQueued = false;
+  const now = core.clock.now();
+  let nextWake: number | null = null;
+  core.waiting.sort((a, b) => a.priority - b.priority || a.seq - b.seq);
+  for (const waiter of [...core.waiting]) {
+    const decision = gate(core, waiter, now);
+    if (decision.grant) {
+      core.waiting.splice(core.waiting.indexOf(waiter), 1);
+      start(core, waiter, now);
+    } else if (decision.wakeAt !== null) {
+      nextWake = Math.min(nextWake ?? decision.wakeAt, decision.wakeAt);
+    }
+  }
+  if (nextWake !== null) armWake(core, nextWake, now);
+}
+
+function schedulePump<C, A extends PoolAnswer>(core: PoolCore<C, A>): void {
+  if (core.pumpQueued) return;
+  core.pumpQueued = true;
+  queueMicrotask(() => pump(core));
+}
+
+function armWake<C, A extends PoolAnswer>(core: PoolCore<C, A>, at: number, now: number): void {
+  if (core.wakeAt !== null && core.wakeAt <= at) return;
+  core.wakeAt = at;
+  void core.clock.sleep(at - now).then(() => {
+    if (core.wakeAt === at) core.wakeAt = null;
+    schedulePump(core);
+  });
+}
+
+function start<C, A extends PoolAnswer>(core: PoolCore<C, A>, waiter: Waiter<C, A>, now: number): void {
+  const holdsLane = waiter.callClass === "mutation";
+  if (holdsLane) Object.assign(core.lane, { busy: true, lastStart: now });
+  core
+    .send(waiter.call)
+    .then((answer) => settle(core, waiter.callClass, answer))
+    .then(waiter.resolve, waiter.reject)
+    .finally(() => {
+      if (holdsLane) core.lane.busy = false;
+      schedulePump(core);
+    });
+}
+
+function settle<A extends PoolAnswer>(core: PairView, callClass: CallClass, answer: A): A | PoolUnavailable {
+  const prior = pairOf(core, callClass);
+  const now = core.clock.now();
+  const failure = classify(callClass, answer, prior.streak, now);
+  if (failure.kind === "ok") {
+    if (prior.state !== "open" || prior.streak !== 0) core.store.set(core.identity, callClass, OPEN);
+    return answer;
+  }
+  if (failure.kind !== "unavailable") return answer;
+  // A call already in flight when its pair tripped hit the same limit; it must not double the streak again.
+  if (prior.state === "closed" && prior.resetAt > now) return unavailableOf(callClass, prior);
+  const closed: PoolPairState = {
+    state: "closed",
+    resetAt: failure.resetAt,
+    streak: prior.streak + 1,
+    bucket: failure.bucket,
+    reason: failure.reason ?? `${failure.bucket} limited (${failure.source})`,
+  };
+  core.store.set(core.identity, callClass, closed);
+  return unavailableOf(callClass, closed);
 }
 
 function unavailableOf(callClass: CallClass, pair: PoolPairState): PoolUnavailable {
