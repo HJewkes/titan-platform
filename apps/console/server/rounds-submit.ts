@@ -37,7 +37,7 @@ import { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { shipBlockers } from "./ship-blockers.js";
+import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 export const ADDRESSED_FILE = "addressed.json";
@@ -185,7 +185,20 @@ async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args:
   if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
 }
 
-const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
+/** A merge-bound question answered with anything but its Ship option: a pick outside `ship`, or a revision request. */
+function sendsBack(manifest: Manifest, answers: readonly SubmittedAnswer[]): boolean {
+  return manifest.questions.some(
+    (question) => question.kind === "pick-one" && question.merge !== undefined &&
+      answers.some((answer) => answer.questionId === question.id && (answer.revisionRequested === true || (answer.pick !== undefined && !question.merge?.ship.includes(answer.pick)))),
+  );
+}
+
+function refuseEmptySendBack(manifest: Manifest, args: SubmitArgs): void {
+  const blocker = sendsBack(manifest, args.answers) ? sendBackBlocker(manifest, args) : undefined;
+  if (blocker !== undefined) refuse(`Send back refused: ${blocker}`);
+}
+
+const errnoOf =(error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 
 /** Null when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
 async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
@@ -251,6 +264,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   checkFollowUps(manifest, args.followUps);
   const headSha = shippedHead(manifest, args);
   if (headSha !== null) await refuseBlockedShip(source, manifest, args);
+  refuseEmptySendBack(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };
