@@ -35,6 +35,8 @@ export interface ConsoleConfig {
   agentChatTokenPath: string;
   /** agent-chat's event log, which agents.messages pages through read-only. */
   agentChatEventsDbPath: string;
+  /** The agent-chat CLI that tells a seat its decision round was answered; absent, no seat is told. */
+  agentChatBin?: string;
   /** Which seat owns the agents named `<prefix>-...`. */
   seatPrefixes: SeatPrefix[];
   sessionGraphPath: string;
@@ -128,6 +130,7 @@ export function resolveConfig(
     factoryPort: portFrom(env, "TITAN_CONSOLE_FACTORY_PORT", FACTORY_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
+    agentChatBin: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_BIN || "agent-chat", home),
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
