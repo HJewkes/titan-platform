@@ -96,7 +96,7 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   const units = prUnits(round.manifest, merges);
   // Locked, no question is handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)));
+  const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)), round.notes);
   const verdicts = useVerdicts();
   const answers = draftAnswers(round, units, side, verdicts);
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
@@ -207,7 +207,7 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
 /** Sent, what the owner chose for this PR: from the round's feedback once it reloads, from the page until then. */
 function PrSent({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNode {
   const { question, pr } = unit;
-  const pick = state.round.notes?.picks?.[question.id] ?? state.answers.find((answer) => answer.questionId === question.id)?.pick;
+  const pick = state.round.notes?.answers[question.id]?.pick ?? state.answers.find((answer) => answer.questionId === question.id)?.pick;
   const shipped = pick !== undefined && question.merge.ship.includes(pick);
   const message = pick === undefined ? `${pr}: no answer recorded` : shipped ? `${pr}: shipped at ${sha7(question.merge.headSha)}; the factory merges it at that head` : `${pr}: sent back`;
   return (

@@ -6,10 +6,12 @@ interface ShipPriorFeedbackProps {
   items: readonly PriorFeedback[];
   addressed: readonly number[];
   onToggle: (round: number, checked: boolean) => void;
+  /** Sent or sending: the ticks show as sent and take no more presses. */
+  locked?: boolean;
 }
 
 /** The owner's earlier feedback on this unit, each to be ticked Addressed before Ship is offered. */
-export function ShipPriorFeedback({ items, addressed, onToggle }: ShipPriorFeedbackProps): ReactNode {
+export function ShipPriorFeedback({ items, addressed, onToggle, locked = false }: ShipPriorFeedbackProps): ReactNode {
   if (items.length === 0) return null;
   return (
     <VStack gap={3} testID="ship-prior-feedback">
@@ -26,7 +28,8 @@ export function ShipPriorFeedback({ items, addressed, onToggle }: ShipPriorFeedb
                 accessibilityLabel={`Round ${item.round} feedback addressed`}
                 isChecked={addressed.includes(item.round)}
                 aria-checked={addressed.includes(item.round)}
-                onCheckedChange={(checked) => onToggle(item.round, checked)}
+                isDisabled={locked}
+                onCheckedChange={(checked) => (locked ? undefined : onToggle(item.round, checked))}
               />
             </VStack>
           </CardContent>

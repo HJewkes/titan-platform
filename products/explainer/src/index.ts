@@ -217,6 +217,7 @@ export {
   clampSummary,
   coldEvalVersion,
   coldQuestions,
+  coldTerms,
   playbackTranscript,
   runCold,
   scoreAnswer,
@@ -227,6 +228,8 @@ export {
   type ColdQuestion,
   type ColdResult,
   type ColdScore,
+  type ColdTerms,
+  type ColdTermsInput,
   type OddOneOutPick,
 } from "./eval-cold.js";
 export {

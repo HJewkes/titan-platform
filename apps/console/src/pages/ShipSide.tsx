@@ -5,6 +5,7 @@ import type { Question } from "../../server/round-schema.js";
 import type { SubmitState } from "../data/submit.js";
 import { submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
+import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundQuestion } from "./RoundQuestion.js";
 import { abAnswering, type RoundAnswers } from "./RoundSections.js";
 import { ShipBlockedReason } from "./ShipPriorFeedback.js";
@@ -47,21 +48,10 @@ interface SideQuestionProps {
   locked: boolean;
 }
 
-/** Runs `act` only while the question is open; `inert` already stops a pointer, this stops what reaches it anyway. */
-const unlessLocked = <A extends unknown[]>(locked: boolean, act: (...args: A) => void) => (...args: A): void => {
-  if (!locked) act(...args);
-};
-
-/** The comment as sent: feedback.json's once the round is read back, the page's own while the press is in flight or just landed. */
-function sentComment(round: ValidRound, side: RoundAnswers, question: Question, locked: boolean): string | undefined {
-  if (round.notes !== undefined) return round.notes.comments[question.id] ?? "";
-  return locked ? (side.comments[question.id] ?? "").trim() : undefined;
-}
-
 export function SideQuestion({ round, question, position, side, locked }: SideQuestionProps): ReactNode {
   const { answers, comments, activeId, setActiveId, choose, write, comment } = side;
   return (
-    <div className="flex flex-col gap-2" inert={locked} data-testid={`ship-side-${question.id}`}>
+    <LockedQuestion locked={locked} testID={`ship-side-${question.id}`}>
       <RoundQuestion
         question={question}
         position={position}
@@ -72,9 +62,9 @@ export function SideQuestion({ round, question, position, side, locked }: SideQu
         onActivate={unlessLocked(locked, () => setActiveId(question.id))}
         ab={abAnswering(side, question, locked)}
       />
-      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(round, side, question, locked)} />
+      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} />
       <SideStake round={round} question={question} side={side} locked={locked} />
-    </div>
+    </LockedQuestion>
   );
 }
 
