@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
@@ -55,12 +56,15 @@ const pick = (label: string): void => {
   fireEvent.click(ramp().getByRole("radio", { name: new RegExp(label) }));
 };
 const callsNamed = ({ calls }: Rendered, name: string): unknown[] => calls.filter((call) => call.name === name).map((call) => call.args);
-const rampAnswer = (rendered: Rendered) => (callsNamed(rendered, "rounds.submit")[0] as { answers: { questionId: string }[] }).answers.find((answer) => answer.questionId === "ramp-default");
+const SentAnswers = z.object({ answers: z.array(z.looseObject({ questionId: z.string() })) });
+const rampAnswer = (rendered: Rendered) => SentAnswers.parse(callsNamed(rendered, "rounds.submit")[0]).answers.find((answer) => answer.questionId === "ramp-default");
 
 describe("revealing a withheld recommendation", () => {
   it("reveals the active question's recommendation on r, through rounds.reveal, with a Recommended badge", async () => {
     const rendered = await renderRound();
-    const { manifestSha256 } = (await getRound(source, ROUND)) as Extract<RoundDetail, { valid: true }>;
+    const detail = await getRound(source, ROUND);
+    if (!detail.valid) throw new Error(detail.reason);
+    const { manifestSha256 } = detail;
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
 
     fireEvent.keyDown(window, { key: "r" });

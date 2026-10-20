@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, HStack, Pill, Typography, VStack } from "@titan-design/react-ui";
+import { z } from "zod";
 import type { ConsoleCommands } from "../../server/commands.js";
+import { RecommendationSchema } from "../../server/review-schema-0.3/schema.js";
 import { agrees } from "../../server/round-feedback.js";
 import type { Question } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
@@ -33,6 +35,8 @@ interface Reveals {
 
 const RevealContext = createContext<Reveals | null>(null);
 
+const RevealReply = z.object({ recommendation: RecommendationSchema });
+
 const sentSeen = (round: ValidRound): Record<string, boolean> =>
   Object.fromEntries(Object.entries(round.notes?.answers ?? {}).flatMap(([id, answer]) => (answer.recommendationSeen ? [[id, true] as const] : [])));
 
@@ -44,8 +48,10 @@ function useFetchReveal(round: ValidRound, record: (questionId: string, result: 
       if (source === null || asked.current.has(questionId)) return;
       asked.current.add(questionId);
       void source.call("rounds.reveal", { id: round.id, manifestSha256: round.manifestSha256, questionId }).then((envelope) => {
-        if (!envelope.ok) asked.current.delete(questionId);
-        record(questionId, envelope.ok ? { recommendation: (envelope.data as ConsoleCommands["rounds.reveal"]["result"]).recommendation } : { error: envelope.error });
+        const reply = envelope.ok ? RevealReply.safeParse(envelope.data) : null;
+        if (!reply?.success) asked.current.delete(questionId);
+        if (reply?.success) record(questionId, { recommendation: reply.data.recommendation });
+        else record(questionId, { error: envelope.ok ? "the reply was not a recommendation" : envelope.error });
       });
     },
     [source, round.id, round.manifestSha256, record],
