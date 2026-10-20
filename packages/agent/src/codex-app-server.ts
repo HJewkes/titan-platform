@@ -71,6 +71,8 @@ export type CodexAppServerEvent =
   | ({ kind: "exit"; stderrTail: string } & CodexProcessExit);
 
 export interface CodexAppServer {
+  /** The spawned app-server process id, also its process group id; for callers that record or reap it. */
+  readonly pid: number;
   readonly initialized: CodexInitializeResult;
   readonly exited: Promise<CodexProcessExit>;
   threadStart(options?: CodexThreadOptions): Promise<CodexThreadResult>;
@@ -159,7 +161,10 @@ class AppServerClient {
   }
 
   surface(initialized: CodexInitializeResult): CodexAppServer {
+    const { pid } = this.child;
+    if (pid === undefined) throw new CodexAppServerRpcError("spawn", 0, "app-server has no pid");
     return {
+      pid,
       initialized,
       exited: this.exited,
       threadStart: async (options = {}) => readThread("thread/start", await this.request("thread/start", options)),
