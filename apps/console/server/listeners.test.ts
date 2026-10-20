@@ -78,7 +78,7 @@ function ownerContext(): ConsoleContext {
 }
 
 function submit(listeners: RoundListeners, pick = "Ship") {
-  const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick }] };
+  const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick, ...(pick === "Ship" ? {} : { comment: "Cap the jitter." }) }] };
   return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
 }
 

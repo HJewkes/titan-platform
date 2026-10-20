@@ -141,7 +141,7 @@ describe("rounds.submit", () => {
   });
 
   it("needs no head sha when the answer does not ship", async () => {
-    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }] }));
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
@@ -438,7 +438,7 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
   it("still takes a Send back while round 1 is unticked", async () => {
     const r2Sha = await sendBackThenReround();
 
-    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] });
+    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Still jittery." }] });
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
   });
@@ -452,6 +452,32 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
     expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses a Send back with no Ship comment and no round note, and writes nothing (decision 513)", async () => {
+    const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Send back needs a note: say what to fix in the Ship comment or the round note." });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("takes a Send back whose only note is the round note", async () => {
+    const { envelope } = await submit(shipArgs({ headSha: undefined, general: "Cap the jitter.", answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
+  it("takes a Send back that leaves a required side question unanswered (decision 513)", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    const required = { id: "side-clarity", kind: "scale", prompt: "How clear is the retry log?", min: 1, max: 5, required: true };
+    await writeFile(file, JSON.stringify({ ...round, questions: [...round.questions, required] }));
+    const answers = [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }];
+
+    const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)), headSha: undefined, answers }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
 
   it("accepts a Ship that leaves a required side question unanswered, as the page does (decision 166)", async () => {

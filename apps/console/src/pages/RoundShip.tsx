@@ -8,7 +8,7 @@ import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
-import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
+import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion } from "./RoundQuestion.js";
@@ -174,7 +174,7 @@ interface ShipAnswerProps {
   submitting: ReturnType<typeof useSubmit>;
 }
 
-/** The two presses' `rounds.submit` args, and why each is off: Ship by its blockers, Send back by a required question or a note the fixer would find empty. */
+/** The two presses' `rounds.submit` args, and why each is off: Ship by its blockers, Send back until the fixer would get a note. */
 function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string) {
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
@@ -187,13 +187,12 @@ function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProp
     shipArgs,
     backArgs,
     canSendBack: sendBack !== undefined,
-    missing: missingRequired(sideQuestions, sideAnswers),
     blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps }),
-    emptyNote: sendBackBlocker({ answers: backArgs.answers, general: sent.general, followUps: side.followUps }),
+    noNote: sendBackBlocker(round.manifest, backArgs),
   };
 }
 
-/** Decision 166: unanswered questions never block Ship; Send back still asks for the required ones. */
+/** Unanswered questions block neither press (decisions 166 and 513); Send back waits only for a note. */
 function ShipAnswer(props: ShipAnswerProps): ReactNode {
   const { round, question, side, submitting } = props;
   const { available, state, submit } = submitting;
@@ -209,9 +208,9 @@ function ShipAnswer(props: ShipAnswerProps): ReactNode {
           <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
           <HStack gap={3} wrap>
             <Button color="success" isDisabled={disabled || draft.blockers.length > 0} onPress={() => void submit(draft.shipArgs)}><ButtonText>Ship</ButtonText></Button>
-            <Button variant="outline" color="warning" isDisabled={disabled || draft.missing.length > 0 || draft.emptyNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>
+            <Button variant="outline" color="warning" isDisabled={disabled || draft.noNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>
           </HStack>
-          <ShipNotices blockers={draft.blockers} missing={draft.missing} emptyNote={draft.emptyNote} available={available} state={state} />
+          <ShipNotices blockers={draft.blockers} noNote={draft.noNote} available={available} state={state} />
         </VStack>
       </CardContent>
     </Card>
@@ -228,18 +227,16 @@ function sideMarks(side: RoundAnswers) {
 
 interface ShipNoticesProps {
   blockers: string[];
-  missing: Question[];
-  emptyNote: string | undefined;
+  noNote: string | undefined;
   available: boolean;
   state: SubmitState;
 }
 
-function ShipNotices({ blockers, missing, emptyNote, available, state }: ShipNoticesProps): ReactNode {
+function ShipNotices({ blockers, noNote, available, state }: ShipNoticesProps): ReactNode {
   return (
     <>
       <ShipBlockedReason reasons={blockers} />
-      {emptyNote ? <Alert status="warning" size="compact" message={emptyNote} testID="send-back-blocked" /> : null}
-      {missing.length > 0 ? <Alert status="warning" size="compact" message={`Send back needs the required ${missing.length === 1 ? "question" : "questions"} answered first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
+      {noNote ? <Alert status="warning" size="compact" message={noNote} testID="send-back-blocked" /> : null}
       {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
       {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
     </>

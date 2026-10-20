@@ -201,7 +201,7 @@ function sendsBack(manifest: Manifest, answers: readonly SubmittedAnswer[]): boo
 }
 
 function refuseEmptySendBack(manifest: Manifest, args: SubmitArgs): void {
-  const blocker = sendsBack(manifest, args.answers) ? sendBackBlocker(args) : undefined;
+  const blocker = sendsBack(manifest, args.answers) ? sendBackBlocker(manifest, args) : undefined;
   if (blocker !== undefined) refuse(`Send back refused: ${blocker}`);
 }
 

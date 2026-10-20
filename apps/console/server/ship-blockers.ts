@@ -120,17 +120,17 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
 
-const NOTHING_TO_FIX = "Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship.";
+const NEEDS_NOTE = "Send back needs a note: say what to fix in the Ship comment or the round note.";
 
 /**
- * Why Send back is off; undefined when it may go. The factory leaves follow-up comments out of the fixer's
- * note (TP-3763) and refuses an empty one, so a Send back whose every comment is a follow-up, with no round
- * note, would be refused after the owner pressed it.
+ * Why Send back is off; undefined when it may go. The fixer's note is the round note and the comments on
+ * merge-bound questions alone, and the factory refuses an empty one, so Send back waits for one of them
+ * (owner decision 513). Unanswered side questions go with it as unanswered.
  */
-export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general" | "followUps">): string | undefined {
-  const commented = draft.answers.filter((answer) => !blank(answer.comment));
-  const deferred = commented.length > 0 && commented.every((answer) => (draft.followUps ?? []).includes(answer.questionId));
-  return deferred && blank(draft.general) ? NOTHING_TO_FIX : undefined;
+export function sendBackBlocker(manifest: Manifest, draft: Pick<ShipDraft, "answers" | "general">): string | undefined {
+  const bound = new Set(manifest.questions.filter(isMerge).map((question) => question.id));
+  const noted = draft.answers.some((answer) => bound.has(answer.questionId) && !blank(answer.comment));
+  return noted || !blank(draft.general) ? undefined : NEEDS_NOTE;
 }
 
 /** Why Ship is off, in plain words; empty when it may ship. */
