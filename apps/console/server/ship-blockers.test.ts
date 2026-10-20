@@ -96,7 +96,8 @@ describe("shipBlockers", () => {
   });
 
   it("measures a pick against a shown recommendation, never against one the page withholds", () => {
-    const side = SHIP_TILE.questions.find((question) => question.id === "badge-follow-up") as Question;
+    const side = SHIP_TILE.questions.find((question) => question.id === "badge-follow-up");
+    if (side === undefined) throw new Error("the Ship fixture has no badge-follow-up question");
     const draft = { ...NO_DRAFT, answers: [{ questionId: "badge-follow-up", pick: "No" }] };
 
     expect(shipBlockers(withSide(side, "shown"), [], draft)).toHaveLength(1);

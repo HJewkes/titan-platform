@@ -44,7 +44,7 @@ const blank = (text: string | undefined): boolean => (text ?? "").trim() === "";
 function mergeAnswer(manifest: Manifest, feedback: Feedback) {
   const question = manifest.questions.find(isMerge);
   const answer = question && feedback.answers.find((each) => each.questionId === question.id);
-  return { answer, ship: question?.merge?.ship ?? [] };
+  return { answer, ship: question?.merge.ship ?? [] };
 }
 
 /** The merge question's comment first, as it is the one a Send back carries. */

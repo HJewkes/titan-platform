@@ -29,7 +29,8 @@ import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
 import type { Manifest, Question } from "./round-schema.js";
 import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
-import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readPriorFeedback, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
+import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
+import { readPriorFeedback } from "./prior-feedback.js";
 import { shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
@@ -169,7 +170,7 @@ function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer 
 }
 
 async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args: SubmitArgs): Promise<void> {
-  const blockers = shipBlockers(manifest, await readPriorFeedback(source, manifest), args);
+  const blockers = shipBlockers(manifest, await readPriorFeedback(manifest, () => readQueueRounds(source)), args);
   if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
 }
 

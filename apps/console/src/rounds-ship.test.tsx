@@ -344,7 +344,7 @@ describe("answering a Ship round with side questions", () => {
 describe("Ship while feedback is open (TP-3741)", () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
-  const blocked = (): string => screen.getByTestId("ship-blocked").textContent ?? "";
+  const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
 
   it("shows round 1's Don't ship and note, and keeps Ship off until it is ticked Addressed", async () => {
     const rendered = await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });

@@ -23,7 +23,7 @@ import { readCommand } from "./owner-guard.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
-import { priorFeedback, type PriorFeedback } from "./ship-blockers.js";
+import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
 import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 
 export interface RoundsSource {
@@ -73,15 +73,6 @@ const roundNotes = z.object({
   comments: z.record(z.string(), z.string()),
 });
 
-const priorFeedbackItem = z.object({
-  round: z.number(),
-  submittedAt: z.string(),
-  pick: z.string().optional(),
-  revisionRequested: z.literal(true).optional(),
-  comment: z.string().optional(),
-  general: z.string().optional(),
-});
-
 const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
@@ -102,8 +93,8 @@ const roundDetail = z.discriminatedUnion("valid", [
     lineage: shipLineage.optional(),
     /** A sent round's free text from its feedback.json; absent while unsent or when that file does not parse. */
     notes: roundNotes.optional(),
-    /** An open Ship round's earlier feedback on the same unit, each to be ticked Addressed before Ship; absent when there is none. */
-    priorFeedback: z.array(priorFeedbackItem).optional(),
+    /** An open Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
+    priorFeedback: priorFeedbackList.optional(),
   }),
   invalidRound,
 ]);
@@ -227,10 +218,9 @@ interface DetailExtras {
   answer?: GateAnswer;
   lineage?: ShipLineage;
   notes?: RoundNotes;
-  prior?: PriorFeedback[];
 }
 
-function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, lineage, notes, prior }: DetailExtras): RoundDetail {
+function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, lineage, notes }: DetailExtras): RoundDetail {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
@@ -240,7 +230,6 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, line
     ...(answer !== undefined && { answer }),
     ...(lineage !== undefined && { lineage }),
     ...(notes !== undefined && { notes }),
-    ...(prior !== undefined && prior.length > 0 && { priorFeedback: prior }),
   };
 }
 
@@ -259,11 +248,6 @@ async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLine
   const binding = parsed.ok ? parsed.manifest.questions.flatMap((question) => (question.kind === "pick-one" && question.merge ? [question.merge] : []))[0] : undefined;
   if (binding === undefined) return undefined;
   return source.lineage ? source.lineage(binding) : UNWIRED_LINEAGE;
-}
-
-/** Only an open Ship round asks for its earlier feedback to be addressed. */
-export async function readPriorFeedback(source: RoundsSource, manifest: Manifest): Promise<PriorFeedback[]> {
-  return isShip(manifest) ? priorFeedback(manifest, (await readQueueRounds(source)).rounds) : [];
 }
 
 const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
@@ -287,8 +271,8 @@ export async function getRound(source: RoundsSource, id: string): Promise<RoundD
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
   const [round, answer, notes] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir)]);
-  const prior = round.parsed.ok && round.status === "open" ? await readPriorFeedback(source, round.parsed.manifest) : undefined;
-  return detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes, prior });
+  const prior = round.parsed.ok && round.status === "open" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
+  return { ...detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes }), ...(prior.length > 0 && { priorFeedback: prior }) };
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });
