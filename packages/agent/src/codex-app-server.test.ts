@@ -67,6 +67,16 @@ afterEach(async () => {
 });
 
 describe("codex app-server client", () => {
+  it("exposes the pid of the live app-server process and it is gone after close", async () => {
+    const { server } = await start();
+
+    expect(Number.isInteger(server.pid)).toBe(true);
+    expect(server.pid).toBeGreaterThan(0);
+    expect(() => process.kill(server.pid, 0)).not.toThrow();
+    await server.close("SIGKILL");
+    expect(() => process.kill(server.pid, 0)).toThrow();
+  });
+
   it("completes the initialize handshake and starts a thread", async () => {
     const log = await logFile();
     const { server } = await start("--log", log);

@@ -7,7 +7,7 @@ export type TestClass = (typeof TEST_CLASSES)[number];
 export const VERDICTS = ["reproduced", "unproven", "vacuous", "no-tests", "error"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-export type FileState = "ran" | "load-error" | "not-collected";
+export type FileState = "ran" | "load-error" | "hook-error" | "not-collected";
 
 export interface ReportRun {
   /** Absolute directory the report's file paths are relative to. */
@@ -67,6 +67,7 @@ function classifyTest(key: string, head: TestRun, baseFile: FileRun | undefined)
 
 function fileState(file: FileRun | undefined): FileState {
   if (file === undefined) return "not-collected";
+  if (file.hookError) return "hook-error";
   return file.loadError ? "load-error" : "ran";
 }
 
@@ -95,6 +96,9 @@ function outcomes(selected: string[], base: Map<string, FileRun>, head: Map<stri
     return { verdict: "error", tests, files, error: "a selected file is missing or failed to load in the head report" };
   }
   if (missingOn("base")) return { verdict: "error", tests, files, error: "no selected file in the base report" };
+  if (files.some((file) => file.base === "hook-error")) {
+    return { verdict: "error", tests, files, error: "base: a hook failed and skipped every test in a selected file (missing browser or setup?)" };
+  }
   return { verdict: verdictOf(tests), tests, files };
 }
 
