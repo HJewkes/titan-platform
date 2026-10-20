@@ -21,23 +21,37 @@ export function RoundSetLinks({ rounds, id }: { rounds: readonly RoundSummary[];
   if (position === null) return null;
   return (
     <HStack gap={3} align="center" wrap testID="round-set-nav">
-      <StepLink label="← Prev" round={position.prev} />
+      <StepLink step="prev" round={position.prev} />
       <Link color="primary" href={href(setRoute(position.set))} onPress={() => open(setRoute(position.set))}>
         {`${position.set} · ${position.index} of ${position.size}`}
       </Link>
-      <StepLink label="Next →" round={position.next} />
-      {position.size > 1 ? <Typography variant="caption" color="secondary">[ and ] step through the set</Typography> : null}
+      <StepLink step="next" round={position.next} />
+      {position.size > 1 ? <KeyHint /> : null}
     </HStack>
   );
 }
 
+const stepText = (step: "prev" | "next", id: string | null): string => {
+  if (step === "prev") return id === null ? "← Prev" : `← Prev: ${id}`;
+  return id === null ? "Next →" : `Next: ${id} →`;
+};
+
 /** An end of the set keeps its label, disabled, so the row does not shift between rounds. */
-function StepLink({ label, round }: { label: string; round: RoundSummary | null }): ReactNode {
-  if (round === null) return <Link isDisabled>{label}</Link>;
+function StepLink({ step, round }: { step: "prev" | "next"; round: RoundSummary | null }): ReactNode {
+  if (round === null) return <Link isDisabled>{stepText(step, null)}</Link>;
   return (
     <Link color="primary" href={href(roundRoute(round))} onPress={() => open(roundRoute(round))}>
-      {`${label} ${round.id}`}
+      {stepText(step, round.id)}
     </Link>
+  );
+}
+
+/** A phone has no [ or ] key to press, so the hint shows from `md` up. */
+function KeyHint(): ReactNode {
+  return (
+    <span className="hidden md:inline">
+      <Typography variant="caption" color="secondary">[ and ] step through the set</Typography>
+    </span>
   );
 }
 

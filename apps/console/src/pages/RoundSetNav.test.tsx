@@ -48,8 +48,8 @@ describe("a round's set", () => {
 describe("RoundSetLinks", () => {
   it("links the neighbours and the set, with its place in it", () => {
     render(<RoundSetLinks rounds={rounds} id="jar-lids-r2" />);
-    expect(screen.getByText("← Prev jar-lids-r1")).toBeTruthy();
-    expect(screen.getByText("Next → jar-lids-r3")).toBeTruthy();
+    expect(screen.getByText("← Prev: jar-lids-r1")).toBeTruthy();
+    expect(screen.getByText("Next: jar-lids-r3 →")).toBeTruthy();
     fireEvent.click(screen.getByText("jar-lids · 2 of 4"));
     expect(window.location.hash).toBe("#/rounds?set=jar-lids");
   });
