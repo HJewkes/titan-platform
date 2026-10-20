@@ -13,7 +13,8 @@ import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { BLIND_AB_REFUSED } from "./round-schema.js";
-import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, roundsCommands, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
+import { roundsCommands } from "./rounds-commands.js";
+import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
 /** Lets a test make readdir answer newest name first, so any order the reader shows is its own. */
