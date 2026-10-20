@@ -43,7 +43,7 @@ function itemGloss(label: string, clauses: readonly string[], labelTerms: Readon
 }
 
 /** One beat the L1 item judge (TP-2982) asks "is each of these explained?" about, with the items it names only. */
-interface ExplainRoute {
+export interface ExplainRoute {
   beat: string;
   items: string[];
 }
