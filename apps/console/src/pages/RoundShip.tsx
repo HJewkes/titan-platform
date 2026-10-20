@@ -1,49 +1,42 @@
 import { Fragment, useState, type ReactNode } from "react";
-import {
-  Alert, Badge, Button, ButtonText, Card, CardContent, HStack, Input, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack,
-} from "@titan-design/react-ui";
-import type { ConsoleCommands } from "../../server/commands.js";
+import { Alert, Button, ButtonText, Card, CardContent, HStack, Input, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
-import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
-import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
-import { FrameImage, type FrameView } from "./RoundFrame.js";
-import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
+import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
+import { QuestionFacts } from "./RoundQuestion.js";
 import { shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
-import { UnchangedFrames, WhatShips, splitUnchanged } from "./ShipPairs.js";
-import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
-import { SentFollowUp, ShipStake } from "./ShipStake.js";
+import { Montages } from "./ShipMontages.js";
+import { ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipPrsRound } from "./ShipPrs.js";
+import { ShipNotices, SideQuestion, sideMarks, useSideAnswers, type SideAnswers } from "./ShipSide.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
 type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
 type GateAnswer = ValidRound["answer"];
-type ListedFrame = ConsoleCommands["rounds.frames"]["result"]["frames"][number];
-
-interface ShipFrame {
-  key: string;
-  label: string;
-  theme?: ListedFrame["theme"];
-  views: FrameView[];
-  unchanged: boolean;
-}
 
 const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
 const sha7 = (sha: string): string => sha.slice(0, 7);
 
-/** A merge gate: each changed image as before | after | diff, then the round's questions in order, the Ship or Send back pick bound to the PR head among them. */
+/** A merge gate; a round with several merge-bound questions is one per PR, each with its own Ship (TP-3329). */
 export function ShipRound({ round }: { round: ValidRound }): ReactNode {
+  const merges = round.manifest.questions.filter(isMergeQuestion);
+  return merges.length > 1 ? <ShipPrsRound round={round} merges={merges} /> : <OnePrRound round={round} />;
+}
+
+/** Each changed image as before | after | diff, then the round's questions in order, the Ship or Send back pick bound to the PR head among them. */
+function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const question = round.manifest.questions.find(isMergeQuestion);
   const side = useSideAnswers();
   if (question === undefined) return null;
   return (
     <VStack gap={4}>
       <ShipHeading round={round} question={question} />
-      <Montages round={round} />
+      <Montages round={round} merge={question.merge} />
       {round.manifest.questions.map((each, index) =>
         each === question ? (
           <Fragment key={each.id}>
@@ -73,93 +66,6 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
         </VStack>
       </CardContent>
     </Card>
-  );
-}
-
-function Montages({ round }: { round: ValidRound }): ReactNode {
-  const listed = useQuery("rounds.frames", { id: round.id });
-  if (listed.status === "loading") return <Spinner size="sm" label="Loading the round's images" />;
-  if (listed.data === undefined) return <Alert status="error" message={`Could not list the round's images: ${listed.error.message}`} />;
-  const byKey = new Map(listed.data.frames.map((frame) => [frame.key, frame]));
-  const frames = round.manifest.variants.flatMap((variant): ShipFrame[] => {
-    if (variant.image === undefined) return [];
-    const frame = byKey.get(variant.key);
-    const unchanged = variant.change === "unchanged" || (frame?.unchanged ?? false);
-    return [{ key: variant.key, label: variant.label, theme: frame?.theme, views: frame?.views ?? ["head"], unchanged }];
-  });
-  if (frames.length === 0) return null;
-  const merge = round.manifest.questions.find(isMergeQuestion)?.merge;
-  const { changed, unchanged } = splitUnchanged(frames);
-  return (
-    <Section>
-      <SectionHeader title={`Main vs head (${frames.length} images)`} subtitle="Before is main, after is the PR head. Changed images come first. Tap an image to enlarge it." />
-      <SectionContent>
-        <VStack gap={6}>
-          {merge ? <WhatShips merge={merge} changed={changed.length} /> : null}
-          <FrameGroups roundId={round.id} frames={changed} />
-          <UnchangedFrames count={unchanged.length}>
-            <FrameGroups roundId={round.id} frames={unchanged} />
-          </UnchangedFrames>
-        </VStack>
-      </SectionContent>
-    </Section>
-  );
-}
-
-function FrameGroups({ roundId, frames }: { roundId: string; frames: readonly ShipFrame[] }): ReactNode {
-  return themePairs(frames).map((group) => (group.length === 2 ? <ThemePair key={group[0].key} roundId={roundId} pair={group} /> : <FrameMontage key={group[0].key} roundId={roundId} frame={group[0]} />));
-}
-
-type FrameGroup = [ShipFrame] | [ShipFrame, ShipFrame];
-
-const pairsWith = (last: FrameGroup | undefined, frame: ShipFrame): last is [ShipFrame] =>
-  last?.length === 1 && last[0].theme !== undefined && frame.theme !== undefined && last[0].theme !== frame.theme;
-
-/** Neighbours in opposite themes are one variant in both; round@2 0.3.0's `variantUnit` replaces this reading (TP-3232). */
-function themePairs(frames: readonly ShipFrame[]): FrameGroup[] {
-  const groups: FrameGroup[] = [];
-  for (const frame of frames) {
-    const last = groups.at(-1);
-    if (pairsWith(last, frame)) groups[groups.length - 1] = [last[0], frame];
-    else groups.push([frame]);
-  }
-  return groups;
-}
-
-function ThemePair({ roundId, pair }: { roundId: string; pair: [ShipFrame, ShipFrame] }): ReactNode {
-  return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2" data-testid={`theme-pair-${pair[0].key}`}>
-      {pair.map((frame) => <FrameMontage key={frame.key} roundId={roundId} frame={frame} />)}
-    </div>
-  );
-}
-
-/** A CI packet's head is its montage, so AFTER reads the `after` image whenever the round lists one. */
-function panelsOf(views: readonly FrameView[]): { label: string; side: string; view: FrameView }[] {
-  const after = { label: "AFTER (head)", side: "after", view: views.includes("after") ? ("after" as const) : ("head" as const) };
-  if (!views.includes("base")) return [after];
-  return [{ label: "BEFORE (main)", side: "before", view: "base" }, after, ...(views.includes("diff") ? [{ label: "DIFF", side: "diff", view: "diff" as const }] : [])];
-}
-
-function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame }): ReactNode {
-  const isNew = !frame.views.includes("base");
-  return (
-    <div className="flex flex-col gap-2" data-testid={`montage-${frame.key}`}>
-      <HStack gap={2} align="center" wrap>
-        <Typography variant="subtitle2">{frame.label}</Typography>
-        {frame.theme ? <Pill variant="subtle" size="xs">{frame.theme}</Pill> : null}
-        {isNew ? <Badge color="info" size="sm">NEW</Badge> : null}
-      </HStack>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {panelsOf(frame.views).map(({ label, side, view }) => (
-          <figure key={label} className="flex flex-col gap-1">
-            <Typography variant="microLabel" color="secondary">{label}</Typography>
-            <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${side}`} />
-          </figure>
-        ))}
-      </div>
-      {!isNew && !frame.views.includes("diff") ? <Typography variant="caption" color="secondary">No diff image: compare before and after side by side.</Typography> : null}
-    </div>
   );
 }
 
@@ -201,24 +107,6 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
   );
 }
 
-/** The Addressed ticks and follow-up marks as `rounds.submit` args, each left out when empty. */
-function sideMarks(side: SideAnswers) {
-  return {
-    addressed: side.addressed.length > 0 ? { addressed: side.addressed } : {},
-    followUps: side.followUps.length > 0 ? { followUps: side.followUps } : {},
-  };
-}
-
-function ShipNotices({ blockers, missing, available, state }: { blockers: string[]; missing: Question[]; available: boolean; state: SubmitState }): ReactNode {
-  return (
-    <>
-      <ShipBlockedReason reasons={blockers} />
-      {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
-      {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
-      {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
-    </>
-  );
-}
 
 /** A resolved outcome names the answer it applied; one that does not still says the gate is settled, without claiming a merge. */
 function resolvedLine(answer: NonNullable<GateAnswer>, headSha: string): string {
@@ -257,57 +145,3 @@ function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha
   return <Alert status={status} message={message} />;
 }
 
-/** The owner's picks, comments, round feedback, Addressed ticks and follow-up marks, held until the Ship or Send back press sends them. */
-function useSideAnswers() {
-  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
-  const [comments, setComments] = useState<Record<string, string>>({});
-  const [general, setGeneral] = useState("");
-  const [activeId, setActiveId] = useState<string>();
-  const [addressed, setAddressed] = useState<number[]>([]);
-  const [followUps, setFollowUps] = useState<string[]>([]);
-  const toggleAddressed = (round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]);
-  const setFollowUp = (questionId: string, followUp: boolean) => setFollowUps((current) => [...current.filter((each) => each !== questionId), ...(followUp ? [questionId] : [])]);
-  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers, addressed, toggleAddressed, followUps, setFollowUp };
-}
-
-type SideAnswers = ReturnType<typeof useSideAnswers>;
-
-interface SideQuestionProps {
-  round: ValidRound;
-  question: Question;
-  position: number;
-  side: SideAnswers;
-}
-
-function SideQuestion({ round, question, position, side }: SideQuestionProps): ReactNode {
-  const { answers, comments, setComments, activeId, setActiveId, setAnswers } = side;
-  const { notes } = round;
-  return (
-    <VStack gap={2}>
-      <RoundQuestion
-        question={question}
-        position={position}
-        answer={answers[question.id]}
-        onChoose={(choice) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) }))}
-        onText={(text) => setAnswers((current) => ({ ...current, [question.id]: { text } }))}
-        active={question.id === activeId}
-        onActivate={() => setActiveId(question.id)}
-      />
-      <RoundComment
-        question={question}
-        value={comments[question.id] ?? ""}
-        onChange={(text) => setComments((current) => ({ ...current, [question.id]: text }))}
-        sent={notes && (notes.comments[question.id] ?? "")}
-      />
-      <SideStake round={round} question={question} side={side} />
-    </VStack>
-  );
-}
-
-/** Open, the question's Ship stake and This PR or Follow-up choice; sent, whether it went as a follow-up. */
-function SideStake({ round, question, side }: { round: ValidRound; question: Question; side: SideAnswers }): ReactNode {
-  if (round.notes !== undefined) return round.followUps?.includes(question.id) ? <SentFollowUp questionId={question.id} /> : null;
-  const [answer] = submittedAnswers([question], side.answers, side.comments);
-  const followUp = side.followUps.includes(question.id);
-  return <ShipStake manifest={round.manifest} question={question} answer={answer} followUp={followUp} onFollowUp={(next) => side.setFollowUp(question.id, next)} />;
-}
