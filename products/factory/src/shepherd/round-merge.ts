@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { PendingGate } from "../host.js";
-import { authorityGate, seatPolicyHead } from "./head-moved.js";
+import { authorityGate, seatPolicyHead, visualPathHead } from "./head-moved.js";
 import { gateHead } from "./stale-gates.js";
 
 /** A submit older than this resolves nothing; the owner's click and the dialog it leads to are seconds apart. */
@@ -115,11 +115,11 @@ function targets(gate: PendingGate, bound: Bound): boolean {
   return gate.stepId === "approve-merge" && match?.[1] === String(bound.pr) && repoKey(match[2]!) === bound.repo;
 }
 
-/** Only a plain policy gate: a seat owner-gate or authority MRG-AU, as the run itself recorded it. */
+/** Only a plain policy gate: a seat owner-gate, authority MRG-AU or merge-guard visual-path gate, as the run itself recorded it. */
 function answerable(gate: PendingGate, run: WorkflowRun | undefined): boolean {
   if (!run || run.workflowName !== "shepherd-pr") return false;
   const { prompt } = gate.gate;
-  return seatPolicyHead(run, prompt) !== undefined || authorityGate(run, prompt) !== undefined;
+  return seatPolicyHead(run, prompt) !== undefined || authorityGate(run, prompt) !== undefined || visualPathHead(run, prompt) !== undefined;
 }
 
 function kindOf(gate: PendingGate): string {
