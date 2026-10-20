@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -9,7 +6,7 @@ import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-
 import { invokeCommand } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, type DataSource } from "@titan-design/rpc-client";
 import type { ConsoleContext } from "../../server/owner-guard.js";
-import { FIXTURE_ROUNDS } from "../../server/round-fixtures.js";
+import { stagedRound, type StagedRound } from "../../server/round-fixtures.js";
 import { FeedbackSchema, RoundSchema } from "../../server/round-schema.js";
 import { roundsSubmitCommands } from "../../server/rounds-submit.js";
 import { getRound, type RoundDetail } from "../../server/rounds.js";
@@ -63,16 +60,14 @@ const roundJson = {
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
-let root: string;
+let staged: StagedRound;
 let round: ValidRound;
 
 /** The beacon fixture's frames and shots, under a round.json of our own, so `rounds.submit` really writes. */
 beforeEach(async () => {
   vi.stubGlobal("IntersectionObserver", IdleObserver);
-  root = await mkdtemp(path.join(tmpdir(), "question-ab-"));
-  await cp(path.join(FIXTURE_ROUNDS.dir, "beacon-states-r1"), path.join(root, ROUND), { recursive: true });
-  await writeFile(path.join(root, ROUND, "round.json"), JSON.stringify(roundJson));
-  const detail = await getRound({ dir: root }, ROUND);
+  staged = await stagedRound("beacon-states-r1", ROUND, roundJson);
+  const detail = await getRound(staged.source, ROUND);
   if (!detail.valid) throw new Error(detail.reason);
   round = detail;
 });
@@ -80,7 +75,7 @@ beforeEach(async () => {
 afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
-  await rm(root, { recursive: true, force: true });
+  await staged.remove();
 });
 
 const OWNER: ConsoleContext = { warnings: [], format: "json", surface: "http", auth: { credential: "session", issuedAt: 1_000, peerLocal: false }, ownerWrites: true };
@@ -88,7 +83,7 @@ const OWNER: ConsoleContext = { warnings: [], format: "json", surface: "http", a
 /** Answers go to the real `rounds.submit` over the temp rounds dir; reads come from an empty snapshot. */
 const submitting = (reads: DataSource): DataSource => ({
   subscribe: reads.subscribe.bind(reads),
-  call: async (_name, args) => (await invokeCommand(roundsSubmitCommands({ dir: root })["rounds.submit"], args, OWNER)).envelope,
+  call: async (_name, args) => (await invokeCommand(roundsSubmitCommands(staged.source)["rounds.submit"], args, OWNER)).envelope,
 });
 
 const emptyPage = (): Document => new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: {} }), "text/html");
@@ -122,7 +117,7 @@ const sendButton = (): HTMLElement => screen.getByRole("button", { name: "Send a
 async function sentFeedback(): Promise<unknown> {
   fireEvent.click(sendButton());
   await screen.findByText("Answers sent");
-  return FeedbackSchema.parse(JSON.parse(await readFile(path.join(root, ROUND, "feedback.json"), "utf8")));
+  return FeedbackSchema.parse(await staged.feedback());
 }
 
 describe("an A/B question", () => {
