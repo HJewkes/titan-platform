@@ -2,11 +2,11 @@ import type { PoolClock, RateLimitProbeAnswer } from "./api-pool.js";
 
 export const NOW = 1_800_000_000_000;
 
-export interface FakeClock extends PoolClock {
+interface FakeClock extends PoolClock {
   advance(ms: number): Promise<void>;
 }
 
-export const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** Timers fire in order, each at its own instant, with the microtasks it starts drained before the next one. */
 export function fakeClock(): FakeClock {

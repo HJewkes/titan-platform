@@ -42,5 +42,5 @@ function resourceOf(body: unknown, bucket: string): { remaining: number; reset: 
 }
 
 function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null && name in value ? (value as Record<string, unknown>)[name] : undefined;
+  return typeof value === "object" && value !== null ? new Map<string, unknown>(Object.entries(value)).get(name) : undefined;
 }
