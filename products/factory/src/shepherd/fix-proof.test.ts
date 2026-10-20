@@ -479,12 +479,17 @@ describe("readFixProof", () => {
     return { fake, elapsed: () => clock, read: () => readFixProof({ port, store, ...(options.noReproProceed && { noReproProceed: options.noReproProceed }) }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
 
-  it("keeps NO_REPRO when the PR head has moved off the head the proof was read at", async () => {
+  it("keeps NO_REPRO when the PR head has moved to a tests-only head off the one the proof was read at", async () => {
     const moved = fakeSha("fix-proof-moved-head");
     const files: PrFile[] = [{ path: "packages/x/src/a.test.ts", status: "modified" }];
-    const { read } = registered("test-only", [fixProofRun()], { files, noReproProceed: "on", port: (base) => ({ ...base, getPr: async (repo, pr) => ({ ...(await base.getPr(repo, pr)), headSha: moved }) }) });
+    const { fake, read } = registered("test-only", [fixProofRun()], { files, noReproProceed: "on", port: (base) => ({ ...base, getPr: async (repo, pr) => ({ ...(await base.getPr(repo, pr)), headSha: moved }) }) });
+    fake.compares.set(`main...${moved}`, { mergeBaseSha: MERGE_BASE, files: [] });
+    fake.files.set(`${moved}:${files[0]!.path}`, { content: "blob", blobSha: fakeSha("moved-blob") });
 
-    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    const result = await read();
+
+    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(result).not.toHaveProperty("testOnlyProceed");
   });
 
   it("reads the result from a job log fetched through the gh adapter, whose colour codes gh refuses without --allow-escape-sequences", async () => {
