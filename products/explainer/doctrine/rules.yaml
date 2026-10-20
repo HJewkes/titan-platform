@@ -487,3 +487,10 @@ rules:
     owner_support: for
     note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat. Pending on the spine lints (S4 of the script rules plan)."
     l0: { severity: error, status: pending, owner: TP-2988 }
+  - id: Q-E19
+    rule: "Every item a beat puts on screen for the first time is declared in that beat's new_terms"
+    fields: [beats.new_terms, beats.visual]
+    related: [Q-E4, Q-F8, Q-W2]
+    owner_support: none
+    note: "Makes the vacuity visible: Q-E4, Q-F8 and Q-W2 read new_terms, which defaults to empty, so an undeclared script passes them. Warning only; a script/v1 check."
+    l0: { severity: warning, status: implemented, checks: ["Q-E19"] }
