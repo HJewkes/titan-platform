@@ -10,6 +10,7 @@ import path from "node:path";
 import { connect as tlsConnect } from "node:tls";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Hono } from "hono";
 import { SESSION_COOKIE, TokenFileError, ensureTokenFile, mintLoginCode, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type RemoteListenerOptions, type StartDaemonOptions } from "./daemon.js";
 import type * as BindGuardModule from "./bind-guard.js";
@@ -829,6 +830,51 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     const withRemote = await probes(handle.port);
 
     expect(withRemote).toEqual(plain);
+  });
+
+  describe("with a content origin", () => {
+    const contentOrigin = { port: 0, mountRoutes: (app: Hono) => app.get("/sb/page", (c) => c.text("story")) };
+    const startWithContent = () => startRemote({ toolPrefix: "test", contentOrigin });
+    const sendContent = (method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> =>
+      send(REMOTE, handle!.contentPort!, method, route, headers, body, { ca: pair.cert, servername: FQDN });
+
+    it("answers 401 without the session, and serves with the main listener's cookie", async () => {
+      await startWithContent();
+
+      const anonymous = await sendContent("GET", "/sb/page");
+      const signedIn = await sendContent("GET", "/sb/page", cookie());
+
+      expect(anonymous.status).toBe(401);
+      expect(anonymous.body).not.toContain("story");
+      expect(signedIn).toMatchObject({ status: 200, body: "story" });
+    });
+
+    it("has no sign-in route: /auth/login is 401 signed out and 404 signed in", async () => {
+      await startWithContent();
+
+      expect((await sendContent("GET", "/auth/login?code=x")).status).toBe(401);
+      expect((await sendContent("GET", "/auth/login", cookie())).status).toBe(404);
+    });
+
+    it.each(["/rpc/greet", "/events", "/health", "/mcp", "/auth/logout"])("serves no daemon route to a signed-in browser: GET %s is 404", async (route) => {
+      await startWithContent();
+
+      expect((await sendContent("GET", route, cookie())).status).toBe(404);
+    });
+
+    it("answers a signed-in POST with 405", async () => {
+      await startWithContent();
+      const origin = { origin: `https://${FQDN}:${handle!.contentPort}` };
+
+      expect((await sendContent("POST", "/sb/page", { ...json, ...origin, ...cookie() }, "{}")).status).toBe(405);
+    });
+
+    it("is an origin the main remote listener refuses, even with the session cookie", async () => {
+      await startWithContent();
+      const crossPort = { host: `${FQDN}:${port}`, origin: `https://${FQDN}:${handle!.contentPort}` };
+
+      expect((await sendRemote("POST", "/rpc/greet", { ...json, ...cookie(), ...crossPort }, '{"name":"x"}')).status).toBe(403);
+    });
   });
 });
 

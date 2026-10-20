@@ -20,7 +20,7 @@ export interface ContentOriginOptions {
   mountRoutes: (app: Hono) => void;
 }
 
-export interface ContentAppOptions {
+interface ContentAppOptions {
   mountRoutes: (app: Hono) => void;
   guards: RequestGuardOptions;
   port: () => number;
