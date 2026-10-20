@@ -33,20 +33,21 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 interface PaceInput {
   beats: PaceBeat[];
   invariants: string[];
+  glossary: string[];
 }
 
-/** The item track and the stated invariants of a spike or script/v1 file. */
+/** The item track, the stated invariants and the glossary names of a spike or script/v1 file, so pace and the cold probe read a script the same way. */
 export function paceInput(raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceInput {
   if (format === "v1") {
     const script = ScriptSchema.parse(raw);
-    return { beats: fromScriptV1(script, timing), invariants: script.video.invariants ?? [] };
+    return { beats: fromScriptV1(script, timing), invariants: script.video.invariants ?? [], glossary: script.video.glossary.map((g) => g.name) };
   }
-  const { beats, invariants, ignored } = fromSpikeScript(raw, timing);
+  const { beats, invariants, glossary, ignored } = fromSpikeScript(raw, timing);
   if (ignored.length > 0) console.error(`note: the spike reader skipped ${ignored.join(", ")}`);
-  return { beats, invariants };
+  return { beats, invariants, glossary };
 }
 
-/** The item track of a spike or script/v1 file, so pace and the cold probe read a script the same way. */
+/** The item track alone of a spike or script/v1 file. */
 export const paceBeats = (raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceBeat[] => paceInput(raw, format, timing).beats;
 
 /** One line a reused beat that fails a beat-level check: the beat, the checks and heard seconds to re-voice it. */
