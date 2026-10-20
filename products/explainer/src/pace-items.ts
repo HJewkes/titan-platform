@@ -38,6 +38,10 @@ export interface PaceBeat {
 // read and hold (a recipe caption, an outro title card, a target chip), not a qualifier of an item already shown
 // (an attribute) nor an animation of one (an action). stamp and line are attributes: a stamp marks the state of
 // a row already on screen, and a line highlights a line of code the CodeWalk already shows.
+// edge is an item: a build/buy table row names a new thing (a part and its verdict) for the viewer to read.
+// orphan is an attribute: it marks nodes already on screen as unreached, naming nothing new.
+// wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
+// edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -61,11 +65,13 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   gate: "item",
   bar: "item",
   gauge: "item",
+  edge: "item",
   detail: "attribute",
   left: "attribute",
   right: "attribute",
   stamp: "attribute",
   line: "attribute",
+  orphan: "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -73,6 +79,8 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   replay: "action",
   insert: "action",
   release: "action",
+  wait: "action",
+  edit: "action",
 };
 
 /** The role of a cue kind; an unknown kind throws, so a new renderer cannot go silently uncounted. */
