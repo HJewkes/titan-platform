@@ -53,20 +53,24 @@ interface RoundSectionsProps {
   notes?: RoundNotes;
 }
 
-/** Every section of a round with its questions, numbered across the round. */
-export function RoundSections({ manifest, state, textAnswers = false, frames, notes }: RoundSectionsProps): ReactNode {
-  const groups = orderedQuestions(manifest);
-  const questions = groups.flatMap((group) => group.questions);
-  const { answers, comments, optionNotes, activeId, setActiveId, choose, write, comment, revise, note } = state;
-  const abOf = (question: Question): ABAnswering => ({
+/** One question's A/B notes and "Neither" from the page's answers; choosing Neither makes the question the active one. */
+function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAnswers, question: Question, sent: boolean): ABAnswering {
+  return {
     notes: optionNotes[question.id] ?? {},
     onNote: (option, text) => note(question, option, text),
     onNeither: () => {
       setActiveId(question.id);
       revise(question);
     },
-    sent: notes !== undefined,
-  });
+    sent,
+  };
+}
+
+/** Every section of a round with its questions, numbered across the round. */
+export function RoundSections({ manifest, state, textAnswers = false, frames, notes }: RoundSectionsProps): ReactNode {
+  const groups = orderedQuestions(manifest);
+  const questions = groups.flatMap((group) => group.questions);
+  const { answers, comments, activeId, setActiveId, choose, write, comment } = state;
   return groups.map(({ section, questions: inGroup }) => (
     <QuestionSection key={section?.id ?? "unsectioned"} section={section}>
       {section && frames ? frames(section) : null}
@@ -80,7 +84,7 @@ export function RoundSections({ manifest, state, textAnswers = false, frames, no
             onText={textAnswers ? (text) => write(question, text) : undefined}
             active={question.id === activeId}
             onActivate={() => setActiveId(question.id)}
-            ab={abOf(question)}
+            ab={abAnswering(state, question, notes !== undefined)}
           />
           <RoundComment question={question} value={comments[question.id] ?? ""} onChange={(text) => comment(question, text)} sent={notes && (notes.comments[question.id] ?? "")} />
         </VStack>
