@@ -8,7 +8,7 @@ import { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-i
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
 import { seatRoutes, type SeatReason, type SeatRoute } from "./lint-seat.js";
 import type { PaceBeat } from "./pace-items.js";
-import type { SpineV1 } from "./spine-schema.js";
+import { contrastBeats, type SpineV1 } from "./spine-schema.js";
 
 export const ITEMS_EVAL_ID = "L1-items";
 
@@ -119,16 +119,17 @@ function seatQuestions(routes: ItemRoutes, seats: ReadonlyMap<string, SpineSeat>
 
 /**
  * With a spine, a list beat the ledger fully declares is asked whether each item is the kind declared, in place of
- * the blind odd one out, and an invariant seat is paired with its §4 part or failed without a call.
+ * the blind odd one out, and an invariant seat is paired with its §4 part or failed without a call. A `contrast` beat
+ * gets neither list question.
  */
 function spinePlan(routes: ItemRoutes, beats: readonly PaceBeat[], spine: SpineV1): QuestionPlan {
   const kinds = kindRoutes(routes.lists, spine);
-  const declaredBeats = new Set(kinds.map((k) => k.beat));
+  const skipped = new Set([...kinds.map((k) => k.beat), ...contrastBeats(spine)]);
   const seats = spineSeats(beats, routes.seat, spine);
   const questions = [
     ...itemQuestions({ explain: routes.explain, seat: [], lists: [] }),
     ...seatQuestions(routes, seats),
-    ...itemQuestions({ explain: [], seat: [], lists: routes.lists.filter((l) => !declaredBeats.has(l.beat)) }),
+    ...itemQuestions({ explain: [], seat: [], lists: routes.lists.filter((l) => !skipped.has(l.beat)) }),
     ...kinds.map(kindHonestQuestion),
   ];
   return { questions, ruled: [...seats.values()].filter((s) => s.part === null).map(unseatedVerdict) };
