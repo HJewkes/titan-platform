@@ -8,6 +8,7 @@ import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
+import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
 import { ShipLineageLine } from "./ShipLineage.js";
@@ -39,9 +40,9 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
       <Montages round={round} />
       {round.manifest.questions.map((each, index) =>
         each === question ? (
-          <ShipAnswer key={each.id} round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side.answers} />
+          <ShipAnswer key={each.id} round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side} />
         ) : (
-          <SideQuestion key={each.id} question={each} position={index + 1} side={side} />
+          <SideQuestion key={each.id} question={each} position={index + 1} side={side} notes={round.notes} />
         ),
       )}
     </VStack>
@@ -145,17 +146,17 @@ interface ShipAnswerProps {
   round: ValidRound;
   question: MergeQuestion;
   sideQuestions: readonly Question[];
-  side: Record<string, QuestionAnswer>;
+  side: SideAnswers;
 }
 
 function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): ReactNode {
   const { available, state, submit } = useSubmit();
   const [note, setNote] = useState("");
-  if (round.status === "sent" || state.status === "sent") return <AnswerOutcome answer={round.answer} headSha={question.merge.headSha} state={state} />;
+  if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
-  const sent = { id: round.id, manifestSha256: round.manifestSha256, general: "" };
-  const sideAnswers = submittedAnswers(sideQuestions, side);
+  const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
+  const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments);
   const missing = missingRequired(sideQuestions, sideAnswers);
   const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
   const back = () => submit({ ...sent, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
@@ -164,6 +165,7 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
     <Card variant="outline">
       <CardContent>
         <VStack gap={3}>
+          <RoundGeneral value={side.general} onChange={side.setGeneral} />
           <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
           <HStack gap={3} wrap>
             <Button color="success" isDisabled={disabled} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
@@ -199,32 +201,59 @@ function outcomeLine(answer: GateAnswer, headSha: string): { status: "info" | "s
   return lines[answer.status];
 }
 
+function ShipOutcome({ round, question, state }: { round: ValidRound; question: MergeQuestion; state: SubmitState }): ReactNode {
+  return (
+    <VStack gap={3}>
+      <AnswerOutcome answer={round.answer} headSha={question.merge.headSha} state={state} />
+      <SentComment questionId={question.id} text={round.notes?.comments[question.id]} />
+      <SentGeneral text={round.notes?.general} />
+    </VStack>
+  );
+}
+
 function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha: string; state: SubmitState }): ReactNode {
   const already = state.status === "sent" && state.already;
   const { status, message } = already ? { status: "info" as const, message: "Already answered" } : outcomeLine(answer, headSha);
   return <Alert status={status} message={message} />;
 }
 
-/** The owner's picks on the round's other questions, held until the Ship or Send back press sends them. */
+/** The owner's picks, comments and round feedback on the round's other questions, held until the Ship or Send back press sends them. */
 function useSideAnswers() {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const [general, setGeneral] = useState("");
   const [activeId, setActiveId] = useState<string>();
-  return { answers, activeId, setActiveId, setAnswers };
+  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers };
 }
 
 type SideAnswers = ReturnType<typeof useSideAnswers>;
 
-function SideQuestion({ question, position, side }: { question: Question; position: number; side: SideAnswers }): ReactNode {
-  const { answers, activeId, setActiveId, setAnswers } = side;
+interface SideQuestionProps {
+  question: Question;
+  position: number;
+  side: SideAnswers;
+  notes: ValidRound["notes"];
+}
+
+function SideQuestion({ question, position, side, notes }: SideQuestionProps): ReactNode {
+  const { answers, comments, setComments, activeId, setActiveId, setAnswers } = side;
   return (
-    <RoundQuestion
-      question={question}
-      position={position}
-      answer={answers[question.id]}
-      onChoose={(choice) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) }))}
-      onText={(text) => setAnswers((current) => ({ ...current, [question.id]: { text } }))}
-      active={question.id === activeId}
-      onActivate={() => setActiveId(question.id)}
-    />
+    <VStack gap={2}>
+      <RoundQuestion
+        question={question}
+        position={position}
+        answer={answers[question.id]}
+        onChoose={(choice) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) }))}
+        onText={(text) => setAnswers((current) => ({ ...current, [question.id]: { text } }))}
+        active={question.id === activeId}
+        onActivate={() => setActiveId(question.id)}
+      />
+      <RoundComment
+        question={question}
+        value={comments[question.id] ?? ""}
+        onChange={(text) => setComments((current) => ({ ...current, [question.id]: text }))}
+        sent={notes && (notes.comments[question.id] ?? "")}
+      />
+    </VStack>
   );
 }

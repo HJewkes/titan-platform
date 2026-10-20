@@ -1,6 +1,8 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
+import type { RoundNotes } from "../../server/rounds.js";
+import { RoundComment } from "./RoundComment.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
 
@@ -13,9 +15,11 @@ export function orderedQuestions(manifest: Manifest): { section: RoundSection | 
   return loose.length > 0 ? [...sections, { section: null, questions: loose }] : sections;
 }
 
-/** The page's picks and text, and the active question that digit keys answer: at first the first one with choices. */
+/** The page's picks, text and comments, and the active question that digit keys answer: at first the first one with choices. */
 export function useRoundAnswers(questions: readonly Question[]) {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const [general, setGeneral] = useState("");
   const [activeId, setActiveId] = useState(() => questions.find((question) => choicesOf(question).length > 0)?.id);
   const active = questions.find((question) => question.id === activeId);
   const choose = useCallback(
@@ -23,9 +27,10 @@ export function useRoundAnswers(questions: readonly Question[]) {
     [],
   );
   const write = useCallback((question: Question, text: string) => setAnswers((current) => ({ ...current, [question.id]: { text } })), []);
+  const comment = useCallback((question: Question, text: string) => setComments((current) => ({ ...current, [question.id]: text })), []);
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  return { answers, activeId, setActiveId, choose, write };
+  return { answers, comments, general, setGeneral, activeId, setActiveId, choose, write, comment };
 }
 
 export type RoundAnswers = ReturnType<typeof useRoundAnswers>;
@@ -37,27 +42,31 @@ interface RoundSectionsProps {
   textAnswers?: boolean;
   /** A section's frames, drawn between its notes and its questions. */
   frames?: (section: RoundSection) => ReactNode;
+  /** A sent round's free text: each comment then shows read-only in place of its box. */
+  notes?: RoundNotes;
 }
 
 /** Every section of a round with its questions, numbered across the round. */
-export function RoundSections({ manifest, state, textAnswers = false, frames }: RoundSectionsProps): ReactNode {
+export function RoundSections({ manifest, state, textAnswers = false, frames, notes }: RoundSectionsProps): ReactNode {
   const groups = orderedQuestions(manifest);
   const questions = groups.flatMap((group) => group.questions);
-  const { answers, activeId, setActiveId, choose, write } = state;
+  const { answers, comments, activeId, setActiveId, choose, write, comment } = state;
   return groups.map(({ section, questions: inGroup }) => (
     <QuestionSection key={section?.id ?? "unsectioned"} section={section}>
       {section && frames ? frames(section) : null}
       {inGroup.map((question) => (
-        <RoundQuestion
-          key={question.id}
-          question={question}
-          position={questions.indexOf(question) + 1}
-          answer={answers[question.id]}
-          onChoose={(choice) => choose(question, choice)}
-          onText={textAnswers ? (text) => write(question, text) : undefined}
-          active={question.id === activeId}
-          onActivate={() => setActiveId(question.id)}
-        />
+        <VStack key={question.id} gap={2}>
+          <RoundQuestion
+            question={question}
+            position={questions.indexOf(question) + 1}
+            answer={answers[question.id]}
+            onChoose={(choice) => choose(question, choice)}
+            onText={textAnswers ? (text) => write(question, text) : undefined}
+            active={question.id === activeId}
+            onActivate={() => setActiveId(question.id)}
+          />
+          <RoundComment question={question} value={comments[question.id] ?? ""} onChange={(text) => comment(question, text)} sent={notes && (notes.comments[question.id] ?? "")} />
+        </VStack>
       ))}
     </QuestionSection>
   ));

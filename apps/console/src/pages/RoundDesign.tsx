@@ -45,6 +45,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         manifest={round.manifest}
         state={state}
         textAnswers
+        notes={round.notes}
         frames={(section) => <SectionFrames section={section} {...strip} />}
       />
       <RoundSend round={round} state={state} />
