@@ -35,6 +35,31 @@ function stored(n: number, builtAtMs: number, answers: RoundFeedback["answers"] 
 const shipFor101 = (rounds: StoredRound[], heldAt: HeldAt = notHeld) => roundShips(rounds, gates, runs, NOW, heldAt).find((each) => "pr" in each ? each.pr.endsWith("#101") : each.runId === "run-101");
 
 describe("roundShips", () => {
+  const recase = (value: unknown, from: string, to: string) => JSON.parse(JSON.stringify(value).replaceAll(from, to));
+  const ship101 = (round: StoredRound, pendingGates: PendingGate[]) =>
+    roundShips([round], pendingGates, runs, NOW, notHeld).find((each) => ("pr" in each ? each.pr.endsWith("#101") : each.runId === "run-101"));
+  const displayCase = (n: number): StoredRound => {
+    const round = Buffer.from(JSON.stringify(recase({ ...manifest, round: n }, "example-org/example-repo", "Example-Org/Example-Repo")));
+    const manifestSha256 = createHash("sha256").update(round).digest("hex");
+    const feedback = Buffer.from(JSON.stringify({ unit: "example-unit", round: n, manifestSha256, submittedAt: "2026-10-06T10:30:00.000Z", answers: allShipped }));
+    return { id: `example-unit-r${n}`, round, feedback, builtAtMs: 0 };
+  };
+
+  it("a round naming the repo in display case answers a gate whose prompt is lower case", () => {
+    expect(ship101(displayCase(1), gates)).toMatchObject({ kind: "resolve", runId: "run-101", payload: { decision: "merge", headSha: H1 } });
+  });
+
+  it("a mixed-case repo in the gate prompt still resolves", () => {
+    const mixed: PendingGate[] = recase(gates, "in example-org/example-repo at", "in Example-ORG/example-Repo at");
+    expect(ship101(stored(1, 0, allShipped), mixed)).toMatchObject({ kind: "resolve", runId: "run-101" });
+    expect(ship101(displayCase(1), mixed)).toMatchObject({ kind: "resolve", runId: "run-101" });
+  });
+
+  it("a different repo with the same PR number is not answered", () => {
+    const other: PendingGate[] = recase(gates, "in example-org/example-repo at", "in example-org/other-repo at");
+    expect(ship101(displayCase(1), other)).toBeUndefined();
+  });
+
   it("a Ship at the gate's exact head answers it as the owner's merge, naming the round and submit", () => {
     expect(shipFor101([stored(1, 0, allShipped)])).toEqual({
       kind: "resolve",

@@ -61,6 +61,9 @@ interface Bound {
   headSha: string;
 }
 
+/** GitHub owner and repo names are case-insensitive, and the console writes the display case, so every repo compare goes through this. */
+export const repoKey = (repo: string): string => repo.toLowerCase();
+
 const refuse = (reason: string): RoundMergeResult => ({ refused: reason, decisions: [] });
 
 function parseRound(roundBytes: string | Uint8Array): z.infer<typeof RoundManifest> | undefined {
@@ -83,7 +86,8 @@ function refusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint
 function bindings(round: z.infer<typeof RoundManifest>): Bound[] {
   const byPr = new Map<string, Bound>();
   for (const { merge } of round.questions) {
-    if (merge && !byPr.has(`${merge.repo}#${merge.pr}`)) byPr.set(`${merge.repo}#${merge.pr}`, { repo: merge.repo, pr: merge.pr, headSha: merge.headSha });
+    const key = merge && `${repoKey(merge.repo)}#${merge.pr}`;
+    if (merge && key && !byPr.has(key)) byPr.set(key, { repo: repoKey(merge.repo), pr: merge.pr, headSha: merge.headSha });
   }
   return [...byPr.values()];
 }
@@ -96,7 +100,7 @@ export function boundPrs(roundBytes: string | Uint8Array): string[] {
 
 /** The first question that keeps the PR from shipping: unanswered, a revision request, or a pick outside its ship list. */
 function blockingQuestion(round: z.infer<typeof RoundManifest>, bound: Bound, feedback: RoundFeedback): string | undefined {
-  const questions = round.questions.filter((q) => q.merge && `${q.merge.repo}#${q.merge.pr}` === `${bound.repo}#${bound.pr}`);
+  const questions = round.questions.filter((q) => q.merge && repoKey(q.merge.repo) === bound.repo && q.merge.pr === bound.pr);
   return questions.find((q) => {
     const answer = feedback.answers.find((a) => a.questionId === q.id);
     return !answer || answer.revisionRequested === true || answer.pick === undefined || !q.merge!.ship.includes(answer.pick) || q.merge!.headSha !== bound.headSha;
@@ -108,7 +112,7 @@ const POLICY_IN_PROMPT = /\bPolicy ([\w-]+)\/([\w-]+)/;
 
 function targets(gate: PendingGate, bound: Bound): boolean {
   const match = GATE_TARGET.exec(gate.gate.prompt);
-  return gate.stepId === "approve-merge" && match?.[1] === String(bound.pr) && match[2] === bound.repo;
+  return gate.stepId === "approve-merge" && match?.[1] === String(bound.pr) && repoKey(match[2]!) === bound.repo;
 }
 
 /** Only a plain policy gate: a seat owner-gate or authority MRG-AU, as the run itself recorded it. */
@@ -180,11 +184,11 @@ export function shipAtHead(
   const refused = refusal(round, roundBytes, feedback, now, maxAgeMs);
   if (refused) return notShipped(refused);
   if (Date.parse(feedback.submittedAt) - now.getTime() > SUBMIT_CLOCK_SKEW_MS) return notShipped("the submit is stamped in the future");
-  const bound = bindings(round).find((candidate) => candidate.repo === target.repo && candidate.pr === target.pr);
+  const bound = bindings(round).find((candidate) => candidate.repo === repoKey(target.repo) && candidate.pr === target.pr);
   if (!bound) return notShipped(`no question binds ${target.repo}#${target.pr}`);
   if (bound.headSha !== target.headSha) return notShipped(`the round binds ${target.repo}#${target.pr} at ${bound.headSha}, the PR is at ${target.headSha}`);
   const blocked = blockingQuestion(round, bound, feedback);
   if (blocked) return notShipped(`question ${blocked} is not answered with a ship option at head ${bound.headSha}`);
-  const questionIds = round.questions.filter((q) => q.merge?.repo === bound.repo && q.merge.pr === bound.pr).map((q) => q.id);
+  const questionIds = round.questions.filter((q) => q.merge && repoKey(q.merge.repo) === bound.repo && q.merge.pr === bound.pr).map((q) => q.id);
   return { shipped: true, unit: round.unit, round: round.round, questionIds, submittedAt: feedback.submittedAt };
 }

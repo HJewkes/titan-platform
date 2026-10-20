@@ -6,7 +6,7 @@ import type { GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { startSweep, type Sweep } from "../sweep.js";
-import { RoundFeedbackSchema, SHIP_APPROVAL_MAX_AGE_MS, boundPrs, roundMergeDecisions } from "./round-merge.js";
+import { RoundFeedbackSchema, SHIP_APPROVAL_MAX_AGE_MS, boundPrs, repoKey, roundMergeDecisions } from "./round-merge.js";
 import type { ShepherdServices } from "./services.js";
 
 const ROUND_SHIP_SWEEP_MS = 60_000;
@@ -45,7 +45,7 @@ const GATE_TARGET = /^Merge PR #(\d+) in (\S+) at head /;
 
 function askedPr(stepId: string, prompt: string): string | undefined {
   const match = stepId === "approve-merge" ? GATE_TARGET.exec(prompt) : null;
-  return match ? `${match[2]}#${match[1]}` : undefined;
+  return match ? `${repoKey(match[2]!)}#${match[1]}` : undefined;
 }
 
 function latestByPr(rounds: readonly StoredRound[]): Map<string, StoredRound> {
