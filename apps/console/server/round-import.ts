@@ -5,7 +5,8 @@
  * writes nothing.
  *
  * `round.json` and `feedback.json` are judged by the same parsers the console reads them with, so an
- * import never lands a round the page would list as invalid. It also refuses a "Merge #N", "Ship" or "#N at <sha>"
+ * import never lands a round the page would list as invalid. It refuses a round that breaks the builder rules
+ * (`round-rules.ts`), naming each rule. It also refuses a "Merge #N", "Ship" or "#N at <sha>"
  * offer with no agreeing merge binding (`round-merge-binding.ts`), which the page still lists, and a Ship round that is not
  * one clean main-vs-head package (`round-ship-package.ts`). `frames/frames.json` must name the
  * round.json bytes it was built for; it is copied with only the files it lists, each read through
@@ -24,6 +25,7 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { FramesIndexSchema, readFrameBytes } from "./round-frames.js";
 import { mergeBindingProblems } from "./round-merge-binding.js";
+import { roundRuleRefusal } from "./round-rules.js";
 import { shipPackageProblems } from "./round-ship-package.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, parseFeedback, parseManifest, readCapped } from "./rounds.js";
 
@@ -203,6 +205,8 @@ async function readSource(dir: string): Promise<SourceRound> {
   const read = await readIndex(dir);
   const unclean = shipPackageProblems(parsed.manifest, read?.index.frames ?? []);
   if (unclean.length > 0) refuse(`${ROUND_FILE}: ${unclean.join("; ")}`);
+  const broken = roundRuleRefusal(parsed.manifest);
+  if (broken !== null) refuse(broken);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, string>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
   return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding) };
