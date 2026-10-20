@@ -9,6 +9,7 @@ import { FIXTURE_ROUNDS, stagedRound, type StagedRound } from "../server/round-f
 import { roundsSubmitCommands } from "../server/rounds-submit.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
 const ROUND = "kiln-sent-r2";
 const OWNER: ConsoleContext = { warnings: [], format: "json", surface: "http", auth: { credential: "session", issuedAt: 1_000, peerLocal: false }, ownerWrites: true };
@@ -63,25 +64,31 @@ describe("a sent question round read back after a reload (TP-3767)", () => {
 
     expect(checked("ramp-default", "2 Single slope")).toBe(true);
     expect(checked("hold-clarity", "3 3")).toBe(true);
+    expect(screen.getByTestId("round-comment-sent-ramp-default").textContent).toContain("The kiln is small.");
+    await toSection("report");
     expect(checked("report-columns", "1 Segment")).toBe(true);
     expect(checked("report-columns", "4 Hold minutes")).toBe(true);
     expect(checked("report-columns", "2 Target temperature")).toBe(false);
     expect(screen.getByLabelText<HTMLTextAreaElement>("Answer to Anything else the report should say?").value).toBe("Print the cone.");
-    expect(screen.getByTestId("round-comment-sent-ramp-default").textContent).toContain("The kiln is small.");
     expect(screen.getByTestId("round-general-sent").textContent).toContain("Good pass.");
   });
 
   it("locks every question: inert, and no digit key or press changes a sent answer", async () => {
     await reload();
 
-    for (const id of ["ramp-default", "hold-clarity", "report-columns", "report-notes"]) expect(screen.getByTestId(`round-entry-${id}`).hasAttribute("inert")).toBe(true);
+    for (const id of ["ramp-default", "hold-clarity"]) expect(screen.getByTestId(`round-entry-${id}`).hasAttribute("inert")).toBe(true);
     fireEvent.keyDown(window, { key: "1" });
     fireEvent.click(control("ramp-default", "3 Ask each time"));
-    fireEvent.change(screen.getByLabelText("Answer to Anything else the report should say?"), { target: { value: "Changed." } });
-
     expect(checked("ramp-default", "2 Single slope")).toBe(true);
     expect(checked("ramp-default", "1 Staged climb")).toBe(false);
     expect(checked("ramp-default", "3 Ask each time")).toBe(false);
+
+    await toSection("report");
+    for (const id of ["report-columns", "report-notes"]) expect(screen.getByTestId(`round-entry-${id}`).hasAttribute("inert")).toBe(true);
+    fireEvent.keyDown(window, { key: "1" });
+    fireEvent.change(screen.getByLabelText("Answer to Anything else the report should say?"), { target: { value: "Changed." } });
+
+    expect(checked("report-columns", "2 Target temperature")).toBe(false);
     expect(screen.getByLabelText<HTMLTextAreaElement>("Answer to Anything else the report should say?").value).toBe("Print the cone.");
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
   });

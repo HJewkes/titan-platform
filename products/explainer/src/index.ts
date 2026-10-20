@@ -101,7 +101,7 @@ export { explainRoutes } from "./lint-gloss.js";
 export { seatRoutes } from "./lint-seat.js";
 export { SPINE_PROFILES, ledgerCheck, ledgerRows } from "./lint-ledger.js";
 export { SPINE_CHECK_IDS, invariantSeatRow, journeyOrderRow, spineCheck } from "./lint-spine.js";
-export { SPINE_ITEM_KINDS, SpineSchema, parseSpine, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
+export { SPINE_ITEM_KINDS, SPINE_LIST_SHAPES, SpineSchema, contrastBeats, parseSpine, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 export { fromSpikeScript, readSpikeScript, type SpikePace, type SpikeRead, type SpikeScript } from "./spike-script.js";
 export { readTiming, type BeatTiming, type ScriptTiming } from "./timing.js";
 export { migrateSpike, migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
@@ -257,7 +257,7 @@ export {
 export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
-export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
+export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export {
   MIN_REGISTER_WORDS,

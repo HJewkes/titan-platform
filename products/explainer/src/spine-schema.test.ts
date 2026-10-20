@@ -58,6 +58,23 @@ describe("parseSpine reads the story-spine template into spine/v1", () => {
     expect(() => parseSpine(spine(""))).toThrow(/ledger/);
   });
 
+  it("reads the concept and left-out kinds, a spaced 'left out' as left-out", () => {
+    const ledger = `${LEDGER}\n| Fact | concept | c2-3 | — |\n| Billing | left out | c2-4 | — |\n| Refunds | left-out | c2-4 | — |`;
+
+    expect(parseSpine(spine(ledger)).ledger.slice(2).map((r) => r.kind)).toEqual(["concept", "left-out", "left-out"]);
+  });
+
+  it("reads §9 list shapes, and defaults to none when the section is absent", () => {
+    const shapes = "\n## 9. List shapes\n| Beat | Shape (parallel / contrast) |\n|---|---|\n| c2-1 | Contrast |\n| c3-1 | parallel |\n";
+
+    expect(parseSpine(spine() + shapes).shapes).toEqual([{ beat: "c2-1", shape: "contrast" }, { beat: "c3-1", shape: "parallel" }]);
+    expect(parseSpine(spine()).shapes).toEqual([]);
+  });
+
+  it("rejects a list shape outside parallel and contrast", () => {
+    expect(() => parseSpine(`${spine()}\n## 9. List shapes\n| Beat | Shape |\n|---|---|\n| c2-1 | pair |\n`)).toThrow(/shape/);
+  });
+
   it("rejects a kind outside the declared set", () => {
     expect(() => parseSpine(spine(LEDGER.replace("| step |", "| verb |")))).toThrow(/kind/);
   });
