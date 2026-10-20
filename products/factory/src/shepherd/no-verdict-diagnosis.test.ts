@@ -10,6 +10,7 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { SpawnRequest } from "./agents.js";
+import { demotionOffForTest } from "../test-support/gate-demotions.js";
 import { GATE_DEMOTIONS } from "./auto-pass.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
@@ -253,8 +254,9 @@ function silentWorld() {
   const sent: string[] = [];
   const exitNotice: ExitNoticePorts = { seatFor: () => "repo-seat", hubSeat: () => "hub-seat", lastReport: async () => undefined, send: async (_seat, text) => void sent.push(text) };
   const reviews: string[] = [];
+  const wakes: string[] = [];
   const phases: ShepherdPhases = {
-    wake: async () => ({ kind: "unhandled", reason: "no fixer in this replay" }),
+    wake: async (_ctx, request) => (wakes.push(request.kind), { kind: "unhandled", reason: "no fixer in this replay" }),
     review: async (_ctx, request) => (reviews.push(request.headSha), { kind: "none", cause: "no-verdict" }),
   };
   const diagnosis = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, []);
@@ -265,7 +267,19 @@ function silentWorld() {
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
-  return { fake, host, runId, sent, reviews, diagnosis };
+  return { fake, host, runId, sent, reviews, wakes, diagnosis };
+}
+
+type SilentWorld = ReturnType<typeof silentWorld>;
+
+const FIX_ROUND_STEPS = /^(sh-wake-implementer|sh-wake-fix-first|sh-repair|sh-wake-fix-proof)/;
+
+/** Waits out several await polls at the unchanged head, so a fix round started after the wait would have shown. */
+async function settledAtUnchangedHead(world: SilentWorld): Promise<string[]> {
+  await vi.waitFor(() => expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^await-new-head/));
+  await sleep(50, new AbortController().signal);
+  expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^await-new-head/);
+  return Object.keys(world.host.runtime.status(world.runId)!.stepResults);
 }
 
 describe("a run whose reviews never give a verdict (TP-3796)", () => {
@@ -279,6 +293,29 @@ describe("a run whose reviews never give a verdict (TP-3796)", () => {
     expect(world.diagnosis.spawned.map((request) => request.profile)).toEqual(["bd-planner"]);
     expect(world.diagnosis.spawned[0]!.brief).toContain(`Head: ${HEAD}`);
     expect(world.sent).toEqual([]);
+  });
+
+  it("never starts an implementer fix round at the unchanged head: the planner is the only path (decision 515)", async () => {
+    const world = silentWorld();
+
+    const steps = await settledAtUnchangedHead(world);
+
+    expect(world.wakes).toEqual([]);
+    expect(steps.filter((id) => FIX_ROUND_STEPS.test(id))).toEqual([]);
+    expect(world.diagnosis.spawned).toHaveLength(1);
+    expect(world.fake.pr(1).headSha).toBe(HEAD);
+  });
+
+  it("started no fix round on the D7 path before TP-3796 either: four no-verdicts end in the ops notice's head wait", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
+    const world = silentWorld();
+
+    const steps = await settledAtUnchangedHead(world);
+
+    expect(world.reviews).toEqual([HEAD, HEAD, HEAD, HEAD]);
+    expect(world.wakes).toEqual([]);
+    expect(steps.filter((id) => FIX_ROUND_STEPS.test(id))).toEqual([]);
+    expect(world.diagnosis.spawned).toEqual([]);
   });
 
   it("reviews a new head afresh after the planner", async () => {
