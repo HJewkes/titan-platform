@@ -2,6 +2,7 @@ import type { Logger } from "@titan-design/daemon";
 import { resolveSources, type SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost } from "./host.js";
 import type { Projector } from "./ingress/answer.js";
+import { projectDelivery } from "./ingress/kinds.js";
 import { listenIngress, type IngressListener } from "./ingress/listen.js";
 import { trackWebhookSecret } from "./ingress/secret.js";
 
@@ -12,7 +13,7 @@ export interface ServeIngressOptions {
   secretPath: string;
   /** Replaces `INGRESS_REQUEST_TIMEOUT_MS`; tests shorten it. */
   requestTimeoutMs?: number;
-  /** Defaults to ignoring every event until the TP-3100 S2 projections land. */
+  /** Defaults to `projectDelivery`, the declared `INGRESS_KINDS` table. */
   project?: Projector;
 }
 
@@ -22,7 +23,6 @@ interface IngressServeOptions {
   now?: () => number;
 }
 
-const IGNORE_ALL: Projector = () => "ignored";
 const SWITCH_OFF: SourcesReader = () => resolveSources({});
 
 /**
@@ -37,7 +37,7 @@ export async function startServeIngress(host: FactoryHost, options: IngressServe
     requestTimeoutMs: ingress.requestTimeoutMs,
     sources: options.sources ?? SWITCH_OFF,
     secret: trackWebhookSecret(ingress.secretPath),
-    project: ingress.project ?? IGNORE_ALL,
+    project: ingress.project ?? projectDelivery,
     db: host.db,
     now: options.now,
     log,

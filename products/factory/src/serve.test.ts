@@ -15,6 +15,7 @@ import { sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
+import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
@@ -181,7 +182,7 @@ describe("titan-factory serve", () => {
     const ingressPort = async (server: FactoryServer) => z.object({ ingress: z.object({ port: z.number() }) }).parse(await healthOf(server)).ingress.port;
 
     function deliver(port: number): Promise<Response> {
-      const body = JSON.stringify({ zen: "synthetic" });
+      const body = JSON.stringify(statusDelivery({ type: "status", repo: "acme/widgets", head: "e".repeat(40), context: "ci", outcome: "success", at: "2026-10-20T12:00:00Z" }));
       const signature = `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
       const headers = { "content-type": "application/json", "x-github-event": "status", "x-github-delivery": "3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b", "x-hub-signature-256": signature };
       return fetch(`http://127.0.0.1:${port}/ingress/github`, { method: "POST", headers, body });
@@ -205,8 +206,8 @@ describe("titan-factory serve", () => {
       const on = await deliver(port);
 
       expect([off.status, await off.json()]).toEqual([404, { error: "ingress off" }]);
-      expect([on.status, await on.json()]).toEqual([202, { ignored: true }]);
-      expect(await healthOf(server)).toHaveProperty("ingress", expect.objectContaining({ path: "/ingress/github", listening: true, secret: "present", counts: expect.objectContaining({ ignored: 1, refused: 1 }) }));
+      expect([on.status, await on.json()]).toEqual([200, { seq: 1, inserted: true }]);
+      expect(await healthOf(server)).toHaveProperty("ingress", expect.objectContaining({ path: "/ingress/github", listening: true, secret: "present", counts: { stored: 1, duplicate: 0, ignored: 0, refused: 1 } }));
     });
 
     // Mutation killed: the EADDRINUSE let out of startFactoryServer.
