@@ -83,11 +83,13 @@ describe("shipBlockers", () => {
     expect(shipBlockers(SHIP_TILE, [], { answers: [{ questionId: "badge-follow-up", comment: "  " }], general: " \n", addressed: [] })).toEqual([]);
   });
 
-  it.each([
+  const sideCases: [string, Question, { pick?: string; picks?: string[] }, { pick?: string; picks?: string[] }][] = [
     ["a pick-one", { id: "badge-follow-up", kind: "pick-one", prompt: "Colour?", options: ["Yes", "No"], implemented: "Yes", signsOff: "badge-colour" }, { pick: "No" }, { pick: "Yes" }],
     ["a pick-many", { id: "badge-follow-up", kind: "pick-many", prompt: "Colour?", options: ["A", "B", "C"], implemented: ["A", "B"] }, { picks: ["A"] }, { picks: ["B", "A"] }],
-  ] as const)("blocks %s side pick that differs from the implemented choice", (_label, side, differing, matching) => {
-    const manifest = withSide(side as Question);
+  ];
+
+  it.each(sideCases)("blocks %s side pick that differs from the implemented choice", (_label, side, differing, matching) => {
+    const manifest = withSide(side);
 
     expect(shipBlockers(manifest, [], { ...NO_DRAFT, answers: [{ questionId: "badge-follow-up", ...differing }] })).toEqual(['your answer to "Colour?" differs from the implemented choice']);
     expect(shipBlockers(manifest, [], { ...NO_DRAFT, answers: [{ questionId: "badge-follow-up", ...matching }] })).toEqual([]);

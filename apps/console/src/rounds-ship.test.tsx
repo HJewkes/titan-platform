@@ -382,7 +382,7 @@ describe("Ship while feedback is open (TP-3741)", () => {
   it("turns Ship off for a side pick that differs from the implemented choice", async () => {
     const detail = await getRound(source, SHIP);
     if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
-    const questions = detail.manifest.questions.map((question) => (question.id === "badge-follow-up" ? { ...question, implemented: "Yes" } : question));
+    const questions = detail.manifest.questions.map((question) => (question.id === "badge-follow-up" && question.kind === "pick-one" ? { ...question, implemented: "Yes" } : question));
     await renderShip({ answers: true, detail: { manifest: { ...detail.manifest, questions } } });
 
     fireEvent.click(screen.getByRole("radio", { name: "2 No" }));

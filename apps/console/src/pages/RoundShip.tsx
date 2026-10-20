@@ -178,13 +178,21 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
             <Button color="success" isDisabled={disabled || blockers.length > 0} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
             <Button variant="outline" color="warning" isDisabled={disabled || sendBack === undefined} onPress={() => void back()}><ButtonText>Send back</ButtonText></Button>
           </HStack>
-          <ShipBlockedReason reasons={blockers} />
-          {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
-          {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
-          {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
+          <ShipNotices blockers={blockers} missing={missing} available={available} state={state} />
         </VStack>
       </CardContent>
     </Card>
+  );
+}
+
+function ShipNotices({ blockers, missing, available, state }: { blockers: string[]; missing: Question[]; available: boolean; state: SubmitState }): ReactNode {
+  return (
+    <>
+      <ShipBlockedReason reasons={blockers} />
+      {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
+      {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
+      {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
+    </>
   );
 }
 
