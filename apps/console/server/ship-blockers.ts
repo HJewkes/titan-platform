@@ -120,6 +120,19 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
 
+const NEEDS_NOTE = "Send back needs a note: say what to fix in the Ship comment or the round note.";
+
+/**
+ * Why Send back is off; undefined when it may go. The fixer's note is the round note and the comments on
+ * merge-bound questions alone, and the factory refuses an empty one, so Send back waits for one of them
+ * (owner decision 513). Unanswered side questions go with it as unanswered.
+ */
+export function sendBackBlocker(manifest: Manifest, draft: Pick<ShipDraft, "answers" | "general">): string | undefined {
+  const bound = new Set(manifest.questions.filter(isMerge).map((question) => question.id));
+  const noted = draft.answers.some((answer) => bound.has(answer.questionId) && !blank(answer.comment));
+  return noted || !blank(draft.general) ? undefined : NEEDS_NOTE;
+}
+
 /** Why Ship is off, in plain words; empty when it may ship. */
 export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft): string[] {
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
