@@ -152,6 +152,30 @@ describe("a design round", () => {
     });
   });
 
+  it("offers a comment on each question and feedback on the round, and sends them", async () => {
+    const { calls } = await renderDesign();
+
+    fireEvent.keyDown(window, { key: "1" });
+    fireEvent.change(screen.getByLabelText("Comment on Should the beacon be filled or a ring?"), { target: { value: "Filled, but thinner." } });
+    fireEvent.change(screen.getByLabelText("Comment on Anything from the sketch worth keeping?"), { target: { value: "Nothing yet." } });
+    fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Frames load fast." } });
+    fireEvent.click(sendButton());
+
+    await screen.findByText("Answers sent");
+    expect(calls.find((call) => call.name === "rounds.submit")?.args).toMatchObject({
+      general: "Frames load fast.",
+      answers: [{ questionId: "beacon-fill-pick", pick: "Filled", comment: "Filled, but thinner." }, { questionId: "beacon-notes", comment: "Nothing yet." }],
+    });
+  });
+
+  it("shows a sent design round's comments and round feedback read-only", async () => {
+    await renderDesign({ detail: { status: "sent", notes: { general: "Frames load fast.", comments: { "beacon-fill-pick": "Filled, but thinner." } } } });
+
+    expect(screen.getByTestId("round-comment-sent-beacon-fill-pick").textContent).toContain("Filled, but thinner.");
+    expect(screen.getByTestId("round-general-sent").textContent).toContain("Frames load fast.");
+    expect(screen.queryByLabelText("Comment on Anything from the sketch worth keeping?")).toBeNull();
+  });
+
   it("keeps an after-answer round's recommendation out until the round is sent", async () => {
     await renderDesign();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();

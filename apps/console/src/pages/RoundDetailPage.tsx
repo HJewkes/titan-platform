@@ -62,7 +62,7 @@ function QuestionRound({ round }: { round: ValidRound }): ReactNode {
   return (
     <VStack gap={4}>
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} textAnswers />
+      <RoundSections manifest={round.manifest} state={state} textAnswers notes={round.notes} />
       <RoundSend round={round} state={state} />
     </VStack>
   );

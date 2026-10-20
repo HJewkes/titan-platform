@@ -142,6 +142,18 @@ describe("rounds.get", () => {
     expect(detail.manifest.questions[0]).toHaveProperty("recommendation.answer", "Celsius");
   });
 
+  it("carries a sent round's comments and round feedback, and none for an unsent one", async () => {
+    const file = path.join(dir, "kiln-schedule-r1", "feedback.json");
+    const feedback = z.looseObject({ answers: z.array(z.looseObject({})) }).parse(JSON.parse(await readFile(file, "utf8")));
+    await writeFile(file, JSON.stringify({ ...feedback, answers: [{ ...feedback.answers[0], comment: "Fahrenheit for the US shop." }], general: "Ask again next quarter." }));
+
+    const sent = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+    const unsent = validDetail(await getRound({ dir }, "kiln-schedule-r2"));
+
+    expect(sent.notes).toEqual({ general: "Ask again next quarter.", comments: { "unit-start": "Fahrenheit for the US shop." } });
+    expect(unsent).not.toHaveProperty("notes");
+  });
+
   it("keeps recommendations in a round that shows them", async () => {
     const detail = validDetail(await getRound({ dir }, "orbit-retry-r1"));
 
