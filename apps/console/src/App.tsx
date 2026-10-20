@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { BuildFooter } from "./BuildFooter.js";
 import { useRelayInvalidation } from "./data/live.js";
 import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
@@ -24,6 +25,7 @@ export function App(): ReactNode {
     >
       <StaleLine />
       <RoutedView route={route} />
+      <BuildFooter />
     </AppShell>
   );
 }
