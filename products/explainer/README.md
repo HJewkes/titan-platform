@@ -101,17 +101,23 @@ and 2 on bad input. L0 filters only: never rank scripts by how many checks they 
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
-Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7). The other L0 checks read script/v1 fields
+Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
+error: a beat that states an invariant (an `inv:` cue, or a `video.invariants` phrase in its spoken
+text) needs a map and may state only one. Q-E12 (a finding with no map beside it) and Q-E14 (a beat
+that names items without glossing them) only route beats to the L1 judges and never gate. Q-E13
+names reused `origin: v2` beats that fail Q-E7, Q-E8, Q-E9 or Q-E11, and the command then prints
+`beat`, `checks` and `revoice_s`, the heard seconds to re-voice each; a v1 script has no `origin`, so
+Q-E13 passes it. The other L0 checks read script/v1 fields
 a spike script lacks, so they would pass one without checking anything. `--format spike`, the
 default, reads a Python-emitted spike script.json loosely and notes on stderr the keys it skipped.
-`--format v1` parses strict script/v1. The command freezes the script, appends four
+`--format v1` parses strict script/v1. The command freezes the script, appends eight
 `structure.tsv` rows and an `L0-pace` run record under `--config` (by default `unconfigured`), and
 prints one line a chapter: new items, heard (or planned) seconds, items a minute and the M7 verdict.
 An item is anything new on screen, so a chip cue counts too. On the v4 fixture with its
 durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explainer hold-out
 (`fixtures/spike/pipeline-explainer/`, planned lengths) Q-E7 fails on `c5-1-contract` and
 `c6-10-rule`, and ch2 shows 13 items over 72 s. Exit codes are the same as `eval l0`:
-1 only when an error row (Q-E7) fails. A warning row is recorded as failing but never changes
+1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format

@@ -428,3 +428,31 @@ rules:
     owner_support: none
     note: "A warning: a call list or roadmap chapter may run fast on purpose."
     l0: { severity: warning, status: implemented, checks: ["Q-E10"] }
+  - id: Q-E11
+    rule: "A beat that states an invariant has a map on screen and states at most one"
+    fields: [beats.spoken, beats.visual, video.invariants]
+    related: ["SM M5"]
+    owner_support: for
+    note: "Owner feedback rule 6: an invariant is seated in the architecture. A beat states one by an inv: cue or a video.invariants phrase in its spoken text."
+    l0: { severity: error, status: implemented, checks: ["Q-E11"] }
+  - id: Q-E12
+    rule: "A StatBeat finding has a map beside it, on its own beat or the beat before or after"
+    fields: [beats.visual]
+    related: ["SM M5"]
+    owner_support: none
+    note: "Routes to the L1 seat judge (TP-2982); never gates."
+    l0: { severity: warning, status: implemented, checks: ["Q-E12"] }
+  - id: Q-E13
+    rule: "A reused beat (origin v2) fails no beat-level pace check (Q-E7, Q-E8, Q-E9, Q-E11)"
+    fields: [beats.visual, beats.plannedS]
+    related: [Q-E7, Q-E8, Q-E9, Q-E11, "SM M9"]
+    owner_support: for
+    note: "Owner feedback rule 8: reuse is checked, not assumed. Names the beats to re-voice and their heard seconds; a v1 script has no origin, so it passes vacuously. Never downgrades the rows it reads."
+    l0: { severity: warning, status: implemented, checks: ["Q-E13"] }
+  - id: Q-E14
+    rule: "A beat that names three or more new items glosses them (prefilter for the L1 item judge)"
+    fields: [beats.spoken, beats.visual]
+    related: [Q-E6, "SM M3"]
+    owner_support: none
+    note: "Prefilter only, about half false positives (SM:277); never gates."
+    l0: { severity: warning, status: implemented, checks: ["Q-E14"] }
