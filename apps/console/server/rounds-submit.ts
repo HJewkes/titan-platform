@@ -206,18 +206,15 @@ type PickOne = Extract<Question, { kind: "pick-one" }>;
 type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
 
 const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
-
-/** A merge-bound answer with anything but its Ship option: a pick outside `ship`, or a revision request. */
 const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
   answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
 
-/** Each PR sent back needs its own note (decision 513); the refusal names the question only when the round has several. */
-function refuseEmptySendBack(manifest: Manifest, args: SubmitArgs): void {
-  const merges = manifest.questions.filter(isMergeQuestion);
-  for (const question of merges) {
+/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question or the round note. */
+function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
+  for (const question of manifest.questions.filter(isMergeQuestion)) {
     const answer = args.answers.find((each) => each.questionId === question.id);
     const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(args, question.id) : undefined;
-    if (blocker !== undefined) refuse(`Send back refused${merges.length > 1 ? ` for question "${question.id}"` : ""}: ${blocker}`);
+    if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
   }
 }
 
@@ -287,7 +284,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   checkFollowUps(manifest, args.followUps);
   const shipped = shippedHeads(manifest, args);
   if (shipped.length > 0) await refuseBlockedShip(source, manifest, args, shipped);
-  refuseEmptySendBack(manifest, args);
+  refuseSendBackWithoutNote(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };

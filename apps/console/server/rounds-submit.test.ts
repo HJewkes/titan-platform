@@ -459,7 +459,7 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
 
     expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Send back needs a note: say what to fix in the Ship comment or the round note." });
+    expect(envelope).toMatchObject({ ok: false, error: 'Send back refused for question "ship-backoff": Send back needs a note: say what to fix in the Ship comment or the round note.' });
     expect(await exists(feedbackOf())).toBe(false);
   });
 

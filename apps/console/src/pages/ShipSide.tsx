@@ -22,8 +22,7 @@ export function sideMarks(side: RoundAnswers) {
 
 interface ShipNoticesProps {
   blockers: string[];
-  /** Why Send back is off, when the page shows it here rather than beside each PR's own Send back. */
-  noNote?: string | undefined;
+  noNote: string | undefined;
   available: boolean;
   state: SubmitState;
 }

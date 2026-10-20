@@ -141,9 +141,10 @@ export function shipScope(manifest: Manifest, mergeId: string): ReadonlySet<stri
 const NEEDS_NOTE = "Send back needs a note: say what to fix in the Ship comment or the round note.";
 
 /**
- * Why one PR's Send back is off; undefined when it may go. The fixer's note is the round note and that PR's
- * Ship comment, and the factory refuses an empty one, so Send back waits for one of them (owner decision 513).
- * A round with one PR is the same rule with its one merge question. Unanswered side questions go with it as unanswered.
+ * Why one PR's Send back is off; undefined when it may go. The fixer's note is the round note and the comment
+ * on that PR's own Ship question, and the factory refuses an empty one, so Send back waits for one of them
+ * (owner decision 513). A note on another PR's Ship question does not count, and unanswered side questions
+ * go with it as unanswered.
  */
 export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general">, mergeId: string): string | undefined {
   const note = draft.answers.find((answer) => answer.questionId === mergeId)?.comment;

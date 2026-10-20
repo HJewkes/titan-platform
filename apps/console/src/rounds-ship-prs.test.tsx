@@ -154,7 +154,7 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     await renderPrs();
 
     expect(disabled("Send back example/panels#2")).toBe(true);
-    expect(screen.getByTestId("send-back-note-example/panels#2").textContent).toContain("Send back needs a note");
+    expect(screen.getByTestId("send-back-note-example/panels#2").textContent).toContain("Send back needs a note: say what to fix");
     fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
     fireEvent.click(button("Send back example/panels#2"));
     fireEvent.click(button("Ship example/tiles#1"));

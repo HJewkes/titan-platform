@@ -196,7 +196,7 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
           {verdict === "ship" ? null : (
             <Input multiline numberOfLines={3} label="Note for Send back" accessibilityLabel={`Note for Send back on ${pr}`} value={state.verdicts.notes[question.id] ?? ""} onChangeText={(text) => state.verdicts.note(question.id, text)} />
           )}
-          {noNote !== undefined && verdict !== "ship" ? <Typography variant="caption" color="secondary" testID={`send-back-note-${pr}`}>{`Send back is off: ${noNote}.`}</Typography> : null}
+          {noNote !== undefined && verdict !== "ship" ? <Typography variant="caption" color="secondary" testID={`send-back-note-${pr}`}>{noNote}</Typography> : null}
           <ShipBlockedReason reasons={blockers} />
         </VStack>
       </CardContent>
@@ -272,7 +272,7 @@ function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnTyp
             <Button isDisabled={disabled} onPress={() => void submit(sendArgs(state))}><ButtonText>Send answers</ButtonText></Button>
           </HStack>
           {problems.length > 0 ? <Alert status="info" size="compact" message={`Before sending: ${problems.join("; ")}.`} testID="prs-send-problems" /> : null}
-          <ShipNotices blockers={[]} available={available} state={sending} />
+          <ShipNotices blockers={[]} noNote={undefined} available={available} state={sending} />
         </VStack>
       </CardContent>
     </Card>
