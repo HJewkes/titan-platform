@@ -530,7 +530,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +73 more in the [reference page](/reference/daemon)
+- +77 more in the [reference page](/reference/daemon)
 
 <a id="cap-frame-capture"></a>
 
@@ -564,7 +564,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +146 more in the [reference page](/reference/github)
+- +147 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
