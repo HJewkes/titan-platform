@@ -28,6 +28,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "a17": "node scripts/a17.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
