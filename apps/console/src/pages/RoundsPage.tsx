@@ -22,19 +22,23 @@ import {
 import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { roundsInSet, setFromQuery } from "./round-set.js";
 
 const COUNT_WIDTH = 96;
 
-/** Every round in the rounds dir: the open ones waiting for answers first, then the sent ones. */
-export function RoundsPage(): ReactNode {
+/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones. */
+export function RoundsPage({ query }: { query?: string }): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
   if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error.message}`} />;
-  const { rounds, truncated, dir } = list.data;
-  if (rounds.length === 0 && !truncated) return <NoRounds dir={dir} />;
+  const { truncated, dir } = list.data;
+  if (list.data.rounds.length === 0 && !truncated) return <NoRounds dir={dir} />;
+  const set = setFromQuery(query);
+  const rounds = set === null ? list.data.rounds : roundsInSet(list.data.rounds, set);
   return (
     <VStack gap={6}>
-      {truncated ? <Alert status="warning" message={`Showing the first ${rounds.length} rounds; the rounds dir holds more.`} /> : null}
+      {truncated ? <Alert status="warning" message={`Showing the first ${list.data.rounds.length} rounds; the rounds dir holds more.`} /> : null}
+      {set === null ? null : <SetFilter set={set} count={rounds.length} />}
       <RoundsSection title="Open rounds" subtitle="Waiting for your answers" rounds={rounds.filter((round) => round.status === "open")} empty="No open rounds" />
       <RoundsSection title="Sent rounds" subtitle="Answered; the feedback sits beside the round" rounds={rounds.filter((round) => round.status === "sent")} empty="No sent rounds" />
     </VStack>
@@ -44,6 +48,18 @@ export function RoundsPage(): ReactNode {
 /** A blank page left the owner guessing; this names the dir the server reads and the verb that fills it. */
 function NoRounds({ dir }: { dir: string }): ReactNode {
   return <EmptyState title="No review rounds yet" description={`The console reads rounds from ${dir}. Import one with: titan-console rounds import <round-dir>`} />;
+}
+
+/** A set view is reached from a round's up link; this names the set and leads back to every round. */
+function SetFilter({ set, count }: { set: string; count: number }): ReactNode {
+  return (
+    <HStack gap={3} align="center" wrap testID="rounds-set-filter">
+      <Typography variant="body2">{`Set ${set} · ${count === 1 ? "1 round" : `${count} rounds`}, earliest first`}</Typography>
+      <Link color="primary" onPress={() => open({ view: "rounds" })}>
+        All rounds
+      </Link>
+    </HStack>
+  );
 }
 
 function RoundsSection({ title, subtitle, rounds, empty }: { title: string; subtitle: string; rounds: readonly RoundSummary[]; empty: string }): ReactNode {
