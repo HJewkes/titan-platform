@@ -433,7 +433,9 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: R2_HEAD, addressed: "recorded" } });
     expect(JSON.parse(await readFile(path.join(dir, R2, ADDRESSED_FILE), "utf8"))).toEqual({ schema: "titan-console/addressed@1", rounds: [1], at: expect.any(String) });
-    expect(await getRound({ dir }, R2)).not.toHaveProperty("priorFeedback");
+    const sent = await getRound({ dir }, R2);
+    expect(sent).toHaveProperty("notes.addressed", [1]);
+    expect(sent).toHaveProperty("priorFeedback.0.round", 1);
   });
 
   it("still takes a Send back while round 1 is unticked", async () => {

@@ -151,8 +151,47 @@ describe("rounds.get", () => {
     const sent = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
     const unsent = validDetail(await getRound({ dir }, "kiln-schedule-r2"));
 
-    expect(sent.notes).toEqual({ general: "Ask again next quarter.", comments: { "unit-start": "Fahrenheit for the US shop." } });
+    expect(sent.notes).toEqual({
+      general: "Ask again next quarter.",
+      comments: { "unit-start": "Fahrenheit for the US shop." },
+      answers: { "unit-start": { pick: "Celsius" } },
+      addressed: [],
+    });
     expect(unsent).not.toHaveProperty("notes");
+  });
+
+  it("carries every sent answer field and the addressed.json ticks, so a reload shows the round as sent (TP-3767)", async () => {
+    const roundDir = path.join(dir, "kiln-schedule-r1");
+    const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(roundDir, "feedback.json"), "utf8")));
+    const answers = [
+      { questionId: "unit-start", pick: "Celsius", recommendationSeen: true, optionNotes: [{ option: "Fahrenheit", note: "Only for export." }] },
+      { questionId: "zones", picks: ["Top", "Base"] },
+      { questionId: "ramp", value: 4 },
+      { questionId: "notes", text: "Log the cone." },
+      { questionId: "glaze", revisionRequested: true, comment: "Neither: try a matte." },
+    ];
+    await writeFile(path.join(roundDir, "feedback.json"), JSON.stringify({ ...feedback, answers }));
+    await writeFile(path.join(roundDir, "addressed.json"), JSON.stringify({ schema: "titan-console/addressed@1", rounds: [1, 2], at: "2031-03-02T10:00:00.000Z" }));
+
+    const { notes } = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+
+    expect(notes?.answers).toEqual({
+      "unit-start": { pick: "Celsius", recommendationSeen: true, optionNotes: [{ option: "Fahrenheit", note: "Only for export." }] },
+      zones: { picks: ["Top", "Base"] },
+      ramp: { value: 4 },
+      notes: { text: "Log the cone." },
+      glaze: { revisionRequested: true },
+    });
+    expect(notes?.comments).toEqual({ glaze: "Neither: try a matte." });
+    expect(notes?.addressed).toEqual([1, 2]);
+  });
+
+  it("reads a malformed addressed.json as no ticks and still shows the sent answers", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r1", "addressed.json"), "{ not json");
+
+    const { notes } = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+
+    expect(notes).toMatchObject({ answers: { "unit-start": { pick: "Celsius" } }, addressed: [] });
   });
 
   it("keeps recommendations in a round that shows them", async () => {

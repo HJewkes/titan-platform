@@ -9,8 +9,11 @@ import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
-import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
+import { RoundComment, RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
+import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
+import { InlineMarkdown } from "./RoundMarkdown.js";
+import { RoundNote } from "./RoundNote.js";
 import { QuestionFacts, RoundQuestion } from "./RoundQuestion.js";
 import { abAnswering, useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
 import { shipBlockers } from "../../server/ship-blockers.js";
@@ -46,7 +49,7 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
   const submitting = useSubmit();
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   // Locked, the side questions are not handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : sideQuestions);
+  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes);
   if (question === undefined) return null;
   return (
     <VStack gap={4}>
@@ -55,7 +58,7 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
       {round.manifest.questions.map((each, index) =>
         each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
       )}
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={side.addressed} onToggle={side.toggleAddressed} />
+      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
       <ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />
     </VStack>
   );
@@ -68,8 +71,8 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
       <CardContent>
         <VStack gap={2}>
           <QuestionFrames question={question} />
-          <Typography variant="subtitle1">{question.prompt}</Typography>
-          {section?.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
+          <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
+          {section?.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
           <QuestionFacts question={question} />
           <ShipLineageLine lineage={round.lineage} />
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
@@ -250,6 +253,7 @@ function ShipOutcome({ round, question, state }: { round: ValidRound; question: 
   return (
     <VStack gap={3}>
       <AnswerOutcome answer={round.answer} headSha={question.merge.headSha} state={state} />
+      <SentPick questionId={question.id} pick={round.notes?.answers[question.id]?.pick} />
       <SentComment questionId={question.id} text={round.notes?.comments[question.id]} />
       <SentGeneral text={round.notes?.general} />
     </VStack>
@@ -271,21 +275,10 @@ interface SideQuestionProps {
   locked: boolean;
 }
 
-/** Runs `act` only while the question is open; `inert` already stops a pointer, this stops what reaches it anyway. */
-const unlessLocked = <A extends unknown[]>(locked: boolean, act: (...args: A) => void) => (...args: A): void => {
-  if (!locked) act(...args);
-};
-
-/** The comment as sent: feedback.json's once the round is read back, the page's own while the press is in flight or just landed. */
-function sentComment(round: ValidRound, side: RoundAnswers, question: Question, locked: boolean): string | undefined {
-  if (round.notes !== undefined) return round.notes.comments[question.id] ?? "";
-  return locked ? (side.comments[question.id] ?? "").trim() : undefined;
-}
-
 function SideQuestion({ round, question, position, side, locked }: SideQuestionProps): ReactNode {
   const { answers, comments, activeId, setActiveId, choose, write, comment } = side;
   return (
-    <div className="flex flex-col gap-2" inert={locked} data-testid={`ship-side-${question.id}`}>
+    <LockedQuestion locked={locked} testID={`ship-side-${question.id}`}>
       <RoundQuestion
         question={question}
         position={position}
@@ -296,9 +289,9 @@ function SideQuestion({ round, question, position, side, locked }: SideQuestionP
         onActivate={unlessLocked(locked, () => setActiveId(question.id))}
         ab={abAnswering(side, question, locked)}
       />
-      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(round, side, question, locked)} />
+      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} />
       <SideStake round={round} question={question} side={side} locked={locked} />
-    </div>
+    </LockedQuestion>
   );
 }
 
