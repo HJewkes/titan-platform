@@ -28,6 +28,9 @@ export type ColdQuestion =
   | { kind: "odd-one-out"; beat: string; items: string[]; text: string };
 
 const whatWhyText = (item: string): string => `What is "${item}", and why is it there?`;
+// A spoken term is asked what it means, so the rubric can hold it to the readers' bar: a sentence that only uses it
+// leaves it undefined. Item labels keep the looser question; held to that bar, "5-hour ceiling" scored 0 too.
+const termText = (term: string): string => `What does "${term}" mean here, and why is it there?`;
 const invariantText = (item: string): string => `"${item}" must always hold. What keeps it, or how does it break today?`;
 const oddOneOutText = (items: readonly string[]): string =>
   `Of ${items.map((i) => `"${i}"`).join(", ")}: which item is a different kind of thing, if any?`;
@@ -44,7 +47,7 @@ export function coldQuestions(beats: readonly PaceBeat[], glossary: readonly str
     return [
       ...beat.newItems.map((i) => ({ kind: "what-why" as const, beat: beat.id, item: i.label, text: whatWhyText(i.label) })),
       ...beat.newItems.filter((i) => i.kind === "inv").map((i) => ({ kind: "invariant" as const, beat: beat.id, item: i.label, text: invariantText(i.label) })),
-      ...heard.map((t) => ({ kind: "spoken-term" as const, beat: beat.id, item: t.term, text: whatWhyText(t.term) })),
+      ...heard.map((t) => ({ kind: "spoken-term" as const, beat: beat.id, item: t.term, text: termText(t.term) })),
       ...(listed.length >= ODD_ONE_OUT_MIN_ITEMS ? [{ kind: "odd-one-out" as const, beat: beat.id, items: listed, text: oddOneOutText(listed) }] : []),
     ];
   });
@@ -197,7 +200,7 @@ const BARE: ColdGrade = { score: 0, void_reason: "named only in a list" };
 
 export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): string =>
   evalVersion(COLD_EVAL_ID, input.rubric, input.judge, {
-    questions: [whatWhyText("<item>"), invariantText("<item>"), oddOneOutText(["<a>", "<b>", "<c>"])],
+    questions: [whatWhyText("<item>"), termText("<term>"), invariantText("<item>"), oddOneOutText(["<a>", "<b>", "<c>"])],
     canary: "relay-<nonce>",
     max_summary_lines: MAX_SUMMARY_LINES,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,

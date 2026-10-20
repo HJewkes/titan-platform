@@ -43,9 +43,9 @@ interface SpokenTerm {
   term: string;
 }
 
-// Only a new item's label counts: the item track asks about those, while an attribute ("after the F7 eval") is shown
-// but never asked, so a term it carries would go unasked.
-const askedBy = (beat: PaceBeat, term: string): boolean => beat.newItems.some((i) => mentions(i.label, term));
+// Only a new item's label that is the term itself counts. An attribute ("after the F7 eval") is shown but never asked,
+// and a longer label ("I2 verdict at head") is asked about as a whole, so a term inside either would go unasked.
+const askedBy = (beat: PaceBeat, term: string): boolean => beat.newItems.some((i) => termKey(i.label) === termKey(term));
 
 // Only the last word is folded: "carry modules" and "carry module" are one term, "class" and "status" stay whole.
 function singular(word: string): string {

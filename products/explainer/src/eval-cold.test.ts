@@ -275,10 +275,19 @@ describe("the streamed cold-viewer probe", () => {
     const asked = coldQuestions(docks, ["dock", "manifest", "van"]).filter((q) => q.kind === "spoken-term");
 
     expect(asked).toMatchObject([
-      { beat: "d1-1", item: "dock", text: 'What is "dock", and why is it there?' },
+      { beat: "d1-1", item: "dock", text: 'What does "dock" mean here, and why is it there?' },
       { beat: "d1-1", item: "Z9" },
       { beat: "d1-2", item: "van" },
     ]);
+  });
+
+  // Mutation: counting any label that mentions the term leaves "dock" unasked behind "dock shuts at noon" (TP-3807).
+  it("asks a term a longer label carries, since that label's question is about the whole label", () => {
+    const docks = buildPaceBeats([source("d1-1", "ch1", "Each parcel waits at the dock, and the dock shuts at noon.", ["card:dock shuts at noon"], 6)]);
+
+    const asked = coldQuestions(docks, ["dock"]).filter((q) => q.kind === "spoken-term");
+
+    expect(asked).toMatchObject([{ beat: "d1-1", item: "dock" }]);
   });
 
   it("poses spoken terms in their chapter and counts an unexplained one as an undefined item", async () => {
