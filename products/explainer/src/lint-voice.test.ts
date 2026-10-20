@@ -141,3 +141,29 @@ describe("spoken register", () => {
     expect(voice(spoken("w2", long)).get("Q-V9")).toMatchObject({ value: 1, detail_beats: ["w2"] });
   });
 });
+
+describe("Q-V9 vetted cap", () => {
+  const sentence = (n: number) => `${Array.from({ length: n }, () => "scan").join(" ")}.`;
+  const q9 = (n: number, speechClean?: (s: string) => boolean) =>
+    voice(spoken("w2", sentence(n)), [voiceCheckWith([], { speechClean })]).get("Q-V9");
+
+  it("passes thirty words when speech-vet reports the sentence clean", () => {
+    expect(q9(30, () => true)?.pass).toBe(true);
+  });
+
+  it("fails thirty words when speech-vet reports a failure", () => {
+    expect(q9(30, () => false)).toMatchObject({ pass: false, detail_beats: ["w2"] });
+  });
+
+  it("fails thirty words when speech-vet did not run", () => {
+    expect(q9(30)?.pass).toBe(false);
+  });
+
+  it("fails thirty-three words even when speech-vet reports clean", () => {
+    expect(q9(33, () => true)?.pass).toBe(false);
+  });
+
+  it("passes twenty words without consulting speech-vet", () => {
+    expect(q9(20, () => false)?.pass).toBe(true);
+  });
+});

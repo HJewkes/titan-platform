@@ -1,13 +1,13 @@
 /** The head-guard classifier: pure decisions over answers the caller already fetched. It reads no network, clock or store. */
 
 /** A read the pool could not serve; it counts no try and moves nothing. */
-interface Unavailable {
+export interface Unavailable {
   kind: "unavailable";
   resetAt?: string;
 }
 
 /** How the read head relates to a base head, from the compare status. */
-type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
+export type Ancestry = "ahead" | "behind" | "identical" | "diverged" | "missing";
 
 export interface StoredHead {
   head: string;
@@ -36,7 +36,7 @@ export interface HeadReadInput {
   now: number;
 }
 
-type ConfirmedBy = "bootstrap" | "non-ancestor" | "fast-forward" | "ls-remote";
+export type ConfirmedBy = "bootstrap" | "non-ancestor" | "fast-forward" | "ls-remote";
 
 type StaleReason =
   | "ancestor-of-stored"
