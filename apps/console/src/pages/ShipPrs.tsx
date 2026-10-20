@@ -11,6 +11,7 @@ import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { QuestionFacts } from "./RoundQuestion.js";
+import { useWithSeen } from "./RoundReveal.js";
 import { Montages } from "./ShipMontages.js";
 import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
@@ -98,7 +99,8 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   // Locked, no question is handed over, so no digit key can change an answer already sent.
   const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)), round.notes);
   const verdicts = useVerdicts();
-  const answers = draftAnswers(round, units, side, verdicts);
+  const withSeen = useWithSeen();
+  const answers = withSeen(draftAnswers(round, units, side, verdicts));
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
   const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
@@ -125,7 +127,7 @@ function PrsHeading({ round, units }: { round: ValidRound; units: readonly PrUni
           <VStack gap={2}>
             <Typography variant="subtitle1">{`${units.length} PRs in this round: each ships or goes back on its own`}</Typography>
             <Typography variant="caption">{units.map((unit) => `${unit.pr} at ${sha7(unit.question.merge.headSha)}`).join(" · ")}</Typography>
-            {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
+            {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation is hidden until you answer; reveal it first if you want it.</Typography> : null}
           </VStack>
         </CardContent>
       </Card>
@@ -141,7 +143,7 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
       <SectionHeader title={group?.title ?? unit.pr} subtitle={`${unit.pr} at ${sha7(question.merge.headSha)}`} />
       <SectionContent>
         <div className="flex flex-col gap-4" data-testid={`pr-${unit.pr}`}>
-          <PrProposal unit={unit} />
+          <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
           <Montages round={state.round} keys={unit.keys} merge={question.merge} />
           {unit.sideQuestions.map((each) => (
             <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />
@@ -153,8 +155,8 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
   );
 }
 
-/** What the PR proposes and changes, as its group and sections describe it. */
-function PrProposal({ unit }: { unit: PrUnit }): ReactNode {
+/** What the PR proposes and changes, as its group and sections describe it; `pick` is its Ship or Send back, held or sent. */
+function PrProposal({ unit, pick }: { unit: PrUnit; pick: string | undefined }): ReactNode {
   const { question, group } = unit;
   const changed = unit.sections.flatMap((section) => (section.changed ? [section.changed] : []));
   return (
@@ -169,7 +171,7 @@ function PrProposal({ unit }: { unit: PrUnit }): ReactNode {
           {group?.description ? <MarkdownProse body={group.description} testID={`proposal-${unit.pr}`} /> : null}
           {changed.map((line) => <Typography key={line} variant="caption">{`Changed: ${line}`}</Typography>)}
           <QuestionFrames question={question} />
-          <QuestionFacts question={question} />
+          <QuestionFacts question={question} answer={pick === undefined ? undefined : { pick }} />
         </VStack>
       </CardContent>
     </Card>
