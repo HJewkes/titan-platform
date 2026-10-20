@@ -50,6 +50,7 @@ const readJson = (path: string): unknown => JSON.parse(readGolden(path).toString
 export const loadSeeds = () => SeedsSchema.parse(readJson("seeded/seeds.json")).seeds;
 export const loadSeededProvenance = () => SeededProvenanceSchema.parse(readJson("seeded/provenance.json"));
 export const loadLint = (variant: string): Lint => LintSchema.parse(readJson(`seeded/${variant}/lint.json`));
+export const loadFrozenLint = (script: string): Lint => LintSchema.parse(readJson(`${script}/lint.json`));
 export const fixtureBytes = (fixture: string): Buffer => readFileSync(new URL(`../${fixture}`, GOLDENS));
 
 /** A JSON object or array; arrays index by their string keys too. */

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type RfTextProfile, rfTextLint } from "./lint-flow.js";
 import { RF_BANNED, rfSentenceIssues, spokenNumbers } from "./lint-text.js";
 import { type RfIssue, readRfScript } from "./rf-script.js";
-import { applyEdits, fixtureBytes, type Lint, loadLint, loadSeededProvenance, loadSeeds, readGolden } from "./rf-goldens.test-helpers.js";
+import { applyEdits, fixtureBytes, type Lint, loadFrozenLint, loadLint, loadSeededProvenance, loadSeeds } from "./rf-goldens.test-helpers.js";
 
 // The checks L1 ports. The goldens also hold the L2-L4 checks (budgets, map, recipe, origin...), which this slice
 // leaves to those ports, so the differential compares only these.
@@ -38,11 +38,9 @@ const portIssues = (base: string, doc: unknown, profile: Partial<RfTextProfile> 
   return sorted(issues);
 };
 
-const frozenLint = (name: string): Lint => JSON.parse(readGolden(`${name}/lint.json`).toString("utf8")) as Lint;
-
 describe("RF text lints against the A2 goldens", () => {
   it.each(Object.keys(PROFILES))("finds no issue on the frozen %s script, as the Python did", (name) => {
-    expect(portIssues(name, baseDoc(name))).toEqual(l1Golden(frozenLint(name)));
+    expect(portIssues(name, baseDoc(name))).toEqual(l1Golden(loadFrozenLint(name)));
   });
 
   it.each(Object.keys(loadSeeds()))("matches the Python's L1 issues on seeded variant %s", (variant) => {
