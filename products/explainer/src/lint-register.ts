@@ -67,9 +67,11 @@ function sentenceCv(s: SpokenText): number | undefined {
   return Math.sqrt(mean(lengths.map((n) => (n - m) ** 2))) / m;
 }
 
-export type RegisterMetric =
-  | "numbers" | "second-person" | "we" | "sentence-mean" | "sentence-cv" | "contractions"
-  | "triads" | "colon-reveals" | "not-x-tails" | "semicolons" | "lets";
+export const REGISTER_METRICS = [
+  "numbers", "second-person", "we", "sentence-mean", "sentence-cv", "contractions",
+  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets",
+] as const;
+export type RegisterMetric = (typeof REGISTER_METRICS)[number];
 
 /** Each metric's value on a parsed script; undefined when the text cannot carry it. */
 export const REGISTER_MEASURES: Record<RegisterMetric, (s: SpokenText) => number | undefined> = {
@@ -110,7 +112,7 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   lets: { max: 3.21 },
 };
 
-export const REGISTER_CHECK_IDS: readonly string[] = Object.keys(REGISTER_MEASURES).map((metric) => `register:${metric}`);
+export const REGISTER_CHECK_IDS: readonly string[] = REGISTER_METRICS.map((metric) => `register:${metric}`);
 
 const below = (value: number, band: Band): boolean => band.min !== undefined && value < band.min;
 
@@ -126,5 +128,5 @@ function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return (Object.keys(REGISTER_MEASURES) as RegisterMetric[]).map((metric) => registerRow(metric, parsed));
+  return REGISTER_METRICS.map((metric) => registerRow(metric, parsed));
 };

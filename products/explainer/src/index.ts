@@ -261,6 +261,7 @@ export {
   REGISTER_BANDS,
   REGISTER_CHECK_IDS,
   REGISTER_MEASURES,
+  REGISTER_METRICS,
   registerCheck,
   spokenText,
   type Band,

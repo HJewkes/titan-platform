@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS } from "./eval-l0.js";
-import { REGISTER_CHECK_IDS, REGISTER_MEASURES, registerCheck, spokenText, type RegisterMetric } from "./lint-register.js";
+import { REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type RegisterMetric } from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const measure = (metric: RegisterMetric, ...spoken: string[]): number | undefined => REGISTER_MEASURES[metric](spokenText(spoken));
@@ -86,7 +86,9 @@ describe("register metrics on hand-counted text", () => {
     const unpunctuated = Array.from({ length: 60 }, () => "word").join(" ");
 
     expect(measure("sentence-cv", "One two. Three four.")).toBeUndefined();
-    expect(["sentence-mean", "sentence-cv", "triads", "colon-reveals", "not-x-tails"].map((m) => measure(m as RegisterMetric, unpunctuated))).toEqual([
+    const punctuationMetrics: RegisterMetric[] = ["sentence-mean", "sentence-cv", "triads", "colon-reveals", "not-x-tails"];
+
+    expect(punctuationMetrics.map((metric) => measure(metric, unpunctuated))).toEqual([
       undefined, undefined, undefined, undefined, undefined,
     ]);
   });
@@ -148,8 +150,8 @@ describe("parity with the research harness", () => {
   it.each(PARITY.map((p, i) => [i + 1, p] as const))("matches every metric on synthetic paragraph %i", (_, { spoken, expected }) => {
     const parsed = spokenText(spoken);
 
-    for (const [metric, value] of Object.entries(expected)) {
-      expect(REGISTER_MEASURES[metric as RegisterMetric](parsed), metric).toBeCloseTo(value, 9);
+    for (const metric of REGISTER_METRICS) {
+      expect(REGISTER_MEASURES[metric](parsed), metric).toBeCloseTo(expected[metric], 9);
     }
   });
 });
