@@ -11,12 +11,13 @@ import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
-import { BLIND_AB_REFUSED } from "./round-schema.js";
-import { FeedbackDocument } from "./round2-adapter.js";
+import { feedbackProblems } from "./round-feedback.js";
+import { BLIND_AB_REFUSED, FeedbackSchema, RoundSchema } from "./round-schema.js";
 import { ADDRESSED_FILE, MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
 import { getRound, listRounds } from "./rounds.js";
 
 const ROUND = "orbit-retry-r1";
+const SHIP_RECOMMENDATION = { answer: "Ship", rationale: "The cap keeps a flapping station from stalling the queue.", confidence: 0.9, by: "fixture-agent" };
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 const SESSION_AUTH: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
 
@@ -77,7 +78,7 @@ describe("rounds.submit", () => {
       round: 1,
       manifestSha256,
       submittedAt: expect.any(String),
-      answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true }],
+      answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true, recommendation: SHIP_RECOMMENDATION, agreed: true }],
       variants: [],
       general: "",
     });
@@ -202,7 +203,7 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf(id))).toBe(false);
   });
 
-  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json", async () => {
+  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json in round order", async () => {
     const id = "ship-tile-r1";
     await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
     const file = path.join(dir, id, "round.json");
@@ -225,8 +226,8 @@ describe("rounds.submit", () => {
     const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(file)), headSha: "89abcdef0123456789abcdef0123456789abcdef", answers });
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
-    const written = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
-    expect(written.answers.map((answer) => answer.questionId)).toEqual(["badge-follow-up", "side-many", "side-scale", "side-text", "ship-tiles"]);
+    const written = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+    expect(written.answers.map((answer) => answer.questionId)).toEqual(["side-many", "side-scale", "side-text", "badge-follow-up", "ship-tiles"]);
   });
 
   it("answers a TD-920 CI-packet round, which only review-schema 0.3 accepts, with Ship at its bound head", async () => {
@@ -283,7 +284,7 @@ describe("rounds.submit", () => {
 
     const { envelope } = await submit(shipArgs(), ownerContext(), decisionLog);
 
-    const { submittedAt } = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(), "utf8")));
+    const { submittedAt } = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(), "utf8")));
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ questionId: "ship-backoff", ledger: "written", decisions: "not-a-decision" }] } });
     const rows = (await readFile(path.join(stateDir, ANSWERS_FILE), "utf8")).trim().split("\n").map((line): unknown => JSON.parse(line));
     expect(rows).toEqual([
@@ -452,5 +453,118 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
     expect(await exists(feedbackOf())).toBe(false);
+  });
+});
+
+describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
+  const ManifestJson = z.looseObject({ questions: z.array(z.record(z.string(), z.unknown())) });
+  type ManifestJson = z.infer<typeof ManifestJson>;
+
+  /** Copies a fixture round, edits its round.json, and returns the sha256 of the bytes written. */
+  async function stageRound(id: string, edit: (manifest: ManifestJson) => void = () => undefined): Promise<string> {
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const file = path.join(dir, id, "round.json");
+    const manifest = ManifestJson.parse(JSON.parse(await readFile(file, "utf8")));
+    edit(manifest);
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    await writeFile(file, bytes);
+    return sha256(bytes);
+  }
+
+  const question = (manifest: ManifestJson, id: string) => manifest.questions.find((each) => each.id === id) ?? {};
+  const written = async (id: string) => FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+  const manifestOf = async (id: string) => RoundSchema.parse(JSON.parse(await readFile(path.join(dir, id, "round.json"), "utf8")));
+
+  /** The answers titan-review's `calibration` scores, read exactly as its `scored` reads them. */
+  const scored = (feedback: z.infer<typeof FeedbackSchema>) =>
+    feedback.answers.flatMap((answer) => (answer.recommendation && answer.agreed !== undefined ? [{ agreed: answer.agreed, confidence: answer.recommendation.confidence }] : []));
+
+  const KILN = "kiln-schedule-r2";
+  const kilnAnswers = [
+    { questionId: "ramp-default", pick: "Single slope" },
+    { questionId: "hold-clarity", value: 4 },
+    { questionId: "report-columns", picks: ["Hold minutes", "Segment", "Target temperature"] },
+    { questionId: "report-notes", text: "Print the cone number." },
+  ];
+  const withAfter = (manifest: ManifestJson) => {
+    question(manifest, "ramp-default").optionDetails = { "Single slope": { detail: "One slope to peak.", after: "Revert the default to the single slope." } };
+  };
+
+  it("echoes each recommendation with agreed, and the picked option's after, in a feedback that fits its round", async () => {
+    const roundSha = await stageRound(KILN, withAfter);
+
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: kilnAnswers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(KILN);
+    expect(feedback.answers).toEqual([
+      expect.objectContaining({ questionId: "ramp-default", pick: "Single slope", after: "Revert the default to the single slope.", agreed: false, recommendation: expect.objectContaining({ answer: "Staged climb" }) }),
+      expect.objectContaining({ questionId: "hold-clarity", value: 4, agreed: true, recommendation: expect.objectContaining({ answer: 4 }) }),
+      expect.objectContaining({ questionId: "report-columns", agreed: true }),
+      { questionId: "report-notes", text: "Print the cone number." },
+    ]);
+    expect(feedback.unansweredQuestionIds).toBeUndefined();
+    expect(feedbackProblems(feedback, await manifestOf(KILN))).toEqual([]);
+  });
+
+  it("gives titan-review's calibration a scored answer for every recommended question the owner answered", async () => {
+    const roundSha = await stageRound(KILN);
+
+    await submit({ id: KILN, manifestSha256: roundSha, answers: kilnAnswers });
+
+    expect(scored(await written(KILN))).toEqual([
+      { agreed: false, confidence: 0.7 },
+      { agreed: true, confidence: 0.5 },
+      { agreed: true, confidence: 0.6 },
+    ]);
+  });
+
+  it("refuses a question round that leaves a required question unanswered, and writes nothing", async () => {
+    const roundSha = await stageRound(KILN);
+
+    const { envelope, exitCode } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "the feedback does not fit its round: ramp-default: required" });
+    expect(await exists(feedbackOf(KILN))).toBe(false);
+  });
+
+  it("writes a pick of the round's revisionOption as a revision request, and refuses one with no comment", async () => {
+    const roundSha = await stageRound(KILN, (manifest) => (question(manifest, "ramp-default").revisionOption = "Ask each time"));
+    const revise = { questionId: "ramp-default", pick: "Ask each time" };
+
+    const bare = await submit({ id: KILN, manifestSha256: roundSha, answers: [revise] });
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ ...revise, comment: "Rework the staged climb first." }] });
+
+    expect(bare.envelope).toMatchObject({ ok: false, error: "the feedback does not fit its round: ramp-default: a revision request needs a comment" });
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await written(KILN)).answers).toEqual([
+      expect.objectContaining({ questionId: "ramp-default", revisionRequested: true, comment: "Rework the staged climb first.", agreed: false }),
+    ]);
+  });
+
+  it("lists a Ship round's unanswered side questions as a partial submit, and echoes every frame", async () => {
+    const id = "ship-tile-r1";
+    const roundSha = await stageRound(id);
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, headSha: "89abcdef0123456789abcdef0123456789abcdef", answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(id);
+    expect(feedback.unansweredQuestionIds).toEqual(["badge-follow-up"]);
+    expect(feedback.variants.map(({ key, verdict }) => ({ key, verdict }))).toEqual(
+      ["tile-light", "tile-dark", "badge-new", "panel-wide"].map((key) => ({ key, verdict: null })),
+    );
+    expect(feedbackProblems(feedback, await manifestOf(id))).toEqual([]);
+  });
+
+  it("keeps every field the factory's round-merge and gate-answer-check read", async () => {
+    const sendBack = { questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the delay lower." };
+
+    const { envelope } = await submit(shipArgs({ answers: [sendBack], general: "One more pass." }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback: unknown = JSON.parse(await readFile(feedbackOf(), "utf8"));
+    expect(feedback).toMatchObject({ unit: "orbit-retry", round: 1, manifestSha256, submittedAt: expect.any(String), general: "One more pass.", answers: [sendBack] });
   });
 });
