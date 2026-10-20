@@ -36,10 +36,10 @@ describe('virtual-time init script', () => {
     const page = openShimmedPage()
     page('__virtualTime.advanceTo(1500)')
 
-    const [called, constructed, iso] = page('[Date(), new Date().toString(), new Date().toISOString()]') as string[]
+    const called = page('Date()')
 
-    assert.equal(iso, '2026-01-01T00:00:01.500Z')
-    assert.equal(called, constructed)
+    assert.equal(page('new Date().toISOString()'), '2026-01-01T00:00:01.500Z')
+    assert.equal(called, page('new Date().toString()'))
   })
 
   // Mutation: patchTimeline left out of the init script; document.timeline keeps reading the real clock.
