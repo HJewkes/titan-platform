@@ -250,6 +250,63 @@ const handle = await startDaemon({
 - **Not covered.** An open `/events` stream outlives a token rotation, and the daemon does not
   notice its address leaving the interface; both are known gaps.
 
+## A content origin
+
+A second port for content the daemon serves but must not trust, such as a pull request's
+built Storybook shown in an iframe. Browsers isolate origins by port, so script on the content
+origin cannot read the daemon's pages, and its `Origin` is not one any main listener accepts.
+
+```ts
+const handle = await startDaemon({
+  ...options,
+  port: 7500,
+  remote,                                         // optional, as above
+  contentOrigin: {
+    port: 7501,
+    mountRoutes: (app) =>
+      app.get("/sb/:build/*", async (c) => {
+        const tail = new URL(c.req.url).pathname.slice(`/sb/${c.req.param("build")}`.length);
+        const found = await containedFile(buildDir(c.req.param("build")), tail);
+        if (found.kind !== "file") return c.text("Not found", found.kind === "refused" ? 403 : 404);
+        return fileResponse(c.req.raw, found.file, { contentType: found.contentType });
+      }),
+  },
+});
+handle.contentPort; // 7501, or the bound one for port 0
+```
+
+- **Listeners.** One on the loopback host at `contentOrigin.port`, and with `remote` a second,
+  TLS-only, on `remote.host` at the same port. The remote one uses the same certificate pair
+  (checked again, and reloaded on its own timer), the same Host allowlist matched only with the
+  content port, and the same auth gate. Loopback is ungated, like the main loopback listener.
+- **The session carries over.** The cookie is host-only with `Path=/`, and cookies ignore
+  port, so the main listener's session authenticates here. There is no `/auth/login` and no
+  `/auth/logout`: signed out, `/auth/login` is 401 like any other path.
+- **Product routes only.** No `/rpc`, `/events`, `/health`, `/version` or `/mcp`; only what
+  `contentOrigin.mountRoutes` adds. It is called once per listener, each on its own app.
+- **Read-only.** Every method but `GET` and `HEAD` gets 405 with `Allow: GET, HEAD`, before the
+  Host check, so nothing here can change state and no preflight is ever answered.
+- **The main listeners refuse it.** A state-changing request to the main port with the content
+  origin's `Origin` gets 403 on loopback and remote alike: origins match only with the main port.
+- **All or nothing.** If a content listener fails to bind, every listener already open is
+  closed and no pid file is written. `close()` shuts them all.
+- Headers such as a CSP are the product's to set in its routes.
+
+## Serving a file from a root chosen per request
+
+`containedFile(root, pathname)` resolves a still-encoded URL path tail to a real file under
+`root`, with the same rules `mountStaticApp` applies, and returns
+`{ kind: "file", file, contentType }`, `{ kind: "refused" }` or `{ kind: "missing" }`.
+
+- Pass the tail of `new URL(c.req.url).pathname`: `new URL` folds `.`, `..` and `%2e`, and
+  `containedFile` refuses what survives, such as `..%2f`.
+- `refused`: `.` or `..`, an encoded `/` or `\`, NUL, a drive letter, a bad escape, or a real
+  path outside the root's real path (a symlink leading out).
+- `missing`: absent, a dotfile, the root itself or any directory. Nothing lists a directory or
+  picks an index file.
+- `contentType` comes from the extension (the `mountStaticApp` table), else
+  `application/octet-stream`. Hand `file` to `fileResponse`.
+
 ## Serving a built front end
 
 `mountStaticApp(app, { root, base?, immutableDir? })` serves a built app through

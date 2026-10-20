@@ -386,6 +386,23 @@ declare class TlsFileError extends Error {
 }
 
 /**
+ * A content origin: a second port that serves only product routes, read-only, so untrusted
+ * content (a PR's built Storybook, say) runs in an origin that is not the daemon's. Browsers
+ * isolate origins by port, so script there cannot read the main origin's pages, and the main
+ * listeners' guards refuse its `Origin` on every state-changing request.
+ *
+ * Cookies ignore port, so the main listener's session cookie reaches this origin too, and the
+ * same gate accepts it: there is no second sign-in, and no sign-in route here at all.
+ */
+
+interface ContentOriginOptions {
+    /** Its own port on the loopback host and, with `remote`, the remote address. Pass 0 for an ephemeral port. */
+    port: number;
+    /** Product routes, mounted once per listener. Only GET and HEAD ever reach them. */
+    mountRoutes: (app: Hono) => void;
+}
+
+/**
  * The remote listener speaks only TLS, then runs the Host/Origin guard, then the auth gate,
  * before every route, and never serves `/mcp`. Its Host allowlist is `host` plus `allowedHosts`
  * and nothing else, each matched only with the bound port, and its origins are the `https://`
@@ -432,6 +449,12 @@ interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends Surf
     allowUnauthenticatedNonLoopback?: boolean;
     /** A second listener, behind authentication, on one non-loopback address and the same port. */
     remote?: RemoteListenerOptions;
+    /**
+     * A read-only origin on its own port for untrusted content: product routes only, GET and HEAD
+     * only. It binds the loopback host and, with `remote`, the remote address behind the same TLS
+     * pair, Host check and auth gate. All of its listeners bind, or the daemon does not start.
+     */
+    contentOrigin?: ContentOriginOptions;
     /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
     toolPrefix?: string;
     /** MCP handshake identity; defaults to `titan-daemon`. */
@@ -455,6 +478,8 @@ interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends Surf
 interface DaemonHandle {
     /** The bound port — the real one when `port: 0` was requested. */
     port: number;
+    /** The content origin's bound port, when `contentOrigin` was set. */
+    contentPort?: number;
     /** Broadcast to connected `/events` clients. */
     hub: EventHub;
     /** Stop the watcher, close every listener, and release the pid file. Idempotent. */
@@ -497,6 +522,27 @@ interface StaticAppOptions {
 /** Mounts `GET <base>/*`: files from `root`, `index.html` for client routes, 404 for missing assets. */
 declare function mountStaticApp(app: Hono, options: StaticAppOptions): void;
 
+type ContainedFile = {
+    kind: "file";
+    file: string;
+    contentType: string;
+}
+/** The path could name something outside the root, by encoding or by symlink. */
+ | {
+    kind: "refused";
+}
+/** No regular file there: absent, a directory, or a dotfile. */
+ | {
+    kind: "missing";
+};
+/**
+ * The file `pathname` names under `root`. `pathname` is the still-encoded tail of a URL path
+ * that has already been through `new URL`, which folds `.` and `..` (even single-encoded
+ * `%2e`); what survives that, such as `..%2f`, is refused here. A directory, the root itself
+ * included, is `missing`: nothing here lists a directory or picks an index file.
+ */
+declare function containedFile(root: string, pathname: string): Promise<ContainedFile>;
+
 interface FileResponseOptions {
     contentType: string;
     /** Sent as `Cache-Control` when set. */
@@ -510,4 +556,4 @@ interface FileResponseOptions {
  */
 declare function fileResponse(request: Request, file: string, options: FileResponseOptions): Promise<Response>;
 
-export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
+export { type ContainedFile, type ContentOriginOptions, DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, containedFile, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
