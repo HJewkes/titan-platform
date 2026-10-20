@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
@@ -17,10 +18,8 @@ interface Rendered {
   calls: { name: string; args: unknown }[];
 }
 
-interface SentArgs {
-  general: string;
-  answers: { questionId: string; comment?: string }[];
-}
+const SentArgs = z.object({ general: z.string(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
+type SentArgs = z.infer<typeof SentArgs>;
 
 /** The notes `rounds.get` reads back from the feedback.json a submit with these args writes. */
 const notesOf = ({ general, answers }: SentArgs) => ({
@@ -51,7 +50,7 @@ async function renderRound(reply: ReturnType<typeof successEnvelope> | ReturnTyp
     call: (name, args, options) => {
       calls.push({ name, args });
       if (name === "rounds.submit") {
-        sent = reply.ok ? (args as SentArgs) : null;
+        sent = reply.ok ? SentArgs.parse(args) : null;
         return Promise.resolve(reply);
       }
       if (name === "rounds.get" && sent) return Promise.resolve(successEnvelope({ ...unsent, status: "sent", recommendationsWithheld: false, manifest: revealed, notes: notesOf(sent) }));
