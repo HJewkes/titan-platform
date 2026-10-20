@@ -832,6 +832,11 @@ interface OctokitClientOptions {
      * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
      */
     budget?: RateBudget;
+    /**
+     * The throttle never sleeps and retries inside a call, so a `githubApiPool` in front owns every rate-limit wait; the limit
+     * still lands in `budget().cooldowns`. Off by default.
+     */
+    poolOwnsWaits?: boolean;
 }
 interface GitHubClient {
     request: Octokit["request"];
@@ -1139,6 +1144,30 @@ declare const RATE_LIMIT_PHRASES: readonly RegExp[];
 declare function nextResetAt(now: number, streak: number): number;
 declare function classifyGitHubFailure(input: GitHubFailureInput): GitHubFailure;
 
+/** What the pool's `probe` (a `GET /rate_limit` as the identity) resolves to; absent `status` is a network failure. */
+interface RateLimitProbeAnswer {
+    status?: number;
+    /** GitHub's JSON body: `{ resources: { core: { remaining, reset }, graphql: { ... }, ... } }`. */
+    body?: unknown;
+    networkError?: boolean;
+}
+/** `pass` lets one canary out; `rearm` keeps the pair closed to `resetAt` with its streak untouched. */
+type ProbeVerdict = {
+    kind: "pass";
+} | {
+    kind: "auth";
+} | {
+    kind: "rearm";
+    resetAt: number;
+    reason: string;
+};
+/** A failed probe says nothing about the limit, so it waits the base step and never doubles. */
+declare const PROBE_REARM_MS = 60000;
+/** Secondary limits have no bucket of their own, so a mutation trip reads core and leaves the rest to its canary. */
+declare function probedBucket(callClass: CallClass, trippedBucket: string | undefined): string;
+/** `answer` is undefined when the probe threw. */
+declare function probeVerdict(answer: RateLimitProbeAnswer | undefined, bucket: string, now: number): ProbeVerdict;
+
 declare const POOL_PRIORITY: {
     readonly outboxAndLander: 1;
     readonly pacer: 2;
@@ -1163,8 +1192,9 @@ interface PoolAnswer {
     networkError?: boolean;
 }
 interface PoolPairState {
-    state: "open" | "closed";
-    /** Epoch milliseconds; meaningful while closed. */
+    /** `probed`: the probe found the tripped bucket open, and the next call of the class is the one canary. */
+    state: "open" | "closed" | "probed";
+    /** Epoch milliseconds; meaningful while closed or probed. */
     resetAt: number;
     streak: number;
     bucket?: string;
@@ -1187,13 +1217,21 @@ interface GithubApiPoolOptions<C, A extends PoolAnswer> {
     send: (call: C) => Promise<A>;
     clock: PoolClock;
     state?: PoolStateStore;
+    /** `GET /rate_limit` as the identity; a closed pair's reopen starts with it once its `resetAt` passes. */
+    probe: () => Promise<RateLimitProbeAnswer>;
+    /** Once per reopen, when the canary returns ok; `resetAt` is the trip's. */
+    onAvailable?: (identity: string, callClass: CallClass, resetAt: number) => void;
+    /** Once per transition into auth state, never per call. */
+    onAuthFailed?: (identity: string) => void;
 }
 interface GithubApiPool<C, A extends PoolAnswer> {
     /** Resolves to the answer, or to `PoolUnavailable` when GitHub limited the call; an unavailable call never throws. */
     run(priority: PoolPriority, callClass: CallClass, call: C): Promise<A | PoolUnavailable>;
+    /** The token reader saw a new token: leave auth state, and grant what it held. */
+    tokenChanged(): void;
 }
 declare function memoryPoolStateStore(): PoolStateStore;
 declare function isPoolUnavailable(value: unknown): value is PoolUnavailable;
 declare function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A>;
 
-export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateWindow, type RefRead, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };
+export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, probeVerdict, probedBucket, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };
