@@ -9,11 +9,12 @@ import { describe, expect, it } from "vitest";
  */
 const ALLOWED: Record<string, readonly string[]> = {
   "node:crypto": ["createHmac", "timingSafeEqual"],
+  "node:http": ["createServer", "IncomingMessage", "Server", "ServerResponse"],
   "node:path": ["dirname", "join"],
   "../config.js": ["configPath"],
   "../event-log/event-log.js": ["appendEvent", "IdentityEvent", "TransitionEvent"],
   "../github-sources/mode.js": ["SourcesReader"],
-  "@titan-design/daemon": ["Logger", "TokenFileError"],
+  "@titan-design/daemon": ["Logger", "TokenFileError", "parseBase64Secret", "trackSecretFile"],
   "@titan-design/store-sqlite": ["Db"],
 };
 
@@ -48,7 +49,7 @@ describe("ingress parse-only imports", () => {
   });
 
   it("scans the ingress core itself", () => {
-    expect(sources).toEqual(expect.arrayContaining(["answer.ts", "paths.ts", "signature.ts"]));
+    expect(sources).toEqual(expect.arrayContaining(["answer.ts", "listen.ts", "paths.ts", "secret.ts", "signature.ts"]));
   });
 
   // Mutation killed: a hub type imported from an allowed package so the ingress can broadcast.

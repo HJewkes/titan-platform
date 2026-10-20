@@ -1,14 +1,18 @@
+import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AnswersPage, AskRequest } from "@titan-design/agent-dispatch";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toJSONSchema } from "zod";
+import { toJSONSchema, z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
+import { configPath } from "./config.js";
 import { sourcesReader } from "./github-sources/mode.js";
+import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
@@ -170,6 +174,62 @@ describe("titan-factory serve", () => {
     const server = await serve(dbFile(), landScenario());
 
     expect(await healthOf(server)).not.toHaveProperty("sources");
+  });
+
+  describe("webhook ingress", () => {
+    const SECRET = "5e".repeat(32);
+    const ingressPort = async (server: FactoryServer) => z.object({ ingress: z.object({ port: z.number() }) }).parse(await healthOf(server)).ingress.port;
+
+    function deliver(port: number): Promise<Response> {
+      const body = JSON.stringify({ zen: "synthetic" });
+      const signature = `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
+      const headers = { "content-type": "application/json", "x-github-event": "status", "x-github-delivery": "3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b", "x-hub-signature-256": signature };
+      return fetch(`http://127.0.0.1:${port}/ingress/github`, { method: "POST", headers, body });
+    }
+
+    function tempXdg(): NodeJS.ProcessEnv {
+      const env = { XDG_CONFIG_HOME: dirname(dirname(dbFile())) };
+      mkdirSync(dirname(webhookSecretPath(env)), { recursive: true, mode: 0o700 });
+      writeFileSync(webhookSecretPath(env), `${SECRET}\n`, { mode: 0o600 });
+      return env;
+    }
+
+    // Mutation killed: the sources read once at listener start instead of on each request.
+    it("answers ingress off under the default config, then takes the next signed delivery once the config turns webhook on, with no restart", async () => {
+      const env = tempXdg();
+      const server = await serve(dbFile(), landScenario(), { sources: sourcesReader(env), ingress: { port: 0, secretPath: webhookSecretPath(env) } });
+      const port = await ingressPort(server);
+
+      const off = await deliver(port);
+      writeFileSync(configPath(env), JSON.stringify({ github: { sources: "webhook", ingress: "on" } }));
+      const on = await deliver(port);
+
+      expect([off.status, await off.json()]).toEqual([404, { error: "ingress off" }]);
+      expect([on.status, await on.json()]).toEqual([202, { ignored: true }]);
+      expect(await healthOf(server)).toHaveProperty("ingress", expect.objectContaining({ path: "/ingress/github", listening: true, secret: "present", counts: expect.objectContaining({ ignored: 1, refused: 1 }) }));
+    });
+
+    // Mutation killed: the EADDRINUSE let out of startFactoryServer.
+    it("keeps serving with the ingress shown as not listening when its port is already taken", async () => {
+      const taken = createNetServer();
+      await new Promise<void>((resolve) => taken.listen(0, "127.0.0.1", resolve));
+      cleanups.push(() => new Promise<void>((resolve) => taken.close(() => resolve())));
+      const address = taken.address();
+      if (address === null || typeof address === "string") throw new Error("not bound to a TCP port");
+      const port = address.port;
+
+      const server = await serve(dbFile(), landScenario(), { ingress: { port, secretPath: webhookSecretPath(tempXdg()) } });
+      const health = await fetch(`http://127.0.0.1:${server.port}/health`);
+
+      expect(health.status).toBe(200);
+      expect(await health.json()).toHaveProperty("ingress", expect.objectContaining({ port, listening: false, error: expect.stringContaining("EADDRINUSE") }));
+    });
+
+    it("health has no ingress field when serve was given no ingress", async () => {
+      const server = await serve(dbFile(), landScenario());
+
+      expect(await healthOf(server)).not.toHaveProperty("ingress");
+    });
   });
 
   it("health reports an unknown build when none was baked in", async () => {

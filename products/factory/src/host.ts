@@ -69,6 +69,8 @@ export interface ResumeReport {
 
 export interface FactoryHost {
   readonly runtime: WorkflowRuntime;
+  /** For writers that keep their own one-transaction append, such as the webhook ingress. */
+  readonly db: Db;
   /** The stored runs for reads that need no live run: statuses alone, or a page of history. */
   readonly runs: WorkflowRunStore;
   readonly gates: SqliteGateStore;
@@ -106,7 +108,8 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const runs = new WorkflowRunStore(db);
   const host: FactoryHost = {
     runtime,
-    runs: new WorkflowRunStore(db),
+    db,
+    runs,
     gates,
     batches: new GateBatchStore(db, options.now),
     asks: new GateAskStore(db, options.now),
@@ -114,12 +117,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     countRuns: (statuses) => runs.countByStatus(statuses),
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
-    close: () => {
-      runtime.shutdown();
-      unbindHost?.();
-      unbind?.();
-      db.close();
-    },
+    close: () => void (runtime.shutdown(), unbindHost?.(), unbind?.(), db.close()),
   };
   const unbindHost = options.routes.bindHost?.(host);
   return host;

@@ -37,6 +37,8 @@ import { registerGate, registerResume, registerServe, routesOf } from "./cli-hos
 import type { HeadRefRead } from "./shepherd/register-identity.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 import { sourcesReader, type SourcesReader } from "./github-sources/mode.js";
+import { webhookSecretPath } from "./ingress/paths.js";
+import type { ServeIngressOptions } from "./serve-ingress.js";
 
 export { EXIT };
 export { formatResume } from "./cli-host-verbs.js";
@@ -88,12 +90,14 @@ export interface CliDeps {
   consoleAnswers?: (env: NodeJS.ProcessEnv) => ConsoleAnswersOptions | undefined;
   /** The serve verb's GitHub sources reader behind health's `sources`; an invalid config throws here, failing the start. */
   sources?: (env: NodeJS.ProcessEnv, log: Logger) => SourcesReader;
+  /** The serve verb's webhook ingress listener; absent means serve binds no ingress port. */
+  ingress?: (env: NodeJS.ProcessEnv) => ServeIngressOptions;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
   exitAfterServe?: () => void;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), exitAfterServe: () => process.exit() };
 
 export interface Verbs {
   io: CliIo;
