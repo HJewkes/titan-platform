@@ -8,6 +8,7 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -126,12 +127,16 @@ describe("a question round", () => {
   it("renders each question with its options and no recommendation while unsent", async () => {
     await renderConsole("#/rounds/kiln-schedule-r2");
     await screen.findByTestId("round-question-ramp-default");
-    for (const id of ["ramp-default", "hold-clarity", "report-columns", "report-notes"]) expect(question(id)).toBeTruthy();
     expect(choice("ramp-default", "3 Ask each time")).toBeTruthy();
     expect(choice("hold-clarity", "5 5")).toBeTruthy();
-    expect(choice("report-columns", "4 Hold minutes")).toBeTruthy();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
     expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
+
+    await toSection("report");
+
+    for (const id of ["report-columns", "report-notes"]) expect(question(id)).toBeTruthy();
+    expect(choice("report-columns", "4 Hold minutes")).toBeTruthy();
+    expect(screen.queryByText(/^Recommended:/)).toBeNull();
   });
 
   it("chooses an option of the first question with keys 1-9", async () => {
@@ -146,14 +151,19 @@ describe("a question round", () => {
 
   it("moves the keys to the question last answered by pointer, and toggles a pick-many", async () => {
     await renderConsole("#/rounds/kiln-schedule-r2");
-    await screen.findByTestId("round-question-report-columns");
+    await screen.findByTestId("round-question-hold-clarity");
 
+    fireEvent.click(choice("hold-clarity", "4 4"));
+    fireEvent.keyDown(window, { key: "2" });
+    await toSection("report");
     fireEvent.click(choice("report-columns", "1 Segment"));
     fireEvent.keyDown(window, { key: "3" });
     fireEvent.keyDown(window, { key: "1" });
 
     expect(isChecked(choice("report-columns", "1 Segment"))).toBe(false);
     expect(isChecked(choice("report-columns", "3 Rate per hour"))).toBe(true);
+    await toSection("ramp");
+    expect(isChecked(choice("hold-clarity", "2 2"))).toBe(true);
     expect(isChecked(choice("ramp-default", "1 Staged climb"))).toBe(false);
   });
 
