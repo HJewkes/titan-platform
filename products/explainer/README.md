@@ -199,8 +199,8 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   the picture holds without X?" instead, since a simplification names what it leaves out on purpose.
   The blind odd one out judges from the chapter alone, so it cannot see a kind the chapter never
   states: on v4's r2-1 the beat calls all seven items "jobs" and glosses none, and the judge picks
-  none. The spine's declared kinds (`--spine`) are the check for that. One call per chapter that has a question; chapters with none are
-  skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
+  none. The spine's declared kinds (`--spine`) are the check for that. One call per chapter that
+  has a question; chapters with none are skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
   explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
   `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
   a last line lists the flags at least two runs agree on.
