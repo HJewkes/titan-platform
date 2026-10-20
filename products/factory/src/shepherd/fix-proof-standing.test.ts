@@ -35,6 +35,7 @@ function reading(recorded: Recorded): { ctx: WorkflowContext; dispatched: string
     historyNext: () => recorded.next,
     resumedGate: () => undefined,
     recoveredInFlight: () => [],
+    capability: () => { throw new Error("no capabilities in this fake"); },
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       const iteration = iterations.get(stepId) ?? 0;
