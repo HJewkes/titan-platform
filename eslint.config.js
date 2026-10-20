@@ -7,7 +7,7 @@ const EVENTS_API_MESSAGE =
   "The GitHub Activity Events API is never an event source: it lags 30 s to 6 h. Use a webhook, or read GraphQL timelineItems.";
 // The path form is repos|networks/<a>/<b>, orgs|users/<a>, then events (users also received_events), or a bare /events.
 const EVENTS_PATH =
-  "(^|[\\s'\"`])((repos|networks)\\x2f[^\\x2f\\s]+\\x2f[^\\x2f\\s]+\\x2fevents|orgs\\x2f[^\\x2f\\s]+\\x2fevents|users\\x2f[^\\x2f\\s]+\\x2f(received_)?events|^\\x2fevents)([?\\s'\"`]|$)";
+  "(^|[\\s'\"`\\x2f])((repos|networks)\\x2f[^\\x2f\\s]+\\x2f[^\\x2f\\s]+\\x2fevents|orgs\\x2f[^\\x2f\\s]+\\x2fevents|users\\x2f[^\\x2f\\s]+\\x2f(received_)?events|^\\x2fevents)([?\\s'\"`]|$)";
 // A template splits at each ${}, so a quasi can hold only the tail such as "/events"; the head is not recoverable.
 // The tail must end the quasi, so prose such as "the /events hub" and "hold events" stays legal.
 const EVENTS_TEMPLATE_TAIL = "(^|[^\\s])\\x2f(received_)?events([?]|$)";

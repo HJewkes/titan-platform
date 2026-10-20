@@ -74,6 +74,8 @@ describe("the root lint config with the Activity Events API ban", () => {
   it.each([
     ["a gh api string", "products/factory/src/gh-api-string.ts"],
     ["a gh api template", "products/factory/src/gh-api-template.ts"],
+    ["an octokit.request route", "products/factory/src/octokit-request.ts"],
+    ["an absolute api URL", "products/factory/src/fetch-url.ts"],
     ["an octokit activity.list call", "products/factory/src/octokit-list.ts"],
   ])("fails %s", (_name, file) => {
     const result = lintEventsFixture(file);
