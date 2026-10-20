@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
+import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const spikeBeat = (id: string, chapter: string, spoken: string, titles: string[]) => ({ id, chapter, function: "EXPLAIN", plannedS: 12, spoken, visual: { titles } });
 /** An invented parcel desk in two chapters. */
@@ -83,6 +84,19 @@ describe("explainer eval cold", () => {
       ["L1-cold", relay, "not_stated", "true"],
       ["L1-cold", relay, "not_stated", "true"],
     ]);
+  });
+
+  // Mutation: dropping the glossary on the way from the file to the probe leaves spoken-only terms unasked.
+  it.each([
+    ["spike", { ...script, video: { glossary: [{ name: "desk", job: "takes parcels in" }] } }, "desk", "ch1"],
+    ["v1", { ...scriptWith(), video: { ...scriptWith().video, glossary: [{ name: "ledger", job: "holds parcel rows" }] } }, "ledger", "ch2"],
+  ])("asks a %s script's glossary term where it is first spoken", async (format, glossed, term, chapter) => {
+    const file = write("glossed.json", glossed);
+
+    await runEvalCli(["eval", "cold", file, "--format", format, "--judge", judgeFile("sonnet"), "--bench", join(dir, "bench"), "--runs", "1"], { harness: () => fakeViewer().harness });
+
+    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "spoken-term");
+    expect(asked.map((r) => [r.chapter, r.item, r.score])).toEqual([[chapter, term, "0"]]);
   });
 
   // Mutation: leaving the judge identity out of eval_version gives both judges one version, mixing their rows.
