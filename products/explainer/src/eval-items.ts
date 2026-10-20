@@ -3,14 +3,16 @@ import { chaptersOf, ODD_ONE_OUT_MIN_ITEMS, type ColdChapterBeats } from "./eval
 import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, formatEvidence, voidReason } from "./eval-evidence.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
+import { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
 import { explainRoutes, type ExplainRoute } from "./lint-gloss.js";
 import { seatRoutes, type SeatReason, type SeatRoute } from "./lint-seat.js";
 import type { PaceBeat } from "./pace-items.js";
+import type { SpineV1 } from "./spine-schema.js";
 
 export const ITEMS_EVAL_ID = "L1-items";
 
-export type ItemQuestionKind = "explained" | "seated" | "odd-one-out";
+export type ItemQuestionKind = "explained" | "seated" | "odd-one-out" | "kind-honest";
 
 /** One list beat the item judge asks "which is a different kind of thing?" about. */
 export interface ListRoute {
@@ -67,6 +69,66 @@ export function itemQuestions(routes: ItemRoutes): ItemQuestion[] {
     ...routes.lists.map((r): ItemQuestion => ({ kind: "odd-one-out", beat: r.beat, subject: r.items.join("; "), options: r.items, text: oddOneOutText(r.beat, r.items) })),
   ];
 }
+
+const article = (word: string): string => (/^[aeiou]/i.test(word) ? "an" : "a");
+const declaredList = (items: KindRoute["items"]): string => items.map((i) => `"${i.label}" ${article(i.kind)} ${i.kind}`).join(", ");
+const kindHonestText = (beat: string, items: KindRoute["items"]): string =>
+  `In ${beat}, the spine ledger declares ${declaredList(items)}. Which item is not the kind of thing it is declared to be, if any?`;
+const seatedInText = (beat: string, part: string): string =>
+  `${beat} states an invariant the spine says "${part}" keeps. Does the map on screen show "${part}" and the mechanism that keeps it, or the failure that breaks it?`;
+const unseatedEvidence = (seat: SpineSeat): string =>
+  seat.invariant === null ? "spine: no §3 invariant matches what this beat states" : `spine: no §4 part keeps "${seat.invariant}"`;
+
+const kindHonestQuestion = (r: KindRoute): ItemQuestion => {
+  const labels = r.items.map((i) => i.label);
+  return { kind: "kind-honest", beat: r.beat, subject: labels.join("; "), options: labels, text: kindHonestText(r.beat, r.items) };
+};
+
+/** A seat the spine cannot pair is failed here, never posed: a map cannot show a part the plan never names. */
+const unseatedVerdict = (seat: SpineSeat, i: number): ItemVerdict => ({
+  qid: `s${i + 1}`,
+  kind: "seated",
+  beat: seat.beat,
+  subject: "invariant",
+  pass: false,
+  picked: null,
+  evidence: unseatedEvidence(seat),
+  void_reason: null,
+});
+
+/** What a run asks the model, and the verdicts it reaches with no model call. */
+interface QuestionPlan {
+  questions: ItemQuestion[];
+  ruled: ItemVerdict[];
+}
+
+function seatQuestions(routes: ItemRoutes, seats: ReadonlyMap<string, SpineSeat>): ItemQuestion[] {
+  return routes.seat.flatMap((r) => {
+    const seat = seats.get(r.beat);
+    if (!seat) return itemQuestions({ explain: [], seat: [r], lists: [] });
+    return seat.part === null ? [] : [{ kind: "seated", beat: r.beat, subject: r.reason, options: [], text: seatedInText(r.beat, seat.part) }];
+  });
+}
+
+/**
+ * With a spine, a list beat the ledger fully declares is asked whether each item is the kind declared, in place of
+ * the blind odd one out, and an invariant seat is paired with its §4 part or failed without a call.
+ */
+function spinePlan(routes: ItemRoutes, beats: readonly PaceBeat[], spine: SpineV1): QuestionPlan {
+  const kinds = kindRoutes(routes.lists, spine);
+  const declaredBeats = new Set(kinds.map((k) => k.beat));
+  const seats = spineSeats(beats, routes.seat, spine);
+  const questions = [
+    ...itemQuestions({ explain: routes.explain, seat: [], lists: [] }),
+    ...seatQuestions(routes, seats),
+    ...itemQuestions({ explain: [], seat: [], lists: routes.lists.filter((l) => !declaredBeats.has(l.beat)) }),
+    ...kinds.map(kindHonestQuestion),
+  ];
+  return { questions, ruled: [...seats.values()].filter((s) => s.part === null).map(unseatedVerdict) };
+}
+
+const questionPlan = (input: ItemsInput): QuestionPlan =>
+  input.spine ? spinePlan(input.routes, input.beats, input.spine) : { questions: itemQuestions(input.routes), ruled: [] };
 
 /** Made-up component names; the canary beat names them and says nothing more, so none of them is explained. */
 export const CANARY_NAMES = ["brindle", "tessel", "quorn"] as const;
@@ -148,11 +210,14 @@ const pickOf = (answer: ItemAnswer, options: readonly string[]): string | undefi
   return options.find((o) => o.trim().toLowerCase() === key);
 };
 
+/** Kinds answered by picking one listed item, where passing means picking none. */
+const isPick = (kind: ItemQuestionKind): boolean => kind === "odd-one-out" || kind === "kind-honest";
+
 function voidOf(question: ItemQuestion, answer: ItemAnswer, texts: QuotableTexts): string | null {
   const cited = question.kind === "explained" && answer.pass ? texts.spoken : texts.shown;
   const reason = voidReason(answer.evidence, cited);
   if (reason) return reason;
-  const strayPick = question.kind === "odd-one-out" && answer.odd_one_out !== null && pickOf(answer, question.options) === undefined;
+  const strayPick = isPick(question.kind) && answer.odd_one_out !== null && pickOf(answer, question.options) === undefined;
   return strayPick ? `picks "${answer.odd_one_out}", which ${question.beat} does not list` : null;
 }
 
@@ -161,8 +226,8 @@ export function gradeItemAnswer(qid: string, question: ItemQuestion, answer: Ite
   const base = { qid, kind: question.kind, beat: question.beat, subject: question.subject, evidence: formatEvidence(answer.evidence) };
   const reason = voidOf(question, answer, texts);
   if (reason) return { ...base, pass: null, picked: null, void_reason: reason };
-  const picked = question.kind === "odd-one-out" ? (pickOf(answer, question.options) ?? null) : null;
-  return { ...base, pass: question.kind === "odd-one-out" ? picked === null : answer.pass, picked, void_reason: null };
+  const picked = isPick(question.kind) ? (pickOf(answer, question.options) ?? null) : null;
+  return { ...base, pass: isPick(question.kind) ? picked === null : answer.pass, picked, void_reason: null };
 }
 
 const unanswered = (qid: string, question: ItemQuestion, reply: ItemsReply): ItemVerdict => ({
@@ -182,10 +247,11 @@ function canaryResult(verdict: ItemVerdict): CanaryResult {
   return { canary: `${verdict.beat}:${verdict.subject}`, dim: "explained", got, pass: got === "not_explained" };
 }
 
+/** `canary` is null for a chapter decided from the spine alone, which makes no call. */
 export interface ItemsChapter {
   chapter: string;
   verdicts: ItemVerdict[];
-  canary: CanaryResult;
+  canary: CanaryResult | null;
 }
 
 function gradeChapter(beats: readonly PaceBeat[], posed: readonly PosedQuestion[], reply: ItemsReply): ItemsChapter {
@@ -206,6 +272,8 @@ export interface ItemsInput {
   judge: JudgeConfig;
   harness: JudgeHarness;
   run: number;
+  /** The story spine the script was planned against; without one the run asks exactly what it did before E12. */
+  spine?: SpineV1;
 }
 
 export interface ItemsResult {
@@ -217,19 +285,46 @@ export interface ItemsResult {
   spend: { usd: number; tokensIn: number; tokensOut: number };
 }
 
-export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge">): string =>
+// The spine templates join the version only on spine runs, so every no-spine row stored before E12 keeps its version.
+const spineQuestionTemplates = (): string[] => [
+  kindHonestText("<beat>", [{ label: "<a>", kind: "step" }]),
+  seatedInText("<beat>", "<part>"),
+  unseatedEvidence({ beat: "<beat>", invariant: null, part: null }),
+  unseatedEvidence({ beat: "<beat>", invariant: "<invariant>", part: null }),
+];
+
+export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
     questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
+    ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),
   });
 
-async function judgeChapter(input: ItemsInput, chapter: ColdChapterBeats, questions: readonly ItemQuestion[]) {
+interface JudgedChapter {
+  reply: ItemsReply | null;
+  graded: ItemsChapter;
+}
+
+async function judgeChapter(input: ItemsInput, chapter: ColdChapterBeats, questions: readonly ItemQuestion[], ruled: ItemVerdict[]): Promise<JudgedChapter> {
+  if (questions.length === 0) return { reply: null, graded: { chapter: chapter.chapter, verdicts: ruled, canary: null } };
   const canary = canaryFor(input.scriptSha, input.run, chapter.chapter);
   const beats = [...chapter.beats, canary.beat];
   const posed = poseQuestions(questions, canary);
   const reply = await input.harness({ prompt: itemsPrompt(input.rubric, chapter.chapter, beats, posed), schema: ReplySchema });
-  return { reply, graded: gradeChapter(beats, posed, reply) };
+  const graded = gradeChapter(beats, posed, reply);
+  return { reply, graded: { ...graded, verdicts: [...graded.verdicts, ...ruled] } };
+}
+
+async function judgeChapters(input: ItemsInput, plan: QuestionPlan): Promise<JudgedChapter[]> {
+  const judged = [];
+  for (const chapter of chaptersOf(input.beats)) {
+    const ids = new Set(chapter.beats.map((b) => b.id));
+    const asked = plan.questions.filter((q) => ids.has(q.beat));
+    const ruled = plan.ruled.filter((v) => ids.has(v.beat));
+    if (asked.length + ruled.length > 0) judged.push(await judgeChapter(input, chapter, asked, ruled));
+  }
+  return judged;
 }
 
 /**
@@ -237,22 +332,17 @@ async function judgeChapter(input: ItemsInput, chapter: ColdChapterBeats, questi
  * beat planted in it. A run whose canary is not refused with evidence, or whose call failed, is not trusted.
  */
 export async function runItems(input: ItemsInput): Promise<ItemsResult> {
-  const questions = itemQuestions(input.routes);
-  const judged = [];
-  for (const chapter of chaptersOf(input.beats)) {
-    const ids = new Set(chapter.beats.map((b) => b.id));
-    const asked = questions.filter((q) => ids.has(q.beat));
-    if (asked.length > 0) judged.push(await judgeChapter(input, chapter, asked));
-  }
-  const failures = judged.flatMap(({ reply }) => (reply.ok ? [] : [reply.reason]));
+  const judged = await judgeChapters(input, questionPlan(input));
+  const replies = judged.flatMap((j) => (j.reply ? [j.reply] : []));
+  const failures = replies.flatMap((reply) => (reply.ok ? [] : [reply.reason]));
   const chapters = judged.map((j) => j.graded);
   return {
     eval_version: itemsEvalVersion(input),
     judge: judgeLabel(input.judge),
     chapters,
     failures,
-    trusted: failures.length === 0 && chapters.every((c) => c.canary.pass),
-    spend: sumSpend(judged.map((j) => j.reply)),
+    trusted: failures.length === 0 && chapters.every((c) => c.canary?.pass ?? true),
+    spend: sumSpend(replies),
   };
 }
 
@@ -262,7 +352,7 @@ export interface ItemFlag {
   item: string;
 }
 
-const flagOf = (v: ItemVerdict): string | null => (v.kind === "odd-one-out" ? v.picked : v.pass === false ? v.subject : null);
+const flagOf = (v: ItemVerdict): string | null => (isPick(v.kind) ? v.picked : v.pass === false ? v.subject : null);
 
 /** Flags at least `quorum` runs agree on: not explained, not seated, or the same odd one out. One run's flag is noise. */
 export function agreedFlags(runs: readonly ItemsResult[], quorum = 2): ItemFlag[] {
