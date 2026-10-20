@@ -38,7 +38,7 @@ export const bareKey = (beat: string, label: string): string => `${beat}\0${labe
 const IDENTIFIER = /\b[A-Z]{1,2}\d+\b/g;
 
 /** One term the viewer hears before any label shows it: the beat that first speaks it, and the term as written. */
-export interface SpokenTerm {
+interface SpokenTerm {
   beat: string;
   term: string;
 }
