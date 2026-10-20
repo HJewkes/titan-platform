@@ -251,3 +251,31 @@ describe("paceCheck as an L0 check", () => {
     expectPaceFailedAndOthersReported(runL0(oneCue("row:scanner"), undefined, L0_CHECKS, timing));
   });
 });
+
+describe("Q-E19 declared new_terms versus on-screen items", () => {
+  const withReveals = (newTerms: string[]) =>
+    ScriptSchema.parse(
+      scriptWith({
+        new_terms: newTerms,
+        visual: {
+          assertion: "One server sits between every scanner and the ledger",
+          job: "map",
+          cues: ["Scanner", "Desk server", "Ledger"].map((label, i) => ({ action: "V11", target: `row:${label}`, atCue: ["every", "scan", "passes"][i] })),
+        },
+      }),
+    );
+  const q19 = (script: ReturnType<typeof withReveals>) => runL0(script).find((r) => r.check_id === "Q-E19");
+
+  it("warns, naming the beat, when 3 items are revealed and new_terms is empty", () => {
+    expect(q19(withReveals([]))).toMatchObject({ pass: false, severity: "warning", detail_beats: ["c2-1-stations"] });
+  });
+
+  // Mutation: comparing labels case-sensitively flags `scanner` against `Scanner`.
+  it("passes when new_terms lists them, whatever the case", () => {
+    expect(q19(withReveals(["scanner", "DESK SERVER", " Ledger "]))).toMatchObject({ pass: true, detail_beats: [] });
+  });
+
+  it("still warns when new_terms omits one of them", () => {
+    expect(q19(withReveals(["Scanner", "Ledger"]))).toMatchObject({ pass: false, detail_beats: ["c2-1-stations"] });
+  });
+});
