@@ -26,7 +26,7 @@ describe("parseGitHubToken", () => {
     try {
       parseGitHubToken(text);
     } catch (err) {
-      message = (err as Error).message;
+      message = err instanceof Error ? err.message : "";
     }
     expect(message).not.toBe("");
     expect(message).not.toContain(CLASSIC.slice(4, 20));
