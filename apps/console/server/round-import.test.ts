@@ -34,6 +34,7 @@ const sha256Of = (bytes: Buffer): string => createHash("sha256").update(bytes).d
 const runImport = (from = source) => importRound({ source: from, roundsDir });
 const entries = (dir = roundsDir) => readdir(dir).catch(() => []);
 const jsonObject = z.record(z.string(), z.unknown());
+const jsonObjects = z.array(jsonObject);
 const readJson = async (file: string) => jsonObject.parse(JSON.parse(await readFile(file, "utf8")));
 
 async function expectRefused(message: RegExp, from = source): Promise<void> {
@@ -337,6 +338,15 @@ describe("importRound refuses a round or an answer file the console would not re
     expect(await entries()).toEqual([]);
   });
 
+  it("refuses a Ship question with no merge binding and writes nothing", async () => {
+    await editJson("round.json", (json) => {
+      json.questions = jsonObjects.parse(json.questions).map(({ merge: _merge, page: _page, ...question }) => question);
+    });
+
+    await expectRefused(/question ship-cards: option "Ship" offers a merge, so it needs a merge binding/);
+    expect(await entries()).toEqual([]);
+  });
+
   it("refuses a round.json that is not JSON", async () => {
     await writeFile(path.join(source, "round.json"), "{");
 
@@ -477,15 +487,18 @@ async function rebindPacket(bytes: Buffer): Promise<void> {
   await editJson("frames/frames.json", (json) => (json.packet = { file: "packet.json", sha256: sha256Of(bytes) }));
 }
 
-/** Strips the Ship question's merge binding and its page (the schema requires a Ship question per page), then rebinds frames.json and feedback.json to the new round.json. */
+/**
+ * Turns the Ship question into one that offers no merge: drops its binding, its page (the schema requires a Ship
+ * question per page) and its Ship wording (an unbound "Ship" is itself refused), then rebinds frames.json and
+ * feedback.json to the new round.json.
+ */
 async function dropShipBinding(): Promise<void> {
   await editJson("round.json", (json) => {
-    const questions = z.array(z.looseObject({ merge: z.unknown().optional(), page: z.unknown().optional() })).parse(json.questions);
-    for (const question of questions) {
-      delete question.merge;
-      delete question.page;
-    }
-    json.questions = questions;
+    json.questions = jsonObjects.parse(json.questions).map(({ merge: _merge, page: _page, ...question }) => ({
+      ...question,
+      options: ["Keep", "Rework"],
+      recommendation: { ...jsonObject.parse(question.recommendation), answer: "Keep" },
+    }));
   });
   await rebind();
 }

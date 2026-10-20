@@ -80,6 +80,18 @@ describe("the rounds list", () => {
     expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
   });
 
+  it("marks a round that offers a merge with no binding as unbound, with no merge tap", async () => {
+    const listed = await listRounds(source);
+    const rounds = listed.rounds.map((round) => (round.id === "kiln-schedule-r2" && round.valid ? { ...round, unbound: true as const } : round));
+    const snapshot = await recorded();
+    await renderConsole("#/rounds", { ...snapshot, calls: { ...snapshot.calls, [snapshotKey("rounds.list", {})]: successEnvelope({ ...listed, rounds }) } });
+
+    const card = await screen.findByTestId("round-card-kiln-schedule-r2");
+
+    expect(within(card).getByText("unbound: no merge tap")).toBeTruthy();
+    expect(within(screen.getByTestId("round-card-kiln-schedule-r1")).getByText("questions")).toBeTruthy();
+  });
+
   it("keeps the four-column table for wide screens", async () => {
     await renderConsole("#/rounds");
     const row = await screen.findByTestId("round-row-kiln-schedule-r2");

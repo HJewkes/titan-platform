@@ -144,10 +144,17 @@ function RoundName({ round }: { round: RoundSummary }): ReactNode {
         {round.id}
       </Link>
       <Pill variant="subtle" size="xs">
-        {!round.valid ? "invalid" : round.ship ? "ship" : round.design ? "design" : "questions"}
+        {kindOf(round)}
       </Pill>
     </HStack>
   );
+}
+
+function kindOf(round: RoundSummary): string {
+  if (!round.valid) return "invalid";
+  if (round.ship) return "ship";
+  if (round.unbound) return "unbound: no merge tap";
+  return round.design ? "design" : "questions";
 }
 
 /** An invalid round has no unit to show, so its row carries the schema's reason instead. */
