@@ -564,7 +564,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +133 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +146 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -1190,7 +1190,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +361 more in `products/explainer/src/index.ts`
+- +364 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

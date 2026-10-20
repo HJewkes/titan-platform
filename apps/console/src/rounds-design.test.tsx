@@ -168,8 +168,20 @@ describe("a design round", () => {
     });
   });
 
+  it("shows a sent design round's pick and text answer locked after a reload (TP-3767)", async () => {
+    const answers = { "beacon-fill-pick": { pick: "Ring" }, "beacon-notes": { text: "Keep the idle glow." } };
+    await renderDesign({ detail: { status: "sent", notes: { general: "", comments: {}, answers, addressed: [] } } });
+
+    const pick = screen.getByTestId("round-entry-beacon-fill-pick");
+    expect(pick.hasAttribute("inert")).toBe(true);
+    expect(within(pick).getByText(/Ring/).closest('[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/^Answer to /).value).toBe("Keep the idle glow.");
+    expect(screen.getByTestId("round-entry-beacon-notes").hasAttribute("inert")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+  });
+
   it("shows a sent design round's comments and round feedback read-only", async () => {
-    await renderDesign({ detail: { status: "sent", notes: { general: "Frames load fast.", comments: { "beacon-fill-pick": "Filled, but thinner." } } } });
+    await renderDesign({ detail: { status: "sent", notes: { general: "Frames load fast.", comments: { "beacon-fill-pick": "Filled, but thinner." }, answers: {}, addressed: [] } } });
 
     expect(screen.getByTestId("round-comment-sent-beacon-fill-pick").textContent).toContain("Filled, but thinner.");
     expect(screen.getByTestId("round-general-sent").textContent).toContain("Frames load fast.");
