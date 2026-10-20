@@ -318,7 +318,9 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   `owner/repo`; `headSha` is the 40-character head from `gh pr view <N> --repo <owner/repo> --json
   headRefOid --jq .headRefOid`. A `#N` in the wording must equal `pr`, and a `<sha>` there must be
   a prefix of `headSha`. A bound question offers exactly `Ship` and `Don't ship`. An unbound or
-  disagreeing offer is a schema problem: the import refuses it and `rounds.list` lists it invalid.
+  disagreeing offer is refused at import. A round already in the rounds dir is not re-judged: it
+  still lists and takes a submit, and `rounds.list` marks an unbound one `unbound` ("unbound: no
+  merge tap"), since its answer is recorded but merges nothing.
 - **CI packets.** A `packet.json` or `prose.json` that frames.json names is copied beside
   `round.json` after a sha256 and JSON check. The packet's repo, PR and head must equal every
   merge-bound Ship question in the round, because the factory's Ship answer route reads it there.
