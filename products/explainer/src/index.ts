@@ -256,6 +256,17 @@ export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMN
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
+export {
+  MIN_REGISTER_WORDS,
+  REGISTER_BANDS,
+  REGISTER_CHECK_IDS,
+  REGISTER_MEASURES,
+  registerCheck,
+  spokenText,
+  type Band,
+  type RegisterMetric,
+  type SpokenText,
+} from "./lint-register.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
