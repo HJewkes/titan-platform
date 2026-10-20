@@ -2,10 +2,21 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import {
+  applyEdits,
+  FAMILIES,
+  fixtureBytes,
+  GOLDENS,
+  type Lint,
+  loadLint,
+  loadSeededProvenance,
+  loadSeeds,
+  Pinned,
+  readGolden,
+  type Seed,
+  type SeededProvenance,
+} from "./rf-goldens.test-helpers.js";
 
-const GOLDENS = new URL("../fixtures/spike/goldens/", import.meta.url);
-
-const Pinned = z.object({ tool: z.string(), sha256: z.string() });
 const ToolRunSchema = Pinned.extend({ outputSha256: z.string(), dataTool: Pinned.optional() });
 const ProvenanceSchema = z.object({
   bundle: z.object({ path: z.string(), sha256: z.string() }),
@@ -21,7 +32,6 @@ type ToolRun = z.infer<typeof ToolRunSchema>;
 type Provenance = z.infer<typeof ProvenanceSchema>;
 
 const sha256 = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
-const readGolden = (path: string): Buffer => readFileSync(new URL(path, GOLDENS));
 const loadProvenance = (): Provenance => ProvenanceSchema.parse(JSON.parse(readGolden("provenance.json").toString("utf8")));
 
 const loadSums = (): Map<string, string> =>
@@ -84,72 +94,6 @@ describe("A2 goldens provenance", () => {
     expect(sha256(fixture)).toBe(loadProvenance().scripts["review-addendum-v5"]?.frozenScript.sha256);
   });
 });
-
-const FAMILIES = [
-  "bands",
-  "banned phrases",
-  "numbers",
-  "outro",
-  "rules 3/5",
-  "chip rows",
-  "map/pin/edge-label",
-  "recipe/contested/edge-table/origin",
-  "budgets",
-] as const;
-
-const SeedsSchema = z.object({
-  seeds: z.record(
-    z.string(),
-    z.object({
-      base: z.string(),
-      family: z.enum(FAMILIES),
-      check: z.string(),
-      seed: z.string(),
-      edits: z.array(z.object({ path: z.string(), value: z.unknown() })).min(1),
-    }),
-  ),
-});
-const SeededProvenanceSchema = z.object({
-  bases: z.record(z.string(), Pinned.extend({ fixture: z.string(), fixtureSha256: z.string(), dataTool: Pinned })),
-  variants: z.record(
-    z.string(),
-    z.object({ base: z.string(), scriptSha256: z.string(), exitCode: z.number(), outputSha256: z.string() }),
-  ),
-});
-const LintSchema = z.object({
-  exitCode: z.number(),
-  issues: z.array(z.object({ beat: z.string().nullable(), check: z.string(), severity: z.string(), message: z.string() })),
-});
-type Seed = z.infer<typeof SeedsSchema>["seeds"][string];
-type SeededProvenance = z.infer<typeof SeededProvenanceSchema>;
-type Lint = z.infer<typeof LintSchema>;
-
-const readJson = (path: string): unknown => JSON.parse(readGolden(path).toString("utf8"));
-const loadSeeds = () => SeedsSchema.parse(readJson("seeded/seeds.json")).seeds;
-const loadSeededProvenance = () => SeededProvenanceSchema.parse(readJson("seeded/provenance.json"));
-const loadLint = (variant: string): Lint => LintSchema.parse(readJson(`seeded/${variant}/lint.json`));
-const fixtureBytes = (fixture: string): Buffer => readFileSync(new URL(`../${fixture}`, GOLDENS));
-
-/** A JSON object or array; arrays index by their string keys too. */
-const isContainer = (node: unknown): node is Record<string, unknown> => typeof node === "object" && node !== null;
-
-const child = (node: unknown, key: string): unknown => {
-  if (!isContainer(node)) throw new Error(`seed path runs through a non-container at ${key}`);
-  return node[key];
-};
-
-/** Sets each JSON pointer to its value (an array index one past the end appends); throws on a no-op edit. */
-const applyEdits = (doc: unknown, edits: Seed["edits"]): unknown => {
-  for (const { path, value } of edits) {
-    const keys = path.split("/").slice(1).map((key) => key.replaceAll("~1", "/").replaceAll("~0", "~"));
-    const last = keys.pop() ?? "";
-    const parent = keys.reduce(child, doc);
-    if (!isContainer(parent)) throw new Error(`edit ${path} has no parent container`);
-    if (JSON.stringify(parent[last]) === JSON.stringify(value)) throw new Error(`edit ${path} changes nothing`);
-    parent[last] = value;
-  }
-  return doc;
-};
 
 /** The bytes the archived lint read: the base fixture with the seed applied, serialized as the fixtures are. */
 const seededScript = (seed: Seed, provenance: SeededProvenance): Buffer => {
