@@ -5,7 +5,7 @@ import type { PaceBeat } from "./pace-items.js";
 const MIN_NEW_ITEMS = 3;
 
 /** M3-pre: an item glossed by fewer content words than this, in its own clause, is named only. */
-const MIN_GLOSS_TERMS = 3;
+export const MIN_GLOSS_TERMS = 3;
 
 /** M3-pre: a beat whose items average a gloss below this is routed. */
 const MAX_MEAN_GLOSS = 1;
@@ -26,7 +26,7 @@ const FILLER = new Set(
 );
 
 /** The clauses of a spoken line: split at punctuation and at "and" and "or". */
-const clausesOf =(spoken: string): string[] =>
+export const clausesOf = (spoken: string): string[] =>
   spoken
     .split(CLAUSE_BREAK)
     .map((c) => c.trim())
@@ -36,7 +36,7 @@ const clausesOf =(spoken: string): string[] =>
  * Content words that gloss an item: those of the first clause sharing a content term with its label, less the
  * beat's own label terms, so naming a sibling item is not a gloss. Zero when no clause names the item.
  */
-function itemGloss(label: string, clauses: readonly string[], labelTerms: ReadonlySet<string>): number {
+export function itemGloss(label: string, clauses: readonly string[], labelTerms: ReadonlySet<string>): number {
   const own = contentTerms(label);
   const clause = clauses.map(contentTerms).find((terms) => [...terms].some((t) => own.has(t)));
   return clause ? [...clause].filter((t) => !labelTerms.has(t) && !FILLER.has(t)).length : 0;

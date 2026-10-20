@@ -12,7 +12,7 @@ function escapeRegExp(text: string): string {
 }
 
 // Whole-term match: `CI` must not hit inside `CIRCLE`, and terms like `C++` end on a non-word character.
-function mentions(text: string, term: string): boolean {
+export function mentions(text: string, term: string): boolean {
   return new RegExp(`(?<![\\w])${escapeRegExp(term)}(?![\\w])`, "i").test(text);
 }
 
