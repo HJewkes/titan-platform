@@ -317,3 +317,4 @@ export {
   type GatherResult,
   type ReviewBundle,
 } from "./presets/repo-explainer/index.js";
+export { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guide-plan.js";
