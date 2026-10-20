@@ -150,8 +150,7 @@ function usageError(opts: StatsOpts): string | undefined {
 }
 
 function heldRunIds(db: ReturnType<typeof openDatabase>): string[] {
-  const rows = db.prepare("SELECT run_id FROM shepherd_registration WHERE held = 1").all() as Array<{ run_id: string }>;
-  return rows.map((row) => row.run_id);
+  return db.prepare("SELECT run_id FROM shepherd_registration WHERE held = 1").pluck().all().map(String);
 }
 
 /** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
