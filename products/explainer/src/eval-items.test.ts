@@ -157,7 +157,7 @@ describe("runItems", () => {
     const result = await runItems(input(judge.harness));
 
     expect(result.trusted).toBe(false);
-    expect(result.chapters.map((c) => c.canary.got)).toEqual(["explained", "explained"]);
+    expect(result.chapters.map((c) => c.canary?.got)).toEqual(["explained", "explained"]);
   });
 
   it("marks the run untrusted when the canary refusal cites nothing it can find", async () => {
@@ -330,7 +330,7 @@ describe("runItems with a story spine", () => {
   });
 
   it("keeps the blind odd one out for a list beat with an item the ledger does not list", async () => {
-    const { "be legible": _unlisted, ...partial } = DESK_LEDGER;
+    const partial = Object.fromEntries(Object.entries(DESK_LEDGER).filter(([item]) => item !== "be legible"));
 
     const result = await runItems(spineInput(kindJudge().harness, spineDoc(ledgerRows(partial))));
 
