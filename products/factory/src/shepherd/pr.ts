@@ -54,10 +54,11 @@ import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBac
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, noteReviewerAccount, type FailedRoundsState } from "./failed-rounds-demotion.js";
+import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -110,7 +111,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
-    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0 },
+    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const checked = checkedBaseTap();
@@ -205,9 +206,9 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     recoveredInFlight: () => ctx.recoveredInFlight(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
       packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
-      reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
+      reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
