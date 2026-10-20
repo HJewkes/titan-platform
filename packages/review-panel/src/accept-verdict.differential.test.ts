@@ -112,7 +112,9 @@ describe("acceptVerdict against the frozen Shepherd copy", () => {
   it.each(cases.map((recorded) => [recorded.name, recorded] as const))("decides %s exactly as before the move", (_name, recorded) => {
     const before = oracle(recorded.input, recorded.messages);
 
-    const after = acceptVerdict(recorded.input, recorded.messages);
+    const { malformed, ...rest } = acceptVerdict(recorded.input, recorded.messages) as ReturnType<typeof acceptVerdict> & { malformed?: { quotes?: string[] } };
+    // Since TP-3798 a malformed record may also carry the lines to quote, which the frozen copy never wrote.
+    const after = malformed ? { ...rest, malformed: Object.fromEntries(Object.entries(malformed).filter(([key]) => key !== "quotes")) } : rest;
 
     // Since TP-1955 a limit result also keeps the client's notice, which the frozen copy dropped.
     expect(after).toStrictEqual(isUsageLimit(after) && typeof before === "object" ? { ...before, notice: recorded.messages.at(-1)?.text.trim() } : before);

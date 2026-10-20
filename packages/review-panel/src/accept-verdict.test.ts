@@ -39,8 +39,8 @@ describe("acceptVerdict malformed record", () => {
   ])("records %s when the final message is malformed", (refusal, text) => {
     const result = acceptVerdict(input, [said(text)]);
 
-    expect(result).toEqual({ kind: "none", malformed: { refusal, writtenAt: WRITTEN_AT } });
-    expect(readMalformed(result)).toEqual({ refusal, writtenAt: WRITTEN_AT });
+    expect(result).toMatchObject({ kind: "none", malformed: { refusal, writtenAt: WRITTEN_AT } });
+    expect(readMalformed(result)).toMatchObject({ refusal, writtenAt: WRITTEN_AT });
   });
 
   it("reads Claude Code's own weekly-limit record as a usage limit with its recorded reset, not a missing Verdict line", () => {
@@ -218,7 +218,7 @@ describe("acceptVerdict CI-policy line", () => {
   it("refuses a MERGE whose CI-policy line is prose, so the reviewer gets a correction", () => {
     const result = acceptVerdict(input, [said(merge(RV_1340_LINE))]);
 
-    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1 } });
+    expect(result).toEqual({ kind: "none", malformed: { refusal: "ci_policy_malformed", writtenAt: DISPATCHED_AT + 1, quotes: [RV_1340_LINE] } });
     expect(readMalformed(result)?.refusal).toBe("ci_policy_malformed");
   });
 
@@ -249,5 +249,31 @@ describe("acceptVerdict CI-policy line", () => {
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
     expect(result).not.toHaveProperty("ciPolicy");
+  });
+});
+
+describe("acceptVerdict correction quotes", () => {
+  const WRITTEN_AT = DISPATCHED_AT + 5_000;
+  const trailer = `Verdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: unchanged`;
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(WRITTEN_AT), text });
+
+  it("quotes the prose CI policy heading; the same reply without it is a MERGE", () => {
+    const heading = "**CI policy:** nothing under `.github/` changed.";
+
+    const refused = acceptVerdict(input, [said(`Looked.\n\n${heading}\n\n${trailer}`)]);
+    const fixed = acceptVerdict(input, [said(`Looked.\n\n${trailer}`)]);
+
+    expect(readMalformed(refused)).toEqual({ refusal: "ci_policy_malformed", writtenAt: WRITTEN_AT, quotes: [heading] });
+    expect(fixed).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+
+  it("quotes the Verdict sentence counted as a second block; the same reply without it is a MERGE", () => {
+    const sentence = "Verdict: merge. The PR is docs-only.";
+
+    const refused = acceptVerdict(input, [said(`${sentence}\n\n${trailer}`)]);
+    const fixed = acceptVerdict(input, [said(trailer)]);
+
+    expect(readMalformed(refused)).toEqual({ refusal: "multiple_blocks", writtenAt: WRITTEN_AT, quotes: [sentence] });
+    expect(fixed).toMatchObject({ kind: "verdict", verdict: "MERGE" });
   });
 });

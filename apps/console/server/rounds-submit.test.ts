@@ -9,7 +9,7 @@ import { EXIT, invokeCommand } from "@titan-design/registry";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
 import { feedbackProblems } from "./round-feedback.js";
 import { BLIND_AB_REFUSED, FeedbackSchema, RoundSchema } from "./round-schema.js";
@@ -433,7 +433,9 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: R2_HEAD, addressed: "recorded" } });
     expect(JSON.parse(await readFile(path.join(dir, R2, ADDRESSED_FILE), "utf8"))).toEqual({ schema: "titan-console/addressed@1", rounds: [1], at: expect.any(String) });
-    expect(await getRound({ dir }, R2)).not.toHaveProperty("priorFeedback");
+    const sent = await getRound({ dir }, R2);
+    expect(sent).toHaveProperty("notes.addressed", [1]);
+    expect(sent).toHaveProperty("priorFeedback.0.round", 1);
   });
 
   it("still takes a Send back while round 1 is unticked", async () => {
@@ -459,7 +461,7 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
 
     expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Send back needs a note: say what to fix in the Ship comment or the round note." });
+    expect(envelope).toMatchObject({ ok: false, error: 'Send back refused for question "ship-backoff": Send back needs a note: say what to fix in the Ship comment or the round note.' });
     expect(await exists(feedbackOf())).toBe(false);
   });
 
@@ -490,6 +492,81 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)) }));
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: HEAD } });
+  });
+});
+
+describe("a round with two PRs (TP-3329)", () => {
+  const TWO = "tiles-and-panels-r1";
+  let twoSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, "ship-tile-r1"), path.join(dir, TWO), { recursive: true });
+    const bytes = Buffer.from(JSON.stringify(twoPrRound()));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    twoSha = sha256(bytes);
+  });
+
+  const submitTwo = (overrides: Record<string, unknown>) => submit({ id: TWO, manifestSha256: twoSha, answers: [], ...overrides });
+
+  it("ships both PRs, each at its own head, and records every answer in one feedback.json", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep" }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } } });
+    const written = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(TWO), "utf8")));
+    expect(written.answers).toEqual(answers.map((answer) => expect.objectContaining(answer)));
+  });
+
+  it("ships one PR and sends the other back, its note blocking only its own Ship", async () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each([
+    ["a shipped PR with no head", { "ship-tiles": TILES_HEAD }, 'question "ship-panels" ships without its head sha in heads'],
+    ["a head from the other PR", { "ship-tiles": TILES_HEAD, "ship-panels": TILES_HEAD }, 'question "ship-panels" names a different head sha'],
+    ["a head for a PR that is not shipped", { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD, "stripe-colour": TILES_HEAD }, 'heads names "stripe-colour", which no Ship answer ships'],
+  ])("refuses %s and writes nothing", async (_, heads, error) => {
+    const { envelope, exitCode } = await submitTwo({ answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }], heads });
+
+    expect({ envelope, exitCode }).toEqual({ envelope: { ok: false, error, code: EXIT.DATAERR }, exitCode: EXIT.DATAERR });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("refuses a Ship whose own side question carries a comment, but not the other PR's", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep", comment: "Check the contrast." }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const both = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    const panelsOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, answers[2]], heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left a comment on "Keep the stripe colour?"' });
+    expect(panelsOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each(["ship-tiles", "ship-panels"])("refuses %s sent back with no note, even beside a noted Send back, and writes nothing (decision 513)", async (bare) => {
+    const answers = ["ship-tiles", "ship-panels"].map((questionId) => ({ questionId, pick: "Don't ship", ...(questionId === bare ? {} : { comment: "Lower the stripe." }) }));
+
+    const { envelope, exitCode } = await submitTwo({ answers });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": Send back needs a note: say what to fix in the Ship comment or the round note.` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("takes both PRs sent back on one round note while a required side question is unanswered", async () => {
+    const round = twoPrRound();
+    round.questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions).map((question) => (question.id === "stripe-colour" ? { ...question, required: true } : question));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship" }, { questionId: "ship-panels", pick: "Don't ship" }];
+
+    const { envelope } = await submit({ id: TWO, manifestSha256: sha256(bytes), answers, general: "Both need another pass." });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
 });
 
@@ -616,5 +693,64 @@ describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
     const feedback: unknown = JSON.parse(await readFile(feedbackOf(), "utf8"));
     expect(feedback).toMatchObject({ unit: "orbit-retry", round: 1, manifestSha256, submittedAt: expect.any(String), general: "One more pass.", answers: [sendBack] });
+  });
+});
+
+describe("a design round's per-frame verdicts, comments and pins (TP-3773)", () => {
+  const id = "beacon-states-r1";
+  const pin = (n: number, note: string) => ({ id: `beacon-busy-${n}`, width: 375, x: 30 * n, y: 40, xPct: 0.08 * n, yPct: 0.1, note });
+  let roundSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    roundSha = sha256(await readFile(path.join(dir, id, "round.json")));
+  });
+
+  const send = (variants?: unknown[]) => submit({ id, manifestSha256: roundSha, answers: [], ...(variants !== undefined && { variants }) });
+  const sentFrames = async () => FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8"))).variants;
+
+  it("writes a posted verdict, comment and two pins into the frame's feedback, its source echo intact", async () => {
+    const pins = [pin(1, "The ring is too thin."), { ...pin(2, "Label overlaps."), target: { testId: "beacon-label" } }];
+
+    const { envelope } = await send([{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins }]);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const frames = await sentFrames();
+    expect(frames.find((frame) => frame.key === "beacon-busy")).toEqual({ key: "beacon-busy", image: "shots/beacon-busy.png", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins });
+    expect(frames.find((frame) => frame.key === "beacon-idle")).toEqual({ key: "beacon-idle", image: "shots/beacon-idle.png", verdict: null, comment: "", annotations: [] });
+  });
+
+  it("refuses a frame the round does not have, and writes nothing", async () => {
+    const { envelope } = await send([{ key: "beacon-ghost", verdict: "chosen" }]);
+
+    expect(envelope).toMatchObject({ ok: false, error: 'no frame "beacon-ghost" in this round' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin numbered on another frame, a pin sent twice and a frame sent twice, and writes nothing", async () => {
+    const other = await send([{ key: "beacon-idle", annotations: [pin(1, "Belongs to busy.")] }]);
+    const twicePinned = await send([{ key: "beacon-busy", annotations: [pin(1, "One."), pin(1, "Again.")] }]);
+    const twiceSent = await send([{ key: "beacon-busy", verdict: "maybe" }, { key: "beacon-busy", verdict: "chosen" }]);
+
+    expect(other.envelope).toMatchObject({ ok: false, error: 'frame "beacon-idle": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twicePinned.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twiceSent.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy" is sent twice' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin placed outside its frame", async () => {
+    const { envelope } = await send([{ key: "beacon-busy", annotations: [{ ...pin(1, "Off the edge."), xPct: 1.2 }] }]);
+
+    expect(envelope).toMatchObject({ ok: false });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("echoes every frame undecided when no variants are sent", async () => {
+    const { envelope } = await send();
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await sentFrames()).map(({ key, verdict, comment, annotations }) => ({ key, verdict, comment, annotations }))).toEqual(
+      ["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map((key) => ({ key, verdict: null, comment: "", annotations: [] })),
+    );
   });
 });

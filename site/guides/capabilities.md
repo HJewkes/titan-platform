@@ -564,7 +564,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +131 more in the [reference page](/reference/github)
+- +146 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
@@ -1003,7 +1003,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +214 more in the [reference page](/reference/session-read)
+- +215 more in the [reference page](/reference/session-read)
 
 <a id="cap-speech-vet"></a>
 
@@ -1113,7 +1113,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +78 more in the [reference page](/reference/workflow)
+- +80 more in the [reference page](/reference/workflow)
 
 ## UI
 
@@ -1190,7 +1190,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +361 more in `products/explainer/src/index.ts`
+- +374 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 
@@ -1205,7 +1205,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
-- +104 more in `products/factory/src/index.ts`
+- +118 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 

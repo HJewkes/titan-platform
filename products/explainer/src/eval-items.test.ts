@@ -177,7 +177,67 @@ describe("item judge questions by beat role", () => {
       ["risk table rows", true],
       ["stacking", true],
     ]);
-    expect(new Set(explained.map((q) => q.beat)).size).toBe(9);
+    expect(new Set(explained.map((q) => q.beat)).size).toBe(8);
+  });
+
+  it("on the full v4 script, asks nothing of the r1-5-seams cast line and asks r10-6b only what its questions ask", () => {
+    const { beats } = fromSpikeScript(v4FullScript(), readTiming(v4Durations()));
+
+    const explained = itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+
+    expect(explained.filter((q) => q.beat === "r1-5-seams")).toEqual([]);
+    expect(explained.filter((q) => q.beat === "r10-6b-q10-q11").map((q) => [q.subject, q.text.includes("asked to decide")])).toEqual([
+      ["Q10 pool rules for the score", true],
+      ["Q11 research fan-out", true],
+    ]);
+  });
+});
+
+describe("item judge questions for cast lines and owner questions", () => {
+  type Cue = [target: string, atCue: string];
+  const cued = (id: string, spoken: string, cues: Cue[]): PaceSourceBeat => ({ ...source(id, "ch1", spoken, []), cues: cues.map(([target, atCue]) => ({ target, atCue })) });
+  const explainedOf = (beat: PaceSourceBeat) => {
+    const beats = buildPaceBeats([beat]);
+    expect(explainRoutes(beats).map((r) => r.beat)).toEqual([beat.id]);
+    return itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+  };
+  const castLine = (third: Cue) =>
+    cued("c1-1", `Around the desk: a reviewer, a duty planner, and ${third[1]}.`, [["card:reviewer", "reviewer"], ["card:duty planner", "planner"], third]);
+  const ownerQuestions = (kind: string) =>
+    cued("c1-1", "Ten: scales replace the tape. Eleven: two clerks study returns. Both defaults are yes.", [
+      [`${kind}:Q10 scales`, "Ten"],
+      [`${kind}:Q11 returns study`, "Eleven"],
+      [`${kind}:default: yes to both`, "defaults"],
+    ]);
+
+  // Mutation: dropping the cast rule asks the reviewer, the planner and you what and why.
+  it("asks nothing of a line that introduces people", () => {
+    expect(explainedOf(castLine(["card:owner", "you"]))).toEqual([]);
+  });
+
+  // Mutation: clearing a beat when any one item names a person clears the components here.
+  it("still asks a list of components that opens with a reviewer", () => {
+    const asked = explainedOf(castLine(["card:poller", "poller"]));
+
+    expect(asked.map((q) => q.subject)).toContain("poller");
+    expect(asked.every((q) => q.text.includes("explained: does this beat"))).toBe(true);
+  });
+
+  // Mutation: dropping the answer-label rule asks whether "default: yes to both" is explained.
+  it("asks an owner question only what it puts to the owner, and never asks its default answer label", () => {
+    const asked = explainedOf(ownerQuestions("open"));
+
+    expect(asked.map((q) => [q.subject, q.text.includes("asked to decide")])).toEqual([
+      ["Q10 scales", true],
+      ["Q11 returns study", true],
+    ]);
+  });
+
+  // Mutation: reading any "default:" label as an answer, without an open question before it, clears this setting.
+  it("still asks a default setting that follows no open question", () => {
+    const asked = explainedOf(ownerQuestions("row"));
+
+    expect(asked.map((q) => [q.subject, q.text.includes("asked to decide")])).toContainEqual(["default: yes to both", false]);
   });
 });
 
@@ -389,6 +449,16 @@ describe("runItems with a story spine", () => {
     expect(asked.some((t) => t.includes('"be legible" a property'))).toBe(true);
     expect(verdictsOf(result).map((v) => v.kind)).not.toContain("odd-one-out");
     expect(verdictsOf(result).find((v) => v.kind === "kind-honest")).toMatchObject({ pass: true, picked: null });
+  });
+
+  it("tells the kind-honest judge that an item the narration sets apart is not the odd one", async () => {
+    const judge = kindJudge();
+
+    await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER))));
+
+    const prompt = judge.calls.find((p) => p.includes("spine ledger declares"))!;
+    expect(prompt).toContain("**An exception is not the odd one** (for Odd one out and Kind honest)");
+    expect(prompt).toMatch(/a default that applies when nothing is chosen, "not X", "until", "except", and an\s+item that "goes" or "is removed"/);
   });
 
   it("keeps the blind odd one out for a list beat with an item the ledger does not list", async () => {

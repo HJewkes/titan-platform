@@ -195,7 +195,7 @@ describe("merge_op consumers", () => {
 
     expect(outside).toEqual([
       { file: "products/factory/src/host.ts", line: 'import { mergeLogMigration } from "./merge-log.js";' },
-      { file: "products/factory/src/host.ts", line: expect.stringMatching(/^runMigrations\(db, \[.*mergeLogMigration\(29\)/) },
+      { file: "products/factory/src/host.ts", line: expect.stringMatching(/^return \[.*mergeLogMigration\(29\)/) },
     ]);
   });
 });
