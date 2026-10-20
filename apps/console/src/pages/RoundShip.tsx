@@ -16,6 +16,7 @@ import { shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { UnchangedFrames, WhatShips, splitUnchanged } from "./ShipPairs.js";
 import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { SentFollowUp, ShipStake } from "./ShipStake.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -50,7 +51,7 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
             <ShipAnswer round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side} />
           </Fragment>
         ) : (
-          <SideQuestion key={each.id} question={each} position={index + 1} side={side} notes={round.notes} />
+          <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} />
         ),
       )}
     </VStack>
@@ -178,10 +179,10 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
   const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments);
   const missing = missingRequired(sideQuestions, sideAnswers);
-  const blockers = shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed });
-  const addressed = side.addressed.length > 0 ? { addressed: side.addressed } : {};
-  const ship = () => submit({ ...sent, ...addressed, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
-  const back = () => submit({ ...sent, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
+  const blockers = shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps });
+  const { addressed, followUps } = sideMarks(side);
+  const ship = () => submit({ ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
+  const back = () => submit({ ...sent, ...followUps, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
   const disabled = !available || state.status === "sending" || missing.length > 0;
   return (
     <Card variant="outline">
@@ -198,6 +199,14 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
       </CardContent>
     </Card>
   );
+}
+
+/** The Addressed ticks and follow-up marks as `rounds.submit` args, each left out when empty. */
+function sideMarks(side: SideAnswers) {
+  return {
+    addressed: side.addressed.length > 0 ? { addressed: side.addressed } : {},
+    followUps: side.followUps.length > 0 ? { followUps: side.followUps } : {},
+  };
 }
 
 function ShipNotices({ blockers, missing, available, state }: { blockers: string[]; missing: Question[]; available: boolean; state: SubmitState }): ReactNode {
@@ -248,28 +257,31 @@ function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha
   return <Alert status={status} message={message} />;
 }
 
-/** The owner's picks, comments, round feedback and Addressed ticks, held until the Ship or Send back press sends them. */
+/** The owner's picks, comments, round feedback, Addressed ticks and follow-up marks, held until the Ship or Send back press sends them. */
 function useSideAnswers() {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
   const [general, setGeneral] = useState("");
   const [activeId, setActiveId] = useState<string>();
   const [addressed, setAddressed] = useState<number[]>([]);
+  const [followUps, setFollowUps] = useState<string[]>([]);
   const toggleAddressed = (round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]);
-  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers, addressed, toggleAddressed };
+  const setFollowUp = (questionId: string, followUp: boolean) => setFollowUps((current) => [...current.filter((each) => each !== questionId), ...(followUp ? [questionId] : [])]);
+  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers, addressed, toggleAddressed, followUps, setFollowUp };
 }
 
 type SideAnswers = ReturnType<typeof useSideAnswers>;
 
 interface SideQuestionProps {
+  round: ValidRound;
   question: Question;
   position: number;
   side: SideAnswers;
-  notes: ValidRound["notes"];
 }
 
-function SideQuestion({ question, position, side, notes }: SideQuestionProps): ReactNode {
+function SideQuestion({ round, question, position, side }: SideQuestionProps): ReactNode {
   const { answers, comments, setComments, activeId, setActiveId, setAnswers } = side;
+  const { notes } = round;
   return (
     <VStack gap={2}>
       <RoundQuestion
@@ -287,6 +299,15 @@ function SideQuestion({ question, position, side, notes }: SideQuestionProps): R
         onChange={(text) => setComments((current) => ({ ...current, [question.id]: text }))}
         sent={notes && (notes.comments[question.id] ?? "")}
       />
+      <SideStake round={round} question={question} side={side} />
     </VStack>
   );
+}
+
+/** Open, the question's Ship stake and This PR or Follow-up choice; sent, whether it went as a follow-up. */
+function SideStake({ round, question, side }: { round: ValidRound; question: Question; side: SideAnswers }): ReactNode {
+  if (round.notes !== undefined) return round.followUps?.includes(question.id) ? <SentFollowUp questionId={question.id} /> : null;
+  const [answer] = submittedAnswers([question], side.answers, side.comments);
+  const followUp = side.followUps.includes(question.id);
+  return <ShipStake manifest={round.manifest} question={question} answer={answer} followUp={followUp} onFollowUp={(next) => side.setFollowUp(question.id, next)} />;
 }

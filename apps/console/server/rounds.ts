@@ -23,6 +23,7 @@ import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Questio
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
 import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
+import { readFollowUps } from "./round-follow-ups.js";
 import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 
 export interface RoundsSource {
@@ -94,6 +95,8 @@ export const roundDetail = z.discriminatedUnion("valid", [
     notes: roundNotes.optional(),
     /** An open Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
     priorFeedback: priorFeedbackList.optional(),
+    /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
+    followUps: z.array(z.string()).optional(),
   }),
   invalidRound,
 ]);
@@ -269,9 +272,10 @@ export async function getRound(source: RoundsSource, id: string): Promise<RoundD
   const { dir } = source;
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
-  const [round, answer, notes] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir)]);
+  const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
   const prior = round.parsed.ok && round.status === "open" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
-  return { ...detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes }), ...(prior.length > 0 && { priorFeedback: prior }) };
+  const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
+  return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }) };
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });
@@ -287,6 +291,8 @@ export interface QueueRound {
   manifest: Manifest;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;
+  /** The questions its feedback filed as follow-ups; empty while unsent. */
+  followUps: string[];
 }
 
 type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
@@ -354,7 +360,8 @@ async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound
   const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
   if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback: read.ok ? read.feedback : null, withdrawn };
+  const feedback = read.ok ? read.feedback : null;
+  const round = { id, updatedAt, manifest: parsed.manifest, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 

@@ -11,13 +11,16 @@
  * ever overwritten. A Ship pick is refused while `ship-blockers.ts` finds a reason against it: earlier
  * feedback on the unit not named in `addressed`, or a change request in this answer. The strict feedback@1
  * schema has no field for the Addressed ticks, so they go to an `addressed.json` sidecar once the feedback is
- * written. A design round is answered here only when it has a valid `frames/frames.json`, as the page then
+ * written. Side answers marked follow-up never block Ship; they get a `follow-ups.json` sidecar and an owner-inbox
+ * item each (`round-follow-ups.ts`). A design round is answered here only when it has a valid `frames/frames.json`, as the page then
  * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
  */
 import { createHash } from "node:crypto";
 import { open, rm, type FileHandle } from "node:fs/promises";
+import { depositItemId } from "@titan-design/owner-queue";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
 import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
@@ -31,6 +34,7 @@ import type { Manifest, Question } from "./round-schema.js";
 import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
+import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
@@ -48,6 +52,8 @@ const submitArgs = z.strictObject({
   general: z.string().default(""),
   /** The earlier rounds of this unit whose feedback the owner ticked Addressed; a Ship needs every one. */
   addressed: z.array(z.number().int()).max(100).default([]),
+  /** The side questions the owner marked follow-up: filed for later, never blocking Ship. */
+  followUps: z.array(z.string().min(1)).max(100).default([]),
 });
 
 type SubmitArgs = z.infer<typeof submitArgs>;
@@ -60,6 +66,8 @@ const submitResult = z.discriminatedUnion("status", [
     headSha: z.string().nullable(),
     /** Present when Addressed ticks were sent: whether `addressed.json` holds them. */
     addressed: z.enum(["recorded", "unrecorded"]).optional(),
+    /** Present when an answered question was marked follow-up: whether the sidecar holds the marks, and each inbox item, null where none was filed. */
+    followUps: z.object({ sidecar: z.enum(["recorded", "unrecorded"]), filed: z.array(z.object({ questionId: z.string(), item: z.string().nullable() })) }).optional(),
     /** One decision-log result per answered question; absent when the console has no decision log. */
     log: z.array(decisionLogResult.extend({ questionId: z.string() })).optional(),
   }),
@@ -119,6 +127,16 @@ function answerProblem(question: Question, answer: SubmittedAnswer): string | nu
   const chosen = [...(answer.pick === undefined ? [] : [answer.pick]), ...(answer.picks ?? [])];
   const unknown = chosen.find((option) => !offered.includes(option));
   return unknown === undefined ? null : `"${unknown}" is not one of its options`;
+}
+
+/** A follow-up names a side question once; the merge question is the PR's own answer, never a follow-up. */
+function checkFollowUps(manifest: Manifest, followUps: readonly string[]): void {
+  const questions = new Map(manifest.questions.map((question) => [question.id, question]));
+  for (const [index, id] of followUps.entries()) {
+    const question = questions.get(id) ?? refuse(`no question "${id}" to mark follow-up`);
+    if (question.kind === "pick-one" && question.merge) refuse(`question "${id}" is the Ship decision and cannot be a follow-up`);
+    if (followUps.indexOf(id) !== index) refuse(`question "${id}" is marked follow-up twice`);
+  }
 }
 
 function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
@@ -204,7 +222,28 @@ async function recordAddressed(roundDir: string, addressed: readonly number[], n
   return { addressed: written === null ? "unrecorded" : "recorded" };
 }
 
-async function submitRound(source: RoundsSource, args: SubmitArgs, now = new Date()): Promise<Submission> {
+type FollowUpsRecord = Extract<SubmitResult, { status: "submitted" }>["followUps"];
+
+/** A deposit that cannot be written leaves its item null; the answer is already on disk. */
+async function fileFollowUp(inboxDir: string | undefined, deposit: ReturnType<typeof followUpDeposit>): Promise<string | null> {
+  if (inboxDir === undefined) return null;
+  return writeDeposit(inboxDir, deposit).then(() => depositItemId(deposit.asker, deposit.depositId), () => null);
+}
+
+/** Only an answered follow-up is recorded and filed; a mark on an untouched question carries nothing to file. */
+async function recordFollowUps(roundDir: string, inboxDir: string | undefined, manifest: Manifest, args: SubmitArgs, now: Date): Promise<{ followUps?: FollowUpsRecord }> {
+  const answered = args.answers.filter((answer) => args.followUps.includes(answer.questionId));
+  if (answered.length === 0) return {};
+  const written = await writeOnce(path.join(roundDir, FOLLOW_UPS_FILE), followUpsBytes(answered.map((answer) => answer.questionId), now)).catch(() => null);
+  const filed = [];
+  for (const answer of answered) {
+    const question = manifest.questions.find((each) => each.id === answer.questionId);
+    if (question !== undefined) filed.push({ questionId: answer.questionId, item: await fileFollowUp(inboxDir, followUpDeposit(args.id, manifest, question, answer)) });
+  }
+  return { followUps: { sidecar: written === null ? "unrecorded" : "recorded", filed } };
+}
+
+async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs, now = new Date()): Promise<Submission> {
   const { dir } = source;
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
@@ -216,6 +255,7 @@ async function submitRound(source: RoundsSource, args: SubmitArgs, now = new Dat
   const design = manifest.variants.length > 0 && !manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
+  checkFollowUps(manifest, args.followUps);
   const headSha = shippedHead(manifest, args);
   if (headSha !== null) await refuseBlockedShip(source, manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
@@ -223,7 +263,8 @@ async function submitRound(source: RoundsSource, args: SubmitArgs, now = new Dat
   if (written === null) return { result: { status: "already-submitted" }, round: null };
   const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
-  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha, ...addressed }, round };
+  const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha, ...addressed, ...followUps }, round };
 }
 
 async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
@@ -245,12 +286,18 @@ async function afterSubmit(hooks: SubmitHooks, id: string, submission: Submissio
   return result;
 }
 
+interface SubmitTarget {
+  source: RoundsSource;
+  /** The owner-inbox spool follow-ups are filed into; absent, they are recorded but not filed. */
+  inboxDir?: string;
+}
+
 interface SubmitHooks {
   decisionLog?: DecisionLog;
   listeners?: RoundListeners;
 }
 
-export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog, listeners?: RoundListeners) {
+export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog, listeners?: RoundListeners, inboxDir?: string) {
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -258,7 +305,7 @@ export function roundsSubmitCommands(source: RoundsSource, decisionLog?: Decisio
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: async (args) => afterSubmit({ decisionLog, listeners }, args.id, await submitRound(source, args)),
+      run: async (args) => afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args)),
     }),
   };
 }
