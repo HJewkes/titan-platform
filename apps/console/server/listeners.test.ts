@@ -125,6 +125,21 @@ describe("the gate-answer listener after rounds.submit", () => {
     expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
   });
 
+  it("sends back when the round's revisionOption is the pick, which the feedback writes as a revision request", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    manifest.questions[0].revisionOption = "Don't ship";
+    await writeFile(file, JSON.stringify(manifest));
+    manifestSha256 = sha256(await readFile(file));
+    reply = () => ({ status: "resolved", gateId: "run-1/approve-merge:1", choice: "send-back" });
+    const args = { id: ROUND, manifestSha256, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the delay lower." }] };
+
+    await invokeCommand(roundsSubmitCommands({ dir }, undefined, createRoundListeners(deps()))["rounds.submit"], args, ownerContext());
+
+    expect(JSON.parse(await readFile(path.join(dir, ROUND, "feedback.json"), "utf8")).answers[0]).toMatchObject({ revisionRequested: true });
+    expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
+  });
+
   it("posts nothing and records moved when the status row's head is not the head the round showed", async () => {
     rows = [row({ headSha: MOVED_HEAD })];
 

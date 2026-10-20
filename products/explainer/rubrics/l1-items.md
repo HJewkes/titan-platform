@@ -11,6 +11,11 @@ Answer each question below, using its id as `qid`:
   later beat in this chapter say both what X is and why it is there. Back a true with quotes from the
   spoken words that say so. A name, a label on screen, or a list that only names X does not explain
   it: set `pass` to false and quote where X is named.
+- **Left out** ("X is left out on purpose: does the chapter say why the picture holds without it?").
+  Set `pass` to true only if the spoken words of this beat or a later beat in this chapter say why
+  leaving X out does not change what the chapter shows. Back a true with quotes from the spoken
+  words that say so. X itself need not be explained. Otherwise set `pass` to false and quote where X
+  is named.
 - **Seated** ("does the map on screen show the mechanism that keeps it, or the failure that breaks
   it?"). Set `pass` to true only if a map is on screen at that beat and its labels show the part of
   the system that keeps the invariant or finding, or the failure that breaks it. Quote those labels.
