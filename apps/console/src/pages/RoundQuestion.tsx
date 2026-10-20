@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { MergeGates } from "./GateStrip.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string };
@@ -129,7 +130,7 @@ function Choices({ question, answer, onChoose, onText }: { question: Question; a
 
 const answerText = (answer: string | number | readonly string[]): string => (Array.isArray(answer) ? answer.join(", ") : String(answer));
 
-/** A question's sign-off, merge binding and any recommendation the server sent. */
+/** A question's sign-off, merge binding with its live gate strip, and any recommendation the server sent. */
 export function QuestionFacts({ question }: { question: Question }): ReactNode {
   const recommendation = question.kind === "text" ? undefined : question.recommendation;
   const merge = question.kind === "pick-one" ? question.merge : undefined;
@@ -138,6 +139,7 @@ export function QuestionFacts({ question }: { question: Question }): ReactNode {
     <VStack gap={1}>
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
+      {merge ? <MergeGates repo={merge.repo} pr={merge.pr} headSha={merge.headSha} /> : null}
       {recommendation ? (
         <Alert status="info" size="compact" message={`Recommended: ${answerText(recommendation.answer)} (${Math.round(recommendation.confidence * 100)}%, ${recommendation.by})`}>
           <Typography variant="caption" color="secondary">{recommendation.rationale}</Typography>

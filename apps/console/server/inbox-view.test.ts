@@ -208,6 +208,35 @@ describe("inbox.list on a fixture factory", () => {
     expect(byId(list, "round:ship-r1/ship")).toMatchObject({ evidence: "#/rounds/ship-r1", action: { roundId: "ship-r1" } });
   });
 
+  it("joins each gate on a live PR to its gate strip at that head", async () => {
+    const reads: unknown[] = [];
+    const gated: RpcAnswer = (command, args) => {
+      if (command === "shepherd.timeline") return { row: ROWS.find((each) => each.pr === args["pr"]), entries: [{ kind: "event", event: "hold", reason: "g10-review: opus review at head", actor: "shepherd", at: "2026-10-10T01:00:00.000Z", headSha: HEAD }] };
+      if (command === "shepherd.waiting") return { owner: [], seat: [] };
+      if (command === "shepherd.ghRead") {
+        reads.push(args["path"]);
+        return { status: 200, body: { total_count: 1, check_runs: [{ name: "build", status: "in_progress", conclusion: null }] }, at: "2026-10-10T01:00:00.000Z", stale: false, source: "github" };
+      }
+      return fixtureFactory(command, args);
+    };
+
+    const list = await listInbox(await serveFactory(gated));
+
+    expect(byId(list, `gate:${RUN_G10}/approve-merge`)?.gates?.unmet).toEqual([
+      { key: "ci:build", label: "CI build (pending)" },
+      { key: "hold:g10-review", label: "held: g10-review (0/1 MERGE) by shepherd" },
+    ]);
+    expect(byId(list, "chat:msg-7")?.gates).toBeUndefined();
+    expect(reads).toContain(`repos/${REPO}/commits/${HEAD}/check-runs?per_page=100`);
+  });
+
+  it("shows a gate's unreadable sources as unknown unmet rows without failing the list", async () => {
+    const list = await listInbox(await serveFactory(fixtureFactory));
+
+    expect(list.gaps).toEqual([]);
+    expect(byId(list, `gate:${RUN_PLAIN}/approve-merge`)?.gates?.unmet.map((gate) => gate.key)).toEqual(["unknown:timeline", "unknown:waiting", "unknown:checkRuns"]);
+  });
+
   it("releases an owner-asked hold before the gate it holds is offered", async () => {
     const list = await listInbox(await serveFactory(fixtureFactory));
 
