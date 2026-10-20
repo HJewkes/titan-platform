@@ -31,8 +31,11 @@ describe("the owner's six script rules in the Q-registry", () => {
     expect(tracing("FB 5").map((r) => r.id)).toEqual(["Q-E9"]);
   });
 
-  it("names the spine-dependent rules Q-E15 to Q-E18 as pending on TP-2988", () => {
-    for (const id of ["Q-E15", "Q-E16", "Q-E17", "Q-E18"]) {
+  it("implements the ledger rules Q-E16 and Q-E17 as errors and leaves the spine order and seat rules pending", () => {
+    for (const id of ["Q-E16", "Q-E17"]) {
+      expect(registry.rules.find((r) => r.id === id)?.l0, id).toMatchObject({ status: "implemented", severity: "error", checks: [id] });
+    }
+    for (const id of ["Q-E15", "Q-E18"]) {
       expect(registry.rules.find((r) => r.id === id)?.l0, id).toMatchObject({ status: "pending", owner: "TP-2988" });
     }
   });

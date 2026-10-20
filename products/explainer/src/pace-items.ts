@@ -139,7 +139,8 @@ function beatItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
   ];
 }
 
-const labelKey = (label: string): string => label.trim().toLowerCase();
+/** How the item track compares labels: case-folded and trimmed, so "Shepherd" and " shepherd" are one item. */
+export const labelKey = (label: string): string => label.trim().toLowerCase();
 
 function cueSeconds(beatId: string, timing: ScriptTiming | undefined): AtS {
   const words = timing?.get(beatId)?.words;
