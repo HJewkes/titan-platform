@@ -5,7 +5,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
 import { invokeCommand } from "@titan-design/registry";
+import { SHIP_OPTIONS as TD_SHIP_OPTIONS } from "@titan-design/review-schema";
 import type { AnswerOutcome, GateAnswerClient, GateAnswerRequest, Unreachable } from "./gate-answer.js";
+import { SHIP_OPTIONS as VENDORED_SHIP_OPTIONS } from "./review-schema-0.3/contract.js";
 import { createRoundListeners, type ListenerDeps, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
@@ -198,6 +200,45 @@ describe("the gate-answer listener after rounds.submit", () => {
 
     expect(ship.options).toEqual(["Ship", "Don't ship"]);
     expect(ship.merge.ship).toEqual(["Ship"]);
+  });
+
+  it("pins the Ship round to td's published SHIP_OPTIONS, so drift in td's wording fails here", async () => {
+    const round = JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8"));
+    const ship = round.questions.find((question: { id: string }) => question.id === "ship-backoff");
+
+    expect(ship.options).toEqual([...TD_SHIP_OPTIONS]);
+    expect(ship.merge.ship).toEqual([TD_SHIP_OPTIONS[0]]);
+    expect([...VENDORED_SHIP_OPTIONS]).toEqual([...TD_SHIP_OPTIONS]);
+  });
+
+  describe("gate id anchoring", () => {
+    const since = "2026-10-01T00:00:00.000Z";
+    it.each([
+      ["sh-visual-accept-offer:0", "sh-visual-accept-offer:0"],
+      ["xsh-visual-accept", "xsh-visual-accept"],
+      ["run-1/approve-merge-x", "approve-merge-x"],
+      ["run-1/xapprove-merge", "xapprove-merge"],
+    ])("records gone without a post for gate %s", async (gateId, stepId) => {
+      rows = [row({ pendingGate: { gateId, stepId, since } })];
+
+      await submit(createRoundListeners(deps()));
+
+      expect(posts).toEqual([]);
+      expect(JSON.parse(await readFile(answerFile(), "utf8")).outcome.status).toBe("gone");
+    });
+
+    it.each([
+      ["sh-visual-accept", "accept-set"],
+      ["run-1/sh-visual-accept:2", "accept-set"],
+      ["run-1/approve-merge:1", "merge"],
+      ["approve-merge", "merge"],
+    ])("posts for gate %s", async (gateId, choice) => {
+      rows = [row({ pendingGate: { gateId, stepId: gateId, since } })];
+
+      await submit(createRoundListeners(deps()));
+
+      expect(posts.map((post) => [post.gateId, post.choice])).toEqual([[gateId, choice]]);
+    });
   });
 
   it("reads no status and posts nothing while the flag is off", async () => {
