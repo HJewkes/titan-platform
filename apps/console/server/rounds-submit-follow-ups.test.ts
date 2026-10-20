@@ -103,6 +103,25 @@ describe("a side answer marked follow-up (TP-3346)", () => {
     expect(JSON.stringify(deposit)).not.toContain("The stripe is low.");
   });
 
+  it("refuses a Send back whose every comment is a follow-up and that has no round note, and writes nothing", async () => {
+    const answers = [sideComment, { questionId: "ship-tiles", pick: "Don't ship" }];
+
+    const { envelope, exitCode } = await submit({ id: ROUND, manifestSha256: await shaOf(ROUND), answers, followUps: [SIDE] });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship." });
+    expect(await exists(path.join(dir, ROUND, "feedback.json"))).toBe(false);
+    expect(await deposits()).toEqual([]);
+  });
+
+  it("takes the same Send back once a round note tells the fixer what to change", async () => {
+    const answers = [sideComment, { questionId: "ship-tiles", pick: "Don't ship" }];
+
+    const { envelope } = await submit({ id: ROUND, manifestSha256: await shaOf(ROUND), answers, followUps: [SIDE], general: "The stripe is low." });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
   it("records the mark but files nothing when the console has no inbox spool", async () => {
     const { envelope } = await submit({ id: ROUND, manifestSha256: await shaOf(ROUND), headSha: HEAD, answers: [sideComment, { questionId: "ship-tiles", pick: "Ship" }], followUps: [SIDE] }, false);
 

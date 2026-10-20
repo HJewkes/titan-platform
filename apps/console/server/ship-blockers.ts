@@ -120,6 +120,19 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
 
+export const NOTHING_TO_FIX = "Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship.";
+
+/**
+ * Why Send back is off; undefined when it may go. The factory leaves follow-up comments out of the fixer's
+ * note (TP-3763) and refuses an empty one, so a Send back whose every comment is a follow-up, with no round
+ * note, would be refused after the owner pressed it.
+ */
+export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general" | "followUps">): string | undefined {
+  const commented = draft.answers.filter((answer) => !blank(answer.comment));
+  const deferred = commented.length > 0 && commented.every((answer) => (draft.followUps ?? []).includes(answer.questionId));
+  return deferred && blank(draft.general) ? NOTHING_TO_FIX : undefined;
+}
+
 /** Why Ship is off, in plain words; empty when it may ship. */
 export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft): string[] {
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];

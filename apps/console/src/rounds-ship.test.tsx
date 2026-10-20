@@ -480,6 +480,21 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
     });
   });
 
+  it("turns Send back off while every comment is marked Follow-up and nothing else tells the fixer what to change", async () => {
+    const rendered = await renderShip({ answers: true });
+    fireEvent.change(screen.getByLabelText(`Comment on ${PROMPT}`), { target: { value: "Try the stripe's colour." } });
+    fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
+
+    expect(screen.getByTestId("send-back-blocked").textContent).toContain("Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship.");
+    expect(button("Send back").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "The stripe is low." } });
+    expect(screen.queryByTestId("send-back-blocked")).toBeNull();
+    fireEvent.click(button("Send back"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ followUps: ["badge-follow-up"], answers: [{ questionId: "badge-follow-up" }, { questionId: "ship-tiles", pick: "Don't ship", comment: "The stripe is low." }] });
+  });
+
   it("sends no follow-up mark once the answer is switched back to This PR", async () => {
     const rendered = await renderShip({ answers: true });
     fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
