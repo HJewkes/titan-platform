@@ -107,7 +107,7 @@ export function paceRows(beats: readonly PaceBeat[], invariants: readonly string
   const rows = [
     beatRow("Q-E7", "error", beats.filter(overcrowded).map((b) => b.id)),
     beatRow("Q-E8", "warning", beats.filter(rushed).map((b) => b.id)),
-    beatRow("Q-E9", "warning", undigested(beats)),
+    beatRow("Q-E9", "error", undigested(beats)),
     beatRow("Q-E10", "warning", fast.map((c) => c.chapter)),
     beatRow("Q-E11", "error", unseated(beats, invariants)),
   ];
@@ -120,7 +120,7 @@ export function paceRows(beats: readonly PaceBeat[], invariants: readonly string
 }
 
 const PACE_RULES: readonly [string, L0Result["severity"]][] = [
-  ["Q-E7", "error"], ["Q-E8", "warning"], ["Q-E9", "warning"], ["Q-E10", "warning"],
+  ["Q-E7", "error"], ["Q-E8", "warning"], ["Q-E9", "error"], ["Q-E10", "warning"],
   ["Q-E11", "error"], ["Q-E12", "warning"], ["Q-E13", "warning"], ["Q-E14", "warning"],
   ["Q-E19", "warning"],
 ];

@@ -454,6 +454,17 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
     expect(await exists(feedbackOf())).toBe(false);
   });
+
+  it("accepts a Ship that leaves a required side question unanswered, as the page does (decision 166)", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    const required = { id: "side-clarity", kind: "scale", prompt: "How clear is the retry log?", min: 1, max: 5, required: true };
+    await writeFile(file, JSON.stringify({ ...round, questions: [...round.questions, required] }));
+
+    const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)) }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: HEAD } });
+  });
 });
 
 describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
