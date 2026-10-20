@@ -2,6 +2,7 @@ import { z } from "zod";
 import { chaptersOf, ODD_ONE_OUT_MIN_ITEMS, type ColdChapterBeats } from "./eval-cold.js";
 import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, formatEvidence, voidReason } from "./eval-evidence.js";
+import { ANSWER_LABEL, explainRole, isAnswerLabel, PERSON_WORDS, type ExplainRole } from "./eval-items-roles.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
@@ -20,8 +21,7 @@ export interface ListRoute {
   items: string[];
 }
 
-/** A beat role the plain "explained" question does not fit. */
-export type ExplainRole = "promise" | "simplification";
+export type { ExplainRole } from "./eval-items-roles.js";
 
 /** An M3 route, with its beat's role when that changes what the judge is asked. */
 export interface ItemExplainRoute extends ExplainRoute {
@@ -45,13 +45,11 @@ export function listRoutes(beats: readonly PaceBeat[]): ListRoute[] {
   });
 }
 
-// A PROMISE previews items later chapters deliver, and a CAVEAT voices the script's simplifications: what it leaves out.
-const EXPLAIN_ROLES = new Map<string, ExplainRole>([["PROMISE", "promise"], ["CAVEAT", "simplification"]]);
-
 function explainItemRoutes(beats: readonly PaceBeat[]): ItemExplainRoute[] {
-  const fns = new Map(beats.map((b) => [b.id, b.fn]));
+  const byId = new Map(beats.map((b) => [b.id, b]));
   return explainRoutes(beats).map((r) => {
-    const role = EXPLAIN_ROLES.get(fns.get(r.beat) ?? "");
+    const beat = byId.get(r.beat);
+    const role = beat && explainRole(beat);
     return role ? { ...r, role } : r;
   });
 }
@@ -75,6 +73,8 @@ const explainedText = (beat: string, item: string): string =>
   `In ${beat}, is "${item}" explained: does this beat or the rest of the chapter say what it is and why it is there?`;
 const leftOutText = (beat: string, item: string): string =>
   `In ${beat}, "${item}" is left out on purpose: does this beat or the rest of the chapter say why the picture holds without it?`;
+const ownerQuestionText = (beat: string, item: string): string =>
+  `In ${beat}, "${item}" is a question put to the owner: does this beat or the rest of the chapter say what the owner is asked to decide?`;
 const seatedText = (beat: string, reason: SeatReason): string =>
   `${beat} states ${reason === "invariant" ? "an invariant" : "a finding"}. Does the map on screen show the mechanism that keeps it, or the failure that breaks it?`;
 const oddOneOutText = (beat: string, items: readonly string[]): string =>
@@ -82,14 +82,19 @@ const oddOneOutText = (beat: string, items: readonly string[]): string =>
 
 const explainedQuestion = (beat: string, item: string, text = explainedText): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: text(beat, item) });
 
+const ROLE_TEXT: Partial<Record<ExplainRole, typeof explainedText>> = { simplification: leftOutText, question: ownerQuestionText };
+
 /**
- * A promise is not asked: its items are paid off in later chapters, which a chapter-scoped judge never sees. A
- * simplification is asked why the picture holds without each item, since explaining what it left out is not its job.
+ * A promise is not asked: its items are paid off in later chapters, which a chapter-scoped judge never sees. A cast
+ * line is not asked either: it introduces people, who need no what-and-why. A simplification is asked why the picture
+ * holds without each item, since explaining what it left out is not its job. An owner question is asked only what it
+ * puts to the owner, and its answer label is not asked at all.
  */
 function explainedQuestions(route: ItemExplainRoute): ItemQuestion[] {
-  if (route.role === "promise") return [];
-  const text = route.role === "simplification" ? leftOutText : explainedText;
-  return route.items.map((item) => explainedQuestion(route.beat, item, text));
+  if (route.role === "promise" || route.role === "cast") return [];
+  const text = (route.role && ROLE_TEXT[route.role]) ?? explainedText;
+  const items = route.role === "question" ? route.items.filter((item) => !isAnswerLabel(item)) : route.items;
+  return items.map((item) => explainedQuestion(route.beat, item, text));
 }
 
 /** Every question is read off a route, so a script cannot pass on questions written to suit it. */
@@ -327,7 +332,8 @@ const spineQuestionTemplates = (): string[] => [
 export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
     questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
-    role_questions: { promise: null, simplification: leftOutText("<beat>", "<item>") },
+    role_questions: { promise: null, simplification: leftOutText("<beat>", "<item>"), cast: null, question: ownerQuestionText("<beat>", "<item>") },
+    role_rules: { person_words: PERSON_WORDS, answer_label: ANSWER_LABEL.source },
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),
