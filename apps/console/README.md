@@ -50,6 +50,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_FACTORY_PORT` | `7410` | Loopback port of `titan-factory serve`, whose `needs.list` `approvals.flow` reads with no token, only the `X-Titan-Client` header. Refused if it equals the console's own port |
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
+| `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
@@ -292,6 +293,38 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
+
+## Filing a decision round
+
+A seat that needs the owner to decide something files a questions-only `titan-review/round@2`
+round straight into the console's own state. No round dir is written anywhere else, so nothing
+goes under an active-work sources dir:
+
+```sh
+titan-console decisions file - --seat <name> [--initiative <slug>] < round.json   # id, asked by, URLs
+titan-console decisions file round.json --json   # one line: {id, created, seat, initiative, url, lanUrl}
+```
+
+With `-` or no path the round comes from stdin. `--seat` defaults to `AGENT_CHAT_NAME`, which
+every spawned agent has; with neither the verb refuses. The round lands in
+`TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/`, beside an `asker.json`
+(`titan-console/asker@1`: seat, initiative, filedAt), and the verb prints
+`http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
+is set. Like `rounds import`, it needs no running console and no `/rpc` command reaches it; run it
+with the service's `TITAN_CONSOLE_*` settings.
+
+- **Questions only.** The round must pass the same strict round@2 parser `rounds import` uses, and
+  have no variants and no merge-bound Ship question; those need frames or a packet, so they go
+  through `rounds import`. A refusal prints `decision round refused: <reason>` to stderr and no
+  URL, exits non-zero, and writes nothing.
+- **Re-filing.** The same `round.json` bytes again report `created: false` and keep the first
+  asker. Different bytes under the same `<unit>-r<round>` are refused; bump `round`.
+- **The answer comes to the seat.** Once the owner sends the round, `rounds.submit` writes
+  `feedback.json` and the round listener sends the seat one agent-chat message naming the round
+  and that file, then keeps `notified.json` so it is sent once. The message is fixed text: nothing
+  the seat wrote is relayed, because `agent-chat debug send` delivers from the human seat. A seat
+  that is not live gets no message and no `notified.json`; the console's start-up sweep retries.
+  The answer is also in the decision log, as for any round.
 
 ## Importing a review round
 
