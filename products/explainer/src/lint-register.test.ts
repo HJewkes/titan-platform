@@ -52,16 +52,18 @@ describe("register metrics on hand-counted text", () => {
     expect(measure("contractions", "It's fine, don't worry, they're here.")).toBe(500);
   });
 
-  it("counts an A, B, and C list", () => {
+  it("counts an A, B, and C list, with or without the last comma", () => {
     expect(measure("triads", "We need speed, cost, and care. It stops.")).toBe(125);
+    expect(measure("triads", "Pick red, green or blue.")).toBe(200);
   });
 
-  it("counts a colon reveal but not a clock time", () => {
+  it("counts a colon reveal but not a clock time or a numbered label", () => {
     expect(measure("colon-reveals", "The catch is simple: it waits. 10:30 is the time.")).toBeCloseTo(90.909, 3);
+    expect(measure("colon-reveals", "Rule 2: keep it short.")).toBe(0);
   });
 
   it('counts "Y, not X" tails per script, not per 1k words', () => {
-    expect(measure("not-x-tails", "It ships fast, not by luck. It holds, not the cache.")).toBe(2);
+    expect(measure("not-x-tails", "It ships fast, not by luck. It holds: not the cache. It rests, not by the old north gate today.")).toBe(3);
   });
 
   it("counts semicolons", () => {
@@ -77,6 +79,7 @@ describe("register metrics on hand-counted text", () => {
 
     expect(measure("sentence-mean", spoken)).toBeCloseTo(4.3333, 4);
     expect(measure("sentence-cv", spoken)).toBeCloseTo(0.78446, 5);
+    expect(measure("sentence-mean", "Go. ... Stop now.")).toBe(1.5);
   });
 
   it("leaves the CV unmeasured under 3 sentences, and every punctuation metric unmeasured on unpunctuated text", () => {
