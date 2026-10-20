@@ -105,6 +105,12 @@ keys only the spike renderer reads, maps chip kinds onto `CHIP_KINDS`, and keeps
 and map_state `map`/`old`/`new` as the optional fields `ScriptSchema` admits. The frozen script is the file as read,
 not the migrated form. More than two `video.invariants` no longer fail the parse: `Q-W6:invariant-cap` warns instead.
 
+`explainer guide plan [--stage plan|script]` (default `plan`) prints the planner guide v0 as markdown: the
+intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules, and the story-spine template
+(`doctrine/guides/spine-template.md`: problem, one task's journey, architecture, constraints, item ledger, cut list,
+chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
+the digest gap) reach the planner only as L0 failures. It exits 2 on an unknown stage.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
