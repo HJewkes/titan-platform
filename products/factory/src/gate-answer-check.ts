@@ -83,8 +83,19 @@ const PacketBinding = z.object({ schema: z.literal(PACKET_SCHEMA), repo: z.strin
 const BoundMerge = z.object({ repo: z.string(), pr: z.number().int(), ship: z.array(z.string()) });
 const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), options: z.array(z.string()).optional(), merge: BoundMerge.optional() })) });
 
-/** The owner's words in feedback.json: the round's general note and each answer's comment. */
-const FeedbackWords = z.object({ general: z.string().optional(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
+const PinWords = z.object({
+  xPct: z.number(),
+  yPct: z.number(),
+  target: z.object({ testId: z.string().optional(), role: z.string().optional(), text: z.string().optional() }).optional(),
+  note: z.string(),
+});
+const FrameWords = z.object({ key: z.string(), verdict: z.string().nullable(), comment: z.string(), annotations: z.array(PinWords) });
+/** The owner's words in feedback.json: the round's general note, each answer's comment and each frame's verdict, comment and pins. */
+const FeedbackWords = z.object({
+  general: z.string().optional(),
+  answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })),
+  variants: z.array(FrameWords).default([]),
+});
 /** The most of the owner's note the gate payload carries; the rest stays in feedback.json. */
 export const MAX_NOTE_CHARS = 4000;
 
@@ -163,7 +174,33 @@ function ownerNote({ files }: AnswerInputs, land: GateHead): string {
   const words = parseJson(FeedbackWords, files.feedback);
   const bound = new Set(boundQuestions(files.round, land).map((question) => question.id));
   const comments = words?.answers.filter((answer) => bound.has(answer.questionId)).map((answer) => answer.comment) ?? [];
-  return [words?.general, ...comments].map((text) => text?.trim() ?? "").filter((text) => text !== "").join("\n\n");
+  const general = [words?.general, ...comments].map((text) => text?.trim() ?? "").filter((text) => text !== "").join("\n\n");
+  return withFrameLines(general, (words?.variants ?? []).flatMap(frameLines));
+}
+
+const percent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
+
+/** A frame with no comment and no pins says nothing the fixer can act on, whatever its verdict. */
+function frameLines({ key, verdict, comment, annotations }: z.infer<typeof FrameWords>): string[] {
+  const words = comment.trim();
+  if (words === "" && annotations.length === 0) return [];
+  const pins = annotations.map((pin, index) => {
+    const target = pin.target?.testId ?? pin.target?.role ?? pin.target?.text;
+    return `  pin ${index + 1} at ${percent(pin.xPct)},${percent(pin.yPct)}${target === undefined ? "" : ` [${target}]`}: ${pin.note.trim()}`;
+  });
+  return [`frame ${key} (${verdict ?? "no verdict"}): ${words}`, ...pins];
+}
+
+/** The general note is kept whole; frame lines follow it while they fit under the cap, and the last ones go first. */
+function withFrameLines(general: string, lines: string[]): string {
+  const kept: string[] = [];
+  let used = general === "" ? 0 : [...general].length + 2;
+  for (const line of lines) {
+    used += [...line].length + (kept.length === 0 ? 0 : 1);
+    if (used > MAX_NOTE_CHARS) break;
+    kept.push(line);
+  }
+  return [general, kept.join("\n")].filter((text) => text !== "").join("\n\n");
 }
 
 /** The gate's send-back answer must carry the owner's words, so a revision with none is refused rather than sent. */
