@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
+import { spineCheck } from "./lint-spine.js";
 import { paceCheck } from "./lint-pace.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
@@ -97,6 +98,40 @@ describe("explainer eval l0", () => {
     expect(await runEvalCli(["eval", "l0", script, "--config", "c", "--bench", join(dir, "bench")], { now: clock(), checks: [mapLintCheck] })).toBe(0);
     const shipped = rulesSha(readFileSync(DEFAULT_RULES_PATH));
     expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
+  });
+
+  describe("--spine", () => {
+    const PILOT_SPINE = join(__dirname, "../fixtures/spike/pipeline-explainer/spine.md");
+    const spineRun = (...extra: string[]) =>
+      runEvalCli(["eval", "l0", write("script.json", scriptWith()), "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock(), checks: [spineCheck] });
+
+    // Mutation: parsing the spine but not passing it to runL0 leaves structure.tsv empty and the exit code 0.
+    it("passes the parsed spine to the lints: the pilot spine's ch2 fails Q-E15 and exits 1", async () => {
+      const code = await spineRun("--spine", PILOT_SPINE);
+
+      expect(code).toBe(1);
+      expect(structureLines()).toContainEqual(expect.stringMatching(/\tQ-E15\ttagged\terror\t1\t0\tfalse\tch2$/));
+      expect(structureLines()).toContainEqual(expect.stringMatching(/\tQ-E18\ttagged\terror\t0\t0\ttrue$/));
+    });
+
+    it("records no spine rows without --spine", async () => {
+      expect(await spineRun()).toBe(0);
+      expect(structureLines()).toHaveLength(1);
+    });
+
+    it("exits 2 naming the file when the spine does not parse", async () => {
+      const code = await spineRun("--spine", write("bad-spine.md", "# Story spine: x\n"));
+
+      expect(code).toBe(2);
+    });
+
+    it("does not call Q-E15 or Q-E18 ghosts in a spine-free run", async () => {
+      write("rules.yaml", "schema: rules/v1\nrules:\n  - { id: Q-E15, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [Q-E15] } }\n");
+
+      await spineRun();
+
+      expect(vi.mocked(console.error).mock.calls.map(([line]) => String(line))).toEqual([]);
+    });
   });
 
   describe("ghost check ids", () => {

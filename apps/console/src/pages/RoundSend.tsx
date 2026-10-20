@@ -13,7 +13,7 @@ export function RoundSend({ round, state }: { round: ValidRound; state: RoundAns
   const { available, state: sending, submit } = useSubmit();
   if (round.status === "withdrawn") return <Alert status="warning" message="Withdrawn: a newer round replaced this one." />;
   if (round.status === "sent" || sending.status === "sent") return <SentNotice round={round} already={sending.status === "sent" && sending.already} />;
-  const answers = submittedAnswers(round.manifest.questions, state.answers, state.comments);
+  const answers = submittedAnswers(round.manifest.questions, state.answers, state.comments, state.optionNotes);
   const missing = missingRequired(round.manifest.questions, answers);
   const send = () => submit({ id: round.id, manifestSha256: round.manifestSha256, general: state.general.trim(), answers: inOrder(round.manifest, answers) });
   return (

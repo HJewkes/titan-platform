@@ -29,15 +29,16 @@ const manifest: Manifest = RoundSchema.parse({
   variants: [
     { key: "lamp-subtle", image: "shots/lamp-subtle.png", label: "Subtle glow" },
     { key: "lamp-built", image: "shots/lamp-built.png", label: "As built" },
+    { key: "lamp-off", image: "shots/lamp-off.png", label: "Unlit" },
     { key: "lamp-sketch", storyId: "lamp--sketch", label: "Sketch" },
   ],
   sections: [
-    { id: "glow", title: "Lamp glow", deciding: "How strong the glow is.", ...notes, kind: "CHOICE", variantKeys: ["lamp-subtle", "lamp-built"], questionIds: ["glow-pick"] },
+    { id: "glow", title: "Lamp glow", deciding: "How strong the glow is.", ...notes, kind: "CHOICE", variantKeys: ["lamp-subtle", "lamp-built", "lamp-off"], questionIds: ["glow-pick"] },
     { id: "ship", title: "Ship it", deciding: "Whether the lamp ships.", ...notes, kind: "STATES", variantKeys: ["lamp-sketch"], questionIds: ["glow-ship"] },
     { id: "notes", title: "Notes", deciding: "Anything else.", ...notes, questionIds: ["glow-notes"] },
   ],
   questions: [
-    { id: "glow-pick", kind: "pick-one", prompt: "Which glow?", options: ["Subtle", "Bright"], optionVariants: { Subtle: "lamp-subtle", Bright: "lamp-built" }, frames: ["lamp-subtle", "lamp-built"], signsOff: "lamp-glow" },
+    { id: "glow-pick", kind: "pick-one", prompt: "Which glow?", options: ["Subtle", "Bright", "Off"], optionVariants: { Subtle: "lamp-subtle", Bright: "lamp-built", Off: "lamp-off" }, frames: ["lamp-subtle", "lamp-built"], signsOff: "lamp-glow" },
     { id: "glow-ship", kind: "pick-one", decision: "ship", prompt: "Ship the lamp?", options: ["Release the sketched lamp", "Hold the lamp"], frames: ["lamp-sketch"], signsOff: "lamp-release" },
     { id: "glow-notes", kind: "text", prompt: "Anything else about the lamp?" },
   ],
