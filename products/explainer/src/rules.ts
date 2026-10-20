@@ -7,7 +7,7 @@ import { z } from "zod";
 export const DEFAULT_RULES_PATH = fileURLToPath(new URL("../doctrine/rules.yaml", import.meta.url));
 
 const Id = z.string().min(1);
-const Slice = z.string().regex(/^SQ\d+$/, "expected the owning slice, e.g. SQ3");
+const Slice = z.string().regex(/^(SQ\d+|TP-\d+)$/, "expected the owning slice or task, e.g. SQ3 or TP-2988");
 
 const L0Pending = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("pending"), owner: Slice, partial: z.array(Id).default([]) }).strict();
 const L0Implemented = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("implemented"), checks: z.array(Id).min(1) }).strict();
