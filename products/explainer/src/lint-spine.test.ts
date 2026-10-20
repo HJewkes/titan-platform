@@ -91,6 +91,10 @@ describe("Q-E18 invariants are seated", () => {
     expect(invariantSeatRow(spineWith(step, "retries offline scans (I2)")).pass).toBe(false);
   });
 
+  it("does not let a blank invariant match every mechanism", () => {
+    expect(invariantSeatRow(pilot(), [" "]).detail_beats).toEqual([" "]);
+  });
+
   it("checks video.invariants too: one no row states fails, one a seated journey invariant states passes", () => {
     const spine = pilot();
 

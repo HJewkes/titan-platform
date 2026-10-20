@@ -125,7 +125,7 @@ describe("explainer eval l0", () => {
       expect(code).toBe(2);
     });
 
-    it("does not call Q-E15 or Q-E18 ghosts in a spine-free run, and does in a spine run that omitted them", async () => {
+    it("does not call Q-E15 or Q-E18 ghosts in a spine-free run", async () => {
       write("rules.yaml", "schema: rules/v1\nrules:\n  - { id: Q-E15, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [Q-E15] } }\n");
 
       await spineRun();

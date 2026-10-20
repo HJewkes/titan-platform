@@ -46,7 +46,8 @@ const idToken = (invariant: string): string | undefined => /^[A-Za-z]{1,3}\d+\b/
 function mentions(text: string, invariant: string): boolean {
   const id = idToken(invariant);
   if (id && new RegExp(`\\b${id}\\b`, "i").test(text)) return true;
-  return labelKey(text).includes(labelKey(invariant));
+  const words = labelKey(invariant);
+  return words !== "" && labelKey(text).includes(words);
 }
 
 // An architecture row keeps an invariant only by stating a mechanism for it; a part that merely carries the step does not.
