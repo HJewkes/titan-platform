@@ -13,7 +13,8 @@ import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { QuestionFacts } from "./RoundQuestion.js";
 import { Montages } from "./ShipMontages.js";
 import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
-import { ShipNotices, SideQuestion, sideMarks, useSideAnswers, type SideAnswers } from "./ShipSide.js";
+import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
+import { ShipNotices, SideQuestion, sideMarks } from "./ShipSide.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -69,33 +70,37 @@ function mergeAnswer(question: MergeQuestion, verdicts: Verdicts): SubmittedAnsw
 }
 
 /** Everything the page would send: side answers, then each PR's Ship or Send back, in round order. */
-function draftAnswers(round: ValidRound, units: readonly PrUnit[], side: SideAnswers, verdicts: Verdicts): SubmittedAnswer[] {
+function draftAnswers(round: ValidRound, units: readonly PrUnit[], side: RoundAnswers, verdicts: Verdicts): SubmittedAnswer[] {
   const merges = new Set<Question>(units.map((unit) => unit.question));
-  const sideAnswers = submittedAnswers(round.manifest.questions.filter((question) => !merges.has(question)), side.answers, side.comments);
+  const sideAnswers = submittedAnswers(round.manifest.questions.filter((question) => !merges.has(question)), side.answers, side.comments, side.optionNotes);
   return inOrder(round.manifest, [...sideAnswers, ...units.flatMap((unit) => mergeAnswer(unit.question, verdicts))]);
 }
 
 interface PrsState {
   round: ValidRound;
   units: PrUnit[];
-  side: SideAnswers;
+  side: RoundAnswers;
   verdicts: Verdicts;
   answers: SubmittedAnswer[];
   blockersOf: (unit: PrUnit) => string[];
+  /** Sent or sending: side answers show as given and take no more edits. */
+  locked: boolean;
   sent: boolean;
 }
 
 /** A round with one Ship question per PR (TP-3329): each PR's proposal, changes, frames and own Ship or Send back, then one send. */
 export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: readonly MergeQuestion[] }): ReactNode {
-  const side = useSideAnswers();
-  const verdicts = useVerdicts();
   const submitting = useSubmit();
+  const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   const units = prUnits(round.manifest, merges);
+  // Locked, no question is handed over, so no digit key can change an answer already sent.
+  const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)));
+  const verdicts = useVerdicts();
   const answers = draftAnswers(round, units, side, verdicts);
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
   const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
-  const state: PrsState = { round, units, side, verdicts, answers, blockersOf, sent: round.status === "sent" || submitting.state.status === "sent" };
+  const state: PrsState = { round, units, side, verdicts, answers, blockersOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
     <VStack gap={6}>
       <PrsHeading round={round} units={units} />
@@ -135,7 +140,7 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
           <PrProposal unit={unit} />
           <Montages round={state.round} keys={unit.keys} merge={question.merge} />
           {unit.sideQuestions.map((each) => (
-            <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} />
+            <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />
           ))}
           {state.sent ? <PrSent unit={unit} state={state} /> : <PrDecision unit={unit} state={state} />}
         </div>
@@ -217,7 +222,7 @@ function SharedQuestions({ state }: { state: PrsState }): ReactNode {
       <SectionHeader title="About every PR" subtitle="These answers count against each PR's Ship." />
       <SectionContent>
         <VStack gap={4}>
-          {shared.map((each) => <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} />)}
+          {shared.map((each) => <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />)}
         </VStack>
       </SectionContent>
     </Section>
@@ -244,7 +249,9 @@ function sendProblems(state: PrsState): string[] {
 function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnType<typeof useSubmit> }): ReactNode {
   const { available, state: sending, submit } = submitting;
   const merges = new Set<Question>(state.units.map((unit) => unit.question));
-  const missing = missingRequired(state.round.manifest.questions.filter((question) => !merges.has(question)), state.answers);
+  // Decision 166: unanswered questions never block Ship, so they hold the send only when a PR goes back.
+  const sendsBack = state.units.some((unit) => state.verdicts.verdicts[unit.question.id] === "back");
+  const missing = sendsBack ? missingRequired(state.round.manifest.questions.filter((question) => !merges.has(question)), state.answers) : [];
   const problems = sendProblems(state);
   const disabled = !available || sending.status === "sending" || missing.length > 0 || problems.length > 0;
   return (
