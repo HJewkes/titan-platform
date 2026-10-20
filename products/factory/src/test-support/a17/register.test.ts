@@ -68,5 +68,6 @@ describe("factoryMigrations", () => {
     runMigrations(db, factoryMigrations());
 
     expect(appliedVersions(db)).toEqual(hostVersions);
+    expect(hostVersions).toEqual(expect.arrayContaining([29, 30]));
   });
 });

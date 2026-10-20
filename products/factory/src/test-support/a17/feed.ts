@@ -2,7 +2,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { ciEvent, ciKey, fromBackstopContext, fromCheckRunDelivery, fromStatusDelivery, type CiKeyFn } from "../../event-log/ci-keys.js";
 import { appendEvent, headSeq, readEvents } from "../../event-log/event-log.js";
 import { factoryMigrations } from "../../host.js";
-import { SOURCES_MODES, resolveSources } from "../../github-sources/mode.js";
+import { resolveSources, type SOURCES_MODES } from "../../github-sources/mode.js";
 import { backstopNode, checkRunDelivery, statusDelivery, type CiFact } from "./ci-shapes.js";
 
 export type A17Mode = (typeof SOURCES_MODES)[number];
