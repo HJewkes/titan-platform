@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { ApprovedSet } from "../approved-set.js";
 import { followingApprovals } from "./approval-carry.js";
 import { setCarry } from "./approved-set-carry.js";
+import type { OwnMergeUpResult } from "./own-merge-up.js";
 import type { VisualSetCarry } from "./phases.js";
 import type { Git } from "./tree-carry.js";
 
@@ -54,11 +55,18 @@ interface RigOptions {
   follows?: boolean;
   /** Recorded steps a replay returns in order, never reaching git. */
   journal?: { stepId: string; result: object }[];
+  /** What Shepherd's own merge-up probe answers at any head; a refusal by default. */
+  own?: OwnMergeUpResult;
+  /** The run's visual globs; undefined when the policy names none. */
+  visualPaths?: string[] | null;
 }
 
-function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = true, reviewed = () => true, decide = () => "merge", base = "main", follows = true, journal }: RigOptions = {}) {
+const OWN_UP = (mainPaths: string[]): OwnMergeUpResult => ({ carries: true, rule: "own-merge-up", base: "b", headTree: "t", mergeTree: "t", prPaths: [`${BASELINE}a.png`], mainPaths });
+
+function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = true, reviewed = () => true, decide = () => "merge", base = "main", follows = true, journal, own = { carries: false, reason: "refused" }, visualPaths = ["packages/ui/**"] }: RigOptions = {}) {
   const gates: string[] = [];
   const steps: string[] = [];
+  const inputs = new Map<string, unknown>();
   const results = new Map<string, unknown>();
   const calls: string[][] = [];
   const modeReads: string[] = [];
@@ -67,6 +75,7 @@ function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = tru
   const respond = async (stepId: string, input: unknown): Promise<unknown> => {
     if (journal) return journal.find((recorded) => recorded.stepId === stepId)?.result;
     if (stepId.startsWith("sh-carry-scope:")) return { kind: follows ? "correctness" : null, baseRef: "main" };
+    if (stepId.startsWith("sh-approval-carry:own:")) return own;
     if (stepId.startsWith("sh-remerge:")) return { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
     if (!stepId.startsWith("sh-approval-carry:set:")) return input;
     results.set(stepId, await setCarry(input, { stateDir, git: fakeGit(heads, calls), remote: () => "file:///none" }));
@@ -74,7 +83,8 @@ function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = tru
   };
   async function dispatch<T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
     steps.push(stepId);
-    const result = await respond(stepId, JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}"));
+    inputs.set(stepId, JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}"));
+    const result = await respond(stepId, inputs.get(stepId));
     return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: options.schema?.parse({ result }) };
   }
   const historyNext = () => (journal ? journal.find((recorded) => !steps.includes(recorded.stepId))?.stepId : undefined);
@@ -86,9 +96,9 @@ function rig({ heads = { [H2]: EXACT }, mode = "on", noSet = false, visual = tru
   };
   const ask = followingApprovals(ctx, owner, {
     ...{ target: { repo: REPO, pr: 1 }, reviewedMerge: reviewed, isVisual: () => visual },
-    ...{ acceptedSet: () => accepted, spendSet: () => (accepted = undefined), setMode: () => (modeReads.push(mode), mode) },
+    ...{ acceptedSet: () => accepted, spendSet: () => (accepted = undefined), setMode: () => (modeReads.push(mode), mode), visualPaths: () => visualPaths ?? undefined },
   });
-  return { ask, gates, steps, results, calls, modeReads };
+  return { ask, gates, steps, inputs, results, calls, modeReads };
 }
 
 const gate = (head: string, row = "visual-path:packages/ui", into = " into main"): string =>
@@ -170,13 +180,42 @@ describe("a later head that commits exactly the accepted set", () => {
     expect(r.steps.filter((id) => id.startsWith("sh-approval-carry:set:"))).toEqual([]);
   });
 
-  it("lets a set-carried approval follow no merge-up head before S8", async () => {
-    const r = rig();
+  it.each<[string, RigOptions]>([
+    ["whose main side touches a visual path", { own: OWN_UP(["docs/guide.md", "packages/ui/x.css"]) }],
+    ["under a policy that names no visual globs", { own: OWN_UP(["docs/guide.md"]), visualPaths: null }],
+  ])("asks again at Shepherd's own merge-up after a set-carried approval %s", async (_name, options) => {
+    const r = rig(options);
 
     await r.ask("approve-merge", gate(H2));
     await r.ask("approve-merge:1", gate(H3));
 
     expect(r.gates).toEqual([H3]);
+    expect(r.steps).not.toContain(`sh-approval-carry:${H3}`);
+  });
+
+  it("follows a set-carried approval to Shepherd's own merge-up whose main side touches no visual path, and records why", async () => {
+    const r = rig({ own: OWN_UP(["docs/guide.md"]) });
+
+    await r.ask("approve-merge", gate(H2));
+    const answer = await r.ask("approve-merge:1", gate(H3));
+
+    expect(answer.data).toEqual({ decision: "merge", headSha: H3, origin: "approved-set" });
+    expect(r.gates).toEqual([]);
+    expect(r.inputs.get(`sh-approval-carry:own:${H3}`)).toMatchObject({ fromHead: H2, head: H3, baseRef: "main" });
+    expect(r.inputs.get(`sh-approval-carry:${H3}`)).toEqual({
+      ...{ decision: "merge", headSha: H3, fromHead: H2, rule: "own-merge-up", origin: "approved-set" },
+      proof: { base: "b", headTree: "t", mergeTree: "t", prPaths: [`${BASELINE}a.png`], mainPaths: ["docs/guide.md"] },
+    });
+  });
+
+  it("asks again at a head that is not Shepherd's own merge-up after a set-carried approval, though the remerge rule would carry", async () => {
+    const r = rig({ own: { carries: false, reason: `first parent ${fakeSha("other")} is not the approved head ${H2}` } });
+
+    await r.ask("approve-merge", gate(H2));
+    await r.ask("approve-merge:1", gate(H3));
+
+    expect(r.gates).toEqual([H3]);
+    expect(r.steps.filter((id) => id.startsWith("sh-remerge:") || id.startsWith("sh-approval-carry:fix:"))).toEqual([]);
   });
 
   it("replays the recorded step without git and without reading the flag", async () => {
@@ -185,7 +224,7 @@ describe("a later head that commits exactly the accepted set", () => {
 
     const answer = await r.ask("approve-merge", gate(H2));
 
-    expect(answer.data).toEqual({ decision: "merge", headSha: H2 });
+    expect(answer.data).toEqual({ decision: "merge", headSha: H2, origin: "approved-set" });
     expect(r.calls).toEqual([]);
     expect(r.modeReads).toEqual([]);
   });

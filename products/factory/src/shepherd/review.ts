@@ -29,6 +29,7 @@ import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
+import { convergenceFields } from "./fix-first-trail.js";
 import { FIX_PROOF_STEPS, fixProofStanding, fixProofVerdict, readFixProofAt } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofWaivedAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
@@ -118,10 +119,12 @@ const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
   fixFirsts: z.number().int().positive().optional(),
   ownerBrief: z.boolean().optional(),
   fixProof: z.string().optional(),
-  fixProofUnverified: z.enum(["error", "untrusted", "unread"]).optional(),
+  fixProofUnverified: z.enum(["error", "untrusted", "unread", "no-repro-test-only"]).optional(),
   fixProofWaivedAt: HeadSchema.optional(),
   shape: z.enum(OVERLAY_SHAPES).optional(),
   profile: z.string().min(1).optional(),
+  convergence: z.literal(true).optional(),
+  earlierFindings: z.array(z.object({ head: z.string(), text: z.string(), defectClass: z.string().optional() })).optional(),
 });
 
 type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
@@ -248,7 +251,7 @@ const memberDispatch = (wired: Wired, shape: string | undefined): ReviewerDispat
  * reach it, except an adversary's hold reason, which goes in fenced as data.
  * A reviewer an earlier run asked for keeps that run's session-start clock; one asked for again gets a fresh one.
  */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, shape, profile, ...target }, signal, repeat, clock) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, shape, profile, convergence, earlierFindings, ...target }, signal, repeat, clock) => {
   const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
@@ -258,7 +261,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const facts = { ...(await spawnFacts(deps, runId, intent, target, roles)), ...(profile !== undefined && { profile }) };
   const holdContext = shape === "adversary" ? holdContextOf(deps, runId) : undefined;
   const ciChecks = asked ? undefined : await ciChecksAt(deps.port, target.repo, target.pr, target.head);
-  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps, shape), fixFirsts, ownerBrief, fixProof, fixProofUnverified, fixProofWaivedAt, testRule: deps.suiteRules?.reviewer, ...(ciChecks && { ciChecks }), ...(convergence && { convergence, earlierFindings }), ...(shape !== undefined && { shape }), ...(holdContext && { holdContext }) }, codewatch, questions);
   const outcome = asking && (await startReviewer(memberDispatch(wired, shape) ?? dispatchFor(wired.accounts, wired.dispatch, intent.account), intent, target, facts, asking.brief, timing, signal, waits).catch((error: unknown) => notStarted(error, waits)));
   if (typeof outcome === "object") {
     await dropCheckout(deps, target, shape);
@@ -343,16 +346,17 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
   const proof = await readFixProofAt(ctx, target);
   const noRepro = fixProofVerdict(proof, target.head);
-  if (noRepro && !(await proofWaivedAt(ctx, target.head))) return noRepro;
   const unverified = fixProofStanding(proof, target.head);
-  const standing: ProofStanding = noRepro ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  if (noRepro && !testOnlyProceed && !(await proofWaivedAt(ctx, target.head))) return noRepro;
+  const standing: ProofStanding = noRepro && !testOnlyProceed ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
   const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }) };
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }) }, Dispatched);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...convergenceFields(request.convergence) }, Dispatched);
   if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {

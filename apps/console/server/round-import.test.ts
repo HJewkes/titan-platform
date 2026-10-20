@@ -121,6 +121,7 @@ describe("importRound copies a round@2 dir into the rounds dir", () => {
   it("imports a round with no frames index and no feedback", async () => {
     await rm(path.join(source, "frames"), { recursive: true });
     await rm(path.join(source, "feedback.json"));
+    await editVariant("card-light", (variant) => (variant.baseImage = "frames/base/card-light.png"));
 
     expect(await runImport()).toEqual({ id: ID, created: true, frames: 0, feedback: "none" });
     expect((await listRounds({ dir: roundsDir })).rounds).toEqual([expect.objectContaining({ id: ID, valid: true, status: "open" })]);
@@ -474,6 +475,105 @@ describe("importRound copies a CI packet's files", () => {
     expect(await entries()).toEqual([]);
   });
 });
+
+describe("importRound takes a Ship round only as one main-vs-head package (TP-3520)", () => {
+  async function addVariant(variant: Record<string, unknown>): Promise<void> {
+    await editJson("round.json", (json) => {
+      json.variants = [...jsonObjects.parse(json.variants), variant];
+      const [section] = jsonObjects.parse(json.sections);
+      json.sections = [{ ...section, variantKeys: [...z.array(z.string()).parse(section?.variantKeys), variant.key] }];
+    });
+    await rebind();
+  }
+
+  async function expectShipRefused(message: RegExp): Promise<void> {
+    await expectRefused(message);
+    expect(await entries()).toEqual([]);
+  }
+
+  it("imports a clean Ship round: one merge, every frame paired with main or marked new at head", async () => {
+    expect(await runImport()).toMatchObject({ id: ID, created: true });
+  });
+
+  it("refuses a Ship round with a second merge-bound question, naming both", async () => {
+    await editJson("round.json", (json) => {
+      const [ship] = jsonObjects.parse(json.questions);
+      const merge = jsonObject.parse(ship?.merge);
+      const second = { ...ship, id: "ship-cards-3", prompt: "Ship example/cards#3 at 0123456789ab?", page: "example/cards#3", merge: { ...merge, pr: 3 } };
+      json.questions = [ship, second];
+    });
+    await editJson("round.json", (json) => {
+      const [section] = jsonObjects.parse(json.sections);
+      json.sections = [{ ...section, questionIds: ["ship-cards", "ship-cards-3"] }];
+    });
+    await rebind();
+
+    await expectShipRefused(/a Ship round binds one merge, not 2 \(ship-cards, ship-cards-3\)/);
+  });
+
+  it("refuses a frame with no main frame that is not marked new at head, naming the frame", async () => {
+    await editVariant("card-dark", (variant) => delete variant.change);
+    await rebind();
+
+    await expectShipRefused(/frame card-dark has no main frame/);
+  });
+
+  it("takes \"(new at head)\" in a label as the new-at-head mark", async () => {
+    await editVariant("card-dark", (variant) => {
+      delete variant.change;
+      variant.label = "Card, dark (new at head)";
+    });
+    await rebind();
+
+    expect(await runImport()).toMatchObject({ created: true });
+  });
+
+  it("imports a lab-only PR's Ship round: its one frame is a lab- story, new at head (TD-993 regression)", async () => {
+    await rm(path.join(source, "frames"), { recursive: true });
+    await rm(path.join(source, "feedback.json"));
+    await editJson("round.json", (json) => {
+      json.variants = [{ key: "fd-5-family-l", storyId: "lab-decisions-foundations--fd-5-family-l", label: "Foundations, family L", change: "new" }];
+      json.sections = jsonObjects.parse(json.sections).map((section) => ({ ...section, variantKeys: ["fd-5-family-l"] }));
+    });
+
+    expect(await runImport()).toMatchObject({ id: ID, created: true });
+  });
+
+  it("imports a paired frame whose label names a lab", async () => {
+    await editVariant("card-light", (variant) => (variant.label = "Lab card, light"));
+    await rebind();
+
+    expect(await runImport()).toMatchObject({ created: true });
+  });
+
+  it.each([
+    ["an A/B label", { key: "card-ab", label: "Card, A/B pick" }, /variant card-ab is exploration \("A\/B"/],
+    ["a proposal key", { key: "card-proposal-2", label: "Card" }, /variant card-proposal-2 is exploration \("proposal"/],
+    ["an alpha label", { key: "card-faded", label: "Card, alpha 40" }, /variant card-faded is exploration \("alpha"/],
+    ["an alternate column", { key: "card-col", label: "Card", alternate: "b" }, /variant card-col is exploration \(alternate "b"/],
+  ])("refuses %s", async (_name, marked, message) => {
+    await addVariant({ image: "frames/card-dark.png", change: "new", ...marked });
+
+    await expectShipRefused(message);
+  });
+
+  it("still imports exploration in a round with no merge-bound question", async () => {
+    await dropShipBinding();
+    await addVariant({ key: "card-chosen", storyId: "lab-decisions-card--chosen", label: "Card, chosen" });
+
+    expect(await runImport()).toMatchObject({ created: true });
+  });
+});
+
+async function editVariant(key: string, edit: (variant: Record<string, unknown>) => void): Promise<void> {
+  await editJson("round.json", (json) => {
+    const variants = jsonObjects.parse(json.variants);
+    const variant = variants.find((each) => each.key === key);
+    if (variant === undefined) throw new Error(`the fixture has no variant ${key}`);
+    edit(variant);
+    json.variants = variants;
+  });
+}
 
 async function symlinkInPlace(rel: string): Promise<void> {
   const real = path.join(root, `real-${path.basename(rel)}`);

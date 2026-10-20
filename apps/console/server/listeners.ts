@@ -8,6 +8,9 @@
  * must equal the head the round showed, or nothing is posted and the outcome is `moved`. The
  * result is kept in `<round>/answer.json`, written once; while the factory is unreachable nothing
  * is written, and `sweep` retries such rounds when the console starts.
+ *
+ * The other tells the seat that filed a round, every seat subscribed to it, or else tp-operator, that the owner
+ * answered it (`round-asker.ts`). It runs for every answered round, whether or not gate answers are on.
  */
 import { createHash } from "node:crypto";
 import { open, readdir, type FileHandle } from "node:fs/promises";
@@ -17,6 +20,9 @@ import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type Gate
 import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
+import { notifyRound } from "./round-asker.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
+import { markOperatorSince } from "./round-subscriptions.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -53,6 +59,10 @@ export interface ListenerDeps {
   roundsDir: string;
   shepherd: Pick<ShepherdSource, "list">;
   answer: GateAnswerClient;
+  /** Absent, no seat is told of an answer. */
+  notify?: SeatNotifier;
+  /** `rounds subscribe`'s store; absent, only the asker is told and an unclaimed answer goes nowhere. */
+  subscriptionsDir?: string;
   now?: () => Date;
   logger?: { warn(fields: Record<string, unknown>, message: string): void };
 }
@@ -219,19 +229,36 @@ async function answerRound(deps: ListenerDeps, roundId: string): Promise<void> {
   await writeOnce(path.join(dir, ANSWER_FILE), recordOf(answer, decision, outcome, (deps.now ?? (() => new Date()))()));
 }
 
+async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
+  if (deps.notify === undefined) return;
+  const { roundsDir, subscriptionsDir, notify } = deps;
+  const now = (deps.now ?? (() => new Date()))();
+  try {
+    const failures = await notifyRound({ roundsDir, ...(subscriptionsDir !== undefined && { subscriptionsDir }), notify, now, live }, roundId);
+    for (const { seat, reason } of failures) deps.logger?.warn({ roundId, seat }, `${roundId}: ${seat} was not told of the answer (${reason})`);
+  } catch (error) {
+    deps.logger?.warn({ roundId }, `${roundId}: no seat was told of the answer (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
+
 /** A failure here must never fail the submit that already wrote the owner's answer; the sweep retries it. */
-const attempt = (deps: ListenerDeps, roundId: string): Promise<void> => answerRound(deps, roundId).catch(() => undefined);
+async function attempt(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
+  if (deps.enabled) await answerRound(deps, roundId).catch(() => undefined);
+  await tellSeats(deps, roundId, live);
+}
 
 export function createRoundListeners(deps: ListenerDeps): RoundListeners {
   return {
     async afterRoundSubmit(roundId, result) {
-      if (!deps.enabled || result.status !== "submitted") return;
-      await attempt(deps, roundId);
+      if (result.status !== "submitted") return;
+      await attempt(deps, roundId, true);
     },
     async sweep() {
-      if (!deps.enabled) return;
+      if (!deps.enabled && deps.notify === undefined) return;
+      // Before the first sweep, so the answers already on disk stay older than the operator watermark.
+      if (deps.subscriptionsDir !== undefined) await markOperatorSince(deps.subscriptionsDir, (deps.now ?? (() => new Date()))()).catch(() => undefined);
       const entries = await readdir(deps.roundsDir).catch(() => []);
-      for (const roundId of entries.filter((name) => ROUND_ID.test(name))) await attempt(deps, roundId);
+      for (const roundId of entries.filter((name) => ROUND_ID.test(name))) await attempt(deps, roundId, false);
     },
   };
 }

@@ -4,6 +4,7 @@ import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { FixFirstEntry } from "./fix-first-trail.js";
 import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
@@ -50,6 +51,8 @@ export interface ReviewRequest extends PhaseTarget {
   cause?: ReviewCause;
   /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
   seatHeld?: SeatHeld;
+  /** The run's FIX_FIRST trail, set only on D8's convergence review of a runaway head (TP-3734). */
+  convergence?: readonly FixFirstEntry[];
 }
 
 /**
@@ -142,6 +145,8 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
+  /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
+  noReproProceed?: "off" | "on";
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */

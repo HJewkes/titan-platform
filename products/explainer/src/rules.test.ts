@@ -15,11 +15,14 @@ import {
   type Rule,
 } from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
+import { parseSpine } from "./spine-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const registry = loadRuleRegistry();
 const packageRoot = dirname(dirname(DEFAULT_RULES_PATH));
-const emittedCheckIds = new Set(runL0(ScriptSchema.parse(scriptWith()), layout, L0_CHECKS).map((row) => row.check_id));
+// The spine lints emit only for a run that has a spine, so the registry cross-check supplies the pilot one.
+const pilotSpine = parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-explainer/spine.md", import.meta.url), "utf8"));
+const emittedCheckIds = new Set(runL0(ScriptSchema.parse(scriptWith()), layout, L0_CHECKS, undefined, pilotSpine).map((row) => row.check_id));
 
 const rule = (overrides: Partial<Rule> = {}): Rule => ({
   id: "Q-V1",
@@ -39,9 +42,9 @@ describe("the shipped Q-rule registry", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(68);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([48, 13, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
+    expect(registry.rules).toHaveLength(69);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([49, 13, 7]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {

@@ -50,6 +50,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_FACTORY_PORT` | `7410` | Loopback port of `titan-factory serve`, whose `needs.list` `approvals.flow` reads with no token, only the `X-Titan-Client` header. Refused if it equals the console's own port |
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
+| `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
@@ -67,10 +68,19 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 | `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
 | `TITAN_CONSOLE_CLAUDE_DIRS` | `~/.claude` and every `~/.claude-profiles/*` | Comma list of Claude Code config dirs `config.surfaces` reads. From `.claude.json` it reports only the trusted-folder count and the MCP server names |
+| `TITAN_CONSOLE_UPDATE_ROOT` | `~/.local/share/titan-console` | `self-update` only: holds `checkout/`, `releases/<sha>/` and the `current` symlink the service runs (see [docs/self-update.md](docs/self-update.md)) |
+| `TITAN_CONSOLE_UNIT` | `titan-console.service` | `self-update` only: the systemd user unit it restarts |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
 directory, under the name `active-work`.
+
+## Self-update
+
+The served console updates itself: a systemd user timer runs `titan-console self-update` every 10
+minutes, which rebuilds and swaps in origin/main only when a console change landed, and keeps
+the old build serving on any failure. The layout, each step, the alarm and the owner install
+commands are in [docs/self-update.md](docs/self-update.md); the units are in `deploy/systemd/`.
 
 ## LAN mode
 
@@ -121,7 +131,8 @@ commands are in [docs/lan.md](docs/lan.md).
 
 | Route | Answers |
 | --- | --- |
-| `GET /health` | The daemon package's health payload, plus the three upstream targets. It does not probe them, so it answers at once |
+| `GET /health` | The daemon package's health payload, plus the three upstream targets and `build` (`{ sha, builtAt, dirty }` from `dist/build-info.json`, or null). It does not probe the upstreams, so it answers at once |
+| `POST /rpc/console.build` | `{ build }`: the same build stamp, which the footer shows as the short sha and build time |
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
@@ -136,9 +147,9 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
 | `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it), plus `dir`, the rounds dir the server reads. A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
 | `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). A Ship round also carries `lineage`: `{known: true, provenSha, state, merged, mergeSha, headSha, baseRef, baseSha, behind}` read from GitHub's PR and base tip and cached per repo, PR and head for a minute (`behind` is null unless the PR is open and still at the proven head), or `{known: false, reason}`. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
-| `POST /rpc/rounds.frames` | `{ id }` in; `{ indexed, frames: [{ key, theme?, views, indexed }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for. The top `indexed` says the round has a `frames/frames.json`, and a frame's `indexed` says that file lists it. An invalid `frames.json` is refused (66) |
+| `POST /rpc/rounds.frames` | `{ id }` in; `{ indexed, frames: [{ key, theme?, views, indexed, unchanged }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for. The top `indexed` says the round has a `frames/frames.json`, a frame's `indexed` says that file lists it, and `unchanged` that it gives the frame's head and base one sha256. An invalid `frames.json` is refused (66) |
 | `POST /rpc/rounds.frame` | `{ id, key, view? }` in; `{ contentType: "image/png", bytes, sha256, base64 }` out for one listed frame. The client names a key and view, never a path. Refused (66) for an unlisted key or view, a path leaving the round, a symlink at any component, a non-regular file, a non-PNG, a file over 8 MiB or a sha256 the frames index does not match. Also served over `/mcp`, so an agent can read the images as the owner does |
-| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general? }` in; `{ status: "submitted", path, sha256, headSha }` or `{ status: "already-submitted" }` out. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
+| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general?, addressed?, followUps? }` in; `{ status: "submitted", path, sha256, headSha, addressed?, followUps? }` or `{ status: "already-submitted" }` out. `followUps` names side questions the owner marked follow-up: they never block Ship, their ids go to a `follow-ups.json` sidecar, and each answered one is filed into the inbox spool as a `review` item keyed `round-follow-up` with the answer text and the round and PR (`followUps.filed[].item` is null where none was written); a later round of the unit does not ask for them to be addressed. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 64 KiB. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
 | `POST /rpc/approvals.flow` | The owner's one merged queue: `{ flow, gaps, fyiCount, readAt }` (see "The approvals flow") |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. A `deposit` (see "Owner inbox deposits") |
 | `POST /rpc/config.report` | Another host's `titan config report` in; `{ host, receivedAt }` out. A `deposit` taken only over a bearer from another machine (see "Host config reports") |
@@ -293,6 +304,73 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
 
+## Filing a decision round
+
+A seat that needs the owner to decide something files a questions-only `titan-review/round@2`
+round straight into the console's own state. No round dir is written anywhere else, so nothing
+goes under an active-work sources dir:
+
+```sh
+titan-console decisions file - --seat <name> [--initiative <slug>] < round.json   # id, asked by, URLs
+titan-console decisions file round.json --json   # one line: {id, created, seat, initiative, url, lanUrl}
+```
+
+With `-` or no path the round comes from stdin. `--seat` defaults to `AGENT_CHAT_NAME`, which
+every spawned agent has; with neither the verb refuses. The round lands in
+`TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/`, beside an `asker.json`
+(`titan-console/asker@1`: seat, initiative, filedAt), and the verb prints
+`http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
+is set. Like `rounds import`, it needs no running console and no `/rpc` command reaches it; run it
+with the service's `TITAN_CONSOLE_*` settings.
+
+- **Questions only.** The round must pass the same strict round@2 parser `rounds import` uses, and
+  have no variants and no merge-bound Ship question; those need frames or a packet, so they go
+  through `rounds import`. A refusal prints `decision round refused: <reason>` to stderr and no
+  URL, exits non-zero, and writes nothing.
+- **Re-filing.** The same `round.json` bytes again report `created: false` and keep the first
+  asker. Different bytes under the same `<unit>-r<round>` are refused; bump `round`.
+- **The answer comes to the seat.** The asker is the round's first subscriber; see "Hearing of an
+  answer" below. The answer is also in the decision log, as for any round.
+
+## Hearing of an answer
+
+Once `rounds.submit` writes a round's `feedback.json`, for a decision, design or Ship round and for
+Ship or Send back alike, the round listener sends one agent-chat message to each seat that should
+hear of it:
+
+1. the asker, from `asker.json` (`decisions file`, or `rounds import --seat`);
+2. every seat with a matching subscription;
+3. with neither, tp-operator.
+
+Each seat gets one message per answer: the listener keeps `<round>/notified-<seat>.json`, written
+once, and a TP-3729 `notified.json` still counts for the seat it names. A seat that is not live gets
+no message and no record, and the console's start-up sweep retries it.
+
+The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
+whether the answer carries free text (a question comment, an option note, a written answer, or
+general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
+`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
+human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+
+```sh
+titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds unsubscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds list-subscriptions [--seat <name>] [--json]   # seat, target, at per line
+```
+
+- **Targets.** A round id or unit matches exactly; `*` and `?` glob over either (`kiln-*`).
+  `owner/repo#N` matches every round whose Ship question merges that PR, case-insensitively.
+  Targets are matched when an answer lands, so a glob or PR target covers rounds imported later.
+- **From now on.** A subscription hears only answers written after it was made. The answer of an
+  unclaimed round goes to tp-operator only if it was written after the console first started with
+  subscriptions (`operator-since.json`), so that first start does not page it for older answers.
+- **Kept.** One file per seat and target in `$TITAN_CONSOLE_STATE/round-subscriptions/`, so
+  subscriptions survive restarts, and a successor that keeps its agent-chat name keeps them.
+  Subscribing twice keeps the first. `--seat` defaults to `AGENT_CHAT_NAME`; with neither, the
+  verb refuses. `list-subscriptions` with no `--seat` lists every seat.
+- **Local only.** Like `rounds import`, the verbs need no running console and no `/rpc` command
+  reaches them; run them with the service's `TITAN_CONSOLE_*` settings.
+
 ## Importing a review round
 
 A review-harness round dir, or a CI visual packet built into one, lands in the rounds dir from a
@@ -301,7 +379,14 @@ shell:
 ```sh
 titan-console rounds import <round-dir>          # id, frames: N, feedback: copied|kept|none, URLs
 titan-console rounds import <round-dir> --json   # one line: {id, created, frames, feedback, url, lanUrl}
+titan-console rounds import <round-dir> --seat <name>   # adds "asked by: <name>" ({asker} with --json)
 ```
+
+`--seat` writes the same `asker.json` as `decisions file`, so that seat hears of the owner's answer
+(see "Hearing of an answer"); a re-import keeps the first asker. A seat that is not an agent-chat
+name is refused before anything lands. Unlike `decisions file`, the seat is never read from
+`AGENT_CHAT_NAME`, because the factory imports rounds for other seats; a round imported without one
+goes to tp-operator once answered.
 
 It writes to `TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/` and prints
 `http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
@@ -321,6 +406,26 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   disagreeing offer is refused at import. A round already in the rounds dir is not re-judged: it
   still lists and takes a submit, and `rounds.list` marks an unbound one `unbound` ("unbound: no
   merge tap"), since its answer is recorded but merges nothing.
+- **A Ship round is main vs head only.** A round with a merge-bound question is one review package:
+  what main gains at that head (`server/round-ship-package.ts`). Import refuses it, naming the
+  question, frame or variant and the rule, when:
+  - it has more than one merge-bound question: one Ship round ships one PR head;
+  - an image frame has no main frame, meaning no frames.json `base` and no `baseImage`, and is not
+    marked one-sided. Mark a frame new at head with `change: "new"` on its variant or
+    `(new at head)` in its label; `change: "removed"` marks a frame only main has;
+  - it carries exploration, meaning alternatives shown side by side: a variant with an `alternate`
+    column, or a key or label with the word `A/B`, `proposal` or `alpha`. Where a story lives is not
+    exploration: a lab-only PR ships its `lab-…` story, marked new at head.
+
+  The page shows each frame as BEFORE (main) and AFTER (head), with a "What ships" line naming the
+  PR, the head and the changed-frame count. Changed frames come first. Pairs whose base and head
+  share a sha256 in frames.json, or whose variant says `change: "unchanged"`, fold into an
+  "N unchanged" disclosure.
+- **Exploration goes in a feedback round.** Alternatives side by side, A/B picks and proposals need a
+  separate round with no `merge` binding: its own `unit`, sections that carry the frames, and
+  pick-one, scale or text questions about them. Build it with the review harness like any design
+  round, then import it the same way. It lands as a design round and sends feedback, never a merge.
+  The PR's Ship round then shows only the pairs the chosen option produced.
 - **CI packets.** A `packet.json` or `prose.json` that frames.json names is copied beside
   `round.json` after a sha256 and JSON check. The packet's repo, PR and head must equal every
   merge-bound Ship question in the round, because the factory's Ship answer route reads it there.
@@ -328,6 +433,41 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
 - **Idempotent.** A new round is staged in a dot-named dir and renamed into place. A re-import of
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
+
+### Frames by question
+
+A question can name the frames it asks about in round@2's `frames` (variant keys). The page maps
+them as follows, in question, design and Ship rounds:
+
+- **Above the question.** The named frames draw inside the question's own block, above its prompt,
+  as a one-column strip at phone width and two or three columns on a desktop. Each frame has a "To
+  its question" link, and a "Frames:" line under the question links to each frame. A design round's
+  section strip leaves out a frame some question draws, so no frame shows twice.
+- **Option to frame.** An option names the frame it picks as "(frame: <label>)": its
+  `optionVariants` entry, or the option itself when the option is a variant key.
+- **What a Ship approves.** A Ship question (merge-bound, or `decision: "ship"`) with `frames` gets
+  a "Ships: <labels>" line, so a Ship answer says which frames it approves.
+- **Without `frames`** a question draws as before, and frames stay in their section strip.
+
+A frame loads when its variant has an `image` or `frames/frames.json` lists it; any other frame,
+such as a Storybook-only variant, is named with "No image for this frame".
+
+### A/B questions
+
+A pick-one whose options pick exactly two frames (through `optionVariants`, or options that are
+variant keys) is an A/B on a question or design round page. The round's own `revisionOption` is
+never a side. Ship rounds keep their own layout.
+
+- **Side by side.** The two options draw as columns A and B, stacked at phone width: each with its
+  frame, a pick button (digit keys still pick) and an optional note box. Typing in a note picks
+  nothing. The side frames are left out of the strip above the question and the section strip.
+- **Notes.** Each side's note goes in the answer's `optionNotes`, with or without a pick.
+- **Both.** feedback@1 has no "both" field, so a round offers it as a further option, such as
+  `"Both"`. Every option that picks no frame is a button under the columns.
+- **Neither.** A required pick-one with no `revisionOption` offers "Neither: request a revision",
+  sent as `revisionRequested: true`. The round sends once the question's comment says what to change.
+
+![A/B question at 1440](docs/question-ab-1440.png)
 
 ## Theater
 
@@ -581,7 +721,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
 | `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
-| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. A question round sends its picks and text through `rounds.submit` with Send answers, once its required questions hold an answer, and shows the sent state and its recommendations after; an owner-write refusal is shown as the server words it. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers the same way; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows each changed image as before, after and diff, light and dark side by side, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. Above the answer one line names the proven-at sha, merged or UNMERGED, the base tip and `N behind`, a stale head badged, or `lineage unknown` with its reason. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
+| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. A question round sends its picks and text through `rounds.submit` with Send answers, once its required questions hold an answer, and shows the sent state and its recommendations after; an owner-write refusal is shown as the server words it. A design round shows each section's frames as a labelled strip and its `seeAlso` frames as thumbnails, each tapped to open full size, and sends its answers the same way; an after-answer round shows its recommendations once sent. Without a valid `frames/frames.json` a design round points to the harness. A Ship round (a merge-bound question) shows a "What ships" line (PR, head, changed-frame count), then each changed image as BEFORE (main), AFTER (head) and diff, light and dark side by side, with unchanged pairs folded into an "N unchanged" disclosure, loaded as it scrolls near and enlarged on a tap, and answers Ship (bound to the question's head sha) or Send back (with an optional note) through `rounds.submit`, then shows the factory's outcome. Each side question says what would block Ship (the picks that differ from the implemented choice, or a comment) or that its answer is informational, badges a given answer Blocks Ship or Won't block Ship, and offers This PR or Follow-up: a follow-up never blocks Ship and is filed in the inbox when sent. Above the answer one line names the proven-at sha, merged or UNMERGED, the base tip and `N behind`, a stale head badged, or `lineage unknown` with its reason. With no rounds the page names the rounds dir and `titan-console rounds import <round-dir>` | TP-1987 |
 | `#/config` | Config | Every row `config.surfaces` reads, grouped by surface, after the `config.drift` rows whose copies disagree and those kept in step, and the `config.hosts` list: each other host's name and last report time, one silent for 25 hours marked "not reported". A row with a file line is `terminal`: it shows the exact command that opens that line, with a copy button. A hidden row (a secret or an undeclared key) shows only "present". The page has no edit control | TP-3640, TP-3643 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.

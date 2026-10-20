@@ -83,10 +83,13 @@ export function tookWake(run: WakeRun, headSha: string, outcome: { kind: string;
   return outcome.kind === "woken";
 }
 
-/** `merge` waits for a head that resolves the conflict and lands it through the normal rounds; it trusts no head. */
-export async function conflictGate(run: GateRun, headSha: string): Promise<LandOutcome | undefined> {
+/**
+ * `merge` waits for a head that resolves the conflict and lands it through the normal rounds; it trusts no head. Under
+ * `GATE_DEMOTIONS.conflict` only a seat notice that could not go out reaches here, and `unsent` says why.
+ */
+export async function conflictGate(run: GateRun, headSha: string, unsent = ""): Promise<LandOutcome | undefined> {
   const { repo, pr } = run.target;
-  const reason = escalationReason("conflict", `mergeable_state is dirty at ${headSha} after a fixer's attempt`);
+  const reason = escalationReason("conflict", `mergeable_state is dirty at ${headSha} after a fixer's attempt${unsent}`);
   const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? Policy shepherd-route/conflict: ${reason}. Answer merge to have Shepherd land the next resolved head, or abandon.`;
   const { schema, brief } = conflictDecision({ repo, pr, headSha, reason });
   const answered = await askAtHead(run.ctx, "approve-merge", prompt, { schema, brief });

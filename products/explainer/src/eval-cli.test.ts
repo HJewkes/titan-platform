@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
+import { spineCheck } from "./lint-spine.js";
 import { paceCheck } from "./lint-pace.js";
 import { layout } from "./map-fixtures.test-helpers.js";
 import { DEFAULT_RULES_PATH } from "./rules.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
+import { v4FullScript } from "./spike-fixtures.test-helpers.js";
 
 const RULES = "schema: rules/v1\nrules:\n  - { id: Q-D2, rule: one job per beat, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: pending, owner: SQ5 } }\n";
 const fourBoxes = scriptWith({
@@ -98,6 +100,40 @@ describe("explainer eval l0", () => {
     expect(structureLines().slice(1).every((line) => line.split("\t")[2] === shipped)).toBe(true);
   });
 
+  describe("--spine", () => {
+    const PILOT_SPINE = join(__dirname, "../fixtures/spike/pipeline-explainer/spine.md");
+    const spineRun = (...extra: string[]) =>
+      runEvalCli(["eval", "l0", write("script.json", scriptWith()), "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock(), checks: [spineCheck] });
+
+    // Mutation: parsing the spine but not passing it to runL0 leaves structure.tsv empty and the exit code 0.
+    it("passes the parsed spine to the lints: the pilot spine's ch2 fails Q-E15 and exits 1", async () => {
+      const code = await spineRun("--spine", PILOT_SPINE);
+
+      expect(code).toBe(1);
+      expect(structureLines()).toContainEqual(expect.stringMatching(/\tQ-E15\ttagged\terror\t1\t0\tfalse\tch2$/));
+      expect(structureLines()).toContainEqual(expect.stringMatching(/\tQ-E18\ttagged\terror\t0\t0\ttrue$/));
+    });
+
+    it("records no spine rows without --spine", async () => {
+      expect(await spineRun()).toBe(0);
+      expect(structureLines()).toHaveLength(1);
+    });
+
+    it("exits 2 naming the file when the spine does not parse", async () => {
+      const code = await spineRun("--spine", write("bad-spine.md", "# Story spine: x\n"));
+
+      expect(code).toBe(2);
+    });
+
+    it("does not call Q-E15 or Q-E18 ghosts in a spine-free run", async () => {
+      write("rules.yaml", "schema: rules/v1\nrules:\n  - { id: Q-E15, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [Q-E15] } }\n");
+
+      await spineRun();
+
+      expect(vi.mocked(console.error).mock.calls.map(([line]) => String(line))).toEqual([]);
+    });
+  });
+
   describe("ghost check ids", () => {
     const GHOST = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.spoken], owner_support: none, l0: { severity: error, status: implemented, checks: [synthetic:ghost] } }\n";
     const CLEAN = "schema: rules/v1\nrules:\n  - { id: Q-V9, rule: synthetic, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: implemented, checks: [map:new-boxes] } }\n";
@@ -158,5 +194,29 @@ describe("explainer eval l0", () => {
       expect(code).toBe(0);
       expect(warnings()).toEqual([]);
     });
+  });
+});
+
+describe("explainer eval l0 --format", () => {
+  const spikeL0 = (script: string, ...extra: string[]) =>
+    runEvalCli(["eval", "l0", script, "--config", "spike/v4", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock() });
+  const checkIds = () => new Set(structureLines().slice(1).map((line) => line.split("\t")[3]));
+
+  // Mutation: defaulting --format to v1 for this call makes ScriptSchema throw on the spike file, so the exit is 2.
+  it("runs the voice, flow and pace checks on a spike script", async () => {
+    const code = await spikeL0(write("spike.json", v4FullScript()), "--format", "spike");
+
+    expect(code).toBe(1);
+    expect([...checkIds()]).toEqual(expect.arrayContaining(["Q-V1", "Q-F1", "Q-E7"]));
+  });
+
+  it("reads a spike script as script/v1 by default and exits 2", async () => {
+    const code = await spikeL0(write("spike.json", v4FullScript()));
+
+    expect(code).toBe(2);
+  });
+
+  it("rejects an unknown format", async () => {
+    expect(await spikeL0(write("spike.json", v4FullScript()), "--format", "tour")).toBe(2);
   });
 });

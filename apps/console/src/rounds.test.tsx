@@ -171,7 +171,7 @@ describe("a question round", () => {
     expect(await screen.findByText("Recommended: Ship (90%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Ships example/orbit-relay#12 at 0123456")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
-    expect(screen.queryByText(/^Changed images/)).toBeNull();
+    expect(screen.queryByText(/^Main vs head/)).toBeNull();
   });
 });
 

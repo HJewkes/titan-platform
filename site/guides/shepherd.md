@@ -377,16 +377,27 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 
 `approve-merge` opens for five reasons only, and its prompt names the reason:
 
-- `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
-  have Shepherd land the next resolved head, or `abandon`.
+- `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Under
+  `GATE_DEMOTIONS.conflict` (on) Shepherd first wakes one fresh fixer, a successor rather than
+  the implementer, and if the conflict survives that too it tells the repo's seat and waits for
+  a new head. The gate opens only when that notice cannot go out. Answer `merge` to have
+  Shepherd land the next resolved head, or `abandon`.
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
-  conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
+  conflict. A `FIX_FIRST` that yields a new head is progress and does not count. When every
+  round failed on infrastructure, one fallback fresh reviewer goes first. If it fails too,
+  `GATE_DEMOTIONS.failedFallback` (on) records `D7/ops-notice`, and the hub seat hears that
+  this is a reviewer infrastructure defect, with the failed outcomes and the reviewer's
+  account. A seat that held Shepherd's own `MERGE` past its rounds gets a seat notice under
+  `D7/seat-notice` instead. Either way the run waits for a new head, whose rounds count from
+  zero, and the gate opens only when the notice cannot go out.
 - `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
   Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
   third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
   task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
-  route.
+  route. Since TP-3734 (D8) this and `no-progress` reach you only when no seat can be told: one
+  fresh convergence reviewer judges the `FIX_FIRST` trail first, and its `FIX_FIRST` goes to the
+  planner through a seat notice.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
   Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
@@ -456,9 +467,13 @@ a restart replays the recorded notice instead of sending it again. A run that wa
 paused on one of these gates before the notice step existed keeps that gate.
 
 A review round's Ship pick at one head (decision 97) is the owner's merge approval at that
-head. Today it answers an `approve-merge` gate only after the gate is open, through
-`roundMergeDecisions` (`products/factory/src/shepherd/round-merge.ts`). Nothing reads a Ship
-record before the gate opens yet.
+head. Where `shepherd.consoleAnswers` is configured, serve's round ship sweep reads its
+`roundsDir` every minute and answers each open `approve-merge` gate through
+`roundMergeDecisions` (`products/factory/src/shepherd/round-ship-sweep.ts`). A Ship submitted
+before the gate opened answers it on the first sweep after it opens, for up to 24 hours. Per
+PR, only the round built last decides, so a re-ask, Don't ship or Send back voids an earlier
+Ship. The Ship counts only at the gate's exact head and only on a seat-policy or authority
+MRG-AU gate, and a held PR stays pending. The merge step still checks every hold.
 
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.

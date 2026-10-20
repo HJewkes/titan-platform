@@ -99,6 +99,18 @@ implemented or pending. `--rules` defaults to the shipped registry and must pars
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
 
+`eval l0 --format spike|v1` (default `v1`) reads a Python-emitted spike script.json by running it through
+`migrateSpike` (`src/migrate.ts`) first, so every L0 check runs on the scripts the team writes. The migration drops
+keys only the spike renderer reads, maps chip kinds onto `CHIP_KINDS`, and keeps `band`, `origin`, `render`, `maps`
+and map_state `map`/`old`/`new` as the optional fields `ScriptSchema` admits. The frozen script is the file as read,
+not the migrated form. More than two `video.invariants` no longer fail the parse: `Q-W6:invariant-cap` warns instead.
+
+`explainer guide plan [--stage plan|script] [--spine <spine.md>]` (default `plan`) prints the planner guide v0 as markdown: the
+intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules, and the story-spine template
+(`doctrine/guides/spine-template.md`: problem, one task's journey, architecture, constraints, item ledger, cut list,
+chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
+the digest gap) reach the planner only as L0 failures. With `--spine` (or `guidePlan`'s `spine` dep) the guide ends with the spine's rows and ledger per act (chapter). It exits 2 on an unknown stage.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
@@ -119,6 +131,21 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 `c6-10-rule`, and ch2 shows 13 items over 72 s. Exit codes are the same as `eval l0`:
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
+
+A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
+from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
+§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
+errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
+script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
+spine; any other profile passes both rows when it has none.
+
+`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 (FB1)
+fails a chapter whose §8 row cites a §4 architecture row before the first chapter that cites a §3
+journey row, and a journey step whose "why" is empty; chapters are ordered by position in §8, never by
+id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`) that no §4 row states a
+mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
+reads the spine for all of these; without `--spine` a rule claiming Q-E15 or Q-E18 is not a ghost.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
@@ -162,6 +189,23 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
   undefined items a minute per chapter. A last line lists the odd-one-out picks at least two
   runs agree on.
+- `explainer eval items <script.json> --judge <judge.json> [--format spike|v1] [--timing
+  <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
+  <n>] [--spine <spine.md>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
+  come only from route lists: "is X explained?" for each item `explainRoutes` (M3-pre) names,
+  "is it seated?" for each `seatRoutes` (M5) beat, and the odd one out for each beat listing
+  three or more items. One call per chapter that has a question; chapters with none are
+  skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
+  explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
+  `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
+  a last line lists the flags at least two runs agree on.
+  `--spine <spine.md>` makes the judge read the story spine (with `rubrics/l1-items-spine.md`
+  added to its rubric): a list beat whose every item the ledger declares is asked "which item is
+  not the kind it is declared to be?" (`kind-honest`) in place of the blind odd one out, and an
+  invariant seat is asked about the §4 part that keeps it. An invariant seat that matches no §3
+  invariant, or no §4 part whose mechanism keeps it, fails with no model call, and a chapter of
+  only such seats makes no call and has no canary row. Spine runs get their own eval_version; runs
+  without `--spine` keep theirs.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 

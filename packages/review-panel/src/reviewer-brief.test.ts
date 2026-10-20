@@ -5,6 +5,7 @@ import { BLOCK_LINE, CI_UNREAD_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHA
 import {
   CI_POLICY_EXACT,
   CI_REVIEWER_TEST_RULE,
+  CONVERGENCE_HEADING,
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_START,
   FOLLOW_UPS_RULE,
@@ -200,6 +201,14 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("Do not rerun");
   });
 
+  it("a test-only head sent on without a base-failing test is told to judge each added test, not to show one fail on the base", () => {
+    const brief = reviewerBrief({ ...target, fixProof: fixProofResult(target.head, "vacuous"), fixProofUnverified: "no-repro-test-only" });
+
+    expect(brief).toContain("the PR changes only tests");
+    expect(brief).toContain("Judge each added test on its own");
+    expect(brief).not.toContain("show it fails on the base");
+  });
+
   describe("an owner's fix-proof waiver", () => {
     const vacuous = { ...target, fixProof: fixProofResult(target.head, "vacuous") };
 
@@ -390,6 +399,26 @@ describe("the CI-policy line", () => {
     ["an owner-gated correction prompt", correctionPrompt({ ...input, refusal: "ci_policy_malformed", ownerBrief: true })],
   ])("is stated by %s to hold nothing else", (_name, text) => {
     expect(text).toContain(CI_POLICY_EXACT);
+  });
+});
+
+describe("reviewerBrief convergence review", () => {
+  const input = { repo: "octo/demo", pr: 7, head: "c".repeat(40), checkoutRoot: "/data/reviews", fixFirsts: 3 };
+  const earlier = [{ head: "a".repeat(40), defectClass: "Defect class: unquoted shell words", text: "1. `rm $dir` splits on spaces." }];
+
+  it("asks a convergence reviewer to tag each open finding, name the bug class, and pass a head with no Important finding", () => {
+    const brief = reviewerBrief({ ...input, earlierFindings: earlier, convergence: true });
+
+    expect(brief).toContain(`a section that starts with a line \`${CONVERGENCE_HEADING}\``);
+    expect(brief).toContain("`- Important: <item>`, `- Nit: <item>` or `- Pre-existing: <item>`");
+    expect(brief).toContain("a line `Defect class: <class>` naming the bug class");
+    expect(brief).toContain("Give MERGE when no Important finding remains");
+    expect(brief).toContain("FIX_FIRST 1, at head aaaaaaaaaaaa:");
+    expect(parseVerdictBlock(brief).ok).toBe(false);
+  });
+
+  it("leaves an ordinary re-review without the convergence section", () => {
+    expect(reviewerBrief({ ...input, earlierFindings: earlier })).not.toContain(CONVERGENCE_HEADING);
   });
 });
 

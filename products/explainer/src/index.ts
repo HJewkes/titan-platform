@@ -99,9 +99,12 @@ export {
 export { chapterPace, paceCheck, paceRows, reuseFindings, type ChapterPace, type ReuseFinding } from "./lint-pace.js";
 export { explainRoutes } from "./lint-gloss.js";
 export { seatRoutes } from "./lint-seat.js";
+export { SPINE_PROFILES, ledgerCheck, ledgerRows } from "./lint-ledger.js";
+export { SPINE_CHECK_IDS, invariantSeatRow, journeyOrderRow, spineCheck } from "./lint-spine.js";
+export { SPINE_ITEM_KINDS, SpineSchema, parseSpine, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 export { fromSpikeScript, readSpikeScript, type SpikePace, type SpikeRead, type SpikeScript } from "./spike-script.js";
 export { readTiming, type BeatTiming, type ScriptTiming } from "./timing.js";
-export { migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
+export { migrateSpike, migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
 export {
   SHORT_SHA_LENGTH,
   STRUCTURE_COLUMNS,
@@ -216,6 +219,29 @@ export {
   type ColdScore,
   type OddOneOutPick,
 } from "./eval-cold.js";
+export {
+  CANARY_NAMES,
+  ITEMS_EVAL_ID,
+  agreedFlags,
+  gradeItemAnswer,
+  itemQuestions,
+  itemRoutes,
+  itemsEvalVersion,
+  listRoutes,
+  runItems,
+  type ItemAnswer,
+  type ItemFlag,
+  type ItemQuestion,
+  type ItemQuestionKind,
+  type ItemRoutes,
+  type ItemVerdict,
+  type ItemsChapter,
+  type ItemsInput,
+  type ItemsResult,
+  type ListRoute,
+  type QuotableTexts,
+} from "./eval-items.js";
+export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
@@ -291,3 +317,4 @@ export {
   type GatherResult,
   type ReviewBundle,
 } from "./presets/repo-explainer/index.js";
+export { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guide-plan.js";

@@ -21,7 +21,7 @@ describe("why, value and thread lints", () => {
   it("reports one row per rule, so a pass is recorded too", () => {
     const ids = rows(goodScript()).map((row) => row.check_id);
 
-    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-F13"]);
+    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-W6:invariant-cap", "Q-F13"]);
   });
 
   it("finds that only one of five body chapters in a pass-A-like script leads with why", () => {
@@ -89,6 +89,15 @@ describe("why, value and thread lints", () => {
     const script = withBeat(goodScript(), "b6", { spoken: "The desk server reads parcel P-7 from the ledger." });
 
     expect(rowFor(script, "Q-W6")?.detail_beats).toEqual(["b6"]);
+  });
+
+  // Mutation: raising MAX_INVARIANTS (or dropping the row) lets three invariants pass.
+  it("warns, never fails, on more than two declared invariants", () => {
+    const good = goodScript();
+    const script = { ...good, video: { ...good.video, invariants: ["One holds.", "Two holds.", "Three holds."] } };
+
+    expect(rowFor(script, "Q-W6:invariant-cap")).toMatchObject({ severity: "warning", pass: false, value: 3, threshold: 2 });
+    expect(rowFor(good, "Q-W6:invariant-cap")?.pass).toBe(true);
   });
 
   it("fails a fence that is not drawn as a design", () => {

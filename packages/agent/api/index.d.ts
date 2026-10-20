@@ -289,6 +289,111 @@ declare function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?:
 
 declare const DEFAULT_CODEX_KILL_GRACE_MS = 2000;
 
+type CodexUserInput = {
+    type: "text";
+    text: string;
+} | {
+    type: "localImage";
+    path: string;
+};
+interface CodexAppServerOptions {
+    cwd: string;
+    env: Record<string, string>;
+    executablePath?: string;
+    /** Replaces `["app-server"]`, for `-c` overrides or a stand-in server. */
+    args?: readonly string[];
+    clientInfo?: {
+        name: string;
+        version: string;
+    };
+}
+interface CodexInitializeResult {
+    userAgent: string;
+    codexHome: string;
+    platformFamily: string;
+    platformOs: string;
+}
+interface CodexThreadOptions {
+    cwd?: string;
+    model?: string;
+    approvalPolicy?: string;
+    sandbox?: string;
+    developerInstructions?: string;
+    config?: Record<string, unknown>;
+}
+interface CodexThreadResult {
+    threadId: string;
+    model: string;
+    cwd: string;
+    /** The full thread/start or thread/resume result, for fields this client does not type. */
+    raw: Record<string, unknown>;
+}
+interface CodexTurnStartParams {
+    threadId: string;
+    input: readonly CodexUserInput[];
+    clientUserMessageId?: string;
+}
+interface CodexTurnSteerParams extends CodexTurnStartParams {
+    expectedTurnId: string;
+}
+declare const TURN_STATUSES: readonly ["completed", "interrupted", "failed", "inProgress"];
+declare const THREAD_STATUSES: readonly ["notLoaded", "idle", "systemError", "active"];
+type CodexTurnStatus = (typeof TURN_STATUSES)[number];
+type CodexThreadStatus = (typeof THREAD_STATUSES)[number];
+type CodexAppServerEvent = {
+    kind: "turn_started";
+    threadId: string;
+    turnId: string;
+} | {
+    kind: "turn_completed";
+    threadId: string;
+    turnId: string;
+    status: CodexTurnStatus;
+} | {
+    kind: "thread_status";
+    threadId: string;
+    status: CodexThreadStatus;
+    activeFlags: readonly string[];
+} | {
+    kind: "notification";
+    method: string;
+    params: unknown;
+} | ({
+    kind: "exit";
+    stderrTail: string;
+} & CodexProcessExit);
+interface CodexAppServer {
+    readonly initialized: CodexInitializeResult;
+    readonly exited: Promise<CodexProcessExit>;
+    threadStart(options?: CodexThreadOptions): Promise<CodexThreadResult>;
+    threadResume(threadId: string, options?: CodexThreadOptions): Promise<CodexThreadResult>;
+    turnStart(params: CodexTurnStartParams): Promise<{
+        turnId: string;
+    }>;
+    /** Rejects with CodexSteerPreconditionError when no turn, or another turn, is active. */
+    turnSteer(params: CodexTurnSteerParams): Promise<{
+        turnId: string;
+    }>;
+    onEvent(listener: (event: CodexAppServerEvent) => void): () => void;
+    close(signal?: NodeJS.Signals): Promise<CodexProcessExit>;
+}
+declare class CodexAppServerRpcError extends Error {
+    readonly method: string;
+    readonly code: number;
+    readonly data?: unknown | undefined;
+    constructor(method: string, code: number, message: string, data?: unknown | undefined);
+}
+/** The turn ended, or a different one is active, before the steer arrived; fall back to turnStart. */
+declare class CodexSteerPreconditionError extends CodexAppServerRpcError {
+    name: string;
+}
+declare class CodexAppServerExitedError extends Error {
+    readonly method: string;
+    readonly exit: CodexProcessExit;
+    constructor(method: string, exit: CodexProcessExit);
+}
+declare function startCodexAppServer(options: CodexAppServerOptions): Promise<CodexAppServer>;
+
 interface ClassifyOptions {
     /** Epoch millis used to turn a relative "retry after Ns" hint into an absolute date. */
     now?: number;
@@ -444,4 +549,4 @@ interface ClaudeCodeAdapterOptions {
 declare function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): HarnessAdapter<"claude-code">;
 declare function claudeCodeCapabilities(): HarnessCapabilityDescriptor<"claude-code">;
 
-export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexApprovalPolicy, type CodexAvailability, type CodexAvailabilityDeps, type CodexAvailabilityOptions, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexNativeOptions, type CodexOutputSchema, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, MIN_CODEX_EXEC_VERSION, type PrepareEnvOptions, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, checkCodexAvailable, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, resolveClaudeBin, runAgent, sumModelCost, usageFromResult };
+export { ANTI_NESTING_VARS, type AgentFailure, type AgentFailureKind, type AgentInit, type AgentRunConfig, type AgentRunDeps, type AgentRunHarness, type AgentRunResult, type AgentUsage, type AuthEnvCheckOptions, AuthMisconfiguredError, type BoundedRunBase, CLAUDE_CODE_PASSTHROUGH_VARS, CLAUDE_PRINT_KILL_GRACE_MS, CLAUDE_PRINT_UNSUPPORTED_OPTIONS, CODEX_APPROVAL_POLICIES, CODEX_RUNTIME_CAPABILITIES, CODEX_SANDBOXES, type ClassifyOptions, type ClaudeCodeAdapterOptions, type ClaudeCodeNativeOptions, type ClaudeCodeRunRequest, type CodexAppServer, type CodexAppServerEvent, CodexAppServerExitedError, type CodexAppServerOptions, CodexAppServerRpcError, type CodexApprovalPolicy, type CodexAvailability, type CodexAvailabilityDeps, type CodexAvailabilityOptions, type CodexCapabilityInspectionOptions, type CodexExecAdapterOptions, type CodexExecDeps, type CodexInitializeResult, type CodexNativeOptions, type CodexOutputSchema, type CodexProcessExit, type CodexProcessInput, type CodexRunRequest, type CodexRuntimeCapability, type CodexRuntimeInspection, type CodexSandbox, type CodexSchemaFile, CodexSteerPreconditionError, type CodexThreadOptions, type CodexThreadResult, type CodexThreadStatus, type CodexTurnStartParams, type CodexTurnStatus, type CodexTurnSteerParams, type CodexUserInput, type CodexVersionInspectionOptions, DEFAULT_CODEX_EXECUTABLE, DEFAULT_CODEX_KILL_GRACE_MS, DEFAULT_INACTIVITY_MS, DEFAULT_MAX_RETRIES, type DurableCancelResult, type DurableDispatchAck, type DurableDispatchInput, type DurableHarnessDispatcher, type DurableHarnessDispatcherDeps, type DurableHarnessDispatcherOptions, type DurableHarnessRecord, type DurableHarnessSuccess, type DurableLiveHandle, type DurableReconcileOutcome, type DurableSettlement, FORBIDDEN_API_KEY_SOURCES, type Harness, type HarnessAdapter, type HarnessCapabilityDescriptor, type HarnessRunProgress, type HarnessRunRequest, type HarnessRunRequestFor, type HarnessRunResult, MIN_CODEX_EXEC_VERSION, type PrepareEnvOptions, STRIPPED_AUTH_VARS, STRIPPED_CODEX_AUTH_VARS, STRIPPED_PROXY_VARS, SUPPORTED_CODEX_EXEC_VERSION, type SupervisedCodexProcess, assertApiKeySourceAllowed, assertAuthEnvOk, buildClaudePrintArgs, buildCodexExecArgs, checkCodexAvailable, classifyResult, claudeCodeCapabilities, claudePrintCapabilities, codexExecCapabilities, createClaudeCodeAdapter, createCodexExecAdapter, createDurableHarnessDispatcher, dispatchHarnessRun, inspectCodexCapabilities, preflightHarnessRun, prepareCodexEnv, prepareEnv, resolveClaudeBin, runAgent, startCodexAppServer, sumModelCost, usageFromResult };
