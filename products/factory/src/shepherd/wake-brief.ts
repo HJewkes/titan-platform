@@ -11,6 +11,10 @@ import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarl
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 
+const FreshFixerPayload = z.looseObject({ freshFixer: z.literal(true) });
+/** A wake whose payload asks for a fresh fixer resumes no agent: a successor takes it, so a failed conflict attempt is not repeated (TP-3734). */
+export const wantsFreshFixer = (payload: unknown): boolean => FreshFixerPayload.safeParse(payload).success;
+
 /** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
 /** The run's FIX_FIRST rounds so far: the one count the runaway cap, the re-review brief and the wake all read. */

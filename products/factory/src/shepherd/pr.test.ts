@@ -919,7 +919,7 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("opens approve-merge naming the conflict when a conflict survives one fixer attempt", async () => {
+  it("wakes a fresh fixer, then opens approve-merge naming the conflict only when no seat notice is wired", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
     const w = world(phases, undefined, fake);
@@ -930,8 +930,10 @@ describe("the route table in a run", () => {
     w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     const done = await w.host.runtime.wait(runId);
 
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1], ["conflict", H2]]);
+    expect(wakes[1]?.payload).toEqual({ mergeableState: "dirty", freshFixer: true });
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("(no seat notice is wired)");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -1389,7 +1391,7 @@ describe("an update-branch the base cannot merge into", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("opens approve-merge naming the conflict when it survives one fixer wake", async () => {
+  it("opens approve-merge naming the conflict when it survives a fresh fixer and no seat notice is wired", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
     const w = world(phases, undefined, fake);
@@ -1400,7 +1402,7 @@ describe("an update-branch the base cannot merge into", () => {
     w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     const done = await w.host.runtime.wait(runId);
 
-    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict"]);
+    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict", "conflict"]);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("a merge conflict survived one fixer attempt");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
