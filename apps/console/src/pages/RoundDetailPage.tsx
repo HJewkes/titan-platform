@@ -10,7 +10,8 @@ import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
 import { RoundSend, lockedBy } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
-import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
+import { PagedSections } from "./RoundPager.js";
+import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -70,8 +71,7 @@ function QuestionRound({ round }: { round: ValidRound }): ReactNode {
   return (
     <VStack gap={4}>
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} textAnswers locked={locked} />
-      <RoundSend round={round} state={state} submitting={submitting} />
+      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} send={<RoundSend round={round} state={state} submitting={submitting} />} />
     </VStack>
   );
 }
