@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FIXTURE_ROUNDS, twoPrRound } from "./round-fixtures.js";
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 import { parseManifest } from "./rounds.js";
-import { priorFeedback, shipBlockers, shipScope } from "./ship-blockers.js";
+import { priorFeedback, sendBackBlocker, shipBlockers, shipScope } from "./ship-blockers.js";
 
 function fixture(id: string): Manifest {
   const parsed = parseManifest(readFileSync(path.join(FIXTURE_ROUNDS.dir, id, "round.json")));
@@ -126,5 +126,22 @@ describe("shipScope (TP-3329)", () => {
 
     expect(shipBlockers(twoPr, [], draft, "ship-panels")).toEqual([]);
     expect(shipBlockers(twoPr, [], draft, "ship-tiles")).toEqual(['you left a comment on "Ship example/tiles#1 at 89abcdef0123?"']);
+  });
+});
+
+describe("sendBackBlocker (decision 513)", () => {
+  const backPanels = { questionId: "ship-panels", pick: "Don't ship" };
+
+  it.each([
+    ["the PR's own Ship comment", [{ ...backPanels, comment: "Narrow it again." }], ""],
+    ["a round note", [backPanels], "Both need another pass."],
+  ])("lets a PR go back on %s", (_label, answers, general) => {
+    expect(sendBackBlocker({ answers, general }, "ship-panels")).toBeUndefined();
+  });
+
+  it("holds a PR's Send back when only another PR's Ship question carries a comment", () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, backPanels];
+
+    expect(sendBackBlocker({ answers, general: " " }, "ship-panels")).toBe("Send back needs a note: say what to fix in the Ship comment or the round note.");
   });
 });
