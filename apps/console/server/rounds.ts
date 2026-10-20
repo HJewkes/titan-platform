@@ -22,6 +22,7 @@ import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
+import { hasUnboundMergeOffer } from "./round-merge-binding.js";
 import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 
 export interface RoundsSource {
@@ -58,6 +59,8 @@ const roundSummary = z.discriminatedUnion("valid", [
     questions: z.number(),
     design: z.boolean(),
     ship: z.boolean(),
+    /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
+    unbound: z.literal(true).optional(),
     recommendations: z.enum(["after-answer", "shown"]),
   }),
   invalidRound,
@@ -188,6 +191,7 @@ function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary
   return {
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
     questions: manifest.questions.length, design: isDesign(manifest), ship: isShip(manifest), recommendations: manifest.recommendations,
+    ...(hasUnboundMergeOffer(manifest.questions) && { unbound: true as const }),
   };
 }
 
