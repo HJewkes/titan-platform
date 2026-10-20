@@ -4,6 +4,7 @@ import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } fr
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { CheckRun, MergeMethod, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
@@ -57,6 +58,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     statuses: new Map(),
     readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
+    rulesets: new Map(),
     jobLogs: new Map(),
     jobSteps: new Map(),
     files: new Map(),
@@ -122,6 +124,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
     revalidateOpenPrs: async (_repo, etag) => record("revalidateOpenPrs", revalidateOpenPrs(fake, prs, etag)),
+    revalidateRef: async (_repo, branch, etag) => record("revalidateRef", revalidateRef(fake, branch, etag)),
+    revalidateRulesets: async (_repo, etag) => record("revalidateRulesets", revalidateRulesets(fake, etag)),
     createPr: async (_repo, request) => record("createPr", createPr(fake, request)),
     getPr: async (_repo, number) => {
       const pr = mustPr(prs, number);
@@ -223,12 +227,34 @@ function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: 
 /** Like GitHub's list: rows carry no mergeable state or `behind`, so the ETag changes only with what a row shows. */
 function revalidateOpenPrs(fake: FakeGitHub, prs: Map<number, PullRequest>, etag: string | null): OpenPrList {
   const rows = [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr, mergeableState: "unknown", behind: false }));
-  const current = `W/"${createHash("sha1").update(JSON.stringify(rows)).digest("hex")}"`;
-  if (etag === current) {
-    fake.notModified += 1;
-    return { notModified: true };
-  }
+  const current = etagOf(rows);
+  if (notModified(fake, etag, current)) return { notModified: true };
   return { notModified: false, prs: rows, etag: current };
+}
+
+/** Like GitHub's 404 for a missing branch, a branch the fake lacks reads as a null sha with no ETag. */
+function revalidateRef(fake: FakeGitHub, branch: string, etag: string | null): RefRead {
+  const sha = fake.refs.get(branch);
+  if (sha === undefined) return { notModified: false, sha: null, etag: null };
+  const current = etagOf(sha);
+  if (notModified(fake, etag, current)) return { notModified: true };
+  return { notModified: false, sha, etag: current };
+}
+
+function revalidateRulesets(fake: FakeGitHub, etag: string | null): RulesetList {
+  if (fake.rulesetsFreePlan) return { notModified: false, unreadable: true };
+  const rulesets = Object.fromEntries(fake.rulesets);
+  const current = etagOf(rulesets);
+  if (notModified(fake, etag, current)) return { notModified: true };
+  return { notModified: false, unreadable: false, rulesets, etag: current };
+}
+
+const etagOf = (value: unknown): string => `W/"${createHash("sha1").update(JSON.stringify(value)).digest("hex")}"`;
+
+function notModified(fake: FakeGitHub, etag: string | null, current: string): boolean {
+  if (etag !== current) return false;
+  fake.notModified += 1;
+  return true;
 }
 
 function mustPr(prs: Map<number, PullRequest>, number: number): PullRequest {
