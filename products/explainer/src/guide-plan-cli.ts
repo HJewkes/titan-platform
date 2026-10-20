@@ -3,7 +3,7 @@ import { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guid
 
 const EXIT = { OK: 0, USAGE: 2 } as const;
 
-export interface GuideCliIo {
+interface GuideCliIo {
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
