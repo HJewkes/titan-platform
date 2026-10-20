@@ -18,7 +18,10 @@ import { explainRoutes } from "./lint-gloss.js";
 import { seatRoutes } from "./lint-seat.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { v4Durations, v4FullScript } from "./spike-fixtures.test-helpers.js";
+import { fromSpikeScript } from "./spike-script.js";
 import { parseSpine } from "./spine-schema.js";
+import { readTiming } from "./timing.js";
 
 const rubric = readRubric("l1-items.md");
 
@@ -161,6 +164,20 @@ describe("item judge questions by beat role", () => {
       ["explained", "refunds", true],
     ]);
     expect(agreedFlags([result, result]).map((f) => [f.beat, f.item])).toEqual([["c2-1", "scan"], ["c2-1", "weigh"], ["c2-1", "stack"]]);
+  });
+
+  it("on the full v4 script, asks nothing of r1-7-promise and asks r3-7-simple's list why the picture holds", () => {
+    const { beats } = fromSpikeScript(v4FullScript(), readTiming(v4Durations()));
+
+    const explained = itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+
+    expect(explained.filter((q) => q.beat === "r1-7-promise")).toEqual([]);
+    expect(explained.filter((q) => q.beat === "r3-7-simple").map((q) => [q.subject, q.text.includes("left out on purpose")])).toEqual([
+      ["pool policy details", true],
+      ["risk table rows", true],
+      ["stacking", true],
+    ]);
+    expect(new Set(explained.map((q) => q.beat)).size).toBe(9);
   });
 });
 
