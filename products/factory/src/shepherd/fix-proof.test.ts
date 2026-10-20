@@ -1,4 +1,4 @@
-import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { CONFIG_PATH, formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -53,6 +53,20 @@ const TEST_ONLY_FILES: PrFile[] = [
   { path: "packages/x/src/a.test.mutations.json", status: "added" },
 ];
 
+const MERGE_BASE = fakeSha("fix-proof-merge-base");
+const TEST_GLOBS = JSON.stringify({ tests: ["packages/*/src/**/*.test.ts"], carry: [] });
+
+/** What the test-only classifier reads: the merge base, the repo's fix-proof config there and at main, and each changed file's blobs. */
+function seedDiffReads(fake: FakeGitHub, files: readonly PrFile[]): void {
+  const blob = (ref: string, path: string) => fake.files.set(`${ref}:${path}`, { content: "blob", blobSha: fakeSha(`${ref}:${path}`) });
+  fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
+  for (const ref of [MERGE_BASE, "main"]) fake.files.set(`${ref}:${CONFIG_PATH}`, { content: TEST_GLOBS, blobSha: fakeSha(`${ref}:config`) });
+  for (const file of files) {
+    if (file.status !== "removed") blob(H, file.path);
+    if (file.status !== "added") blob(MERGE_BASE, file.path);
+  }
+}
+
 /** A job log as GitHub serves it: each line behind an Actions timestamp. */
 const actionsLog = (...lines: string[]) => ["Run pnpm fix-proof", ...lines, "Post job cleanup."].map((line) => `2026-10-11T12:00:00.0000000Z ${line}`).join("\n");
 
@@ -89,6 +103,7 @@ interface Scene {
   files?: PrFile[];
   external?: string;
   workflow?: boolean;
+  noReproProceed?: "off" | "on";
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -116,9 +131,10 @@ describe("sh-fix-proof in reviewPhase", () => {
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     if (scene.workflow) addWorkflowAtBase(fake);
+    if (scene.noReproProceed === "on") seedDiffReads(fake, scene.files ?? []);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
+    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, ...(scene.noReproProceed && { noReproProceed: scene.noReproProceed }) };
     const dispatch = fakeDispatch();
     if (scene.external) dispatch.agents.push({ name: scene.external, agentId: `agent-${scene.external}`, sessionId: `session-${scene.external}`, presence: "live", spawnedBy: null, predecessor: null });
     const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
@@ -161,6 +177,62 @@ describe("sh-fix-proof in reviewPhase", () => {
 
     expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
     expect(spawns).toEqual([]);
+  });
+
+  describe("shepherd.gateReset.noReproProceed (decision 424(1))", () => {
+    const vacuous = actionsLog(resultLine(H, "vacuous"));
+    const TESTS_ONLY: PrFile[] = [{ path: "packages/x/src/a.test.ts", status: "modified" }];
+    const scene = (overrides: Scene): Scene => ({ kind: "test-only", noReproProceed: "on", runs: [fixProofRun()], log: vacuous, files: TESTS_ONLY, ...overrides });
+
+    it("ends a test-only PR as NO_REPRO when the flag is off", async () => {
+      const { verdicts, spawns } = await review(scene({ noReproProceed: "off" }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("ends a test-only PR as NO_REPRO when the flag is absent", async () => {
+      const { verdicts } = await review(scene({ noReproProceed: undefined }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    });
+
+    it.each([["vacuous"], ["no-tests"]] as const)("sends a test-only PR with a tests-only diff and a %s proof to a reviewer, marked no-repro-test-only", async (verdict) => {
+      const { verdicts, spawns, inputs } = await review(scene({ log: actionsLog(resultLine(H, verdict)) }));
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+      expect(spawns).toHaveLength(1);
+      expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
+      expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofWaivedAt");
+      expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    });
+
+    it("keeps NO_REPRO when the diff also changes source", async () => {
+      const { verdicts, spawns } = await review(scene({ files: [...TESTS_ONLY, { path: "packages/x/src/a.ts", status: "modified" }] }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it.each(["correctness", "security"])("keeps NO_REPRO for a %s PR even when its diff is tests alone", async (kind) => {
+      const { verdicts, spawns } = await review(scene({ kind }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("keeps NO_REPRO when the classifier cannot read the diff", async () => {
+      const { verdicts, spawns } = await review(scene({ files: [] }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("keeps NO_REPRO when a declared mutation survives the tests", async () => {
+      const { verdicts } = await review(scene({ log: actionsLog(mutantsLine("not-killed")), files: TEST_ONLY_FILES }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    });
   });
 
   it("reviews a test-only PR whose every declared mutation is killed by tests that pass at head", async () => {

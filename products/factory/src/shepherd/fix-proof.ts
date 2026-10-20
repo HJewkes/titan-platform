@@ -7,6 +7,7 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
@@ -39,11 +40,11 @@ const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/act
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
-type FixProofRead = ({ kind: "result" } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
+type FixProofRead = ({ kind: "result"; testOnlyProceed?: true } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string() }),
+  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional() }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string() }),
 ]);
@@ -53,7 +54,7 @@ type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
-type Gate = { open: true; pr: number | null } | { open: false; reason: string };
+type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string };
 
 /** A store that cannot be read gives no kind, so the gate stays shut and the review proceeds with the reason recorded. */
 async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string): Promise<Gate> {
@@ -64,11 +65,11 @@ async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string):
     return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
   }
   if (registration === undefined) return { open: false, reason: "no registration for this run" };
-  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
+  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr, kind: registration.kind };
   const branch = await headBranchOf(port, registration);
   if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
-  if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr };
+  if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr, kind: registration.kind };
   return { open: false, reason: `kind ${registration.kind}` };
 }
 
@@ -236,12 +237,14 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
 }
 
 /** The body of the sh-fix-proof step. A kind outside the gate makes no GitHub call; a read that fails is recorded and the review proceeds. */
-export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
   const gate = await gateOf(deps.port, deps.store, input.runId);
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   try {
-    return await readResult(deps.port, input, gate.pr, timing, signal);
+    const read = await readResult(deps.port, input, gate.pr, timing, signal);
+    const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr };
+    return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
   } catch (error) {
     signal.throwIfAborted();
     return { kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };
@@ -276,13 +279,14 @@ export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: 
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-export type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
 
 /**
  * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.
  * A head can force each of these reads, so none may pass as if the bug were reproduced.
  */
 export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head: string): { unverified: FixProofUnverified } | undefined {
+  if (read.kind === "result" && read.testOnlyProceed === true && fixProofVerdict(read, head)) return { unverified: "no-repro-test-only" };
   if (read.kind === "untrusted") return { unverified: "untrusted" };
   if (read.kind === "error") return { unverified: "unread" };
   if (read.kind !== "result") return undefined;
