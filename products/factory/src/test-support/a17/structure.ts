@@ -1,6 +1,6 @@
 import type { NotEvent } from "./not-event.js";
 
-export interface A17Violation {
+interface A17Violation {
   readonly file: string;
   readonly title: string;
   readonly rule: string;
