@@ -97,7 +97,7 @@ export function fromBackstopContext(repo: string, head: string, node: BackstopCo
   return { type: "check", repo: lowered, head, context: node.name, checkRunId: node.databaseId, outcome: node.conclusion.toLowerCase(), at: utcSeconds(node.completedAt) };
 }
 
-interface Transport {
+export interface Transport {
   source: "webhook" | "backstop";
   observedAt: string;
   /** `X-GitHub-Delivery`, webhook only. */
