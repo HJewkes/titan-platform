@@ -35,7 +35,7 @@ import { shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 export const ADDRESSED_FILE = "addressed.json";
-export const ADDRESSED_SCHEMA_ID = "titan-console/addressed@1";
+const ADDRESSED_SCHEMA_ID = "titan-console/addressed@1";
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 
