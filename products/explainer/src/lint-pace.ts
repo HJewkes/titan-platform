@@ -122,6 +122,7 @@ export function paceRows(beats: readonly PaceBeat[], invariants: readonly string
 const PACE_RULES: readonly [string, L0Result["severity"]][] = [
   ["Q-E7", "error"], ["Q-E8", "warning"], ["Q-E9", "warning"], ["Q-E10", "warning"],
   ["Q-E11", "error"], ["Q-E12", "warning"], ["Q-E13", "warning"], ["Q-E14", "warning"],
+  ["Q-E19", "warning"],
 ];
 
 const throws = (build: () => unknown): boolean => {

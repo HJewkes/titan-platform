@@ -231,10 +231,10 @@ describe("paceCheck as an L0 check", () => {
     );
 
   const expectPaceFailedAndOthersReported = (results: ReturnType<typeof runL0>) => {
-    const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10", "Q-E11", "Q-E12", "Q-E13", "Q-E14"].includes(r.check_id));
+    const pace = results.filter((r) => ["Q-E7", "Q-E8", "Q-E9", "Q-E10", "Q-E11", "Q-E12", "Q-E13", "Q-E14", "Q-E19"].includes(r.check_id));
 
     expect(results.map((r) => r.check_id)).toEqual(expect.arrayContaining(["Q-E1", "Q-F1"]));
-    expect(pace).toHaveLength(8);
+    expect(pace).toHaveLength(9);
     expect(pace.every((r) => !r.pass && r.detail_beats.join() === "c2-1-stations")).toBe(true);
     expect(l0HardPass(results.filter((r) => r.check_id === "Q-E7"))).toBe(false);
   };
