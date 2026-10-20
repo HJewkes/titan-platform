@@ -56,7 +56,7 @@ export function useChoiceKeys(question: Question | undefined, onChoose: (choice:
 }
 
 /** `r` reveals or hides the active question's recommendation, under the same guards as the digit keys. */
-export function useRevealKey(active: boolean, toggle: (() => void) | undefined): void {
+function useRevealKey(active: boolean, toggle: (() => void) | undefined): void {
   useEffect(() => {
     if (!active || toggle === undefined) return;
     const onKey = (event: KeyboardEvent): void => {

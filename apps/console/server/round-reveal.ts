@@ -65,7 +65,7 @@ async function readReveals(roundDir: string): Promise<Reveal[]> {
 }
 
 /** The questions whose recommendation the page was sent before the round was answered; none for a missing or broken sidecar. */
-export async function revealedQuestionIds(roundDir: string): Promise<Set<string>> {
+async function revealedQuestionIds(roundDir: string): Promise<Set<string>> {
   return new Set((await readReveals(roundDir)).map((each) => each.questionId));
 }
 
@@ -105,7 +105,7 @@ function recommendationOf(manifest: Manifest, questionId: string) {
 
 type RevealArgs = z.infer<typeof revealArgs>;
 
-export async function revealRecommendation({ dir }: RoundsSource, args: RevealArgs, now = new Date()): Promise<z.infer<typeof revealResult>> {
+async function revealRecommendation({ dir }: RoundsSource, args: RevealArgs, now = new Date()): Promise<z.infer<typeof revealResult>> {
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
   const status = await statusOf(roundDir);

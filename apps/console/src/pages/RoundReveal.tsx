@@ -69,14 +69,14 @@ export function RoundRevealProvider({ round, children }: { round: ValidRound; ch
 }
 
 /** An empty pick-many or blank text answers nothing, as the server's `isAnswered` reads it. */
-export function isHeldAnswer(answer: QuestionAnswer | undefined): boolean {
+function isHeldAnswer(answer: QuestionAnswer | undefined): boolean {
   if (answer === undefined) return false;
   if ("picks" in answer) return answer.picks.length > 0;
   if ("text" in answer) return answer.text.trim() !== "";
   return true;
 }
 
-export interface ShownRecommendation {
+interface ShownRecommendation {
   recommendation: Recommendation | undefined;
   /** Shown: in a `shown` or sent round, once answered, or while the owner has it revealed. */
   visible: boolean;
