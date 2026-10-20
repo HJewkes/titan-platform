@@ -460,6 +460,16 @@ describe("runItems with a story spine", () => {
     expect(verdictsOf(result).map((v) => v.kind)).not.toContain("kind-honest");
   });
 
+  // Mutation: dropping the contrast skip from kindRoutes asks kind-honest; dropping it from spinePlan asks the odd one out.
+  it("asks no list question about a beat the spine declares a contrast", async () => {
+    const shapes = "\n## 9. List shapes\n| Beat | Shape |\n|---|---|\n| c1-1 | contrast |\n";
+
+    const result = await runItems(spineInput(kindJudge().harness, spineDoc(ledgerRows(DESK_LEDGER)) + shapes));
+
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("kind-honest");
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("odd-one-out");
+  });
+
   it("fails an invariant seat no §4 part keeps without a model call", async () => {
     const judge = kindJudge();
     const routes: ItemRoutes = { explain: [], seat: [{ beat: "c2-1", reason: "invariant" }], lists: [] };
