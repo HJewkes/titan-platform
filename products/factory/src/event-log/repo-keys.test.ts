@@ -111,7 +111,7 @@ describe("transition kinds", () => {
 
   it("ignores a push to another branch and a branch deletion", () => {
     expect(fromPushDelivery(pushDelivery("o/r", "feature", HEAD))).toBeUndefined();
-    expect(fromPushDelivery({ ...(pushDelivery("o/r", "main", "0".repeat(40)) as object), deleted: true })).toBeUndefined();
+    expect(fromPushDelivery(pushDelivery("o/r", "main", "0".repeat(40), true))).toBeUndefined();
   });
 
   it("gives each row of one delivery its own namespaced delivery id, and a backstop row none", () => {

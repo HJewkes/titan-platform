@@ -35,8 +35,8 @@ export function rulesetDelivery(repo: string, id: number, updatedAt: string, act
 }
 
 /** Shaped after the `push` example in GitHub's webhook events documentation. */
-export function pushDelivery(repo: string, branch: string, sha: string, defaultBranch = "main"): unknown {
-  return { ref: `refs/heads/${branch}`, after: sha, deleted: false, repository: { full_name: repo, default_branch: defaultBranch } };
+export function pushDelivery(repo: string, branch: string, sha: string, deleted = false): unknown {
+  return { ref: `refs/heads/${branch}`, after: sha, deleted, repository: { full_name: repo, default_branch: "main" } };
 }
 
 /** Shaped after the backstop's open-PR node (packages/github backstop-query `GhOpenPr`). */
