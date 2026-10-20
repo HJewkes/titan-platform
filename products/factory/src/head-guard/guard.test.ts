@@ -140,19 +140,38 @@ describe("guardedHeadRead", () => {
   it("re-classifies once against the row that won a lost compare-and-set", async () => {
     const { db, deps } = harness({ reads: [SHA_B], ancestry: "ahead" });
     seed(db, SHA_A);
-    const read = deps.readHead;
+    const ancestry = deps.ancestry;
     let raced = false;
-    deps.readHead = async (key) => {
-      const head = await read(key);
+    deps.ancestry = async (key, base, head) => {
+      const answer = await ancestry(key, base, head);
       if (!raced) {
         raced = true;
         advanceEpoch(db, { ...KEY, expectedEpoch: 1, head: SHA_B, by: "fast-forward", at: AT });
       }
-      return head;
+      return answer;
     };
 
     const result = await guardedHeadRead(deps, KEY);
 
     expect(result).toEqual({ outcome: "same", head: SHA_B, epoch: 2 });
+    expect(raced).toBe(true);
+  });
+
+  it("treats a compare-and-set lost on both attempts as stale and goes on to the next try", async () => {
+    const { db, deps, sleeps } = harness({ reads: [SHA_B], ancestry: "ahead" });
+    seed(db, SHA_A);
+    const heads = ["c".repeat(40), "d".repeat(40), "e".repeat(40), "f".repeat(40)];
+    let raced = 0;
+    deps.ancestry = async () => {
+      const winner = heads[raced++];
+      const current = readEpoch(db, KEY)!;
+      if (winner !== undefined) advanceEpoch(db, { ...KEY, expectedEpoch: current.epoch, head: winner, by: "fast-forward", at: AT });
+      return "ahead";
+    };
+
+    const result = await guardedHeadRead(deps, KEY);
+
+    expect(result).toEqual({ outcome: "confirmed", head: SHA_B, epoch: 6 });
+    expect(sleeps).toEqual([8_000, 16_000]);
   });
 });
