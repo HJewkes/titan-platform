@@ -14,7 +14,7 @@ export const VERDICTS = [
   { verdict: "maybe", label: "Maybe", key: "m" },
 ] as const satisfies readonly { verdict: Verdict; label: string; key: string }[];
 
-export const CLEAR_KEY = "u";
+const CLEAR_KEY = "u";
 
 /** The verdict a key sets on the active frame, null for the clear key, undefined for any other key. */
 export function verdictForKey(key: string): Verdict | null | undefined {

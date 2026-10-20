@@ -210,6 +210,11 @@ const verdictButton = (key: string, verdict: string): HTMLElement => within(scre
 const pressed = (key: string, verdict: string): string | null => verdictButton(key, verdict).closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
 const pressedVerdicts = (key: string): string[] => ["Chosen", "Rejected", "Maybe"].filter((verdict) => pressed(key, verdict) === "true");
 const pickOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest('[role="radio"]')?.getAttribute("aria-checked");
+/** An inactive frame keeps its key hint's line, hidden, so activating another frame moves nothing under the pointer. */
+const keyHint = (key: string): string => {
+  const hint = within(screen.getByTestId(`frame-feedback-${key}`)).getByText("c chosen · x rejected · m maybe · u clear").closest("[aria-hidden]");
+  return hint?.getAttribute("aria-hidden") === "false" ? "shown" : hint?.classList.contains("invisible") ? "hidden in place" : "missing";
+};
 const submitted = ({ calls }: Rendered): unknown => calls.find((call) => call.name === "rounds.submit")?.args;
 
 async function send(rendered: Rendered): Promise<unknown> {
@@ -249,7 +254,8 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
 
     expect(pressedVerdicts("beacon-error")).toEqual(["Rejected"]);
     expect(pickOf("Ring")).toBe("false");
-    expect(screen.getByText("c chosen · x rejected · m maybe · u clear")).toBeTruthy();
+    expect(keyHint("beacon-error")).toBe("shown");
+    expect(keyHint("beacon-idle")).toBe("hidden in place");
     fireEvent.keyDown(window, { key: "m" });
     expect(pressedVerdicts("beacon-error")).toEqual(["Maybe"]);
     fireEvent.keyDown(window, { key: "u" });

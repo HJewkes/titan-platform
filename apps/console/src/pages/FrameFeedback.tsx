@@ -8,7 +8,7 @@ import { typedInto } from "./RoundQuestion.js";
 export type ActiveTarget = { kind: "question"; id: string } | { kind: "frame"; key: string };
 
 /** c, x and m set the active frame's verdict and u clears it, unless a modifier is held or the owner is typing in a field. */
-export function useFrameKeys(active: ActiveTarget | undefined, onVerdict: (key: string, verdict: Verdict | null) => void): void {
+function useFrameKeys(active: ActiveTarget | undefined, onVerdict: (key: string, verdict: Verdict | null) => void): void {
   useEffect(() => {
     if (active?.kind !== "frame") return;
     const onKey = (event: KeyboardEvent): void => {
@@ -91,7 +91,10 @@ function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps
           </Button>
         ))}
       </div>
-      {active ? <Typography variant="caption" color="secondary">c chosen · x rejected · m maybe · u clear</Typography> : null}
+      {/* The hint keeps its line on every frame: a press that moved the frames below it would land on another control. */}
+      <div className={active ? undefined : "invisible"} aria-hidden={!active}>
+        <Typography variant="caption" color="secondary">c chosen · x rejected · m maybe · u clear</Typography>
+      </div>
       <Input multiline numberOfLines={2} label="Frame comment (optional)" accessibilityLabel={`Comment on frame ${label}`} value={draft.comment} onChangeText={unlessLocked(feedback.locked, (text: string) => feedback.setComment(frameKey, text))} />
     </div>
   );
