@@ -46,10 +46,7 @@ export function listRoutes(beats: readonly PaceBeat[]): ListRoute[] {
 }
 
 // A PROMISE previews items later chapters deliver, and a CAVEAT voices the script's simplifications: what it leaves out.
-const EXPLAIN_ROLES = new Map<string, ExplainRole>([
-  ["PROMISE", "promise"],
-  ["CAVEAT", "simplification"],
-]);
+const EXPLAIN_ROLES = new Map<string, ExplainRole>([["PROMISE", "promise"], ["CAVEAT", "simplification"]]);
 
 function explainItemRoutes(beats: readonly PaceBeat[]): ItemExplainRoute[] {
   const fns = new Map(beats.map((b) => [b.id, b.fn]));
@@ -329,14 +326,8 @@ const spineQuestionTemplates = (): string[] => [
 
 export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
-    questions: [
-      explainedText("<beat>", "<item>"),
-      leftOutText("<beat>", "<item>"),
-      seatedText("<beat>", "invariant"),
-      seatedText("<beat>", "finding"),
-      oddOneOutText("<beat>", ["<a>", "<b>", "<c>"]),
-    ],
-    explained_unasked_roles: ["promise"],
+    questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
+    role_questions: { promise: null, simplification: leftOutText("<beat>", "<item>") },
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),
