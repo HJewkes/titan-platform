@@ -510,7 +510,7 @@ describe("a Ship round that shares the round answer state (TP-3766)", () => {
     const ship = detail.manifest.questions.find((question) => question.id === "ship-tiles");
     if (ship === undefined) throw new Error("the Ship fixture has no ship-tiles question");
     const after: Question[] = [
-      { id: "plane", kind: "pick-one", prompt: "Which tile reads better?", options: ["Light", "Dark"], optionVariants: { Light: "tile-light", Dark: "tile-dark" } },
+      { id: "plane", kind: "pick-one", prompt: "Which tile reads better?", options: ["Light", "Dark"], optionVariants: { Light: "tile-light", Dark: "tile-dark" }, signsOff: "tile-plane" },
       { id: "notes", kind: "text", prompt: "Anything else?" },
     ];
     return { manifest: { ...detail.manifest, questions: [ship, ...after] } };
