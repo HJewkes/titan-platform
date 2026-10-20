@@ -85,11 +85,11 @@ afterEach(async () => {
 
 const OWNER: ConsoleContext = { warnings: [], format: "json", surface: "http", auth: { credential: "session", issuedAt: 1_000, peerLocal: false }, ownerWrites: true };
 
-/** Answers go to the real `rounds.submit` over the temp rounds dir. */
-const submitting: DataSource = {
-  subscribe: () => () => undefined,
-  call: async (name, args) => (await invokeCommand(roundsSubmitCommands({ dir: root })["rounds.submit"], args, OWNER)).envelope,
-};
+/** Answers go to the real `rounds.submit` over the temp rounds dir; reads come from an empty snapshot. */
+const submitting = (reads: DataSource): DataSource => ({
+  subscribe: reads.subscribe.bind(reads),
+  call: async (_name, args) => (await invokeCommand(roundsSubmitCommands({ dir: root })["rounds.submit"], args, OWNER)).envelope,
+});
 
 const emptyPage = (): Document => new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: {} }), "text/html");
 
@@ -105,9 +105,10 @@ function Round({ framed }: { framed: boolean }): ReactNode {
 }
 
 function Page({ framed = true }: { framed?: boolean }): ReactNode {
+  const reads = pageDataSource({ doc: emptyPage() });
   return (
-    <RpcProvider source={pageDataSource({ doc: emptyPage() })}>
-      <AnswerSourceProvider value={submitting}>
+    <RpcProvider source={reads}>
+      <AnswerSourceProvider value={submitting(reads)}>
         <Round framed={framed} />
       </AnswerSourceProvider>
     </RpcProvider>
