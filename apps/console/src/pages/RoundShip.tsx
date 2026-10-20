@@ -13,6 +13,7 @@ import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
 import { shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
+import { UnchangedFrames, WhatShips, splitUnchanged } from "./ShipPairs.js";
 import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -26,6 +27,7 @@ interface ShipFrame {
   label: string;
   theme?: ListedFrame["theme"];
   views: FrameView[];
+  unchanged: boolean;
 }
 
 const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
@@ -79,19 +81,30 @@ function Montages({ round }: { round: ValidRound }): ReactNode {
   const frames = round.manifest.variants.flatMap((variant): ShipFrame[] => {
     if (variant.image === undefined) return [];
     const frame = byKey.get(variant.key);
-    return [{ key: variant.key, label: variant.label, theme: frame?.theme, views: frame?.views ?? ["head"] }];
+    const unchanged = variant.change === "unchanged" || (frame?.unchanged ?? false);
+    return [{ key: variant.key, label: variant.label, theme: frame?.theme, views: frame?.views ?? ["head"], unchanged }];
   });
   if (frames.length === 0) return null;
+  const merge = round.manifest.questions.find(isMergeQuestion)?.merge;
+  const { changed, unchanged } = splitUnchanged(frames);
   return (
     <Section>
-      <SectionHeader title={`Changed images (${frames.length})`} subtitle="Before, after and diff for each image. Tap an image to enlarge it." />
+      <SectionHeader title={`Main vs head (${frames.length} images)`} subtitle="Before is main, after is the PR head. Changed images come first. Tap an image to enlarge it." />
       <SectionContent>
         <VStack gap={6}>
-          {themePairs(frames).map((group) => (group.length === 2 ? <ThemePair key={group[0].key} roundId={round.id} pair={group} /> : <FrameMontage key={group[0].key} roundId={round.id} frame={group[0]} />))}
+          {merge ? <WhatShips merge={merge} changed={changed.length} /> : null}
+          <FrameGroups roundId={round.id} frames={changed} />
+          <UnchangedFrames count={unchanged.length}>
+            <FrameGroups roundId={round.id} frames={unchanged} />
+          </UnchangedFrames>
         </VStack>
       </SectionContent>
     </Section>
   );
+}
+
+function FrameGroups({ roundId, frames }: { roundId: string; frames: readonly ShipFrame[] }): ReactNode {
+  return themePairs(frames).map((group) => (group.length === 2 ? <ThemePair key={group[0].key} roundId={roundId} pair={group} /> : <FrameMontage key={group[0].key} roundId={roundId} frame={group[0]} />));
 }
 
 type FrameGroup = [ShipFrame] | [ShipFrame, ShipFrame];
@@ -119,10 +132,10 @@ function ThemePair({ roundId, pair }: { roundId: string; pair: [ShipFrame, ShipF
 }
 
 /** A CI packet's head is its montage, so AFTER reads the `after` image whenever the round lists one. */
-function panelsOf(views: readonly FrameView[]): { label: string; view: FrameView }[] {
-  const after = { label: "AFTER", view: views.includes("after") ? ("after" as const) : ("head" as const) };
+function panelsOf(views: readonly FrameView[]): { label: string; side: string; view: FrameView }[] {
+  const after = { label: "AFTER (head)", side: "after", view: views.includes("after") ? ("after" as const) : ("head" as const) };
   if (!views.includes("base")) return [after];
-  return [{ label: "BEFORE", view: "base" }, after, ...(views.includes("diff") ? [{ label: "DIFF", view: "diff" as const }] : [])];
+  return [{ label: "BEFORE (main)", side: "before", view: "base" }, after, ...(views.includes("diff") ? [{ label: "DIFF", side: "diff", view: "diff" as const }] : [])];
 }
 
 function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame }): ReactNode {
@@ -135,10 +148,10 @@ function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame })
         {isNew ? <Badge color="info" size="sm">NEW</Badge> : null}
       </HStack>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {panelsOf(frame.views).map(({ label, view }) => (
+        {panelsOf(frame.views).map(({ label, side, view }) => (
           <figure key={label} className="flex flex-col gap-1">
             <Typography variant="microLabel" color="secondary">{label}</Typography>
-            <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${label.toLowerCase()}`} />
+            <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${side}`} />
           </figure>
         ))}
       </div>

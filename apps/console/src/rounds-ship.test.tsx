@@ -95,7 +95,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
   return { calls };
 }
 
-const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE|AFTER|DIFF)$/).map((label) => label.textContent);
+const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
@@ -125,11 +125,11 @@ describe("the Ship view", () => {
     expect(within(await screen.findByTestId(`round-row-${SHIP}`)).getByText("ship")).toBeTruthy();
   });
 
-  it("shows a changed image as BEFORE, AFTER and DIFF, and a new one as NEW with AFTER only", async () => {
+  it("shows a changed image as BEFORE (main), AFTER (head) and DIFF, and a new one as NEW with AFTER (head) only", async () => {
     await renderShip();
 
-    expect(panelLabels("tile-light")).toEqual(["BEFORE", "AFTER", "DIFF"]);
-    expect(panelLabels("badge-new")).toEqual(["AFTER"]);
+    expect(panelLabels("tile-light")).toEqual(["BEFORE (main)", "AFTER (head)", "DIFF"]);
+    expect(panelLabels("badge-new")).toEqual(["AFTER (head)"]);
     expect(within(screen.getByTestId("montage-badge-new")).getByText("NEW")).toBeTruthy();
     expect(within(screen.getByTestId("montage-tile-light")).queryByText("NEW")).toBeNull();
     expect(within(screen.getByTestId("montage-panel-wide")).getByText("No diff image: compare before and after side by side.")).toBeTruthy();
@@ -171,6 +171,31 @@ describe("the Ship view", () => {
 
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
     expect(screen.queryByText(/nothing else shifted/)).toBeNull();
+  });
+
+  it("names what ships: the PR, its head and the changed-frame count", async () => {
+    await renderShip();
+
+    expect(screen.getByTestId("what-ships").textContent).toBe("What ships: example/tiles#1 at 89abcde, 4 changed frames");
+  });
+
+  it("puts changed frames first and folds unchanged pairs into an N unchanged disclosure", async () => {
+    const listed = FRAMES.map((frame) => ({ ...frame, unchanged: frame.key === "tile-light" }));
+    await renderShip({ listed });
+
+    const order = screen.getAllByTestId(/^montage-/).map((montage) => montage.dataset.testid);
+    const folded = screen.getByTestId("unchanged-frames");
+    expect(order).toEqual(["montage-tile-dark", "montage-badge-new", "montage-panel-wide", "montage-tile-light"]);
+    expect(within(folded).getByText("1 unchanged: main and head render the same")).toBeTruthy();
+    expect(within(folded).getByTestId("montage-tile-light")).toBeTruthy();
+    expect(within(folded).queryByTestId("montage-tile-dark")).toBeNull();
+    expect(screen.getByTestId("what-ships").textContent).toBe("What ships: example/tiles#1 at 89abcde, 3 changed frames");
+  });
+
+  it("shows no unchanged disclosure when every frame changed", async () => {
+    await renderShip();
+
+    expect(screen.queryByTestId("unchanged-frames")).toBeNull();
   });
 
   it("opens an image full size when pressed and closes on Escape", async () => {
