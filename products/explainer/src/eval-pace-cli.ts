@@ -36,7 +36,7 @@ interface PaceInput {
 }
 
 /** The item track and the stated invariants of a spike or script/v1 file. */
-function paceInput(raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceInput {
+export function paceInput(raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceInput {
   if (format === "v1") {
     const script = ScriptSchema.parse(raw);
     return { beats: fromScriptV1(script, timing), invariants: script.video.invariants ?? [] };
