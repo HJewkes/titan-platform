@@ -36,12 +36,12 @@ import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js"
 import { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
+import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
-export const ADDRESSED_FILE = "addressed.json";
-const ADDRESSED_SCHEMA_ID = "titan-console/addressed@1";
+export { ADDRESSED_FILE };
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 

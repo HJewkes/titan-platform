@@ -3,7 +3,9 @@ import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/re
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundNotes } from "../../server/rounds.js";
 import type { ABAnswering } from "./QuestionAB.js";
+import { heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
+import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
 
@@ -25,12 +27,16 @@ function useShipMarks() {
   return { addressed, toggleAddressed, followUps, setFollowUp };
 }
 
-/** The page's picks, text, comments, option notes and Ship marks, and the active question that digit keys answer: at first the first one with choices. */
-export function useRoundAnswers(questions: readonly Question[]) {
-  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
-  const [comments, setComments] = useState<Record<string, string>>({});
-  const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>({});
-  const [general, setGeneral] = useState("");
+/**
+ * The page's picks, text, comments, option notes and Ship marks, and the active question that digit keys answer: at
+ * first the first one with choices. A sent round's `notes` seed them, so a reload shows the answers as sent.
+ */
+export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes) {
+  const [held] = useState(() => heldFromSent(notes));
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>(held.answers);
+  const [comments, setComments] = useState<Record<string, string>>(held.comments);
+  const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>(held.optionNotes);
+  const [general, setGeneral] = useState(held.general);
   const marks = useShipMarks();
   const [activeId, setActiveId] = useState(() => questions.find((question) => choicesOf(question).length > 0)?.id);
   const active = questions.find((question) => question.id === activeId);
@@ -59,8 +65,8 @@ interface RoundSectionsProps {
   textAnswers?: boolean;
   /** A section's frames, drawn between its notes and its questions. */
   frames?: (section: RoundSection) => ReactNode;
-  /** A sent round's free text: each comment then shows read-only in place of its box. */
-  notes?: RoundNotes;
+  /** Sent or sending: every question shows its answer as given and takes no more edits. */
+  locked?: boolean;
 }
 
 /** One question's A/B notes and "Neither" from the page's answers; choosing Neither makes the question the active one. */
@@ -77,7 +83,7 @@ export function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAns
 }
 
 /** Every section of a round with its questions, numbered across the round. */
-export function RoundSections({ manifest, state, textAnswers = false, frames, notes }: RoundSectionsProps): ReactNode {
+export function RoundSections({ manifest, state, textAnswers = false, frames, locked = false }: RoundSectionsProps): ReactNode {
   const groups = orderedQuestions(manifest);
   const questions = groups.flatMap((group) => group.questions);
   const { answers, comments, activeId, setActiveId, choose, write, comment } = state;
@@ -85,19 +91,19 @@ export function RoundSections({ manifest, state, textAnswers = false, frames, no
     <QuestionSection key={section?.id ?? "unsectioned"} section={section}>
       {section && frames ? frames(section) : null}
       {inGroup.map((question) => (
-        <VStack key={question.id} gap={2}>
+        <LockedQuestion key={question.id} locked={locked} testID={`round-entry-${question.id}`}>
           <RoundQuestion
             question={question}
             position={questions.indexOf(question) + 1}
             answer={answers[question.id]}
-            onChoose={(choice) => choose(question, choice)}
-            onText={textAnswers ? (text) => write(question, text) : undefined}
-            active={question.id === activeId}
-            onActivate={() => setActiveId(question.id)}
-            ab={abAnswering(state, question, notes !== undefined)}
+            onChoose={unlessLocked(locked, (choice: string) => choose(question, choice))}
+            onText={textAnswers ? unlessLocked(locked, (text: string) => write(question, text)) : undefined}
+            active={!locked && question.id === activeId}
+            onActivate={unlessLocked(locked, () => setActiveId(question.id))}
+            ab={abAnswering(state, question, locked)}
           />
-          <RoundComment question={question} value={comments[question.id] ?? ""} onChange={(text) => comment(question, text)} sent={notes && (notes.comments[question.id] ?? "")} />
-        </VStack>
+          <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} />
+        </LockedQuestion>
       ))}
     </QuestionSection>
   ));
@@ -106,7 +112,7 @@ export function RoundSections({ manifest, state, textAnswers = false, frames, no
 function QuestionSection({ section, children }: { section: RoundSection | null; children: ReactNode }): ReactNode {
   return (
     <Section>
-      <SectionHeader title={section?.title ?? "Other questions"} subtitle={section?.deciding} />
+      <SectionHeader title={section?.title ?? "Other questions"} />
       <SectionContent>
         <VStack gap={3}>
           {section ? <SectionNotes section={section} /> : null}
@@ -120,8 +126,9 @@ function QuestionSection({ section, children }: { section: RoundSection | null; 
 function SectionNotes({ section }: { section: RoundSection }): ReactNode {
   return (
     <VStack gap={3}>
+      {section.deciding ? <RoundNote heading="Deciding" text={section.deciding} /> : null}
       {section.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
-      {section.context ? <RoundNote text={section.context} /> : null}
+      {section.context ? <RoundNote heading="Context" text={section.context} /> : null}
     </VStack>
   );
 }
