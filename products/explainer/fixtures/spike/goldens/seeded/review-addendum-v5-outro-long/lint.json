@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-outro-long",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": null,
+   "check": "Q-F11",
+   "severity": "error",
+   "message": "outro over 25 words"
+  }
+ ]
+}

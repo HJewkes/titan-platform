@@ -1,0 +1,14 @@
+{
+ "script": "v4-sentence-long",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r3-2-sentence",
+   "check": "Q-V9",
+   "severity": "error",
+   "message": "sentence of 29 words: One sentence explains it: a recipe is a script, a step is me…"
+  }
+ ]
+}
