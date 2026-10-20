@@ -1,4 +1,4 @@
-import { TEST_CLASSES, parseResultLine, type FixProofResult, type Verdict } from "@titan-design/fix-proof";
+import { TEST_CLASSES, parseResultLine, provedByMutants, type FixProofResult, type Verdict } from "@titan-design/fix-proof";
 
 export const TESTS_OVERLAY: readonly string[] = [
   "You are the tests member of a review panel. Other members judge correctness and scope; your question is whether the tests prove the change.",
@@ -14,6 +14,14 @@ const VERDICT_READING: Record<Verdict, string> = {
   "no-tests": "The change adds or edits no test. That is blocking unless you show why no test can fail on the base.",
   error: "fix-proof could not finish, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
 };
+
+const MUTANTS_READING =
+  "The PR changes only tests, so base and head run the same code; instead every changed test file has a mutation spec in this diff, every mutation its specs declare made the tests it names fail, and the tests pass at head. Check that each mutation is a bug a caller would see and that the tests it kills are the ones the PR changed.";
+
+function verdictLine(result: FixProofResult): string {
+  const reading = provedByMutants(result) ? MUTANTS_READING : VERDICT_READING[result.verdict];
+  return `fix-proof/v1 verdict for this head: ${result.verdict}. ${reading}`;
+}
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
 export type FixProofUnverified = "error" | "untrusted" | "unread";
@@ -50,7 +58,7 @@ export function fixProofLines(head: string, line: string | undefined): string[] 
   if (!parsed.ok) return [`The fix-proof/v1 result given could not be read, so ignore it. ${JUDGE_YOURSELF}`];
   const { result } = parsed;
   if (result.head !== head) return [`The fix-proof/v1 result given is for another head, so ignore it. ${JUDGE_YOURSELF}`];
-  return [`fix-proof/v1 verdict for this head: ${result.verdict}. ${VERDICT_READING[result.verdict]}`, countLine(result), ...cautionLines(result)];
+  return [verdictLine(result), countLine(result), ...cautionLines(result)];
 }
 
 const WAIVED_READING =

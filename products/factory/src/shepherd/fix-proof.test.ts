@@ -32,6 +32,27 @@ function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
   return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 
+/** A test-only diff's line: base and head pass alike, so only the mutation check can prove it. */
+function mutantsLine(mutants: "killed" | "not-killed", counts: Partial<FixProofResult["counts"]> = {}, uncovered: string[] = []): string {
+  const outcome = mutants === "killed" && uncovered.length === 0 ? "killed" : "survived";
+  return formatResultLine({
+    head: H,
+    mergeBase: BASE,
+    verdict: "vacuous",
+    counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0, ...counts },
+    notCollected: [],
+    deletedTests: [],
+    configEdited: false,
+    tests: [],
+    truncated: false,
+    mutants: { verdict: mutants, results: [{ spec: "packages/x/src/a.test.mutations.json", name: "drop the bound", outcome: uncovered.length > 0 ? "killed" : outcome }], uncovered },
+  });
+}
+const TEST_ONLY_FILES: PrFile[] = [
+  { path: "packages/x/src/a.test.ts", status: "modified" },
+  { path: "packages/x/src/a.test.mutations.json", status: "added" },
+];
+
 /** A job log as GitHub serves it: each line behind an Actions timestamp. */
 const actionsLog = (...lines: string[]) => ["Run pnpm fix-proof", ...lines, "Post job cleanup."].map((line) => `2026-10-11T12:00:00.0000000Z ${line}`).join("\n");
 
@@ -137,6 +158,61 @@ describe("sh-fix-proof in reviewPhase", () => {
 
   it("gates a fresh test-only registration like correctness, so a vacuous proof ends as NO_REPRO", async () => {
     const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }] });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("reviews a test-only PR whose every declared mutation is killed by tests that pass at head", async () => {
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(mutantsLine("killed")), files: TEST_ONLY_FILES });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
+  });
+
+  it("ends a test-only PR as NO_REPRO when a declared mutation survives its tests", async () => {
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(mutantsLine("not-killed")), files: TEST_ONLY_FILES });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { verdict: "vacuous", mutants: { verdict: "not-killed" } } }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("ends a test-only PR as NO_REPRO when every mutation is killed but a changed test file has no spec of its own", async () => {
+    const line = mutantsLine("not-killed", {}, ["packages/x/src/config-store.test.ts"]);
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(line), files: TEST_ONLY_FILES });
+
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { mutants: { uncovered: ["packages/x/src/config-store.test.ts"] } } }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("ends a PR as NO_REPRO when its mutants are killed but it deletes a test", async () => {
+    const line = mutantsLine("killed").replace('"deletedTests":[]', '"deletedTests":["packages/x/src/guard.test.ts"]');
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(line), files: TEST_ONLY_FILES });
+
+    expect(line).toContain("guard.test.ts");
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it("ends a test-only PR as NO_REPRO on a killed line from a judge that never checked coverage", async () => {
+    const unchecked = mutantsLine("killed").replace(',"uncovered":[]', "");
+
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(unchecked), files: TEST_ONLY_FILES });
+
+    expect(unchecked).not.toContain("uncovered");
+    expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    expect(spawns).toEqual([]);
+  });
+
+  it.each([
+    ["fails at head", { "fails-on-head": 1 }],
+    ["did not run", { "not-run": 1 }],
+    ["never ran at all", { "passes-on-base": 0 }],
+  ])("ends a test-only PR as NO_REPRO when its mutants are killed but a test %s", async (_, counts) => {
+    const { verdicts, spawns } = await review({ kind: "test-only", runs: [fixProofRun()], log: actionsLog(mutantsLine("killed", counts)), files: TEST_ONLY_FILES });
 
     expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
     expect(spawns).toEqual([]);
@@ -468,7 +544,7 @@ describe("readFixProof", () => {
     expect(elapsed()).toBeGreaterThanOrEqual(10_000);
   });
 
-  it("reads the judge run of a three-job fix-proof that completes 30 minutes in under the default wait", async () => {
+  it("reads the judge run of a multi-job fix-proof that completes 30 minutes in under the default wait", async () => {
     const { read, elapsed } = registered("correctness", execPending(), { timeoutMs: "default", later: [{ ms: 30 * 60_000, runs: [...execRuns(), fixProofRun()] }] });
 
     expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
@@ -499,6 +575,13 @@ describe("readFixProof", () => {
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
     expect(elapsed()).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("reads error, not missing, when only the mutants exec job ran and no judge run exists at the deadline", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate, execRun("fix-proof-mutants", 83)], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
   });
 
   it("reads error, not missing, when the exec jobs drop out of the check-run list before any judge appears", async () => {
