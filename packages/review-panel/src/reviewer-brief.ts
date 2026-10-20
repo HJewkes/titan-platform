@@ -65,6 +65,8 @@ export interface ReviewerBriefInput {
   fixProofWaivedAt?: string;
   /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
   earlierFindings?: readonly EarlierFinding[];
+  /** True when this is a runaway's one convergence review: its FIX_FIRST goes to the planner, never to another fix round. */
+  convergence?: boolean;
   /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
   ownerPicks?: readonly OwnerPick[];
   /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
@@ -190,6 +192,25 @@ function recurringLines(fixFirsts: number, earlier: readonly EarlierFinding[]): 
   ];
 }
 
+/** The section a convergence review sorts the open findings in. */
+export const CONVERGENCE_HEADING = "Convergence:";
+
+/**
+ * A runaway's rounds kept failing, so this reviewer separates real defects from re-rolls of answered points: only an
+ * Important finding may hold the PR, and its FIX_FIRST sends the task to the planner rather than to a fourth fixer.
+ */
+function convergenceLines(convergence: boolean | undefined): string[] {
+  if (convergence !== true) return [];
+  return [
+    "",
+    "This is a convergence review. This PR's FIX_FIRST rounds did not converge, and Shepherd wakes no further fixer for it. Judge whether this head can merge as it is.",
+    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`.`,
+    "Important is a defect this PR adds or leaves unfixed that would make merging it wrong. Nit is style, polish, or a re-roll of a point an earlier round already answered. Pre-existing was on the base before this PR.",
+    `In the same section, add a line \`${DEFECT_CLASS_HEADING} <class>\` naming the bug class the rounds kept finding.`,
+    "Give MERGE when no Important finding remains, whatever Nits or Pre-existing items are left. Give FIX_FIRST only for an Important finding; it sends the task to its planner to redesign or split.",
+  ];
+}
+
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
@@ -271,6 +292,7 @@ function verdictRuleLines(input: ReviewerBriefInput): string[] {
     CI_POLICY_RULE,
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? []),
+    ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
   ];
 }

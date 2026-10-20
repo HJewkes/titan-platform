@@ -6,7 +6,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 
 /**
- * Owner gates the owner approved every time they were asked (2026-10-05 to 10-19: D7 63/63, D13 35/35), so each now
+ * Owner gates the owner approved every time they were asked (2026-10-05 to 10-19: D7 63/63, D8 29/29, D13 35/35), so each now
  * passes on its guard and leaves an audit record instead. Set a class to false to restore its owner gate (TP-3697).
  */
 export interface GateDemotions {
@@ -14,11 +14,13 @@ export interface GateDemotions {
   failedRounds: boolean;
   /** D13: a red or unread main with no freeze path is an FYI line, never an acknowledge-only gate. */
   mainRed: boolean;
+  /** D8: a fix-first-runaway or no-progress head gets one convergence review, then the planner; never approve-merge (TP-3734). */
+  fixFirstRunaway: boolean;
 }
 
-export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true };
+export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true, fixFirstRunaway: true };
 
-const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi"] as const;
+const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D8/convergence-review"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
 
 const AUTO_PASS_STEP = "sh-auto-pass";
@@ -45,6 +47,7 @@ type AutoPassRecord = z.infer<typeof AutoPassResult>;
 const RULE_WORDS: Record<AutoPassRule, string> = {
   "D7/fallback-reviewer": "review rounds failed on infrastructure only, so a fresh reviewer goes first instead of the owner",
   "D13/main-red-fyi": "main CI is red or unread after this merge; FYI only, nothing waits on you",
+  "D8/convergence-review": "FIX_FIRST rounds did not converge, so one fresh convergence reviewer judges the trail; its FIX_FIRST goes to the planner, never to you",
 };
 
 const autoPassMarker = (rule: AutoPassRule, headSha: string): string => `<!-- shepherd-auto-pass:${rule}:${headSha} -->`;

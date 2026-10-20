@@ -4,6 +4,7 @@ import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { FixFirstEntry } from "./fix-first-trail.js";
 import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
@@ -50,6 +51,8 @@ export interface ReviewRequest extends PhaseTarget {
   cause?: ReviewCause;
   /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
   seatHeld?: SeatHeld;
+  /** The run's FIX_FIRST trail, set only on D8's convergence review of a runaway head (TP-3734). */
+  convergence?: readonly FixFirstEntry[];
 }
 
 /**

@@ -223,8 +223,8 @@ describe("D13: a red main with no freeze store", () => {
 });
 
 describe("the demotion config", () => {
-  it("demotes D7 and D13 only", () => {
-    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true });
+  it("demotes D7, D8 and D13 only", () => {
+    expect(GATE_DEMOTIONS).toEqual({ failedRounds: true, mainRed: true, fixFirstRunaway: true });
   });
 });
 

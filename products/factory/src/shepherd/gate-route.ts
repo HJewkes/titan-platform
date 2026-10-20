@@ -21,9 +21,10 @@ const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];
 /**
  * Seat work that is no gate's: a held run's fix round, a red head that only repeats its base's red, which waits on the
- * seat instead of waking a fixer, or a mergeability GitHub left unsettled past the wait's bound.
+ * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, or a runaway whose
+ * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "fix-first-planner"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -36,6 +37,7 @@ const NEXT: Record<SeatNotice, string> = {
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
   "merge-unsettled": "Nothing waits on the owner: Shepherd reads mergeability again at this head every few minutes and merges once GitHub settles it. A new head starts the wait over. Push to the PR, or close it to end the run.",
+  "fix-first-planner": `${WAITS} Shepherd wakes no further fixer: the task needs its planner. Redesign or split the task and push to the PR, or close the PR to end the run.`,
   "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
 };
 
@@ -50,9 +52,13 @@ function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): stri
   return [`Shepherd: ${repo}#${pr} at head ${headSha}: ${why}.`, NEXT[gate]].join("\n");
 }
 
-/** A notice naming its seat goes there; a held run naming none falls back to the hub seat, and a gate's to the repo's one seat. */
+/**
+ * A notice naming its seat goes there; a held run naming none falls back to the hub seat, and a gate's to the repo's one
+ * seat. A planner notice tries the repo's seat, then the hub seat, since no owner gate stands behind it.
+ */
 function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | undefined {
   if (input.seat !== undefined) return input.seat;
+  if (input.gate === "fix-first-planner") return ports.seatFor(input.repo) ?? ports.hubSeat?.();
   return input.gate === "held" ? ports.hubSeat?.() : ports.seatFor(input.repo);
 }
 
@@ -134,7 +140,7 @@ export async function noticeGate(run: GateRun, gate: SeatGate, headSha: string, 
  * One recorded message per run and `key` to the seat a held run names, or the hub seat; seat work that is no gate's,
  * so a run recorded before the step has nothing to keep. A replay of the run's notice steps rebuilds the set.
  */
-export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: "held" | "base-red" | "merge-unsettled" }): Promise<Told> {
+export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: Exclude<SeatNotice, SeatGate> }): Promise<Told> {
   const told = noticed.get(run.ctx) ?? noticed.set(run.ctx, new Set()).get(run.ctx)!;
   if (told.has(key)) return undefined;
   const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, gate: "held", ...notice }, SeatNoticeResult);
