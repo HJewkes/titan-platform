@@ -1,0 +1,20 @@
+{
+ "script": "v4-outro-long",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r10-10-outro",
+   "check": "origin",
+   "severity": "error",
+   "message": "reused narration differs from the v2 words file"
+  },
+  {
+   "beat": null,
+   "check": "Q-F11",
+   "severity": "error",
+   "message": "outro over 8 words"
+  }
+ ]
+}

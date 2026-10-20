@@ -1,0 +1,394 @@
+{
+ "task": "TP-3745",
+ "capturedAt": "2026-10-20T15:14:27+00:00",
+ "python": "3.14.4",
+ "bases": {
+  "redesign-explainer-v4": {
+   "fixture": "redesign-explainer-v4/script-full.json",
+   "fixtureSha256": "fd97cefcb7cc8a65a723444683aedd53a774c7275204617482cf5a794983ba16",
+   "tool": "rf-snapshot/redesign-explainer-v4/tools/build_script.py",
+   "sha256": "f121485a11746aac79a26e148c710f4612aaa1941a9e1a7e10b8050c70b9c5d2",
+   "dataTool": {
+    "tool": "rf-snapshot/redesign-explainer-v4/tools/script_data.py",
+    "sha256": "2989308fac090d85a59199579979651ac6244caf4088aa5f7efcde532a8b0020"
+   },
+   "branch": "video/rx-v4",
+   "commit": "6a09ca2a9a9b863b136429e2ab4b787ded2cc8fc",
+   "inputs": {
+    "titan/src/beats/examples/explainer/budgets.json": {
+     "branchSha256": "a2d7c06b44dbc22ec226ba2cf4a3cc23f59874d6e94d13f5333414480849ded8",
+     "usedSha256": "a2d7c06b44dbc22ec226ba2cf4a3cc23f59874d6e94d13f5333414480849ded8"
+    },
+    "titan/src/beats/examples/explainer/mapType.json": {
+     "branchSha256": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233",
+     "usedSha256": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233"
+    },
+    "examples/samples/pipeline-explainer.visual.json": {
+     "branchSha256": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337",
+     "usedSha256": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337"
+    },
+    "examples/samples/redesign-explainer.words.json": {
+     "branchSha256": "8fc1694e6b97a357e1e6900fa343a8309c4cd0b5b5d481279281c43826a216cf",
+     "usedSha256": "309a68a0eecdc2fef89c3e7c57cbc6263cc1768bf1af1073c81b1003efb238bb"
+    }
+   }
+  },
+  "review-addendum-v5": {
+   "fixture": "review-addendum-v5/script.json",
+   "fixtureSha256": "a3d5ae8f833f023e88e91dd73b77f0e9fc7fb5df3944dfe57b3c49f9f7edc96e",
+   "tool": "rf-snapshot/review-addendum-v5/tools/build_script.py",
+   "sha256": "85e82da316217f70120b21057e7a817a0b1dc440f0ad6e6608a637066a8ec90c",
+   "dataTool": {
+    "tool": "rf-snapshot/review-addendum-v5/tools/script_data.py",
+    "sha256": "f7878533cca48de3224718140488694cabf59c146069c98dbdd1423a9bcf083b"
+   },
+   "branch": "video/rx-addendum-r2",
+   "commit": "209c91ba11e180e2e9f483399a0f7f545ed2c670",
+   "inputs": {
+    "titan/src/beats/examples/explainer/budgets.json": {
+     "branchSha256": "24f0596b13fc8a87edf1008b16a4c48bd1022e3f4325e3dda7beecad6aa00f02",
+     "usedSha256": "24f0596b13fc8a87edf1008b16a4c48bd1022e3f4325e3dda7beecad6aa00f02"
+    },
+    "titan/src/beats/examples/explainer/mapType.json": {
+     "branchSha256": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233",
+     "usedSha256": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233"
+    },
+    "examples/samples/pipeline-explainer.visual.json": {
+     "branchSha256": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337",
+     "usedSha256": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337"
+    },
+    "examples/samples/redesign-explainer.words.json": {
+     "branchSha256": "8fc1694e6b97a357e1e6900fa343a8309c4cd0b5b5d481279281c43826a216cf",
+     "usedSha256": "309a68a0eecdc2fef89c3e7c57cbc6263cc1768bf1af1073c81b1003efb238bb"
+    }
+   }
+  }
+ },
+ "variants": {
+  "v4-bands-stake-late": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "ba60aab848ebd6c6c834141ef80d3df049e11dcd07dd2ffa37e398667560813b",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-bands-stake-late.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "39809395ba4a88bb3cc6cdddb845d8e84374d7bfac259a0956dc7db13da5c595"
+  },
+  "review-addendum-v5-bands-stake-late": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "fa8b55eab9accd6766744c3c4365265a1241c9722e5a63dfa4d643924cc195ac",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-bands-stake-late.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "96f113786d8a0a7b0610dc2b94fd189a4e8bcc2e54721541de00cf35e65b2c08"
+  },
+  "v4-sentence-long": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "4c09ac827be2d7a5c0c077d5f5913975adb624daa7bbc33930053bbe75e196d6",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-sentence-long.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "1b471f52fbc99c1a89e13d230ee31e0db372d45a23ad159e3c3e831621614d26"
+  },
+  "v4-banned-simply": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "5be091402ad09a5ac7d46626ad53eea597a755bec4cef801e66cc5ec318c0740",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-banned-simply.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "6aa65d17e5ae30aeb6184655c2e8b9d7b664346c66929d114a186d72a3ac33b7"
+  },
+  "v4-numbers-forty": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "2c808801bde7a1714d6c291796eb0fd182152c9db95f62d931540056add3979e",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-numbers-forty.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "47d511fa4d93dca05d828a1f9828544fc5eb2e6c2f7fa61bfdfb64e53ff66a8b"
+  },
+  "v4-outro-long": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "809db8a78cf7f18a1d8a17153ac98eb344802f97d190e4958eb961842f302fd4",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-outro-long.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "e87e5faf931f49efef8703798d9b24905d281e3b8a339a7f1047d37d0763a15d"
+  },
+  "review-addendum-v5-outro-long": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "fcfcbcd84d5e25272d9b25db538f0d2293cc29a5e4dc1275245ece48a045f24a",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-outro-long.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "37327f6bd2b4f3265d39d87a6375d3f7e1466ba91be45460d3e91ef6a834b912"
+  },
+  "review-addendum-v5-rule3": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "a5e60a52870ad81bc3d8e02dabc2c941f9627288ae8fd243636905808a31efb8",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-rule3.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "74693462571052b78c3cb9f17e21b8fb55ef607772524ed14ba68a0a99e5bd97"
+  },
+  "review-addendum-v5-rule5": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "311d436fdb519a468592d8476c10a67a7b44f269376b8b4bb312b24407835d77",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-rule5.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "981d7fdc3198671d774ba417f869d6bc4bf527e85a575b44c1fa2ef609564d5f"
+  },
+  "v4-chip-rows": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "2566972e6cfe4de402b899bd84f0070cbad3c06b6975c9ba5321b39223aee372",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-chip-rows.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "660d2aff559eb27a612c4f5f51d460af66a74e0b67d8d9e493fa1e5fdb8a4015"
+  },
+  "v4-pin-hits-pin": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "ab96eb0db38649a9a9e2dfcb93b6fb9ff15d3d116ea005bf72f27d88d64b1326",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-pin-hits-pin.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "ef29552a5afaa75552e4d3df082bfab0ff44af44f92afed77402b3ad899ee446"
+  },
+  "v4-pin-chips-band": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "17ee0ec76b5ea4b8d5bade6ec106a4630be576a79450f69906389197f577d4af",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-pin-chips-band.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "dc5d06ff954a4a6a0c9cd5f00b0c2e9ff7ae4ee63ef3fbcb00a0b5f4e2de908b"
+  },
+  "v4-pin-hits-edge-label": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "f09065bb5ef1f82c743d80ffccc753fc18cd2413bf670b7a7af908d122525591",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-pin-hits-edge-label.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "260a16ab9ac549ec678e97545c8f83a3f76738635020f476b5a6920925225c7d"
+  },
+  "v4-map-unknown-node": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "5f77e1dc979daf3819a5168d354425b27ca8a9180361ab6e090be4f0a1b7bf63",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-map-unknown-node.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "d8182cf753895ecdcdcf95a6a572e186cf40e4e349dc06579dbe9e397f5fd348"
+  },
+  "v4-recipe-unknown-step": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "f0dff3d7fbc7c84d09fa3488b3f071cfc64b14fbd57fd5ffa29d20d9b66111e0",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-recipe-unknown-step.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "2e35ff7d498b290309f9a211c8d03423828577e430c25c40762def744d2420ad"
+  },
+  "review-addendum-v5-recipe-edit": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "1997dae7cebaa83c44c4ece18ab9ed932630bcb1feb9534ab2d88cb4c4bebb1a",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-recipe-edit.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "f72756d61dc357d0d8f743ae9df88c6867a223582c804159012ba4cd348d6d10"
+  },
+  "v4-contested-fallback-cue": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "7b41716d6f8a828e4aaa8e8752fee44a4b0f8359cfb509c6615656e4ca377d81",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-contested-fallback-cue.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "bf887fd64b9e41500481cfe2eac1284e0a2fb045fb387af6ac2240fee9712dbc"
+  },
+  "review-addendum-v5-contested-id": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "00ea26ba882ea68330fc9b3d55cdab283753ff1fbb29211307a26decb89f1f69",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-contested-id.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "bfb7cda5110bbc66e2c89e027af59380aab29ec4f818c29d3f2a505ad1c1b65c"
+  },
+  "review-addendum-v5-edge-table": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "ae6a28459ed0bef9c7b55740ffd80428eba116e9cce5c9e0e3f00522d1a8ed3d",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-edge-table.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "ed48acdf96898e4840819393b576da5683fcf077bf1cf5eeb874b7584c95f7f2"
+  },
+  "v4-origin-unknown": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "13bfe1b187d871ba2ee1c44c47e244cf324f279f3c56703738b15504f916cfb5",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-origin-unknown.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "e07dcbddd55ac073940c36182c7decb5d7456b1c9d4ccbd38f5b50aaf6ac300c"
+  },
+  "v4-budget-stat-label": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "8b717006864884baaa0810b984572d81b9439a02d92ea7ebf3f393fa8dce1773",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-budget-stat-label.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "c8ef533cfa1a263fc068749d5341d3ff2c18a7bcb2c865d4072a1fedddb0bdec"
+  },
+  "v4-budget-hook-card": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "da705e25bdad34fb88f0ffd9858084d00f04c59dfb21b104ee0078dc865eb073",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-budget-hook-card.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "e597ad586ff55ea3f92b506bb414dce03f1b62a31bf9d2576d898866bfad6859"
+  },
+  "v4-budget-rail-step": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "3a6b4a3b50cd0a467352bcfd3eb20d2c7a4c1fa25cb1677c68f94d3c11e2a5d5",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-budget-rail-step.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "c24a3dd40bc905c3d647a3d949f0f875574670187b049d6a8f7a2baeae356d6e"
+  },
+  "v4-budget-table-cell": {
+   "base": "redesign-explainer-v4",
+   "scriptSha256": "0f073176a635c91de60bbee31de6c83141dd47d4651b003b45768b58d37904d8",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/v4-budget-table-cell.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "0079791d6f566fd0cf377864659e3fc25b9e70ad0b4251c04eac31bc1cdc259f"
+  },
+  "review-addendum-v5-budget-chip": {
+   "base": "review-addendum-v5",
+   "scriptSha256": "0ba600cfd90a78ee8f47b295ddd314d895ac73bf1e9f9027a9258e4cc21d2857",
+   "argv": [
+    "python3",
+    "-I",
+    "tools/build_script.py",
+    "--lint",
+    "seeded/review-addendum-v5-budget-chip.script.json"
+   ],
+   "exitCode": 1,
+   "outputSha256": "5e95f4500591908025e40d6a3dfc769923814865e924798b3c9d535435e006db"
+  }
+ }
+}

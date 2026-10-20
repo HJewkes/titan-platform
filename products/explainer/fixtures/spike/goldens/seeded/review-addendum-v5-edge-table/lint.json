@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-edge-table",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "a4-5-built",
+   "check": "S7",
+   "severity": "error",
+   "message": "8 edge rows in ch4 with the carried rows, cap 7"
+  }
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "script": "v4-budget-rail-step",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r3-2-sentence",
+   "check": "rail",
+   "severity": "error",
+   "message": "step 'an event re-enters' is 18 chars, cap 12"
+  }
+ ]
+}
