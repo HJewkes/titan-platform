@@ -38,7 +38,7 @@ interface Shelled {
 }
 
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
-const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage));
+const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage, { query: route.query }));
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
