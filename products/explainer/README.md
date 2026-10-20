@@ -194,8 +194,13 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   <n>] [--spine <spine.md>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
   come only from route lists: "is X explained?" for each item `explainRoutes` (M3-pre) names,
   "is it seated?" for each `seatRoutes` (M5) beat, and the odd one out for each beat listing
-  three or more items. One call per chapter that has a question; chapters with none are
-  skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
+  three or more items. A PROMISE beat's items are not asked "explained?": they are paid off in later
+  chapters, which a chapter-scoped judge never sees. A CAVEAT beat's items are asked "is it said why
+  the picture holds without X?" instead, since a simplification names what it leaves out on purpose.
+  The blind odd one out judges from the chapter alone, so it cannot see a kind the chapter never
+  states: on v4's r2-1 the beat calls all seven items "jobs" and glosses none, and the judge picks
+  none. The spine's declared kinds (`--spine`) are the check for that. One call per chapter that
+  has a question; chapters with none are skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
   explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
   `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
   a last line lists the flags at least two runs agree on.

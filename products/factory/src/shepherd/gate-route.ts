@@ -24,7 +24,7 @@ type SeatGate = (typeof SEAT_GATES)[number];
  * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, or a runaway whose
  * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -42,6 +42,7 @@ const NEXT: Record<SeatNotice, string> = {
   "review-infra": `This is a reviewer infrastructure defect, not a finding about the PR, and nothing waits on the owner. ${WAITS} Next: fix the reviewer account or broker, then push to the PR or register it again to review it on another account.`,
   "seat-held": `Nothing waits on the owner: the seat's hold on Shepherd's MERGE is the seat's to settle. ${WAITS} Next: release or answer the hold, push to the PR, or close it to end the run.`,
   conflict: `Nothing waits on the owner: two fixer attempts left the conflict in place. ${WAITS} Next: resolve the conflict on the PR's branch yourself or with a successor, split the PR, or close it to end the run.`,
+  unreviewed: `Nothing waits on the owner: Shepherd asks the owner to merge only a head a reviewer said MERGE at. ${WAITS} Next: check why the reviewers gave no MERGE here, push to the PR, or register it again to review it afresh.`,
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });

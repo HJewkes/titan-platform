@@ -18,7 +18,10 @@ import { explainRoutes } from "./lint-gloss.js";
 import { seatRoutes } from "./lint-seat.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { v4Durations, v4FullScript } from "./spike-fixtures.test-helpers.js";
+import { fromSpikeScript } from "./spike-script.js";
 import { parseSpine } from "./spine-schema.js";
+import { readTiming } from "./timing.js";
 
 const rubric = readRubric("l1-items.md");
 
@@ -116,6 +119,65 @@ describe("item judge questions", () => {
     const asked = judge.calls.flatMap(promptQuestions).map((q) => q.text);
     expect(asked.filter((t) => t.includes("c1-2"))).toEqual([]);
     expect(asked).toHaveLength(itemQuestions(routes).length + 2);
+  });
+});
+
+describe("item judge questions by beat role", () => {
+  /** ch1 promises three moves and names three skipped details; ch2 lists three bare jobs. Each beat routes on M3. */
+  const roleTrack = (): PaceBeat[] =>
+    buildPaceBeats([
+      { ...source("c1-1", "ch1", "The desk keeps, drops and adds bins.", ["card:keeps", "card:drops", "card:adds"]), fn: "PROMISE" },
+      { ...source("c1-2", "ch1", "Customs holds, returns and refunds are left out; each is data, so the flow holds.", ["open:customs holds", "open:returns", "open:refunds"]), fn: "CAVEAT" },
+      source("c2-1", "ch2", "Three jobs: scan, weigh and stack.", ["job:scan", "job:weigh", "job:stack"]),
+    ]);
+  const explainedOnly = (beats: PaceBeat[]): ItemRoutes => ({ ...itemRoutes(beats, []), seat: [], lists: [] });
+  /** The E9 judge: no beat in these chapters says what and why, so every plain "explained" is a no. */
+  const literalJudge = () => fakeJudge((q) => (q.canary ? {} : { pass: q.text.includes("left out on purpose") }));
+
+  it("routes all three beats on M3, so only the role decides what is asked", () => {
+    expect(explainRoutes(roleTrack()).map((r) => r.beat)).toEqual(["c1-1", "c1-2", "c2-1"]);
+  });
+
+  // Mutation: asking a PROMISE beat the plain question flags keeps, drops and adds.
+  it("never asks a promise beat whether its items are explained", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const asked = judge.calls.flatMap(promptQuestions).map((q) => beatOf(q.text));
+    expect(asked).not.toContain("c1-1");
+    expect(agreedFlags([result, result]).filter((f) => f.beat === "c1-1")).toEqual([]);
+  });
+
+  // Mutation: asking a CAVEAT beat the plain question flags all three skipped details.
+  it("asks a simplification beat why the picture holds without each item, which it can pass", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const verdicts = result.chapters.flatMap((c) => c.verdicts);
+    expect(verdicts.filter((v) => v.beat === "c1-2").map((v) => [v.kind, v.subject, v.pass])).toEqual([
+      ["explained", "customs holds", true],
+      ["explained", "returns", true],
+      ["explained", "refunds", true],
+    ]);
+    expect(agreedFlags([result, result]).map((f) => [f.beat, f.item])).toEqual([["c2-1", "scan"], ["c2-1", "weigh"], ["c2-1", "stack"]]);
+  });
+
+  it("on the full v4 script, asks nothing of r1-7-promise and asks r3-7-simple's list why the picture holds", () => {
+    const { beats } = fromSpikeScript(v4FullScript(), readTiming(v4Durations()));
+
+    const explained = itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+
+    expect(explained.filter((q) => q.beat === "r1-7-promise")).toEqual([]);
+    expect(explained.filter((q) => q.beat === "r3-7-simple").map((q) => [q.subject, q.text.includes("left out on purpose")])).toEqual([
+      ["pool policy details", true],
+      ["risk table rows", true],
+      ["stacking", true],
+    ]);
+    expect(new Set(explained.map((q) => q.beat)).size).toBe(9);
   });
 });
 

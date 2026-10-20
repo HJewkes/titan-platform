@@ -13,6 +13,8 @@ export interface PaceItem {
   /** Seconds from the beat's start, or null when no word timings resolve its cue. */
   atS: number | null;
   source: PaceSource;
+  /** The spoken word the item appears on, when it is cued. */
+  cue?: string;
 }
 
 /** A beat as the pace layer reads it: its heard (or planned) length and the items it puts on screen. */
@@ -36,6 +38,10 @@ export interface PaceBeat {
 // read and hold (a recipe caption, an outro title card, a target chip), not a qualifier of an item already shown
 // (an attribute) nor an animation of one (an action). stamp and line are attributes: a stamp marks the state of
 // a row already on screen, and a line highlights a line of code the CodeWalk already shows.
+// edge is an item: a build/buy table row names a new thing (a part and its verdict) for the viewer to read.
+// orphan is an attribute: it marks nodes already on screen as unreached, naming nothing new.
+// wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
+// edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -59,11 +65,13 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   gate: "item",
   bar: "item",
   gauge: "item",
+  edge: "item",
   detail: "attribute",
   left: "attribute",
   right: "attribute",
   stamp: "attribute",
   line: "attribute",
+  orphan: "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -71,6 +79,8 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   replay: "action",
   insert: "action",
   release: "action",
+  wait: "action",
+  edit: "action",
 };
 
 /** The role of a cue kind; an unknown kind throws, so a new renderer cannot go silently uncounted. */
@@ -105,6 +115,8 @@ export interface PaceSourceBeat {
 
 type AtS = (cue: string | undefined) => number | null;
 
+const cueWord = (atCue: string | undefined): Pick<PaceItem, "cue"> => (atCue === undefined ? {} : { cue: atCue });
+
 const COUNT_KINDS = new Set(["card", "fan"]);
 
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
@@ -116,7 +128,7 @@ function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
     const kind = colon < 0 ? target : target.slice(0, colon);
     const label = colon < 0 ? target : target.slice(colon + 1);
     const role = cueKindRole(kind);
-    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const }];
+    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
 }
 
@@ -128,6 +140,7 @@ function beatItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
     role,
     atS: atS(atCue),
     source,
+    ...cueWord(atCue),
   });
   return [
     ...cueItems(beat, atS),
