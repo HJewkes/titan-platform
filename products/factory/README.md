@@ -303,6 +303,10 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
   split it; coord or the owner acts on that, and Shepherd files no planner task itself
   (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
+  With `GATE_DEMOTIONS.fixFirstRunaway` on (the default, TP-3734 D8), neither this nor
+  `no-progress` opens approve-merge: one fresh convergence reviewer gets the FIX_FIRST trail. Its
+  MERGE lands at the PR's normal rules; its FIX_FIRST sends the seat a planner notice and the run
+  waits for a new head, which re-arms the review. The gate opens only when no seat can be told.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
   other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.

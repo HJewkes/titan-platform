@@ -395,7 +395,9 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
   Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
   third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
   task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
-  route.
+  route. Since TP-3734 (D8) this and `no-progress` reach you only when no seat can be told: one
+  fresh convergence reviewer judges the `FIX_FIRST` trail first, and its `FIX_FIRST` goes to the
+  planner through a seat notice.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
   Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at

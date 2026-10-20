@@ -6,6 +6,8 @@ import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
 import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
+import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
+import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -55,6 +57,11 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
   const infra = run.failedOutcomes.every((failed) => INFRA_FAILURES.has(failed));
   return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }) };
+}
+
+/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
+export async function routeEscalation(run: FailedRoundsRun & FixFirstDemotionRun, headSha: string, escalated: Escalated): Promise<boolean> {
+  return (await onFixFirstEscalated(run, headSha, escalated)) ?? onEscalated(run, headSha, escalated);
 }
 
 /** A seat that never settles, say one whose reviewer exited on a WAIT, still reaches the owner's failed-rounds gate. */

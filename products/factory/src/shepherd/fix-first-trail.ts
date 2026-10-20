@@ -1,4 +1,4 @@
-import { BLOCK_LINE, DEFECT_CLASS_HEADING } from "@titan-design/review-panel";
+import { BLOCK_LINE, DEFECT_CLASS_HEADING, type EarlierFinding } from "@titan-design/review-panel";
 import { z } from "zod";
 
 /** One FIX_FIRST of the run: the head it was given at, its findings, and the reviewer's defect-class section if it wrote one. */
@@ -11,6 +11,8 @@ export interface FixFirstEntry {
 /** A run's FIX_FIRSTs, oldest first; `countRound` builds it as verdicts replay, so a restart rebuilds it without a step of its own. */
 export interface FixFirstTrail {
   fixFirstTrail: FixFirstEntry[];
+  /** The head D8's one convergence review went to (TP-3734); a moved head re-arms it. */
+  convergedAt?: string;
 }
 
 export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional() });
@@ -54,4 +56,26 @@ export function fixFirstEntry(headSha: string, text: string): FixFirstEntry {
 export function withEarlier<T extends object>(verdict: T, trail: readonly FixFirstEntry[], headSha: string): T & { earlier?: FixFirstEntry[] } {
   const earlier = trail.at(-1)?.headSha === headSha ? trail.slice(0, -1) : [...trail];
   return earlier.length === 0 ? verdict : { ...verdict, earlier };
+}
+
+const SUMMARY_CLASS_CHARS = 120;
+
+/** One line per FIX_FIRST, oldest first: its head and the class its reviewer named, so a seat notice stays short. */
+export function trailSummary(trail: readonly FixFirstEntry[]): string[] {
+  return trail.map((entry, index) => {
+    const named = entry.defectClass?.split("\n")[0]?.replace(/^[\s#*]+/, "").trim();
+    const cls = named ? named.slice(0, SUMMARY_CLASS_CHARS) : "no defect class named";
+    return `FIX_FIRST ${index + 1} at ${entry.headSha.slice(0, 12)}: ${cls}`;
+  });
+}
+
+/** D8's convergence review at `headSha` carries the run's whole trail; any other review carries none. */
+export function convergenceOf(run: FixFirstTrail, headSha: string): { convergence?: FixFirstEntry[] } {
+  return run.convergedAt === headSha ? { convergence: [...run.fixFirstTrail] } : {};
+}
+
+/** The reviewer brief's convergence fields for a trail; only the correctness reviewer gets them, and panel members review as usual. */
+export function convergenceFields(trail: readonly FixFirstEntry[] | undefined): { convergence?: true; earlierFindings?: EarlierFinding[] } {
+  if (trail === undefined) return {};
+  return { convergence: true, earlierFindings: trail.map((entry) => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) })) };
 }
