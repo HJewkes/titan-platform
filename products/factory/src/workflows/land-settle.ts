@@ -13,9 +13,17 @@ function settleWaitMs(attempt: number): number {
   return SETTLE_WAITS_MS[attempt] ?? SETTLE_WAIT_CAP_MS;
 }
 
+/**
+ * How a transient gate waits at its head: `settle` re-reads up to the bound, `once` re-reads one time before the seat is
+ * told, and `thaw` re-reads with no bound and no notice, because only the thaw ends a freeze.
+ */
+export type SettleKind = "settle" | "once" | "thaw";
+
 /** A gate the policy expects a later read at the same head to clear, such as a mergeability GitHub has not computed yet. */
 export interface UnsettledMerge {
   transient: (decision: GateDecision) => boolean;
+  /** Absent reads every transient gate as `settle`. */
+  kind?: (decision: GateDecision) => SettleKind;
   /** Reads the facts at `headSha` again, so the next decision judges a fresh read; called only while the PR is still at that head. */
   refresh: (ctx: WorkflowContext, headSha: string) => Promise<void>;
   /**
@@ -68,25 +76,29 @@ export async function settleRun(input: SettleInput, timing: { now: () => number;
   return { headSha: input.headSha, since, at: timing.now(), spent: input.told === true };
 }
 
-function unsettledReason(reason: string, settled: Settled): string {
+function unsettledReason(reason: string, settled: Settled, kind: SettleKind): string {
+  if (kind === "once") return `${reason}; still so after one re-read at ${settled.headSha}`;
   const minutes = Math.floor((settled.at - settled.since) / 60_000);
   return `${reason}; unsettled for ${minutes} min at ${settled.headSha}; local merge-tree: ${settled.mergeTree ?? "not run"}`;
 }
 
 /**
- * A gate a later read may clear waits at this head instead, up to the bound. Past it the seat is told once and the wait
- * goes on, re-reading at the longest backoff; with no notice wired, or one that could not be sent, the gate stands and
- * says how long it waited. A new head starts its own bound.
+ * A gate a later read may clear waits at this head instead, up to the bound (`once`: one re-read). Past it the seat is
+ * told once and the wait goes on, re-reading at the longest backoff; with no notice wired, or one that could not be sent,
+ * the gate stands and says how long it waited. A `thaw` wait is never spent. A new head starts its own bound.
  */
 export async function settleOrGate(holder: SettleHold, decision: GateDecision, unsettled: UnsettledMerge | undefined, headSha: string, record: (wait: Omit<SettleInput, "repo" | "baseRef">) => Promise<Settled>): Promise<GateDecision | undefined> {
   if (!unsettled?.transient(decision)) return decision;
+  const kind = unsettled.kind?.(decision) ?? "settle";
   const prior = holder.settle?.headSha === headSha ? holder.settle : undefined;
   const attempt = prior ? prior.attempt + 1 : 0;
   const told = prior?.told === true;
-  const settled = await record({ headSha, ...(prior && { since: prior.since }), waitMs: settleWaitMs(attempt), boundMs: UNSETTLED_BOUND_MS, ...(told && { told }) });
+  const quiet = told || kind === "thaw";
+  const boundMs = kind === "once" && prior ? 0 : UNSETTLED_BOUND_MS;
+  const settled = await record({ headSha, ...(prior && { since: prior.since }), waitMs: settleWaitMs(attempt), boundMs, ...(quiet && { told: true }) });
   holder.settle = { headSha, since: settled.since, attempt, ...(told && { told }) };
-  if (!settled.spent || told) return undefined;
-  const reason = unsettledReason(decision.reason, settled);
+  if (!settled.spent || quiet) return undefined;
+  const reason = unsettledReason(decision.reason, settled, kind);
   const notice = unsettled.notice && (await unsettled.notice(headSha, reason));
   if (unsettled.notice && notice?.sent !== false) return void (holder.settle.told = true);
   return { ...decision, reason: notice ? `${reason} (${notice.detail})` : reason };

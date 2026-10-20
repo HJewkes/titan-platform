@@ -329,10 +329,19 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
       { repo: input.repo, baseRef: state.rules.base, ...wait },
       SettleResult,
     );
-  const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
+  const decision = gatedOnRecord(ctx) ? decided : await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, (by) => trust(state, ci.headSha, by, base));
+}
+
+/**
+ * A record that goes from its gated decision straight to the ask was made before that gate waited at its head (a freeze
+ * or missing facts, TP-3734), so a replay asks as it did.
+ */
+function gatedOnRecord(ctx: WorkflowContext): boolean {
+  const next = ctx.historyNext();
+  return next !== undefined && !next.startsWith("merge-settle");
 }
 
 /** The recorded decision, not a fresh `decide`, drives the branch: a replay must not flip a gate to an allow. */

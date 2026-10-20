@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { runCli } from "../cli.js";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -17,6 +17,7 @@ import { sleep, step } from "../workflows/land.js";
 import { MergeResultResult } from "../workflows/land-steps.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
+import { WAIT_DEMOTIONS } from "./freeze-wait.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
@@ -720,6 +721,10 @@ describe("serve's head-moved sweep", () => {
 });
 
 describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () => {
+  // These gates are the ones a run opened before a freeze alone waited at its head (TP-3734 r3b), which replayed records still hold.
+  beforeEach(() => void (WAIT_DEMOTIONS.frozenOnly = false));
+  afterEach(() => void (WAIT_DEMOTIONS.frozenOnly = true));
+
   it("cancels a gate whose head is no longer the PR head, and the run reviews and merges the new head", async () => {
     const { host, fake, services, runId, reviewed } = await authorityGated({ mergeTreeClean: false, repoFrozen: true });
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy authority/MRG-AU:");
