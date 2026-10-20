@@ -94,16 +94,22 @@ interface RoundOptions {
   general?: string;
   comment?: string;
   questionOptions?: string[];
+  /** Two more bound questions, q-a and q-b, each answered with a comment. */
+  extraComments?: { "q-a": string; "q-b": string };
+  followUps?: unknown;
 }
 
 function roundFiles(pr: number, options: RoundOptions = {}) {
   const merge = { repo: REPO, pr, headSha: options.boundHead ?? H, ship: ["Ship it"] };
-  const round = bytes({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: options.questionOptions ?? ["Ship it", "Revise"], merge }] });
+  const extra = Object.keys(options.extraComments ?? {});
+  const questions = ["q-ship", ...extra].map((id) => ({ id, kind: "pick-one", options: options.questionOptions ?? ["Ship it", "Revise"], merge }));
+  const round = bytes({ unit: "example-unit", round: 1, questions });
   const answer = { questionId: "q-ship", pick: options.pick ?? "Ship it", ...(options.revisionRequested ? { revisionRequested: true } : {}), ...(options.comment !== undefined && { comment: options.comment }) };
   const submittedAt = new Date(NOW.getTime() - (options.ageMs ?? 10 * MINUTE)).toISOString();
-  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }], ...(options.general !== undefined && { general: options.general }) });
+  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }, ...Object.entries(options.extraComments ?? {}).map(([questionId, comment]) => ({ questionId, pick: "Ship it", comment }))], ...(options.general !== undefined && { general: options.general }) });
   const packet = bytes({ schema: "titan-review/ci-packet@1", packetId: "p-1", repo: REPO, pr, headSha: H, headTree: TREE, mainSha: sha("e"), images: [], warnings: [], ...options.packet });
-  return { round, feedback, packet };
+  const followUps = options.followUps === undefined ? undefined : options.followUps instanceof Uint8Array ? options.followUps : bytes(options.followUps);
+  return { round, feedback, packet, ...(followUps && { followUps }) };
 }
 
 function request({ runId, gateId }: World, files: { packet: Uint8Array }, extra: Partial<AnswerRequest> = {}): AnswerRequest {
@@ -260,6 +266,30 @@ describe("checkAnswer", () => {
     const outcome = await check(w, { pick: "Revise", revisionRequested: true, general: " Close, but not yet. ", comment: "Rename the flag." }, { choice: "send-back" });
 
     expect(outcome).toEqual({ kind: "resolve", gateId: w.gateId, choice: "send-back", payload: { decision: "send-back", headSha: H, note: "Close, but not yet.\n\nRename the flag." } });
+  });
+
+  describe("with a follow-ups.json sidecar", () => {
+    const sidecar = (questionIds: string[]) => ({ schema: "titan-console/follow-ups@1", questionIds, at: "2026-01-01T00:00:00.000Z" });
+    const sendBack = { pick: "Revise", revisionRequested: true, comment: "Rename the flag.", extraComments: { "q-a": "Tidy the docs.", "q-b": "Add a metric." } };
+    const noteOf = async (followUps?: unknown) => {
+      const outcome = await check(await world(), { ...sendBack, followUps }, { choice: "send-back" });
+      return outcome.kind === "resolve" && outcome.payload.decision === "send-back" ? outcome.payload.note : outcome;
+    };
+    const all = "Rename the flag.\n\nTidy the docs.\n\nAdd a metric.";
+
+    it("leaves the answer listed as a follow-up out of the send-back note", async () => {
+      expect(await noteOf(sidecar(["q-b"]))).toBe("Rename the flag.\n\nTidy the docs.");
+    });
+
+    it.each([
+      ["missing", undefined],
+      ["malformed json", Buffer.from("{nope")],
+      ["a wrong schema literal", { ...sidecar(["q-b"]), schema: "other@1" }],
+      ["questionIds that are not strings", { ...sidecar([]), questionIds: [1] }],
+      ["no at", { schema: "titan-console/follow-ups@1", questionIds: ["q-b"] }],
+    ])("keeps every answer when the sidecar is %s", async (_name, followUps) => {
+      expect(await noteOf(followUps)).toBe(all);
+    });
   });
 
   it("cuts the owner's note at the cap the gate payload carries", async () => {

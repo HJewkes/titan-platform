@@ -35,7 +35,7 @@ interface AnswerInputs {
   port: Pick<GitHubPort, "getPr" | "getCommit">;
   request: AnswerRequest;
   /** The exact bytes of the round's files, read by the caller. */
-  files: { round: Uint8Array; packet: Uint8Array; feedback: Uint8Array };
+  files: { round: Uint8Array; packet: Uint8Array; feedback: Uint8Array; followUps?: Uint8Array };
   /** Read only for an `sh-visual-accept` gate. */
   accept?: AcceptFiles | string;
   now: Date;
@@ -85,6 +85,8 @@ const RoundBindings = z.object({ questions: z.array(z.object({ id: z.string(), o
 
 /** The owner's words in feedback.json: the round's general note and each answer's comment. */
 const FeedbackWords = z.object({ general: z.string().optional(), answers: z.array(z.object({ questionId: z.string(), comment: z.string().optional() })) });
+/** The console's follow-ups.json sidecar: the answers the owner deferred to a later PR. Anything else reads as none. */
+const FollowUps = z.object({ schema: z.literal("titan-console/follow-ups@1"), questionIds: z.array(z.string()), at: z.string() });
 /** The most of the owner's note the gate payload carries; the rest stays in feedback.json. */
 export const MAX_NOTE_CHARS = 4000;
 
@@ -161,7 +163,8 @@ function deliveryRefusal({ accept, request }: AnswerInputs, payload: AnswerPaylo
 
 function ownerNote({ files }: AnswerInputs, land: GateHead): string {
   const words = parseJson(FeedbackWords, files.feedback);
-  const bound = new Set(boundQuestions(files.round, land).map((question) => question.id));
+  const deferred = new Set(files.followUps && parseJson(FollowUps, files.followUps)?.questionIds);
+  const bound = new Set(boundQuestions(files.round, land).map((question) => question.id).filter((id) => !deferred.has(id)));
   const comments = words?.answers.filter((answer) => bound.has(answer.questionId)).map((answer) => answer.comment) ?? [];
   return [words?.general, ...comments].map((text) => text?.trim() ?? "").filter((text) => text !== "").join("\n\n");
 }

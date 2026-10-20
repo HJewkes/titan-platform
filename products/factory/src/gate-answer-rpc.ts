@@ -26,12 +26,16 @@ const MAX_AFTER_IMAGE_BYTES = 16 * 1024 * 1024;
 const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** O_NONBLOCK so a planted FIFO cannot hang the open; O_NOFOLLOW so a symlinked file is refused, not followed. */
 const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+/** The console's cap on its follow-ups.json sidecar. */
+const MAX_FOLLOW_UPS_BYTES = 64 * 1024;
 const FOLLOW_UPS_FILE = "follow-ups.jsonl";
+/** The console's per-round sidecar; not the state dir's follow-ups.jsonl log. */
+const ROUND_FOLLOW_UPS_FILE = "follow-ups.json";
 
 type App = Parameters<NonNullable<StartDaemonOptions["mountRoutes"]>>[0];
 type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 type Answer = { body: object; status: Status };
-type RoundFiles = { round: Uint8Array; packet: Uint8Array; feedback: Uint8Array };
+type RoundFiles = { round: Uint8Array; packet: Uint8Array; feedback: Uint8Array; followUps?: Uint8Array };
 
 const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}}$`), `must be ${length} lowercase hex digits`);
 const AnswerBody = z.strictObject({
@@ -165,7 +169,8 @@ async function readRound(roundsDir: string, roundId: string): Promise<RoundFiles
   if (!stats?.isDirectory()) return `round ${roundId} is not a directory in the rounds dir`;
   try {
     const [round, packet, feedback] = await Promise.all([readNoFollow(dir, "round.json"), readNoFollow(dir, "packet.json"), readNoFollow(dir, "feedback.json")]);
-    return { round, packet, feedback };
+    const followUps = await readNoFollow(dir, ROUND_FOLLOW_UPS_FILE, MAX_FOLLOW_UPS_BYTES).catch(() => undefined);
+    return { round, packet, feedback, ...(followUps !== undefined && { followUps }) };
   } catch (error) {
     if (error instanceof RoundUnreadable) return error.message;
     throw error;

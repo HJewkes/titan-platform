@@ -119,6 +119,26 @@ function writeRound({ roundsDir, pr }: World, roundId = ROUND_ID, comment?: stri
   return hash(packet);
 }
 
+const SIDECAR = "follow-ups.json";
+
+/** Rewrites the round writeRound made as a send-back with three bound answers, each carrying its own comment. */
+function writeThreeAnswerSendBack({ roundsDir, pr }: World): void {
+  const dir = join(roundsDir, ROUND_ID);
+  const merge = { repo: REPO, pr, headSha: H, ship: ["Ship it"] };
+  const questions = ["q-ship", "q-a", "q-b"].map((id) => ({ id, kind: "pick-one", options: ["Ship it", "Revise"], merge }));
+  const round = JSON.stringify({ unit: "example-unit", round: 1, questions });
+  const answers = [
+    { questionId: "q-ship", revisionRequested: true, comment: "Rename the flag." },
+    { questionId: "q-a", pick: "Ship it", comment: "Tidy the docs." },
+    { questionId: "q-b", pick: "Ship it", comment: "Add a metric." },
+  ];
+  const submittedAt = new Date(NOW_MS - 10 * 60_000).toISOString();
+  writeFileSync(join(dir, "round.json"), round);
+  writeFileSync(join(dir, "feedback.json"), JSON.stringify({ unit: "example-unit", round: 1, manifestSha256: hash(round), submittedAt, answers }));
+}
+
+const sidecar = (questionIds: string[]): string => JSON.stringify({ schema: "titan-console/follow-ups@1", questionIds, at: "2026-10-16T11:59:00.000Z" });
+
 function answer(w: World, packetSha: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { runId: w.runId, gateId: w.gateId, headSha: H, tree: TREE, packetSha, roundId: ROUND_ID, choice: "merge", ...extra };
 }
@@ -174,6 +194,44 @@ describe("POST /gates/answer-ship", () => {
     const gate = w.server.host.gates.get(w.gateId);
     expect(gate?.payload).toEqual({ decision: "send-back", headSha: H, note: "Rename the flag." });
     expect(gate?.resolvedBy).toMatchObject({ class: "owner-remote", channel: "console:ship" });
+  });
+
+  describe("a send-back with a follow-ups.json sidecar", () => {
+    const ALL = "Rename the flag.\n\nTidy the docs.\n\nAdd a metric.";
+
+    async function sentBackNote(plant: (dir: string, w: World) => void): Promise<unknown> {
+      const w = await world({ sendBack: true });
+      const packetSha = writeRound(w, ROUND_ID, "unused");
+      writeThreeAnswerSendBack(w);
+      plant(join(w.roundsDir, ROUND_ID), w);
+      const res = await post(w.server, answer(w, packetSha, { choice: "send-back" }));
+      expect(res.status).toBe(200);
+      return z.object({ note: z.string() }).parse(w.server.host.gates.get(w.gateId)?.payload).note;
+    }
+
+    it("leaves the follow-up answer out of the fixer's note", async () => {
+      expect(await sentBackNote((dir) => writeFileSync(join(dir, SIDECAR), sidecar(["q-b"])))).toBe("Rename the flag.\n\nTidy the docs.");
+    });
+
+    it("keeps every answer when the sidecar is missing", async () => {
+      expect(await sentBackNote(() => undefined)).toBe(ALL);
+    });
+
+    it("keeps every answer when the sidecar is malformed", async () => {
+      expect(await sentBackNote((dir) => writeFileSync(join(dir, SIDECAR), "{nope"))).toBe(ALL);
+    });
+
+    it("keeps every answer when the sidecar is over 64 KB", async () => {
+      const padded = sidecar(["q-b"]).replace('"at"', `"pad":"${"x".repeat(64 * 1024)}","at"`);
+      expect(await sentBackNote((dir) => writeFileSync(join(dir, SIDECAR), padded))).toBe(ALL);
+    });
+
+    it("keeps every answer when the sidecar is a symlink", async () => {
+      expect(await sentBackNote((dir, w) => {
+        writeFileSync(join(w.roundsDir, "elsewhere.json"), sidecar(["q-b"]));
+        symlinkSync(join(w.roundsDir, "elsewhere.json"), join(dir, SIDECAR));
+      })).toBe(ALL);
+    });
   });
 
   it("refuses a send-back with 422 payload when the gate was opened without the send-back answer", async () => {
