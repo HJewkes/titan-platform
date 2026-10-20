@@ -10,8 +10,11 @@ type Body = Record<string, unknown>;
 const TRANSPORT = { source: "webhook", observedAt: "" } as const;
 
 function bare(event: IdentityEvent | TransitionEvent): Projected {
-  const { source: _source, deliveryId: _deliveryId, observedAt: _observedAt, ...rest } = event;
-  return rest;
+  const rest: Partial<typeof event> = { ...event };
+  delete rest.source;
+  delete rest.deliveryId;
+  delete rest.observedAt;
+  return rest as Projected;
 }
 
 const fromCi = (observation: CiObservation | undefined): Projected | "ignored" => (observation === undefined ? "ignored" : bare(ciEvent(observation, TRANSPORT)));
@@ -53,6 +56,7 @@ const isBody = (payload: unknown): payload is Body => typeof payload === "object
 export const projectDelivery: Projector = (event, payload) => {
   if (!isBody(payload)) return "ignored";
   const action = typeof payload.action === "string" ? payload.action : undefined;
-  const row = INGRESS_KINDS.find((candidate) => candidate.event === event && (candidate.actions === undefined || (action !== undefined && candidate.actions.includes(action))) && (candidate.when?.(payload) ?? true));
+  const actionListed = (row: IngressKind): boolean => row.actions === undefined || (action !== undefined && row.actions.includes(action));
+  const row = INGRESS_KINDS.find((candidate) => candidate.event === event && actionListed(candidate) && (candidate.when?.(payload) ?? true));
   return row === undefined ? "ignored" : row.project(payload);
 };
