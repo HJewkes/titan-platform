@@ -24,7 +24,7 @@ export type GuardOutcome =
 type Retry = { outcome: "stale" } | { outcome: "lost" };
 type Attempt = GuardOutcome | Unavailable | Retry;
 
-const isUnavailable = (value: unknown): value is Unavailable => typeof value === "object" && value !== null && (value as Unavailable).kind === "unavailable";
+const isUnavailable = (value: string | null | Unavailable | Attempt): value is Unavailable => typeof value === "object" && value !== null && "kind" in value;
 
 async function classifyRead(deps: GuardDeps, key: PrKey, stored: StoredHead | undefined, read: string): Promise<HeadClass> {
   const ancestry = stored === undefined || stored.head === read ? undefined : await deps.ancestry(key, stored.head, read);
