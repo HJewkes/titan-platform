@@ -3,14 +3,18 @@
  * local verb on purpose and never an RPC command, so nothing that reaches `/rpc` can land a round. It prints
  * the console's own URL for the round, never a review-harness port. `rounds withdraw` is local for the same
  * reason: nothing that reaches `/rpc` can take a question away from the owner. `decisions file` lands a seat's
- * questions-only round the same way, so it too needs no running console.
+ * questions-only round the same way, so it too needs no running console. `rounds import --seat <name>` records that
+ * seat as the round's asker, so it hears of the answer (`round-asker.ts`).
  */
+import path from "node:path";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import type { ConsoleConfig } from "./config.js";
 import { lanOrigin } from "./daemon.js";
+import { recordAsker } from "./round-asker.js";
 import { fileRound, type FileResult } from "./round-file.js";
 import { importRound, type ImportResult } from "./round-import.js";
+import { SEAT_NAME } from "./round-notice-transport.js";
 import { withdrawRound } from "./round-withdraw.js";
 
 interface RoundUrls {
@@ -18,7 +22,8 @@ interface RoundUrls {
   lanUrl: string | null;
 }
 
-type ImportReport = ImportResult & RoundUrls;
+/** `asker` is there only when the import named a seat. */
+type ImportReport = ImportResult & RoundUrls & { asker?: string };
 
 function urlsOf(config: ConsoleConfig, id: string): RoundUrls {
   const hash = `/#/rounds/${id}`;
@@ -26,25 +31,26 @@ function urlsOf(config: ConsoleConfig, id: string): RoundUrls {
   return { url: `http://127.0.0.1:${config.port}${hash}`, lanUrl };
 }
 
-const reportOf = (config: ConsoleConfig, result: ImportResult): ImportReport => ({ ...result, ...urlsOf(config, result.id) });
-
-function textLines({ id, frames, feedback, url, lanUrl }: ImportReport): string[] {
-  return [id, `frames: ${frames}`, `feedback: ${feedback}`, url, ...(lanUrl === null ? [] : [lanUrl])];
+function textLines({ id, frames, feedback, asker, url, lanUrl }: ImportReport): string[] {
+  return [id, `frames: ${frames}`, `feedback: ${feedback}`, ...(asker === undefined ? [] : [`asked by: ${asker}`]), url, ...(lanUrl === null ? [] : [lanUrl])];
 }
 
 interface ImportArgs {
   dir: string;
+  seat: string | null;
   json: boolean;
 }
 
-/** `rounds import <round-dir>` with an optional `--json` on either side of the dir; null for anything else. */
+/** `rounds import <round-dir> [--seat <name>] [--json]`, flags on either side of the dir; null for anything else. */
 export function roundsImportArgs(argv: readonly string[]): ImportArgs | null {
   if (argv[0] !== "rounds" || argv[1] !== "import") return null;
-  const rest = argv.slice(2);
-  const dirs = rest.filter((arg) => arg !== "--json");
+  const split = valueFlags(argv.slice(2));
+  if (split === null || split.values.has("--initiative")) return null;
+  const dirs = split.others.filter((arg) => arg !== "--json");
+  const json = split.others.length - dirs.length;
   const [dir] = dirs;
-  if (dir === undefined || dirs.length !== 1 || rest.length > 2) return null;
-  return { dir, json: rest.length === 2 };
+  if (dir === undefined || dirs.length !== 1 || json > 1) return null;
+  return { dir, seat: split.values.get("--seat") ?? null, json: json === 1 };
 }
 
 const fail = (message: string, code: number): never => {
@@ -55,7 +61,7 @@ const exitCodeOf = (error: unknown): number =>
   error instanceof Error && "code" in error && typeof error.code === "number" ? error.code : 1;
 
 /** A refusal prints its reason to stderr and nothing to stdout, and exits with the refusal's code. */
-async function runVerb<T>(run: () => Promise<T>, print: (result: T) => string): Promise<void> {
+export async function runVerb<T>(run: () => Promise<T>, print: (result: T) => string): Promise<void> {
   let result: T;
   try {
     result = await run();
@@ -67,9 +73,17 @@ async function runVerb<T>(run: () => Promise<T>, print: (result: T) => string): 
   console.log(print(result));
 }
 
-export async function importRoundCli(config: ConsoleConfig, { dir, json }: ImportArgs): Promise<void> {
+/** The seat is checked before anything lands; a round imported again keeps its first asker. */
+async function importWithAsker(config: ConsoleConfig, dir: string, seat: string | null): Promise<ImportReport> {
+  if (seat !== null && !SEAT_NAME.test(seat)) fail(`import refused: seat "${seat}" is not an agent-chat name (lowercase letters, digits and dashes)`, EXIT.USAGE);
+  const result = await importRound({ source: dir, roundsDir: config.roundsDir });
+  const asker = seat === null ? undefined : await recordAsker(path.join(path.resolve(config.roundsDir), result.id), { seat, initiative: null }, new Date());
+  return { ...result, ...urlsOf(config, result.id), ...(asker !== undefined && { asker: asker.seat }) };
+}
+
+export async function importRoundCli(config: ConsoleConfig, { dir, seat, json }: ImportArgs): Promise<void> {
   await runVerb(
-    async () => reportOf(config, await importRound({ source: dir, roundsDir: config.roundsDir })),
+    () => importWithAsker(config, dir, seat),
     (report) => (json ? JSON.stringify(report) : textLines(report).join("\n")),
   );
 }
@@ -112,7 +126,7 @@ interface DecisionsFileArgs {
 const VALUE_FLAGS = new Set(["--seat", "--initiative"]);
 
 /** Splits `--seat <s>` and `--initiative <i>` from the rest; null when a value flag repeats or has no value. */
-function valueFlags(rest: readonly string[]): { values: Map<string, string>; others: string[] } | null {
+export function valueFlags(rest: readonly string[]): { values: Map<string, string>; others: string[] } | null {
   const values = new Map<string, string>();
   const others: string[] = [];
   for (let at = 0; at < rest.length; at += 1) {
