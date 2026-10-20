@@ -185,7 +185,7 @@ describe("a later head that commits exactly the accepted set", () => {
 
     const answer = await r.ask("approve-merge", gate(H2));
 
-    expect(answer.data).toEqual({ decision: "merge", headSha: H2 });
+    expect(answer.data).toEqual({ decision: "merge", headSha: H2, origin: "approved-set" });
     expect(r.calls).toEqual([]);
     expect(r.modeReads).toEqual([]);
   });
