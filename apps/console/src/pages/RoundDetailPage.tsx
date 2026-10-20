@@ -2,11 +2,12 @@ import { type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
+import { useSubmit } from "../data/submit.js";
 import { open } from "../router.js";
 import { RoundFramesProvider } from "./QuestionFrames.js";
 import { RoundNote } from "./RoundNote.js";
 import { DesignRound } from "./RoundDesign.js";
-import { RoundSend } from "./RoundSend.js";
+import { RoundSend, lockedBy } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
@@ -55,18 +56,21 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
         <Pill variant="subtle" size="xs">{round.status}</Pill>
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </HStack>
-      {manifest.context ? <RoundNote text={manifest.context} /> : null}
+      {manifest.context ? <RoundNote heading="Context" text={manifest.context} /> : null}
     </VStack>
   );
 }
 
 function QuestionRound({ round }: { round: ValidRound }): ReactNode {
-  const state = useRoundAnswers(orderedQuestions(round.manifest).flatMap((group) => group.questions));
+  const submitting = useSubmit();
+  const locked = lockedBy(round, submitting);
+  // Locked, no question is handed over, so no digit key can change an answer already sent.
+  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
   return (
     <VStack gap={4}>
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} textAnswers notes={round.notes} />
-      <RoundSend round={round} state={state} />
+      <RoundSections manifest={round.manifest} state={state} textAnswers locked={locked} />
+      <RoundSend round={round} state={state} submitting={submitting} />
     </VStack>
   );
 }

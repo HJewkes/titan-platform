@@ -3,6 +3,7 @@ import { Button, ButtonText, HStack, Input, Typography, VStack } from "@titan-de
 import type { Question } from "../../server/round-schema.js";
 import { frameAnchor, useFrameSource, type ABSide } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
+import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import type { QuestionAnswer } from "./RoundQuestion.js";
 
 /** What a page that answers A/B questions holds for one: a note per option, and the "Neither" request. */
@@ -10,7 +11,7 @@ export interface ABAnswering {
   notes: Readonly<Record<string, string>>;
   onNote: (option: string, text: string) => void;
   onNeither: () => void;
-  /** The round is sent: the note boxes are gone, as feedback.json already holds what they said. */
+  /** The round is sent: each note box gives way to the note as sent. */
   sent?: boolean;
 }
 
@@ -59,17 +60,30 @@ function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent 
   return (
     <figure id={frameAnchor(question.id, side.key)} className="flex min-w-0 flex-col gap-2" data-testid={`question-ab-side-${question.id}-${name}`}>
       <HStack gap={2} align="center" justify="between" wrap>
-        <Typography variant="subtitle2">{`${name}: ${side.option}`}</Typography>
+        <Typography variant="subtitle2">{`${name}: `}<InlineMarkdown text={side.option} /></Typography>
         <Typography variant="caption" color="secondary">{`frame: ${side.label}`}</Typography>
       </HStack>
       <SideFrame side={side} />
       <Button variant={picked ? "solid" : "outline"} color="primary" aria-pressed={picked} onPress={() => onChoose(side.option)}>
         <ButtonText>{picked ? `Picked ${name}` : keyed(side.index, `Pick ${name}`)}</ButtonText>
       </Button>
-      {sent ? null : (
+      {sent ? (
+        <SentNote option={side.option} note={notes[side.option]} />
+      ) : (
         <Input multiline numberOfLines={2} label={`Note on ${name} (optional)`} accessibilityLabel={`Note on ${side.option}`} value={notes[side.option] ?? ""} onChangeText={(text) => onNote(side.option, text)} />
       )}
     </figure>
+  );
+}
+
+/** An option note as sent, read-only. */
+function SentNote({ option, note }: { option: string; note: string | undefined }): ReactNode {
+  if (!note?.trim()) return null;
+  return (
+    <VStack gap={1} testID={`question-ab-note-sent-${option}`}>
+      <Typography variant="microLabel" color="secondary">YOUR NOTE</Typography>
+      <Typography variant="body2">{note}</Typography>
+    </VStack>
   );
 }
 
@@ -88,7 +102,7 @@ function OtherAnswers({ question, sides, answer, onChoose, onNeither, revising }
     <HStack gap={2} align="center" wrap>
       {others.map(({ option, index }) => (
         <Button key={option} variant={pickedIn(answer) === option ? "solid" : "outline"} size="sm" aria-pressed={pickedIn(answer) === option} onPress={() => onChoose(option)}>
-          <ButtonText>{keyed(index, option)}</ButtonText>
+          <ButtonText>{keyed(index, plainText(option))}</ButtonText>
         </Button>
       ))}
       {offersNeither(question) ? (
