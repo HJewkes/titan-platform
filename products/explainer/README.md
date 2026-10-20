@@ -134,8 +134,11 @@ the exit code.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
-§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
-errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+§8 chapter order and §9 list shapes. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger.
+Q-E16 (M6) errors on a list beat whose cue entries, three or more of them (`ODD_ONE_OUT_MIN_ITEMS`), carry more
+than one declared kind. A beat §9 declares `contrast` (a removal card's old/new/why, or a split map's old and new
+pins) is never compared, and neither the kind-honest nor the blind odd-one-out judge question is asked about it;
+an undeclared beat is `parallel`. Q-E17 errors on a beat
 that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
