@@ -19,8 +19,8 @@ declare const TITAN_MOTION_GLOBAL = "__titanMotion";
 
 /**
  * The virtual-time init script. Playwright runs it before any page script, so nothing in
- * the page reads real time: Date, performance.now, timers and rAF all follow a clock that only
- * `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
+ * the page reads real time: Date, performance.now, timers, rAF, document.timeline and running animations
+ * all follow a clock that only `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
  *
  * Each step below is serialised on its own, so it must stay self-contained: no imports, no closures over
  * module scope, and no calls to another step except through the `steps` it is handed. Passing the steps
@@ -34,8 +34,10 @@ interface VirtualTimeApi {
         timers: number;
         rafs: number;
     };
-    /** Fires every timer due by `ms` in order, sets the clock to `ms`, then runs one rAF frame. */
+    /** Fires every timer due by `ms` in order, sets the clock to `ms`, runs one rAF frame, then syncs animations. */
     advanceTo(ms: number): void;
+    /** Pauses every animation the page left running and sets it to the virtual time since it was first seen. */
+    syncAnimations(): void;
 }
 
 declare global {
@@ -77,7 +79,7 @@ interface CapturePage {
  * render that throws on mount, leaves a page that still answers seeks and screenshots blank.
  */
 declare function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage>;
-/** One frame: advance virtual time, seek (commits through flushSync), await ready(), screenshot. */
+/** One frame: advance virtual time, seek (commits through flushSync), await ready(), sync the animations the seek started, screenshot. */
 declare function captureFrame(page: Page, t: number): Promise<Buffer>;
 
 interface FramesOptions extends PageOptions {

@@ -9,7 +9,7 @@ export const listedLabels = (beat: PaceBeat): string[] => beat.items.filter((i) 
 // void "two adds the review queue" too, an item the viewer can explain. An item never spoken is left to the judge.
 function isBare(label: string, clauses: readonly string[], labelTerms: ReadonlySet<string>): boolean {
   const naming = clauses.filter((clause) => sharesTerm(clause, label));
-  return naming.length > 0 && naming.every((clause) => itemGloss(label, [clause], labelTerms) === 0);
+  return naming.length > 0 && naming.every((clause) => itemGloss(clause, labelTerms) === 0);
 }
 
 /**

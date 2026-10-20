@@ -1,11 +1,11 @@
 import { contentTerms } from "./lint-text.js";
-import type { PaceBeat } from "./pace-items.js";
+import type { PaceBeat, PaceItem } from "./pace-items.js";
 
 /** M3-pre: a beat must put at least this many new items on screen before it can be routed. */
 const MIN_NEW_ITEMS = 3;
 
 /** M3-pre: an item glossed by fewer content words than this, in its own clause, is named only. */
-export const MIN_GLOSS_TERMS = 3;
+const MIN_GLOSS_TERMS = 3;
 
 /** M3-pre: a beat whose items average a gloss below this is routed. */
 const MAX_MEAN_GLOSS = 1;
@@ -25,6 +25,21 @@ const FILLER = new Set(
     .flatMap((w) => [...contentTerms(w)]),
 );
 
+// Number words a standard English stopword list keeps but contentTerms drops. Folded to digits, so "five" in
+// "the five-hour ceiling" restates a "5-hour" label, while "Four" in "Four wakes fixers" and "Ten" in "Ten: two pool
+// rules" are words the clause adds.
+const NUMBER_WORDS = new Map(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"].map((w, i) => [w, String(i + 1)]));
+
+const numberOf = (word: string): string[] => {
+  const spelled = NUMBER_WORDS.get(word);
+  if (spelled) return [spelled];
+  return /^\d+$/.test(word) ? [word] : [];
+};
+
+/** Content terms, plus spelled numbers and bare digit runs, both as digits. */
+const glossTerms = (text: string): Set<string> =>
+  new Set([...contentTerms(text), ...text.toLowerCase().split(/[^a-z0-9]+/).flatMap(numberOf)]);
+
 /** The clauses of a spoken line: split at punctuation and at "and" and "or". */
 export const clausesOf = (spoken: string): string[] =>
   spoken
@@ -32,15 +47,34 @@ export const clausesOf = (spoken: string): string[] =>
     .map((c) => c.trim())
     .filter(Boolean);
 
-/**
- * Content words that gloss an item: those of the first clause sharing a content term with its label, less the
- * beat's own label terms, so naming a sibling item is not a gloss. Zero when no clause names the item.
- */
-export function itemGloss(label: string, clauses: readonly string[], labelTerms: ReadonlySet<string>): number {
-  const own = contentTerms(label);
-  const clause = clauses.map(contentTerms).find((terms) => [...terms].some((t) => own.has(t)));
-  return clause ? [...clause].filter((t) => !labelTerms.has(t) && !FILLER.has(t)).length : 0;
+const cueKey = (word: string): string => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
+
+/** The clause the cue ("word" or "word#n") is spoken in, matched as the cue resolver matches it. */
+function cueClause(cue: string, clauses: readonly string[]): string | undefined {
+  const [word = "", nth = "1"] = cue.split("#");
+  const owners = clauses.flatMap((clause) => clause.split(/\s+/).filter((w) => cueKey(w) === cueKey(word)).map(() => clause));
+  return owners[Number(nth) - 1];
 }
+
+/**
+ * An item's own clause is the one its cue word is spoken in, which is where it lands on screen. A cue several
+ * items share marks a group ("Eight follow-ups"), so each of them falls back to the first clause naming it.
+ */
+function ownClause(item: PaceItem, clauses: readonly string[], shared: ReadonlySet<string>): string | undefined {
+  const cued = item.cue !== undefined && !shared.has(item.cue) ? cueClause(item.cue, clauses) : undefined;
+  const own = glossTerms(item.label);
+  return cued ?? clauses.find((c) => [...glossTerms(c)].some((t) => own.has(t)));
+}
+
+/** Words that gloss an item: those of its own clause, less the beat's own label terms, so naming a sibling is not a gloss. */
+export function itemGloss(clause: string | undefined, labelTerms: ReadonlySet<string>): number {
+  return clause === undefined ? 0 : [...glossTerms(clause)].filter((t) => !labelTerms.has(t) && !FILLER.has(t)).length;
+}
+
+const sharedCues = (items: readonly PaceItem[]): Set<string> => {
+  const cues = items.flatMap((i) => (i.cue === undefined ? [] : [i.cue]));
+  return new Set(cues.filter((c, i) => cues.indexOf(c) !== i));
+};
 
 /** One beat the L1 item judge (TP-2982) asks "is each of these explained?" about, with the items it names only. */
 export interface ExplainRoute {
@@ -55,15 +89,16 @@ const spokenLater = (beats: readonly PaceBeat[], index: number, chapter: string)
 
 // A label with no content terms (a "why" pin) has nothing to find in a clause or a later beat, so it is left out
 // of the count rather than scored as named only or as explained.
-const measurable = (beat: PaceBeat): string[] => beat.newItems.map((i) => i.label).filter((l) => contentTerms(l).size > 0);
+const measurable = (beat: PaceBeat): PaceItem[] => beat.newItems.filter((i) => contentTerms(i.label).size > 0);
 
 function beatRoute(beats: readonly PaceBeat[], beat: PaceBeat, index: number): ExplainRoute | undefined {
-  const labels = measurable(beat);
-  if (labels.length < MIN_NEW_ITEMS) return undefined;
+  const items = measurable(beat);
+  if (items.length < MIN_NEW_ITEMS) return undefined;
   const clauses = clausesOf(beat.spoken);
-  const labelTerms = new Set(labels.flatMap((l) => [...contentTerms(l)]));
+  const labelTerms = new Set(items.flatMap((i) => [...glossTerms(i.label)]));
+  const shared = sharedCues(items);
   const later = spokenLater(beats, index, beat.chapter);
-  const glossed = labels.map((label) => ({ label, gloss: itemGloss(label, clauses, labelTerms) }));
+  const glossed = items.map((i) => ({ label: i.label, gloss: itemGloss(ownClause(i, clauses, shared), labelTerms) }));
   const namedOnly = glossed.filter(({ label, gloss }) => gloss < MIN_GLOSS_TERMS && ![...contentTerms(label)].every((t) => later.has(t)));
   const meanGloss = glossed.reduce((sum, g) => sum + g.gloss, 0) / glossed.length;
   const routed = namedOnly.length * 2 >= glossed.length && meanGloss < MAX_MEAN_GLOSS;
