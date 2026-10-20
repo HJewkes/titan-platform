@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { deriveEvalView } from "./eval-view.js";
 import { runL0 } from "./eval-l0.js";
@@ -102,8 +103,8 @@ describe("migrateSpike", () => {
   });
 
   it("still fails on a key it does not know", () => {
-    const script = pipelineScript() as { beats: Record<string, unknown>[] };
-    const odd = { ...script, beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, sparkle: true } : beat)) };
+    const odd = z.looseObject({ beats: z.array(z.looseObject({})) }).parse(pipelineScript());
+    odd.beats[0] = { ...odd.beats[0], sparkle: true };
 
     expect(() => migrateSpike(odd)).toThrow(/sparkle/);
   });
