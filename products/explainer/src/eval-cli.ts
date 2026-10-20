@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import { calibrateCommand } from "./eval-calibrate-cli.js";
 import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
@@ -8,6 +8,7 @@ import { itemsCommand } from "./eval-items-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
+import { migrateSpike } from "./migrate.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
@@ -25,7 +26,11 @@ interface L0Flags {
   layout?: string;
   timing?: string;
   failOnGhosts?: boolean;
+  format: ScriptFormat;
 }
+
+const SCRIPT_FORMATS = ["v1", "spike"] as const;
+type ScriptFormat = (typeof SCRIPT_FORMATS)[number];
 
 /** The clock, check list and judge harness are injectable so a run is reproducible in a test. */
 export interface EvalCliDeps {
@@ -55,7 +60,7 @@ function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
   const now = deps.now ?? (() => new Date());
   const started = now();
   const raw = readJson(file);
-  const script = ScriptSchema.parse(raw);
+  const script = flags.format === "spike" ? migrateSpike(raw) : ScriptSchema.parse(raw);
   const layout = flags.layout ? MapLayoutSchema.parse(readJson(flags.layout)) : undefined;
   const bench = benchLayout(flags.bench);
   const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
@@ -76,7 +81,7 @@ function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
 
 function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command {
   return new Command("l0")
-    .description("Run the deterministic L0 checks on a script/v1 file; append structure.tsv rows and a runs.jsonl record")
+    .description("Run the deterministic L0 checks on a script/v1 file (or a spike script with --format spike); append structure.tsv rows and a runs.jsonl record")
     .argument("<script>", "script/v1 JSON file")
     .requiredOption("--config <id>", "config_id of the generator configuration, e.g. tour-short/script-v1-02")
     .option("--rules <file>", "rules/v1 registry, by default the shipped doctrine/rules.yaml; its sha is rules_sha on every row")
@@ -84,6 +89,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--parent <sha>", "script_sha this script was derived from")
     .option("--layout <file>", "map layout JSON; without it the map lints are skipped")
     .option("--timing <file>", "words.json (or a durations-only extract); the pace lints read its heard durations, not plannedS")
+    .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
     .exitOverride()
     .action((file: string, flags: L0Flags) => {

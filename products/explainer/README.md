@@ -99,6 +99,12 @@ implemented or pending. `--rules` defaults to the shipped registry and must pars
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
 
+`eval l0 --format spike|v1` (default `v1`) reads a Python-emitted spike script.json by running it through
+`migrateSpike` (`src/migrate.ts`) first, so every L0 check runs on the scripts the team writes. The migration drops
+keys only the spike renderer reads, maps chip kinds onto `CHIP_KINDS`, and keeps `band`, `origin`, `render`, `maps`
+and map_state `map`/`old`/`new` as the optional fields `ScriptSchema` admits. The frozen script is the file as read,
+not the migrated form. More than two `video.invariants` no longer fail the parse: `Q-W6:invariant-cap` warns instead.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
