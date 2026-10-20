@@ -30,7 +30,7 @@ function groupProblem(manifest: Manifest, ship: MergeBound): string | null {
   const group = manifest.prGroups?.find((candidate) => candidate.pr === key);
   if (group === undefined) return `question ${ship.id} ships ${key}, which has no PR group`;
   if (group.headSha !== ship.merge.headSha) return `question ${ship.id} ships ${key} at ${ship.merge.headSha}, its PR group is at ${group.headSha}`;
-  const asked = (manifest.sections ?? []).some((section) => group.sectionIds.includes(section.id) && section.questionIds.includes(ship.id));
+  const asked = manifest.sections.some((section) => group.sectionIds.includes(section.id) && section.questionIds.includes(ship.id));
   return asked ? null : `question ${ship.id} is not in a section of the ${key} PR group`;
 }
 

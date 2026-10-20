@@ -114,6 +114,15 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     ]);
   });
 
+  it("keeps a PR's Ship open while its own Send back note is typed", async () => {
+    await renderPrs();
+
+    fireEvent.click(button("Send back example/panels#2"));
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
+
+    expect(disabled("Ship example/panels#2")).toBe(false);
+  });
+
   it("ships both PRs, each at its own head", async () => {
     const calls = await renderPrs();
 

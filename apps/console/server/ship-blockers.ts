@@ -133,7 +133,7 @@ export function shipScope(manifest: Manifest, mergeId: string): ReadonlySet<stri
   const merge = merges.find((question) => question.id === mergeId);
   if (merges.length < 2 || merge === undefined || manifest.prGroups === undefined) return all;
   const groupOf = new Map(manifest.prGroups.flatMap((group) => group.sectionIds.map((sectionId) => [sectionId, group.pr] as const)));
-  const claimedBy = new Map((manifest.sections ?? []).flatMap((section) => section.questionIds.map((id) => [id, groupOf.get(section.id)] as const)));
+  const claimedBy = new Map(manifest.sections.flatMap((section) => section.questionIds.map((id) => [id, groupOf.get(section.id)] as const)));
   const own = pageOf(merge);
   return new Set([...all].filter((id) => (claimedBy.get(id) ?? own) === own && (id === mergeId || !merges.some((other) => other.id === id))));
 }

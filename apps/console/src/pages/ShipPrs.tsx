@@ -37,7 +37,7 @@ const sendBackOf = (question: MergeQuestion): string | undefined => question.opt
 
 /** A Ship question in no PR group keeps the sections that ask it, so a hand-written round still shows its frames. */
 function prUnits(manifest: Manifest, merges: readonly MergeQuestion[]): PrUnit[] {
-  const sections = manifest.sections ?? [];
+  const { sections } = manifest;
   const isMerge = new Set<Question>(merges);
   return merges.map((question) => {
     const pr = `${question.merge.repo}#${question.merge.pr}`;
@@ -93,7 +93,8 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const units = prUnits(round.manifest, merges);
   const answers = draftAnswers(round, units, side, verdicts);
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
-  const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], draft, unit.question.id);
+  // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
+  const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
   const state: PrsState = { round, units, side, verdicts, answers, blockersOf, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
     <VStack gap={6}>
