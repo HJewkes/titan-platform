@@ -1,7 +1,6 @@
 // Node strips this file's types when scripts/a17.mjs imports it, so it carries no runtime imports.
 
-const MODES = ["webhook", "polling"] as const;
-type Mode = (typeof MODES)[number];
+type Mode = "webhook" | "polling";
 type ModeState = "passed" | "failed" | "skipped" | "todo" | "pending" | "missing" | (string & {});
 
 interface VitestAssertion {
@@ -15,7 +14,7 @@ export interface VitestJson {
   testResults: Array<{ assertionResults: VitestAssertion[] }>;
 }
 
-export interface A17Report {
+interface A17Report {
   schema: "a17-report/v1";
   sha: string;
   generatedAt: string;
