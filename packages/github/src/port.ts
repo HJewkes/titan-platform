@@ -10,6 +10,7 @@ import { closePr, closedSkip, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
 export { FileListTruncatedError } from "./pr-files.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
@@ -116,6 +117,10 @@ export interface GitHubWire {
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
   /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
   revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** `GET git/ref/heads/{branch}`, sent with `If-None-Match: etag` when `etag` is set; a 404 answers a null `sha`. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** `GET rulesets`, sent with `If-None-Match: etag` when `etag` is set; a free-plan 403 answers `unreadable`. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -180,6 +185,10 @@ export interface GitHubPort {
   listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
   /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
   revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** A conditional `getHeadSha`: pass the `etag` of the last read, null for none. A 304 costs no rate-limit point. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** Each ruleset's `updated_at` by id, conditional like `revalidateOpenPrs`; `unreadable` means unknown, never none. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** The repo's default branch as GitHub reports it now; a failed read throws. */
@@ -276,6 +285,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
     revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
+    revalidateRef: async (repo, branch, etag) => wire.revalidateRef(repoOf(repo), checkRef("branch", branch), etag),
+    revalidateRulesets: async (repo, etag) => wire.revalidateRulesets(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     defaultBranch: async (repo) => wire.getDefaultBranch(repoOf(repo)),
