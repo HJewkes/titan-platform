@@ -19,7 +19,6 @@ import { z } from "zod";
 import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { readCommand } from "./owner-guard.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
@@ -51,7 +50,7 @@ const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().n
 
 const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
 
-const roundSummary = z.discriminatedUnion("valid", [
+export const roundSummary = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
@@ -73,7 +72,7 @@ const roundNotes = z.object({
   comments: z.record(z.string(), z.string()),
 });
 
-const roundDetail = z.discriminatedUnion("valid", [
+export const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
@@ -375,23 +374,4 @@ export async function readQueueRounds({ dir }: RoundsSource): Promise<{ rounds: 
   const gaps = read.flatMap(({ gap }) => (gap === undefined ? [] : [gap]));
   if (ids.length > MAX_ROUNDS) gaps.push(`only the first ${MAX_ROUNDS} of ${ids.length} rounds were read`);
   return { rounds: read.flatMap(({ round }) => (round === undefined ? [] : [round])), gaps };
-}
-
-export function roundsCommands(source: RoundsSource) {
-  return {
-    "rounds.list": readCommand({
-      name: "rounds.list",
-      description: "Every review round in the rounds dir, newest first: open, sent or withdrawn, and the schema's reason for any invalid one",
-      args: z.object({}),
-      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean(), dir: z.string() }),
-      run: () => listRounds(source),
-    }),
-    "rounds.get": readCommand({
-      name: "rounds.get",
-      description: "One review round's manifest; an unsent after-answer round comes without its recommendations, and a Ship round with its proven head's lineage",
-      args: z.object({ id: z.string().min(1).max(64) }),
-      result: roundDetail,
-      run: ({ id }) => getRound(source, id),
-    }),
-  };
 }

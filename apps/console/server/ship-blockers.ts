@@ -25,7 +25,7 @@ interface DraftAnswer {
 }
 
 /** The answer about to be sent: every answer with its comment, the round note, and the rounds ticked Addressed. */
-export interface ShipDraft {
+interface ShipDraft {
   answers: readonly DraftAnswer[];
   general: string;
   addressed: readonly number[];

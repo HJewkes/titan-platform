@@ -8,7 +8,7 @@ import { importRoundCli, roundsImportArgs, roundsWithdrawArgs } from "./cli-roun
 import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
 import { roundFramesCommands } from "./round-frames.js";
-import { roundsCommands } from "./rounds.js";
+import { roundsCommands } from "./rounds-commands.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import { createSources } from "./upstreams.js";
 
