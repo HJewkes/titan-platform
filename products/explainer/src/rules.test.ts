@@ -15,11 +15,14 @@ import {
   type Rule,
 } from "./rules.js";
 import { ScriptSchema } from "./script-schema.js";
+import { parseSpine } from "./spine-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const registry = loadRuleRegistry();
 const packageRoot = dirname(dirname(DEFAULT_RULES_PATH));
-const emittedCheckIds = new Set(runL0(ScriptSchema.parse(scriptWith()), layout, L0_CHECKS).map((row) => row.check_id));
+// The spine lints emit only for a run that has a spine, so the registry cross-check supplies the pilot one.
+const pilotSpine = parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-explainer/spine.md", import.meta.url), "utf8"));
+const emittedCheckIds = new Set(runL0(ScriptSchema.parse(scriptWith()), layout, L0_CHECKS, undefined, pilotSpine).map((row) => row.check_id));
 
 const rule = (overrides: Partial<Rule> = {}): Rule => ({
   id: "Q-V1",

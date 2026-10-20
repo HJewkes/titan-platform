@@ -9,6 +9,14 @@ rules:
     scope: { layer: U }
     enforcement: [planner]
     stages: [plan, script]
+  - id: owner-FB1.2
+    source: { doc: owner-feedback, ref: FB1 }
+    text: "No chapter shows the architecture before the first chapter that follows the journey."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E15, live: true }
   - id: owner-FB2.1
     source: { doc: owner-feedback, ref: FB2 }
     text: "Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it."
@@ -70,3 +78,11 @@ rules:
     enforcement: [lint]
     stages: [qa]
     check: { kind: qrule, ref: Q-E11, live: true }
+  - id: owner-FB6.3
+    source: { doc: owner-feedback, ref: FB6 }
+    text: "Each invariant names the architecture row that keeps it, or the fact that shows how it breaks today."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E18, live: true }

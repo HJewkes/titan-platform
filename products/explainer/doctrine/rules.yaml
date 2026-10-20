@@ -463,8 +463,8 @@ rules:
     related: ["FB 1"]
     rubric_dims: [J3]
     owner_support: for
-    note: "Owner feedback rule 1. Needs the spine (spine/v1); until TP-2988 lands the check is pending. The L1 J3 anchor carries the judge half."
-    l0: { severity: error, status: pending, owner: TP-2988 }
+    note: "Owner feedback rule 1. Needs the spine (spine/v1): the check runs only when a spine is supplied. The L1 J3 anchor carries the judge half."
+    l0: { severity: error, status: implemented, checks: ["Q-E15"] }
     judge: { layer: L1, status: cited, rubric: rubrics/l1-script.md }
   - id: Q-E16
     rule: "A list holds one kind of item: every item in a list or card set has the same declared kind"
@@ -485,8 +485,8 @@ rules:
     fields: [video.invariants, beats.visual]
     related: [Q-E11, "FB 6"]
     owner_support: for
-    note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat. Pending on the spine lints (S4 of the script rules plan)."
-    l0: { severity: error, status: pending, owner: TP-2988 }
+    note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat, and runs only when a spine is supplied."
+    l0: { severity: error, status: implemented, checks: ["Q-E18"] }
   - id: Q-E19
     rule: "Every item a beat puts on screen for the first time is declared in that beat's new_terms"
     fields: [beats.new_terms, beats.visual]
