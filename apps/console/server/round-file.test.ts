@@ -70,6 +70,17 @@ describe("filing a decision round", () => {
     expect(again).toEqual({ id: QUESTIONS_ONLY, created: false, ...ASKER });
   });
 
+  it("refuses a round that breaks the builder rules, naming the rule, and writes nothing", async () => {
+    const round = JSON.parse(await fixture(QUESTIONS_ONLY)) as { questions: { id: string; frames?: string[] }[] };
+    round.questions = round.questions.map((question) => (question.id === "ramp-default" ? { ...question, decision: "decide" } : question));
+
+    await expect(fileRound({ body: JSON.stringify(round), roundsDir, asker: ASKER })).rejects.toMatchObject({
+      message: expect.stringMatching(/^decision round refused: round\.json breaks the builder rules: missing-implemented-option: question ramp-default:/),
+      code: EXIT.DATAERR,
+    });
+    expect(await entries(roundsDir)).toEqual([]);
+  });
+
   it("refuses a different round.json under an id already filed", async () => {
     await fileRound({ body: await fixture(QUESTIONS_ONLY), roundsDir, asker: ASKER });
     const changed = (await fixture(QUESTIONS_ONLY)).replace("second pass after the ramp rework", "a changed context line");
