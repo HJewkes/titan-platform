@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, twoPrRound } from "./round-fixtures.js";
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 import { parseManifest } from "./rounds.js";
-import { priorFeedback, shipBlockers } from "./ship-blockers.js";
+import { priorFeedback, sendBackBlocker, shipBlockers, shipScope } from "./ship-blockers.js";
 
 function fixture(id: string): Manifest {
   const parsed = parseManifest(readFileSync(path.join(FIXTURE_ROUNDS.dir, id, "round.json")));
@@ -102,5 +102,46 @@ describe("shipBlockers", () => {
 
     expect(shipBlockers(withSide(side, "shown"), [], draft)).toHaveLength(1);
     expect(shipBlockers(withSide(side, "after-answer"), [], draft)).toEqual([]);
+  });
+});
+
+describe("shipScope (TP-3329)", () => {
+  const twoPr = (() => {
+    const parsed = parseManifest(Buffer.from(JSON.stringify(twoPrRound())));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.manifest;
+  })();
+
+  it("gives each Ship question its own PR group's questions, never the other PR's", () => {
+    expect([...shipScope(twoPr, "ship-tiles")].sort()).toEqual(["ship-tiles", "stripe-colour"]);
+    expect([...shipScope(twoPr, "ship-panels")]).toEqual(["ship-panels"]);
+  });
+
+  it("scopes nothing in a round with one Ship question", () => {
+    expect([...shipScope(SHIP_TILE, "ship-tiles")].sort()).toEqual(["badge-follow-up", "ship-tiles"]);
+  });
+
+  it("lets another PR's Send back note leave this PR's Ship open", () => {
+    const draft = { ...NO_DRAFT, answers: [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }] };
+
+    expect(shipBlockers(twoPr, [], draft, "ship-panels")).toEqual([]);
+    expect(shipBlockers(twoPr, [], draft, "ship-tiles")).toEqual(['you left a comment on "Ship example/tiles#1 at 89abcdef0123?"']);
+  });
+});
+
+describe("sendBackBlocker (decision 513)", () => {
+  const backPanels = { questionId: "ship-panels", pick: "Don't ship" };
+
+  it.each([
+    ["the PR's own Ship comment", [{ ...backPanels, comment: "Narrow it again." }], ""],
+    ["a round note", [backPanels], "Both need another pass."],
+  ])("lets a PR go back on %s", (_label, answers, general) => {
+    expect(sendBackBlocker({ answers, general }, "ship-panels")).toBeUndefined();
+  });
+
+  it("holds a PR's Send back when only another PR's Ship question carries a comment", () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, backPanels];
+
+    expect(sendBackBlocker({ answers, general: " " }, "ship-panels")).toBe("Send back needs a note: say what to fix in the Ship comment or the round note.");
   });
 });
