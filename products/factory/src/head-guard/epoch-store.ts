@@ -41,7 +41,7 @@ export interface EpochAdvance extends PrKey {
   at: string;
 }
 
-export type AdvanceResult = { advanced: true; epoch: number } | { advanced: false; current: number };
+type AdvanceResult = { advanced: true; epoch: number } | { advanced: false; current: number };
 
 const keyOf = (key: PrKey): [string, number] => [key.repo.toLowerCase(), key.pr];
 

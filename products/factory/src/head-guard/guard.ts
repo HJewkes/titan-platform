@@ -15,7 +15,7 @@ export interface GuardDeps {
   now(): Date;
 }
 
-export type GuardOutcome =
+type GuardOutcome =
   | { outcome: "same"; head: string; epoch: number }
   | { outcome: "confirmed"; head: string; epoch: number }
   /** Replica lag outlasted the tries; a wait that self-clears, with nothing moved. */
