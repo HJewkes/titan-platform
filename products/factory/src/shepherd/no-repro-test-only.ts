@@ -5,7 +5,7 @@ import { testOnlyDiff } from "./test-only-diff.js";
 /** A vacuous or test-less proof: the two results the NO_REPRO verdict ends a review on. */
 const VACUOUS_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 
-export interface NoReproTestOnly {
+interface NoReproTestOnly {
   /** `shepherd.gateReset.noReproProceed`; absent means `off`. */
   flag: "off" | "on" | undefined;
   /** The run's registered kind. */
