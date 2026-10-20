@@ -132,6 +132,25 @@ describe("mineHistory", () => {
   });
 });
 
+describe("mineHistory on a blobless clone", () => {
+  it("flags a moved file as a removal without reading blobs the clone does not have", () => {
+    const source = newRepo();
+    gitAt(source, "config", "uploadpack.allowFilter", "true");
+    const body = Array.from({ length: 40 }, (_, i) => `export const line${i} = ${i};`).join("\n");
+    commitAt(source, "Add the importer", { "src/importer.ts": `${body}\n` });
+    const moved = commitAt(source, "Relocate the importer", { "src/importer.ts": null, "src/loader.ts": `${body}\nexport const extra = 1;\n` });
+    commitAt(source, "Rewrite the loader\n\nIt now streams.", { "src/loader.ts": "export const loader = 2;\n" });
+    const clone = path.join(newRepo(), "clone");
+    execFileSync("git", ["clone", "-q", "--filter=blob:none", `file://${source}`, clone], { stdio: "ignore" });
+    gitAt(clone, "config", "diff.renames", "true");
+
+    const { history } = mineHistory(clone);
+
+    expect(history.find((c) => c.sha === moved)?.removal).toBe(true);
+    expect(history).toHaveLength(3);
+  });
+});
+
 describe("mineHistory against a hostile clone", () => {
   afterEach(() => {
     vi.mocked(execFileSync).mockClear();
