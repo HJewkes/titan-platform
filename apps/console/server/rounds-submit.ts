@@ -166,12 +166,14 @@ function shippedHead(manifest: Manifest, { answers, headSha }: SubmitArgs): stri
   return stale === undefined ? headSha : refuse(`question "${stale.id}" names a different head sha`);
 }
 
-/** A Ship round may go with questions unanswered (decision 166), so its feedback lists them as a partial submit. */
 const isShipRound = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
 
-/** The harness's feedback document for these answers, refused whole if it disagrees with its round. */
+/**
+ * The harness's feedback document for these answers, refused whole if it disagrees with its round. Any round may go
+ * with questions unanswered (decisions 166 and 513), so every submit is built partial: it lists what it left out.
+ */
 function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer {
-  const document = FeedbackSchema.parse(buildRoundFeedback(manifest, args.manifestSha256, args, now, isShipRound(manifest)));
+  const document = FeedbackSchema.parse(buildRoundFeedback(manifest, args.manifestSha256, args, now, true));
   const problems = feedbackProblems(document, manifest);
   if (problems.length > 0) refuse(`the feedback does not fit its round: ${problems.join("; ")}`);
   const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
