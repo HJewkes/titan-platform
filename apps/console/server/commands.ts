@@ -130,7 +130,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
-    ...roundsSubmitCommands(rounds, decisionLog, listeners),
+    ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...configSurfacesCommands(configReaders),

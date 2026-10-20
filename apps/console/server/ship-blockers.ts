@@ -3,6 +3,7 @@
  * ticked as addressed, and any change request in the answer being sent (owner item 166: free text, or a
  * pick that differs from the implemented choice). The page disables Ship for these reasons and
  * `rounds.submit` refuses a Ship pick for the same ones, so this module imports types only and runs in both.
+ * An answer the owner marks follow-up (TP-3346) is filed for later instead, so it never blocks.
  */
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 
@@ -16,7 +17,7 @@ export interface PriorFeedback {
   general?: string;
 }
 
-interface DraftAnswer {
+export interface DraftAnswer {
   questionId: string;
   pick?: string;
   revisionRequested?: true;
@@ -24,16 +25,20 @@ interface DraftAnswer {
   comment?: string;
 }
 
-/** The answer about to be sent: every answer with its comment, the round note, and the rounds ticked Addressed. */
+/** The answer about to be sent: every answer with its comment, the round note, the rounds ticked Addressed and the follow-ups. */
 interface ShipDraft {
   answers: readonly DraftAnswer[];
   general: string;
   addressed: readonly number[];
+  /** The side questions marked follow-up; absent is none. */
+  followUps?: readonly string[];
 }
 
 interface EarlierRound {
   manifest: Manifest;
   feedback: Feedback | null;
+  /** The questions that round filed as follow-ups, whose comments are not this PR's to address. */
+  followUps?: readonly string[];
 }
 
 type MergeQuestion = Extract<Question, { kind: "pick-one" }> & { merge: object };
@@ -48,15 +53,15 @@ function mergeAnswer(manifest: Manifest, feedback: Feedback) {
 }
 
 /** The merge question's comment first, as it is the one a Send back carries. */
-function commentsOf(feedback: Feedback, mergeId: string | undefined): string[] {
-  const ordered = [...feedback.answers].sort((left, right) => Number(right.questionId === mergeId) - Number(left.questionId === mergeId));
+function commentsOf(feedback: Feedback, mergeId: string | undefined, followUps: readonly string[]): string[] {
+  const ordered = feedback.answers.filter((answer) => !followUps.includes(answer.questionId)).sort((left, right) => Number(right.questionId === mergeId) - Number(left.questionId === mergeId));
   return ordered.flatMap((answer) => (blank(answer.comment) ? [] : [answer.comment ?? ""]));
 }
 
-function feedbackItem(manifest: Manifest, feedback: Feedback): PriorFeedback | null {
+function feedbackItem({ manifest, feedback, followUps = [] }: EarlierRound & { feedback: Feedback }): PriorFeedback | null {
   const { answer, ship } = mergeAnswer(manifest, feedback);
   const pick = answer?.pick !== undefined && !ship.includes(answer.pick) ? answer.pick : undefined;
-  const comment = commentsOf(feedback, answer?.questionId).join("\n\n");
+  const comment = commentsOf(feedback, answer?.questionId, followUps).join("\n\n");
   const item: PriorFeedback = {
     round: manifest.round,
     submittedAt: feedback.submittedAt,
@@ -71,8 +76,8 @@ function feedbackItem(manifest: Manifest, feedback: Feedback): PriorFeedback | n
 /** Earlier sent rounds of the same unit that asked for anything but a plain Ship, oldest first. */
 export function priorFeedback(manifest: Manifest, rounds: readonly EarlierRound[]): PriorFeedback[] {
   return rounds
-    .flatMap(({ manifest: earlier, feedback }) =>
-      earlier.unit === manifest.unit && earlier.round < manifest.round && feedback !== null ? [feedbackItem(earlier, feedback)] : [],
+    .flatMap(({ manifest: earlier, feedback, followUps }) =>
+      earlier.unit === manifest.unit && earlier.round < manifest.round && feedback !== null ? [feedbackItem({ manifest: earlier, feedback, followUps })] : [],
     )
     .filter((item): item is PriorFeedback => item !== null)
     .sort((left, right) => left.round - right.round || left.submittedAt.localeCompare(right.submittedAt));
@@ -93,7 +98,8 @@ function differs(expected: readonly string[], answer: DraftAnswer): boolean {
   return answer.picks.length !== expected.length || answer.picks.some((pick) => !expected.includes(pick));
 }
 
-function answerBlockers(manifest: Manifest, answer: DraftAnswer): string[] {
+/** Why this one answer would keep the round from shipping; empty when it is informational. */
+export function answerBlockers(manifest: Manifest, answer: DraftAnswer): string[] {
   const question = manifest.questions.find((each) => each.id === answer.questionId);
   if (question === undefined) return [];
   const expected = isMerge(question) ? undefined : expectedChoice(manifest, question);
@@ -103,12 +109,24 @@ function answerBlockers(manifest: Manifest, answer: DraftAnswer): string[] {
   ];
 }
 
+/** What on a side question blocks Ship: a pick-one's other options, a pick-many's every set but one, else only a comment. */
+type ShipStake = { kind: "picks"; blocking: string[] } | { kind: "set"; expected: readonly string[] } | { kind: "comment" };
+
+export function shipStake(manifest: Manifest, question: Question): ShipStake {
+  const expected = isMerge(question) ? undefined : expectedChoice(manifest, question);
+  if (expected === undefined) return { kind: "comment" };
+  if (question.kind === "pick-many") return { kind: "set", expected };
+  const options = question.kind === "pick-one" ? question.options : [];
+  return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
+}
+
 /** Why Ship is off, in plain words; empty when it may ship. */
 export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft): string[] {
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
+  const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId));
   return [
     ...open.map((round) => `your feedback from round ${round} is not ticked Addressed`),
-    ...draft.answers.flatMap((answer) => answerBlockers(manifest, answer)),
+    ...thisPr.flatMap((answer) => answerBlockers(manifest, answer)),
     ...(blank(draft.general) ? [] : ["you left feedback on this round"]),
   ];
 }

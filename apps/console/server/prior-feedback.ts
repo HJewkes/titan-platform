@@ -17,7 +17,7 @@ export const priorFeedbackList = z.array(
   }),
 );
 
-type ReadRounds = () => Promise<{ rounds: { manifest: Manifest; feedback: Feedback | null }[] }>;
+type ReadRounds = () => Promise<{ rounds: { manifest: Manifest; feedback: Feedback | null; followUps?: readonly string[] }[] }>;
 
 /** Only a Ship round asks for its earlier feedback to be addressed. */
 export async function readPriorFeedback(manifest: Manifest, readRounds: ReadRounds): Promise<PriorFeedback[]> {

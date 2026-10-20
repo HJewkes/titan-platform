@@ -416,3 +416,76 @@ describe("Ship while feedback is open (TP-3741)", () => {
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
   });
 });
+
+describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const stake = (): HTMLElement => screen.getByTestId("ship-stake-badge-follow-up");
+  const PROMPT = "File the badge colour as a follow-up?";
+
+  async function implementedYes(): Promise<Partial<RoundDetail>> {
+    const detail = await getRound(source, SHIP);
+    if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
+    const questions = detail.manifest.questions.map((question) => (question.id === "badge-follow-up" && question.kind === "pick-one" ? { ...question, implemented: "Yes" } : question));
+    return { manifest: { ...detail.manifest, questions } };
+  }
+
+  it("names the picks that block Ship and wake the fixer, and marks the answer as it is given", async () => {
+    await renderShip({ answers: true, detail: await implementedYes() });
+
+    expect(within(stake()).getByText('Picking "No", or leaving a comment, blocks Ship and sends the PR back to the fixer.')).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    expect(within(stake()).getByText("Blocks Ship")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "1 Yes" }));
+    expect(within(stake()).getByText("Won't block Ship")).toBeTruthy();
+    expect(within(stake()).queryByText("Blocks Ship")).toBeNull();
+  });
+
+  it("calls an answer with nothing to match informational, until a comment makes it block", async () => {
+    await renderShip({ answers: true });
+
+    expect(within(stake()).getByText("Your answer is informational and never blocks Ship; only a comment does.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    expect(within(stake()).getByText("Won't block Ship")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(`Comment on ${PROMPT}`), { target: { value: "Try the stripe's colour." } });
+    expect(within(stake()).getByText("Blocks Ship")).toBeTruthy();
+  });
+
+  it("keeps This PR answers blocking as before, and ships a commented answer marked Follow-up with the mark", async () => {
+    const rendered = await renderShip({ answers: true, detail: await implementedYes() });
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.change(screen.getByLabelText(`Comment on ${PROMPT}`), { target: { value: "Try the stripe's colour." } });
+    expect(within(stake()).getByRole("radio", { name: "This PR" }).getAttribute("aria-checked")).toBe("true");
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
+
+    expect(within(stake()).getAllByText("Follow-up")).toHaveLength(2);
+    expect(within(stake()).getByText("Follow-up: never blocks Ship. Your answer is filed in the inbox as a follow-up when you send.")).toBeTruthy();
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+    fireEvent.click(button("Ship"));
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({
+      headSha: HEAD,
+      followUps: ["badge-follow-up"],
+      answers: [{ questionId: "badge-follow-up", pick: "No", comment: "Try the stripe's colour." }, { questionId: "ship-tiles", pick: "Ship" }],
+    });
+  });
+
+  it("sends no follow-up mark once the answer is switched back to This PR", async () => {
+    const rendered = await renderShip({ answers: true });
+    fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
+    fireEvent.click(within(stake()).getByRole("radio", { name: "This PR" }));
+
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).not.toHaveProperty("followUps");
+  });
+
+  it("shows a sent answer that went as a follow-up, without the choice", async () => {
+    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {} }, followUps: ["badge-follow-up"] } });
+
+    expect(screen.getByTestId("ship-follow-up-sent-badge-follow-up").textContent).toContain("Marked follow-up, so it did not block Ship.");
+    expect(screen.queryByTestId("ship-stake-badge-follow-up")).toBeNull();
+  });
+});
