@@ -39,7 +39,7 @@ function split(a: VitestAssertion): { key: string; title: string; mode?: Mode } 
   const body = a.title.slice(PREFIX.length);
   const match = SUFFIX.exec(body);
   const title = match ? match[1]! : body;
-  return { key: [...a.ancestorTitles, title].join("\u0000"), title, mode: match ? (match[2] as Mode) : undefined };
+  return { key: [...a.ancestorTitles, title].join("\u0000"), title, mode: match?.[2] === "webhook" || match?.[2] === "polling" ? match[2] : undefined };
 }
 
 /** Groups a vitest JSON run's A17 results by case; a case is ok only when both modes ran and passed. */
