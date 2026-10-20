@@ -1,4 +1,5 @@
 import type { GateStore } from "@titan-design/hitl";
+import type { CapabilityVault } from "./capabilities.js";
 import type { TemplateRenderer } from "./prompt.js";
 import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import type { SignalParser } from "./signals.js";
@@ -37,6 +38,7 @@ export interface ContextDeps {
   save: (run: WorkflowRun) => void;
   recovered: ReadonlyMap<string, RecoveredStep>;
   authority?: WorkflowAuthorityOptions;
+  capabilities?: CapabilityVault;
   /** Refuse a replay that makes a live call while the prior drive's records remain unread. */
   strictReplay?: boolean;
 }
