@@ -176,6 +176,16 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
   undefined items a minute per chapter. A last line lists the odd-one-out picks at least two
   runs agree on.
+- `explainer eval items <script.json> --judge <judge.json> [--format spike|v1] [--timing
+  <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
+  <n>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
+  come only from route lists: "is X explained?" for each item `explainRoutes` (M3-pre) names,
+  "is it seated?" for each `seatRoutes` (M5) beat, and the odd one out for each beat listing
+  three or more items. One call per chapter that has a question; chapters with none are
+  skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
+  explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
+  `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
+  a last line lists the flags at least two runs agree on.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 
