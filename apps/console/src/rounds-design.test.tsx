@@ -149,6 +149,7 @@ describe("a design round", () => {
       manifestSha256,
       general: "",
       answers: [{ questionId: "beacon-fill-pick", pick: "Ring" }, { questionId: "beacon-notes", text: "Keep the halo." }],
+      variants: [],
     });
   });
 
@@ -202,6 +203,91 @@ describe("a design round", () => {
     expect(screen.getByText("Recommended: Filled (80%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Answers sent")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+  });
+});
+
+const verdictButton = (key: string, verdict: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: verdict });
+const pressed = (key: string, verdict: string): string | null => verdictButton(key, verdict).closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
+const pressedVerdicts = (key: string): string[] => ["Chosen", "Rejected", "Maybe"].filter((verdict) => pressed(key, verdict) === "true");
+const pickOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest('[role="radio"]')?.getAttribute("aria-checked");
+const submitted = ({ calls }: Rendered): unknown => calls.find((call) => call.name === "rounds.submit")?.args;
+
+async function send(rendered: Rendered): Promise<unknown> {
+  fireEvent.click(sendButton());
+  await screen.findByText("Answers sent");
+  return submitted(rendered);
+}
+
+describe("a design round's frame verdicts and comments (TP-3773)", () => {
+  it("sends a pressed verdict and a typed comment as the frame's variant", async () => {
+    const rendered = await renderDesign();
+    fireEvent.keyDown(window, { key: "1" });
+
+    fireEvent.click(verdictButton("beacon-busy", "Rejected"));
+    fireEvent.change(screen.getByLabelText("Comment on frame Busy"), { target: { value: "Busy reads as idle. " } });
+
+    expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle." }] });
+  });
+
+  it("clears a verdict pressed a second time, and sends no variant for it", async () => {
+    const rendered = await renderDesign();
+    fireEvent.keyDown(window, { key: "1" });
+
+    fireEvent.click(verdictButton("beacon-idle", "Chosen"));
+    fireEvent.click(verdictButton("beacon-idle", "Chosen"));
+
+    expect(pressedVerdicts("beacon-idle")).toEqual([]);
+    expect(await send(rendered)).toMatchObject({ variants: [] });
+  });
+
+  it("judges the active frame with letter keys, and leaves digits to the questions", async () => {
+    await renderDesign();
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-error"));
+
+    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "2" });
+
+    expect(pressedVerdicts("beacon-error")).toEqual(["Rejected"]);
+    expect(pickOf("Ring")).toBe("false");
+    expect(screen.getByText("c chosen · x rejected · m maybe · u clear")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "m" });
+    expect(pressedVerdicts("beacon-error")).toEqual(["Maybe"]);
+    fireEvent.keyDown(window, { key: "u" });
+    expect(pressedVerdicts("beacon-error")).toEqual([]);
+  });
+
+  it("leaves letter keys alone while a question is active, which digits answer", async () => {
+    const rendered = await renderDesign();
+
+    const passedOn = fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "2" });
+
+    expect(passedOn).toBe(true);
+    expect(pickOf("Ring")).toBe("true");
+    expect(STATES.flatMap(([key]) => pressedVerdicts(key))).toEqual([]);
+    expect(await send(rendered)).toMatchObject({ answers: [{ questionId: "beacon-fill-pick", pick: "Ring" }], variants: [] });
+  });
+
+  it("judges a frame a question draws above itself, which stays the active one after the press", async () => {
+    const { manifest } = await designRound();
+    const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, frames: ["beacon-muted"] } : each));
+    const rendered = await renderDesign({ detail: { manifest: { ...manifest, questions } } });
+    fireEvent.keyDown(window, { key: "1" });
+
+    const frame = screen.getByTestId("frame-feedback-beacon-muted");
+    fireEvent.pointerDown(frame);
+    fireEvent.click(frame);
+    fireEvent.keyDown(window, { key: "c" });
+
+    expect(screen.queryByTestId("design-frame-beacon-muted")).toBeNull();
+    expect(pressedVerdicts("beacon-muted")).toEqual(["Chosen"]);
+    expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-muted", verdict: "chosen" }] });
+  });
+
+  it("gives see-also thumbnails no verdict of their own", async () => {
+    await renderDesign();
+
+    expect(within(screen.getByTestId("see-also-beacon-idle")).queryByRole("button", { name: "Chosen" })).toBeNull();
   });
 });
 

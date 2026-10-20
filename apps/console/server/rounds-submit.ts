@@ -40,7 +40,8 @@ import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
-export const MAX_FEEDBACK_BYTES = 64 * 1024;
+/** Room for a 24-frame round whose frames all hold a long comment and pins; every reader of feedback.json allows 1 MiB. */
+export const MAX_FEEDBACK_BYTES = 256 * 1024;
 export { ADDRESSED_FILE };
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;

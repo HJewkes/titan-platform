@@ -5,6 +5,7 @@ import type { RoundNotes } from "../../server/rounds.js";
 import type { ABAnswering } from "./QuestionAB.js";
 import { heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
+import { useFrameFeedback, type ActiveTarget } from "./FrameFeedback.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
@@ -28,8 +29,9 @@ function useShipMarks() {
 }
 
 /**
- * The page's picks, text, comments, option notes and Ship marks, and the active question that digit keys answer: at
- * first the first one with choices. A sent round's `notes` seed them, so a reload shows the answers as sent.
+ * The page's picks, text, comments, option notes, frame verdicts and Ship marks, and the active question that digit keys
+ * answer (at first the first one with choices) or frame that letter keys judge. A sent round's `notes` seed the answers,
+ * so a reload shows them as sent.
  */
 export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes) {
   const [held] = useState(() => heldFromSent(notes));
@@ -38,7 +40,10 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>(held.optionNotes);
   const [general, setGeneral] = useState(held.general);
   const marks = useShipMarks();
-  const [activeId, setActiveId] = useState(() => questions.find((question) => choicesOf(question).length > 0)?.id);
+  const [target, setTarget] = useState<ActiveTarget | undefined>(() => firstChoosable(questions));
+  const activeId = target?.kind === "question" ? target.id : undefined;
+  const setActiveId = useCallback((id: string) => setTarget({ kind: "question", id }), []);
+  const frames = useFrameFeedback(target, setTarget);
   const active = questions.find((question) => question.id === activeId);
   const choose = useCallback(
     (question: Question, choice: string) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) })),
@@ -53,7 +58,12 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   );
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note, ...marks };
+  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note, frames, ...marks };
+}
+
+function firstChoosable(questions: readonly Question[]): ActiveTarget | undefined {
+  const id = questions.find((question) => choicesOf(question).length > 0)?.id;
+  return id === undefined ? undefined : { kind: "question", id };
 }
 
 export type RoundAnswers = ReturnType<typeof useRoundAnswers>;
