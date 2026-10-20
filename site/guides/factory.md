@@ -174,6 +174,44 @@ A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
 (`products/factory/src/bad-config.test.ts`).
 
+## A17 invariant tests: both event-source modes
+
+A17 says an invariant holds whether GitHub observations arrive as webhook deliveries or are polled. The harness in
+`products/factory/src/test-support/a17/` runs one case under both modes.
+
+**Every later A17 event case must use `a17Event`.** An event case is one whose arrange step feeds GitHub observations: it
+reaches `appendEvent`, the ingress handler or the reconciler's observe and schedule. A task that adds one inherits the
+done_when line "the case passes under `sources=webhook` and `sources=polling`".
+
+```ts
+a17Event("a green status is recorded once", (feed) => {
+  feed.fact(status({ outcome: "success" }));
+  expect(feed.read("o/r", 0)).toHaveLength(1);
+});
+```
+
+`a17Event(title, body)` registers `A17: <title> [webhook]` and `A17: <title> [polling]`. The body gets a `Feed` and
+nothing that names the mode, so a case cannot skip one by branching.
+
+- `feed.fact(fact)` is a state that holds across a reconciler tick. Under webhook it is delivered, then re-observed by the
+  backstop; under polling it is observed at the tick.
+- `feed.transient(fact)` is a state that holds between two ticks only. Under webhook it is delivered, so a row exists;
+  under polling it is never observed. A case that depends on a transient declares it this way, in one place.
+- `feed.pick({ webhook, polling })` is the one way a case states an expectation that differs by mode; both answers are
+  required.
+- `feed.advance(ms?)` moves the fake clock, by one reconciler interval of the mode when `ms` is omitted.
+
+`test-support/a17/structure.test.ts` runs inside `pnpm test` and fails when, anywhere under `products/factory/src`:
+
+1. a test title containing `A17:` is written with `it`, `test` or `describe` in a file that imports `event-log/`,
+   `github-sources/`, the ingress or the reconciler, instead of going through `a17Event`; or
+2. an A17 title carries `.skip`, `.todo`, `.only`, `.skipIf` or `.runIf`.
+
+A case with no GitHub input, such as the M0 deploy probe cases, stays single-mode and is listed in `NOT_EVENT`
+(`test-support/a17/not-event.ts`) with the file, the title as written and a reason. The guard also fails on an entry whose
+file no longer carries its title. CI reruns the whole factory package when anything in it changes, so the guard runs on
+every factory change.
+
 ## `serve`
 
 ```sh

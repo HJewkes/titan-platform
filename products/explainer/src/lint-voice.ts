@@ -16,15 +16,19 @@ const INTERNAL_ID = /\b[A-Z]+-[A-Z0-9]+-\d+\b/;
 const VERDICT = /\b(adopt|adapt|verdicts?|scorecard)\b|\b(do not|don't|not to) (copy|vendor|adopt)\b|\bavoid (it|that|this)\b/i;
 const CHAPTER_NUMBER = /\bchapter (\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
 const SIGNPOST = /^(chapter \w+\.$|here is|here's|zoom (in|out)|once more|now \w+\.$|follow the|next,|first,)/i;
-const FIRST_PLURAL = /\b(we|our|us)\b/i;
-const BANNED = [/\blet['’]s\b/i, /\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
+// Q-V6 allows "we" for the narrator and viewer together; only the makers' "we" is off the project.
+const MAKERS_WE = /\bwe (think|believe|built|wrote|chose|decided|made|designed|shipped|like|wanted|started|launched)\b|\b(our|us) (team|company|engineers|developers|authors|users|customers|product|roadmap)\b|\bour (own )?(code|repo|project)\b/i;
+const NARRATOR_WE = /\b(let us|let['’]s|we (can|could|will)|we['’]ll)\b/gi;
+const BANNED = [/\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
 const POINTING = /\b(on|at) the (left|right|top|bottom)\b|\bas you can see\b|\blook at\b|\bnotice the\b|\bthis (box|arrow|line|node|panel)\b|\b(up|down|over) (here|there)\b/i;
 const POINTING_CUES = new Set(["V6", "V9"]);
 export const MAX_SENTENCE_WORDS = 25;
+/** Owner decision 517: a sentence of 26 to this many words passes Q-V9 only when speech-vet says it speaks clean. */
+export const MAX_VETTED_SENTENCE_WORDS = 32;
 export const MIN_PROJECT_SHARE = 0.8;
 
 const isProcess = (sentence: string, entities: readonly string[]): boolean => {
-  const masked = maskEntities(sentence, entities);
+  const masked = maskEntities(sentence.replace(NARRATOR_WE, ""), entities);
   return PROCESS.some((pattern) => pattern.test(masked));
 };
 
@@ -56,7 +60,7 @@ function misplacedVerdicts(beats: readonly ScriptBeat[]): string[] {
 function projectShare(beats: readonly ScriptBeat[], entities: readonly string[]): L0Result {
   const spoken = sentences(beats.filter((beat) => beat.function !== "VERDICT"));
   const other = spoken.filter(
-    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || FIRST_PLURAL.test(text) || isProcess(text, entities),
+    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text, entities),
   );
   const share = spoken.length ? (spoken.length - other.length) / spoken.length : 1;
   const beatsWithOther = other.map((s) => s.beat.id);
@@ -73,11 +77,24 @@ function spokenSignposts({ script }: L0Input): string[] {
   return [...script.beats.filter((beat) => CHAPTER_NUMBER.test(beat.spoken)).map((beat) => beat.id), ...chapterLabels];
 }
 
+/** Whether speech-vet found a sentence clean to speak: no breath or pace failure. Absent means vet did not run. */
+export type SpeechVerdict = (sentence: string) => boolean;
+
+export interface VoiceOptions {
+  speechClean?: SpeechVerdict;
+}
+
+function overlongSentence(text: string, speechClean: SpeechVerdict | undefined): boolean {
+  const words = wordsOf(text).length;
+  if (words <= MAX_SENTENCE_WORDS) return false;
+  return words > MAX_VETTED_SENTENCE_WORDS || !speechClean?.(text);
+}
+
 /**
  * Q-V voice lints. Process words are matched after blanking repo entities, so "the review server" is
  * a part, not our review. `entities` adds names the script does not carry, such as a review's repo names.
  */
-export function voiceCheckWith(entities: readonly string[] = []): L0Check {
+export function voiceCheckWith(entities: readonly string[] = [], { speechClean }: VoiceOptions = {}): L0Check {
   return (input) => {
     const { script, layout } = input;
     const known = repoEntities(script, layout, entities);
@@ -90,7 +107,7 @@ export function voiceCheckWith(entities: readonly string[] = []): L0Check {
       projectShare(script.beats, known),
       sentenceRule("Q-V7", all.filter(({ text }) => BANNED.some((pattern) => pattern.test(text)))),
       countRow("Q-V8", unanchoredPointing(script.beats)),
-      sentenceRule("Q-V9", all.filter(({ text }) => wordsOf(text).length > MAX_SENTENCE_WORDS)),
+      sentenceRule("Q-V9", all.filter(({ text }) => overlongSentence(text, speechClean))),
     ];
   };
 }
