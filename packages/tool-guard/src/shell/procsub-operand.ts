@@ -59,13 +59,13 @@ export function hasProcsubOperand(cmd: Pick<Unwrapped, "name" | "args">): boolea
 /**
  * The text a body prints when it is echo or printf, read as the shell's script, and with it whatever main read from the
  * command without the substitution (`-c STR` after it is a positional the body may relay as `"$@"`). A body the guard
- * does not model (another program's output) adds no text, as the same body piped into the shell adds none.
+ * does not model (another program's output) adds no text, as the same body piped into the shell adds none; a body that
+ * prints under one shell's reading of its `{name}` words and runs another program under another keeps the printed text.
  */
 export function procsubScript<T extends Pick<Unwrapped, "name" | "args">>(cmd: T, rest: (plain: T) => Inline | null): Inline | null {
   const body = scriptOperand(cmd);
   if (body === null) return null;
-  const per = listText(body);
-  const all = per.some((texts) => texts === null) ? [] : [...new Set(per.flatMap((texts) => texts ?? []))];
+  const all = [...new Set(listText(body, true).flatMap((texts) => texts ?? []))];
   if (all.length > MAX_TEXTS) throw new ReadingLimitError();
   const texts = [...all.flatMap((text) => pipedShellTexts(cmd.name, text)), ...(rest(withoutProcsubOperands(cmd))?.texts ?? [])];
   return texts.length === 0 ? null : { texts, wrap: "heredoc-shell" };

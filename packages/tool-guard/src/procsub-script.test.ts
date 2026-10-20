@@ -89,9 +89,15 @@ const REDIRECTED_LINES = [
   "source 2> >(cat) ./evil.sh",
   "bash < <(echo 'echo hi') ./evil.sh",
 ];
+/** A body that prints under one shell's reading of its `{name}` words and runs another command under another. */
+const NAMED_FD_LINES = [
+  `bash <({x}>/dev/null echo '${PUSH}')`,
+  `source <({fd}</dev/null echo '${PUSH}')`,
+  `bash <(echo hi; {x}>/dev/null echo '${PUSH}')`,
+];
 
 describe("a shell or source running a process substitution as its script", () => {
-  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES])("denies a shell's own stdin or operands: %s", async (command) => {
+  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
     const { decision } = await verdict(command);
 
     expect(decision).toBe("deny");
@@ -281,7 +287,7 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
 });
 
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES])("%s pushes", (line) => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES])("%s pushes", (line) => {
     const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
 
     expect(pushing.length).toBeGreaterThan(0);

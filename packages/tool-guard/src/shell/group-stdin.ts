@@ -71,14 +71,14 @@ export function groupStdin(walk: object, op: string, words: WordToken[], redirec
 
 /**
  * Each distinct text the command's readings print under each shell, "" for a reading that runs no command; null for a
- * shell under which any reading's text is unknown, undefined when no reading runs one.
+ * shell under which any reading's text is unknown, or with `known` every reading's, undefined when no reading runs one.
  */
-function printedPiece(readings: ReadonlyArray<Unwrapped | null>): ShellTexts | undefined {
+function printedPiece(readings: ReadonlyArray<Unwrapped | null>, known = false): ShellTexts | undefined {
   const runs = readings.filter((cmd): cmd is Unwrapped => cmd !== null && (cmd.name !== null || cmd.args.length > 0));
   if (runs.length === 0) return undefined;
   return SHELLS.map((shell) => {
     const texts = runs.map((cmd) => printedOutput(cmd.name, cmd.args, shell)).filter((text) => text !== null);
-    if (texts.length < runs.length) return null;
+    if (texts.length === 0 || (!known && texts.length < runs.length)) return null;
     if (runs.length < readings.length) texts.push("");
     return [...new Set(texts)];
   });
@@ -153,8 +153,11 @@ function joinedIn(pieces: Texts[]): Texts {
   return texts;
 }
 
-/** The texts a process substitution's commands print; a command piped on to another is left out. */
-export function listText(tokens: Token[]): ShellTexts {
+/**
+ * The texts a process substitution's commands print; a command piped on to another is left out. With `known`, a
+ * command whose `{name}` readings print text under some readings and not others keeps the texts of those that do.
+ */
+export function listText(tokens: Token[], known = false): ShellTexts {
   const pieces: ShellTexts[] = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
@@ -163,7 +166,7 @@ export function listText(tokens: Token[]): ShellTexts {
     if (token?.type === "redirect") redirects.push(token);
     if (token !== null && token.type !== "op") continue;
     const readings = namedFdReadings(words, redirects)?.map((reading) => reading.words) ?? [words];
-    const piece = PIPES.has(token?.value ?? "") ? undefined : printedPiece(readings.map((each) => caseNamed(each)[0] ?? null));
+    const piece = PIPES.has(token?.value ?? "") ? undefined : printedPiece(readings.map((each) => caseNamed(each)[0] ?? null), known);
     if (piece !== undefined) pieces.push(piece);
     words = [];
     redirects = [];
