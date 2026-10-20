@@ -126,6 +126,14 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
+A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
+from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
+§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
+errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
+script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
+spine; any other profile passes both rows when it has none.
+
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
 (`fixtures/spike/redesign-explainer-v4/labels.json` for v4, `fixtures/spike/pipeline-explainer/labels.json`
@@ -168,6 +176,16 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
   undefined items a minute per chapter. A last line lists the odd-one-out picks at least two
   runs agree on.
+- `explainer eval items <script.json> --judge <judge.json> [--format spike|v1] [--timing
+  <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
+  <n>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
+  come only from route lists: "is X explained?" for each item `explainRoutes` (M3-pre) names,
+  "is it seated?" for each `seatRoutes` (M5) beat, and the odd one out for each beat listing
+  three or more items. One call per chapter that has a question; chapters with none are
+  skipped. Each call plants a name-only canary beat whose made-up name the judge must call not
+  explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
+  `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
+  a last line lists the flags at least two runs agree on.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 

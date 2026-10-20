@@ -13,6 +13,7 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
+import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
@@ -42,6 +43,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const logger = options.logger ?? consoleLogger;
   const sources = createSources(config, logger);
   const { upstreams } = sources;
+  const build = readBuildInfo();
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
@@ -50,8 +52,8 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
-    // Targets only: /health must answer without waiting on an upstream.
-    health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
+    // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
+    health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
     mountRoutes: (app) => {
       if (sources.videos) mountVideoMedia(app, sources.videos);
       if (staticRoot) mountStaticApp(app, { root: staticRoot });

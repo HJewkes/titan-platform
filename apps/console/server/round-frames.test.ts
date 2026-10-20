@@ -96,9 +96,9 @@ describe("rounds.frame reads a listed frame", () => {
     const { entries } = await frameIndex(round);
     const story = await frameIndex(path.join(dir, "lantern-cards-r1"));
 
-    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true });
+    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true, unchanged: false });
     expect(entries.get("panel-wide")?.files).toEqual({ head: "images/panel-wide.png", base: "base/panel-wide.png" });
-    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false });
+    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false, unchanged: false });
     expect(story.entries.size).toBe(0);
   });
 });
@@ -132,13 +132,28 @@ describe("rounds.frames", () => {
       data: {
         indexed: true,
         frames: [
-          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true },
-          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true },
-          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true },
-          { key: "badge-new", views: ["head"], indexed: false },
+          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true, unchanged: false },
+          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true, unchanged: false },
+          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true, unchanged: false },
+          { key: "badge-new", views: ["head"], indexed: false, unchanged: false },
         ],
       },
     });
+  });
+});
+
+describe("an unchanged frame", () => {
+  it("is listed unchanged when frames.json gives its head and base one sha256", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFile(path.join(round, "base", "tile-light.png"), tile);
+    await writeFramesIndex([
+      { key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), base: { file: "base/tile-light.png", sha256: sha256Of(tile) } },
+      { key: "tile-dark", file: "images/tile-dark.png", sha256: sha256Of(await readFile(path.join(round, "images", "tile-dark.png"))) },
+    ]);
+
+    const { frames } = await listFrames({ dir }, SHIP);
+
+    expect(frames.map(({ key, unchanged }) => [key, unchanged])).toEqual([["tile-light", true], ["tile-dark", false], ["badge-new", false], ["panel-wide", false]]);
   });
 });
 

@@ -471,15 +471,15 @@ rules:
     fields: [beats.visual, beats.spoken]
     related: ["FB 4", "SM M6"]
     owner_support: for
-    note: "Owner feedback rule 4. Needs the declared item kind from the spine ledger (TP-2988)."
-    l0: { severity: error, status: pending, owner: TP-2988 }
+    note: "Owner feedback rule 4. A list beat's cue entries must share one kind declared in the spine ledger; the L1 odd-one-out judge checks the declared kinds are honest."
+    l0: { severity: error, status: implemented, checks: ["Q-E16"] }
   - id: Q-E17
     rule: "Every named item is in the spine ledger and defined before its first use"
-    fields: [beats.new_terms, beats.spoken, beats.visual]
+    fields: [profile, beats.new_terms, beats.spoken, beats.visual]
     related: [Q-E6, Q-E14, "FB 2"]
     owner_support: for
-    note: "Owner feedback rule 2, the ledger half. Q-E14 routes the likely gaps and Q-E6 measures them with a cold viewer."
-    l0: { severity: error, status: pending, owner: TP-2988 }
+    note: "Owner feedback rule 2, the ledger half. Defined before first use compares script positions. A profile planned against a spine fails without one. Q-E14 routes the likely gaps and Q-E6 measures them with a cold viewer."
+    l0: { severity: error, status: implemented, checks: ["Q-E17"] }
   - id: Q-E18
     rule: "Each invariant is seated: it names the architecture row that keeps it, or the fact that shows how it breaks today"
     fields: [video.invariants, beats.visual]
@@ -487,3 +487,10 @@ rules:
     owner_support: for
     note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat. Pending on the spine lints (S4 of the script rules plan)."
     l0: { severity: error, status: pending, owner: TP-2988 }
+  - id: Q-E19
+    rule: "Every item a beat puts on screen for the first time is declared in that beat's new_terms"
+    fields: [beats.new_terms, beats.visual]
+    related: [Q-E4, Q-F8, Q-W2]
+    owner_support: none
+    note: "Makes the vacuity visible: Q-E4, Q-F8 and Q-W2 read new_terms, which defaults to empty, so an undeclared script passes them. Warning only; a script/v1 check."
+    l0: { severity: warning, status: implemented, checks: ["Q-E19"] }

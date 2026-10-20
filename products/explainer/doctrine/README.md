@@ -16,7 +16,8 @@ must return none.
 ## Adding a craft rule
 
 A rule lives in the file of its source doctrine: `direction`, `story-structure`, `creator-craft`,
-`talks-and-slides`, `visual-information-design`, `explainer-motion-craft` or `skills-and-taste`.
+`talks-and-slides`, `visual-information-design`, `explainer-motion-craft`, `skills-and-taste` or
+`owner-feedback`.
 
 ```yaml
 schema: doctrine-craft/v1
@@ -32,8 +33,9 @@ rules:
     check: { kind: gate, ref: gate.readingHold, live: false }
 ```
 
-- **Id:** `<src>-<ref>[.<n>]`, where `<src>` is `dir`, `story`, `creator`, `talks`, `vid`, `motion`
-  or `taste`, and `<ref>` is the VT §4 id (`dir-P1`, `story-19`, `motion-G4`, `motion-preset-15`).
+- **Id:** `<src>-<ref>[.<n>]`, where `<src>` is `dir`, `story`, `creator`, `talks`, `vid`, `motion`,
+  `taste` or `owner`, and `<ref>` is the VT §4 id (`dir-P1`, `story-19`, `motion-G4`, `motion-preset-15`);
+  an `owner-feedback` rule uses the owner's rule number instead (`owner-FB3`, `owner-FB2.1`).
   `.<n>` only splits one source row into several rules that share `source.ref`. Never `Q-`: that
   prefix belongs to `rules.yaml`. The id never carries the layer.
 - **Text:** 40 words or fewer, the rule's do and don't condensed. Never change a number.

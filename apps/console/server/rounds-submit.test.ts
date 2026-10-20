@@ -13,8 +13,8 @@ import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
 import { BLIND_AB_REFUSED } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
-import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
-import { listRounds } from "./rounds.js";
+import { ADDRESSED_FILE, MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
+import { getRound, listRounds } from "./rounds.js";
 
 const ROUND = "orbit-retry-r1";
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -66,7 +66,7 @@ afterEach(async () => {
 
 describe("rounds.submit", () => {
   it("writes one feedback@1 file at mode 0600 and returns its path, sha256 and the shipped head", async () => {
-    const { envelope } = await submit(shipArgs({ general: "Looks right." }));
+    const { envelope } = await submit(shipArgs());
 
     const bytes = await readFile(feedbackOf());
     expect(envelope).toEqual({ ok: true, data: { status: "submitted", path: feedbackOf(), sha256: sha256(bytes), headSha: HEAD } });
@@ -79,7 +79,7 @@ describe("rounds.submit", () => {
       submittedAt: expect.any(String),
       answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true }],
       variants: [],
-      general: "Looks right.",
+      general: "",
     });
   });
 
@@ -108,7 +108,7 @@ describe("rounds.submit", () => {
   });
 
   it("writes once: a second submit is already-submitted and leaves the first file's bytes", async () => {
-    await submit(shipArgs({ general: "first" }));
+    await submit(shipArgs());
     const first = await readFile(feedbackOf());
 
     const { envelope } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Don't ship" }], general: "second" }));
@@ -270,7 +270,7 @@ describe("rounds.submit", () => {
   });
 
   it("refuses feedback over the size cap", async () => {
-    const { envelope, exitCode } = await submit(shipArgs({ general: "x".repeat(MAX_FEEDBACK_BYTES) }));
+    const { envelope, exitCode } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Don't ship" }], general: "x".repeat(MAX_FEEDBACK_BYTES) }));
 
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `the feedback is over ${MAX_FEEDBACK_BYTES} bytes` });
@@ -385,5 +385,72 @@ describe("a round published before merge bindings were required", () => {
 
     expect(rounds).toEqual([expect.objectContaining({ id: ROUND, valid: true, ship: false, unbound: true })]);
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", path: feedbackOf() } });
+  });
+});
+
+const R2 = "orbit-retry-r2";
+const R2_HEAD = "fedcba9876543210fedcba9876543210fedcba98";
+
+/** The td769 shape: round 1 answered Don't ship with a note, then round 2 asks to Ship a new head. */
+async function sendBackThenReround(): Promise<string> {
+  await submit({ id: ROUND, manifestSha256, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter too." }] });
+  const round = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8")));
+  const questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions);
+  const reround = questions.map((question) => ({ ...question, merge: { repo: "example/orbit-relay", pr: 12, headSha: R2_HEAD, ship: ["Ship"] } }));
+  const bytes = Buffer.from(JSON.stringify({ ...round, round: 2, questions: reround }));
+  await mkdir(path.join(dir, R2));
+  await writeFile(path.join(dir, R2, "round.json"), bytes);
+  return sha256(bytes);
+}
+
+const shipR2 = (r2Sha: string, overrides: Record<string, unknown> = {}) =>
+  submit({ id: R2, manifestSha256: r2Sha, headSha: R2_HEAD, answers: [{ questionId: "ship-backoff", pick: "Ship" }], ...overrides });
+
+describe("a Ship round after earlier feedback (TP-3741)", () => {
+  it("carries round 1's Don't ship and its note into round 2's detail", async () => {
+    await sendBackThenReround();
+
+    const detail = await getRound({ dir }, R2);
+
+    expect(detail).toMatchObject({ valid: true, priorFeedback: [{ round: 1, pick: "Don't ship", comment: "Cap the jitter too.", submittedAt: expect.any(String) }] });
+  });
+
+  it("refuses Ship until round 1 is ticked Addressed, and writes nothing", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope, exitCode } = await shipR2(r2Sha);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "Ship refused: your feedback from round 1 is not ticked Addressed" });
+    expect(await exists(feedbackOf(R2))).toBe(false);
+  });
+
+  it("accepts Ship with round 1 ticked, and keeps the tick in the addressed.json sidecar", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope } = await shipR2(r2Sha, { addressed: [1] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: R2_HEAD, addressed: "recorded" } });
+    expect(JSON.parse(await readFile(path.join(dir, R2, ADDRESSED_FILE), "utf8"))).toEqual({ schema: "titan-console/addressed@1", rounds: [1], at: expect.any(String) });
+    expect(await getRound({ dir }, R2)).not.toHaveProperty("priorFeedback");
+  });
+
+  it("still takes a Send back while round 1 is unticked", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
+  it.each([
+    ["a comment", { answers: [{ questionId: "ship-backoff", pick: "Ship", comment: "Rename the constant." }] }, 'you left a comment on "Ship the capped backoff?"'],
+    ["round feedback", { general: "Rename the constant." }, "you left feedback on this round"],
+  ])("refuses a Ship that carries %s", async (_label, overrides, reason) => {
+    const { envelope, exitCode } = await submit(shipArgs(overrides));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
+    expect(await exists(feedbackOf())).toBe(false);
   });
 });

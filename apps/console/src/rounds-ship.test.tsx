@@ -95,7 +95,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
   return { calls };
 }
 
-const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE|AFTER|DIFF)$/).map((label) => label.textContent);
+const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
@@ -125,11 +125,11 @@ describe("the Ship view", () => {
     expect(within(await screen.findByTestId(`round-row-${SHIP}`)).getByText("ship")).toBeTruthy();
   });
 
-  it("shows a changed image as BEFORE, AFTER and DIFF, and a new one as NEW with AFTER only", async () => {
+  it("shows a changed image as BEFORE (main), AFTER (head) and DIFF, and a new one as NEW with AFTER (head) only", async () => {
     await renderShip();
 
-    expect(panelLabels("tile-light")).toEqual(["BEFORE", "AFTER", "DIFF"]);
-    expect(panelLabels("badge-new")).toEqual(["AFTER"]);
+    expect(panelLabels("tile-light")).toEqual(["BEFORE (main)", "AFTER (head)", "DIFF"]);
+    expect(panelLabels("badge-new")).toEqual(["AFTER (head)"]);
     expect(within(screen.getByTestId("montage-badge-new")).getByText("NEW")).toBeTruthy();
     expect(within(screen.getByTestId("montage-tile-light")).queryByText("NEW")).toBeNull();
     expect(within(screen.getByTestId("montage-panel-wide")).getByText("No diff image: compare before and after side by side.")).toBeTruthy();
@@ -173,6 +173,31 @@ describe("the Ship view", () => {
     expect(screen.queryByText(/nothing else shifted/)).toBeNull();
   });
 
+  it("names what ships: the PR, its head and the changed-frame count", async () => {
+    await renderShip();
+
+    expect(screen.getByTestId("what-ships").textContent).toBe("What ships: example/tiles#1 at 89abcde, 4 changed frames");
+  });
+
+  it("puts changed frames first and folds unchanged pairs into an N unchanged disclosure", async () => {
+    const listed = FRAMES.map((frame) => ({ ...frame, unchanged: frame.key === "tile-light" }));
+    await renderShip({ listed });
+
+    const order = screen.getAllByTestId(/^montage-/).map((montage) => montage.dataset.testid);
+    const folded = screen.getByTestId("unchanged-frames");
+    expect(order).toEqual(["montage-tile-dark", "montage-badge-new", "montage-panel-wide", "montage-tile-light"]);
+    expect(within(folded).getByText("1 unchanged: main and head render the same")).toBeTruthy();
+    expect(within(folded).getByTestId("montage-tile-light")).toBeTruthy();
+    expect(within(folded).queryByTestId("montage-tile-dark")).toBeNull();
+    expect(screen.getByTestId("what-ships").textContent).toBe("What ships: example/tiles#1 at 89abcde, 3 changed frames");
+  });
+
+  it("shows no unchanged disclosure when every frame changed", async () => {
+    await renderShip();
+
+    expect(screen.queryByTestId("unchanged-frames")).toBeNull();
+  });
+
   it("opens an image full size when pressed and closes on Escape", async () => {
     await renderShip();
     scrollAll();
@@ -212,17 +237,17 @@ describe("answering a Ship round", () => {
     expect(submits(rendered)[0]).not.toHaveProperty("headSha");
   });
 
-  it("offers a comment on its side question and feedback on the round, and sends both with Ship", async () => {
+  it("offers a comment on its side question and feedback on the round, and sends both with Send back", async () => {
     const rendered = await renderShip({ answers: true });
 
     fireEvent.change(screen.getByLabelText("Comment on File the badge colour as a follow-up?"), { target: { value: "Only if design agrees." } });
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "The diffs made this easy." } });
-    fireEvent.click(button("Ship"));
+    fireEvent.click(button("Send back"));
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
     expect(submits(rendered)[0]).toMatchObject({
       general: "The diffs made this easy.",
-      answers: [{ questionId: "badge-follow-up", comment: "Only if design agrees." }, { questionId: "ship-tiles", pick: "Ship" }],
+      answers: [{ questionId: "badge-follow-up", comment: "Only if design agrees." }, { questionId: "ship-tiles", pick: "Don't ship" }],
     });
   });
 
@@ -338,5 +363,56 @@ describe("answering a Ship round with side questions", () => {
     await renderShip({ answers: true, detail: await td850() });
 
     expect(screen.queryByText(/not sent/)).toBeNull();
+  });
+});
+
+describe("Ship while feedback is open (TP-3741)", () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
+  const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
+
+  it("shows round 1's Don't ship and note, and keeps Ship off until it is ticked Addressed", async () => {
+    const rendered = await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+
+    const prior = screen.getByTestId("ship-prior-feedback");
+    expect(within(prior).getByText("Your feedback from round 1")).toBeTruthy();
+    expect(within(prior).getByText("Don't ship")).toBeTruthy();
+    expect(within(prior).getByText("The stripe is two pixels low.")).toBeTruthy();
+    expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+    expect(button("Send back").getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.click(button("Ship"));
+    expect(submits(rendered)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ addressed: [1], headSha: HEAD, answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
+  });
+
+  it("turns Ship off while a comment is typed, and back on once it is cleared", async () => {
+    await renderShip({ answers: true });
+    const comment = screen.getByLabelText("Comment on File the badge colour as a follow-up?");
+
+    fireEvent.change(comment, { target: { value: "Only if design agrees." } });
+    expect(blocked()).toContain('Ship is off: you left a comment on "File the badge colour as a follow-up?". Send back stays open.');
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.change(comment, { target: { value: "" } });
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+  });
+
+  it("turns Ship off for a side pick that differs from the implemented choice", async () => {
+    const detail = await getRound(source, SHIP);
+    if (!detail.valid) throw new Error("the Ship fixture is not a valid round");
+    const questions = detail.manifest.questions.map((question) => (question.id === "badge-follow-up" && question.kind === "pick-one" ? { ...question, implemented: "Yes" } : question));
+    await renderShip({ answers: true, detail: { manifest: { ...detail.manifest, questions } } });
+
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+
+    expect(blocked()).toContain('your answer to "File the badge colour as a follow-up?" differs from the implemented choice');
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
   });
 });
