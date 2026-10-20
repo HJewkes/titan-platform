@@ -16,8 +16,10 @@ const INTERNAL_ID = /\b[A-Z]+-[A-Z0-9]+-\d+\b/;
 const VERDICT = /\b(adopt|adapt|verdicts?|scorecard)\b|\b(do not|don't|not to) (copy|vendor|adopt)\b|\bavoid (it|that|this)\b/i;
 const CHAPTER_NUMBER = /\bchapter (\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
 const SIGNPOST = /^(chapter \w+\.$|here is|here's|zoom (in|out)|once more|now \w+\.$|follow the|next,|first,)/i;
-const FIRST_PLURAL = /\b(we|our|us)\b/i;
-const BANNED = [/\blet['’]s\b/i, /\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
+// Q-V6 allows "we" for the narrator and viewer together; only the makers' "we" is off the project.
+const MAKERS_WE = /\bwe (think|believe|built|wrote|chose|decided|made|designed|shipped|like|wanted|started|launched)\b|\b(our|us) (team|company|engineers|developers|authors|users|customers|product|roadmap)\b|\bour (own )?(code|repo|project)\b/i;
+const NARRATOR_WE = /\b(let us|let['’]s|we (can|could|will)|we'll)\b/gi;
+const BANNED = [/\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
 const POINTING = /\b(on|at) the (left|right|top|bottom)\b|\bas you can see\b|\blook at\b|\bnotice the\b|\bthis (box|arrow|line|node|panel)\b|\b(up|down|over) (here|there)\b/i;
 const POINTING_CUES = new Set(["V6", "V9"]);
 export const MAX_SENTENCE_WORDS = 25;
@@ -56,7 +58,7 @@ function misplacedVerdicts(beats: readonly ScriptBeat[]): string[] {
 function projectShare(beats: readonly ScriptBeat[], entities: readonly string[]): L0Result {
   const spoken = sentences(beats.filter((beat) => beat.function !== "VERDICT"));
   const other = spoken.filter(
-    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || FIRST_PLURAL.test(text) || isProcess(text, entities),
+    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text.replace(NARRATOR_WE, ""), entities),
   );
   const share = spoken.length ? (spoken.length - other.length) / spoken.length : 1;
   const beatsWithOther = other.map((s) => s.beat.id);

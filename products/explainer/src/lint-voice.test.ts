@@ -97,12 +97,30 @@ describe("spoken register", () => {
     expect(voice(beats).get("Q-V5")).toMatchObject({ pass: false, threshold: 0.8 });
   });
 
+  it("Q-V5 counts narrator we, let us and viewer you as on-subject", () => {
+    const beats = spoken("w2", "We can see the scanner send each scan. Let us follow one scan to the desk. You get a label back. The desk files it.");
+
+    expect(voice(beats).get("Q-V5")).toMatchObject({ pass: true });
+    expect(voice(beats).get("Q-V5")?.detail_beats ?? []).not.toContain("w2");
+  });
+
+  it("Q-V5 still counts a maker we as off the project", () => {
+    const beats = spoken("w2", Array(12).fill("We built the scanner. Our team chose the desk.").join(" "));
+
+    expect(voice(beats).get("Q-V5")).toMatchObject({ pass: false });
+    expect(voice(beats).get("Q-V5")?.detail_beats).toContain("w2");
+  });
+
   it("Q-V7 flags banned register but not a value phrase that looks like it", () => {
-    const banned = voice(spoken("w2", "Let's simply look. There is a ledger."));
+    const banned = voice(spoken("w2", "Simply look. There is a ledger."));
     const allowed = voice(spoken("w2", "The ledger lets you trust each label."));
 
     expect(banned.get("Q-V7")?.value).toBe(2);
     expect(allowed.get("Q-V7")?.pass).toBe(true);
+  });
+
+  it("Q-V7 lets let's through", () => {
+    expect(voice(spoken("w2", "Let's follow one scan to the desk.")).get("Q-V7")?.pass).toBe(true);
   });
 
   it("Q-V8 needs a pointing cue for a pointing phrase", () => {
