@@ -20,13 +20,14 @@ import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit 
 import { holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
+import { buildContentApp, type ContentOriginOptions } from "./content-origin.js";
 import type { McpServerOptions } from "./mcp.js";
 import { handleMcpRequest, spliceMcpRoute } from "./mcp-http.js";
 import type { SurfaceOptions } from "./surface.js";
 import { DEFAULT_TLS_RELOAD_MS, remoteGuardOptions, remoteListener, type RemoteListener, type RemoteListenerOptions } from "./remote-listener.js";
-import { reloadTlsOnChange, tlsServerOptions } from "./tls-files.js";
+import { reloadTlsOnChange, tlsServerOptions, trackTlsFiles } from "./tls-files.js";
 
-export type { RemoteListenerOptions };
+export type { ContentOriginOptions, RemoteListenerOptions };
 
 export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
   /** Reported by `/health`, `/version`, and the pid metadata. */
@@ -49,6 +50,12 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   allowUnauthenticatedNonLoopback?: boolean;
   /** A second listener, behind authentication, on one non-loopback address and the same port. */
   remote?: RemoteListenerOptions;
+  /**
+   * A read-only origin on its own port for untrusted content: product routes only, GET and HEAD
+   * only. It binds the loopback host and, with `remote`, the remote address behind the same TLS
+   * pair, Host check and auth gate. All of its listeners bind, or the daemon does not start.
+   */
+  contentOrigin?: ContentOriginOptions;
   /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
   toolPrefix?: string;
   /** MCP handshake identity; defaults to `titan-daemon`. */
@@ -73,6 +80,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
 export interface DaemonHandle {
   /** The bound port — the real one when `port: 0` was requested. */
   port: number;
+  /** The content origin's bound port, when `contentOrigin` was set. */
+  contentPort?: number;
   /** Broadcast to connected `/events` clients. */
   hub: EventHub;
   /** Stop the watcher, close every listener, and release the pid file. Idempotent. */
@@ -114,15 +123,17 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   const server = await listenLoopback("fd" in target ? holdUntil(fetch, ready.opened) : fetch, target, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
   const servers = [server, ...(await listenRemoteOrClose({ remote, shared, port: boundPort, loopback: server, graceMs, log }))];
+  const content = await listenContentOrClose({ origin: options.contentOrigin, remote, host: options.host ?? DEFAULT_HOST, hosts: guardOptions(options).allowedHosts, bound: servers, graceMs, log });
+  servers.push(...content.servers);
 
   const watcher = startWatcher(options, hub, log);
   await writePidFile(paths, process.pid, { port: boundPort, version: options.version, started: new Date().toISOString() });
   // Only now is a `/health` probe answerable: the pid file exists, so anything that finds
   // the daemon healthy can also find the daemon.
   ready.open();
-  log.info({ pid: process.pid, port: boundPort, ...("fd" in target ? { listenFd: target.fd } : {}) }, "daemon started");
+  log.info({ pid: process.pid, port: boundPort, ...content.reported, ...("fd" in target ? { listenFd: target.fd } : {}) }, "daemon started");
 
-  return { port: boundPort, hub, close: onceAsync(() => shutdown({ servers, watcher, paths, log, graceMs })) };
+  return { port: boundPort, ...content.reported, hub, close: onceAsync(() => shutdown({ servers, watcher, paths, log, graceMs })) };
 }
 
 /** Start, then run until SIGTERM/SIGINT, then close. Resolves after shutdown completes. */
@@ -184,6 +195,46 @@ async function listenRemoteOrClose<Ctx extends BaseContext>({ remote, shared, po
     return [await listenRemote(app, remote, port, log)];
   } catch (err) {
     await closeServer(loopback, graceMs).catch((closeErr: unknown) => log.error({ err: closeErr }, "error closing loopback after a failed remote bind"));
+    throw err;
+  }
+}
+
+interface ContentBind {
+  origin: ContentOriginOptions | undefined;
+  remote: RemoteListener | null;
+  host: string;
+  hosts: string[] | undefined;
+  /** Already listening; closed if any content listener fails to bind. */
+  bound: ServerType[];
+  graceMs: number;
+  log: Logger;
+}
+
+interface ContentListeners {
+  servers: ServerType[];
+  reported: { contentPort?: number };
+}
+
+/**
+ * Loopback first, so `port: 0` resolves before the remote one binds the same number. The
+ * remote one gets its own TLS tracker: a tracker hands a changed pair to one reload only.
+ */
+async function listenContentOrClose({ origin, remote, host, hosts, bound, graceMs, log }: ContentBind): Promise<ContentListeners> {
+  if (!origin) return { servers: [], reported: {} };
+  const opened: ServerType[] = [];
+  let port = origin.port;
+  const app = (guards: RequestGuardOptions, gate?: RemoteListener["gate"]) => buildContentApp({ mountRoutes: origin.mountRoutes, guards, gate, port: () => port });
+  try {
+    opened.push(await bind(app({ allowedHosts: hosts, portOnly: true }).fetch, { hostname: host, port }).bound);
+    port = boundPortOf(opened[0]!, port);
+    if (remote) {
+      const tls = trackTlsFiles(remote.options.tls, remote.options.allowedHosts ?? []);
+      opened.push(await listenRemote(app(remoteGuardOptions(remote.options), remote.gate), { ...remote, tls }, port, log));
+    }
+    return { servers: opened, reported: { contentPort: port } };
+  } catch (err) {
+    const closed = await Promise.allSettled([...bound, ...opened].map((server) => closeServer(server, graceMs)));
+    for (const result of closed) if (result.status === "rejected") log.error({ err: result.reason }, "error closing a listener after a failed content-origin bind");
     throw err;
   }
 }

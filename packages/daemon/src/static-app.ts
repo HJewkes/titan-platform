@@ -5,6 +5,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Context, Hono } from "hono";
+import { contentType, existingFile, isFile, requestSegments } from "./contained-file.js";
 
 export interface StaticAppOptions {
   /** A built app directory holding `index.html`, or a single-file build's HTML file. */
@@ -17,27 +18,6 @@ export interface StaticAppOptions {
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const REVALIDATE = "no-cache";
-
-const CONTENT_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".txt": "text/plain; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".wasm": "application/wasm",
-};
 
 const NOT_BUILT_HTML =
   '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Not built</title></head>' +
@@ -63,26 +43,6 @@ export function mountStaticApp(app: Hono, options: StaticAppOptions): void {
   });
 }
 
-/**
- * Decoded path segments, or null for anything that could name a file outside the root:
- * `.` or `..`, an encoded slash or backslash, a NUL, a drive letter, or a malformed escape.
- */
-export function requestSegments(pathname: string): string[] | null {
-  const segments: string[] = [];
-  for (const raw of pathname.split("/")) {
-    if (raw === "") continue;
-    let segment: string;
-    try {
-      segment = decodeURIComponent(raw);
-    } catch {
-      return null;
-    }
-    if (segment === "." || segment === ".." || /[/\\\0]/.test(segment) || /^[a-z]:/i.test(segment)) return null;
-    segments.push(segment);
-  }
-  return segments;
-}
-
 async function resolveRequest(root: string, segments: string[], immutableDir: string): Promise<Resolution> {
   const realRoot = await realpath(root).catch(() => null);
   if (!realRoot) return { kind: "unbuilt" };
@@ -98,32 +58,13 @@ async function resolveRequest(root: string, segments: string[], immutableDir: st
   return (await isFile(index)) ? { kind: "index", file: index } : { kind: "unbuilt" };
 }
 
-/** The real file a request names, `refused` when a symlink leads outside the root, or `missing`. */
-async function existingFile(realRoot: string, segments: string[]): Promise<string | "refused" | "missing"> {
-  // Dotfiles are never part of a build, and serving one could leak a stray `.env`.
-  if (segments.some((segment) => segment.startsWith("."))) return "missing";
-  const real = await realpath(path.join(realRoot, ...segments)).catch(() => null);
-  if (!real) return "missing";
-  const relative = path.relative(realRoot, real);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) return "refused";
-  return (await isFile(real)) ? real : "missing";
-}
-
-async function isFile(file: string): Promise<boolean> {
-  return (await stat(file).catch(() => null))?.isFile() ?? false;
-}
-
 async function respond(c: Context, found: Resolution): Promise<Response> {
   c.header("x-content-type-options", "nosniff");
   if (found.kind === "refused") return c.text("Forbidden", 403);
   if (found.kind === "missing") return c.text("Not found", 404);
   if (found.kind === "unbuilt") return c.html(NOT_BUILT_HTML, 503, { "cache-control": REVALIDATE });
   const body = new Uint8Array(await readFile(found.file));
-  const type = found.kind === "index" ? CONTENT_TYPES[".html"]! : contentType(found.file);
+  const type = found.kind === "index" ? contentType("index.html") : contentType(found.file);
   const cache = found.kind === "file" && found.immutable ? IMMUTABLE : REVALIDATE;
   return c.body(body, 200, { "content-type": type, "cache-control": cache });
-}
-
-function contentType(file: string): string {
-  return CONTENT_TYPES[path.extname(file).toLowerCase()] ?? "application/octet-stream";
 }
