@@ -43,7 +43,7 @@ One task's state is split over four stores joined by two orchestrators that poll
 | owner asked rarely, well | Plans |
 
 ## 6. Item ledger: every name the viewer will meet
-| Item | Kind (step / property / constraint / invariant / part / number) | Defined in beat | Reused in beats |
+| Item | Kind (step / property / constraint / invariant / part / number / concept / left-out) | Defined in beat | Reused in beats |
 |---|---|---|---|
 | 143 claimed | number | r1-2-stake | — |
 | 60 real claims | number | r1-2-stake | — |
@@ -82,13 +82,13 @@ One task's state is split over four stores joined by two orchestrators that poll
 | owner asked rarely, well | constraint | r2-3-limits | — |
 | 20 compensators | number | r2-4-measure | — |
 | aim: under five, one clock, one store | property | r2-4-measure | — |
-| item | part | r3-1-nouns | — |
-| fact | part | r3-1-nouns | — |
-| step | part | r3-1-nouns | — |
-| wait + claim | part | r3-1-nouns | — |
-| event | part | r3-1-nouns | — |
-| pool | part | r3-1-nouns | — |
-| service | part | r3-1-nouns | — |
+| item | concept | r3-1-nouns | — |
+| fact | concept | r3-1-nouns | — |
+| step | concept | r3-1-nouns | — |
+| wait + claim | concept | r3-1-nouns | — |
+| event | concept | r3-1-nouns | — |
+| pool | concept | r3-1-nouns | — |
+| service | concept | r3-1-nouns | — |
 | script, memoized, a return | property | r3-2-sentence | — |
 | re-entry | property | r3-2-sentence | — |
 | Plans | part | r3-3-plans | — |
@@ -97,9 +97,9 @@ One task's state is split over four stores joined by two orchestrators that poll
 | GitHub + CI | part | r3-5-runtime | — |
 | Merge queue | part | r3-5-runtime | — |
 | Ops alarms | part | r3-6-owner | — |
-| pool policy details | part | r3-7-simple | — |
-| risk table rows | part | r3-7-simple | — |
-| stacking | part | r3-7-simple | — |
+| pool policy details | left-out | r3-7-simple | — |
+| risk table rows | left-out | r3-7-simple | — |
+| stacking | left-out | r3-7-simple | — |
 | a five-step recipe | property | r3b-1-run | — |
 | 51.5 steps per run | number | r3b-1-run | — |
 | key: name, call count | property | r3b-4-today | — |
@@ -152,7 +152,7 @@ One task's state is split over four stores joined by two orchestrators that poll
 | per-run cap | constraint | r7-3-caps | — |
 | notices · rarely acted on | part | r7-4-notices | — |
 | open-PR lock · after F12 | part | r7-4-notices | — |
-| no coordinator in the loop | property | r7-4-notices | — |
+| no coordinator in the loop | part | r7-4-notices | — |
 | weighted score · gone | part | r7-4b-score | — |
 | finish before start | property | r7-4b-score | — |
 | tier, then readiness age | property | r7-4b-score | — |
@@ -236,7 +236,7 @@ One task's state is split over four stores joined by two orchestrators that poll
 | 2 orchestrators | part | r1-1-hook | — |
 | 4 stores | part | r1-1-hook | — |
 | 11 calls | property | r1-7-promise | r10-1-calls |
-| 7 nouns | part | r3-1-nouns | — |
+| 7 nouns | concept | r3-1-nouns | — |
 | ledger | part | r3-4-runner | — |
 | github | part | r3-5-runtime | — |
 | queue | part | r3-5-runtime | — |
@@ -259,3 +259,12 @@ Pool policy details, risk table rows and stacking are named only as left out. Th
 | ch8 | What must be built first? | §4 |
 | ch9 | In what order does it ship? | — |
 | ch10 | Which calls are the owner's? | — |
+
+## 9. List shapes (optional: a beat not named here is `parallel`)
+| Beat | Shape (parallel / contrast) |
+|---|---|
+| r5-2-mergeup | contrast |
+| r7-1-carry | contrast |
+| r7-3-caps | contrast |
+| r7-4b-score | contrast |
+| r7-4c-replay | contrast |

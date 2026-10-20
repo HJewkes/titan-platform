@@ -21,7 +21,7 @@ const source = (id: string, labels: readonly string[], kind = "job"): PaceSource
   terms: [],
 });
 
-const spineWith = (ledger: SpineLedgerRow[]): SpineV1 => ({
+const spineWith = (ledger: SpineLedgerRow[], shapes: SpineV1["shapes"] = []): SpineV1 => ({
   schema: "spine/v1",
   id: "fixture",
   journey: [{ n: 1, step: "Choose", what: "a task is picked", why: "capacity is finite", invariant: null, breaksToday: null }],
@@ -29,6 +29,7 @@ const spineWith = (ledger: SpineLedgerRow[]): SpineV1 => ({
   constraints: [],
   ledger,
   chapters: [],
+  shapes,
 });
 
 const entry = (item: string, definedIn: string, kind: SpineLedgerRow["kind"] = "step"): SpineLedgerRow => ({ item, kind, definedIn, reusedIn: [] });
@@ -55,10 +56,32 @@ describe("Q-E16 (M6) a list holds one declared kind", () => {
   });
 
   it("checks a list's reused entries too, not only its new ones", () => {
-    const ledger = [entry("choose", "r1"), entry("be legible", "r1", "property")];
-    const beats = [source("r1", ["choose"]), source("r1b", ["be legible"]), source("r2", ["choose", "be legible"])];
+    const ledger = [entry("choose", "r1"), entry("make", "r1"), entry("be legible", "r1", "property")];
+    const beats = [source("r1", ["choose", "make"]), source("r1b", ["be legible"]), source("r2", ["choose", "make", "be legible"])];
 
     expect(rows(beats, spineWith(ledger)).get("Q-E16")?.detail_beats).toEqual(["r2"]);
+  });
+
+  // Mutation: a cut of 2 entries (the old `>= 2`) flags the pair.
+  it("passes a two-entry pair whose kinds differ, since a stat and its target are not a list", () => {
+    const ledger = [entry("20 patches", "r1", "number"), entry("aim: under five", "r1", "property")];
+
+    expect(rows([source("r1", ["20 patches", "aim: under five"])], spineWith(ledger)).get("Q-E16")?.pass).toBe(true);
+  });
+
+  it("fails a three-entry parallel list whose kinds differ", () => {
+    const ledger = [entry("choose", "r1"), entry("make", "r1"), entry("be legible", "r1", "property")];
+
+    expect(rows([source("r1", ["choose", "make", "be legible"])], spineWith(ledger)).get("Q-E16")?.detail_beats).toEqual(["r1"]);
+  });
+
+  // Mutation: ignoring the declared shape flags the removal card.
+  it("passes a removal card the spine declares a contrast, and still fails the same card declared parallel", () => {
+    const ledger = [entry("weighted score · gone", "r1", "part"), entry("finish before start", "r1", "property"), entry("tier, then age", "r1", "property")];
+    const card = [source("r1", ["weighted score · gone", "finish before start", "tier, then age"])];
+
+    expect(rows(card, spineWith(ledger, [{ beat: "r1", shape: "contrast" }])).get("Q-E16")?.pass).toBe(true);
+    expect(rows(card, spineWith(ledger, [{ beat: "r1", shape: "parallel" }])).get("Q-E16")?.detail_beats).toEqual(["r1"]);
   });
 });
 
