@@ -28,6 +28,12 @@ Answer each question below, using its id as `qid`:
 - **Odd one out** ("which item is a different kind of thing?"). Set `odd_one_out` to that item's label
   exactly as listed, or null if every item is the same kind of thing (all steps, all properties, all
   components). Set `pass` to true when you pick none. Quote the beat that lists the items.
+- **An exception is not the odd one** (for Odd one out and Kind honest). An item the spoken words or
+  the labels explicitly set apart from the others is the beat working as intended, not a mixed list.
+  Markers include a default that applies when nothing is chosen, "not X", "until", "except", and an
+  item that "goes" or "is removed". Do not pick such an item for being set apart. Pick an item only
+  if the beat presents it as parallel to the others and it is not; if the items stay mixed once the
+  exception is set aside, pick the one that mixes them.
 
 Every answer needs `evidence`: one or more quotes, each with the id of the beat it comes from,
 copied exactly from that beat's text below and at least two words long. Do not reword, shorten
