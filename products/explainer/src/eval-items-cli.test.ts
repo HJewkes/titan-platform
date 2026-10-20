@@ -46,6 +46,39 @@ const items = (harness: JudgeHarness, ...extra: string[]) =>
 const runRecords = () => readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
 const evalRows = (name: string) => readTsv(join(dir, "bench/evals", name));
 
+/** A synthetic spine whose ledger declares the three listed jobs steps. */
+const SPINE = `# Story spine: synthetic-items
+
+## 3. Journey
+| # | Step | What | Why | Invariant | Today |
+|---|---|---|---|---|---|
+| 1 | Scan | the scanner reads the barcode | no barcode, no record | — | — |
+
+## 4. Architecture
+| Part | Carries | Mechanism | Constraint |
+|---|---|---|---|
+| Desk | 1 | — | — |
+
+## 5. Constraints
+| Constraint | Forces |
+|---|---|
+
+## 6. Item ledger
+| Item | Kind | Defined in | Reused in |
+|---|---|---|---|
+| Scan | step | c1-1 | — |
+| Weigh | step | c1-1 | — |
+| Label | step | c1-1 | — |
+`;
+
+async function noSpineVersion(): Promise<string> {
+  const plain = mkdtempSync(join(tmpdir(), "explainer-items-cli-"));
+  await runEvalCli(["eval", "items", write("script.json", script), "--judge", write("judge.json", { provider: "claude-print", model: "sonnet" }), "--bench", join(plain, "bench"), "--runs", "1"], {
+    harness: () => fakeJudge().harness,
+  });
+  return JSON.parse(readFileSync(join(plain, "bench/evals/runs.jsonl"), "utf8").trimEnd()).eval_version;
+}
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "explainer-items-cli-"));
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -78,6 +111,19 @@ describe("explainer eval items", () => {
     ]);
     expect(rows.every((r) => r.eval_id === "L1-items" && r.chapter === "ch1" && r.beat === "c1-1")).toBe(true);
     expect(evalRows("canaries.tsv")).toEqual([expect.objectContaining({ eval_id: "L1-items", dim: "explained", got: "not_explained", pass: "true" })]);
+  });
+
+  it("with --spine, asks whether each listed item is the kind the ledger declares in place of the odd one out", async () => {
+    const spinePath = join(dir, "spine.md");
+    writeFileSync(spinePath, SPINE);
+
+    const code = await items(fakeJudge().harness, "--runs", "1", "--spine", spinePath);
+
+    expect(code).toBe(0);
+    const rows = evalRows("items-scores.tsv");
+    expect(rows.map((r) => r.kind)).not.toContain("odd-one-out");
+    expect(rows.find((r) => r.kind === "kind-honest")).toMatchObject({ subject: "Scan; Weigh; Label", pass: "true" });
+    expect(runRecords()[0].eval_version).not.toBe(await noSpineVersion());
   });
 
   it("exits 1 when a judge calls the canary's name explained", async () => {

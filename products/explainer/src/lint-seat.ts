@@ -10,7 +10,7 @@ const normalize = (text: string): string =>
     .trim();
 
 // Padding both sides with a space keeps word boundaries: "restarts" does not match inside "restartsafe".
-const speaks = (spoken: string, phrase: string): boolean => ` ${normalize(spoken)} `.includes(` ${normalize(phrase)} `);
+export const speaks = (spoken: string, phrase: string): boolean => ` ${normalize(spoken)} `.includes(` ${normalize(phrase)} `);
 
 /**
  * Invariants a beat states: the larger of its `inv:` items and the `invariants` phrases its spoken text says.

@@ -10,6 +10,7 @@ import { CANARY_COLUMNS } from "./eval-judge-cli.js";
 import { paceInput, type ScriptFormat } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, rulesSha, type BenchLayout, type DeterministicRun } from "./eval-store.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry } from "./rules.js";
+import { parseSpine } from "./spine-schema.js";
 import { readTiming } from "./timing.js";
 
 const EXIT = { OK: 0, UNTRUSTED: 1, USAGE: 2 } as const;
@@ -29,6 +30,7 @@ interface ItemsFlags {
   bench: string;
   parent?: string;
   runs: string;
+  spine?: string;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -51,9 +53,15 @@ function prepare(file: string, flags: ItemsFlags, deps: EvalCliDeps): Prepared {
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: ITEMS_EVAL_ID };
   const routes = itemRoutes(beats, invariants);
-  const input = { scriptSha, beats, routes, rubric: readRubric("l1-items.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
+  const spine = flags.spine ? parseSpine(readFileSync(flags.spine, "utf8")) : undefined;
+  const input = { scriptSha, beats, routes, rubric: itemsRubric(spine !== undefined), judge, harness: (deps.harness ?? createJudgeHarness)(judge), spine };
   return { bench, record, input, runs };
 }
+
+const itemsRubric = (withSpine: boolean): string => {
+  const base = readRubric("l1-items.md");
+  return withSpine ? `${base}\n${readRubric("l1-items-spine.md")}` : base;
+};
 
 function writeRows(p: Prepared, result: ItemsResult, run: number): void {
   const key = (chapter: string) => ({ config_id: p.record.configId, script_sha: p.record.scriptSha, eval_id: ITEMS_EVAL_ID, eval_version: result.eval_version, judge: result.judge, run, chapter });
@@ -61,11 +69,12 @@ function writeRows(p: Prepared, result: ItemsResult, run: number): void {
     c.verdicts.map((v) => ({ ...key(c.chapter), ...v, pass: v.pass === null ? "" : String(v.pass), picked: v.picked ?? "", void_reason: v.void_reason ?? "" })),
   );
   appendTsv(join(p.bench.evals, "items-scores.tsv"), ITEMS_SCORE_COLUMNS, scores);
-  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, result.chapters.map((c) => ({ ...key(c.chapter), ...c.canary })));
+  const canaries = result.chapters.flatMap((c) => (c.canary ? [{ ...key(c.chapter), ...c.canary }] : []));
+  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, canaries);
 }
 
 function report(p: Prepared, run: number, r: ItemsResult): void {
-  const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
+  const failedCanaries = r.chapters.flatMap((c) => (c.canary && !c.canary.pass ? [`${c.canary.canary}=${c.canary.got}`] : []));
   const verdicts = r.chapters.flatMap((c) => c.verdicts);
   const counts = { questions: verdicts.length, void: verdicts.filter((v) => v.pass === null).length, flagged: verdicts.filter((v) => v.pass === false).length };
   const verdict = { trusted: r.trusted, ...counts, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
@@ -92,7 +101,7 @@ async function evalItems(file: string, flags: ItemsFlags, deps: EvalCliDeps): Pr
 
 export function itemsCommand(deps: EvalCliDeps, onResult: (code: number) => void): Command {
   return new Command("items")
-    .description("Judge the routed beats of a spike or script/v1 file: explained (M3), seated (M5) and odd one out; append items-scores and canaries rows")
+    .description("Judge the routed beats of a spike or script/v1 file: explained (M3), seated (M5), odd one out and, with --spine, kind honest; append items-scores and canaries rows")
     .argument("<script>", "script JSON file")
     .requiredOption("--judge <file>", "judge config JSON: provider (claude-print or codex), model, optional reasoning_effort, max_budget_usd, wall_time_s")
     .addOption(new Option("--format <format>", "script shape: a Python-emitted spike script.json, or strict script/v1").choices(["spike", "v1"]).default("spike"))
@@ -102,6 +111,7 @@ export function itemsCommand(deps: EvalCliDeps, onResult: (code: number) => void
     .option("--bench <dir>", "bench directory holding evals/ and scripts/", "bench")
     .option("--parent <sha>", "script_sha this script was derived from")
     .option("--runs <n>", "independent judges; two of three must agree to flag a beat", String(ITEMS_RUNS))
+    .option("--spine <file>", "story spine (spine.md) the script was planned against: list kinds are checked against its ledger, invariant seats against its §4 parts")
     .exitOverride()
     .action(async (file: string, flags: ItemsFlags) => {
       try {

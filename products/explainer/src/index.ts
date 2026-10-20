@@ -241,6 +241,7 @@ export {
   type ListRoute,
   type QuotableTexts,
 } from "./eval-items.js";
+export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
