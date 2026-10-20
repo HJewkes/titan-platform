@@ -179,7 +179,7 @@ describe("a Ship round with two PRs (TP-3329)", () => {
   });
 
   it("shows, once sent, which PR shipped and which went back", async () => {
-    await renderPrs({ status: "sent", notes: { general: "", comments: { "ship-panels": "Narrow it again." }, picks: { "ship-tiles": "Ship", "ship-panels": "Don't ship" } } });
+    await renderPrs({ status: "sent", notes: { general: "", comments: { "ship-panels": "Narrow it again." }, answers: { "ship-tiles": { pick: "Ship" }, "ship-panels": { pick: "Don't ship" } }, addressed: [] } });
 
     expect(pr("example/tiles#1").getByText("example/tiles#1: shipped at 89abcde; the factory merges it at that head")).toBeTruthy();
     expect(pr("example/panels#2").getByText("example/panels#2: sent back")).toBeTruthy();

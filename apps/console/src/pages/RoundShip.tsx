@@ -5,7 +5,9 @@ import type { Question } from "../../server/round-schema.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
-import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
+import { RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment.js";
+import { InlineMarkdown } from "./RoundMarkdown.js";
+import { RoundNote } from "./RoundNote.js";
 import { QuestionFacts } from "./RoundQuestion.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
 import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
@@ -39,7 +41,7 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const submitting = useSubmit();
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   // Locked, the side questions are not handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : sideQuestions);
+  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes);
   if (question === undefined) return null;
   return (
     <VStack gap={4}>
@@ -48,7 +50,7 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
       {round.manifest.questions.map((each, index) =>
         each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
       )}
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={side.addressed} onToggle={side.toggleAddressed} />
+      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
       <ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />
     </VStack>
   );
@@ -61,8 +63,8 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
       <CardContent>
         <VStack gap={2}>
           <QuestionFrames question={question} />
-          <Typography variant="subtitle1">{question.prompt}</Typography>
-          {section?.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
+          <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
+          {section?.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
           <QuestionFacts question={question} />
           <ShipLineageLine lineage={round.lineage} />
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
@@ -148,6 +150,7 @@ function ShipOutcome({ round, question, state }: { round: ValidRound; question: 
   return (
     <VStack gap={3}>
       <AnswerOutcome answer={round.answer} headSha={question.merge.headSha} state={state} />
+      <SentPick questionId={question.id} pick={round.notes?.answers[question.id]?.pick} />
       <SentComment questionId={question.id} text={round.notes?.comments[question.id]} />
       <SentGeneral text={round.notes?.general} />
     </VStack>
