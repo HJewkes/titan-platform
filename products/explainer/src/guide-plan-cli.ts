@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { CommanderError, Command, Option } from "commander";
 import { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guide-plan.js";
 
 const EXIT = { OK: 0, USAGE: 2 } as const;
@@ -22,7 +22,8 @@ export async function runGuideCli(argv: string[], deps: GuideDeps = {}, io: Guid
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (error) {
-    code = (error as { exitCode?: number }).exitCode === 0 ? EXIT.OK : EXIT.USAGE;
+    if (!(error instanceof CommanderError)) throw error;
+    code = error.exitCode === 0 ? EXIT.OK : EXIT.USAGE;
   }
   return code;
 }
