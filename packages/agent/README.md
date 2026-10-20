@@ -274,6 +274,34 @@ negative or non-finite rate, a bad date, or a duplicate `(model, effectiveFrom)`
 `priceCodexUsage(measurements, prices, atMs)` applies the same rule to any
 measurements.
 
+## Codex app-server client
+
+`startCodexAppServer({ cwd, env, executablePath?, args? })` spawns `codex app-server`
+(stdio JSON-RPC), runs the `initialize` handshake, and returns a client with
+`threadStart`, `threadResume`, `turnStart` and `turnSteer`. Use it to keep one Codex
+thread alive and feed it input: `turnSteer` adds input to the active turn at its next
+sampling point without interrupting a running tool, and `turnStart` wakes an idle thread.
+
+```ts
+const server = await startCodexAppServer({ cwd, env });
+const { threadId } = await server.threadStart({ cwd });
+const { turnId } = await server.turnStart({ threadId, input: [{ type: "text", text: "go" }] });
+try {
+  await server.turnSteer({ threadId, expectedTurnId: turnId, input: [{ type: "text", text: "more" }] });
+} catch (error) {
+  if (!(error instanceof CodexSteerPreconditionError)) throw error;
+  await server.turnStart({ threadId, input: [{ type: "text", text: "more" }] });
+}
+```
+
+A steer that finds no active turn, or a different one, rejects with
+`CodexSteerPreconditionError`; any other JSON-RPC error is a `CodexAppServerRpcError`.
+`onEvent` reports `turn_started`, `turn_completed`, `thread_status` (`idle`, `active`
+and the rest), every other notification as `notification`, and `exit`. When the child
+exits, pending and later calls reject with `CodexAppServerExitedError`. The client
+declines server requests such as approvals with a JSON-RPC error. Choose an approval
+policy at `threadStart` that never asks.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message

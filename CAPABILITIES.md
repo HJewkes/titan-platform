@@ -464,7 +464,7 @@ Key exports:
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
 - `codex-prices`: `priceCodexUsage`
 - `codex-runtime`: `inspectCodexCapabilities`
-- +93 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent)
+- +108 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 
