@@ -10,7 +10,7 @@ export const SELF_UPDATE_USAGE = `       titan-console self-update        build 
 const expandHome = (value: string, home: string): string => (value === "~" ? home : value.startsWith("~/") ? path.join(home, value.slice(2)) : value);
 
 /** `TITAN_CONSOLE_UPDATE_ROOT` and `TITAN_CONSOLE_UNIT` exist for a second install; the defaults are the served console's. */
-export function updateOptions(config: ConsoleConfig, env: NodeJS.ProcessEnv = process.env, home: string = homedir()): UpdateOptions {
+function updateOptions(config: ConsoleConfig, env: NodeJS.ProcessEnv = process.env, home: string = homedir()): UpdateOptions {
   return {
     root: expandHome(env.TITAN_CONSOLE_UPDATE_ROOT || "~/.local/share/titan-console", home),
     stateDir: config.stateDir,

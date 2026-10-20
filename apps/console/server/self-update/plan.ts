@@ -1,6 +1,7 @@
 import path from "node:path";
+import { z } from "zod";
 
-export const CONSOLE_PACKAGE = "titan-console";
+const CONSOLE_PACKAGE = "titan-console";
 /** pnpm's own view of the workspace packages the console build reaches, so a new dependency needs no list edit here. */
 export const CLOSURE_ARGS: readonly string[] = ["--filter", `${CONSOLE_PACKAGE}...`, "ls", "--depth", "-1", "--json"];
 export const BUILD_ARGS: readonly string[] = ["--filter", `${CONSOLE_PACKAGE}...`, "build"];
@@ -22,8 +23,9 @@ export function closureDirs(lsJson: string, root: string): string[] | undefined 
   } catch {
     return undefined;
   }
-  if (!Array.isArray(parsed)) return undefined;
-  const dirs = parsed.flatMap((entry: { path?: unknown }) => (typeof entry?.path === "string" ? [path.relative(root, entry.path).split(path.sep).join("/")] : []));
+  const entries = z.array(z.object({ path: z.string() })).safeParse(parsed);
+  if (!entries.success) return undefined;
+  const dirs = entries.data.map((entry) => path.relative(root, entry.path).split(path.sep).join("/"));
   return dirs.length === 0 || dirs.some((dir) => dir === "" || dir.startsWith("..")) ? undefined : dirs.sort();
 }
 

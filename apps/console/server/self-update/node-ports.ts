@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { z } from "zod";
 import type { CommandResult, UpdatePorts } from "./update.js";
 
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
@@ -11,7 +12,7 @@ const MAX_OUTPUT = 64 * 1024 * 1024;
 const POLL_MS = 1_000;
 const HEALTH_TIMEOUT_MS = 2_000;
 /** A cold start reads the session graph and the upstreams; the factory's deployer waits about as long. */
-export const SERVE_WAIT_MS = 60_000;
+const SERVE_WAIT_MS = 60_000;
 
 function run(file: string, args: readonly string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<CommandResult> {
   return new Promise((resolve) => {
@@ -22,6 +23,10 @@ function run(file: string, args: readonly string[], cwd?: string, env?: NodeJS.P
   });
 }
 
+const healthBuild = z.object({ build: z.object({ sha: z.string() }).nullish() });
+
+const errnoCode = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** null when the console answered with no build sha (a build from before the stamp), undefined when it did not answer. */
@@ -29,14 +34,14 @@ async function healthSha(port: number): Promise<string | null | undefined> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS), redirect: "error" });
     if (!response.ok) return undefined;
-    const body = (await response.json()) as { build?: { sha?: unknown } | null };
-    return typeof body.build?.sha === "string" ? body.build.sha : null;
+    const body = healthBuild.safeParse(await response.json());
+    return body.success ? (body.data.build?.sha ?? null) : null;
   } catch {
     return undefined;
   }
 }
 
-export async function pollSha(port: number, want: string, waitMs: number = SERVE_WAIT_MS): Promise<string | null | undefined> {
+async function pollSha(port: number, want: string, waitMs: number = SERVE_WAIT_MS): Promise<string | null | undefined> {
   const deadline = Date.now() + waitMs;
   let last: string | null | undefined;
   while (Date.now() < deadline) {
@@ -74,7 +79,7 @@ async function pageAnswers(port: number): Promise<boolean> {
   }
 }
 
-export async function smokeRelease(release: string, sha: string): Promise<string | undefined> {
+async function smokeRelease(release: string, sha: string): Promise<string | undefined> {
   const port = await sparePort();
   const stateDir = mkdtempSync(path.join(tmpdir(), "titan-console-smoke-"));
   const child = spawn(process.execPath, [path.join(release, "apps/console/dist/cli.js")], { env: smokeEnv(port, stateDir), stdio: "ignore" });
@@ -108,7 +113,7 @@ function createExclusive(file: string, text: string): boolean {
     writeFileSync(file, text, { flag: "wx", mode: 0o600 });
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    if (errnoCode(error) === "EEXIST") return false;
     throw error;
   }
 }
@@ -118,7 +123,7 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    return errnoCode(error) === "EPERM";
   }
 }
 

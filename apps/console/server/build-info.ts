@@ -7,14 +7,14 @@ import { APP_DIR } from "./paths.js";
 /** Written by `build` after vite and tsup, so it names the commit the served dist was built from. */
 export const BUILD_INFO_FILE = path.join(APP_DIR, "dist", "build-info.json");
 
-export const buildInfoSchema = z.object({
+const buildInfoSchema = z.object({
   sha: z.string().regex(/^[0-9a-f]{40}$/),
   builtAt: z.string(),
   /** The checkout had tracked changes, so `sha` alone does not reproduce the build. */
   dirty: z.boolean(),
 });
 
-export type BuildInfo = z.infer<typeof buildInfoSchema>;
+type BuildInfo = z.infer<typeof buildInfoSchema>;
 
 /** Null when the file is missing or malformed: a dev server or an unstamped build has no sha to show. */
 export function readBuildInfo(file: string = BUILD_INFO_FILE): BuildInfo | null {
@@ -26,7 +26,7 @@ export function readBuildInfo(file: string = BUILD_INFO_FILE): BuildInfo | null 
   }
 }
 
-export interface GitFacts {
+interface GitFacts {
   head: string;
   /** `git status --porcelain --untracked-files=no` output. */
   status: string;

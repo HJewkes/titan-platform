@@ -2,7 +2,7 @@ import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 
 export type FailureStage = "build" | "smoke" | "restart" | "rollback";
 
-export interface UpdateFailure {
+interface UpdateFailure {
   stage: FailureStage;
   target: string;
   /** The sha still serving, or that should be after a rollback. */

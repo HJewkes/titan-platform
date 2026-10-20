@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
+import { z } from "zod";
 import { failureDeposit, type FailureStage } from "./alarm.js";
 import { releaseLock, takeLock, type LockPorts } from "./lock.js";
 import { BUILD_ARGS, CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
@@ -42,10 +43,10 @@ export interface UpdateOptions {
   unit: string;
 }
 
-export type UpdateOutcome = "updated" | "failed" | "rolled-back" | "rollback-failed";
+type UpdateOutcome = "updated" | "failed" | "rolled-back" | "rollback-failed";
 
 /** The last attempt; a failed target is not retried until main moves past it. */
-export interface UpdateRecord {
+interface UpdateRecord {
   outcome: UpdateOutcome;
   target: string;
   served: string;
@@ -104,10 +105,20 @@ export async function selfUpdate(ports: UpdatePorts, options: UpdateOptions): Pr
   }
 }
 
+const recordSchema = z.object({
+  outcome: z.enum(["updated", "failed", "rolled-back", "rollback-failed"]),
+  target: z.string(),
+  served: z.string(),
+  at: z.string(),
+  stage: z.enum(["build", "smoke", "restart", "rollback"]).optional(),
+  why: z.string().optional(),
+  touched: z.array(z.string()).optional(),
+});
+
 export function readRecord(text: string | undefined): UpdateRecord | undefined {
   try {
-    const value = JSON.parse(text ?? "") as Partial<UpdateRecord> | null;
-    return typeof value?.outcome === "string" && typeof value.target === "string" ? (value as UpdateRecord) : undefined;
+    const parsed = recordSchema.safeParse(JSON.parse(text ?? ""));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
