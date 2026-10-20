@@ -20,12 +20,6 @@ function issuesOf(json: unknown): string[] {
   return result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
 }
 
-function withQuestion(id: string, fields: Json): Json {
-  const round = td920();
-  const questions = jsonObjects.parse(round.questions).map((question) => (question.id === id ? { ...question, ...fields } : question));
-  return { ...round, questions };
-}
-
 function blindAbRound(): Json {
   const round = td920();
   const takes = [
@@ -69,43 +63,6 @@ describe("the console's round schema", () => {
     const questions = jsonObjects.parse(round.questions).map((question) => (question.id === "ship" ? { ...question, decision: "iterate" } : question));
 
     expect(issuesOf({ ...round, questions })).toContain("questions: question ship: a merge-bound question's decision is ship, not iterate");
-  });
-
-  it("refuses an unbound pick-one that offers \"Merge #N\"", () => {
-    const round = withQuestion("bundle", { options: ["Accept", "Merge #42 at this head"] });
-
-    expect(VendoredRoundSchema.safeParse(round).success).toBe(true);
-    expect(issuesOf(round)).toEqual([
-      'questions: question bundle: option "Merge #42 at this head" offers a merge, so it needs a merge binding {repo, pr, headSha, ship}',
-    ]);
-  });
-
-  it("refuses an unbound pick-one whose signsOff names a PR at a head", () => {
-    const round = withQuestion("bundle", { signsOff: "the bundle growth of #42 at a1a1a1a" });
-
-    expect(issuesOf(round)).toEqual([
-      'questions: question bundle: signsOff "#42 at a1a1a1a" offers a merge, so it needs a merge binding {repo, pr, headSha, ship}',
-    ]);
-  });
-
-  it("refuses a merge binding at a head other than the one its signsOff names", () => {
-    const round = withQuestion("ship", { signsOff: "the 3 baseline changes of #42 at b2b2b2b" });
-
-    expect(issuesOf(round)).toEqual([
-      `questions: question ship: signsOff "#42 at b2b2b2b" names head b2b2b2b but its merge binding is at ${"a1".repeat(20)}`,
-    ]);
-  });
-
-  it("refuses a merge binding for a PR other than the one its signsOff names", () => {
-    const round = withQuestion("ship", { signsOff: "the 3 baseline changes of #43 at a1a1a1a" });
-
-    expect(issuesOf(round)).toEqual(['questions: question ship: signsOff "#43 at a1a1a1a" names #43 but its merge binding is #42']);
-  });
-
-  it("accepts a merge binding whose pr and head agree with its signsOff", () => {
-    const round = withQuestion("ship", { signsOff: "the 3 baseline changes of #42 at a1a1a1a" });
-
-    expect(RoundSchema.safeParse(round).success).toBe(true);
   });
 
   it("refuses a round@1 manifest with the review contract's own reason", () => {

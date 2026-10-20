@@ -1,9 +1,11 @@
 /**
  * A pick-one that offers a merge must say which PR head it merges. Its answer is the owner's merge approval
  * (decision 489), so a "Merge #N" option, a "Ship" option or a signsOff naming "#N at <sha>" without a `merge`
- * binding is a schema problem, and so is a binding whose pr or head disagrees with what the wording names.
+ * binding is refused, and so is a binding whose pr or head disagrees with what the wording names.
  *
- * Product-side because `review-schema-0.3/` is vendored and never edited; TP-3232 moves it with the release.
+ * Only where a round is authored (`round-import.ts`): a round already in the rounds dir stays listed and answerable,
+ * flagged unbound, because an owner may be mid-answer on it and an unbound pick taps no merge.
+ * Product-side because `review-schema-0.3/` is vendored and never edited; review-schema takes it upstream.
  */
 import type * as reviewSchema from "./review-schema-0.3/index.js";
 
@@ -57,4 +59,9 @@ function questionProblems(question: PickOne): string[] {
 
 export function mergeBindingProblems(questions: readonly Question[]): string[] {
   return questions.flatMap((question) => (question.kind === "pick-one" ? questionProblems(question) : []));
+}
+
+/** True when a pick-one offers a merge with no binding at all: its answer is recorded, but no merge tap follows. */
+export function hasUnboundMergeOffer(questions: readonly Question[]): boolean {
+  return questions.some((question) => question.kind === "pick-one" && question.merge === undefined && offersOf(question).length > 0);
 }

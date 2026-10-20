@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
@@ -13,6 +14,7 @@ import { withdrawRound } from "./round-withdraw.js";
 import { BLIND_AB_REFUSED } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
+import { listRounds } from "./rounds.js";
 
 const ROUND = "orbit-retry-r1";
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -357,5 +359,31 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf())).toBe(false);
     expect(calls).toEqual([]);
     expect(heard).toEqual([]);
+  });
+});
+
+/** orbit-retry-r1 as a round published before merge bindings were required: "Merge #12" offered, nothing bound. */
+async function publishUnboundRound(): Promise<string> {
+  const file = path.join(dir, ROUND, "round.json");
+  const round = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(file, "utf8")));
+  const questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions);
+  const unbound = questions.map(({ merge: _merge, page: _page, recommendation: _recommendation, ...question }) => ({
+    ...question,
+    options: ["Merge #12 at this head", "Hold"],
+  }));
+  const bytes = Buffer.from(JSON.stringify({ ...round, questions: unbound }));
+  await writeFile(file, bytes);
+  return sha256(bytes);
+}
+
+describe("a round published before merge bindings were required", () => {
+  it("a published unbound round still lists and accepts a submit", async () => {
+    const unboundSha = await publishUnboundRound();
+
+    const { rounds } = await listRounds({ dir });
+    const { envelope } = await submit({ id: ROUND, manifestSha256: unboundSha, answers: [{ questionId: "ship-backoff", pick: "Merge #12 at this head" }] });
+
+    expect(rounds).toEqual([expect.objectContaining({ id: ROUND, valid: true, ship: false, unbound: true })]);
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", path: feedbackOf() } });
   });
 });
