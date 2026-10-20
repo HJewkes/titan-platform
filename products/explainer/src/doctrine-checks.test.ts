@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkDoctrine, isCodeEnforced, type DoctrineIssueCode } from "./doctrine-checks.js";
 import { Q_RULES, craftRule, registryWith } from "./doctrine-fixtures.test-helpers.js";
+import { loadDoctrine } from "./doctrine-load.js";
+import { loadRuleRegistry } from "./rules.js";
 import type { DoctrineRule } from "./doctrine-schema.js";
 
 const codesFor = (...rules: DoctrineRule[]): DoctrineIssueCode[] => checkDoctrine(registryWith(...rules), Q_RULES).map((found) => found.code);
@@ -85,5 +87,34 @@ describe("checkDoctrine", () => {
     const starred = craftRule({ id: "dir-P6", source: { doc: "direction", ref: "P6" }, scope: { layer: "U*" }, param: "chapters.count", supersedes: ["dir-P1"] });
 
     expect(codesFor(craftRule(), beat, typed, starred)).toEqual([]);
+  });
+});
+
+describe("the shipped owner-feedback doctrine", () => {
+  const shipped = () => loadDoctrine();
+  const fb = (id: string): DoctrineRule => {
+    const found = shipped().rules.find((rule) => rule.id === id);
+    if (!found) throw new Error(`${id} is not shipped`);
+    return found;
+  };
+
+  it("passes checkDoctrine against the shipped Q-registry", () => {
+    expect(checkDoctrine(shipped(), loadRuleRegistry())).toEqual([]);
+  });
+
+  it("flags FB3 once it also reaches the planner, since Q-E7 is live", () => {
+    const leaked = { ...fb("owner-FB3"), enforcement: ["lint", "planner"] as DoctrineRule["enforcement"] };
+
+    const codes = checkDoctrine({ ...shipped(), rules: [leaked] }, loadRuleRegistry()).map((found) => found.code);
+
+    expect(codes).toContain("code-rule-in-prompt-enforcement");
+  });
+
+  it("keeps FB4.2 not live while Q-E16 is pending, and flags it when marked live", () => {
+    const rule = fb("owner-FB4.2");
+    const flipped = { ...rule, check: { kind: "qrule" as const, ref: "Q-E16", live: true } };
+
+    expect(rule.check?.live).toBe(false);
+    expect(checkDoctrine({ ...shipped(), rules: [flipped] }, loadRuleRegistry()).map((found) => found.code)).toContain("qrule-live-mismatch");
   });
 });

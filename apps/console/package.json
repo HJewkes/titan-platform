@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "tsx server/dev.ts",
-    "build": "vite build && tsup",
+    "build": "vite build && tsup && tsx server/stamp-build.ts",
     "serve": "tsx server/cli.ts",
     "export": "tsx server/export.ts",
     "capture": "vite build && tsx server/twin/cli.ts",

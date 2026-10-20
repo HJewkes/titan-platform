@@ -2,7 +2,7 @@ import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workf
 import { z } from "zod";
 import { ApprovedSetSchema, setMatch } from "../approved-set.js";
 import { stepIdMatches } from "../definition.js";
-import { codeRoute, step } from "../workflows/land.js";
+import { codeRoute, SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import type { CarryTarget } from "./carry-merge.js";
 import { changedPathsBetween } from "./changed-paths.js";
@@ -127,5 +127,5 @@ export async function approvedSetFollow(ctx: WorkflowContext, target: CarryTarge
   const result = await step(ctx, stepId, { repo: target.repo, fromHead: set.fromHead, head: gate.head, set, ...(mode !== "recorded" && { mode }) }, ResultSchema);
   carry.spendSet?.();
   if (result.decision !== "merge" || result.headSha !== gate.head) return undefined;
-  return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "merge", headSha: gate.head } };
+  return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "merge", headSha: gate.head, origin: SET_ANSWER_ORIGIN } };
 }
