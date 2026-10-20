@@ -7,6 +7,7 @@ import { RoundFramesProvider } from "./QuestionFrames.js";
 import { RoundNote } from "./RoundNote.js";
 import { DesignRound } from "./RoundDesign.js";
 import { RoundSend } from "./RoundSend.js";
+import { RoundSetNav } from "./RoundSetNav.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
@@ -39,6 +40,7 @@ function Framed({ id, children }: { id: string; children: ReactNode }): ReactNod
         <BreadcrumbItem onPress={() => open({ view: "rounds" })}>Rounds</BreadcrumbItem>
         <BreadcrumbItem isCurrentPage>{id}</BreadcrumbItem>
       </Breadcrumbs>
+      <RoundSetNav id={id} />
       {children}
     </VStack>
   );
