@@ -45,6 +45,11 @@ export interface OctokitClientOptions {
    * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
    */
   budget?: RateBudget;
+  /**
+   * The throttle never sleeps and retries inside a call, so a `githubApiPool` in front owns every rate-limit wait; the limit
+   * still lands in `budget().cooldowns`. Off by default.
+   */
+  poolOwnsWaits?: boolean;
 }
 
 export interface GitHubClient {
@@ -71,7 +76,7 @@ const ThrottledOctokit = Octokit.plugin(throttling, retry);
 
 export function octokitClient(options: OctokitClientOptions = {}): GitHubClient {
   const now = options.now ?? Date.now;
-  const state = budgetState(now);
+  const state = budgetState(now, options.poolOwnsWaits ?? false);
   const octokit = new ThrottledOctokit({
     request: options.fetch ? { fetch: options.fetch } : {},
     throttle: {
@@ -144,14 +149,14 @@ interface ThrottledRequest {
   url: string;
 }
 
-function budgetState(now: () => number) {
+function budgetState(now: () => number, poolOwnsWaits: boolean) {
   const lanes: Partial<Record<RateLane, RateWindow>> = {};
   let cooldowns: Cooldown[] = [];
   return {
     limited(kind: Cooldown["class"], request: ThrottledRequest, retryAfterS: number, retryCount: number): boolean {
       const lane = laneOf(request.url);
       cooldowns = [...cooldowns.filter((cooldown) => cooldown.lane !== lane), { lane, class: kind, until: now() + retryAfterS * 1000 }];
-      return retryCount === 0 && isRead(request.method) && retryAfterS <= MAX_READ_WAIT_S;
+      return !poolOwnsWaits && retryCount === 0 && isRead(request.method) && retryAfterS <= MAX_READ_WAIT_S;
     },
     observe(headers: Readonly<Record<string, string | number | undefined>>): void {
       const lane = headers["x-ratelimit-resource"] === "core" ? "rest" : headers["x-ratelimit-resource"] === "graphql" ? "graphql" : undefined;
