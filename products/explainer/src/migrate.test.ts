@@ -1,7 +1,10 @@
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { deriveEvalView } from "./eval-view.js";
-import { migrateTourV0 } from "./migrate.js";
+import { runL0 } from "./eval-l0.js";
+import { migrateSpike, migrateTourV0 } from "./migrate.js";
 import { tourProbe, tourV0 } from "./script-fixtures.test-helpers.js";
+import { pipelineScript, v4FullScript } from "./spike-fixtures.test-helpers.js";
 
 describe("migrateTourV0", () => {
   it("migrates every spike beat to a parseable script/v1", () => {
@@ -58,5 +61,51 @@ describe("migrateTourV0", () => {
     const tour = { ...tourV0, beats: [{ ...tourV0.beats[0], kind: "confetti" }] };
 
     expect(() => migrateTourV0(tour, tourProbe)).toThrow('no beat function for spike kind "confetti"');
+  });
+});
+
+describe("migrateSpike", () => {
+  const failing = (script: unknown, checkId: string): string[] =>
+    runL0(migrateSpike(script)).find((row) => row.check_id === checkId)?.detail_beats ?? [];
+
+  // Mutation: dropping cue targets in the migration leaves r2-1 with no items, so Q-E7 passes it and this fails.
+  it("migrates the whole v4 spike script, and L0 then flags the same beats as eval pace", () => {
+    const script = migrateSpike(v4FullScript());
+
+    expect(script.beats).toHaveLength(75);
+    expect(failing(v4FullScript(), "Q-E7")).toEqual(expect.arrayContaining(["r2-1-jobs", "r2-2-inv"]));
+  });
+
+  it("migrates the pipeline-explainer, and L0 names the frozen Q-E7 set", () => {
+    expect(failing(pipelineScript(), "Q-E7")).toEqual(["c5-1-contract", "c6-10-rule"]);
+  });
+
+  it("keeps the spike keys ScriptSchema admits", () => {
+    const [hook] = migrateSpike(v4FullScript()).beats;
+
+    expect(hook).toMatchObject({ band: "hook", origin: "v2", visual: { render: "HookBeat" } });
+    expect(hook?.visual.cues).toHaveLength(2);
+  });
+
+  it("maps spike chip kinds and a connector onto script/v1's", () => {
+    const beats = migrateSpike(v4FullScript()).beats;
+    const kinds = new Set(beats.flatMap((beat) => beat.visual.chips.map((chip) => chip.kind)));
+
+    expect(kinds).toEqual(new Set(["verified", "inferred", "our-framing", "docs-claim"]));
+    expect(new Set(beats.flatMap((beat) => (beat.connector_in ? [beat.connector_in] : [])))).toEqual(new Set(["and", "so", "but"]));
+  });
+
+  it("drops a generic model of more than five slots rather than truncating it", () => {
+    const script = migrateSpike(v4FullScript());
+
+    expect(script.video.generic_model).toBeUndefined();
+    expect(script.video.invariants).toHaveLength(7);
+  });
+
+  it("still fails on a key it does not know", () => {
+    const odd = z.looseObject({ beats: z.array(z.looseObject({})) }).parse(pipelineScript());
+    odd.beats[0] = { ...odd.beats[0], sparkle: true };
+
+    expect(() => migrateSpike(odd)).toThrow(/sparkle/);
   });
 });

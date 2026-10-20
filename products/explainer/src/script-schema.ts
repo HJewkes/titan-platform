@@ -61,7 +61,8 @@ const VideoSchema = z
       .optional(),
     running_example: authored(RunningExample),
     quality_goals: z.array(z.object({ id: Id, goal: Text, scenario: Text }).strict()).max(5).optional(),
-    invariants: z.array(Text).max(2).optional(),
+    // The two-invariant cap is an L0 warning, not a parse error, so a spike script with more still loads.
+    invariants: z.array(Text).optional(),
     simplifications: z.array(Text),
     scope: Text.optional(),
     non_scope: z.array(Text).default([]),
@@ -96,13 +97,19 @@ const CodeRef = z
     path: ["lines"],
   });
 
+// A spike script's map_state names the map it draws on and may split a beat into old and new sides.
+const MapSide = MapStateSchema.omit({ level: true });
+const ScriptMapState = MapStateSchema.extend({ map: Id.optional(), old: MapSide.optional(), new: MapSide.optional() });
+const SpikeMapNodes = z.looseObject({ nodes: z.array(z.looseObject({ id: Id, label: Text })) });
+
 const ScriptVisualSchema = z
   .object({
     assertion: Text,
     job: authored(VisualSchema.shape.job),
     layout_source: VisualSchema.shape.layout_source.optional(),
     edge_sources: z.array(z.enum(EDGE_SOURCES)).default([]),
-    map_state: MapStateSchema.optional(),
+    map_state: ScriptMapState.optional(),
+    render: Text.optional(),
     cues: z
       .array(z.object({ action: z.enum(OFF_MAP_ACTIONS), target: Id, atCue: Cue, hold_s: z.number().positive().optional() }).strict())
       .default([]),
@@ -120,6 +127,8 @@ const ScriptBeatSchema = z
     mode: z.enum(BEAT_MODES),
     // A render hint; when it names a visual-router type, the visual:gap-kind lint warns on a gap.
     kind: Text.optional(),
+    band: Text.optional(),
+    origin: Text.optional(),
     plannedS: z.number().positive(),
     heldS: z.number().positive().optional(),
     spoken: Text,
@@ -206,6 +215,9 @@ const ScriptShape = z
     video: VideoSchema,
     chapters: z.array(ChapterSchema).min(1),
     beats: z.array(ScriptBeatSchema).min(1),
+    maps: z.record(Id, SpikeMapNodes).optional(),
+    map: SpikeMapNodes.optional(),
+    shared_nodes: z.array(Id).optional(),
     companion: z.object({ codemap: Text, reading_list: Text, full_scorecard: Text }).partial().strict().optional(),
   })
   .strict();
