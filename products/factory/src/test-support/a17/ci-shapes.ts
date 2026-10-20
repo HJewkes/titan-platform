@@ -1,4 +1,4 @@
-import type { BackstopContext } from "./ci-keys.js";
+import type { BackstopContext } from "../../event-log/ci-keys.js";
 
 /** A concluded CI fact; the two builders below render it in each source's wire shape. */
 export interface CiFact {

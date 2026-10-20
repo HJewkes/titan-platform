@@ -38,3 +38,15 @@ export type { NeedsList } from "./needs/merged.js";
 export { collectNeeds, renderNeeds } from "./needs/merged.js";
 export type { Overlap, OverlapEntry } from "./needs/overlap.js";
 export { overlapReport, renderOverlapReport } from "./needs/overlap.js";
+export type { IngressAnswer, IngressDeps, IngressRequest, Projector, WebhookSecret } from "./ingress/index.js";
+export {
+  BODY_TOO_LARGE,
+  INGRESS_PATH,
+  INGRESS_PORT,
+  INGRESS_REQUEST_TIMEOUT_MS,
+  MAX_INGRESS_BODY_BYTES,
+  answerDelivery,
+  signDelivery,
+  verifySignature,
+  webhookSecretPath,
+} from "./ingress/index.js";

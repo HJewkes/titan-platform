@@ -157,6 +157,15 @@ describe("feedbackProblems", () => {
 
     expect(feedbackProblems(feedback, manifest)).toEqual(["unansweredQuestionIds lists notes; unanswered are none"]);
   });
+
+  it("names a pin whose id is not numbered on its own frame", () => {
+    const pin = (id: string) => ({ id, width: 375, x: 1, y: 2, xPct: 0.1, yPct: 0.2, note: "Synthetic note." });
+    const variants = [{ key: "matte", annotations: [pin("matte-1"), pin("gloss-1"), pin("matte-0")] }];
+
+    const feedback = buildRoundFeedback(manifest, SHA, { ...posted(COMPLETE), variants }, NOW);
+
+    expect(feedbackProblems(feedback, manifest)).toEqual(['matte: pin "gloss-1" is not one of its pins', 'matte: pin "matte-0" is not one of its pins']);
+  });
 });
 
 describe("answer helpers", () => {

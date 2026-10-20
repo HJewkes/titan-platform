@@ -37,10 +37,10 @@ const roundDir = () => path.join(roundsDir, ROUND);
 const feedbackPath = () => path.join(roundDir(), "feedback.json");
 const exists = (file: string) => stat(file).then(() => true, () => false);
 
-async function fileAndAnswer(): Promise<void> {
+async function fileAndAnswer(feedback: object = {}): Promise<void> {
   const body = await readFile(path.join(FIXTURE_ROUNDS.dir, ROUND, "round.json"), "utf8");
   await fileRound({ body, roundsDir, asker: { seat: SEAT, initiative: null } });
-  await writeFile(feedbackPath(), "{}\n");
+  await writeFile(feedbackPath(), `${JSON.stringify(feedback)}\n`);
 }
 
 describe("telling the asking seat its decision round was answered", () => {
@@ -53,6 +53,15 @@ describe("telling the asking seat its decision round was answered", () => {
 
     expect(sent).toEqual([{ seat: SEAT, text: answerNotice(ROUND, feedbackPath(), "asker", false) }]);
     expect(JSON.parse(await readFile(path.join(roundDir(), `notified-${SEAT}.json`), "utf8"))).toEqual({ schema: "titan-console/notified@1", seat: SEAT, reason: "asker", at: NOW.toISOString() });
+  });
+
+  it("flags free text when the only words are a pin's note on a frame (TP-3773)", async () => {
+    const pin = { id: "frame-a-1", width: 375, x: 10, y: 20, xPct: 0.03, yPct: 0.05, note: "The badge clips here." };
+    await fileAndAnswer({ general: "", answers: [], variants: [{ key: "frame-a", verdict: null, comment: "", annotations: [pin] }] });
+
+    await listeners().afterRoundSubmit(ROUND, { status: "submitted" });
+
+    expect(sent).toEqual([{ seat: SEAT, text: answerNotice(ROUND, feedbackPath(), "asker", true) }]);
   });
 
   it("names the round, the feedback file and the free-text flag, and nothing the filing seat wrote", () => {

@@ -451,6 +451,16 @@ describe("runItems with a story spine", () => {
     expect(verdictsOf(result).find((v) => v.kind === "kind-honest")).toMatchObject({ pass: true, picked: null });
   });
 
+  it("tells the kind-honest judge that an item the narration sets apart is not the odd one", async () => {
+    const judge = kindJudge();
+
+    await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER))));
+
+    const prompt = judge.calls.find((p) => p.includes("spine ledger declares"))!;
+    expect(prompt).toContain("**An exception is not the odd one** (for Odd one out and Kind honest)");
+    expect(prompt).toMatch(/a default that applies when nothing is chosen, "not X", "until", "except", and an\s+item that "goes" or "is removed"/);
+  });
+
   it("keeps the blind odd one out for a list beat with an item the ledger does not list", async () => {
     const partial = Object.fromEntries(Object.entries(DESK_LEDGER).filter(([item]) => item !== "be legible"));
 
