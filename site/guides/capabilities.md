@@ -1003,7 +1003,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +214 more in the [reference page](/reference/session-read)
+- +215 more in the [reference page](/reference/session-read)
 
 <a id="cap-speech-vet"></a>
 
