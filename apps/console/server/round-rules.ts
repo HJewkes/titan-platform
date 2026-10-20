@@ -9,7 +9,7 @@
  * are what frames.json and feedback.json bind by sha256. `rounds.get` never runs these rules, so a round already on
  * disk keeps opening.
  */
-import { lintRound, type LintProblem } from "./review-schema-0.3/lint.js";
+import { lintRound, type LintProblem } from "./review-schema-0.3/index.js";
 import type { Manifest, Question } from "./round-schema.js";
 
 const isShip = (question: Question): boolean => question.kind === "pick-one" && question.merge !== undefined;

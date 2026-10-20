@@ -23,6 +23,8 @@ function shipQuestion(overrides: Json = {}): Json {
   };
 }
 
+const toneQuestion = (): Json => ({ id: "tone", kind: "pick-one", prompt: "Which tone reads better?", options: ["Light", "Dark"], page: PR, frames: ["card-light", "card-dark"], signsOff: "card" });
+
 const section = (id: string, questionIds: string[], variantKeys: string[] = []): Json => ({
   id,
   title: id,
@@ -45,10 +47,7 @@ function baseRound(): Json {
     widths: [1280],
     variants: [variant("card-light"), variant("card-dark")],
     sections: [section("cards", ["tone"], ["card-light", "card-dark"]), section("decision", ["ship"])],
-    questions: [
-      { id: "tone", kind: "pick-one", prompt: "Which tone reads better?", options: ["Light", "Dark"], page: PR, frames: ["card-light", "card-dark"], signsOff: "card" },
-      shipQuestion(),
-    ],
+    questions: [toneQuestion(), shipQuestion()],
   };
 }
 
@@ -86,13 +85,15 @@ describe("round builder rules", () => {
     ]);
   });
 
-  it("refuse a Ship outside its PR's last section once, not twice (ship-not-last)", () => {
+  it("report a Ship that is both outside its PR's last section and before a side question once (ship-not-last)", () => {
     const manifest = edited((round) => {
-      round.sections = [section("decision", ["ship", "tone"]), section("cards", [], ["card-light", "card-dark"])];
-      round.questions = [shipQuestion(), { id: "tone", kind: "text", prompt: "Anything on the tone?", page: PR }];
+      round.sections = [section("decision", ["ship", "aside"]), section("cards", ["tone"], ["card-light", "card-dark"])];
+      round.questions = [shipQuestion(), { id: "aside", kind: "text", prompt: "Anything else?" }, { id: "tone", kind: "text", prompt: "Anything on the tone?", page: PR }];
     });
 
-    expect(rulesOf(manifest)).toEqual(["ship-not-last"]);
+    expect(roundRuleProblems(manifest)).toEqual([
+      { rule: "ship-not-last", message: `question ship: Ship sits in section decision, but ${PR}'s last section is cards` },
+    ]);
   });
 
   it.each([
@@ -114,7 +115,7 @@ describe("round builder rules", () => {
       ];
     }],
     ["a Ship prompt naming another PR", "ship-head-mismatch", (round: Json) => {
-      round.questions = [(round.questions as Json[])[0], shipQuestion({ prompt: `Ship ${PR} with example/cards#7?` })];
+      round.questions = [toneQuestion(), shipQuestion({ prompt: `Ship ${PR} with example/cards#7?` })];
     }],
     ["a decide pick with no implemented option", "missing-implemented-option", (round: Json) => {
       round.questions = [{ id: "tone", kind: "pick-one", prompt: "Which tone?", options: ["Light", "Dark"], page: PR, frames: ["card-light", "card-dark"], signsOff: "card", decision: "decide" }, shipQuestion()];

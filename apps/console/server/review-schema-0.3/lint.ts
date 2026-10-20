@@ -1,6 +1,7 @@
 // Vendored from titan-design packages/review-schema/src/lint.ts @ 4fcb3827a72cacf1f81a356bad32630e1f39f9e6 (tag
 // review-schema-v0.3.0), byte-for-byte below this header, because 0.3.0 is not on npm (TD-805). TP-3232 deletes this
 // directory when it installs the release. Never edit: re-vendor from a tag.
+// @ts-nocheck: titan-design compiles this file without noUncheckedIndexedAccess, which tsconfig.base.json sets here.
 import type { Manifest, Question, Section, Variant } from './schema.ts'
 
 // The layout rules every round builder applies before it writes a round (spike TP-2142 §5.2).
