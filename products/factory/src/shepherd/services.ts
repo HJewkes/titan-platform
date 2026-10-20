@@ -27,6 +27,8 @@ export interface ShepherdServices extends SnapshotServices {
   prFiles?: PrFilesRead;
   /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
   now?: () => number;
+  /** Where `head-regression` lines go; absent means the daemon log. */
+  headLog?: (line: string) => void;
   /** Arms each resync PR read's deadline; absent means the wall clock. */
   readTimer?: ReadTimer;
   /** Serve's GitHub gateway behind `shepherd.ghRead` and `shepherd.ghBudget`; absent on a host that is not serve. */

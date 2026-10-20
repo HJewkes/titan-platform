@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import type { GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -137,7 +138,7 @@ function baseRedWatch(target: AwaitHeadTarget, timing: AwaitHeadTiming): BaseRed
 export async function awaitHeadOrExit(port: GitHubPort, target: AwaitHeadTarget, signal: AbortSignal, timing: AwaitHeadTiming = {}): Promise<AwaitHeadOutcome> {
   const pause = timing.sleep ?? sleep;
   const read = headReader(port, target, timing);
-  const poll = headPoll({ pushes: timing.pushes, repo: target.repo, headSha: target.headSha, read, confirm: confirmReader(target, timing, read) });
+  const poll = headPoll({ pushes: timing.pushes, repo: target.repo, headSha: target.headSha, read, confirm: confirmReader(target, timing, read), observe: headRegressionObserver(port) });
   let pr: PullRequest | undefined;
   let sinceGreen: number | undefined;
   const baseRed = baseRedWatch(target, timing);

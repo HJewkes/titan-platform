@@ -1,6 +1,7 @@
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { PullRequest, RepoSlug } from "@titan-design/github";
+import type { HeadObserver } from "../head-guard/head-regression.js";
 
 /** A local reflog read per tick costs no GitHub call, so a push from the clone is seen within one tick. */
 export const PUSH_WATCH_TICK_MS = 15_000;
@@ -139,6 +140,8 @@ export interface HeadPollOptions {
   /** Defaults to the watch tick with a reflog watched and to the backstop without; a caller that also reads local state each tick names its own. */
   tickMs?: number;
   backstopMs?: number;
+  /** Told of each read that shows another head than `headSha`; it changes nothing the poll returns. */
+  observe?: HeadObserver;
 }
 
 export type HeadPollRead = { read: false } | { read: true; pr: PullRequest | undefined };
@@ -187,6 +190,7 @@ export function headPoll(options: HeadPollOptions): HeadPoll {
     sinceRead = 0;
     if (branch.watch(pr?.headRef)) confirms = 1;
     confirms = leftHead(pr, options.headSha) ? 0 : confirms;
+    if (pr !== undefined && options.headSha !== undefined && pr.headSha !== options.headSha) options.observe?.({ repo: options.repo, pr: pr.number, held: options.headSha, read: pr.headSha });
     return { read: true, pr };
   };
   return {

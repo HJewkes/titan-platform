@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
+import type { HeadObserver } from "../head-guard/head-regression.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -45,6 +46,9 @@ export interface CiInput {
 }
 
 export interface CiReadOptions {
+  /** The head the caller read last; a read that shows another head is told to `observeHead`, which changes nothing returned. */
+  heldHead?: string;
+  observeHead?: HeadObserver;
   /** Where a base that requires no check keeps the run set the last poll saw; absent means no second read is asked for. */
   openSeen?: OpenSeen;
   /** Reads true once a required check that never reported has waited out its grace; a running check still blocks. */
@@ -59,6 +63,7 @@ export interface CiReadOptions {
  */
 export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, options: CiReadOptions = {}): Promise<CiSnapshot> {
   const ci = await readCiFrom(port, input, reads ?? portReads(port), options);
+  if (options.heldHead !== undefined && ci.headSha !== options.heldHead) options.observeHead?.({ repo: input.repo, pr: input.pr, held: options.heldHead, read: ci.headSha });
   if (ci.verdict !== "green" || reads === undefined) return ci;
   return readCiFrom(port, input, portReads(port), { ...options, openSeen: undefined });
 }

@@ -2,6 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded, readValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
@@ -43,7 +44,7 @@ export async function openHead(services: ShepherdServices, runId: string, onUnre
  * A snapshot row still at `asked` costs no PR read. Any other row is confirmed through the port, since the list may be a
  * tick stale and a stale row must not cancel a gate at the live head.
  */
-async function movedHead(services: ShepherdServices, runId: string, asked: string): Promise<string | undefined> {
+export async function movedHead(services: ShepherdServices, runId: string, asked: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
   const { repo, pr: number } = registration;
@@ -51,6 +52,7 @@ async function movedHead(services: ShepherdServices, runId: string, asked: strin
     const row = (await services.snapshot?.openPrs(repo))?.find((pr) => pr.number === number);
     if (row?.headSha === asked) return undefined;
     const pr = await services.port.getPr(repo, number);
+    if (pr.headSha !== asked) headRegressionObserver(services.port, services.headLog)({ repo, pr: number, held: asked, read: pr.headSha });
     return pr.state === "open" && pr.headSha !== asked ? pr.headSha : undefined;
   } catch {
     return undefined;

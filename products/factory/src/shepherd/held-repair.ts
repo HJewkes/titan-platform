@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import type { PullRequest, RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
@@ -98,7 +99,7 @@ function greenWatch(deps: ShepherdDeps, input: HeldWaitInput, tickMs: number): (
  */
 async function awaitRelease(deps: ShepherdDeps, input: HeldWaitInput, signal: AbortSignal): Promise<z.infer<typeof HeldWaitResult>> {
   const read = () => deps.port.getPr(input.repo, input.pr).catch(() => undefined);
-  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.headSha, tickMs: PUSH_WATCH_TICK_MS, read });
+  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.headSha, tickMs: PUSH_WATCH_TICK_MS, read, observe: headRegressionObserver(deps.port) });
   const green = greenWatch(deps, input, poll.tickMs);
   for (;;) {
     signal.throwIfAborted();

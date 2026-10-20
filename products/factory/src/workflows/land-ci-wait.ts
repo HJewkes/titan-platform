@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import { readCi, type CiInput, type CiReadOptions, type CiSnapshot } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, missingCheckGraceSpent, type FirstReads } from "./land-budget.js";
 import { rerunIfFlaky, type FlakyState } from "./land-flaky.js";
@@ -30,6 +31,17 @@ function readOptions(deps: LandDeps, input: CiInput, timing: Timing, firstReads:
   return { missingSettled, openSeen: {}, liveContexts };
 }
 
+/** Each read tells the head-regression log which head the previous read saw; the answer is the read's own. */
+function observedReadCi(port: LandDeps["port"], reads: LandDeps["snapshot"], options: CiReadOptions): (input: CiInput) => Promise<CiSnapshot> {
+  const observeHead = headRegressionObserver(port);
+  let heldHead: string | undefined;
+  return async (input) => {
+    const snapshot = await readCi(port, input, reads, { ...options, heldHead, observeHead });
+    heldHead = snapshot.headSha;
+    return snapshot;
+  };
+}
+
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. Both bounds run from `timing.startedAt` when given. */
 export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing & Pick<DeadlineTiming, "startedAt">, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
@@ -37,11 +49,11 @@ export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing &
   const startedAt = Math.min(timing.startedAt ?? Number.POSITIVE_INFINITY, timing.now());
   let backlog = false;
   let last = "no read yet";
-  const options = readOptions(deps, input, timing, firstReads);
+  const read = observedReadCi(port, reads, readOptions(deps, input, timing, firstReads));
   const noRun: NoRunWatch = {};
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads, options);
+      const snapshot = await read(input);
       const readAt = timing.now();
       if (snapshot.verdict === "red" && (await rerunWithinDeadline(deps, input, snapshot, { timing, signal, flaky, clock }))) continue;
       const done = snapshot.verdict === "pending" ? await noRunVerdict(port, input, snapshot, readAt, noRun) : snapshot;
