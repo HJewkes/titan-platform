@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Hono } from "hono";
@@ -144,7 +143,9 @@ describe("content origin on loopback", () => {
     const held = createServer();
     held.listen(0, "127.0.0.1");
     await once(held, "listening");
-    const heldPort = (held.address() as AddressInfo).port;
+    const address = held.address();
+    if (address === null || typeof address === "string") throw new Error("the held server has no port");
+    const heldPort = address.port;
     try {
       const attempt = startDaemon(options({ contentOrigin: { port: heldPort, mountRoutes: mountBuild } }));
 

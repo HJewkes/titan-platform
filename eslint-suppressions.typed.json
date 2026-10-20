@@ -1077,7 +1077,7 @@
   },
   "packages/daemon/src/daemon.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "packages/daemon/src/file-watch.test.ts": {

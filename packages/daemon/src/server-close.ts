@@ -21,6 +21,6 @@ type ConnectionSweep = "closeIdleConnections" | "closeAllConnections";
 
 /** Http2 members of the `ServerType` union do not carry these; loopback daemons are http1. */
 function destroyConnections(server: ServerType, sweep: ConnectionSweep): void {
-  const close = (server as Partial<Record<ConnectionSweep, () => void>>)[sweep];
-  if (typeof close === "function") close.call(server);
+  const close: unknown = Reflect.get(server, sweep);
+  if (typeof close === "function") Reflect.apply(close, server, []);
 }
