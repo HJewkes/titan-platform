@@ -44,6 +44,7 @@ export type SpineLedgerRow = SpineV1["ledger"][number];
 /** The spine template's numbered sections that carry a table, by the number in their `## <n>.` heading. */
 const TABLE_SECTIONS = { journey: 3, architecture: 4, constraints: 5, ledger: 6, chapters: 8 } as const;
 type TableName = keyof typeof TABLE_SECTIONS;
+const TABLE_NAMES: readonly TableName[] = ["journey", "architecture", "constraints", "ledger", "chapters"];
 
 const DASH = /^[-—–]$/;
 const cell = (text: string): string | null => (DASH.test(text) || text === "" ? null : text);
@@ -113,7 +114,7 @@ export function parseSpine(markdown: string): SpineV1 {
   const id = /^#\s+Story spine:\s*(.+?)\s*$/m.exec(markdown)?.[1];
   const found = sections(markdown);
   const tables = Object.fromEntries(
-    (Object.keys(TABLE_SECTIONS) as TableName[]).flatMap((name) => {
+    TABLE_NAMES.flatMap((name) => {
       const rows = readTable(name, found);
       return rows === undefined ? [] : [[name, rows]];
     }),
