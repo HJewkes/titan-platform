@@ -6,3 +6,5 @@ seated in a part. Derive the chapter order from sections 2 to 5, never from the 
 
 The rules below are the ones a planner must follow by hand. Checks the lint already runs are not
 listed; a draft that breaks one fails with the lint's own message.
+
+When you plan what a beat says aloud, speak the one number that matters and show the rest on screen.
