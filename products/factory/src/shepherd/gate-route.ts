@@ -23,7 +23,7 @@ type SeatGate = (typeof SEAT_GATES)[number];
  * Seat work that is no gate's: a held run's fix round, a red head that only repeats its base's red, which waits on the
  * seat instead of waking a fixer, or a mergeability GitHub left unsettled past the wait's bound.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -37,6 +37,9 @@ const NEXT: Record<SeatNotice, string> = {
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
   "merge-unsettled": "Nothing waits on the owner: Shepherd reads mergeability again at this head every few minutes and merges once GitHub settles it. A new head starts the wait over. Push to the PR, or close it to end the run.",
   "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
+  "review-infra": `This is a reviewer infrastructure defect, not a finding about the PR, and nothing waits on the owner. ${WAITS} Next: fix the reviewer account or broker, then push to the PR or register it again to review it on another account.`,
+  "seat-held": `Nothing waits on the owner: the seat's hold on Shepherd's MERGE is the seat's to settle. ${WAITS} Next: release or answer the hold, push to the PR, or close it to end the run.`,
+  conflict: `Nothing waits on the owner: two fixer attempts left the conflict in place. ${WAITS} Next: resolve the conflict on the PR's branch yourself or with a successor, split the PR, or close it to end the run.`,
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
@@ -50,10 +53,10 @@ function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): stri
   return [`Shepherd: ${repo}#${pr} at head ${headSha}: ${why}.`, NEXT[gate]].join("\n");
 }
 
-/** A notice naming its seat goes there; a held run naming none falls back to the hub seat, and a gate's to the repo's one seat. */
+/** A notice naming its seat goes there; a held run naming none, and reviewer infrastructure, go to the hub seat, and the rest to the repo's one seat. */
 function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | undefined {
   if (input.seat !== undefined) return input.seat;
-  return input.gate === "held" ? ports.hubSeat?.() : ports.seatFor(input.repo);
+  return input.gate === "held" || input.gate === "review-infra" ? ports.hubSeat?.() : ports.seatFor(input.repo);
 }
 
 type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
@@ -134,7 +137,7 @@ export async function noticeGate(run: GateRun, gate: SeatGate, headSha: string, 
  * One recorded message per run and `key` to the seat a held run names, or the hub seat; seat work that is no gate's,
  * so a run recorded before the step has nothing to keep. A replay of the run's notice steps rebuilds the set.
  */
-export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: "held" | "base-red" | "merge-unsettled" }): Promise<Told> {
+export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: Exclude<SeatNotice, SeatGate> }): Promise<Told> {
   const told = noticed.get(run.ctx) ?? noticed.set(run.ctx, new Set()).get(run.ctx)!;
   if (told.has(key)) return undefined;
   const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, gate: "held", ...notice }, SeatNoticeResult);

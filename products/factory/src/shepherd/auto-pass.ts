@@ -14,11 +14,15 @@ export interface GateDemotions {
   failedRounds: boolean;
   /** D13: a red or unread main with no freeze path is an FYI line, never an acknowledge-only gate. */
   mainRed: boolean;
+  /** D7 residual (TP-3734): a failed fallback reviewer is an ops notice, and a seat-held run-out the seat's notice; neither asks the owner. */
+  failedFallback: boolean;
+  /** D9 (TP-3734): a conflict that survives one fixer wakes one fresh fixer, then tells the seat; neither asks the owner. */
+  conflict: boolean;
 }
 
-export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true };
+export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true, failedFallback: true, conflict: true };
 
-const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi"] as const;
+const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
 
 const AUTO_PASS_STEP = "sh-auto-pass";
@@ -45,6 +49,8 @@ type AutoPassRecord = z.infer<typeof AutoPassResult>;
 const RULE_WORDS: Record<AutoPassRule, string> = {
   "D7/fallback-reviewer": "review rounds failed on infrastructure only, so a fresh reviewer goes first instead of the owner",
   "D13/main-red-fyi": "main CI is red or unread after this merge; FYI only, nothing waits on you",
+  "D7/ops-notice": "the fallback reviewer failed on infrastructure too, so ops re-dispatches review instead of the owner",
+  "D7/seat-notice": "the seat held Shepherd's own MERGE past its rounds, so the seat hears instead of the owner",
 };
 
 const autoPassMarker = (rule: AutoPassRule, headSha: string): string => `<!-- shepherd-auto-pass:${rule}:${headSha} -->`;

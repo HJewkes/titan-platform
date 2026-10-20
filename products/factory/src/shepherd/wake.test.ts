@@ -131,6 +131,15 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
   });
 
+  it("spawns a successor for a fresh-fixer conflict wake though the implementer is warm, so the agent whose attempt failed does not repeat it", async () => {
+    const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+
+    const { result } = await run("conflict", { mergeableState: "dirty", freshFixer: true });
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["spawn", "impl-a-s1"]]);
+  });
+
   it("spawns a successor in the repo's main checkout, told to check out the PR branch at its head", async () => {
     const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
