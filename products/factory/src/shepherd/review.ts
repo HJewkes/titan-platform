@@ -118,7 +118,7 @@ const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
   fixFirsts: z.number().int().positive().optional(),
   ownerBrief: z.boolean().optional(),
   fixProof: z.string().optional(),
-  fixProofUnverified: z.enum(["error", "untrusted", "unread"]).optional(),
+  fixProofUnverified: z.enum(["error", "untrusted", "unread", "no-repro-test-only"]).optional(),
   fixProofWaivedAt: HeadSchema.optional(),
   shape: z.enum(OVERLAY_SHAPES).optional(),
   profile: z.string().min(1).optional(),
@@ -343,9 +343,10 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
   const proof = await readFixProofAt(ctx, target);
   const noRepro = fixProofVerdict(proof, target.head);
-  if (noRepro && !(await proofWaivedAt(ctx, target.head))) return noRepro;
   const unverified = fixProofStanding(proof, target.head);
-  const standing: ProofStanding = noRepro ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  if (noRepro && !testOnlyProceed && !(await proofWaivedAt(ctx, target.head))) return noRepro;
+  const standing: ProofStanding = noRepro && !testOnlyProceed ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);

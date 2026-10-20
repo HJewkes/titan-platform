@@ -200,6 +200,14 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("Do not rerun");
   });
 
+  it("a test-only head sent on without a base-failing test is told to judge each added test, not to show one fail on the base", () => {
+    const brief = reviewerBrief({ ...target, fixProof: fixProofResult(target.head, "vacuous"), fixProofUnverified: "no-repro-test-only" });
+
+    expect(brief).toContain("the PR changes only tests");
+    expect(brief).toContain("Judge each added test on its own");
+    expect(brief).not.toContain("show it fails on the base");
+  });
+
   describe("an owner's fix-proof waiver", () => {
     const vacuous = { ...target, fixProof: fixProofResult(target.head, "vacuous") };
 
