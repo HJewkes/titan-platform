@@ -187,7 +187,21 @@ prior `streak` and `now` (epoch ms; it reads no clock). It returns `ok`, `auth` 
 429; a 403 with `retry-after`, remaining 0 or limit text; a 422 naming a limit; a 5xx or network
 failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `now` + 60 s
 doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
-in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. Nothing calls it yet.
+in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. `githubApiPool` calls it.
+
+`githubApiPool({ identity, send, clock, state? })` gates every call one GitHub identity makes.
+`pool.run(priority, callClass, call)` queues `call`, hands it to `send` when granted, and resolves
+to `send`'s answer or to `{ unavailable: { resetAt, reason, class } }`; an unavailable call never
+throws (a throw from `send` itself is passed on). Grants go by `POOL_PRIORITY` (1 outbox and
+lander, 2 pacer, 3 item reads, 4 backstop), first come first served within one. Mutations are a
+single-flight lane: none overlap, and each starts at least `MUTATION_SPACING_MS` (1000) after the
+last one started; reads are not serialised. An `unavailable` answer closes its (identity, call
+class) pair until `resetAt` and adds one to that pair's streak; while it is closed the pair
+grants nothing and the identity's other classes grant only priority 1. A success resets only its
+own pair's streak; `unknown` and `error` answers pass through and change nothing. Calls already in
+flight when their pair trips count as the same trip. State lives in a `PoolStateStore`, by
+default `memoryPoolStateStore()`, one per pool; a product passes a durable one. `clock` supplies
+`now()` and `sleep(ms)`. Reopening still happens at `resetAt` with no probe or canary.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 

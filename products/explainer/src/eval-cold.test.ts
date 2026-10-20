@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { LabelsSchema } from "./eval-calibrate.js";
 import {
   agreedOddOnes,
   coldEvalVersion,
   coldQuestions,
+  coldTerms,
   playbackTranscript,
   runCold,
   type ColdInput,
 } from "./eval-cold.js";
+import { agreedTerms, termKey } from "./eval-cold-terms.js";
 import { readRubric } from "./eval-evidence.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
+import { paceInput } from "./eval-pace-cli.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { v4Durations, v4FullScript, v4Labels } from "./spike-fixtures.test-helpers.js";
+import { readTiming } from "./timing.js";
 
 const rubric = readRubric("l1-cold.md");
 
@@ -286,5 +292,70 @@ describe("the streamed cold-viewer probe", () => {
   it("versions the eval by rubric and judge", () => {
     expect(coldEvalVersion({ rubric, judge: sonnet })).not.toBe(coldEvalVersion({ rubric, judge: { ...sonnet, model: "opus" } }));
     expect(coldEvalVersion({ rubric, judge: sonnet })).not.toBe(coldEvalVersion({ rubric: `${rubric}.`, judge: sonnet }));
+  });
+});
+
+/** A terms viewer whose nth call names `lists[n]`. */
+function termsViewer(lists: readonly string[][]) {
+  const calls: string[] = [];
+  const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+    calls.push(prompt);
+    return { ok: true, output: schema.parse({ terms: lists[calls.length - 1] ?? [] }), usd: 0.03, tokensIn: 500, tokensOut: 20 };
+  };
+  return { harness, calls };
+}
+
+const termsRubric = readRubric("l1-cold-terms.md");
+
+describe("the terms cold viewers cannot define", () => {
+  const desk = (): PaceBeat[] =>
+    buildPaceBeats([
+      source("t1-1", "ch1", "Each parcel takes a token, and the desk keeps its head.", ["card:parcel"], 6),
+      source("t2-1", "ch2", "Two chips light when the heads agree.", ["card:light"], 6),
+    ]);
+
+  // Mutation: a quorum of one keeps "desk", which only one run named.
+  it("keeps a term named in two of three runs and drops one named in a single run", () => {
+    expect(agreedTerms([["token", "desk"], ["token"], []], desk(), 2)).toEqual(["token"]);
+  });
+
+  it("folds case and plurals into one vote and asks the form the narration speaks first", () => {
+    expect(termKey(" Policies ")).toBe("policy");
+    expect(termKey("Carry Modules")).toBe("carry module");
+    expect(termKey("class")).toBe("class");
+    expect(agreedTerms([["Heads", "chip"], ["head", "CHIPS"], []], desk(), 2)).toEqual(["head", "chips"]);
+  });
+
+  it("counts a term once a run, and drops one the narration never speaks", () => {
+    expect(agreedTerms([["token", "Tokens"], [], ["ledger"], ["ledger"]], desk(), 2)).toEqual([]);
+  });
+
+  it("asks fresh viewers of the whole video three times and keeps what two agree on", async () => {
+    const viewer = termsViewer([["token"], ["Tokens", "desk"], []]);
+
+    const result = await coldTerms({ beats: desk(), rubric: termsRubric, harness: viewer.harness });
+
+    expect(viewer.calls).toHaveLength(3);
+    for (const prompt of viewer.calls) expect(prompt).toContain("## Chapter ch1\n\n[t1-1]");
+    expect(viewer.calls[0]).toContain("## Chapter ch2\n\n[t2-1]");
+    expect(result).toMatchObject({ terms: ["token"], named: [["token"], ["Tokens", "desk"], []], failures: [] });
+    expect(result.spend.tokensIn).toBe(1500);
+  });
+
+  // E9: v4 declares no glossary, and head, chip, grant, token and rung are plain words, so only a viewer can name them.
+  it("questions at least four of v4's six reader-gap groups once viewers name its plain-word jargon", async () => {
+    const { beats, glossary } = paceInput(v4FullScript(), "spike", readTiming(v4Durations()));
+    const groups = LabelsSchema.parse(v4Labels()).items;
+    const jargon = ["head", "chip", "grant", "token", "rung"];
+    const viewer = termsViewer([jargon, jargon.map((t) => `${t}s`), ["tick"]]);
+    const questioned = (terms: readonly string[]) => {
+      const asked = new Set(coldQuestions(beats, [...glossary, ...terms]).flatMap((q) => ("item" in q ? [termKey(q.item)] : [])));
+      return groups.filter((g) => g.items.some((i) => asked.has(termKey(i)))).map((g) => g.group);
+    };
+
+    const { terms } = await coldTerms({ beats, rubric: termsRubric, harness: viewer.harness });
+
+    expect(questioned([])).toHaveLength(1);
+    expect(questioned(terms)).toEqual(["head and chip", "grant and token", "carry", "ch1 nouns"]);
   });
 });
