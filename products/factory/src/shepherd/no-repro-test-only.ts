@@ -12,6 +12,8 @@ interface NoReproTestOnly {
   kind: string;
   repo: RepoSlug;
   pr: number | null;
+  /** The head the proof was read at. */
+  head: string;
 }
 
 /**
@@ -22,5 +24,5 @@ export async function proceedsOnNoRepro(port: GitHubPort, gate: NoReproTestOnly,
   if (gate.flag !== "on" || gate.kind !== "test-only") return false;
   const parsed = parseResultLine(line);
   if (!parsed.ok || !VACUOUS_VERDICTS.has(parsed.result.verdict) || parsed.result.mutants !== undefined) return false;
-  return (await testOnlyDiff(port, gate.repo, gate.pr)).kind === "test-only";
+  return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === "test-only";
 }

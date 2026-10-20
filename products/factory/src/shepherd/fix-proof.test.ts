@@ -449,6 +449,7 @@ describe("readFixProof", () => {
     changedFiles?: number;
     workflow?: boolean;
     port?: (port: GitHubPort) => GitHubPort;
+    noReproProceed?: "on";
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
@@ -460,6 +461,7 @@ describe("readFixProof", () => {
     if (options.files !== undefined) fake.prFiles.set(1, options.files);
     if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
     if (options.workflow) addWorkflowAtBase(fake);
+    if (options.noReproProceed) seedDiffReads(fake, options.files ?? []);
     const port = (options.port ?? ((base) => base))(githubPort(fake.wire));
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
@@ -474,8 +476,16 @@ describe("readFixProof", () => {
     };
     const timeoutMs = options.timeoutMs ?? 10_000;
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
-    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
+    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store, ...(options.noReproProceed && { noReproProceed: options.noReproProceed }) }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
+
+  it("keeps NO_REPRO when the PR head has moved off the head the proof was read at", async () => {
+    const moved = fakeSha("fix-proof-moved-head");
+    const files: PrFile[] = [{ path: "packages/x/src/a.test.ts", status: "modified" }];
+    const { read } = registered("test-only", [fixProofRun()], { files, noReproProceed: "on", port: (base) => ({ ...base, getPr: async (repo, pr) => ({ ...(await base.getPr(repo, pr)), headSha: moved }) }) });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+  });
 
   it("reads the result from a job log fetched through the gh adapter, whose colour codes gh refuses without --allow-escape-sequences", async () => {
     const headers = "HTTP/2.0 200 OK\r\nContent-Type: text/plain";

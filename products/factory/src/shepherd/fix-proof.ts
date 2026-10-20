@@ -243,7 +243,7 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   try {
     const read = await readResult(deps.port, input, gate.pr, timing, signal);
-    const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr };
+    const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
     return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
   } catch (error) {
     signal.throwIfAborted();
