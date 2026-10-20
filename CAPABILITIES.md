@@ -564,7 +564,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +132 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +134 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -1003,7 +1003,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +214 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +215 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-speech-vet"></a>
 
