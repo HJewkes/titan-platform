@@ -420,8 +420,8 @@ rules:
     fields: [beats.visual, beats.plannedS]
     related: ["SM M4", "FB 5"]
     owner_support: for
-    note: "A warning until a timed human check confirms the 15 s gap."
-    l0: { severity: warning, status: implemented, checks: ["Q-E9"] }
+    note: "An error since TP-3788: calibration measured no false positive on the v4 spike and the pilot."
+    l0: { severity: error, status: implemented, checks: ["Q-E9"] }
   - id: Q-E10
     rule: "At most 20 new on-screen items a chapter minute"
     fields: [beats.visual, beats.chapter, beats.plannedS]

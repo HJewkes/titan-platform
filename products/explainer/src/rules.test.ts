@@ -44,7 +44,7 @@ describe("the shipped Q-rule registry", () => {
 
     expect(registry.rules).toHaveLength(69);
     expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([49, 13, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {
