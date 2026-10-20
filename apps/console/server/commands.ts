@@ -3,6 +3,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
+import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
 import { configSurfacesCommands, unconfigured, type SurfaceReader } from "./config-surfaces/catalog.js";
 import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { configDriftCommands } from "./config-surfaces/drift.js";
@@ -63,6 +64,8 @@ export interface ConsoleSources {
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
+  /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
+  configStore?: ConfigStoreSource;
 }
 
 const ACTIONS_UNWIRED: InboxActionOptions = { enabled: false, actionsDir: "", client: { post: async () => ({ status: "off" }) } };
@@ -111,10 +114,11 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
+    ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),

@@ -5,6 +5,8 @@ import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import type { ConfigStorePaths } from "./config-store/compare.js";
+import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 
@@ -70,6 +72,13 @@ export interface ConsoleConfig {
   /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
   coordinatorRoots?: CoordinatorRoots;
   /**
+   * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_DIR`, the same one
+   * `config.surfaces` reads (no default, so nothing reads a tree the owner did not name) and the materialized document, by default in
+   * titan-coordinator's app-paths config dir, `TITAN_CONSOLE_COORDINATOR_FILE` overriding.
+   * Optional so a test config need not build one; absent, `config.compareTree` is `not-configured`.
+   */
+  configStore?: ConfigStorePaths;
+  /**
    * `TITAN_CONSOLE_INBOX_ACTIONS=1` lets `inbox.act` write an action record and post it to the factory's console-action route.
    * Optional so a config built by hand reads as off; `resolveConfig` always sets it.
    */
@@ -122,16 +131,28 @@ export function resolveConfig(
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
-    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
-    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
-    lanTls: lanTlsFrom(env, home),
-    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+    ...lanOptionsFrom(env, home, stateDir, machine),
     ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
+    configStore: configStoreFrom(env, home, platform),
     ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
+}
+
+function lanOptionsFrom(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  stateDir: string,
+  machine: Machine,
+): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
+  return {
+    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
+    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
+    lanTls: lanTlsFrom(env, home),
+    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+  };
 }
 
 /** The dirs other processes write and the console reads from or files into. */
@@ -151,6 +172,20 @@ function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleCon
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
     gateAnswers: flagFrom("TITAN_CONSOLE_GATE_ANSWERS", env.TITAN_CONSOLE_GATE_ANSWERS),
     inboxActions: flagFrom("TITAN_CONSOLE_INBOX_ACTIONS", env.TITAN_CONSOLE_INBOX_ACTIONS),
+  };
+}
+
+function absolutePathFrom(name: string, raw: string | undefined, home: string): string | null {
+  if (raw === undefined || raw === "") return null;
+  const file = expandHome(raw, home);
+  if (!path.isAbsolute(file)) throw new Error(`${name} must be an absolute or ~/ path, got "${raw}"`);
+  return file;
+}
+
+function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform): ConfigStorePaths {
+  return {
+    autonomyTree: absolutePathFrom("TITAN_CONSOLE_AUTONOMY_DIR", env.TITAN_CONSOLE_AUTONOMY_DIR, home),
+    coordinatorFile: absolutePathFrom("TITAN_CONSOLE_COORDINATOR_FILE", env.TITAN_CONSOLE_COORDINATOR_FILE, home) ?? coordinatorFilePath({ env, home, platform }),
   };
 }
 
@@ -187,10 +222,7 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
 
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */
 function decisionsFileFrom(raw: string | undefined, home: string): string | null {
-  if (raw === undefined || raw === "") return null;
-  const file = expandHome(raw, home);
-  if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
-  return file;
+  return absolutePathFrom("TITAN_CONSOLE_DECISIONS_FILE", raw, home);
 }
 
 /** A `path.delimiter` list; a relative entry would resolve against whatever directory the service started in. */

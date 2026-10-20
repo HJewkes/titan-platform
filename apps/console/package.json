@@ -20,6 +20,7 @@
   "dependencies": {
     "@titan-design/app-paths": "workspace:*",
     "@titan-design/chat-protocol": "workspace:^",
+    "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",
     "@titan-design/github": "workspace:^",

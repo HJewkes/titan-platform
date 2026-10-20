@@ -147,6 +147,9 @@ importers:
       '@titan-design/chat-protocol':
         specifier: workspace:^
         version: link:../../packages/chat-protocol
+      '@titan-design/coordinator':
+        specifier: workspace:^
+        version: link:../../packages/coordinator
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon

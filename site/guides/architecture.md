@@ -242,6 +242,7 @@ graph TD
   codewatch --> rpcProtocol
   console --> appPaths
   console --> chatProtocol
+  console --> coordinator
   console --> daemon
   console --> decider
   console --> github
