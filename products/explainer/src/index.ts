@@ -96,7 +96,9 @@ export {
   type PaceSource,
   type PaceSourceBeat,
 } from "./pace-items.js";
-export { chapterPace, paceCheck, paceRows, type ChapterPace } from "./lint-pace.js";
+export { chapterPace, paceCheck, paceRows, reuseFindings, type ChapterPace, type ReuseFinding } from "./lint-pace.js";
+export { explainRoutes } from "./lint-gloss.js";
+export { seatRoutes } from "./lint-seat.js";
 export { fromSpikeScript, readSpikeScript, type SpikePace, type SpikeRead, type SpikeScript } from "./spike-script.js";
 export { readTiming, type BeatTiming, type ScriptTiming } from "./timing.js";
 export { migrateTourV0, type MigrateOptions, type TourProbe, type TourV0 } from "./migrate.js";
