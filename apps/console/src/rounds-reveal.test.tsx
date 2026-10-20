@@ -78,6 +78,7 @@ describe("revealing a withheld recommendation", () => {
     pick("Single slope");
 
     expect(await screen.findByText("Differs from your pick · seen before answering")).toBeTruthy();
+    expect(screen.getByText("You revealed it before answering.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
     await waitFor(() => expect(callsNamed(rendered, "rounds.submit")).toHaveLength(1));
     expect(rampAnswer(rendered)).toEqual({ questionId: "ramp-default", pick: "Single slope", recommendationSeen: true });
@@ -116,6 +117,21 @@ describe("revealing a withheld recommendation", () => {
 });
 
 describe("a recommendation the server sends", () => {
+  it("shows an open shown round's recommendation from the start, and its verdict once answered", async () => {
+    await renderRound((unsent) => ({
+      recommendationsWithheld: false,
+      revealable: [],
+      manifest: { ...unsent.manifest, recommendations: "shown", questions: unsent.manifest.questions.map((each) => (each.id === "ramp-default" ? { ...each, recommendation: RAMP } : each)) },
+    }));
+    expect(ramp().getByText("Recommended: Staged climb (70%, fixture-agent)")).toBeTruthy();
+    expect(ramp().getByText("Recommended")).toBeTruthy();
+
+    pick("Staged climb");
+
+    expect(await ramp().findByText("Matches your pick · seen before answering")).toBeTruthy();
+    expect(screen.queryByTestId("reveal-ramp-default")).toBeNull();
+  });
+
   it("shows a sent round's verdict, weak point and fallback from the start, and offers no reveal", async () => {
     const recommendation = { ...RAMP, weakPoint: "Only **three** sample firings.", fallback: "Ask each time" };
     const rendered = await renderRound((unsent) => ({

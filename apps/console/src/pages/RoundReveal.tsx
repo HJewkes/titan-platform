@@ -18,6 +18,8 @@ type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][numbe
  */
 interface Reveals {
   revealable: ReadonlySet<string>;
+  /** An open `shown` round: every answer is given with its recommendation on screen. */
+  shownRound: boolean;
   fetched: Readonly<Record<string, Recommendation>>;
   open: Readonly<Record<string, boolean>>;
   seen: Readonly<Record<string, boolean>>;
@@ -64,7 +66,8 @@ export function RoundRevealProvider({ round, children }: { round: ValidRound; ch
   const setOpen = useCallback((questionId: string, next: boolean) => setOpenState((current) => ({ ...current, [questionId]: next })), []);
   const setSeen = useCallback((questionId: string, next: boolean) => setSeenState((current) => (current[questionId] === next ? current : { ...current, [questionId]: next })), []);
   const revealable = useMemo(() => new Set(round.revealable), [round.revealable]);
-  const value = useMemo(() => ({ revealable, fetched, open, seen, failed, live, fetch, setOpen, setSeen }), [revealable, fetched, open, seen, failed, live, fetch, setOpen, setSeen]);
+  const shownRound = round.manifest.recommendations === "shown" && round.status === "open";
+  const value = useMemo(() => ({ revealable, shownRound, fetched, open, seen, failed, live, fetch, setOpen, setSeen }), [revealable, shownRound, fetched, open, seen, failed, live, fetch, setOpen, setSeen]);
   return <RevealContext.Provider value={value}>{children}</RevealContext.Provider>;
 }
 
@@ -92,11 +95,11 @@ interface ShownRecommendation {
 export function useRecommendation(question: Question, answer: QuestionAnswer | undefined): ShownRecommendation {
   const reveals = useContext(RevealContext);
   const sent = question.kind === "text" ? undefined : question.recommendation;
-  const seen = reveals?.seen[question.id] === true;
+  const answered = isHeldAnswer(answer);
+  const seen = reveals?.seen[question.id] === true || (reveals?.shownRound === true && answered);
   if (sent !== undefined) return { recommendation: sent, visible: true, locked: true, seen, error: undefined };
   if (reveals === null || !reveals.revealable.has(question.id)) return { recommendation: undefined, visible: false, locked: false, seen, error: undefined };
   const fetched = reveals.fetched[question.id];
-  const answered = isHeldAnswer(answer);
   const open = reveals.open[question.id] === true;
   const toggle = (): void => {
     if (answered) return;
@@ -191,7 +194,7 @@ export function RecommendationBox({ question, answer, shown }: { question: Quest
 }
 
 function revealHelp(shown: ShownRecommendation): string {
-  if (shown.locked) return "Shown because you answered.";
+  if (shown.locked) return shown.seen ? "You revealed it before answering." : "Shown because you answered.";
   return shown.visible ? "Your answer will be marked as seen." : "Showing it first marks your answer as seen.";
 }
 
