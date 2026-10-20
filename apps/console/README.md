@@ -329,12 +329,47 @@ with the service's `TITAN_CONSOLE_*` settings.
   URL, exits non-zero, and writes nothing.
 - **Re-filing.** The same `round.json` bytes again report `created: false` and keep the first
   asker. Different bytes under the same `<unit>-r<round>` are refused; bump `round`.
-- **The answer comes to the seat.** Once the owner sends the round, `rounds.submit` writes
-  `feedback.json` and the round listener sends the seat one agent-chat message naming the round
-  and that file, then keeps `notified.json` so it is sent once. The message is fixed text: nothing
-  the seat wrote is relayed, because `agent-chat debug send` delivers from the human seat. A seat
-  that is not live gets no message and no `notified.json`; the console's start-up sweep retries.
-  The answer is also in the decision log, as for any round.
+- **The answer comes to the seat.** The asker is the round's first subscriber; see "Hearing of an
+  answer" below. The answer is also in the decision log, as for any round.
+
+## Hearing of an answer
+
+Once `rounds.submit` writes a round's `feedback.json`, for a decision, design or Ship round and for
+Ship or Send back alike, the round listener sends one agent-chat message to each seat that should
+hear of it:
+
+1. the asker, from `asker.json` (`decisions file`, or `rounds import --seat`);
+2. every seat with a matching subscription;
+3. with neither, tp-operator.
+
+Each seat gets one message per answer: the listener keeps `<round>/notified-<seat>.json`, written
+once, and a TP-3729 `notified.json` still counts for the seat it names. A seat that is not live gets
+no message and no record, and the console's start-up sweep retries it.
+
+The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
+whether the answer carries free text (a question comment, an option note, a written answer, or
+general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
+`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
+human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+
+```sh
+titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds unsubscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds list-subscriptions [--seat <name>] [--json]   # seat, target, at per line
+```
+
+- **Targets.** A round id or unit matches exactly; `*` and `?` glob over either (`kiln-*`).
+  `owner/repo#N` matches every round whose Ship question merges that PR, case-insensitively.
+  Targets are matched when an answer lands, so a glob or PR target covers rounds imported later.
+- **From now on.** A subscription hears only answers written after it was made. The answer of an
+  unclaimed round goes to tp-operator only if it was written after the console first started with
+  subscriptions (`operator-since.json`), so that first start does not page it for older answers.
+- **Kept.** One file per seat and target in `$TITAN_CONSOLE_STATE/round-subscriptions/`, so
+  subscriptions survive restarts, and a successor that keeps its agent-chat name keeps them.
+  Subscribing twice keeps the first. `--seat` defaults to `AGENT_CHAT_NAME`; with neither, the
+  verb refuses. `list-subscriptions` with no `--seat` lists every seat.
+- **Local only.** Like `rounds import`, the verbs need no running console and no `/rpc` command
+  reaches them; run them with the service's `TITAN_CONSOLE_*` settings.
 
 ## Importing a review round
 
@@ -344,7 +379,14 @@ shell:
 ```sh
 titan-console rounds import <round-dir>          # id, frames: N, feedback: copied|kept|none, URLs
 titan-console rounds import <round-dir> --json   # one line: {id, created, frames, feedback, url, lanUrl}
+titan-console rounds import <round-dir> --seat <name>   # adds "asked by: <name>" ({asker} with --json)
 ```
+
+`--seat` writes the same `asker.json` as `decisions file`, so that seat hears of the owner's answer
+(see "Hearing of an answer"); a re-import keeps the first asker. A seat that is not an agent-chat
+name is refused before anything lands. Unlike `decisions file`, the seat is never read from
+`AGENT_CHAT_NAME`, because the factory imports rounds for other seats; a round imported without one
+goes to tp-operator once answered.
 
 It writes to `TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/` and prints
 `http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
