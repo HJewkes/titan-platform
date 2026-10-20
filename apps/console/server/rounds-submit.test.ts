@@ -693,3 +693,62 @@ describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
     expect(feedback).toMatchObject({ unit: "orbit-retry", round: 1, manifestSha256, submittedAt: expect.any(String), general: "One more pass.", answers: [sendBack] });
   });
 });
+
+describe("a design round's per-frame verdicts, comments and pins (TP-3773)", () => {
+  const id = "beacon-states-r1";
+  const pin = (n: number, note: string) => ({ id: `beacon-busy-${n}`, width: 375, x: 30 * n, y: 40, xPct: 0.08 * n, yPct: 0.1, note });
+  let roundSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    roundSha = sha256(await readFile(path.join(dir, id, "round.json")));
+  });
+
+  const send = (variants?: unknown[]) => submit({ id, manifestSha256: roundSha, answers: [], ...(variants !== undefined && { variants }) });
+  const sentFrames = async () => FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8"))).variants;
+
+  it("writes a posted verdict, comment and two pins into the frame's feedback, its source echo intact", async () => {
+    const pins = [pin(1, "The ring is too thin."), { ...pin(2, "Label overlaps."), target: { testId: "beacon-label" } }];
+
+    const { envelope } = await send([{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins }]);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const frames = await sentFrames();
+    expect(frames.find((frame) => frame.key === "beacon-busy")).toEqual({ key: "beacon-busy", image: "shots/beacon-busy.png", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins });
+    expect(frames.find((frame) => frame.key === "beacon-idle")).toEqual({ key: "beacon-idle", image: "shots/beacon-idle.png", verdict: null, comment: "", annotations: [] });
+  });
+
+  it("refuses a frame the round does not have, and writes nothing", async () => {
+    const { envelope } = await send([{ key: "beacon-ghost", verdict: "chosen" }]);
+
+    expect(envelope).toMatchObject({ ok: false, error: 'no frame "beacon-ghost" in this round' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin numbered on another frame, a pin sent twice and a frame sent twice, and writes nothing", async () => {
+    const other = await send([{ key: "beacon-idle", annotations: [pin(1, "Belongs to busy.")] }]);
+    const twicePinned = await send([{ key: "beacon-busy", annotations: [pin(1, "One."), pin(1, "Again.")] }]);
+    const twiceSent = await send([{ key: "beacon-busy", verdict: "maybe" }, { key: "beacon-busy", verdict: "chosen" }]);
+
+    expect(other.envelope).toMatchObject({ ok: false, error: 'frame "beacon-idle": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twicePinned.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twiceSent.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy" is sent twice' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin placed outside its frame", async () => {
+    const { envelope } = await send([{ key: "beacon-busy", annotations: [{ ...pin(1, "Off the edge."), xPct: 1.2 }] }]);
+
+    expect(envelope).toMatchObject({ ok: false });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("echoes every frame undecided when no variants are sent", async () => {
+    const { envelope } = await send();
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await sentFrames()).map(({ key, verdict, comment, annotations }) => ({ key, verdict, comment, annotations }))).toEqual(
+      ["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map((key) => ({ key, verdict: null, comment: "", annotations: [] })),
+    );
+  });
+});
