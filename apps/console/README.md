@@ -392,6 +392,24 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
 
+### Frames by question
+
+A question can name the frames it asks about in round@2's `frames` (variant keys). The page maps
+them as follows, in question, design and Ship rounds:
+
+- **Above the question.** The named frames draw inside the question's own block, above its prompt,
+  as a one-column strip at phone width and two or three columns on a desktop. Each frame has a "To
+  its question" link, and a "Frames:" line under the question links to each frame. A design round's
+  section strip leaves out a frame some question draws, so no frame shows twice.
+- **Option to frame.** An option names the frame it picks as "(frame: <label>)": its
+  `optionVariants` entry, or the option itself when the option is a variant key.
+- **What a Ship approves.** A Ship question (merge-bound, or `decision: "ship"`) with `frames` gets
+  a "Ships: <labels>" line, so a Ship answer says which frames it approves.
+- **Without `frames`** a question draws as before, and frames stay in their section strip.
+
+A frame loads when its variant has an `image` or `frames/frames.json` lists it; any other frame,
+such as a Storybook-only variant, is named with "No image for this frame".
+
 ## Theater
 
 The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on
