@@ -65,6 +65,10 @@ export const inOrder =(manifest: Manifest, answers: SubmittedAnswer[]): Submitte
 const answers = (answer: SubmittedAnswer): boolean =>
   answer.pick !== undefined || answer.picks !== undefined || answer.value !== undefined || answer.text !== undefined || (answer.revisionRequested === true && answer.comment !== undefined);
 
-/** The required questions the page holds no answer for, which block a send; a comment alone answers nothing. */
+/** The questions the page holds no answer for; a comment alone answers nothing. */
+export const unanswered = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
+  questions.filter((question) => !submitted.some((answer) => answer.questionId === question.id && answers(answer)));
+
+/** The required questions the page holds no answer for, which block a send. */
 export const missingRequired = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
-  questions.filter((question) => question.required && !submitted.some((answer) => answer.questionId === question.id && answers(answer)));
+  unanswered(questions.filter((question) => question.required), submitted);

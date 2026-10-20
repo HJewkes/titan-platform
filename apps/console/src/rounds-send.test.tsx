@@ -9,6 +9,7 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -86,6 +87,7 @@ describe("a question round's send", () => {
   it("is no longer read-only: it offers Send answers", async () => {
     await renderRound(submitted);
     expect(screen.queryByText(/Read-only/)).toBeNull();
+    await toSection("report");
     expect(sendButton()).toBeTruthy();
   });
 
@@ -94,9 +96,11 @@ describe("a question round's send", () => {
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
 
     pick("ramp-default", "2 Single slope");
+    await toSection("report");
     fireEvent.click(sendButton());
 
     await screen.findByText("Answers sent");
+    await toSection("ramp");
     const round = await getRound(source, ROUND);
     if (!round.valid) throw new Error(round.reason);
     expect(submitCalls(rendered)).toEqual([{ id: ROUND, manifestSha256: round.manifestSha256, general: "", answers: [{ questionId: "ramp-default", pick: "Single slope" }] }]);
@@ -106,6 +110,7 @@ describe("a question round's send", () => {
 
   it("holds back a send until the required question has an answer, and sends the optional ones it has", async () => {
     const rendered = await renderRound(submitted);
+    await toSection("report");
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByText(/Answer the required question first: Which ramp should the calculator propose by default\?/)).toBeTruthy();
     fireEvent.click(sendButton());
@@ -113,7 +118,9 @@ describe("a question round's send", () => {
 
     pick("report-columns", "1 Segment");
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
+    await toSection("ramp");
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     fireEvent.click(sendButton());
 
     await screen.findByText("Answers sent");
@@ -125,6 +132,7 @@ describe("a question round's send", () => {
   it("says Already answered when the server reports the round was already submitted", async () => {
     await renderRound(successEnvelope({ status: "already-submitted", path: "feedback.json", sha256: "0".repeat(64), headSha: null }));
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     fireEvent.click(sendButton());
 
     expect(await screen.findByText("Already answered")).toBeTruthy();
@@ -134,6 +142,7 @@ describe("a question round's send", () => {
   it("shows the server's refusal and does not mark the round sent", async () => {
     await renderRound(errorEnvelope("Refused: this session cannot write; owner writes are off", 403));
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     fireEvent.click(sendButton());
 
     expect(await screen.findByText("Not sent: Refused: this session cannot write; owner writes are off")).toBeTruthy();
@@ -148,10 +157,11 @@ describe("a question round's free text", () => {
     const rendered = await renderRound(submitted);
     pick("ramp-default", "1 Staged climb");
     pick("hold-clarity", "4 4");
-    pick("report-columns", "1 Segment");
-    fireEvent.change(screen.getByLabelText("Answer to Anything else the report should say?"), { target: { value: "Add cone numbers." } });
     comment(RAMP, "Staged, but keep single for bisque.");
     comment("How clearly does the top hold step read?", "The hold label is small.");
+    await toSection("report");
+    pick("report-columns", "1 Segment");
+    fireEvent.change(screen.getByLabelText("Answer to Anything else the report should say?"), { target: { value: "Add cone numbers." } });
     comment("Which columns belong in the printed report?", "Rate matters least.");
     comment("Anything else the report should say?", "Low priority.");
 
@@ -173,6 +183,7 @@ describe("a question round's free text", () => {
   it("sends a comment on a question left unanswered, as a comment-only answer", async () => {
     const rendered = await renderRound(submitted);
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     comment("Which columns belong in the printed report?", "  Not sure yet: ask the studio.  ");
 
     fireEvent.click(sendButton());
@@ -186,6 +197,7 @@ describe("a question round's free text", () => {
   it("does not count a comment alone as an answer to a required question", async () => {
     await renderRound(submitted);
     comment(RAMP, "I need to see both ramps first.");
+    await toSection("report");
 
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
   });
@@ -193,6 +205,7 @@ describe("a question round's free text", () => {
   it("sends the round's feedback as general", async () => {
     const rendered = await renderRound(submitted);
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: " Good round, quick to answer. " } });
 
     fireEvent.click(sendButton());
@@ -214,6 +227,7 @@ describe("a question round's free text", () => {
   it("shows the sent comments and round feedback read-only once the round is sent", async () => {
     await renderRound(submitted);
     pick("ramp-default", "1 Staged climb");
+    await toSection("report");
     comment("Which columns belong in the printed report?", "Rate matters least.");
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Good round." } });
 
@@ -222,6 +236,8 @@ describe("a question round's free text", () => {
     expect(await screen.findByTestId("round-comment-sent-report-columns")).toHaveProperty("textContent", "YOUR COMMENTRate matters least.");
     expect(screen.getByTestId("round-general-sent").textContent).toContain("Good round.");
     expect(screen.queryByLabelText("Feedback on this round")).toBeNull();
+    await toSection("ramp");
+    expect(screen.getByTestId("round-question-ramp-default")).toBeTruthy();
     expect(screen.queryByLabelText(`Comment on ${RAMP}`)).toBeNull();
   });
 });
