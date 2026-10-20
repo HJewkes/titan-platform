@@ -16,7 +16,12 @@ const KINDS: Readonly<Record<string, string>> = {
   RecipeRunBeat: "recipe-run",
 };
 
-export const AUDIO_SPEC_VOICE = { provider: "kokoro", model: "Kokoro-82M", voice: "af_heart", lang: "a" } as const;
+export const AUDIO_SPEC_VOICE = {
+  provider: "kokoro",
+  model: "Kokoro-82M",
+  voice: "af_heart",
+  lang: "a",
+} as const;
 
 // Only the fields the gen spec reads. `ScriptSchema` is strict and rejects the frozen spike scripts' `band`,
 // `origin` and `visual.render`, and widening it would loosen every script/v1 check.
@@ -54,10 +59,22 @@ const SpecBeatSchema = z.object({
 
 export const AudioSpecSchema = z.object({
   title: z.string(),
-  voice: z.object({ provider: z.string(), model: z.string(), voice: z.string(), lang: z.string() }),
+  voice: z.object({
+    provider: z.string(),
+    model: z.string(),
+    voice: z.string(),
+    lang: z.string(),
+  }),
   repo: z.unknown(),
   chapters: z.array(
-    z.object({ id: Id, n: z.number(), title: z.string(), question: z.string(), plannedS: z.number(), station: z.null() }),
+    z.object({
+      id: Id,
+      n: z.number(),
+      title: z.string(),
+      question: z.string(),
+      plannedS: z.number(),
+      station: z.null(),
+    }),
   ),
   beats: z.array(SpecBeatSchema),
 });
@@ -75,15 +92,44 @@ export function stripPronunciationMarkup(spoken: string): string {
 function specBeat(beat: AudioSpecScript["beats"][number], baseKinds: ReadonlyMap<string, string>): SpecBeat {
   const kind = beat.origin === "v2" ? baseKinds.get(beat.id) : KINDS[beat.visual.render];
   if (kind === undefined) throw new Error(`no kind for beat ${beat.id}`);
-  return { id: beat.id, chapter: beat.chapter, kind, band: beat.band, plannedS: beat.plannedS, spoken: beat.spoken };
+  return {
+    id: beat.id,
+    chapter: beat.chapter,
+    kind,
+    band: beat.band,
+    plannedS: beat.plannedS,
+    spoken: beat.spoken,
+  };
 }
 
 function synthBeats(script: AudioSpecScript, beats: SpecBeat[]): SpecBeat[] {
-  const fresh = script.beats.flatMap((b, i) => (b.origin === "v4" ? [{ source: b, beat: beats[i] as SpecBeat }] : []));
+  const fresh = script.beats.flatMap((source, i) => {
+    const beat = beats[i];
+    return source.origin === "v4" && beat ? [{ source, beat }] : [];
+  });
   const fallbacks = fresh.flatMap(({ source, beat }) =>
-    source.contested ? [{ ...beat, id: beat.id + FALLBACK_SUFFIX, spoken: source.contested.fallback }] : [],
+    source.contested
+      ? [
+          {
+            ...beat,
+            id: beat.id + FALLBACK_SUFFIX,
+            spoken: source.contested.fallback,
+          },
+        ]
+      : [],
   );
   return [...fresh.map((f) => f.beat), ...fallbacks];
+}
+
+function specChapters(script: AudioSpecScript): AudioSpec["chapters"] {
+  return script.chapters.map((c, i) => ({
+    id: c.id,
+    n: i + 1,
+    title: c.label,
+    question: c.question,
+    plannedS: 0,
+    station: null,
+  }));
 }
 
 /**
@@ -94,17 +140,17 @@ export function buildAudioSpecs(scriptJson: unknown, baseJson: unknown, title: s
   const script = AudioSpecScriptSchema.parse(scriptJson);
   const base = BaseSpecSchema.parse(baseJson);
   const baseKinds = new Map(base.beats.map((b) => [b.id, b.kind]));
-  const chapters = script.chapters.map((c, i) => ({
-    id: c.id,
-    n: i + 1,
-    title: c.label,
-    question: c.question,
-    plannedS: 0,
-    station: null,
-  }));
-  const head = { title, voice: { ...AUDIO_SPEC_VOICE }, repo: base.repo ?? null, chapters };
+  const head = {
+    title,
+    voice: { ...AUDIO_SPEC_VOICE },
+    repo: base.repo ?? null,
+    chapters: specChapters(script),
+  };
   const beats = script.beats.map((b) => specBeat(b, baseKinds));
-  const plain = beats.map((b) => ({ ...b, spoken: stripPronunciationMarkup(b.spoken) }));
+  const plain = beats.map((b) => ({
+    ...b,
+    spoken: stripPronunciationMarkup(b.spoken),
+  }));
   return {
     full: AudioSpecSchema.parse({ ...head, beats: plain }),
     synth: AudioSpecSchema.parse({ ...head, beats: synthBeats(script, beats) }),

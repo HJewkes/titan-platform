@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildAudioSpecs, stripPronunciationMarkup, type AudioSpec } from "./audio-spec.js";
+import { AudioSpecSchema, buildAudioSpecs, stripPronunciationMarkup, type AudioSpec } from "./audio-spec.js";
 
 const fixture = (path: string): unknown => JSON.parse(readFileSync(new URL(`../fixtures/spike/${path}`, import.meta.url), "utf8"));
 
@@ -10,6 +10,9 @@ const baseFrom = (golden: AudioSpec): unknown => ({
   beats: golden.beats.map((b) => ({ id: b.id, kind: b.kind })),
 });
 
+const golden = (name: string, which: "full" | "synth"): AudioSpec =>
+  AudioSpecSchema.parse(fixture(`goldens/${name}/make_sample.${which}.json`));
+
 const SCRIPTS = [
   ["review-addendum-v5", "review-addendum-v5/script.json"],
   ["redesign-explainer-v4", "redesign-explainer-v4/script-full.json"],
@@ -17,22 +20,35 @@ const SCRIPTS = [
 
 describe("buildAudioSpecs against the A2 goldens", () => {
   it.each(SCRIPTS)("matches the full and synth goldens for %s", (name, scriptPath) => {
-    const full = fixture(`goldens/${name}/make_sample.full.json`) as AudioSpec;
-    const synth = fixture(`goldens/${name}/make_sample.synth.json`) as AudioSpec;
+    const full = golden(name, "full");
+    const synth = golden(name, "synth");
     const built = buildAudioSpecs(fixture(scriptPath), baseFrom(full), full.title);
     expect(built.full).toEqual(full);
     expect(built.synth).toEqual(synth);
   });
 
   it("strips pronunciation markup from the full spec and keeps it in the synth spec", () => {
-    const full = fixture("goldens/review-addendum-v5/make_sample.full.json") as AudioSpec;
+    const full = golden("review-addendum-v5", "full");
     const built = buildAudioSpecs(fixture("review-addendum-v5/script.json"), baseFrom(full), full.title);
     expect(built.full.beats.some((b) => /\]\(/.test(b.spoken))).toBe(false);
     expect(built.synth.beats.some((b) => /\]\(/.test(b.spoken))).toBe(true);
   });
 
   it("rejects a v2 beat the base spec has no kind for", () => {
-    const script = { chapters: [], beats: [{ id: "b", chapter: "c", band: "x", plannedS: 1, spoken: "s", origin: "v2", visual: { render: "HookBeat" } }] };
+    const script = {
+      chapters: [],
+      beats: [
+        {
+          id: "b",
+          chapter: "c",
+          band: "x",
+          plannedS: 1,
+          spoken: "s",
+          origin: "v2",
+          visual: { render: "HookBeat" },
+        },
+      ],
+    };
     expect(() => buildAudioSpecs(script, { beats: [] }, "t")).toThrow("no kind for beat b");
   });
 });
