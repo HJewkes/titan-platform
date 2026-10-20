@@ -67,6 +67,42 @@ guarded file stays readable by that user. The OS account is the real boundary.
 - The mention rule is broad: any argument naming a secret path counts as a read, so
   `echo ~/.npmrc` and a `gh pr create --body` that names `~/.npmrc` deny too.
 
+## Known gaps (parked)
+
+tool-guard is a guard-rail against accidents, not a security boundary. It reads command text and
+classifies it by name, so a determined agent can always find a spelling it does not model, and
+the list below is that tail. Owner decision 504 (2026-10-20) parks it: these bypasses are
+documented here and are not chased one pull request at a time. Egress control below the shell,
+so that a missed spelling still cannot reach an unlisted host, is tracked as TP-3751.
+
+Each row names the class of bypass, not a recipe. Every one is an open task; a fix that lands
+removes its row.
+
+| Task | Class |
+| --- | --- |
+| TP-2696 | `echo` and `printf` escape handling when the text is piped into a shell |
+| TP-2700 | zsh snapshot aliases are not resolved before classifying |
+| TP-2701 | shell functions defined in the zsh snapshot are not followed |
+| TP-2702 | variable expansion in git arguments is not read as the words it becomes |
+| TP-2706 | zsh `hash` and `commands[]` rebinding follow-ups |
+| TP-2708 | a variable declarer behind `command`, `builtin` or a quote does not split its value |
+| TP-2709 | zsh `$=X`, `$~X` and `$^X` expansion forms are tokenized as plain words |
+| TP-2711 | `BASH_ALIASES` and `~name` resolution after `hash -d` or `nameddirs` |
+| TP-2712 | `printf %q` and zsh `print` output piped to a shell is unmodelled |
+| TP-2272 | trap strings are never read |
+| TP-2273 | remaining git push shapes: `send-pack`, decode-and-execute pipes, globbed verbs, `-c` aliases |
+| TP-2274 | further push families: persisted or environment git aliases, config-driven refspecs, globbed command words, decode-and-execute outside a pipe |
+| TP-1517 | an unknown push destination does not fail closed |
+| TP-1621 | host-only egress forms and a bare run-time command word are not read |
+| TP-1630 | text piped into `mksh`, `ash`, `yash` and `fish`, and `sh` at a NUL byte, is not classified |
+| TP-1631 | a push assembled from NUL-separated `xargs` input is not classified |
+| TP-1632 | text zsh reads from `print`, heredocs, `/dev/stdin` and `noglob`/`nocorrect`/`-` precommands is not classified |
+| PR #1859 F1 | an unrecognized `node` option placed before the script is not skipped when finding the script |
+| PR #1859 F2 | an unrecognized `node` option placed before `-r` or `-e` hides that option from the runner reading |
+
+F1 and F2 are the node-option cases from the review of the console owner-verb rule (#1859), which
+still reproduce there.
+
 ## Command line
 
 ```sh
