@@ -80,6 +80,8 @@ export const roundDetail = z.discriminatedUnion("valid", [
     manifestSha256: z.string(),
     /** True while an after-answer round is unsent: every question's recommendation is stripped. */
     recommendationsWithheld: z.boolean(),
+    /** While withheld, the questions that have a recommendation `rounds.reveal` can hand back; empty otherwise. */
+    revealable: z.array(z.string()),
     /** Null unless the manifest's Storybook host is loopback. */
     storybookUrl: z.string().nullable(),
     manifest: z.custom<Manifest>(),
@@ -204,6 +206,8 @@ function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary
   };
 }
 
+const hasRecommendation = (question: Question): boolean => question.kind !== "text" && question.recommendation !== undefined;
+
 function withoutRecommendation(question: Question): Question {
   if (!("recommendation" in question)) return question;
   const stripped = { ...question };
@@ -221,9 +225,10 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, line
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
+  const revealable = withheld ? parsed.manifest.questions.filter(hasRecommendation).map((question) => question.id) : [];
   return {
     id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
-    recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    recommendationsWithheld: withheld, revealable, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
     ...(answer !== undefined && { answer }),
     ...(lineage !== undefined && { lineage }),
     ...(notes !== undefined && { notes }),

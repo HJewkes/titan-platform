@@ -1,9 +1,10 @@
 import { useEffect, type ReactNode } from "react";
-import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
+import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
-import { InlineMarkdown, RoundProse, plainText } from "./RoundMarkdown.js";
+import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
+import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
@@ -54,6 +55,20 @@ export function useChoiceKeys(question: Question | undefined, onChoose: (choice:
   }, [question, onChoose]);
 }
 
+/** `r` reveals or hides the active question's recommendation, under the same guards as the digit keys. */
+function useRevealKey(active: boolean, toggle: (() => void) | undefined): void {
+  useEffect(() => {
+    if (!active || toggle === undefined) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "r" || event.ctrlKey || event.metaKey || event.altKey || typedInto(event.target)) return;
+      event.preventDefault();
+      toggle();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, toggle]);
+}
+
 interface RoundQuestionProps {
   question: Question;
   /** The question's place in the round, shown as Q<n>. */
@@ -72,6 +87,8 @@ interface RoundQuestionProps {
 /** One round@2 question with its options and any recommendation the server sent; reusable outside #/rounds. */
 export function RoundQuestion({ question, position, answer, onChoose, active, onActivate, onText, ab }: RoundQuestionProps): ReactNode {
   const sides = useABSides(question);
+  const shown = useRecommendation(question, answer);
+  useRevealKey(active, shown.toggle);
   // A pressed option does not reach the card's own press handler, so choosing activates the question too.
   const choose = (choice: string): void => {
     onActivate();
@@ -86,9 +103,9 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
           {ab && sides ? (
             <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
           ) : (
-            <Choices question={question} answer={answer} onChoose={choose} onText={onText} />
+            <Choices question={question} answer={answer} onChoose={choose} onText={onText} recommended={recommendedChoices(shown)} />
           )}
-          <QuestionFacts question={question} />
+          <QuestionFacts question={question} answer={answer} />
         </VStack>
       </CardContent>
     </Card>
@@ -112,18 +129,28 @@ function choiceLabel(index: number, choice: string, frame: string | undefined): 
   return frame === undefined ? keyed : `${keyed} (frame: ${frame})`;
 }
 
-/** `choiceLabel` with the option's markdown rendered. */
-function ChoiceLabel({ index, choice, frame }: { index: number; choice: string; frame: string | undefined }): ReactNode {
+/** `choiceLabel` with the option's markdown rendered, and a badge on the option a shown recommendation picks. */
+function ChoiceLabel({ index, choice, frame, recommended }: { index: number; choice: string; frame: string | undefined; recommended: boolean }): ReactNode {
   return (
     <>
       {index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}
       <InlineMarkdown text={choice} />
       {frame === undefined ? null : ` (frame: ${frame})`}
+      {recommended ? <span className="ml-2 inline-flex"><Pill variant="subtle" size="xs" tone="info">Recommended</Pill></span> : null}
     </>
   );
 }
 
-function Choices({ question, answer, onChoose, onText }: { question: Question; answer: QuestionAnswer | undefined; onChoose: (choice: string) => void; onText?: (text: string) => void }): ReactNode {
+interface ChoicesProps {
+  question: Question;
+  answer: QuestionAnswer | undefined;
+  onChoose: (choice: string) => void;
+  onText?: (text: string) => void;
+  /** The options a shown recommendation picks, badged. */
+  recommended: readonly string[];
+}
+
+function Choices({ question, answer, onChoose, onText, recommended }: ChoicesProps): ReactNode {
   const choices = choicesOf(question);
   const frameOf = useOptionFrame(question);
   if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
@@ -136,24 +163,21 @@ function Choices({ question, answer, onChoose, onText }: { question: Question; a
     return (
       <CheckboxGroup label="Pick any">
         {choices.map((choice, index) => (
-          <Checkbox key={choice} value={choice} label={choiceLabel(index, plainText(choice), frameOf(choice))} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
+          <Checkbox key={choice} value={choice} label={`${choiceLabel(index, plainText(choice), frameOf(choice))}${recommended.includes(choice) ? "  · Recommended" : ""}`} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
         ))}
       </CheckboxGroup>
     );
   }
-  return <PickOne question={question} answer={answer} onChoose={onChoose} choices={choices} frameOf={frameOf} />;
+  return <PickOne question={question} answer={answer} onChoose={onChoose} choices={choices} frameOf={frameOf} recommended={recommended} />;
 }
 
-interface PickOneProps {
-  question: Question;
-  answer: QuestionAnswer | undefined;
-  onChoose: (choice: string) => void;
+interface PickOneProps extends Omit<ChoicesProps, "onText"> {
   choices: readonly string[];
   frameOf: (choice: string) => string | undefined;
 }
 
 /** A pick-one or scale as radios; a sent revision request says so, as it picks none of them. */
-function PickOne({ question, answer, onChoose, choices, frameOf }: PickOneProps): ReactNode {
+function PickOne({ question, answer, onChoose, choices, frameOf, recommended }: PickOneProps): ReactNode {
   const value = answer && "pick" in answer ? answer.pick : answer && "value" in answer ? String(answer.value) : null;
   return (
     <VStack gap={1}>
@@ -161,7 +185,7 @@ function PickOne({ question, answer, onChoose, choices, frameOf }: PickOneProps)
       <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
         {choices.map((choice, index) => (
           <Radio key={choice} value={choice} aria-checked={value === choice}>
-            <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} />
+            <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
           </Radio>
         ))}
       </RadioGroup>
@@ -169,11 +193,10 @@ function PickOne({ question, answer, onChoose, choices, frameOf }: PickOneProps)
   );
 }
 
-const answerText = (answer: string | number | readonly string[]): string => plainText(Array.isArray(answer) ? answer.join(", ") : String(answer));
-
-/** A question's sign-off, merge binding and any recommendation the server sent. */
-export function QuestionFacts({ question }: { question: Question }): ReactNode {
-  const recommendation = question.kind === "text" ? undefined : question.recommendation;
+/** A question's sign-off, merge binding, and its recommendation: sent by the server, or revealed on demand (TP-3774). */
+export function QuestionFacts({ question, answer }: { question: Question; answer?: QuestionAnswer }): ReactNode {
+  const shown = useRecommendation(question, answer);
+  useRevealTracking(question, answer, shown.visible);
   const merge = question.kind === "pick-one" ? question.merge : undefined;
   const signsOff = question.kind === "pick-one" ? question.signsOff : undefined;
   return (
@@ -181,11 +204,8 @@ export function QuestionFacts({ question }: { question: Question }): ReactNode {
       <QuestionFrameLinks question={question} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
-      {recommendation ? (
-        <Alert status="info" size="compact" message={`Recommended: ${answerText(recommendation.answer)} (${Math.round(recommendation.confidence * 100)}%, ${recommendation.by})`}>
-          <RoundProse text={recommendation.rationale} />
-        </Alert>
-      ) : null}
+      <RevealControl question={question} shown={shown} />
+      <RecommendationBox question={question} answer={answer} shown={shown} />
     </VStack>
   );
 }
