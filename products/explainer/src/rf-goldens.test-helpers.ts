@@ -31,7 +31,7 @@ const SeedsSchema = z.object({
     }),
   ),
 });
-export const SeededProvenanceSchema = z.object({
+const SeededProvenanceSchema = z.object({
   bases: z.record(z.string(), Pinned.extend({ fixture: z.string(), fixtureSha256: z.string(), dataTool: Pinned })),
   variants: z.record(
     z.string(),

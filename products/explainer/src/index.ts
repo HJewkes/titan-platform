@@ -219,7 +219,7 @@ export {
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";
-export { flowCheck } from "./lint-flow.js";
+export { flowCheck, rfTextLint, type RfTextProfile } from "./lint-flow.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
@@ -233,7 +233,8 @@ export {
   type VisualRouter,
   type VisualType,
 } from "./visual-router.js";
-export { maskEntities, repoEntities } from "./lint-text.js";
+export { maskEntities, type NumberPolicy, RF_BANNED, repoEntities, rfWords, spokenNumbers } from "./lint-text.js";
+export { readRfScript, type RfBeat, type RfIssue, type RfScript } from "./rf-script.js";
 export {
   DEFAULT_RULES_PATH,
   RuleRegistrySchema,

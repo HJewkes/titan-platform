@@ -158,6 +158,13 @@ type NumberKind = "unit" | "tens" | "scale" | undefined;
 const numberKind = (token: string): NumberKind =>
   TENS.has(token) ? "tens" : token === "hundred" || token === "thousand" ? "scale" : UNITS.has(token) ? "unit" : undefined;
 
+/** Tokens a phrase steps over: "and a half" (adds a half) or the "and" in "three hundred and two". */
+function connector(tokens: readonly string[], i: number, prev: NumberKind): { skip: number; add: number } | undefined {
+  if (prev && tokens[i] === "and" && tokens[i + 1] === "a" && tokens[i + 2] === "half") return { skip: 3, add: 0.5 };
+  if (prev === "scale" && tokens[i] === "and" && numberKind(tokens[i + 1] ?? "")) return { skip: 1, add: 0 };
+  return undefined;
+}
+
 /** Number values in one clause's tokens: "three hundred and two" is 302, "fifty-one and a half" 51.5. */
 function phraseValues(tokens: readonly string[]): number[] {
   const out: number[] = [];
@@ -170,12 +177,9 @@ function phraseValues(tokens: readonly string[]): number[] {
   while (i < tokens.length) {
     const token = tokens[i]!;
     const kind = numberKind(token);
-    if (prev && token === "and" && tokens[i + 1] === "a" && tokens[i + 2] === "half") {
-      [part, i] = [part + 0.5, i + 3];
-      continue;
-    }
-    if (prev === "scale" && token === "and" && numberKind(tokens[i + 1] ?? "")) {
-      i += 1;
+    const step = connector(tokens, i, prev);
+    if (step) {
+      [part, i] = [part + step.add, i + step.skip];
       continue;
     }
     const isCount = kind === "unit" || kind === "tens";
