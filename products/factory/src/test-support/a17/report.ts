@@ -48,13 +48,13 @@ export function checkA17Report(json: VitestJson, meta: ReportMeta): A17Report {
   const notEvent = new Set<string>();
   for (const file of json.testResults) {
     for (const a of file.assertionResults) {
-      if (!a.title.startsWith(PREFIX)) continue;
-      const { key, title, mode } = split(a);
       const allowed = meta.notEvent.find((entry) => a.fullName.includes(entry.title));
       if (allowed) {
         notEvent.add(allowed.title);
         continue;
       }
+      if (!a.title.startsWith(PREFIX)) continue;
+      const { key, title, mode } = split(a);
       const entry = grouped.get(key) ?? { title, webhook: "missing", polling: "missing" };
       if (mode) entry[mode] = a.status;
       grouped.set(key, entry);

@@ -79,6 +79,15 @@ describe("checkA17Report", () => {
     expect(report).toMatchObject({ notEvent: ["systemDeployPorts healthWithin (A17:"], oneMode: [] });
   });
 
+  it("matches an allow-listed describe whose cases carry no A17 prefix of their own", () => {
+    const title = "systemDeployPorts healthWithin (A17: a rate-limited probe never rolls back)";
+    const json: VitestJson = {
+      testResults: [{ assertionResults: [{ title: "answers without a rollback", fullName: `${title} answers without a rollback`, ancestorTitles: [title], status: "passed" }] }],
+    };
+
+    expect(check(json, [title])).toMatchObject({ notEvent: [title], cases: [] });
+  });
+
   it("treats a suffix-less A17 title outside the allow-list as a one-mode case", () => {
     const report = check(run(["A17: bypassed the helper", "passed"], ["A17: x [webhook]", "passed"], ["A17: x [polling]", "passed"]));
 
@@ -89,10 +98,10 @@ describe("checkA17Report", () => {
 
 describe("a17.mjs", () => {
   it("exits 1 over a fixture holding one one-mode case, and writes the report", () => {
-    const here = fileURLToPath(new URL(".", import.meta.url));
-    const dir = mkdtempSync(join(here, "smoke-"));
+    // Outside the factory tree, whose structure guard would otherwise see the deliberately one-mode fixture.
+    const dir = mkdtempSync(join(fileURLToPath(new URL("../../../../../scripts/", import.meta.url)), "a17-smoke-"));
     try {
-      writeFileSync(join(dir, "one-mode.test.ts"), `import { it } from "vitest";\nit("A17: lonely [webhook]", () => undefined);\n`);
+      writeFileSync(join(dir, "one-mode.test.mjs"), `import { it } from "vitest";\nit("A17: lonely [webhook]", () => undefined);\n`);
       mkdirSync(join(dir, "out"));
       const out = join(dir, "out", "report.json");
       const script = fileURLToPath(new URL("../../../scripts/a17.mjs", import.meta.url));

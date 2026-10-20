@@ -7,9 +7,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkA17Report } from "../src/test-support/a17/report.ts";
+import { NOT_EVENT } from "../src/test-support/a17/not-event.ts";
 
-// Empty until TP-3826 lands test-support/a17/not-event.ts; whichever PR merges second imports NOT_EVENT here.
-const NOT_EVENT = [];
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const args = process.argv.slice(2);
