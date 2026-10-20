@@ -17,8 +17,7 @@ import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
-import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
-import { FeedbackDocument } from "./round2-adapter.js";
+import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { notifyRound } from "./round-asker.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
@@ -121,8 +120,14 @@ async function readRound(file: string): Promise<RoundRead> {
 
 type Verdict = "ship" | "send-back";
 
-/** Ship ships; the one other option sends back. A question with more options than that is not one this relays. */
-function verdictOf(question: ShipQuestion, merge: Merge, pick: string): Verdict | undefined {
+/**
+ * Ship ships; the one other option sends back. A question with more options than that is not one this relays.
+ * The feedback writes a pick of the round's `revisionOption` as a revision request, which sends back too.
+ */
+function verdictOf(question: ShipQuestion, merge: Merge, answer: Feedback["answers"][number]): Verdict | undefined {
+  if (answer.revisionRequested) return "send-back";
+  const { pick } = answer;
+  if (pick === undefined) return undefined;
   if (merge.ship.includes(pick)) return "ship";
   const others = question.options.filter((option) => !merge.ship.includes(option));
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
@@ -133,16 +138,16 @@ async function readRoundAnswer(deps: ListenerDeps, roundId: string): Promise<Rou
   const dir = path.join(deps.roundsDir, roundId);
   const [round, feedback, packetBytes] = await Promise.all([
     readRound(path.join(dir, ROUND_FILE)),
-    readJson(path.join(dir, FEEDBACK_FILE), FeedbackDocument),
+    readJson(path.join(dir, FEEDBACK_FILE), FeedbackSchema),
     readFileCapped(path.join(dir, PACKET_FILE)),
   ]);
   if (round.invalid !== undefined && feedback) deps.logger?.warn({ roundId }, `${roundId}: round.json invalid; answer not relayed (${round.invalid})`);
   const { manifest } = round;
   if (!manifest || !feedback || !packetBytes) return undefined;
   for (const question of manifest.questions) {
-    const pick = feedback.answers.find((answer) => answer.questionId === question.id)?.pick;
-    if (question.kind !== "pick-one" || !question.merge || pick === undefined) continue;
-    const verdict = verdictOf(question, question.merge, pick);
+    const answer = feedback.answers.find((each) => each.questionId === question.id);
+    if (question.kind !== "pick-one" || !question.merge || answer === undefined || (answer.pick === undefined && !answer.revisionRequested)) continue;
+    const verdict = verdictOf(question, question.merge, answer);
     const tree = packetHeadTree(packetBytes);
     if (verdict === undefined || tree === undefined) return undefined;
     return { roundId, merge: question.merge, verdict, tree, packetSha: sha256(packetBytes) };

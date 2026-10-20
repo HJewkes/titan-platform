@@ -1,7 +1,8 @@
 /**
  * `rounds.submit`: the owner's answers to one round, written once as that round's `feedback.json`
- * in the harness `feedback@1` shape. It resolves no gate and calls no factory; a listener reads
- * the file later.
+ * as the harness builds it (`round-feedback.ts`): each answer echoes its recommendation, `agreed` and the
+ * picked option's `after`, and the file is refused whole when `feedbackProblems` finds it at odds with
+ * the round. It resolves no gate and calls no factory; a listener reads the file later.
  *
  * The answer is bound to what the owner was shown: the request names the sha256 of `round.json`
  * and is refused when the file on disk differs, and a merge-bound Ship names the head sha the
@@ -30,12 +31,13 @@ import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
-import type { Manifest, Question } from "./round-schema.js";
-import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
+import { buildRoundFeedback, feedbackProblems } from "./round-feedback.js";
+import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
+import { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { shipBlockers } from "./ship-blockers.js";
+import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 export const ADDRESSED_FILE = "addressed.json";
@@ -164,25 +166,16 @@ function shippedHead(manifest: Manifest, { answers, headSha }: SubmitArgs): stri
   return stale === undefined ? headSha : refuse(`question "${stale.id}" names a different head sha`);
 }
 
-/** In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind. */
-function withSeen(manifest: Manifest, answer: SubmittedAnswer) {
-  const answered = answer.pick !== undefined || answer.picks !== undefined || answer.value !== undefined || answer.text !== undefined;
-  const question = manifest.questions.find((each) => each.id === answer.questionId);
-  const recommended = question !== undefined && question.kind !== "text" && question.recommendation !== undefined;
-  return manifest.recommendations === "shown" && answered && recommended ? { ...answer, recommendationSeen: true as const } : answer;
-}
+const isShipRound = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
 
+/**
+ * The harness's feedback document for these answers, refused whole if it disagrees with its round. Any round may go
+ * with questions unanswered (decisions 166 and 513), so every submit is built partial: it lists what it left out.
+ */
 function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer {
-  const document = FeedbackDocument.parse({
-    schema: FEEDBACK_SCHEMA_ID,
-    unit: manifest.unit,
-    round: manifest.round,
-    manifestSha256: args.manifestSha256,
-    submittedAt: now.toISOString(),
-    answers: args.answers.map((answer) => withSeen(manifest, answer)),
-    variants: [],
-    general: args.general,
-  });
+  const document = FeedbackSchema.parse(buildRoundFeedback(manifest, args.manifestSha256, args, now, true));
+  const problems = feedbackProblems(document, manifest);
+  if (problems.length > 0) refuse(`the feedback does not fit its round: ${problems.join("; ")}`);
   const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
   return bytes.length <= MAX_FEEDBACK_BYTES ? bytes : refuse(`the feedback is over ${MAX_FEEDBACK_BYTES} bytes`);
 }
@@ -192,7 +185,20 @@ async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args:
   if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
 }
 
-const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
+/** A merge-bound question answered with anything but its Ship option: a pick outside `ship`, or a revision request. */
+function sendsBack(manifest: Manifest, answers: readonly SubmittedAnswer[]): boolean {
+  return manifest.questions.some(
+    (question) => question.kind === "pick-one" && question.merge !== undefined &&
+      answers.some((answer) => answer.questionId === question.id && (answer.revisionRequested === true || (answer.pick !== undefined && !question.merge?.ship.includes(answer.pick)))),
+  );
+}
+
+function refuseEmptySendBack(manifest: Manifest, args: SubmitArgs): void {
+  const blocker = sendsBack(manifest, args.answers) ? sendBackBlocker(manifest, args) : undefined;
+  if (blocker !== undefined) refuse(`Send back refused: ${blocker}`);
+}
+
+const errnoOf =(error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 
 /** Null when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
 async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
@@ -252,12 +258,13 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   if (sha256(manifestBytes) !== args.manifestSha256) refuse(`${ROUND_FILE} has changed since it was shown; reload the round`);
   const manifest = validManifest(manifestBytes);
   // A Ship round's variants are the PR's changed images; a design round's frames show only through a valid frames.json.
-  const design = manifest.variants.length > 0 && !manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
+  const design = manifest.variants.length > 0 && !isShipRound(manifest);
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
   const headSha = shippedHead(manifest, args);
   if (headSha !== null) await refuseBlockedShip(source, manifest, args);
+  refuseEmptySendBack(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };

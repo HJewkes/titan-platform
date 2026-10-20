@@ -7,7 +7,7 @@ import { agreedOddOnes, COLD_EVAL_ID, runCold, type ColdInput, type ColdResult }
 import { readRubric } from "./eval-evidence.js";
 import { createJudgeHarness, JudgeConfigSchema } from "./eval-harness.js";
 import { CANARY_COLUMNS } from "./eval-judge-cli.js";
-import { paceBeats, type ScriptFormat } from "./eval-pace-cli.js";
+import { paceInput, type ScriptFormat } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, rulesSha, type BenchLayout, type DeterministicRun } from "./eval-store.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry } from "./rules.js";
 import { readTiming } from "./timing.js";
@@ -43,7 +43,7 @@ interface Prepared {
 
 function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const raw = readJson(file);
-  const beats = paceBeats(raw, flags.format, flags.timing ? readTiming(readJson(flags.timing)) : undefined);
+  const { beats, glossary } = paceInput(raw, flags.format, flags.timing ? readTiming(readJson(flags.timing)) : undefined);
   const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
   parseRuleRegistry(registry.toString("utf8"));
   const judge = JudgeConfigSchema.parse(readJson(flags.judge));
@@ -51,7 +51,7 @@ function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const bench = benchLayout(flags.bench);
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: COLD_EVAL_ID };
-  const input = { scriptSha, beats, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
+  const input = { scriptSha, beats, glossary, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
   return { bench, record, input, runs };
 }
 

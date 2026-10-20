@@ -4,7 +4,8 @@
  * the seat and initiative that asked (`round-asker.ts`). Nothing is written anywhere else.
  *
  * A round with variants or a merge-bound Ship question is refused: those carry frames or a packet, which only a
- * review-harness dir has, so they go through `rounds import`. The round is filed through `importRound` from a
+ * review-harness dir has, so they go through `rounds import`. A round that breaks the builder rules (`round-rules.ts`)
+ * is refused before any temp dir is made. The round is filed through `importRound` from a
  * private temp dir, so it passes the same checks and the same staged rename, and the temp dir is removed after.
  */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -14,6 +15,7 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { ASKER_FILE, recordAsker } from "./round-asker.js";
 import { importRound } from "./round-import.js";
+import { roundRuleRefusal } from "./round-rules.js";
 import { SEAT_NAME } from "./round-notice-transport.js";
 import type { Manifest } from "./round-schema.js";
 import { MAX_ROUND_BYTES, ROUND_FILE, parseManifest } from "./rounds.js";
@@ -58,6 +60,8 @@ function readRound(body: string): Buffer {
   const parsed = parseManifest(bytes);
   if (!parsed.ok) return refuse(`${ROUND_FILE}: ${parsed.reason}`);
   checkQuestionsOnly(parsed.manifest);
+  const broken = roundRuleRefusal(parsed.manifest);
+  if (broken !== null) refuse(broken);
   return bytes;
 }
 
