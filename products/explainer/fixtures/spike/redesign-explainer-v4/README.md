@@ -52,3 +52,12 @@ It is hand-written, not frozen from a source file: beat labels for M1, M2, M3, M
 M7, the owner-named beats, and the reader-gap item groups with the beats that first use them. Each check is
 labelled true, false or borderline; a beat nobody flagged is unlabelled, not negative. Beat ids span all 75
 beats of `durations.json`, not only the subset in `script.json`.
+
+## `spine.md`
+
+The v4 story spine, planner-written per TP-3804 from the script content alone, following
+`doctrine/guides/spine-template.md` (sections 3 to 6 and 8). It was not tuned against eval output or `labels.json`.
+Section 8 gives the order a planner would derive (the journey chapter before the architecture chapter), not the
+script's own chapter order. Kinds in section 6 are the planner's judgement per entry, so lists that mix kinds
+stay mixed and Q-E16 reports them.
+

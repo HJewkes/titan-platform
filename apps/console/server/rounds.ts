@@ -71,6 +71,8 @@ const roundNotes = z.object({
   general: z.string(),
   /** Each answered question's comment, by question id. */
   comments: z.record(z.string(), z.string()),
+  /** Each pick-one answer's pick, by question id, so a round with several PRs shows which shipped (TP-3329); absent when there is none. */
+  picks: z.record(z.string(), z.string()).optional(),
 });
 
 export const roundDetail = z.discriminatedUnion("valid", [
@@ -237,7 +239,8 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, line
 
 function notesOf(feedback: Feedback): RoundNotes {
   const commented = feedback.answers.flatMap((answer) => (answer.comment?.trim() ? [[answer.questionId, answer.comment] as const] : []));
-  return { general: feedback.general, comments: Object.fromEntries(commented) };
+  const picks = feedback.answers.flatMap((answer) => (answer.pick === undefined ? [] : [[answer.questionId, answer.pick] as const]));
+  return { general: feedback.general, comments: Object.fromEntries(commented), ...(picks.length > 0 && { picks: Object.fromEntries(picks) }) };
 }
 
 /** Only a sent round has notes; a feedback.json that does not parse shows none rather than failing the page. */
