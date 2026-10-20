@@ -18,6 +18,7 @@ import { explainRoutes } from "./lint-gloss.js";
 import { seatRoutes } from "./lint-seat.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { parseSpine } from "./spine-schema.js";
 
 const rubric = readRubric("l1-items.md");
 
@@ -252,5 +253,130 @@ describe("itemsEvalVersion", () => {
 
     expect(itemsEvalVersion({ rubric: `${rubric}\nOne more rule.`, judge: sonnet })).not.toBe(base);
     expect(itemsEvalVersion({ rubric, judge: { ...sonnet, model: "opus" } })).not.toBe(base);
+  });
+});
+
+/** An invented parcel desk spine: §3 names invariant I1, §4's one part keeps the invariant `keptBy` names. */
+const spineDoc = (ledger: string, keptBy = "I1") => `# Story spine: parcel-desk-synthetic
+
+## 3. Journey
+| # | Step | What | Why | Invariant | Today |
+|---|---|---|---|---|---|
+| 1 | Scan | the scanner reads the barcode | no barcode, no record | I1 one label per parcel | — |
+
+## 4. Architecture
+| Part | Carries | Mechanism | Constraint |
+|---|---|---|---|
+| Label printer | 1 | prints once per barcode (${keptBy}) | — |
+
+## 5. Constraints
+| Constraint | Forces |
+|---|---|
+
+## 6. Item ledger
+| Item | Kind | Defined in | Reused in |
+|---|---|---|---|
+${ledger}
+`;
+
+const ledgerRows = (kinds: Record<string, string>) =>
+  Object.entries(kinds)
+    .map(([item, kind]) => `| ${item} | ${kind} | c1-1 | — |`)
+    .join("\n");
+
+const DESK_LEDGER = { scan: "step", weigh: "step", sort: "step", "be legible": "step" };
+
+const spineTrack = (): PaceBeat[] =>
+  buildPaceBeats([
+    source("c1-1", "ch1", "The desk runs scan, weigh, sort and be legible.", ["job:scan", "job:weigh", "job:sort", "job:be legible"]),
+    source("c2-1", "ch2", "Each parcel gets exactly one label.", ["inv:I1 one label per parcel"], true),
+  ]);
+
+/** What each listed item really is; the fake flags an item only when the declared kind in the question disagrees. */
+const TRUE_KINDS: Record<string, string> = { scan: "step", weigh: "step", sort: "step", "be legible": "property" };
+
+const misdeclared = (text: string): string | null => {
+  const declared = [...text.matchAll(/"([^"]+)" an? (\w+)/g)].map((m) => ({ label: m[1]!, kind: m[2]! }));
+  return declared.find((d) => TRUE_KINDS[d.label] !== d.kind)?.label ?? null;
+};
+
+const kindJudge = () => fakeJudge((q) => (q.text.includes("spine ledger declares") ? { odd_one_out: misdeclared(q.text) } : {}));
+
+const spineInput = (harness: JudgeHarness, spineMd: string, overrides: Partial<ItemsInput> = {}): ItemsInput => {
+  const beats = spineTrack();
+  return input(harness, { beats, routes: itemRoutes(beats, []), spine: parseSpine(spineMd), ...overrides });
+};
+
+const verdictsOf = (result: ItemsResult) => result.chapters.flatMap((c) => c.verdicts);
+
+describe("runItems with a story spine", () => {
+  it("flags a list item the ledger declares a step that is not one", async () => {
+    const runs = [];
+    for (let run = 1; run <= 2; run++) runs.push(await runItems(spineInput(kindJudge().harness, spineDoc(ledgerRows(DESK_LEDGER)), { run })));
+
+    expect(verdictsOf(runs[0]!).find((v) => v.kind === "kind-honest")).toMatchObject({ beat: "c1-1", pass: false, picked: "be legible" });
+    expect(agreedFlags(runs)).toContainEqual({ kind: "kind-honest", beat: "c1-1", item: "be legible" });
+  });
+
+  it("asks about the declared kinds in place of the blind odd one out, and passes a ledger that declares them truly", async () => {
+    const judge = kindJudge();
+
+    const result = await runItems(spineInput(judge.harness, spineDoc(ledgerRows({ ...DESK_LEDGER, "be legible": "property" }))));
+
+    const asked = judge.calls.flatMap(promptQuestions).map((q) => q.text);
+    expect(asked.some((t) => t.includes('"be legible" a property'))).toBe(true);
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("odd-one-out");
+    expect(verdictsOf(result).find((v) => v.kind === "kind-honest")).toMatchObject({ pass: true, picked: null });
+  });
+
+  it("keeps the blind odd one out for a list beat with an item the ledger does not list", async () => {
+    const { "be legible": _unlisted, ...partial } = DESK_LEDGER;
+
+    const result = await runItems(spineInput(kindJudge().harness, spineDoc(ledgerRows(partial))));
+
+    expect(verdictsOf(result).map((v) => v.kind)).toContain("odd-one-out");
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("kind-honest");
+  });
+
+  it("fails an invariant seat no §4 part keeps without a model call", async () => {
+    const judge = kindJudge();
+    const routes: ItemRoutes = { explain: [], seat: [{ beat: "c2-1", reason: "invariant" }], lists: [] };
+
+    const result = await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER), "I2"), { routes }));
+
+    expect(judge.calls).toEqual([]);
+    expect(result.chapters).toEqual([
+      { chapter: "ch2", canary: null, verdicts: [expect.objectContaining({ kind: "seated", beat: "c2-1", pass: false, evidence: 'spine: no §4 part keeps "I1 one label per parcel"' })] },
+    ]);
+    expect(agreedFlags([result, result])).toEqual([{ kind: "seated", beat: "c2-1", item: "invariant" }]);
+  });
+
+  it("fails an invariant seat that states no §3 invariant without a model call", async () => {
+    const judge = kindJudge();
+    const beats = buildPaceBeats([source("c2-1", "ch2", "Labels never repeat.", ["inv:I9 labels never repeat"], true)]);
+    const routes: ItemRoutes = { explain: [], seat: [{ beat: "c2-1", reason: "invariant" }], lists: [] };
+
+    const result = await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER)), { beats, routes }));
+
+    expect(judge.calls).toEqual([]);
+    expect(verdictsOf(result)[0]).toMatchObject({ pass: false, evidence: "spine: no §3 invariant matches what this beat states" });
+  });
+
+  it("poses an invariant seat the spine pairs with a part, naming that part", async () => {
+    const judge = kindJudge();
+    const routes: ItemRoutes = { explain: [], seat: [{ beat: "c2-1", reason: "invariant" }], lists: [] };
+
+    const result = await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER)), { routes }));
+
+    expect(judge.calls.flatMap(promptQuestions).map((q) => q.text)).toContainEqual(expect.stringContaining('the spine says "Label printer" keeps'));
+    expect(result.trusted).toBe(true);
+    expect(verdictsOf(result)).toEqual([expect.objectContaining({ kind: "seated", beat: "c2-1", pass: true })]);
+  });
+
+  it("versions spine runs apart and leaves the no-spine version as it was", () => {
+    const spine = parseSpine(spineDoc(ledgerRows(DESK_LEDGER)));
+
+    expect(itemsEvalVersion({ rubric, judge: sonnet, spine })).not.toBe(itemsEvalVersion({ rubric, judge: sonnet }));
+    expect(itemsEvalVersion({ rubric, judge: sonnet, spine: undefined })).toBe(itemsEvalVersion({ rubric, judge: sonnet }));
   });
 });

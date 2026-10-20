@@ -178,7 +178,7 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   runs agree on.
 - `explainer eval items <script.json> --judge <judge.json> [--format spike|v1] [--timing
   <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
-  <n>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
+  <n>] [--spine <spine.md>]` is the L1 item judge (eval id `L1-items`, rubric `rubrics/l1-items.md`). Its questions
   come only from route lists: "is X explained?" for each item `explainRoutes` (M3-pre) names,
   "is it seated?" for each `seatRoutes` (M5) beat, and the odd one out for each beat listing
   three or more items. One call per chapter that has a question; chapters with none are
@@ -186,6 +186,13 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   explained. An "explained" yes must quote spoken words; other verdicts may quote the screen.
   `--runs` defaults to 3. Each run appends `items-scores.tsv`, `canaries.tsv` and a run record;
   a last line lists the flags at least two runs agree on.
+  `--spine <spine.md>` makes the judge read the story spine (with `rubrics/l1-items-spine.md`
+  added to its rubric): a list beat whose every item the ledger declares is asked "which item is
+  not the kind it is declared to be?" (`kind-honest`) in place of the blind odd one out, and an
+  invariant seat is asked about the §4 part that keeps it. An invariant seat that matches no §3
+  invariant, or no §4 part whose mechanism keeps it, fails with no model call, and a chapter of
+  only such seats makes no call and has no canary row. Spine runs get their own eval_version; runs
+  without `--spine` keep theirs.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 
