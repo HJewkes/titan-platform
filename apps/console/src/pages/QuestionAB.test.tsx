@@ -10,10 +10,10 @@ import { stagedRound, type StagedRound } from "../../server/round-fixtures.js";
 import { FeedbackSchema, RoundSchema } from "../../server/round-schema.js";
 import { roundsSubmitCommands } from "../../server/rounds-submit.js";
 import { getRound, type RoundDetail } from "../../server/rounds.js";
-import { AnswerSourceProvider } from "../data/submit.js";
+import { AnswerSourceProvider, useSubmit } from "../data/submit.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
-import { RoundSend } from "./RoundSend.js";
+import { RoundSend, lockedBy } from "./RoundSend.js";
 
 /** Frames stay unfetched: this observer never reports an intersection. */
 class IdleObserver {
@@ -89,12 +89,14 @@ const submitting = (reads: DataSource): DataSource => ({
 const emptyPage = (): Document => new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: {} }), "text/html");
 
 function Round({ framed }: { framed: boolean }): ReactNode {
-  const state = useRoundAnswers(orderedQuestions(round.manifest).flatMap((group) => group.questions));
-  const sections = <RoundSections manifest={round.manifest} state={state} textAnswers />;
+  const submitting = useSubmit();
+  const locked = lockedBy(round, submitting);
+  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
+  const sections = <RoundSections manifest={round.manifest} state={state} textAnswers locked={locked} />;
   return (
     <>
       {framed ? <RoundFramesProvider roundId={ROUND} manifest={round.manifest}>{sections}</RoundFramesProvider> : sections}
-      <RoundSend round={round} state={state} />
+      <RoundSend round={round} state={state} submitting={submitting} />
     </>
   );
 }
@@ -187,6 +189,26 @@ describe("an A/B question", () => {
     fireEvent.change(screen.getByLabelText("Comment on Which beacon reads better?"), { target: { value: "Try a slow fade." } });
 
     expect(await sentFeedback()).toMatchObject({ answers: [{ questionId: "pulse-ab", revisionRequested: true, comment: "Try a slow fade." }] });
+  });
+
+  it("reads a sent Neither and its option note back after a reload, locked (TP-3767)", async () => {
+    render(<Page />);
+    fireEvent.change(within(side("pulse-ab", "A")).getByLabelText("Note on Calm"), { target: { value: "Calm but dim." } });
+    fireEvent.click(screen.getByText("Neither: request a revision"));
+    fireEvent.change(screen.getByLabelText("Comment on Which beacon reads better?"), { target: { value: "Try a slow fade." } });
+    await sentFeedback();
+    cleanup();
+
+    const reloaded = await getRound(staged.source, ROUND);
+    if (!reloaded.valid) throw new Error(reloaded.reason);
+    round = reloaded;
+    render(<Page />);
+
+    expect(screen.getByTestId("round-entry-pulse-ab").hasAttribute("inert")).toBe(true);
+    expect(pressed(screen.getByText("Neither: request a revision"))).toBe("true");
+    expect(screen.getByTestId("question-ab-note-sent-Calm").textContent).toContain("Calm but dim.");
+    expect(screen.queryByLabelText("Note on Calm")).toBeNull();
+    expect(screen.getByTestId("round-comment-sent-pulse-ab").textContent).toContain("Try a slow fade.");
   });
 
   it("offers no Neither where the question offers no revision request", () => {

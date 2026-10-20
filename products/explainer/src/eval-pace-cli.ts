@@ -47,9 +47,6 @@ export function paceInput(raw: unknown, format: ScriptFormat, timing: ScriptTimi
   return { beats, invariants, glossary };
 }
 
-/** The item track alone of a spike or script/v1 file. */
-export const paceBeats = (raw: unknown, format: ScriptFormat, timing: ScriptTiming | undefined): PaceBeat[] => paceInput(raw, format, timing).beats;
-
 /** One line a reused beat that fails a beat-level check: the beat, the checks and heard seconds to re-voice it. */
 function formatReuse(findings: readonly ReuseFinding[]): string {
   const rows = findings.map((f) => [f.beat, f.checks.join(","), f.revoiceS.toFixed(1)].join("\t"));

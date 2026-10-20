@@ -1,5 +1,6 @@
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Manifest, Question } from "../../server/round-schema.js";
+import type { RoundNotes, SentAnswer } from "../../server/rounds.js";
 import type { QuestionAnswer } from "./RoundQuestion.js";
 
 type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
@@ -34,7 +35,28 @@ export function submittedAnswers(
   });
 }
 
-export const inOrder = (manifest: Manifest, answers: SubmittedAnswer[]): SubmittedAnswer[] => {
+function heldOf(sent: SentAnswer): QuestionAnswer | undefined {
+  if (sent.revisionRequested) return { revisionRequested: true };
+  if (sent.pick !== undefined) return { pick: sent.pick };
+  if (sent.picks !== undefined) return { picks: sent.picks };
+  if (sent.value !== undefined) return { value: sent.value };
+  return sent.text === undefined ? undefined : { text: sent.text };
+}
+
+/** A sent round's answers, comments and option notes as the page holds them, so a reload shows what was sent (TP-3767). */
+export function heldFromSent(notes: RoundNotes | undefined) {
+  const sent = Object.entries(notes?.answers ?? {});
+  const answers = Object.fromEntries(
+    sent.flatMap(([questionId, answer]) => {
+      const held = heldOf(answer);
+      return held === undefined ? [] : [[questionId, held] as const];
+    }),
+  );
+  const optionNotes = Object.fromEntries(sent.map(([questionId, answer]) => [questionId, Object.fromEntries((answer.optionNotes ?? []).map(({ option, note }) => [option, note]))]));
+  return { answers, comments: { ...notes?.comments }, optionNotes, general: notes?.general ?? "" };
+}
+
+export const inOrder =(manifest: Manifest, answers: SubmittedAnswer[]): SubmittedAnswer[] => {
   const order = manifest.questions.map((question) => question.id);
   return [...answers].sort((left, right) => order.indexOf(left.questionId) - order.indexOf(right.questionId));
 };

@@ -2,10 +2,10 @@ import { z } from "zod";
 import { chaptersOf, ODD_ONE_OUT_MIN_ITEMS, type ColdChapterBeats } from "./eval-cold.js";
 import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, formatEvidence, voidReason } from "./eval-evidence.js";
+import { explainItemRoutes, roleAsks, roleVersionParts, type ItemExplainRoute } from "./eval-items-roles.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
-import { explainRoutes, type ExplainRoute } from "./lint-gloss.js";
 import { seatRoutes, type SeatReason, type SeatRoute } from "./lint-seat.js";
 import type { PaceBeat } from "./pace-items.js";
 import type { SpineV1 } from "./spine-schema.js";
@@ -20,13 +20,7 @@ export interface ListRoute {
   items: string[];
 }
 
-/** A beat role the plain "explained" question does not fit. */
-export type ExplainRole = "promise" | "simplification";
-
-/** An M3 route, with its beat's role when that changes what the judge is asked. */
-export interface ItemExplainRoute extends ExplainRoute {
-  role?: ExplainRole;
-}
+export type { ExplainRole, ItemExplainRoute } from "./eval-items-roles.js";
 
 /** The L0 route lists: the item judge asks about these beats and items and nothing else. */
 export interface ItemRoutes {
@@ -42,17 +36,6 @@ export function listRoutes(beats: readonly PaceBeat[]): ListRoute[] {
   return beats.flatMap((beat) => {
     const items = listedItems(beat);
     return items.length >= ODD_ONE_OUT_MIN_ITEMS ? [{ beat: beat.id, items }] : [];
-  });
-}
-
-// A PROMISE previews items later chapters deliver, and a CAVEAT voices the script's simplifications: what it leaves out.
-const EXPLAIN_ROLES = new Map<string, ExplainRole>([["PROMISE", "promise"], ["CAVEAT", "simplification"]]);
-
-function explainItemRoutes(beats: readonly PaceBeat[]): ItemExplainRoute[] {
-  const fns = new Map(beats.map((b) => [b.id, b.fn]));
-  return explainRoutes(beats).map((r) => {
-    const role = EXPLAIN_ROLES.get(fns.get(r.beat) ?? "");
-    return role ? { ...r, role } : r;
   });
 }
 
@@ -73,8 +56,6 @@ export interface ItemQuestion {
 
 const explainedText = (beat: string, item: string): string =>
   `In ${beat}, is "${item}" explained: does this beat or the rest of the chapter say what it is and why it is there?`;
-const leftOutText = (beat: string, item: string): string =>
-  `In ${beat}, "${item}" is left out on purpose: does this beat or the rest of the chapter say why the picture holds without it?`;
 const seatedText = (beat: string, reason: SeatReason): string =>
   `${beat} states ${reason === "invariant" ? "an invariant" : "a finding"}. Does the map on screen show the mechanism that keeps it, or the failure that breaks it?`;
 const oddOneOutText = (beat: string, items: readonly string[]): string =>
@@ -82,14 +63,9 @@ const oddOneOutText = (beat: string, items: readonly string[]): string =>
 
 const explainedQuestion = (beat: string, item: string, text = explainedText): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: text(beat, item) });
 
-/**
- * A promise is not asked: its items are paid off in later chapters, which a chapter-scoped judge never sees. A
- * simplification is asked why the picture holds without each item, since explaining what it left out is not its job.
- */
 function explainedQuestions(route: ItemExplainRoute): ItemQuestion[] {
-  if (route.role === "promise") return [];
-  const text = route.role === "simplification" ? leftOutText : explainedText;
-  return route.items.map((item) => explainedQuestion(route.beat, item, text));
+  const asked = roleAsks(route);
+  return asked.items.map((item) => explainedQuestion(route.beat, item, asked.text ?? explainedText));
 }
 
 /** Every question is read off a route, so a script cannot pass on questions written to suit it. */
@@ -327,7 +303,7 @@ const spineQuestionTemplates = (): string[] => [
 export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
     questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
-    role_questions: { promise: null, simplification: leftOutText("<beat>", "<item>") },
+    ...roleVersionParts(),
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),

@@ -10,6 +10,9 @@ import { describe, expect, it } from "vitest";
  */
 const ALLOWED = ["cli.ts", "serve-health.ts", "serve.ts"];
 
+/** Test support is not a service: the A17 harness builds its feed from the mode resolver. */
+const isTestSupport = (path: string): boolean => path.startsWith("test-support/");
+
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 const IMPORTS_SOURCES = /from\s+["'](?:\.\.?\/)+github-sources\//;
 
@@ -26,8 +29,14 @@ describe("github-sources importers", () => {
     const importers = sourceFiles(SRC)
       .filter((path) => IMPORTS_SOURCES.test(readFileSync(path, "utf8")))
       .map((path) => relative(SRC, path).split(sep).join("/"))
+      .filter((path) => !isTestSupport(path))
       .sort();
 
     expect(importers).toEqual(ALLOWED);
+  });
+
+  it("exempts the A17 harness but still counts a service file", () => {
+    expect(["test-support/a17/feed.ts"].every(isTestSupport)).toBe(true);
+    expect(["shepherd/x.ts", "serve.ts", "test-support.ts"].filter(isTestSupport)).toEqual([]);
   });
 });

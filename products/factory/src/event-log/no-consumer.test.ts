@@ -17,9 +17,9 @@ function sourceFiles(dir: string): string[] {
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 
-/** Pure: whether a src-relative path is the log itself or a test, the only places a read may appear. */
+/** Pure: whether a src-relative path is the log itself, a test, or the A17 harness feed, the only places a read may appear. */
 function mayRead(path: string): boolean {
-  return path.startsWith("event-log/") || path.endsWith(".test.ts");
+  return path.startsWith("event-log/") || path.startsWith("test-support/a17/") || path.endsWith(".test.ts");
 }
 
 describe("event log reads", () => {
@@ -49,6 +49,7 @@ describe("event log reads", () => {
 
   it("counts a service file as a reader and exempts the log and tests", () => {
     expect(["serve.ts", "shepherd/x.ts", "event-logs.ts"].filter(mayRead)).toEqual([]);
-    expect(["event-log/event-log.ts", "serve.test.ts"].every(mayRead)).toBe(true);
+    expect(["event-log/event-log.ts", "serve.test.ts", "test-support/a17/feed.ts"].every(mayRead)).toBe(true);
+    expect(["test-support/leak.ts"].filter(mayRead)).toEqual([]);
   });
 });
