@@ -9,6 +9,7 @@ import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
 const STATES = [
@@ -117,6 +118,7 @@ describe("a design round", () => {
 
   it("shows a section's seeAlso frames as labelled thumbnails", async () => {
     await renderDesign();
+    await toSection("fill");
     scrollAll();
 
     for (const [key, label] of [["beacon-idle", "Idle"], ["beacon-error", "Error"]]) {
@@ -129,6 +131,8 @@ describe("a design round", () => {
     const rendered = await renderDesign();
     scrollAll();
     await screen.findAllByRole("img", { name: "Idle" });
+    await toSection("sketch");
+    scrollAll();
 
     expect(within(screen.getByTestId("design-frame-beacon-sketch")).getByText("Not in frames.json")).toBeTruthy();
     expect(frameKeys(rendered)).not.toContain("beacon-sketch");
@@ -136,9 +140,12 @@ describe("a design round", () => {
 
   it("sends the picks and text with the round.json shown, once the required question is answered", async () => {
     const { calls } = await renderDesign();
+    await toSection("sketch");
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
 
+    await toSection("fill");
     fireEvent.keyDown(window, { key: "2" });
+    await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Answer to Anything from the sketch worth keeping?"), { target: { value: "Keep the halo." } });
     fireEvent.click(sendButton());
 
@@ -156,8 +163,10 @@ describe("a design round", () => {
   it("offers a comment on each question and feedback on the round, and sends them", async () => {
     const { calls } = await renderDesign();
 
+    await toSection("fill");
     fireEvent.keyDown(window, { key: "1" });
     fireEvent.change(screen.getByLabelText("Comment on Should the beacon be filled or a ring?"), { target: { value: "Filled, but thinner." } });
+    await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Comment on Anything from the sketch worth keeping?"), { target: { value: "Nothing yet." } });
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Frames load fast." } });
     fireEvent.click(sendButton());
@@ -173,9 +182,11 @@ describe("a design round", () => {
     const answers = { "beacon-fill-pick": { pick: "Ring" }, "beacon-notes": { text: "Keep the idle glow." } };
     await renderDesign({ detail: { status: "sent", notes: { general: "", comments: {}, answers, addressed: [] } } });
 
+    await toSection("fill");
     const pick = screen.getByTestId("round-entry-beacon-fill-pick");
     expect(pick.hasAttribute("inert")).toBe(true);
     expect(within(pick).getByText(/Ring/).closest('[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
+    await toSection("sketch");
     expect(screen.getByLabelText<HTMLTextAreaElement>(/^Answer to /).value).toBe("Keep the idle glow.");
     expect(screen.getByTestId("round-entry-beacon-notes").hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
@@ -184,7 +195,9 @@ describe("a design round", () => {
   it("shows a sent design round's comments and round feedback read-only", async () => {
     await renderDesign({ detail: { status: "sent", notes: { general: "Frames load fast.", comments: { "beacon-fill-pick": "Filled, but thinner." }, answers: {}, addressed: [] } } });
 
+    await toSection("fill");
     expect(screen.getByTestId("round-comment-sent-beacon-fill-pick").textContent).toContain("Filled, but thinner.");
+    await toSection("sketch");
     expect(screen.getByTestId("round-general-sent").textContent).toContain("Frames load fast.");
     expect(screen.queryByLabelText("Comment on Anything from the sketch worth keeping?")).toBeNull();
   });
@@ -200,7 +213,9 @@ describe("a design round", () => {
     const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, recommendation } : each));
     await renderDesign({ detail: { status: "sent", recommendationsWithheld: false, manifest: { ...manifest, questions } } });
 
+    await toSection("fill");
     expect(screen.getByText("Recommended: Filled (80%, fixture-agent)")).toBeTruthy();
+    await toSection("sketch");
     expect(screen.getByText("Answers sent")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
   });
@@ -223,61 +238,97 @@ async function send(rendered: Rendered): Promise<unknown> {
   return submitted(rendered);
 }
 
+/** The round with Muted drawn above the pick question, so one page holds a frame and a question with choices. */
+async function withMutedAnchored(): Promise<Partial<RoundDetail>> {
+  const { manifest } = await designRound();
+  const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, frames: ["beacon-muted"] } : each));
+  return { manifest: { ...manifest, questions } };
+}
+
+/** Answers the required pick on its page, then sends from the last page. */
+async function answerAndSend(rendered: Rendered): Promise<unknown> {
+  await toSection("fill");
+  fireEvent.keyDown(window, { key: "1" });
+  await toSection("sketch");
+  return send(rendered);
+}
+
 describe("a design round's frame verdicts and comments (TP-3773)", () => {
-  it("sends a pressed verdict and a typed comment as the frame's variant", async () => {
+  it("sends a pressed verdict and a typed comment as the frame's variant, kept across pages", async () => {
     const rendered = await renderDesign();
-    fireEvent.keyDown(window, { key: "1" });
 
     fireEvent.click(verdictButton("beacon-busy", "Rejected"));
     fireEvent.change(screen.getByLabelText("Comment on frame Busy"), { target: { value: "Busy reads as idle. " } });
 
-    expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle." }] });
+    expect(await answerAndSend(rendered)).toMatchObject({ variants: [{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle." }] });
   });
 
   it("clears a verdict pressed a second time, and sends no variant for it", async () => {
     const rendered = await renderDesign();
-    fireEvent.keyDown(window, { key: "1" });
 
     fireEvent.click(verdictButton("beacon-idle", "Chosen"));
     fireEvent.click(verdictButton("beacon-idle", "Chosen"));
 
     expect(pressedVerdicts("beacon-idle")).toEqual([]);
-    expect(await send(rendered)).toMatchObject({ variants: [] });
+    expect(await answerAndSend(rendered)).toMatchObject({ variants: [] });
   });
 
   it("judges the active frame with letter keys, and leaves digits to the questions", async () => {
-    await renderDesign();
-    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-error"));
+    await renderDesign({ detail: await withMutedAnchored() });
+    await toSection("fill");
+    fireEvent.pointerDown(screen.getByTestId("frame-feedback-beacon-muted"));
 
     fireEvent.keyDown(window, { key: "x" });
     fireEvent.keyDown(window, { key: "2" });
 
-    expect(pressedVerdicts("beacon-error")).toEqual(["Rejected"]);
+    expect(pressedVerdicts("beacon-muted")).toEqual(["Rejected"]);
     expect(pickOf("Ring")).toBe("false");
+    expect(keyHint("beacon-muted")).toBe("shown");
+    fireEvent.keyDown(window, { key: "m" });
+    expect(pressedVerdicts("beacon-muted")).toEqual(["Maybe"]);
+    fireEvent.keyDown(window, { key: "u" });
+    expect(pressedVerdicts("beacon-muted")).toEqual([]);
+  });
+
+  it("keeps an inactive frame's key hint in place, hidden", async () => {
+    await renderDesign();
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-error"));
+
     expect(keyHint("beacon-error")).toBe("shown");
     expect(keyHint("beacon-idle")).toBe("hidden in place");
-    fireEvent.keyDown(window, { key: "m" });
-    expect(pressedVerdicts("beacon-error")).toEqual(["Maybe"]);
-    fireEvent.keyDown(window, { key: "u" });
-    expect(pressedVerdicts("beacon-error")).toEqual([]);
   });
 
   it("leaves letter keys alone while a question is active, which digits answer", async () => {
-    const rendered = await renderDesign();
+    const rendered = await renderDesign({ detail: await withMutedAnchored() });
+    await toSection("fill");
 
     const passedOn = fireEvent.keyDown(window, { key: "x" });
     fireEvent.keyDown(window, { key: "2" });
 
     expect(passedOn).toBe(true);
     expect(pickOf("Ring")).toBe("true");
-    expect(STATES.flatMap(([key]) => pressedVerdicts(key))).toEqual([]);
+    expect(pressedVerdicts("beacon-muted")).toEqual([]);
+    await toSection("sketch");
     expect(await send(rendered)).toMatchObject({ answers: [{ questionId: "beacon-fill-pick", pick: "Ring" }], variants: [] });
   });
 
+  it("hands the keys back to the page's question when the page turns away from an active frame", async () => {
+    await renderDesign({ detail: await withMutedAnchored() });
+    await toSection("fill");
+    fireEvent.pointerDown(screen.getByTestId("frame-feedback-beacon-muted"));
+
+    await toSection("states");
+    await toSection("fill");
+    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "2" });
+
+    expect(pressedVerdicts("beacon-muted")).toEqual([]);
+    expect(pickOf("Ring")).toBe("true");
+  });
+
   it("judges a frame a question draws above itself, which stays the active one after the press", async () => {
-    const { manifest } = await designRound();
-    const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, frames: ["beacon-muted"] } : each));
-    const rendered = await renderDesign({ detail: { manifest: { ...manifest, questions } } });
+    const rendered = await renderDesign({ detail: await withMutedAnchored() });
+    await toSection("fill");
     fireEvent.keyDown(window, { key: "1" });
 
     const frame = screen.getByTestId("frame-feedback-beacon-muted");
@@ -285,13 +336,16 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
     fireEvent.click(frame);
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(screen.queryByTestId("design-frame-beacon-muted")).toBeNull();
     expect(pressedVerdicts("beacon-muted")).toEqual(["Chosen"]);
+    await toSection("states");
+    expect(screen.queryByTestId("design-frame-beacon-muted")).toBeNull();
+    await toSection("sketch");
     expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-muted", verdict: "chosen" }] });
   });
 
   it("gives see-also thumbnails no verdict of their own", async () => {
     await renderDesign();
+    await toSection("fill");
 
     expect(within(screen.getByTestId("see-also-beacon-idle")).queryByRole("button", { name: "Chosen" })).toBeNull();
   });

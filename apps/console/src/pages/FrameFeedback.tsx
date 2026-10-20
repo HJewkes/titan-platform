@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { Button, ButtonText, Input, Typography } from "@titan-design/react-ui";
 import { EMPTY_DRAFT, VERDICTS, toggledVerdict, verdictForKey, type FrameDraft, type Verdict } from "./frame-feedback.js";
 import { unlessLocked } from "./RoundLock.js";
-import { typedInto } from "./RoundQuestion.js";
+import { typedInto } from "./typed-into.js";
 
 /** What the round's keys act on: digits answer a question, letters judge a frame, never the other way round. */
 export type ActiveTarget = { kind: "question"; id: string } | { kind: "frame"; key: string };

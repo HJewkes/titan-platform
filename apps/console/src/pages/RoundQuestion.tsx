@@ -33,7 +33,7 @@ export function choiceForKey(question: Question, key: string): string | null {
   return choicesOf(question)[digit - 1] ?? null;
 }
 
-export function typedInto(target: EventTarget | null): boolean {
+function typedInto(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }

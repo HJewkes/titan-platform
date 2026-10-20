@@ -60,7 +60,7 @@ rules:
     owner_support: none
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V7
-    rule: 'Banned register: let''s, simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
+    rule: 'Banned register: simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
     fields: [beats.spoken]
     related: ["DF 1.9", "CT R1", K13]
     owner_support: none

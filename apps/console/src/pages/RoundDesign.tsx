@@ -10,7 +10,8 @@ import { frameDrafts } from "./frame-feedback.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, lockedBy } from "./RoundSend.js";
-import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
+import { PagedSections } from "./RoundPager.js";
+import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type FramesList = ConsoleCommands["rounds.frames"]["result"];
@@ -51,14 +52,14 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         <VStack gap={4}>
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-          <RoundSections
+          <PagedSections
             manifest={round.manifest}
             state={state}
             textAnswers
             locked={locked}
             frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
+            send={<RoundSend round={round} state={state} submitting={submitting} variants={variants} />}
           />
-          <RoundSend round={round} state={state} submitting={submitting} variants={variants} />
         </VStack>
       </FrameFeedbackProvider>
     </RoundFramesProvider>
