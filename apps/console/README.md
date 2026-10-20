@@ -452,6 +452,23 @@ them as follows, in question, design and Ship rounds:
 A frame loads when its variant has an `image` or `frames/frames.json` lists it; any other frame,
 such as a Storybook-only variant, is named with "No image for this frame".
 
+### A/B questions
+
+A pick-one whose options pick exactly two frames (through `optionVariants`, or options that are
+variant keys) is an A/B on a question or design round page. The round's own `revisionOption` is
+never a side. Ship rounds keep their own layout.
+
+- **Side by side.** The two options draw as columns A and B, stacked at phone width: each with its
+  frame, a pick button (digit keys still pick) and an optional note box. Typing in a note picks
+  nothing. The side frames are left out of the strip above the question and the section strip.
+- **Notes.** Each side's note goes in the answer's `optionNotes`, with or without a pick.
+- **Both.** feedback@1 has no "both" field, so a round offers it as a further option, such as
+  `"Both"`. Every option that picks no frame is a button under the columns.
+- **Neither.** A required pick-one with no `revisionOption` offers "Neither: request a revision",
+  sent as `revisionRequested: true`. The round sends once the question's comment says what to change.
+
+![A/B question at 1440](docs/question-ab-1440.png)
+
 ## Theater
 
 The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on

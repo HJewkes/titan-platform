@@ -2,6 +2,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundNotes } from "../../server/rounds.js";
+import type { ABAnswering } from "./QuestionAB.js";
 import { RoundComment } from "./RoundComment.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
@@ -15,10 +16,11 @@ export function orderedQuestions(manifest: Manifest): { section: RoundSection | 
   return loose.length > 0 ? [...sections, { section: null, questions: loose }] : sections;
 }
 
-/** The page's picks, text and comments, and the active question that digit keys answer: at first the first one with choices. */
+/** The page's picks, text, comments and option notes, and the active question that digit keys answer: at first the first one with choices. */
 export function useRoundAnswers(questions: readonly Question[]) {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
+  const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>({});
   const [general, setGeneral] = useState("");
   const [activeId, setActiveId] = useState(() => questions.find((question) => choicesOf(question).length > 0)?.id);
   const active = questions.find((question) => question.id === activeId);
@@ -28,9 +30,14 @@ export function useRoundAnswers(questions: readonly Question[]) {
   );
   const write = useCallback((question: Question, text: string) => setAnswers((current) => ({ ...current, [question.id]: { text } })), []);
   const comment = useCallback((question: Question, text: string) => setComments((current) => ({ ...current, [question.id]: text })), []);
+  const revise = useCallback((question: Question) => setAnswers((current) => ({ ...current, [question.id]: { revisionRequested: true } })), []);
+  const note = useCallback(
+    (question: Question, option: string, text: string) => setOptionNotes((current) => ({ ...current, [question.id]: { ...current[question.id], [option]: text } })),
+    [],
+  );
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  return { answers, comments, general, setGeneral, activeId, setActiveId, choose, write, comment };
+  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note };
 }
 
 export type RoundAnswers = ReturnType<typeof useRoundAnswers>;
@@ -44,6 +51,19 @@ interface RoundSectionsProps {
   frames?: (section: RoundSection) => ReactNode;
   /** A sent round's free text: each comment then shows read-only in place of its box. */
   notes?: RoundNotes;
+}
+
+/** One question's A/B notes and "Neither" from the page's answers; choosing Neither makes the question the active one. */
+function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAnswers, question: Question, sent: boolean): ABAnswering {
+  return {
+    notes: optionNotes[question.id] ?? {},
+    onNote: (option, text) => note(question, option, text),
+    onNeither: () => {
+      setActiveId(question.id);
+      revise(question);
+    },
+    sent,
+  };
 }
 
 /** Every section of a round with its questions, numbered across the round. */
@@ -64,6 +84,7 @@ export function RoundSections({ manifest, state, textAnswers = false, frames, no
             onText={textAnswers ? (text) => write(question, text) : undefined}
             active={question.id === activeId}
             onActivate={() => setActiveId(question.id)}
+            ab={abAnswering(state, question, notes !== undefined)}
           />
           <RoundComment question={question} value={comments[question.id] ?? ""} onChange={(text) => comment(question, text)} sent={notes && (notes.comments[question.id] ?? "")} />
         </VStack>

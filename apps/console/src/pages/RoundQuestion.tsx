@@ -1,10 +1,11 @@
 import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
-import { QuestionFrameLinks, QuestionFrames, useOptionFrame } from "./QuestionFrames.js";
+import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
+import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
-export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string };
+export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
 
 /** Keys 1-9 reach the first nine choices; a longer list is answered by pointer. */
 const MAX_KEYED_CHOICES = 9;
@@ -63,10 +64,13 @@ interface RoundQuestionProps {
   onActivate: () => void;
   /** Present only where the page submits text answers; without it a text question shows a placeholder. */
   onText?: (text: string) => void;
+  /** Present where the page takes A/B notes; with it a pick-one whose options pick two frames lays them side by side. */
+  ab?: ABAnswering;
 }
 
 /** One round@2 question with its options and any recommendation the server sent; reusable outside #/rounds. */
-export function RoundQuestion({ question, position, answer, onChoose, active, onActivate, onText }: RoundQuestionProps): ReactNode {
+export function RoundQuestion({ question, position, answer, onChoose, active, onActivate, onText, ab }: RoundQuestionProps): ReactNode {
+  const sides = useABSides(question);
   // A pressed option does not reach the card's own press handler, so choosing activates the question too.
   const choose = (choice: string): void => {
     onActivate();
@@ -76,9 +80,13 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
     <Card variant={active ? "outline" : "subtle"} onPress={onActivate} testID={`round-question-${question.id}`}>
       <CardContent>
         <VStack gap={3}>
-          <QuestionFrames question={question} />
+          <QuestionFrames question={question} omit={ab && sides ? sides.map((side) => side.key) : []} />
           <QuestionHeading question={question} position={position} active={active} />
-          <Choices question={question} answer={answer} onChoose={choose} onText={onText} />
+          {ab && sides ? (
+            <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
+          ) : (
+            <Choices question={question} answer={answer} onChoose={choose} onText={onText} />
+          )}
           <QuestionFacts question={question} />
         </VStack>
       </CardContent>
