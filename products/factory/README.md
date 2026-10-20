@@ -754,6 +754,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
+| `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
 ## Shepherd reviewer config

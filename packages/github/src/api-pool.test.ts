@@ -4,44 +4,14 @@ import {
   isPoolUnavailable,
   memoryPoolStateStore,
   type PoolAnswer,
-  type PoolClock,
   type PoolPriority,
   type PoolStateStore,
 } from "./api-pool.js";
+import { BOTH_OPEN, NOW, fakeClock } from "./api-pool-fake.test-helpers.js";
 import type { CallClass } from "./github-failure.js";
 
-const NOW = 1_800_000_000_000;
 const OK: PoolAnswer = { status: 200, headers: {} };
 const LIMITED: PoolAnswer = { status: 429, headers: {} };
-
-interface FakeClock extends PoolClock {
-  advance(ms: number): Promise<void>;
-}
-
-const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-function fakeClock(): FakeClock {
-  let now = NOW;
-  const timers: { at: number; wake: () => void }[] = [];
-  return {
-    now: () => now,
-    sleep: (ms) => new Promise<void>((wake) => void timers.push({ at: now + ms, wake })),
-    async advance(ms) {
-      const target = now + ms;
-      await settle();
-      for (;;) {
-        const due = timers.filter((timer) => timer.at <= target).sort((a, b) => a.at - b.at)[0];
-        if (!due) break;
-        timers.splice(timers.indexOf(due), 1);
-        now = due.at;
-        due.wake();
-        await settle();
-      }
-      now = target;
-      await settle();
-    },
-  };
-}
 
 interface Call {
   id: string;
@@ -69,7 +39,7 @@ function harness(state?: PoolStateStore) {
     record.endedAt = clock.now();
     return answer;
   };
-  const pool = githubApiPool({ identity: "bot", send, clock, state });
+  const pool = githubApiPool({ identity: "bot", send, clock, state, probe: async () => BOTH_OPEN });
   const run = (priority: PoolPriority, callClass: CallClass, call: Call) => pool.run(priority, callClass, call);
   const ids = () => sent.map((record) => record.id);
   return { clock, pool, run, sent, ids };
