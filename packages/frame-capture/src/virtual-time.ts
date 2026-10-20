@@ -1,7 +1,7 @@
 /**
  * The virtual-time init script. Playwright runs it before any page script, so nothing in
- * the page reads real time: Date, performance.now, timers and rAF all follow a clock that only
- * `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
+ * the page reads real time: Date, performance.now, timers, rAF, document.timeline and running animations
+ * all follow a clock that only `__virtualTime.advanceTo(ms)` moves, and Math.random is seeded.
  *
  * Each step below is serialised on its own, so it must stay self-contained: no imports, no closures over
  * module scope, and no calls to another step except through the `steps` it is handed. Passing the steps
@@ -16,6 +16,10 @@ interface ClockState {
   seq: number
   timers: Map<number, Task>
   rafs: Map<number, FrameRequestCallback>
+  /** Animations the clock drives: the virtual ms it first saw each one, and the currentTime it last set. */
+  driven: WeakMap<Animation, { startMs: number; setMs: number }>
+  /** Animations the page paused, seeked or replayed itself; the clock leaves them alone. */
+  pageOwned: WeakSet<Animation>
 }
 
 function seedMathRandom(): void {
@@ -43,9 +47,16 @@ function patchDate(state: ClockState): void {
       return EPOCH_MS + state.nowMs
     }
   }
+  // A class cannot be called without new, and Date() ignores its arguments and returns the time as a string.
+  const callableDate = new Proxy(VirtualDate, { apply: () => new RealDate(EPOCH_MS + state.nowMs).toString() })
   // defineProperty, not assignment: the class has no call signature, so it is not a DateConstructor.
-  Object.defineProperty(window, 'Date', { value: VirtualDate, writable: true, configurable: true })
+  Object.defineProperty(window, 'Date', { value: callableDate, writable: true, configurable: true })
   performance.now = () => state.nowMs
+}
+
+/** An own getter shadows DocumentTimeline's: the page reads virtual time, the browser's animations do not. */
+function patchTimeline(state: ClockState): void {
+  Object.defineProperty(document.timeline, 'currentTime', { get: () => state.nowMs, configurable: true })
 }
 
 function patchTimers(state: ClockState): void {
@@ -96,6 +107,7 @@ function fireTimers(state: ClockState, untilMs: number, steps: VirtualTimeSteps)
     if (task.everyMs === undefined) state.timers.delete(id)
     else Object.assign(task, { at: task.at + task.everyMs, seq: state.seq++ })
     task.fn(...task.args)
+    steps.syncAnimations(state)
   }
   throw new Error(`virtual time: more than ${MAX_FIRES_PER_ADVANCE} timers due by ${untilMs} ms`)
 }
@@ -104,6 +116,30 @@ function runFrame(state: ClockState): void {
   const callbacks = state.rafs
   state.rafs = new Map()
   for (const cb of callbacks.values()) cb(state.nowMs)
+}
+
+/**
+ * The browser runs animations on its own real-time timeline, so each one the page leaves running is paused
+ * and set to the virtual time since the clock first saw it. getAnimations() flushes style first, so a CSS
+ * animation or transition is found by the sync after the timer, frame or seek that triggered it.
+ */
+function syncAnimations(state: ClockState): void {
+  for (const animation of document.getAnimations()) {
+    if (state.pageOwned.has(animation)) continue
+    const driven = state.driven.get(animation)
+    const untouched = driven
+      ? animation.playState === 'paused' && Math.abs(Number(animation.currentTime) - driven.setMs) < 0.01
+      : animation.playState !== 'paused'
+    if (!untouched) {
+      state.pageOwned.add(animation)
+      continue
+    }
+    const startMs = driven?.startMs ?? state.nowMs
+    const setMs = (state.nowMs - startMs) * animation.playbackRate
+    animation.pause()
+    animation.currentTime = setMs
+    state.driven.set(animation, { startMs, setMs })
+  }
 }
 
 function publishVirtualTime(state: ClockState, steps: VirtualTimeSteps): void {
@@ -115,18 +151,29 @@ function publishVirtualTime(state: ClockState, steps: VirtualTimeSteps): void {
       steps.fireTimers(state, ms, steps)
       state.nowMs = ms
       steps.runFrame(state)
+      steps.syncAnimations(state)
     },
+    syncAnimations: () => steps.syncAnimations(state),
   }
   Object.defineProperty(window, '__virtualTime', { value: api })
 }
 
-const STEPS = { seedMathRandom, patchDate, patchTimers, nextDue, fireTimers, runFrame, publishVirtualTime }
+const STEPS = { seedMathRandom, patchDate, patchTimeline, patchTimers, nextDue, fireTimers, runFrame, syncAnimations, publishVirtualTime }
 type VirtualTimeSteps = typeof STEPS
 
 function installVirtualTime(steps: VirtualTimeSteps): void {
-  const state: ClockState = { nowMs: 0, nextId: 1, seq: 0, timers: new Map(), rafs: new Map() }
+  const state: ClockState = {
+    nowMs: 0,
+    nextId: 1,
+    seq: 0,
+    timers: new Map(),
+    rafs: new Map(),
+    driven: new WeakMap(),
+    pageOwned: new WeakSet(),
+  }
   steps.seedMathRandom()
   steps.patchDate(state)
+  steps.patchTimeline(state)
   steps.patchTimers(state)
   steps.publishVirtualTime(state, steps)
 }
@@ -139,6 +186,8 @@ export const VIRTUAL_TIME_SCRIPT = `(${String(installVirtualTime)})({ ${Object.e
 export interface VirtualTimeApi {
   now(): number
   pending(): { timers: number; rafs: number }
-  /** Fires every timer due by `ms` in order, sets the clock to `ms`, then runs one rAF frame. */
+  /** Fires every timer due by `ms` in order, sets the clock to `ms`, runs one rAF frame, then syncs animations. */
   advanceTo(ms: number): void
+  /** Pauses every animation the page left running and sets it to the virtual time since it was first seen. */
+  syncAnimations(): void
 }
