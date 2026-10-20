@@ -11,6 +11,8 @@ export interface TestRun {
 export interface FileRun {
   /** The file failed before any test was collected, as vitest reports a suite load error. */
   loadError: boolean;
+  /** The file failed yet every test in it was skipped, as when a beforeAll hook throws; nothing ran, so nothing can be judged. */
+  hookError: boolean;
   /** Keyed by full name and occurrence, so duplicate names pair up in order. */
   tests: Map<string, TestRun>;
 }
@@ -49,7 +51,9 @@ function readFile(fileResult: UnknownRecord): FileRun {
     seen.set(test.name, occurrence + 1);
     tests.set(`${test.name}\u0000${occurrence}`, test);
   }
-  return { loadError: fileResult.status === "failed" && tests.size === 0, tests };
+  const failed = fileResult.status === "failed";
+  const allSkipped = tests.size > 0 && [...tests.values()].every((test) => test.status === "other");
+  return { loadError: failed && tests.size === 0, hookError: failed && allSkipped, tests };
 }
 
 /** Reads a vitest `--reporter=json` report, keeping only files whose path below root exactly equals a selected path. */

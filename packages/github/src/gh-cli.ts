@@ -7,6 +7,7 @@ import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
+import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
@@ -58,6 +59,8 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
     revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
+    revalidateRef: (repo, branch, etag) => revalidateRef(api, repo, branch, etag),
+    revalidateRulesets: (repo, etag) => revalidateRulesets(api, repo, etag),
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request))),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: (repo, branch) => branchRules(api, repo, branch),
