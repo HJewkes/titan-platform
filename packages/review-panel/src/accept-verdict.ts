@@ -1,4 +1,4 @@
-import { parseVerdictBlock, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
+import { parseVerdictBlock, refusedLines, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { hasProbesLine } from "./briefs/adversary.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
@@ -47,7 +47,10 @@ const fromDispatch = (input: AwaitVerdictInput, message: ReviewerMessage): boole
   message.agentId === input.reviewerAgentId && message.sessionId === input.reviewerSessionId && message.writtenAt > input.dispatchedAt;
 
 type MalformedNone = { kind: "none"; malformed: Malformed };
-const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): MalformedNone => ({ kind: "none", malformed: { refusal, writtenAt } });
+const malformedNone = (refusal: Malformed["refusal"], writtenAt: number, text = ""): MalformedNone => {
+  const quotes = refusal === "multiple_blocks" || refusal === "ci_policy_malformed" ? refusedLines(text, refusal) : [];
+  return { kind: "none", malformed: { refusal, writtenAt, ...(quotes.length > 0 && { quotes }) } };
+};
 
 /**
  * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
@@ -68,12 +71,12 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
   if (isUsageLimitNotice(final)) return { kind: "none", reason: USAGE_LIMIT_REASON, notice: final.text.trim(), ...(typeof final.synthetic?.resetsAt === "number" && { resetsAt: final.synthetic.resetsAt }) };
   const block = parseVerdictBlock(final.text);
-  if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
+  if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt, final.text);
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   if (input.shape === "adversary" && !hasProbesLine(final.text)) return malformedNone("probes_missing", final.writtenAt);
-  if (block.verdict === "MERGE" && block.ciPolicy?.kind === "malformed") return malformedNone("ci_policy_malformed", final.writtenAt);
+  if (block.verdict === "MERGE" && block.ciPolicy?.kind === "malformed") return malformedNone("ci_policy_malformed", final.writtenAt, final.text);
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }
