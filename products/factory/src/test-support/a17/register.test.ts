@@ -59,10 +59,10 @@ describe("feed shape", () => {
 
 describe("factoryMigrations", () => {
   it("applies the same versions as a host opened on the same database", () => {
-    let hostDb: Db | undefined;
-    const routes = Object.assign([], { database: { extraMigrations: [], bind: (db: Db) => ((hostDb = db), () => undefined) } });
+    const captured: Db[] = [];
+    const routes = Object.assign([], { database: { extraMigrations: [], bind: (db: Db) => (captured.push(db), () => undefined) } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [], routes });
-    const hostVersions = appliedVersions(hostDb as Db);
+    const hostVersions = appliedVersions(captured[0]!);
     host.close();
     const db = openDatabase(":memory:");
     runMigrations(db, factoryMigrations());
