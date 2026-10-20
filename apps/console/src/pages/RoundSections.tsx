@@ -8,6 +8,7 @@ import { RoundComment } from "./RoundComment.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
+import { pageIdOf } from "./round-pages.js";
 
 /** Questions in section order, then any no section claims. */
 export function orderedQuestions(manifest: Manifest): { section: RoundSection | null; questions: Question[] }[] {
@@ -58,7 +59,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
 
 export type RoundAnswers = ReturnType<typeof useRoundAnswers>;
 
-interface RoundSectionsProps {
+export interface RoundSectionsProps {
   manifest: Manifest;
   state: RoundAnswers;
   /** Present where the page sends text answers; without it a text question shows a placeholder. */
@@ -67,6 +68,8 @@ interface RoundSectionsProps {
   frames?: (section: RoundSection) => ReactNode;
   /** Sent or sending: every question shows its answer as given and takes no more edits. */
   locked?: boolean;
+  /** A paged round draws only this page's section; without it every section shows. */
+  page?: string;
 }
 
 /** One question's A/B notes and "Neither" from the page's answers; choosing Neither makes the question the active one. */
@@ -83,12 +86,13 @@ export function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAns
 }
 
 /** Every section of a round with its questions, numbered across the round. */
-export function RoundSections({ manifest, state, textAnswers = false, frames, locked = false }: RoundSectionsProps): ReactNode {
+export function RoundSections({ manifest, state, textAnswers = false, frames, locked = false, page }: RoundSectionsProps): ReactNode {
   const groups = orderedQuestions(manifest);
   const questions = groups.flatMap((group) => group.questions);
   const { answers, comments, activeId, setActiveId, choose, write, comment } = state;
-  return groups.map(({ section, questions: inGroup }) => (
-    <QuestionSection key={section?.id ?? "unsectioned"} section={section}>
+  const shown = page === undefined ? groups : groups.filter((group) => pageIdOf(group.section) === page);
+  return shown.map(({ section, questions: inGroup }) => (
+    <QuestionSection key={pageIdOf(section)} section={section}>
       {section && frames ? frames(section) : null}
       {inGroup.map((question) => (
         <LockedQuestion key={question.id} locked={locked} testID={`round-entry-${question.id}`}>
