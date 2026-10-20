@@ -13,6 +13,8 @@ export interface PaceItem {
   /** Seconds from the beat's start, or null when no word timings resolve its cue. */
   atS: number | null;
   source: PaceSource;
+  /** The spoken word the item appears on, when it is cued. */
+  cue?: string;
 }
 
 /** A beat as the pace layer reads it: its heard (or planned) length and the items it puts on screen. */
@@ -105,6 +107,8 @@ export interface PaceSourceBeat {
 
 type AtS = (cue: string | undefined) => number | null;
 
+const cueWord = (atCue: string | undefined): Pick<PaceItem, "cue"> => (atCue === undefined ? {} : { cue: atCue });
+
 const COUNT_KINDS = new Set(["card", "fan"]);
 
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
@@ -116,7 +120,7 @@ function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
     const kind = colon < 0 ? target : target.slice(0, colon);
     const label = colon < 0 ? target : target.slice(colon + 1);
     const role = cueKindRole(kind);
-    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const }];
+    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
 }
 
@@ -128,6 +132,7 @@ function beatItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
     role,
     atS: atS(atCue),
     source,
+    ...cueWord(atCue),
   });
   return [
     ...cueItems(beat, atS),

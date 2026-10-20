@@ -8,8 +8,10 @@ import { readTiming } from "./timing.js";
 interface Spec {
   spoken: string;
   chapter?: string;
-  cues?: string[];
+  cues?: (string | [target: string, atCue: string])[];
 }
+
+const cueOf = (cue: string | [string, string]) => (typeof cue === "string" ? { target: cue } : { target: cue[0], atCue: cue[1] });
 
 const source = (id: string, { spoken, chapter = "ch1", cues = [] }: Spec): PaceSourceBeat => ({
   id,
@@ -18,7 +20,7 @@ const source = (id: string, { spoken, chapter = "ch1", cues = [] }: Spec): PaceS
   spoken,
   plannedS: 10,
   mapBeside: false,
-  cues: cues.map((target) => ({ target })),
+  cues: cues.map(cueOf),
   titles: [],
   reveals: [],
   pins: [],
@@ -81,6 +83,38 @@ describe("M3-pre: beats that name their items without explaining them", () => {
     expect(explainRoutes(beats)).toEqual([]);
   });
 
+  // Mutation: reading each item's clause from its label, not its cue, finds "pool rules replace the weighted score".
+  it("reads an item's gloss from the clause its own cue word is spoken in", () => {
+    const spoken = "Ten: pool rules replace the weighted score. Eleven: researchers study patterns first. Both defaults hold.";
+    const cues: Spec["cues"] = [["open:Q10 pool rules", "Ten"], ["open:Q11 research fan-out", "Eleven"], ["open:defaults hold", "defaults"]];
+
+    expect(explainRoutes(beatsOf({ b1: { spoken, cues } }))).toEqual([{ beat: "b1", items: ["Q10 pool rules", "Q11 research fan-out", "defaults hold"] }]);
+  });
+
+  // Mutation: taking a shared cue's clause as each item's own scores every follow-up with "settle the technical forks".
+  it("reads items that share one cue word from the clause naming each, not from the shared clause", () => {
+    const spoken = "Eight follow-ups settle the technical forks, from queue age to landing.";
+    const cues: Spec["cues"] = [["card:queue age", "Eight"], ["card:roster", "Eight"], ["card:landing", "Eight"]];
+
+    expect(explainRoutes(beatsOf({ b1: { spoken, cues } })).map((r) => r.beat)).toEqual(["b1"]);
+  });
+
+  // Mutation: dropping number words as stopwords leaves each rung clause with at most one gloss word and routes b1.
+  it("counts a spoken number the label does not show as a gloss word", () => {
+    const spoken = "Four wakes fixers, five shadows the adversary, six requires contracts.";
+    const cues: Spec["cues"] = [["rung:M4|fixer wakes", "wakes"], ["rung:M5|adversary shadow", "adversary"], ["rung:M6|plan contract", "contracts"]];
+
+    expect(explainRoutes(beatsOf({ b1: { spoken, cues } }))).toEqual([]);
+  });
+
+  // Mutation: counting "five" in "five-hour" as a gloss of the "5-hour" label lifts the mean gloss to one and clears b1.
+  it("does not count a spoken number that restates a digit on the label", () => {
+    const spoken = "Three hard stops: the five-hour ceiling, the seven-day reserve, the per-run cap.";
+    const cues: Spec["cues"] = [["row:5-hour ceiling", "five-hour"], ["row:7-day reserve", "seven-day"], ["row:per-run cap", "per-run"]];
+
+    expect(explainRoutes(beatsOf({ b1: { spoken, cues } })).map((r) => r.beat)).toEqual(["b1"]);
+  });
+
   it("leaves out an item whose label has no content words, so it cannot lift a beat to three items", () => {
     const beats = beatsOf({ b1: { spoken: "Why, make and prove.", cues: ["job:why", "job:make", "job:prove"] } });
 
@@ -98,9 +132,9 @@ describe("M3-pre on the full v4 script", () => {
     expect(beats.every((b) => b.timed)).toBe(true);
   });
 
-  // Script-method's ten, less r10-6b-q10-q11 (a judged false positive it caught only through its "Ten:" cut) and
-  // plus r9-3-middle (a ch9 rung list whose items each get one clause). Any threshold change moves this list.
-  it("routes all four judged-true beats and differs from script-method's ten by two", () => {
+  // The L0 golden: script-method's ten, r10-6b-q10-q11 (routed through its "Ten:" cue clause) included and
+  // r9-3-middle (whose rung numbers each add a gloss word) left out. Any threshold change moves this list.
+  it("routes exactly script-method's ten beats", () => {
     const routes = explainRoutes(v4().beats);
 
     expect(routes.map((r) => r.beat)).toEqual([
@@ -111,7 +145,7 @@ describe("M3-pre on the full v4 script", () => {
       "r4-1-plan",
       "r7-3-caps",
       "r7-4b-score",
-      "r9-3-middle",
+      "r10-6b-q10-q11",
       "r10-7-followups",
       "r10-7b-research",
     ]);
