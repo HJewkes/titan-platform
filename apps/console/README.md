@@ -68,10 +68,19 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_DECISIONS_FILE` | none | The owner's decisions file the decision log appends one-way, A/B and policy answers to (see "The decision log"). Owner config only, never taken from a request; a relative path is refused. Unset, only `answers.jsonl` is written |
 | `TITAN_CONSOLE_FACTORY_CONFIG` | `$XDG_CONFIG_HOME/titan-factory/config.json`, else `~/.config/titan-factory/config.json` | The factory config `config.surfaces` reads. Like every file that command reads (agent-chat's `config.json` and `profiles/*.json` under `$AGENT_CHAT_HOME`, each Claude account's `settings.json` and `.claude.json`), only fields its allowlist in `server/config-surfaces/catalog.ts` names carry a value. `digest.push` is never named |
 | `TITAN_CONSOLE_CLAUDE_DIRS` | `~/.claude` and every `~/.claude-profiles/*` | Comma list of Claude Code config dirs `config.surfaces` reads. From `.claude.json` it reports only the trusted-folder count and the MCP server names |
+| `TITAN_CONSOLE_UPDATE_ROOT` | `~/.local/share/titan-console` | `self-update` only: holds `checkout/`, `releases/<sha>/` and the `current` symlink the service runs (see [docs/self-update.md](docs/self-update.md)) |
+| `TITAN_CONSOLE_UNIT` | `titan-console.service` | `self-update` only: the systemd user unit it restarts |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
 directory, under the name `active-work`.
+
+## Self-update
+
+The served console updates itself: a systemd user timer runs `titan-console self-update` every 10
+minutes, which rebuilds and swaps in origin/main only when a console change landed, and keeps
+the old build serving on any failure. The layout, each step, the alarm and the owner install
+commands are in [docs/self-update.md](docs/self-update.md); the units are in `deploy/systemd/`.
 
 ## LAN mode
 
@@ -122,7 +131,8 @@ commands are in [docs/lan.md](docs/lan.md).
 
 | Route | Answers |
 | --- | --- |
-| `GET /health` | The daemon package's health payload, plus the three upstream targets. It does not probe them, so it answers at once |
+| `GET /health` | The daemon package's health payload, plus the three upstream targets and `build` (`{ sha, builtAt, dirty }` from `dist/build-info.json`, or null). It does not probe the upstreams, so it answers at once |
+| `POST /rpc/console.build` | `{ build }`: the same build stamp, which the footer shows as the short sha and build time |
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
@@ -361,15 +371,15 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   - an image frame has no main frame, meaning no frames.json `base` and no `baseImage`, and is not
     marked one-sided. Mark a frame new at head with `change: "new"` on its variant or
     `(new at head)` in its label; `change: "removed"` marks a frame only main has;
-  - it carries exploration: a variant with an `alternate` column, a `lab-…` storyId (a Storybook
-    `Lab/…` story), an `image`, `baseImage` or `clip` under a `lab/` directory, or a key or label
-    with the word `A/B`, `proposal`, `alpha` or `lab`.
+  - it carries exploration, meaning alternatives shown side by side: a variant with an `alternate`
+    column, or a key or label with the word `A/B`, `proposal` or `alpha`. Where a story lives is not
+    exploration: a lab-only PR ships its `lab-…` story, marked new at head.
 
   The page shows each frame as BEFORE (main) and AFTER (head), with a "What ships" line naming the
   PR, the head and the changed-frame count. Changed frames come first. Pairs whose base and head
   share a sha256 in frames.json, or whose variant says `change: "unchanged"`, fold into an
   "N unchanged" disclosure.
-- **Exploration goes in a feedback round.** Variants, lab stories, A/B picks and proposals need a
+- **Exploration goes in a feedback round.** Alternatives side by side, A/B picks and proposals need a
   separate round with no `merge` binding: its own `unit`, sections that carry the frames, and
   pick-one, scale or text questions about them. Build it with the review harness like any design
   round, then import it the same way. It lands as a design round and sends feedback, never a merge.
