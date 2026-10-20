@@ -12,6 +12,7 @@ import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
+import { seatNotifier } from "./round-asker.js";
 import { shepherdReader } from "./shepherd.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
@@ -162,6 +163,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       roundsDir: config.roundsDir,
       shepherd,
       answer: factoryGateAnswer(config.factoryPort),
+      ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
       logger,
     }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),

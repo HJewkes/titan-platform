@@ -141,6 +141,9 @@ importers:
 
   apps/console:
     dependencies:
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/app-paths':
         specifier: workspace:*
         version: link:../../packages/app-paths
