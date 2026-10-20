@@ -2,8 +2,9 @@
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
 // `inbox file` lets an agent file an owner item, `decisions file` lets a seat file a questions-only decision round,
-// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds subscribe` tells a seat of answers, and `config import` / `config compare-tree` run the coordinator config store's
-// shadow steps.
+// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds subscribe` tells a seat of answers,
+// `config import` / `config compare-tree` run the coordinator config store's shadow steps, and `self-update` (run by a
+// systemd timer) rebuilds and swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
@@ -15,6 +16,7 @@ import { coordinatorFilePath } from "./config-store/materialize.js";
 import { closeOnSignal, createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fileDeposit } from "./inbox.js";
 import { PAGE_FILE } from "./paths.js";
+import { SELF_UPDATE_USAGE, selfUpdateCli } from "./self-update/cli.js";
 
 const USAGE = `usage: titan-console                    serve the console
        titan-console login-link         print a one-time, ten-minute LAN login link
@@ -38,7 +40,8 @@ const USAGE = `usage: titan-console                    serve the console
                                         to a matching round, imported now or later, from now on
        titan-console rounds unsubscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
        titan-console rounds list-subscriptions [--seat <name>] [--json]
-${CONFIG_USAGE}`;
+${CONFIG_USAGE}
+${SELF_UPDATE_USAGE}`;
 
 async function serve(config: ConsoleConfig): Promise<void> {
   if (!existsSync(PAGE_FILE)) console.warn(`${PAGE_FILE} is missing; run \`pnpm --filter titan-console build\` (the daemon serves a "not built" page until then)`);
@@ -99,6 +102,7 @@ else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImpo
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);
+else if (args === "self-update") process.exitCode = await selfUpdateCli(resolveConfig());
 else if (args === "--help" || args === "help") console.log(USAGE);
 else {
   console.error(USAGE);

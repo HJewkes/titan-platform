@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
+import { buildInfoCommands } from "./build-info.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
@@ -118,6 +119,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
+    ...buildInfoCommands(),
     ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),

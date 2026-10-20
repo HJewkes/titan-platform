@@ -11,7 +11,7 @@ export const PROMPT_ENFORCEMENTS = ["planner", "packet", "base"] as const satisf
 
 export const DOCTRINE_STAGES = ["gather", "select", "plan", "script", "build", "render", "qa", "publish"] as const;
 
-/** The seven craft doctrines; each has one `doctrine/craft/<doc>.yaml`. */
+/** The craft doctrines; each has one `doctrine/craft/<doc>.yaml`. */
 export const DOCTRINE_SOURCES = [
   "direction",
   "story-structure",
@@ -20,6 +20,7 @@ export const DOCTRINE_SOURCES = [
   "visual-information-design",
   "explainer-motion-craft",
   "skills-and-taste",
+  "owner-feedback",
 ] as const;
 
 export const DOCTRINE_GRADES = ["A", "B", "C", "D"] as const;

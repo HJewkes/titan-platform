@@ -216,6 +216,28 @@ export {
   type ColdScore,
   type OddOneOutPick,
 } from "./eval-cold.js";
+export {
+  CANARY_NAMES,
+  ITEMS_EVAL_ID,
+  agreedFlags,
+  gradeItemAnswer,
+  itemQuestions,
+  itemRoutes,
+  itemsEvalVersion,
+  listRoutes,
+  runItems,
+  type ItemAnswer,
+  type ItemFlag,
+  type ItemQuestion,
+  type ItemQuestionKind,
+  type ItemRoutes,
+  type ItemVerdict,
+  type ItemsChapter,
+  type ItemsInput,
+  type ItemsResult,
+  type ListRoute,
+  type QuotableTexts,
+} from "./eval-items.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
 export { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith } from "./lint-voice.js";

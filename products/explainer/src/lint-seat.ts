@@ -49,10 +49,10 @@ export function findingRoutes(beats: readonly PaceBeat[]): string[] {
 }
 
 /** Why a beat goes to the L1 seat judge. */
-type SeatReason = "invariant" | "finding";
+export type SeatReason = "invariant" | "finding";
 
 /** One beat the L1 seat judge (TP-2982) asks "is this seated in the architecture?" about. */
-interface SeatRoute {
+export interface SeatRoute {
   beat: string;
   reason: SeatReason;
 }
