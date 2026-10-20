@@ -157,7 +157,7 @@ function voidOf(question: ItemQuestion, answer: ItemAnswer, texts: QuotableTexts
 }
 
 /** Grades one answer; a verdict whose quotes are not verbatim in the beats they cite is void and never counts. */
-export function gradeAnswer(qid: string, question: ItemQuestion, answer: ItemAnswer, texts: QuotableTexts): ItemVerdict {
+export function gradeItemAnswer(qid: string, question: ItemQuestion, answer: ItemAnswer, texts: QuotableTexts): ItemVerdict {
   const base = { qid, kind: question.kind, beat: question.beat, subject: question.subject, evidence: formatEvidence(answer.evidence) };
   const reason = voidOf(question, answer, texts);
   if (reason) return { ...base, pass: null, picked: null, void_reason: reason };
@@ -192,7 +192,7 @@ function gradeChapter(beats: readonly PaceBeat[], posed: readonly PosedQuestion[
   const texts = quotableTexts(beats);
   const graded = posed.map(({ qid, question, canary }) => {
     const answer = reply.ok ? reply.output.answers.find((a) => a.qid === qid) : undefined;
-    return { canary, verdict: answer ? gradeAnswer(qid, question, answer, texts) : unanswered(qid, question, reply) };
+    return { canary, verdict: answer ? gradeItemAnswer(qid, question, answer, texts) : unanswered(qid, question, reply) };
   });
   const canary = graded.find((g) => g.canary)!.verdict;
   return { chapter: beats[0]!.chapter, verdicts: graded.filter((g) => !g.canary).map((g) => g.verdict), canary: canaryResult(canary) };

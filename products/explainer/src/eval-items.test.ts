@@ -4,7 +4,7 @@ import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import {
   agreedFlags,
   CANARY_NAMES,
-  gradeAnswer,
+  gradeItemAnswer,
   itemQuestions,
   itemRoutes,
   itemsEvalVersion,
@@ -188,7 +188,7 @@ describe("runItems", () => {
   });
 });
 
-describe("gradeAnswer", () => {
+describe("gradeItemAnswer", () => {
   const beats = track();
   const texts = {
     spoken: new Map(beats.map((b) => [b.id, `spoken: ${b.spoken}`])),
@@ -199,25 +199,25 @@ describe("gradeAnswer", () => {
   it("voids an 'explained' yes that cites only an on-screen label", () => {
     const answer = { qid: "q1", pass: true, odd_one_out: null, evidence: [{ beat: "c1-1", quote: "sort; be quick" }] };
 
-    expect(gradeAnswer("q1", explained!, answer, texts)).toMatchObject({ pass: null, void_reason: "quote not found in c1-1" });
+    expect(gradeItemAnswer("q1", explained!, answer, texts)).toMatchObject({ pass: null, void_reason: "quote not found in c1-1" });
   });
 
   it("accepts a 'not explained' verdict that quotes where the item is named on screen", () => {
     const answer = { qid: "q1", pass: false, odd_one_out: null, evidence: [{ beat: "c1-1", quote: "sort; be quick" }] };
 
-    expect(gradeAnswer("q1", explained!, answer, texts)).toMatchObject({ pass: false, void_reason: null });
+    expect(gradeItemAnswer("q1", explained!, answer, texts)).toMatchObject({ pass: false, void_reason: null });
   });
 
   it("matches an odd-one-out pick to its listed label regardless of case", () => {
     const answer = { qid: "q3", pass: false, odd_one_out: "Be Quick", evidence: [{ beat: "c1-1", quote: "The desk runs" }] };
 
-    expect(gradeAnswer("q3", oddOneOut!, answer, texts)).toMatchObject({ pass: false, picked: "be quick" });
+    expect(gradeItemAnswer("q3", oddOneOut!, answer, texts)).toMatchObject({ pass: false, picked: "be quick" });
   });
 
   it("voids an odd-one-out pick the beat does not list", () => {
     const answer = { qid: "q3", pass: false, odd_one_out: "deliver", evidence: [{ beat: "c1-1", quote: "The desk runs" }] };
 
-    expect(gradeAnswer("q3", oddOneOut!, answer, texts)).toMatchObject({ pass: null, picked: null, void_reason: 'picks "deliver", which c1-1 does not list' });
+    expect(gradeItemAnswer("q3", oddOneOut!, answer, texts)).toMatchObject({ pass: null, picked: null, void_reason: 'picks "deliver", which c1-1 does not list' });
   });
 });
 

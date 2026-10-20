@@ -220,7 +220,7 @@ export {
   CANARY_NAMES,
   ITEMS_EVAL_ID,
   agreedFlags,
-  gradeAnswer,
+  gradeItemAnswer,
   itemQuestions,
   itemRoutes,
   itemsEvalVersion,

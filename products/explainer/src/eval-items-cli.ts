@@ -18,7 +18,7 @@ const EXIT = { OK: 0, UNTRUSTED: 1, USAGE: 2 } as const;
 const ITEMS_RUNS = 3;
 
 const RUN_KEY = ["config_id", "script_sha", "eval_id", "eval_version", "judge", "run", "chapter"] as const;
-export const ITEMS_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "subject", "pass", "picked", "evidence", "void_reason"] as const;
+const ITEMS_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "subject", "pass", "picked", "evidence", "void_reason"] as const;
 
 interface ItemsFlags {
   judge: string;
@@ -68,7 +68,8 @@ function report(p: Prepared, run: number, r: ItemsResult): void {
   const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
   const verdicts = r.chapters.flatMap((c) => c.verdicts);
   const counts = { questions: verdicts.length, void: verdicts.filter((v) => v.pass === null).length, flagged: verdicts.filter((v) => v.pass === false).length };
-  console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, trusted: r.trusted, ...counts, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd }));
+  const verdict = { trusted: r.trusted, ...counts, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
+  console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
 /** Each run is a fresh judge; every run's rows are kept, and the command is trusted only if all of them are. */
