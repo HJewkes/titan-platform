@@ -20,11 +20,13 @@ export interface GateDemotions {
   conflict: boolean;
   /** D8: a fix-first-runaway or no-progress head gets one convergence review, then the planner; never approve-merge (TP-3734). */
   fixFirstRunaway: boolean;
+  /** TP-3734 r4: approve-merge never opens at a head with no reviewer MERGE; a fresh reviewer, then the seat, go instead. */
+  noMergeNoAsk: boolean;
 }
 
-export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true };
+export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true, failedFallback: true, conflict: true, fixFirstRunaway: true, noMergeNoAsk: true };
 
-const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review"] as const;
+const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review", "R4/fresh-reviewer"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
 
 const AUTO_PASS_STEP = "sh-auto-pass";
@@ -54,6 +56,7 @@ const RULE_WORDS: Record<AutoPassRule, string> = {
   "D7/ops-notice": "the fallback reviewer failed on infrastructure too, so ops re-dispatches review instead of the owner",
   "D7/seat-notice": "the seat held Shepherd's own MERGE past its rounds, so the seat hears instead of the owner",
   "D8/convergence-review": "FIX_FIRST rounds did not converge, so one fresh convergence reviewer judges the trail; its FIX_FIRST goes to the planner, never to you",
+  "R4/fresh-reviewer": "no reviewer MERGE stood at this head, so a fresh reviewer goes instead of asking the owner to merge it",
 };
 
 const autoPassMarker = (rule: AutoPassRule, headSha: string): string => `<!-- shepherd-auto-pass:${rule}:${headSha} -->`;
