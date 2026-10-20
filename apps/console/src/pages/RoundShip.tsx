@@ -4,11 +4,11 @@ import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
-import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
+import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { QuestionFacts } from "./RoundQuestion.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
-import { shipBlockers } from "../../server/ship-blockers.js";
+import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { Montages } from "./ShipMontages.js";
 import { ShipPriorFeedback } from "./ShipPriorFeedback.js";
@@ -80,20 +80,31 @@ interface ShipAnswerProps {
   submitting: ReturnType<typeof useSubmit>;
 }
 
-/** Decision 166: unanswered questions never block Ship; Send back still asks for the required ones. */
-function ShipAnswer({ round, question, sideQuestions, side, submitting }: ShipAnswerProps): ReactNode {
-  const { available, state, submit } = submitting;
-  const [note, setNote] = useState("");
-  if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
+/** The two presses' `rounds.submit` args, and why each is off: Ship by its blockers, Send back until the fixer would get a note. */
+function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string) {
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
   const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments, side.optionNotes);
-  const missing = missingRequired(sideQuestions, sideAnswers);
-  const blockers = shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps });
   const { addressed, followUps } = sideMarks(side);
-  const ship = () => submit({ ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
-  const back = () => submit({ ...sent, ...followUps, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
+  const shipArgs = { ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) };
+  const backArgs = { ...sent, ...followUps, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) };
+  return {
+    shipArgs,
+    backArgs,
+    canSendBack: sendBack !== undefined,
+    blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps }),
+    noNote: sendBackBlocker(backArgs, question.id),
+  };
+}
+
+/** Unanswered questions block neither press (decisions 166 and 513); Send back waits only for a note. */
+function ShipAnswer(props: ShipAnswerProps): ReactNode {
+  const { round, question, side, submitting } = props;
+  const { available, state, submit } = submitting;
+  const [note, setNote] = useState("");
+  if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
+  const draft = shipDraft(props, note);
   const disabled = !available || state.status === "sending";
   return (
     <Card variant="outline">
@@ -102,10 +113,10 @@ function ShipAnswer({ round, question, sideQuestions, side, submitting }: ShipAn
           <RoundGeneral value={side.general} onChange={side.setGeneral} />
           <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
           <HStack gap={3} wrap>
-            <Button color="success" isDisabled={disabled || blockers.length > 0} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
-            <Button variant="outline" color="warning" isDisabled={disabled || missing.length > 0 || sendBack === undefined} onPress={() => void back()}><ButtonText>Send back</ButtonText></Button>
+            <Button color="success" isDisabled={disabled || draft.blockers.length > 0} onPress={() => void submit(draft.shipArgs)}><ButtonText>Ship</ButtonText></Button>
+            <Button variant="outline" color="warning" isDisabled={disabled || draft.noNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>
           </HStack>
-          <ShipNotices blockers={blockers} missing={missing} available={available} state={state} />
+          <ShipNotices blockers={draft.blockers} noNote={draft.noNote} available={available} state={state} />
         </VStack>
       </CardContent>
     </Card>

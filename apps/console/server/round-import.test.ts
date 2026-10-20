@@ -8,7 +8,7 @@ import { EXIT } from "@titan-design/registry";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { getFrame } from "./round-frames.js";
 import { importRound } from "./round-import.js";
-import { listRounds } from "./rounds.js";
+import { getRound, listRounds } from "./rounds.js";
 
 // Synthetic: the round@2 shape a review-harness build writes, with generated PNGs and invented prose.
 const FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "import", "sample-batch-r2");
@@ -593,6 +593,45 @@ describe("importRound takes a Ship round only as one main-vs-head package (TP-35
   });
 });
 
+describe("importRound refuses a round that breaks the builder rules (TP-3769)", () => {
+  /** A side question after Ship in its section: the shape td-gate2-td988-r1 had. */
+  async function askAfterShip(): Promise<void> {
+    await editJson("round.json", (json) => {
+      json.questions = [...jsonObjects.parse(json.questions), { id: "notes", kind: "text", prompt: "Anything else?" }];
+      json.sections = jsonObjects.parse(json.sections).map((section) => ({ ...section, questionIds: ["ship-cards", "notes"] }));
+    });
+    await rebind();
+  }
+
+  it("refuses a side question after Ship, naming ship-not-last, and writes nothing", async () => {
+    await askAfterShip();
+
+    await expectRefused(/builder rules: ship-not-last: question ship-cards: Ship is asked before notes in section cards/);
+    expect(await entries()).toEqual([]);
+  });
+
+  it("refuses a pick on the section's frames that names none, naming unanchored-question, and writes nothing", async () => {
+    await editJson("round.json", (json) => {
+      const spacing = { id: "spacing", kind: "pick-one", prompt: "Which spacing?", options: ["Twelve", "Sixteen"], signsOff: "padding" };
+      json.questions = [spacing, ...jsonObjects.parse(json.questions)];
+      json.sections = jsonObjects.parse(json.sections).map((section) => ({ ...section, questionIds: ["spacing", "ship-cards"] }));
+    });
+    await rebind();
+
+    await expectRefused(/builder rules: unanchored-question: question spacing:/);
+    expect(await entries()).toEqual([]);
+  });
+
+  it("still opens a round already on disk that breaks them", async () => {
+    await askAfterShip();
+    await cp(source, path.join(roundsDir, ID), { recursive: true });
+
+    const round = await getRound({ dir: roundsDir }, ID);
+
+    expect(round).toMatchObject({ id: ID, valid: true });
+  });
+});
+
 async function editVariant(key: string, edit: (variant: Record<string, unknown>) => void): Promise<void> {
   await editJson("round.json", (json) => {
     const variants = jsonObjects.parse(json.variants);
@@ -622,8 +661,10 @@ async function rebindPacket(bytes: Buffer): Promise<void> {
  */
 async function dropShipBinding(): Promise<void> {
   await editJson("round.json", (json) => {
+    const [section] = jsonObjects.parse(json.sections);
     json.questions = jsonObjects.parse(json.questions).map(({ merge: _merge, page: _page, ...question }) => ({
       ...question,
+      frames: section?.variantKeys,
       options: ["Keep", "Rework"],
       recommendation: { ...jsonObject.parse(question.recommendation), answer: "Keep" },
     }));

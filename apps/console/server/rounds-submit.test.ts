@@ -142,7 +142,7 @@ describe("rounds.submit", () => {
   });
 
   it("needs no head sha when the answer does not ship", async () => {
-    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }] }));
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
@@ -439,7 +439,7 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
   it("still takes a Send back while round 1 is unticked", async () => {
     const r2Sha = await sendBackThenReround();
 
-    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] });
+    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Still jittery." }] });
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
   });
@@ -453,6 +453,32 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
     expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses a Send back with no Ship comment and no round note, and writes nothing (decision 513)", async () => {
+    const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Send back needs a note: say what to fix in the Ship comment or the round note." });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("takes a Send back whose only note is the round note", async () => {
+    const { envelope } = await submit(shipArgs({ headSha: undefined, general: "Cap the jitter.", answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
+  it("takes a Send back that leaves a required side question unanswered (decision 513)", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    const required = { id: "side-clarity", kind: "scale", prompt: "How clear is the retry log?", min: 1, max: 5, required: true };
+    await writeFile(file, JSON.stringify({ ...round, questions: [...round.questions, required] }));
+    const answers = [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }];
+
+    const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)), headSha: undefined, answers }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
 
   it("accepts a Ship that leaves a required side question unanswered, as the page does (decision 166)", async () => {
@@ -525,7 +551,7 @@ describe("a round with two PRs (TP-3329)", () => {
     const { envelope, exitCode } = await submitTwo({ answers });
 
     expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": a Send back needs a note: a comment on its Ship question or a round note` });
+    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": Send back needs a note: say what to fix in the Ship comment or the round note.` });
     expect(await exists(feedbackOf(TWO))).toBe(false);
   });
 
@@ -605,14 +631,27 @@ describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
     ]);
   });
 
-  it("refuses a question round that leaves a required question unanswered, and writes nothing", async () => {
+  it("writes a question round sent with a required question unanswered as a partial submit that fits its round", async () => {
     const roundSha = await stageRound(KILN);
 
-    const { envelope, exitCode } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
 
-    expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: "the feedback does not fit its round: ramp-default: required" });
-    expect(await exists(feedbackOf(KILN))).toBe(false);
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(KILN);
+    expect(feedback.unansweredQuestionIds).toEqual(["ramp-default", "report-columns", "report-notes"]);
+    expect(feedbackProblems(feedback, await manifestOf(KILN))).toEqual([]);
+  });
+
+  it("writes a design round sent with its required pick unanswered as a partial submit that fits its round", async () => {
+    const id = "beacon-states-r1";
+    const roundSha = await stageRound(id);
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, answers: [{ questionId: "beacon-notes", text: "Keep the halo." }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+    const feedback = await written(id);
+    expect(feedback.unansweredQuestionIds).toEqual(["beacon-fill-pick"]);
+    expect(feedbackProblems(feedback, await manifestOf(id))).toEqual([]);
   });
 
   it("writes a pick of the round's revisionOption as a revision request, and refuses one with no comment", async () => {
