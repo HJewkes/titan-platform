@@ -132,6 +132,14 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
+A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
+from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
+§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
+errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
+script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
+spine; any other profile passes both rows when it has none.
+
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
 (`fixtures/spike/redesign-explainer-v4/labels.json` for v4, `fixtures/spike/pipeline-explainer/labels.json`

@@ -464,7 +464,7 @@ Key exports:
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
 - `codex-prices`: `priceCodexUsage`
 - `codex-runtime`: `inspectCodexCapabilities`
-- +93 more in the [reference page](/reference/agent)
+- +108 more in the [reference page](/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 
@@ -1190,7 +1190,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +331 more in `products/explainer/src/index.ts`
+- +339 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

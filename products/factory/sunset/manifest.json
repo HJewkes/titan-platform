@@ -1296,6 +1296,15 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-repro-test-only.ts",
+   "fate": "delete",
+   "task": "D-M3-05",
+   "milestone": "M3",
+   "filing": "TP-3125",
+   "reason": "TP-2732 mutation gate replaces fix-proof for test-only, latest M3 D-M3-05 (TP-3125)"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/no-reviewer-hold.test.ts",
    "fate": "delete",
    "task": "D-M2-09",

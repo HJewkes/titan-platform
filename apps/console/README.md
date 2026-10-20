@@ -329,12 +329,47 @@ with the service's `TITAN_CONSOLE_*` settings.
   URL, exits non-zero, and writes nothing.
 - **Re-filing.** The same `round.json` bytes again report `created: false` and keep the first
   asker. Different bytes under the same `<unit>-r<round>` are refused; bump `round`.
-- **The answer comes to the seat.** Once the owner sends the round, `rounds.submit` writes
-  `feedback.json` and the round listener sends the seat one agent-chat message naming the round
-  and that file, then keeps `notified.json` so it is sent once. The message is fixed text: nothing
-  the seat wrote is relayed, because `agent-chat debug send` delivers from the human seat. A seat
-  that is not live gets no message and no `notified.json`; the console's start-up sweep retries.
-  The answer is also in the decision log, as for any round.
+- **The answer comes to the seat.** The asker is the round's first subscriber; see "Hearing of an
+  answer" below. The answer is also in the decision log, as for any round.
+
+## Hearing of an answer
+
+Once `rounds.submit` writes a round's `feedback.json`, for a decision, design or Ship round and for
+Ship or Send back alike, the round listener sends one agent-chat message to each seat that should
+hear of it:
+
+1. the asker, from `asker.json` (`decisions file`, or `rounds import --seat`);
+2. every seat with a matching subscription;
+3. with neither, tp-operator.
+
+Each seat gets one message per answer: the listener keeps `<round>/notified-<seat>.json`, written
+once, and a TP-3729 `notified.json` still counts for the seat it names. A seat that is not live gets
+no message and no record, and the console's start-up sweep retries it.
+
+The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
+whether the answer carries free text (a question comment, an option note, a written answer, or
+general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
+`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
+human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+
+```sh
+titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds unsubscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
+titan-console rounds list-subscriptions [--seat <name>] [--json]   # seat, target, at per line
+```
+
+- **Targets.** A round id or unit matches exactly; `*` and `?` glob over either (`kiln-*`).
+  `owner/repo#N` matches every round whose Ship question merges that PR, case-insensitively.
+  Targets are matched when an answer lands, so a glob or PR target covers rounds imported later.
+- **From now on.** A subscription hears only answers written after it was made. The answer of an
+  unclaimed round goes to tp-operator only if it was written after the console first started with
+  subscriptions (`operator-since.json`), so that first start does not page it for older answers.
+- **Kept.** One file per seat and target in `$TITAN_CONSOLE_STATE/round-subscriptions/`, so
+  subscriptions survive restarts, and a successor that keeps its agent-chat name keeps them.
+  Subscribing twice keeps the first. `--seat` defaults to `AGENT_CHAT_NAME`; with neither, the
+  verb refuses. `list-subscriptions` with no `--seat` lists every seat.
+- **Local only.** Like `rounds import`, the verbs need no running console and no `/rpc` command
+  reaches them; run them with the service's `TITAN_CONSOLE_*` settings.
 
 ## Importing a review round
 
@@ -344,7 +379,14 @@ shell:
 ```sh
 titan-console rounds import <round-dir>          # id, frames: N, feedback: copied|kept|none, URLs
 titan-console rounds import <round-dir> --json   # one line: {id, created, frames, feedback, url, lanUrl}
+titan-console rounds import <round-dir> --seat <name>   # adds "asked by: <name>" ({asker} with --json)
 ```
+
+`--seat` writes the same `asker.json` as `decisions file`, so that seat hears of the owner's answer
+(see "Hearing of an answer"); a re-import keeps the first asker. A seat that is not an agent-chat
+name is refused before anything lands. Unlike `decisions file`, the seat is never read from
+`AGENT_CHAT_NAME`, because the factory imports rounds for other seats; a round imported without one
+goes to tp-operator once answered.
 
 It writes to `TITAN_CONSOLE_ROUNDS_DIR` as `<unit>-r<round>/` and prints
 `http://127.0.0.1:$TITAN_CONSOLE_PORT/#/rounds/<id>`, plus the LAN URL when `TITAN_CONSOLE_HOST`
@@ -371,15 +413,15 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
   - an image frame has no main frame, meaning no frames.json `base` and no `baseImage`, and is not
     marked one-sided. Mark a frame new at head with `change: "new"` on its variant or
     `(new at head)` in its label; `change: "removed"` marks a frame only main has;
-  - it carries exploration: a variant with an `alternate` column, a `lab-…` storyId (a Storybook
-    `Lab/…` story), an `image`, `baseImage` or `clip` under a `lab/` directory, or a key or label
-    with the word `A/B`, `proposal`, `alpha` or `lab`.
+  - it carries exploration, meaning alternatives shown side by side: a variant with an `alternate`
+    column, or a key or label with the word `A/B`, `proposal` or `alpha`. Where a story lives is not
+    exploration: a lab-only PR ships its `lab-…` story, marked new at head.
 
   The page shows each frame as BEFORE (main) and AFTER (head), with a "What ships" line naming the
   PR, the head and the changed-frame count. Changed frames come first. Pairs whose base and head
   share a sha256 in frames.json, or whose variant says `change: "unchanged"`, fold into an
   "N unchanged" disclosure.
-- **Exploration goes in a feedback round.** Variants, lab stories, A/B picks and proposals need a
+- **Exploration goes in a feedback round.** Alternatives side by side, A/B picks and proposals need a
   separate round with no `merge` binding: its own `unit`, sections that carry the frames, and
   pick-one, scale or text questions about them. Build it with the review harness like any design
   round, then import it the same way. It lands as a design round and sends feedback, never a merge.
@@ -391,6 +433,24 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
 - **Idempotent.** A new round is staged in a dot-named dir and renamed into place. A re-import of
   the same `round.json` and `frames.json` adds only missing files. A changed `round.json` is
   refused with "build round n+1", and an existing `feedback.json` is never replaced.
+
+### Frames by question
+
+A question can name the frames it asks about in round@2's `frames` (variant keys). The page maps
+them as follows, in question, design and Ship rounds:
+
+- **Above the question.** The named frames draw inside the question's own block, above its prompt,
+  as a one-column strip at phone width and two or three columns on a desktop. Each frame has a "To
+  its question" link, and a "Frames:" line under the question links to each frame. A design round's
+  section strip leaves out a frame some question draws, so no frame shows twice.
+- **Option to frame.** An option names the frame it picks as "(frame: <label>)": its
+  `optionVariants` entry, or the option itself when the option is a variant key.
+- **What a Ship approves.** A Ship question (merge-bound, or `decision: "ship"`) with `frames` gets
+  a "Ships: <labels>" line, so a Ship answer says which frames it approves.
+- **Without `frames`** a question draws as before, and frames stay in their section strip.
+
+A frame loads when its variant has an `image` or `frames/frames.json` lists it; any other frame,
+such as a Storybook-only variant, is named with "No image for this frame".
 
 ## Theater
 

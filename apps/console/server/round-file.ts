@@ -12,8 +12,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { ASKER_FILE, ASKER_SCHEMA_ID, SEAT_NAME, readAsker, writeJsonOnce, type AskerRecord } from "./round-asker.js";
+import { ASKER_FILE, recordAsker } from "./round-asker.js";
 import { importRound } from "./round-import.js";
+import { SEAT_NAME } from "./round-notice-transport.js";
 import type { Manifest } from "./round-schema.js";
 import { MAX_ROUND_BYTES, ROUND_FILE, parseManifest } from "./rounds.js";
 
@@ -73,9 +74,6 @@ async function importFromTemp(bytes: Buffer, roundsDir: string): Promise<{ id: s
 export async function fileRound({ body, roundsDir, asker, now = new Date() }: FileArgs): Promise<FileResult> {
   checkAsker(asker);
   const { id, created } = await importFromTemp(readRound(body), roundsDir);
-  const dir = path.join(path.resolve(roundsDir), id);
-  const record: AskerRecord = { schema: ASKER_SCHEMA_ID, ...asker, filedAt: now.toISOString() };
-  if (await writeJsonOnce(path.join(dir, ASKER_FILE), record)) return { id, created, ...asker };
-  const first = (await readAsker(dir)) ?? refuse(`round ${id} holds an ${ASKER_FILE} that is not an asker@1 record`);
-  return { id, created, seat: first.seat, initiative: first.initiative };
+  const kept = (await recordAsker(path.join(path.resolve(roundsDir), id), asker, now)) ?? refuse(`round ${id} holds an ${ASKER_FILE} that is not an asker@1 record`);
+  return { id, created, seat: kept.seat, initiative: kept.initiative };
 }

@@ -14,8 +14,8 @@ import { ownerSentBackPrompt } from "./owner-send-back.js";
  * Only owner approvals open an owner gate: approve-merge under an owner-gate or visual policy, one-way items, and holds
  * that need the owner. These three are seat work. The registering seat gets a notice and Shepherd takes the default
  * action; the owner gate opens only when no notice went out. A review round's Ship pick at one head is the owner's
- * merge approval there too, but it answers approve-merge only through `roundMergeDecisions` once the gate is open; an
- * answer before the gate opens would join approval carry's wrapper in `reviewingContext`.
+ * merge approval there too, but it answers approve-merge only through `roundMergeDecisions` once the gate is open (serve's
+ * round ship sweep); an answer before the gate opens would join approval carry's wrapper in `reviewingContext`.
  */
 const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];

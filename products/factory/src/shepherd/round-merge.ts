@@ -9,7 +9,7 @@ import { gateHead } from "./stale-gates.js";
 export const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /** How long a Ship stands as the owner's merge approval before the gate it answers opens (TP-1842 Q2 default, item 88). */
-const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** A Ship stamped further ahead of the reader's clock than this is not believed: a future time would never go stale. */
 const SUBMIT_CLOCK_SKEW_MS = 5 * 60 * 1000;
@@ -86,6 +86,12 @@ function bindings(round: z.infer<typeof RoundManifest>): Bound[] {
     if (merge && !byPr.has(`${merge.repo}#${merge.pr}`)) byPr.set(`${merge.repo}#${merge.pr}`, { repo: merge.repo, pr: merge.pr, headSha: merge.headSha });
   }
   return [...byPr.values()];
+}
+
+/** Each `repo#pr` a round's questions bind, whatever the head; none for bytes that do not read as a round. */
+export function boundPrs(roundBytes: string | Uint8Array): string[] {
+  const round = parseRound(roundBytes);
+  return round ? bindings(round).map((bound) => `${bound.repo}#${bound.pr}`) : [];
 }
 
 /** The first question that keeps the PR from shipping: unanswered, a revision request, or a pick outside its ship list. */

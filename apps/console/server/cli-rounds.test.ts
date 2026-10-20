@@ -8,7 +8,7 @@ import { importRoundCli, roundsImportArgs, roundsWithdrawArgs } from "./cli-roun
 import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
 import { roundFramesCommands } from "./round-frames.js";
-import { roundsCommands } from "./rounds.js";
+import { roundsCommands } from "./rounds-commands.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import { createSources } from "./upstreams.js";
 
@@ -59,6 +59,21 @@ describe("titan-console rounds import", () => {
     expect(result.code).toBe(0);
     expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
     expect(JSON.parse(result.stdout)).toEqual({ id: ID, created: true, frames: 4, feedback: "copied", url: `http://127.0.0.1:${PORT}/#/rounds/${ID}`, lanUrl: null });
+  });
+
+  it("records --seat as the round's asker and prints it", { timeout: SPAWN_TIMEOUT_MS }, async () => {
+    const result = await runCli(["--seat", "sample-seat", FIXTURE]);
+
+    expect(result).toEqual({ code: 0, stdout: `${ID}\nframes: 4\nfeedback: copied\nasked by: sample-seat\nhttp://127.0.0.1:${PORT}/#/rounds/${ID}\n`, stderr: "" });
+    expect(JSON.parse(await readFile(path.join(state, "rounds", ID, "asker.json"), "utf8"))).toMatchObject({ schema: "titan-console/asker@1", seat: "sample-seat", initiative: null });
+  });
+
+  it("refuses a --seat that is not an agent-chat name before anything lands", { timeout: SPAWN_TIMEOUT_MS }, async () => {
+    const result = await runCli(["--seat", "Not A Seat", FIXTURE]);
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.stderr).toMatch(/^import refused: seat "Not A Seat"/);
+    expect(await roundsDirEntries()).toEqual([]);
   });
 
   it("refuses a symlinked source on stderr with no URL, a non-zero exit and nothing written", { timeout: SPAWN_TIMEOUT_MS }, async () => {
@@ -116,7 +131,7 @@ describe("importRoundCli", () => {
     const source = path.join(root, "round-2");
     await cp(FIXTURE, source, { recursive: true });
 
-    await importRoundCli(config, { dir: source, json: false });
+    await importRoundCli(config, { dir: source, seat: null, json: false });
 
     expect(log).toHaveBeenCalledWith(`${ID}\nframes: 4\nfeedback: copied\nhttp://127.0.0.1:${PORT}/#/rounds/${ID}\nhttps://lan-box:${PORT}/#/rounds/${ID}`);
     expect(process.exitCode).toBeUndefined();
@@ -125,9 +140,13 @@ describe("importRoundCli", () => {
 
 describe("rounds import argument parsing", () => {
   it.each([
-    [["rounds", "import", "dir"], { dir: "dir", json: false }],
-    [["rounds", "import", "dir", "--json"], { dir: "dir", json: true }],
-    [["rounds", "import", "--json", "dir"], { dir: "dir", json: true }],
+    [["rounds", "import", "dir"], { dir: "dir", seat: null, json: false }],
+    [["rounds", "import", "dir", "--json"], { dir: "dir", seat: null, json: true }],
+    [["rounds", "import", "--json", "dir"], { dir: "dir", seat: null, json: true }],
+    [["rounds", "import", "--seat", "sample-seat", "dir"], { dir: "dir", seat: "sample-seat", json: false }],
+    [["rounds", "import", "dir", "--seat"], null],
+    [["rounds", "import", "dir", "--seat", "a", "--seat", "b"], null],
+    [["rounds", "import", "dir", "--initiative", "x"], null],
     [["rounds", "import"], null],
     [["rounds", "import", "a", "b"], null],
     [["rounds", "import", "--json", "--json"], null],
