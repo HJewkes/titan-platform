@@ -6,7 +6,8 @@
  *
  * `round.json` and `feedback.json` are judged by the same parsers the console reads them with, so an
  * import never lands a round the page would list as invalid. It also refuses a "Merge #N", "Ship" or "#N at <sha>"
- * offer with no agreeing merge binding (`round-merge-binding.ts`), which the page still lists. `frames/frames.json` must name the
+ * offer with no agreeing merge binding (`round-merge-binding.ts`), which the page still lists, and a Ship round that is not
+ * one clean main-vs-head package (`round-ship-package.ts`). `frames/frames.json` must name the
  * round.json bytes it was built for; it is copied with only the files it lists, each read through
  * `round-frames.ts`'s reader and checked against its sha256. A `packet.json` or `prose.json` it names is
  * copied beside round.json, sha256-checked, and the packet must bind the PR and head the round's Ship
@@ -23,6 +24,7 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { FramesIndexSchema, readFrameBytes } from "./round-frames.js";
 import { mergeBindingProblems } from "./round-merge-binding.js";
+import { shipPackageProblems } from "./round-ship-package.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, parseFeedback, parseManifest, readCapped } from "./rounds.js";
 
 const MAX_FRAMES = 1000;
@@ -199,6 +201,8 @@ async function readSource(dir: string): Promise<SourceRound> {
   if (!ROUND_ID.test(id)) refuse(`round id "${id}" is not a plain name`);
   const binding = { unit, round, manifestSha256: sha256(roundBytes) };
   const read = await readIndex(dir);
+  const unclean = shipPackageProblems(parsed.manifest, read?.index.frames ?? []);
+  if (unclean.length > 0) refuse(`${ROUND_FILE}: ${unclean.join("; ")}`);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, string>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
   return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding) };
