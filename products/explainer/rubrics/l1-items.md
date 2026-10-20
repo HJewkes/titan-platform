@@ -16,6 +16,11 @@ Answer each question below, using its id as `qid`:
   leaving X out does not change what the chapter shows. Back a true with quotes from the spoken
   words that say so. X itself need not be explained. Otherwise set `pass` to false and quote where X
   is named.
+- **Owner question** ("X is a question put to the owner: does the chapter say what the owner is
+  asked to decide?"). Set `pass` to true only if the spoken words of this beat or a later beat in
+  this chapter say what X asks the owner to choose. Back a true with quotes from the spoken words
+  that say so. Why the question is asked need not be said. Otherwise set `pass` to false and quote
+  where X is named.
 - **Seated** ("does the map on screen show the mechanism that keeps it, or the failure that breaks
   it?"). Set `pass` to true only if a map is on screen at that beat and its labels show the part of
   the system that keeps the invariant or finding, or the failure that breaks it. Quote those labels.

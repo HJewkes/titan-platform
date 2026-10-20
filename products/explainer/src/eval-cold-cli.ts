@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import type { EvalCliDeps } from "./eval-cli.js";
-import { agreedOddOnes, COLD_EVAL_ID, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
+import { agreedOddOnes, COLD_EVAL_ID, COLD_TERMS_EVAL_ID, COLD_TERMS_RUBRIC, coldEvalVersion, coldTerms, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
 import { readRubric } from "./eval-evidence.js";
-import { createJudgeHarness, JudgeConfigSchema } from "./eval-harness.js";
+import { createJudgeHarness, JudgeConfigSchema, judgeLabel } from "./eval-harness.js";
 import { CANARY_COLUMNS } from "./eval-judge-cli.js";
 import { paceInput, type ScriptFormat } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, rulesSha, type BenchLayout, type DeterministicRun } from "./eval-store.js";
@@ -74,14 +74,26 @@ function report(p: Prepared, run: number, r: ColdResult): void {
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
+/** The viewers' agreed undefined terms join the glossary; a failed call leaves the questions short, so it untrusts. */
+async function withViewerTerms(p: Prepared, now: () => Date): Promise<{ input: Prepared["input"]; trusted: boolean }> {
+  const started = now();
+  const named = await coldTerms({ beats: p.input.beats, rubric: readRubric(COLD_TERMS_RUBRIC), harness: p.input.harness });
+  const judge = judgeLabel(p.input.judge);
+  const evalVersion = coldEvalVersion(p.input);
+  appendRun(p.bench, judgedRun({ ...p.record, evalId: COLD_TERMS_EVAL_ID, evalVersion, judge, run: 1, spend: named.spend, started, finished: now() }));
+  console.log(JSON.stringify({ script_sha: p.record.scriptSha, viewer_terms: named.terms, named: named.named, failures: named.failures, usd: named.spend.usd }));
+  return { input: { ...p.input, glossary: [...(p.input.glossary ?? []), ...named.terms] }, trusted: named.failures.length === 0 };
+}
+
 /** Each run is a fresh viewer; every run's rows are kept, and the command is trusted only if all of them are. */
 async function evalCold(file: string, flags: ColdFlags, deps: EvalCliDeps): Promise<boolean> {
   const p = prepare(file, flags, deps);
   const now = deps.now ?? (() => new Date());
+  const terms = await withViewerTerms(p, now);
   const results: ColdResult[] = [];
   for (let run = 1; run <= p.runs; run++) {
     const started = now();
-    const result = await runCold({ ...p.input, run });
+    const result = await runCold({ ...terms.input, run });
     const finished = now();
     writeRows(p, result, run);
     appendRun(p.bench, judgedRun({ ...p.record, evalVersion: result.eval_version, judge: result.judge, run, spend: result.spend, started, finished }));
@@ -89,7 +101,7 @@ async function evalCold(file: string, flags: ColdFlags, deps: EvalCliDeps): Prom
     results.push(result);
   }
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, agreed_odd_ones: agreedOddOnes(results) }));
-  return results.every((r) => r.trusted);
+  return terms.trusted && results.every((r) => r.trusted);
 }
 
 export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void): Command {
