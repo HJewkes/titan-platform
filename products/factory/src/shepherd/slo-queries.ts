@@ -16,7 +16,7 @@ export interface SloInput {
   runs: readonly WorkflowRun[];
   gates: readonly GateRecord[];
   events: readonly ShepherdEvent[];
-  /** Runs of registrations held now; a held run with no pending gate is waiting on an owner nobody has asked. */
+  /** Runs of registrations under an owner hold; one still active with no pending owner gate is waiting on an owner nobody has asked. */
   heldRunIds: readonly string[];
   now: number;
   range: { from: string; to: string };
@@ -31,6 +31,7 @@ export interface QueryValue {
 
 type Query = (input: SloInput) => QueryValue | Promise<QueryValue>;
 
+const ACTIVE_RUN: readonly WorkflowRun["status"][] = ["running", "paused", "cancelling", "recovery_required"];
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -184,10 +185,11 @@ const quality: Record<string, Query> = {
 };
 
 const ownerLoad: Record<string, Query> = {
-  "owner-load.overdue-owner-gates": ({ gates, heldRunIds, now }) => {
+  "owner-load.overdue-owner-gates": ({ runs, gates, heldRunIds, now }) => {
     const pending = gates.filter((gate) => gate.status === "pending" && !SEAT_STEPS.includes(stepOf(gate.id)));
-    const asked = new Set(gates.filter((gate) => gate.status === "pending").map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
-    const unasked = heldRunIds.filter((runId) => !asked.has(runId));
+    const asked = new Set(pending.map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
+    const active = new Set(runs.filter((run) => ACTIVE_RUN.includes(run.status)).map((run) => run.id));
+    const unasked = heldRunIds.filter((runId) => active.has(runId) && !asked.has(runId));
     return count(pending.filter((gate) => (now - Date.parse(gate.createdAt)) / HOUR > OVERDUE_HOURS).length + unasked.length, pending.length + unasked.length);
   },
   "owner-load.touches-per-day": (input) => perDay(resolvedIn(input).filter(isOwnerTouch).length, input.range),

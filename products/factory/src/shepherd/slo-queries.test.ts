@@ -156,11 +156,19 @@ describe("owner-load queries", () => {
     expect(await value("owner-load.overdue-owner-gates", input({ gates }))).toEqual({ value: 1, n: 2 });
   });
 
-  it("counts a held run with no pending gate as waiting, so a lost gate cannot read as a pass", async () => {
+  it("counts an active owner-held run with no pending owner gate as waiting, so a lost gate cannot read as a pass", async () => {
+    const runs = [run("a", [], { status: "running" }), run("b", [], { status: "running" })];
     const gates = [gate("a/approve-merge:0", NOW - HOUR)];
 
-    expect(await value("owner-load.overdue-owner-gates", input({ gates, heldRunIds: ["a", "b"] }))).toEqual({ value: 1, n: 2 });
-    expect(await value("owner-load.overdue-owner-gates", input({ gates, heldRunIds: ["a"] }))).toEqual({ value: 0, n: 1 });
+    expect(await value("owner-load.overdue-owner-gates", input({ runs, gates, heldRunIds: ["a", "b"] }))).toEqual({ value: 1, n: 2 });
+    expect(await value("owner-load.overdue-owner-gates", input({ runs, gates, heldRunIds: ["a"] }))).toEqual({ value: 0, n: 1 });
+  });
+
+  it("leaves a finished run and a seat-routed gate out of the unasked count", async () => {
+    const runs = [run("done", [], { status: "completed" }), run("seat", [], { status: "running" })];
+    const gates = [gate("seat/sh-sent-back:0", NOW - HOUR)];
+
+    expect(await value("owner-load.overdue-owner-gates", input({ runs, gates, heldRunIds: ["done", "seat"] }))).toEqual({ value: 1, n: 1 });
   });
 
   it("averages owner touches over the days in range and gives the delegated share", async () => {
