@@ -10,6 +10,7 @@ import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { startFactoryServer } from "../serve.js";
 import { factoryContext } from "../registry.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import { restartDivergedRuns } from "./diverged-sweep.js";
@@ -113,13 +114,28 @@ describe("restartDivergedRuns", () => {
     expect((await next.host.runtime.wait(runId)).status).toBe("cancelled");
   });
 
+  it("keeps a diverged run whose owner gate is pending, so the gate is neither cancelled nor lost", async () => {
+    const { next, oldRunIds } = await parkedRuns();
+    const runId = oldRunIds[0]!;
+    const gateId = `${runId}/approve-merge`;
+    next.host.gates.create({ id: gateId, prompt: `Merge PR #1 in ${REPO} at head ${HEAD_B}?`, ...TEST_BRIEF });
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.restarted).toEqual([]);
+    expect(sweep.kept).toEqual([{ runId, gateId }]);
+    expect(next.host.gates.get(gateId)?.status).toBe("pending");
+    expect(next.routes.shepherd!.store.get().byRun(runId)).toBeDefined();
+    expect(next.host.runtime.status(runId)?.status).toBe("recovery_required");
+  });
+
   it("restarts nothing on a second sweep", async () => {
     const { next } = await parkedRuns();
     await restartDivergedRuns(ctxOf(next));
 
     const again = await restartDivergedRuns(ctxOf(next));
 
-    expect(again).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
   });
 
   it("cancels a diverged run whose pull request closed and starts no new run", async () => {
@@ -144,7 +160,7 @@ describe("restartDivergedRuns", () => {
     expect(sweep.ended).toEqual([{ runId, reason: "replay diverged; PR closed" }]);
     expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
     expect(adopted).not.toContain(runId);
-    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
   });
 
   it("ends the superseded run of an open PR with a step in flight as cancelled in the same sweep", async () => {
@@ -179,7 +195,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
   });
 
   it("leaves a diverged branch-only registration alone", async () => {
@@ -189,7 +205,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
@@ -240,7 +256,7 @@ describe("restartDivergedRuns reclassification", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next), () => true);
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
