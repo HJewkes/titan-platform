@@ -1,7 +1,8 @@
+import { ODD_ONE_OUT_MIN_ITEMS } from "./eval-cold.js";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
 import { fromScriptV1, labelKey, type PaceBeat, type PaceItem } from "./pace-items.js";
-import type { SpineLedgerRow, SpineV1 } from "./spine-schema.js";
+import { contrastBeats, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 
 /** Script profiles planned against a story spine; a script on one of them fails Q-E17 when it ships without one. */
 export const SPINE_PROFILES: ReadonlySet<string> = new Set(["design-explainer"]);
@@ -38,13 +39,18 @@ function definedLate(beats: readonly PaceBeat[], ledger: Ledger): string[] {
 // entries of its list, and attributes and actions qualify an entry rather than add one.
 const listEntries = (beat: PaceBeat): PaceItem[] => beat.items.filter((i) => i.source === "cue" && i.role === "item");
 
-/** Q-E16 (M6): list beats whose ledgered entries carry more than one declared kind. Unledgered entries are Q-E17's. */
-function mixedLists(beats: readonly PaceBeat[], ledger: Ledger): string[] {
+/**
+ * Q-E16 (M6): parallel list beats whose ledgered entries carry more than one declared kind. Unledgered entries are
+ * Q-E17's. A list is the item judge's cut, so a pair (a stat and its target) is not one, and a `contrast` beat mixes
+ * kinds by design.
+ */
+function mixedLists(beats: readonly PaceBeat[], ledger: Ledger, contrast: ReadonlySet<string>): string[] {
   return beats
     .filter((beat) => {
+      if (contrast.has(beat.id)) return false;
       const entries = listEntries(beat);
       const kinds = new Set(entries.flatMap((item) => entryOf(ledger, item)?.kind ?? []));
-      return entries.length >= 2 && kinds.size > 1;
+      return entries.length >= ODD_ONE_OUT_MIN_ITEMS && kinds.size > 1;
     })
     .map((b) => b.id);
 }
@@ -64,7 +70,7 @@ export function ledgerRows(beats: readonly PaceBeat[], spine: SpineV1 | undefine
   if (!spine) return spinelessRows(beats, required);
   const ledger = ledgerOf(spine);
   const failing = new Set([...unledgered(beats, ledger), ...definedLate(beats, ledger)]);
-  return [row("Q-E16", mixedLists(beats, ledger)), row("Q-E17", beats.filter((b) => failing.has(b.id)).map((b) => b.id))];
+  return [row("Q-E16", mixedLists(beats, ledger, contrastBeats(spine))), row("Q-E17", beats.filter((b) => failing.has(b.id)).map((b) => b.id))];
 }
 
 /** The ledger lints on a script/v1. A script the item track cannot project fails both rows on every beat. */
