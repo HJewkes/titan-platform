@@ -4,11 +4,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * The M1a guard (TP-3099 I8): the effective mode is emitted, not consumed. Only serve wiring and health may read it now;
- * the reconciler (TP-3402) and the ingress (TP-3405) join this list when they land. A recipe or service that imports
- * github-sources/ fails here.
+ * The M1a guard (TP-3099 I8): the effective mode is emitted, not consumed. Only serve wiring, health and the ingress
+ * kill switch (TP-3802) may read it now; the reconciler (TP-3402) joins this list when it lands. A recipe or service that
+ * imports github-sources/ fails here.
  */
-const ALLOWED = ["cli.ts", "serve-health.ts", "serve.ts"];
+const ALLOWED = ["cli.ts", "ingress/answer.ts", "serve-health.ts", "serve.ts"];
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 const IMPORTS_SOURCES = /from\s+["'](?:\.\.?\/)+github-sources\//;

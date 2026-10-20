@@ -84,7 +84,7 @@ function readSecret(deps: IngressDeps, delivery: Delivery): string | IngressAnsw
   try {
     return deps.secret();
   } catch (error) {
-    const problem = error instanceof TokenFileError ? error.problem : ((error as NodeJS.ErrnoException).code ?? "unreadable");
+    const problem = error instanceof TokenFileError ? error.problem : "unreadable";
     deps.log.warn({ delivery: delivery.guid, problem }, "webhook secret unavailable");
     return refuse(503, "webhook secret unavailable");
   }
