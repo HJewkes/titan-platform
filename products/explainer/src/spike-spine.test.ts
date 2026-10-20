@@ -43,14 +43,10 @@ describe("the planner-written v4 spine", () => {
     const rows = ledgerRows(beats, spine, true);
 
     expect(journeyOrderRow(spine).pass).toBe(true);
-    expect(invariantSeatRow(spine, videoInvariants()).pass).toBe(true);
+    expect(invariantSeatRow(spine, script.video.invariants ?? []).pass).toBe(true);
     expect(rows.find((r) => r.check_id === "Q-E17")?.pass).toBe(true);
     expect(rows.find((r) => r.check_id === "Q-E16")?.detail_beats).toEqual([
       "r2-4-measure", "r3b-1-run", "r3b-4-today", "r7-1-carry", "r7-3-caps", "r7-4-notices", "r7-4b-score", "r7-4c-replay",
     ]);
   });
 });
-
-function videoInvariants(): string[] {
-  return ((v4FullScript() as { video: { invariants: string[] } }).video.invariants);
-}
