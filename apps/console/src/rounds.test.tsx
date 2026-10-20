@@ -131,7 +131,7 @@ describe("a question round", () => {
     expect(choice("hold-clarity", "5 5")).toBeTruthy();
     expect(choice("report-columns", "4 Hold minutes")).toBeTruthy();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
-    expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
+    expect(screen.getByText("Recommendations are hidden until you answer; reveal one first with r.")).toBeTruthy();
   });
 
   it("chooses an option of the first question with keys 1-9", async () => {
