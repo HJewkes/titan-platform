@@ -528,17 +528,22 @@ describe("importRound takes a Ship round only as one main-vs-head package (TP-35
     expect(await runImport()).toMatchObject({ created: true });
   });
 
-  it("refuses a lab story, naming the variant and the rule", async () => {
-    await addVariant({ key: "card-chosen", storyId: "lab-decisions-card--chosen", label: "Card, chosen" });
+  it("imports a lab-only PR's Ship round: its one frame is a lab- story, new at head (TD-993 regression)", async () => {
+    await rm(path.join(source, "frames"), { recursive: true });
+    await rm(path.join(source, "feedback.json"));
+    await editJson("round.json", (json) => {
+      json.variants = [{ key: "fd-5-family-l", storyId: "lab-decisions-foundations--fd-5-family-l", label: "Foundations, family L", change: "new" }];
+      json.sections = jsonObjects.parse(json.sections).map((section) => ({ ...section, variantKeys: ["fd-5-family-l"] }));
+    });
 
-    await expectShipRefused(/variant card-chosen is exploration \(storyId lab-decisions-card--chosen \(a lab story\)\)/);
+    expect(await runImport()).toMatchObject({ id: ID, created: true });
   });
 
-  it("refuses a frame under a lab/ path", async () => {
-    await editVariant("card-light", (variant) => (variant.image = "frames/lab/card-light.png"));
+  it("imports a paired frame whose label names a lab", async () => {
+    await editVariant("card-light", (variant) => (variant.label = "Lab card, light"));
     await rebind();
 
-    await expectShipRefused(/variant card-light is exploration \(file frames\/lab\/card-light\.png/);
+    expect(await runImport()).toMatchObject({ created: true });
   });
 
   it.each([
