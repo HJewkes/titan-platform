@@ -130,12 +130,21 @@ const loadSeededProvenance = () => SeededProvenanceSchema.parse(readJson("seeded
 const loadLint = (variant: string): Lint => LintSchema.parse(readJson(`seeded/${variant}/lint.json`));
 const fixtureBytes = (fixture: string): Buffer => readFileSync(new URL(`../${fixture}`, GOLDENS));
 
+/** A JSON object or array; arrays index by their string keys too. */
+const isContainer = (node: unknown): node is Record<string, unknown> => typeof node === "object" && node !== null;
+
+const child = (node: unknown, key: string): unknown => {
+  if (!isContainer(node)) throw new Error(`seed path runs through a non-container at ${key}`);
+  return node[key];
+};
+
 /** Sets each JSON pointer to its value (an array index one past the end appends); throws on a no-op edit. */
 const applyEdits = (doc: unknown, edits: Seed["edits"]): unknown => {
   for (const { path, value } of edits) {
     const keys = path.split("/").slice(1).map((key) => key.replaceAll("~1", "/").replaceAll("~0", "~"));
     const last = keys.pop() ?? "";
-    const parent = keys.reduce<Record<string, unknown>>((node, key) => node[key] as Record<string, unknown>, doc as Record<string, unknown>);
+    const parent = keys.reduce(child, doc);
+    if (!isContainer(parent)) throw new Error(`edit ${path} has no parent container`);
     if (JSON.stringify(parent[last]) === JSON.stringify(value)) throw new Error(`edit ${path} changes nothing`);
     parent[last] = value;
   }
