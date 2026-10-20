@@ -41,7 +41,7 @@ const glossTerms = (text: string): Set<string> =>
   new Set([...contentTerms(text), ...text.toLowerCase().split(/[^a-z0-9]+/).flatMap(numberOf)]);
 
 /** The clauses of a spoken line: split at punctuation and at "and" and "or". */
-const clausesOf =(spoken: string): string[] =>
+export const clausesOf = (spoken: string): string[] =>
   spoken
     .split(CLAUSE_BREAK)
     .map((c) => c.trim())
@@ -67,7 +67,7 @@ function ownClause(item: PaceItem, clauses: readonly string[], shared: ReadonlyS
 }
 
 /** Words that gloss an item: those of its own clause, less the beat's own label terms, so naming a sibling is not a gloss. */
-function itemGloss(clause: string | undefined, labelTerms: ReadonlySet<string>): number {
+export function itemGloss(clause: string | undefined, labelTerms: ReadonlySet<string>): number {
   return clause === undefined ? 0 : [...glossTerms(clause)].filter((t) => !labelTerms.has(t) && !FILLER.has(t)).length;
 }
 
@@ -90,6 +90,14 @@ const spokenLater = (beats: readonly PaceBeat[], index: number, chapter: string)
 // A label with no content terms (a "why" pin) has nothing to find in a clause or a later beat, so it is left out
 // of the count rather than scored as named only or as explained.
 const measurable = (beat: PaceBeat): PaceItem[] => beat.newItems.filter((i) => contentTerms(i.label).size > 0);
+
+/** Each measurable new item's own clause, keyed by label, read as the route reads it. */
+export function itemClauses(beat: PaceBeat): Map<string, string | undefined> {
+  const items = measurable(beat);
+  const clauses = clausesOf(beat.spoken);
+  const shared = sharedCues(items);
+  return new Map(items.map((i) => [i.label, ownClause(i, clauses, shared)]));
+}
 
 function beatRoute(beats: readonly PaceBeat[], beat: PaceBeat, index: number): ExplainRoute | undefined {
   const items = measurable(beat);

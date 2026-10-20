@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { LabelsSchema } from "./eval-calibrate.js";
 import {
   agreedOddOnes,
   coldEvalVersion,
   coldQuestions,
+  coldTerms,
   playbackTranscript,
   runCold,
   type ColdInput,
 } from "./eval-cold.js";
+import { agreedTerms, termKey } from "./eval-cold-terms.js";
 import { readRubric } from "./eval-evidence.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
+import { paceInput } from "./eval-pace-cli.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { v4Durations, v4FullScript, v4Labels } from "./spike-fixtures.test-helpers.js";
+import { readTiming } from "./timing.js";
 
 const rubric = readRubric("l1-cold.md");
 
@@ -221,9 +227,135 @@ describe("the streamed cold-viewer probe", () => {
     expect(agreedOddOnes(runs.slice(1))).toEqual([]);
   });
 
+  // Mutation: grading a bare list item from the viewer's answer lets one judge reading flip the chapter (E9 ch2).
+  it("scores a roll call's bare items 0 both when the viewer credits the list's heading and when it does not", async () => {
+    const rollCall = buildPaceBeats([
+      source("r1-1", "ch1", "Four chores come first: sweep, mop and dust. Then polish.", ["job:sweep", "job:mop", "job:dust", "job:polish"], 6),
+    ]);
+    const run = async (options: ViewerOptions) => (await runCold({ ...input(fakeViewer(options).harness), beats: rollCall })).chapters[0]!;
+
+    const credited = await run({ why: "none" });
+    const declined = await run({ notStated: true });
+
+    for (const chapter of [credited, declined]) {
+      expect(chapter.scores.map((s) => [s.item, s.score, s.void_reason])).toEqual(
+        ["sweep", "mop", "dust", "polish"].map((item) => [item, 0, "named only in a list"]),
+      );
+    }
+    expect(credited.undefined_per_minute).toBe(declined.undefined_per_minute);
+  });
+
+  // Mutation: voiding every bare item, not only a roll call's, zeroes items whose glossed siblings explain them.
+  it("leaves one bare item among glossed siblings to the viewer's answer", async () => {
+    const glossed = buildPaceBeats([
+      source("g1-1", "ch1", "The desk scans each barcode, weighs every parcel on the scale, and labels.", ["job:scan", "job:weigh", "job:label"], 6),
+    ]);
+
+    const chapter = (await runCold({ ...input(fakeViewer({ why: "none" }).harness), beats: glossed })).chapters[0]!;
+
+    expect(chapter.scores.map((s) => [s.item, s.score])).toEqual([["scan", 1], ["weigh", 1], ["label", 1]]);
+  });
+
+  // Mutation: asking only the item track never asks a term the viewer only hears (E9: head, grant, token, rung).
+  it("asks each glossary term and spoken identifier once, where first spoken, unless a new item's label names it", () => {
+    const docks = buildPaceBeats([
+      source("d1-1", "ch1", "Each parcel waits at the dock until Z9 clears it.", ["card:parcel", "detail:Z9 sign-off"], 6),
+      source("d1-2", "ch1", "The dock sends cleared parcels to the van.", [], 6),
+      source("d2-1", "ch2", "The van leaves the dock at noon, and the manifest goes with it.", ["card:manifest"], 6),
+    ]);
+
+    const asked = coldQuestions(docks, ["dock", "manifest", "van"]).filter((q) => q.kind === "spoken-term");
+
+    expect(asked).toMatchObject([
+      { beat: "d1-1", item: "dock", text: 'What is "dock", and why is it there?' },
+      { beat: "d1-1", item: "Z9" },
+      { beat: "d1-2", item: "van" },
+    ]);
+  });
+
+  it("poses spoken terms in their chapter and counts an unexplained one as an undefined item", async () => {
+    const beats = buildPaceBeats([
+      source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6),
+      source("d2-1", "ch2", "The dock opens at noon.", ["card:noon"], 6),
+    ]);
+    const viewer = fakeViewer({ notStated: true });
+
+    const result = await runCold({ ...input(viewer.harness), beats, glossary: ["dock"] });
+
+    expect(viewer.calls[0]).toContain('"dock"');
+    expect(viewer.calls[1]).not.toContain('"dock"');
+    expect(result.chapters[0]!.scores.map((s) => [s.kind, s.item, s.score])).toEqual([["what-why", "parcel", 0], ["spoken-term", "dock", 0]]);
+    expect(result.chapters[0]!.undefined_items).toBe(2);
+  });
+
   // Mutation: leaving the judge identity out of eval_version mixes two judges' rows.
   it("versions the eval by rubric and judge", () => {
     expect(coldEvalVersion({ rubric, judge: sonnet })).not.toBe(coldEvalVersion({ rubric, judge: { ...sonnet, model: "opus" } }));
     expect(coldEvalVersion({ rubric, judge: sonnet })).not.toBe(coldEvalVersion({ rubric: `${rubric}.`, judge: sonnet }));
+  });
+});
+
+/** A terms viewer whose nth call names `lists[n]`. */
+function termsViewer(lists: readonly string[][]) {
+  const calls: string[] = [];
+  const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+    calls.push(prompt);
+    return { ok: true, output: schema.parse({ terms: lists[calls.length - 1] ?? [] }), usd: 0.03, tokensIn: 500, tokensOut: 20 };
+  };
+  return { harness, calls };
+}
+
+const termsRubric = readRubric("l1-cold-terms.md");
+
+describe("the terms cold viewers cannot define", () => {
+  const desk = (): PaceBeat[] =>
+    buildPaceBeats([
+      source("t1-1", "ch1", "Each parcel takes a token, and the desk keeps its head.", ["card:parcel"], 6),
+      source("t2-1", "ch2", "Two chips light when the heads agree.", ["card:light"], 6),
+    ]);
+
+  // Mutation: a quorum of one keeps "desk", which only one run named.
+  it("keeps a term named in two of three runs and drops one named in a single run", () => {
+    expect(agreedTerms([["token", "desk"], ["token"], []], desk(), 2)).toEqual(["token"]);
+  });
+
+  it("folds case and plurals into one vote and asks the form the narration speaks first", () => {
+    expect(termKey(" Policies ")).toBe("policy");
+    expect(termKey("Carry Modules")).toBe("carry module");
+    expect(termKey("class")).toBe("class");
+    expect(agreedTerms([["Heads", "chip"], ["head", "CHIPS"], []], desk(), 2)).toEqual(["head", "chips"]);
+  });
+
+  it("counts a term once a run, and drops one the narration never speaks", () => {
+    expect(agreedTerms([["token", "Tokens"], [], ["ledger"], ["ledger"]], desk(), 2)).toEqual([]);
+  });
+
+  it("asks fresh viewers of the whole video three times and keeps what two agree on", async () => {
+    const viewer = termsViewer([["token"], ["Tokens", "desk"], []]);
+
+    const result = await coldTerms({ beats: desk(), rubric: termsRubric, harness: viewer.harness });
+
+    expect(viewer.calls).toHaveLength(3);
+    for (const prompt of viewer.calls) expect(prompt).toContain("## Chapter ch1\n\n[t1-1]");
+    expect(viewer.calls[0]).toContain("## Chapter ch2\n\n[t2-1]");
+    expect(result).toMatchObject({ terms: ["token"], named: [["token"], ["Tokens", "desk"], []], failures: [] });
+    expect(result.spend.tokensIn).toBe(1500);
+  });
+
+  // E9: v4 declares no glossary, and head, chip, grant, token and rung are plain words, so only a viewer can name them.
+  it("questions at least four of v4's six reader-gap groups once viewers name its plain-word jargon", async () => {
+    const { beats, glossary } = paceInput(v4FullScript(), "spike", readTiming(v4Durations()));
+    const groups = LabelsSchema.parse(v4Labels()).items;
+    const jargon = ["head", "chip", "grant", "token", "rung"];
+    const viewer = termsViewer([jargon, jargon.map((t) => `${t}s`), ["tick"]]);
+    const questioned = (terms: readonly string[]) => {
+      const asked = new Set(coldQuestions(beats, [...glossary, ...terms]).flatMap((q) => ("item" in q ? [termKey(q.item)] : [])));
+      return groups.filter((g) => g.items.some((i) => asked.has(termKey(i)))).map((g) => g.group);
+    };
+
+    const { terms } = await coldTerms({ beats, rubric: termsRubric, harness: viewer.harness });
+
+    expect(questioned([])).toHaveLength(1);
+    expect(questioned(terms)).toEqual(["head and chip", "grant and token", "carry", "ch1 nouns"]);
   });
 });

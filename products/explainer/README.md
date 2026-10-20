@@ -134,8 +134,11 @@ the exit code.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
-§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
-errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+§8 chapter order and §9 list shapes. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger.
+Q-E16 (M6) errors on a list beat whose cue entries, three or more of them (`ODD_ONE_OUT_MIN_ITEMS`), carry more
+than one declared kind. A beat §9 declares `contrast` (a removal card's old/new/why, or a split map's old and new
+pins) is never compared, and neither the kind-honest nor the blind odd-one-out judge question is asked about it;
+an undeclared beat is `parallel`. Q-E17 errors on a beat
 that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
@@ -197,6 +200,10 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   three or more items. A PROMISE beat's items are not asked "explained?": they are paid off in later
   chapters, which a chapter-scoped judge never sees. A CAVEAT beat's items are asked "is it said why
   the picture holds without X?" instead, since a simplification names what it leaves out on purpose.
+  A cast line, where every item's own clause names a person ("a reviewer, a coordinator seat, and
+  you"), is not asked: it introduces people, not things to explain. A beat with open questions and a
+  `default:` answer label after them asks each question only what it puts to the owner, and never
+  asks the answer label.
   The blind odd one out judges from the chapter alone, so it cannot see a kind the chapter never
   states: on v4's r2-1 the beat calls all seven items "jobs" and glosses none, and the judge picks
   none. The spine's declared kinds (`--spine`) are the check for that. One call per chapter that

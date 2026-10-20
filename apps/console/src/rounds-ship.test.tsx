@@ -252,7 +252,7 @@ describe("answering a Ship round", () => {
   });
 
   it("shows a sent Ship round's comments and round feedback read-only", async () => {
-    const notes = { general: "The diffs made this easy.", comments: { "badge-follow-up": "Only if design agrees.", "ship-tiles": "Stripe is low." } };
+    const notes = { general: "The diffs made this easy.", comments: { "badge-follow-up": "Only if design agrees.", "ship-tiles": "Stripe is low." }, answers: {}, addressed: [] };
     await renderShip({ answers: true, detail: { status: "sent", notes } });
 
     expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Only if design agrees.");
@@ -340,31 +340,37 @@ describe("answering a Ship round with side questions", () => {
     const rendered = await renderShip({ answers: true, detail: await td850() });
 
     fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "The stripe is low." } });
     fireEvent.click(button("Send back"));
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
-    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "side-colour", pick: "No" }, { questionId: "ship-tiles", pick: "Don't ship" }] });
+    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "side-colour", pick: "No" }, { questionId: "ship-tiles", pick: "Don't ship", comment: "The stripe is low." }] });
   });
 
-  it("keeps Ship on while a required side question is empty, and holds only Send back for it (decision 166)", async () => {
+  it("keeps both answers on while a required side question is empty, and sends it unanswered (decisions 166 and 513)", async () => {
     const rendered = await renderShip({ answers: true, detail: await td850(true) });
-
-    expect(screen.getByText("Send back needs the required question answered first: How clear is the stripe?")).toBeTruthy();
-    expect(button("Send back").getAttribute("aria-disabled")).toBe("true");
     expect(button("Ship").getAttribute("aria-disabled")).not.toBe("true");
-    fireEvent.click(button("Ship"));
 
-    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
-    expect(submits(rendered)[0]).toMatchObject({ headSha: HEAD, answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
-  });
-
-  it("frees Send back once the required side question is answered", async () => {
-    const rendered = await renderShip({ answers: true, detail: await td850(true) });
-
-    fireEvent.click(screen.getByRole("radio", { name: "2 2" }));
-    expect(screen.queryByText(/Send back needs the required/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "The stripe is low." } });
+    expect(button("Send back").getAttribute("aria-disabled")).not.toBe("true");
     fireEvent.click(button("Send back"));
 
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "ship-tiles", pick: "Don't ship", comment: "The stripe is low." }] });
+  });
+
+  it("holds Send back until there is a note the fixer will get, in the Ship comment or the round note", async () => {
+    const rendered = await renderShip({ answers: true, detail: await td850() });
+    fireEvent.change(screen.getByLabelText("Answer to Anything else?"), { target: { value: "The stripe is low." } });
+
+    expect(screen.getByTestId("send-back-blocked").textContent).toContain("Send back needs a note: say what to fix in the Ship comment or the round note.");
+    expect(button("Send back").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button("Send back"));
+    expect(submits(rendered)).toHaveLength(0);
+
+    fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Lift the stripe." } });
+    expect(screen.queryByTestId("send-back-blocked")).toBeNull();
+    fireEvent.click(button("Send back"));
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
   });
 
@@ -389,6 +395,7 @@ describe("Ship while feedback is open (TP-3741)", () => {
     expect(within(prior).getByText("The stripe is two pixels low.")).toBeTruthy();
     expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "Still low." } });
     expect(button("Send back").getAttribute("aria-disabled")).not.toBe("true");
     fireEvent.click(button("Ship"));
     expect(submits(rendered)).toHaveLength(0);
@@ -492,7 +499,7 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
   });
 
   it("shows a sent answer that went as a follow-up, without the choice", async () => {
-    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {} }, followUps: ["badge-follow-up"] } });
+    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {}, answers: {}, addressed: [] }, followUps: ["badge-follow-up"] } });
 
     expect(screen.getByTestId("ship-follow-up-sent-badge-follow-up").textContent).toContain("Marked follow-up, so it did not block Ship.");
     expect(screen.queryByTestId("ship-stake-badge-follow-up")).toBeNull();
@@ -567,5 +574,37 @@ describe("a Ship round that shares the round answer state (TP-3766)", () => {
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
     expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "ship-tiles" }, { questionId: "plane", pick: "Light", optionNotes: [{ option: "Dark", note: "Too heavy." }] }] });
+  });
+});
+
+describe("a sent Ship round read back after a reload (TP-3767)", () => {
+  const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
+  const sent = {
+    status: "sent" as const,
+    priorFeedback: PRIOR,
+    notes: { general: "", comments: { "badge-follow-up": "Ask design." }, answers: { "badge-follow-up": { pick: "No" }, "ship-tiles": { pick: "Ship" } }, addressed: [1] },
+  };
+
+  it("shows the side answer picked and locked, the Ship pick and the Addressed tick as sent", async () => {
+    await renderShip({ answers: true, detail: sent });
+
+    const side = screen.getByTestId("ship-side-badge-follow-up");
+    expect(side.hasAttribute("inert")).toBe(true);
+    expect(within(side).getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Ask design.");
+    expect(screen.getByTestId("round-pick-sent-ship-tiles").textContent).toContain("Ship");
+    const addressed = within(screen.getByTestId("ship-prior-feedback")).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    expect(addressed.getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Ship" })).toBeNull();
+  });
+
+  it("takes no digit key or press on a side answer once sent", async () => {
+    await renderShip({ answers: true, detail: sent });
+
+    fireEvent.keyDown(window, { key: "1" });
+    fireEvent.click(within(screen.getByTestId("ship-side-badge-follow-up")).getByRole("radio", { name: "1 Yes" }));
+
+    expect(screen.getByRole("radio", { name: "1 Yes" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
   });
 });

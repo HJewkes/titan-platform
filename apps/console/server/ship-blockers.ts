@@ -41,7 +41,8 @@ interface EarlierRound {
   followUps?: readonly string[];
 }
 
-type MergeQuestion = Extract<Question, { kind: "pick-one" }> & { merge: object };
+type PickOne = Extract<Question, { kind: "pick-one" }>;
+type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
 
 const isMerge = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
 const blank = (text: string | undefined): boolean => (text ?? "").trim() === "";
@@ -120,10 +121,41 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
 
-/** Why Ship is off, in plain words; empty when it may ship. */
-export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft): string[] {
+const pageOf = (question: MergeQuestion): string => `${question.merge.repo}#${question.merge.pr}`;
+
+/**
+ * The questions whose answers bear on shipping one merge question: in a round with several (TP-3329), its own PR group's and
+ * those no group claims, never another PR's; in a round with one, every question.
+ */
+export function shipScope(manifest: Manifest, mergeId: string): ReadonlySet<string> {
+  const merges = manifest.questions.filter(isMerge);
+  const all = new Set(manifest.questions.map((question) => question.id));
+  const merge = merges.find((question) => question.id === mergeId);
+  if (merges.length < 2 || merge === undefined || manifest.prGroups === undefined) return all;
+  const groupOf = new Map(manifest.prGroups.flatMap((group) => group.sectionIds.map((sectionId) => [sectionId, group.pr] as const)));
+  const claimedBy = new Map(manifest.sections.flatMap((section) => section.questionIds.map((id) => [id, groupOf.get(section.id)] as const)));
+  const own = pageOf(merge);
+  return new Set([...all].filter((id) => (claimedBy.get(id) ?? own) === own && (id === mergeId || !merges.some((other) => other.id === id))));
+}
+
+const NEEDS_NOTE = "Send back needs a note: say what to fix in the Ship comment or the round note.";
+
+/**
+ * Why one PR's Send back is off; undefined when it may go. The fixer's note is the round note and the comment
+ * on that PR's own Ship question, and the factory refuses an empty one, so Send back waits for one of them
+ * (owner decision 513). A note on another PR's Ship question does not count, and unanswered side questions
+ * go with it as unanswered.
+ */
+export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general">, mergeId: string): string | undefined {
+  const note = draft.answers.find((answer) => answer.questionId === mergeId)?.comment;
+  return blank(note) && blank(draft.general) ? NEEDS_NOTE : undefined;
+}
+
+/** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
+export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): string[] {
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
-  const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId));
+  const scope = mergeId === undefined ? undefined : shipScope(manifest, mergeId);
+  const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId) && (scope?.has(answer.questionId) ?? true));
   return [
     ...open.map((round) => `your feedback from round ${round} is not ticked Addressed`),
     ...thisPr.flatMap((answer) => answerBlockers(manifest, answer)),

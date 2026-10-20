@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
+import { readRubric } from "./eval-evidence.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
+import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const spikeBeat = (id: string, chapter: string, spoken: string, titles: string[]) => ({ id, chapter, function: "EXPLAIN", plannedS: 12, spoken, visual: { titles } });
 /** An invented parcel desk in two chapters. */
@@ -16,16 +18,26 @@ const script = {
   ],
 };
 
-/** A viewer that admits it was told nothing, so the canary passes; `guess` makes it answer every question. */
-function fakeViewer(options: { guess?: boolean } = {}) {
+const TERMS_RUBRIC = readRubric("l1-cold-terms.md");
+
+/**
+ * A viewer that admits it was told nothing, so the canary passes; `guess` makes it answer every question. Asked for
+ * the terms it cannot define, its nth call names `terms[n]`.
+ */
+function fakeViewer(options: { guess?: boolean; terms?: string[][] } = {}) {
   const calls: string[] = [];
+  const termCalls: string[] = [];
   const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+    if (prompt.startsWith(TERMS_RUBRIC)) {
+      termCalls.push(prompt);
+      return { ok: true, output: schema.parse({ terms: options.terms?.[termCalls.length - 1] ?? [] }), usd: 0.03, tokensIn: 500, tokensOut: 20 };
+    }
     calls.push(prompt);
     const qids = [...prompt.matchAll(/^- (q\d+): /gm)].map((m) => m[1]!);
     const answer = (qid: string) => ({ qid, not_stated: !options.guess, what: "", what_quotes: [], why: "", why_quotes: [], odd_one_out: null });
     return { ok: true, output: schema.parse({ answers: qids.map(answer), summary: "A parcel desk." }), usd: 0.01, tokensIn: 200, tokensOut: 40 };
   };
-  return { harness, calls };
+  return { harness, calls, termCalls };
 }
 
 let dir: string;
@@ -37,7 +49,8 @@ const write = (name: string, value: unknown): string => {
 const judgeFile = (model: string) => write(`judge-${model}.json`, { provider: "claude-print", model });
 const cold = (harness: JudgeHarness, model = "sonnet", ...extra: string[]) =>
   runEvalCli(["eval", "cold", write("script.json", script), "--judge", judgeFile(model), "--bench", join(dir, "bench"), ...extra], { harness: () => harness });
-const runRecords = () => readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
+const allRecords = () => readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
+const runRecords = () => allRecords().filter((r) => r.eval_id === "L1-cold");
 const evalRows = (name: string) => readTsv(join(dir, "bench/evals", name));
 
 beforeEach(() => {
@@ -85,6 +98,19 @@ describe("explainer eval cold", () => {
     ]);
   });
 
+  // Mutation: dropping the glossary on the way from the file to the probe leaves spoken-only terms unasked.
+  it.each([
+    ["spike", { ...script, video: { glossary: [{ name: "desk", job: "takes parcels in" }] } }, "desk", "ch1"],
+    ["v1", { ...scriptWith(), video: { ...scriptWith().video, glossary: [{ name: "ledger", job: "holds parcel rows" }] } }, "ledger", "ch2"],
+  ])("asks a %s script's glossary term where it is first spoken", async (format, glossed, term, chapter) => {
+    const file = write("glossed.json", glossed);
+
+    await runEvalCli(["eval", "cold", file, "--format", format, "--judge", judgeFile("sonnet"), "--bench", join(dir, "bench"), "--runs", "1"], { harness: () => fakeViewer().harness });
+
+    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "spoken-term");
+    expect(asked.map((r) => [r.chapter, r.item, r.score])).toEqual([[chapter, term, "0"]]);
+  });
+
   // Mutation: leaving the judge identity out of eval_version gives both judges one version, mixing their rows.
   it("gives runs under two judge configs different eval_versions", async () => {
     await cold(fakeViewer().harness, "sonnet", "--runs", "1");
@@ -101,6 +127,28 @@ describe("explainer eval cold", () => {
     expect(code).toBe(1);
     expect(evalRows("canaries.tsv").map((r) => r.pass)).toEqual(["false", "false"]);
     expect(runRecords()).toHaveLength(1);
+  });
+
+  // Mutation: a quorum of one asks "parcel", which only one viewer named.
+  it("asks the terms two of three viewers could not define, folding case and plural, and stores the pass's spend", async () => {
+    const viewer = fakeViewer({ terms: [["Desks", "parcel"], ["desk"], []] });
+
+    await cold(viewer.harness, "sonnet", "--runs", "1");
+
+    expect(viewer.termCalls).toHaveLength(3);
+    expect(viewer.termCalls[0]).toContain("## Chapter ch2");
+    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "spoken-term");
+    expect(asked.map((r) => [r.chapter, r.item, r.score])).toEqual([["ch1", "desk", "0"]]);
+    const terms = allRecords().filter((r) => r.eval_id === "L1-cold-terms");
+    expect(terms).toMatchObject([{ run: 1, usd: 0.09, tokens_in: 1500, judge: "claude-print:sonnet" }]);
+  });
+
+  it("exits 1 when a terms call fails, since its questions go unasked", async () => {
+    const viewer = fakeViewer();
+    const failing: JudgeHarness = async (call) =>
+      call.prompt.startsWith(TERMS_RUBRIC) ? { ok: false, reason: "timeout: no reply", usd: 0, tokensIn: 0, tokensOut: 0 } : viewer.harness(call);
+
+    expect(await cold(failing, "sonnet", "--runs", "1")).toBe(1);
   });
 
   it("exits 2 on a judge config it cannot parse, before any call", async () => {

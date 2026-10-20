@@ -11,7 +11,7 @@ export interface GhRule {
 const NO_REQUIRED_CHECKS: RequiredChecks = { contexts: [], strict: false };
 
 /** A private repo on the free plan answers 403 "Upgrade to GitHub Pro" for its rules: it has none. Any other 403 is a real refusal. */
-function isFreePlanRefusal(error: unknown): boolean {
+export function isFreePlanRefusal(error: unknown): boolean {
   if (!(error instanceof GhError) || error.status !== 403) return false;
   return /Upgrade to GitHub Pro/.test(`${error.result.stdout}\n${error.result.stderr}`);
 }

@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
+import { InlineMarkdown, RoundProse, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
@@ -98,7 +99,7 @@ function QuestionHeading({ question, position, active }: { question: Question; p
   return (
     <HStack gap={2} align="center" wrap>
       <Typography variant="monoLabel" color="secondary">{`Q${position}`}</Typography>
-      <Typography variant="subtitle1">{question.prompt}</Typography>
+      <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
       {question.required ? <Pill variant="subtle" size="xs">required</Pill> : null}
       {active && choicesOf(question).length > 0 ? <Typography variant="caption" color="secondary">keys 1-9 answer</Typography> : null}
     </HStack>
@@ -109,6 +110,17 @@ function QuestionHeading({ question, position, active }: { question: Question; p
 function choiceLabel(index: number, choice: string, frame: string | undefined): string {
   const keyed = index < MAX_KEYED_CHOICES ? `${index + 1}  ${choice}` : choice;
   return frame === undefined ? keyed : `${keyed} (frame: ${frame})`;
+}
+
+/** `choiceLabel` with the option's markdown rendered. */
+function ChoiceLabel({ index, choice, frame }: { index: number; choice: string; frame: string | undefined }): ReactNode {
+  return (
+    <>
+      {index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}
+      <InlineMarkdown text={choice} />
+      {frame === undefined ? null : ` (frame: ${frame})`}
+    </>
+  );
 }
 
 function Choices({ question, answer, onChoose, onText }: { question: Question; answer: QuestionAnswer | undefined; onChoose: (choice: string) => void; onText?: (text: string) => void }): ReactNode {
@@ -124,24 +136,40 @@ function Choices({ question, answer, onChoose, onText }: { question: Question; a
     return (
       <CheckboxGroup label="Pick any">
         {choices.map((choice, index) => (
-          <Checkbox key={choice} value={choice} label={choiceLabel(index, choice, frameOf(choice))} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
+          <Checkbox key={choice} value={choice} label={choiceLabel(index, plainText(choice), frameOf(choice))} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
         ))}
       </CheckboxGroup>
     );
   }
+  return <PickOne question={question} answer={answer} onChoose={onChoose} choices={choices} frameOf={frameOf} />;
+}
+
+interface PickOneProps {
+  question: Question;
+  answer: QuestionAnswer | undefined;
+  onChoose: (choice: string) => void;
+  choices: readonly string[];
+  frameOf: (choice: string) => string | undefined;
+}
+
+/** A pick-one or scale as radios; a sent revision request says so, as it picks none of them. */
+function PickOne({ question, answer, onChoose, choices, frameOf }: PickOneProps): ReactNode {
   const value = answer && "pick" in answer ? answer.pick : answer && "value" in answer ? String(answer.value) : null;
   return (
-    <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
-      {choices.map((choice, index) => (
-        <Radio key={choice} value={choice} aria-checked={value === choice}>
-          {choiceLabel(index, choice, frameOf(choice))}
-        </Radio>
-      ))}
-    </RadioGroup>
+    <VStack gap={1}>
+      {answer && "revisionRequested" in answer ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
+      <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
+        {choices.map((choice, index) => (
+          <Radio key={choice} value={choice} aria-checked={value === choice}>
+            <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} />
+          </Radio>
+        ))}
+      </RadioGroup>
+    </VStack>
   );
 }
 
-const answerText = (answer: string | number | readonly string[]): string => (Array.isArray(answer) ? answer.join(", ") : String(answer));
+const answerText = (answer: string | number | readonly string[]): string => plainText(Array.isArray(answer) ? answer.join(", ") : String(answer));
 
 /** A question's sign-off, merge binding and any recommendation the server sent. */
 export function QuestionFacts({ question }: { question: Question }): ReactNode {
@@ -155,7 +183,7 @@ export function QuestionFacts({ question }: { question: Question }): ReactNode {
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
       {recommendation ? (
         <Alert status="info" size="compact" message={`Recommended: ${answerText(recommendation.answer)} (${Math.round(recommendation.confidence * 100)}%, ${recommendation.by})`}>
-          <Typography variant="caption" color="secondary">{recommendation.rationale}</Typography>
+          <RoundProse text={recommendation.rationale} />
         </Alert>
       ) : null}
     </VStack>

@@ -24,6 +24,7 @@ import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
 import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
 import { readFollowUps } from "./round-follow-ups.js";
+import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, roundNotes, type RoundNotes } from "./round-notes.js";
 import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 
 export interface RoundsSource {
@@ -67,12 +68,6 @@ export const roundSummary = z.discriminatedUnion("valid", [
   invalidRound,
 ]);
 
-const roundNotes = z.object({
-  general: z.string(),
-  /** Each answered question's comment, by question id. */
-  comments: z.record(z.string(), z.string()),
-});
-
 export const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
@@ -93,7 +88,7 @@ export const roundDetail = z.discriminatedUnion("valid", [
     lineage: shipLineage.optional(),
     /** A sent round's free text from its feedback.json; absent while unsent or when that file does not parse. */
     notes: roundNotes.optional(),
-    /** An open Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
+    /** An open or sent Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
     priorFeedback: priorFeedbackList.optional(),
     /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
     followUps: z.array(z.string()).optional(),
@@ -101,7 +96,7 @@ export const roundDetail = z.discriminatedUnion("valid", [
   invalidRound,
 ]);
 
-export type RoundNotes = z.infer<typeof roundNotes>;
+export type { RoundNotes, SentAnswer } from "./round-notes.js";
 export type RoundSummary = z.infer<typeof roundSummary>;
 export type RoundDetail = z.infer<typeof roundDetail>;
 
@@ -235,15 +230,16 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, line
   };
 }
 
-function notesOf(feedback: Feedback): RoundNotes {
-  const commented = feedback.answers.flatMap((answer) => (answer.comment?.trim() ? [[answer.questionId, answer.comment] as const] : []));
-  return { general: feedback.general, comments: Object.fromEntries(commented) };
+/** A missing, oversized or malformed `addressed.json` reads as no ticks; the feedback beside it still shows. */
+async function readAddressed(roundDir: string): Promise<number[]> {
+  const read = await readRoundFile(roundDir, ADDRESSED_FILE, MAX_ADDRESSED_BYTES);
+  return read.state === "read" ? addressedOf(jsonOrUndefined(read.text)) : [];
 }
 
 /** Only a sent round has notes; a feedback.json that does not parse shows none rather than failing the page. */
 async function readNotes(roundDir: string): Promise<RoundNotes | undefined> {
   const read = await readFeedback(roundDir);
-  return read.ok && read.feedback !== null ? notesOf(read.feedback) : undefined;
+  return read.ok && read.feedback !== null ? notesOf(read.feedback, await readAddressed(roundDir)) : undefined;
 }
 
 async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLineage | undefined> {
@@ -273,7 +269,7 @@ export async function getRound(source: RoundsSource, id: string): Promise<RoundD
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
   const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
-  const prior = round.parsed.ok && round.status === "open" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
+  const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
   const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
   return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }) };
 }

@@ -3,6 +3,7 @@ export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubCon
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export type { Ancestry } from "./compare.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+export type { RefRead, RulesetList } from "./conditional-reads.js";
 export type { ReviewComment } from "./review-comment.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
@@ -42,3 +43,14 @@ export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.
 export { formatSquashMessage } from "./squash-message.js";
 export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
 export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";
+export type {
+  GithubApiPool,
+  GithubApiPoolOptions,
+  PoolAnswer,
+  PoolClock,
+  PoolPairState,
+  PoolPriority,
+  PoolStateStore,
+  PoolUnavailable,
+} from "./api-pool.js";
+export { MUTATION_SPACING_MS, POOL_PRIORITY, githubApiPool, isPoolUnavailable, memoryPoolStateStore } from "./api-pool.js";

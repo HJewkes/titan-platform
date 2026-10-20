@@ -7,7 +7,7 @@ import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
-import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
+import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
@@ -56,7 +56,7 @@ export class WorkflowRuntime {
       gatePollMs: options.gatePollMs ?? 250,
       maxStepDataBytes: options.maxStepDataBytes ?? DEFAULT_MAX_STEP_DATA_BYTES,
       executionId: options.executionId ?? randomUUID,
-      authority: options.authority,
+      authority: options.authority, capabilities: vaultOf(options.capabilities),
     };
   }
 
@@ -193,7 +193,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", messageOf(error));
+    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities));
   }
 
   shutdown(): void {
