@@ -530,14 +530,27 @@ describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
     ]);
   });
 
-  it("refuses a question round that leaves a required question unanswered, and writes nothing", async () => {
+  it("writes a question round sent with a required question unanswered as a partial submit that fits its round", async () => {
     const roundSha = await stageRound(KILN);
 
-    const { envelope, exitCode } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
 
-    expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: "the feedback does not fit its round: ramp-default: required" });
-    expect(await exists(feedbackOf(KILN))).toBe(false);
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(KILN);
+    expect(feedback.unansweredQuestionIds).toEqual(["ramp-default", "report-columns", "report-notes"]);
+    expect(feedbackProblems(feedback, await manifestOf(KILN))).toEqual([]);
+  });
+
+  it("writes a design round sent with its required pick unanswered as a partial submit that fits its round", async () => {
+    const id = "beacon-states-r1";
+    const roundSha = await stageRound(id);
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, answers: [{ questionId: "beacon-notes", text: "Keep the halo." }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+    const feedback = await written(id);
+    expect(feedback.unansweredQuestionIds).toEqual(["beacon-fill-pick"]);
+    expect(feedbackProblems(feedback, await manifestOf(id))).toEqual([]);
   });
 
   it("writes a pick of the round's revisionOption as a revision request, and refuses one with no comment", async () => {
