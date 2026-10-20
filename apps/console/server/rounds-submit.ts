@@ -37,7 +37,7 @@ import { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { sendBackNoteBlocker, shipBlockers } from "./ship-blockers.js";
+import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 export const ADDRESSED_FILE = "addressed.json";
@@ -181,12 +181,14 @@ function headsResult(shipped: readonly Shipped[]): { headSha: string | null; hea
   return { headSha: null, heads: Object.fromEntries(shipped.map(({ id, headSha }) => [id, headSha])) };
 }
 
-/** A Ship round may go with questions unanswered (decision 166), so its feedback lists them as a partial submit. */
 const isShipRound = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
 
-/** The harness's feedback document for these answers, refused whole if it disagrees with its round. */
+/**
+ * The harness's feedback document for these answers, refused whole if it disagrees with its round. Any round may go
+ * with questions unanswered (decisions 166 and 513), so every submit is built partial: it lists what it left out.
+ */
 function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer {
-  const document = FeedbackSchema.parse(buildRoundFeedback(manifest, args.manifestSha256, args, now, isShipRound(manifest)));
+  const document = FeedbackSchema.parse(buildRoundFeedback(manifest, args.manifestSha256, args, now, true));
   const problems = feedbackProblems(document, manifest);
   if (problems.length > 0) refuse(`the feedback does not fit its round: ${problems.join("; ")}`);
   const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`);
@@ -207,16 +209,11 @@ const isMergeQuestion = (question: Question): question is MergeQuestion => quest
 const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
   answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
 
-/**
- * In a round with several PRs, each one sent back needs its own note (decision 513); the single-PR path is
- * tp#2006's to move to the same rule.
- */
+/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question or the round note. */
 function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
-  const merges = manifest.questions.filter(isMergeQuestion);
-  if (merges.length < 2) return;
-  for (const question of merges) {
+  for (const question of manifest.questions.filter(isMergeQuestion)) {
     const answer = args.answers.find((each) => each.questionId === question.id);
-    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackNoteBlocker(args, question.id) : undefined;
+    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(args, question.id) : undefined;
     if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
   }
 }

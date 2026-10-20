@@ -20,11 +20,18 @@ export function sideMarks(side: RoundAnswers) {
   };
 }
 
-export function ShipNotices({ blockers, missing, available, state }: { blockers: string[]; missing: Question[]; available: boolean; state: SubmitState }): ReactNode {
+interface ShipNoticesProps {
+  blockers: string[];
+  noNote: string | undefined;
+  available: boolean;
+  state: SubmitState;
+}
+
+export function ShipNotices({ blockers, noNote, available, state }: ShipNoticesProps): ReactNode {
   return (
     <>
       <ShipBlockedReason reasons={blockers} />
-      {missing.length > 0 ? <Alert status="warning" size="compact" message={`Send back needs the required ${missing.length === 1 ? "question" : "questions"} answered first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
+      {noNote ? <Alert status="warning" size="compact" message={noNote} testID="send-back-blocked" /> : null}
       {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
       {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
     </>

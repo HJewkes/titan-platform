@@ -41,7 +41,7 @@ const glossTerms = (text: string): Set<string> =>
   new Set([...contentTerms(text), ...text.toLowerCase().split(/[^a-z0-9]+/).flatMap(numberOf)]);
 
 /** The clauses of a spoken line: split at punctuation and at "and" and "or". */
-const clausesOf =(spoken: string): string[] =>
+export const clausesOf = (spoken: string): string[] =>
   spoken
     .split(CLAUSE_BREAK)
     .map((c) => c.trim())
@@ -67,7 +67,7 @@ function ownClause(item: PaceItem, clauses: readonly string[], shared: ReadonlyS
 }
 
 /** Words that gloss an item: those of its own clause, less the beat's own label terms, so naming a sibling is not a gloss. */
-function itemGloss(clause: string | undefined, labelTerms: ReadonlySet<string>): number {
+export function itemGloss(clause: string | undefined, labelTerms: ReadonlySet<string>): number {
   return clause === undefined ? 0 : [...glossTerms(clause)].filter((t) => !labelTerms.has(t) && !FILLER.has(t)).length;
 }
 
