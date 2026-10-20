@@ -89,12 +89,16 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
-`--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
+`--fail-on-ghosts` turns them into exit 1. `--speech-vet` runs speech-vet's `vet` on each sentence of 26 to 32
+words before the checks, over local Kokoro and Whisper (no cost, but the first run downloads both models). Q-V9
+passes such a sentence only when the verdict is `accepted`; a vet error counts as not clean. It is off by
+default, and then, or when the models cannot load, those sentences keep the 25-word cap and one stderr line
+says so. `doctrine/rules.yaml` holds which rules are
 implemented or pending. `--rules` defaults to the shipped registry and must parse as
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.

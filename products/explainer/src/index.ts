@@ -257,7 +257,9 @@ export {
 export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
-export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
+export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, needsSpeechVet, vettableSentences, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
+export { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVerdict, type SentenceVet } from "./speech-vet-gate.js";
+export { DEFAULT_VET_VOICE, localSentenceVet } from "./speech-vet-local.js";
 export { flowCheck } from "./lint-flow.js";
 export {
   MIN_REGISTER_WORDS,

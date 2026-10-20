@@ -84,10 +84,19 @@ export interface VoiceOptions {
   speechClean?: SpeechVerdict;
 }
 
-function overlongSentence(text: string, speechClean: SpeechVerdict | undefined): boolean {
+/** Whether Q-V9 consults speech-vet for this sentence: over the plain cap, within the vetted one. */
+export function needsSpeechVet(text: string): boolean {
   const words = wordsOf(text).length;
-  if (words <= MAX_SENTENCE_WORDS) return false;
-  return words > MAX_VETTED_SENTENCE_WORDS || !speechClean?.(text);
+  return words > MAX_SENTENCE_WORDS && words <= MAX_VETTED_SENTENCE_WORDS;
+}
+
+/** The sentences of a script's spoken lines that Q-V9 would consult speech-vet on, each once. */
+export const vettableSentences = (beats: readonly ScriptBeat[]): string[] =>
+  [...new Set(sentences(beats).map(({ text }) => text).filter(needsSpeechVet))];
+
+function overlongSentence(text: string, speechClean: SpeechVerdict | undefined): boolean {
+  if (wordsOf(text).length <= MAX_SENTENCE_WORDS) return false;
+  return !needsSpeechVet(text) || !speechClean?.(text);
 }
 
 /**
