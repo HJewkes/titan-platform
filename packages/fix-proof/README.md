@@ -25,6 +25,9 @@ the `fix-proof` bin does the git and vitest work.
   each an assertion failure, are exactly its `kills`. Otherwise it is `overkill`, `survived`,
   `unbuilt`, `load-error`, `baseline` or `error`. `encodeMutantsReport` and
   `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
+- `provedByMutants(result)`: true when a `vacuous` result's `mutants` verdict is `killed`, no
+  changed test file lacks a spec of its own (`mutants.uncovered` present and empty), no test was
+  deleted or renamed out of the tests, and every selected test ran and passed at head: the proof a test-only diff can give.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
   one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)

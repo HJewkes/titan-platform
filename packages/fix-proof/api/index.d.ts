@@ -212,7 +212,10 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
  */
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
-/** `killed` only when every declared mutation is killed; `error` when the specs or the report could not be read at all. */
+/**
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `error` when the specs or the report could not be read at all.
+ */
 declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
 type MutantVerdict = (typeof MUTANT_VERDICTS)[number];
 interface MutantResult {
@@ -225,6 +228,11 @@ interface MutantResult {
 interface MutantsResult {
     verdict: MutantVerdict;
     results: MutantResult[];
+    /**
+     * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+     * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
+     */
+    uncovered?: string[];
     error?: string;
 }
 /** One spec as the judge read it at head, with the test file its `kills` name tests in. */
@@ -307,6 +315,13 @@ type ParsedResultLine = {
     ok: false;
     error: string;
 };
+/**
+ * Whether the mutation check proves a result its base-against-head run cannot. A test-only diff runs the same production
+ * code on both sides, so it reads vacuous at best. It is proved when every changed test file has a spec of its own in the
+ * diff, every declared mutation is killed, every selected test ran and passed at head, and no test was deleted or renamed
+ * out of the tests. A line with no `uncovered` list comes from a judge that never checked coverage, so it proves nothing.
+ */
+declare function provedByMutants(result: FixProofResult): boolean;
 /** Joins a plan and its classification into the result a runner prints for head. */
 declare function toResult(args: {
     head: string;
@@ -434,4 +449,4 @@ interface JudgeOptions {
  */
 declare function judge(options: JudgeOptions): Promise<string>;
 
-export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };
+export { CHANGESET_GLOB, CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_MUTANTS_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedMutants, type DecodedReport, type Exec, type ExecMutantsOptions, type ExecOptions, type ExecResult, type ExecSideOptions, FIX_PROOF_HARNESS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, MAX_KILLS, MAX_MUTATIONS, MAX_MUTATION_EDIT, MAX_MUTATION_NAME, MAX_SPEC_BYTES, MUTANTS_REPORT, MUTANT_OUTCOMES, MUTANT_VERDICTS, MUTATION_SPEC_GLOB, type MutantOutcome, type MutantResult, type MutantRun, type MutantVerdict, type MutantsReport, type MutantsResult, type Mutation, type MutationCheck, type MutationSpec, type MutationSpecResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, SPEC_SUFFIX, type Side, type SpecUnderTest, TEST_CLASSES, type TestClass, type TestOnlyReading, type TestOutcome, USAGE, VERDICTS, type Verdict, checkMutation, classifyMutants, classifyReports, compileGlobs, decodeMutantsReport, decodeReport, encodeError, encodeMutantsReport, encodeMutantsSkipped, encodeReport, errorLine, execMutants, execSide, expandBraces, formatResultLine, isHarnessPath, isNewApiFailure, judge, parseFixProofConfig, parseMutationSpec, parseResultLine, planFixProof, provedByMutants, run, runCli, spawnExec, testFileOfSpec, testOnlyOf, testOnlyReading, toResult };

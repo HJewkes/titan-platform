@@ -294,7 +294,15 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
 
 const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 /** The payload is a replayed step record, so its shape is checked again; only a sha-shaped merge base is written outside the fence. */
-const NoReproPayload = z.looseObject({ kind: z.literal("NO_REPRO"), result: z.looseObject({ head: z.string().regex(SHA), mergeBase: z.string().regex(SHA), verdict: z.string() }) });
+const NoReproPayload = z.looseObject({
+  kind: z.literal("NO_REPRO"),
+  result: z.looseObject({
+    head: z.string().regex(SHA),
+    mergeBase: z.string().regex(SHA),
+    verdict: z.string(),
+    mutants: z.looseObject({ uncovered: z.array(z.string()).optional() }).optional(),
+  }),
+});
 
 /**
  * The only two NO_REPRO verdicts, each in fixed words so no result text reaches `reason`. Each says only what the
@@ -304,6 +312,14 @@ const NO_REPRO_REASON: Readonly<Record<string, string>> = {
   vacuous: "no test the proof ran fails at the merge base and passes at the head; each test's class is in the fenced result",
   "no-tests": "no test added: the PR adds or changes no test file the proof could run",
 };
+/** A test-only diff with a mutation check cannot fail on the base, so its send-back asks for kills instead. */
+const MUTANTS_REASON =
+  "the PR changes only tests, and the mutation check did not pass: a changed test file has no mutation spec of its own in this diff, some declared mutation survived, a test failed or did not run at the head, or the mutants could not be judged; each mutation's outcome is in the fenced result";
+const MUTANTS_ASK =
+  "On the head branch named in the fence below, give every changed test file a `<test>.mutations.json` beside it (the files still missing one are fenced below), make the tests each mutation's kills name fail under that mutation and pass at the head, or correct the spec; support files they need must match the carry globs below.";
+const UNCOVERED_LABEL = "changed test files with no mutation spec";
+const REPRO_ASK =
+  "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.";
 const CARRY_UNREADABLE = "The carry globs could not be read at the merge base, so the error follows in their place.";
 
 /** The carry globs the runner uses, read at the merge base as the runner reads them, so a head edit to the config is never believed. */
@@ -322,17 +338,18 @@ async function fixProofWake(port: GitHubPort, input: WakeFacts, pr: PullRequest)
   const fenced = dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2));
   const parsed = NoReproPayload.safeParse(input.payload);
   if (!parsed.success) return { reason: `The fix-proof check at head ${input.headSha} did not pass. Its result follows.`, payload: fenced };
-  const { head, mergeBase, verdict } = parsed.data.result;
-  const why = NO_REPRO_REASON[verdict] ?? "its result follows";
+  const { head, mergeBase, verdict, mutants } = parsed.data.result;
+  const why = mutants !== undefined ? MUTANTS_REASON : (NO_REPRO_REASON[verdict] ?? "its result follows");
   const carry = await carryGlobs(port, input.repo, mergeBase);
   const reason = [
     `The fix-proof check at head ${head} returned NO_REPRO: ${why}.`,
     `The merge base is ${mergeBase}.`,
-    "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.",
+    mutants !== undefined ? MUTANTS_ASK : REPRO_ASK,
     ...(carry.ok ? [] : [CARRY_UNREADABLE]),
   ].join(" ");
   const globs = carry.ok ? dataFence("carry globs", carry.globs.join("\n")) : dataFence("carry globs error", carry.error);
-  return { reason, payload: `${dataFence("head branch", pr.headRef)}\n\n${globs}\n\n${fenced}` };
+  const uncovered = mutants?.uncovered?.length ? [dataFence(UNCOVERED_LABEL, mutants.uncovered.join("\n"))] : [];
+  return { reason, payload: [dataFence("head branch", pr.headRef), ...uncovered, globs, fenced].join("\n\n") };
 }
 
 export const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";

@@ -334,7 +334,7 @@ Key exports:
 - `mutation`: `checkMutation`, `parseMutationSpec`
 - `mutant-classify`: `classifyMutants`, `testFileOfSpec`
 - `classify`: `classifyReports`
-- +84 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
+- +85 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
