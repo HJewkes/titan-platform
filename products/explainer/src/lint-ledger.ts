@@ -12,7 +12,7 @@ const ledgerOf = (spine: SpineV1): Ledger => new Map(spine.ledger.map((row) => [
 const entryOf = (ledger: Ledger, item: PaceItem): SpineLedgerRow | undefined => ledger.get(labelKey(item.label));
 
 /** Q-E17: beats that put a new item on screen the ledger does not list. */
-export function unledgered(beats: readonly PaceBeat[], ledger: Ledger): string[] {
+function unledgered(beats: readonly PaceBeat[], ledger: Ledger): string[] {
   return beats.filter((beat) => beat.newItems.some((item) => !entryOf(ledger, item))).map((b) => b.id);
 }
 
@@ -20,7 +20,7 @@ export function unledgered(beats: readonly PaceBeat[], ledger: Ledger): string[]
  * Q-E17: beats that first show an item whose defining beat comes later, or is no beat of the script. Beats are
  * compared by script position, never by id: as text "r10-1" sorts before "r2-1".
  */
-export function definedLate(beats: readonly PaceBeat[], ledger: Ledger): string[] {
+function definedLate(beats: readonly PaceBeat[], ledger: Ledger): string[] {
   const position = new Map(beats.map((b, i) => [b.id, i]));
   return beats
     .filter((beat, at) =>
@@ -39,7 +39,7 @@ export function definedLate(beats: readonly PaceBeat[], ledger: Ledger): string[
 const listEntries = (beat: PaceBeat): PaceItem[] => beat.items.filter((i) => i.source === "cue" && i.role === "item");
 
 /** Q-E16 (M6): list beats whose ledgered entries carry more than one declared kind. Unledgered entries are Q-E17's. */
-export function mixedLists(beats: readonly PaceBeat[], ledger: Ledger): string[] {
+function mixedLists(beats: readonly PaceBeat[], ledger: Ledger): string[] {
   return beats
     .filter((beat) => {
       const entries = listEntries(beat);
