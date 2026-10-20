@@ -52,5 +52,8 @@ export type {
   PoolPriority,
   PoolStateStore,
   PoolUnavailable,
+  RateLimitProbeAnswer,
 } from "./api-pool.js";
+export type { ProbeVerdict } from "./api-pool-reopen.js";
+export { PROBE_REARM_MS, probeVerdict, probedBucket } from "./api-pool-reopen.js";
 export { MUTATION_SPACING_MS, POOL_PRIORITY, githubApiPool, isPoolUnavailable, memoryPoolStateStore } from "./api-pool.js";
