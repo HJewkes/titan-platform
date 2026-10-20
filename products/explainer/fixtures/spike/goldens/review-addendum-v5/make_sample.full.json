@@ -1,0 +1,242 @@
+{
+ "title": "What the v5 reviews found, and what to build or buy (review addendum)",
+ "voice": {
+  "provider": "kokoro",
+  "model": "Kokoro-82M",
+  "voice": "af_heart",
+  "lang": "a"
+ },
+ "repo": {
+  "name": "titan factory",
+  "pin": "0ef3430 / a1b8cdeb",
+  "license": "internal"
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "n": 1,
+   "title": "Reviews · What were they for?",
+   "question": "What did the reviews set out to answer?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch2",
+   "n": 2,
+   "title": "Agreed · What did both find?",
+   "question": "Which findings appear in both reviews?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch3",
+   "n": 3,
+   "title": "Single · What did only one find?",
+   "question": "What did only one reviewer find?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch4",
+   "n": 4,
+   "title": "Build or buy · What do we buy?",
+   "question": "What should be built, and what bought?",
+   "plannedS": 0,
+   "station": null
+  },
+  {
+   "id": "ch5",
+   "n": 5,
+   "title": "Your calls · What is asked of you?",
+   "question": "What do the reviews ask of you?",
+   "plannedS": 0,
+   "station": null
+  }
+ ],
+ "beats": [
+  {
+   "id": "a1-1-why",
+   "chapter": "ch1",
+   "kind": "step-rail",
+   "band": "diagram",
+   "plannedS": 13,
+   "spoken": "Before anyone builds version five, two adversaries tried to break it, apart: one with the web, one who knew versions one to four. Is it ready, and what should we build or buy?"
+  },
+  {
+   "id": "a1-2-pin",
+   "chapter": "ch1",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 10,
+   "spoken": "Each step leaves a marker that stays valid until its pin moves: the code tree, the diff, or an event it depends on."
+  },
+  {
+   "id": "a1-3-verdict",
+   "chapter": "ch1",
+   "kind": "stat",
+   "band": "hook",
+   "plannedS": 10,
+   "spoken": "Eight blockers from one, six from the other. Both say not converged, not ready yet, and both call every blocker a specification fix, not an architectural one."
+  },
+  {
+   "id": "a2-1-orphan",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 18,
+   "spoken": "The orphan trap alarms on a valid marker the entry never reached. After a clean merge-up, the entry returns at the CI wait, short of the owner's approval, and the trap fires. Five hundred and twenty of nine hundred and ninety-nine runs merged up."
+  },
+  {
+   "id": "a2-1f-orphan-fix",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 10,
+   "spoken": "The integrator proposes one reviewer's fix: alarm only on a marker the entry passed and skipped, never one past where it stopped to wait."
+  },
+  {
+   "id": "a2-2-patchid",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 13,
+   "spoken": "Git's patch-id, a hash of the diff, ignores whitespace. A fixer re-indents a permissions block: CI goes stale with the tree, but the patch-id holds, so the adversary's verdict still counts."
+  },
+  {
+   "id": "a2-2f-patchid-fix",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 7,
+   "spoken": "The integrator proposes to pin its own hash of the verbatim diff, whitespace kept."
+  },
+  {
+   "id": "a2-3-revert",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 14,
+   "spoken": "A revert moves the parent's pin, but the child checks only a digest of the parent's result, which has not changed. So its claim is still granted against a parent gone from main."
+  },
+  {
+   "id": "a2-3f-revert-fix",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 7,
+   "spoken": "The integrator proposes: compare pins, not digests, and spot a revert by its metadata."
+  },
+  {
+   "id": "a2-4-path",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 13,
+   "spoken": "A contract-path claim keeps a shared file to one item. It releases at park, when CI first goes green, before review, so a second item can take the file mid-fix."
+  },
+  {
+   "id": "a2-4f-path-fix",
+   "chapter": "ch2",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 7,
+   "spoken": "The integrator proposes to release the path only when the item lands or is abandoned."
+  },
+  {
+   "id": "a3-1-merge",
+   "chapter": "ch3",
+   "kind": "compare",
+   "band": "takeaways",
+   "plannedS": 15,
+   "spoken": "First, from one reviewer: GitHub's merge call checks only the pull request's head, so if main moves first, an untested tree lands. The owner's call: keep the API merge, check main's tree after, and treat a mismatch as main red."
+  },
+  {
+   "id": "a3-2-dedupe",
+   "chapter": "ch3",
+   "kind": "recipe-run",
+   "band": "code",
+   "plannedS": 13,
+   "spoken": "Second, after a clean rebase, a check run on the old commit is deduped, leaving the new head without its required check. The integrator proposes keying commit effects by the tree."
+  },
+  {
+   "id": "a3-3-milestones",
+   "chapter": "ch3",
+   "kind": "compare",
+   "band": "takeaways",
+   "plannedS": 10,
+   "spoken": "Third, from the other reviewer: milestone one's shadow gate compares events that only arrive at milestone two. The integrator proposes moving the event log into milestone one."
+  },
+  {
+   "id": "a3-4-observed",
+   "chapter": "ch3",
+   "kind": "recipe-run",
+   "band": "diagram",
+   "plannedS": 14,
+   "spoken": "Fourth, a rules change sends no event, so a newly required check is never read; under a bypass token, a candidate lands without it. The integrator proposes an event source per pin, or a time limit."
+  },
+  {
+   "id": "a4-1-fact",
+   "chapter": "ch4",
+   "kind": "compare",
+   "band": "diagram",
+   "plannedS": 14,
+   "spoken": "Every workflow engine memoizes per run, by position or step id; none invalidates by fact and pin, and Shepherd already replays from the top. So both keep the core built: no Temporal, DBOS, Restate or Inngest."
+  },
+  {
+   "id": "a4-2-queue",
+   "chapter": "ch4",
+   "kind": "scorecard",
+   "band": "diagram",
+   "plannedS": 11,
+   "spoken": "Five edges are worth buying. First, the merge queue: GitHub's own if the repos move to an organization, else Mergify or Trunk, else our own with fast-forward."
+  },
+  {
+   "id": "a4-3-ingress",
+   "chapter": "ch4",
+   "kind": "scorecard",
+   "band": "diagram",
+   "plannedS": 8,
+   "spoken": "Second, webhooks through a free tunnel, leaving the reconciler as a backstop. Third, Litestream to copy the one store."
+  },
+  {
+   "id": "a4-4-hashes",
+   "chapter": "ch4",
+   "kind": "scorecard",
+   "band": "diagram",
+   "plannedS": 12,
+   "spoken": "Fourth, the hashes behind the pins: git gives the verbatim diff and tree hashes, and small libraries do the rest. Fifth, a lint that keeps recipes deterministic, and an eval grader."
+  },
+  {
+   "id": "a4-5-built",
+   "chapter": "ch4",
+   "kind": "scorecard",
+   "band": "diagram",
+   "plannedS": 10,
+   "spoken": "Two parts stay built. Claims and pools: Kubernetes schedulers run only on Kubernetes. The event bus: a second store would split the marker's transactions."
+  },
+  {
+   "id": "a5-1-design",
+   "chapter": "ch5",
+   "kind": "hook",
+   "band": "takeaways",
+   "plannedS": 12,
+   "spoken": "Two design calls are yours. Twelve: should every version bump re-run open work, safe but costly? Thirteen: should a verdict carry to an identical diff, whitespace counted, never for a visual approval?"
+  },
+  {
+   "id": "a5-2-accounts",
+   "chapter": "ch5",
+   "kind": "hook",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Three more stay yours: where the repos live, for GitHub's queue; a webhook tunnel; and a backup target. Each touches an outside account."
+  },
+  {
+   "id": "a5-3-next",
+   "chapter": "ch5",
+   "kind": "outro",
+   "band": "takeaways",
+   "plannedS": 9,
+   "spoken": "Version six is being written to answer both reviews, and another adversary round follows. Until you decide, each fix is a proposal."
+  }
+ ]
+}

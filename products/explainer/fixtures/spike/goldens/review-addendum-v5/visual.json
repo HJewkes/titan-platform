@@ -1,0 +1,1582 @@
+{
+ "chapters": [
+  {
+   "id": "ch1",
+   "label": "Reviews · What were they for?",
+   "question": "What did the reviews set out to answer?"
+  },
+  {
+   "id": "ch2",
+   "label": "Agreed · What did both find?",
+   "question": "Which findings appear in both reviews?"
+  },
+  {
+   "id": "ch3",
+   "label": "Single · What did only one find?",
+   "question": "What did only one reviewer find?"
+  },
+  {
+   "id": "ch4",
+   "label": "Build or buy · What do we buy?",
+   "question": "What should be built, and what bought?"
+  },
+  {
+   "id": "ch5",
+   "label": "Your calls · What is asked of you?",
+   "question": "What do the reviews ask of you?"
+  }
+ ],
+ "maps": {
+  "old": {
+   "nodeBox": {
+    "w": 280,
+    "h": 116
+   },
+   "nodes": [
+    {
+     "id": "backlog",
+     "label": "Backlog",
+     "actor": "store",
+     "centre": [
+      200,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "tick",
+     "label": "Tick",
+     "actor": "software",
+     "centre": [
+      770,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "broker",
+     "label": "Broker",
+     "actor": "software",
+     "centre": [
+      1340,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "implementer",
+     "label": "Implementer",
+     "actor": "agent",
+     "centre": [
+      1720,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "seat",
+     "label": "Seat",
+     "actor": "agent",
+     "centre": [
+      960,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "shepherd",
+     "label": "Shepherd",
+     "actor": "software",
+     "centre": [
+      1340,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "reviewer",
+     "label": "Reviewer",
+     "actor": "agent",
+     "centre": [
+      1720,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "owner",
+     "label": "Owner",
+     "actor": "human",
+     "centre": [
+      960,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "main",
+     "label": "Main",
+     "actor": "software",
+     "centre": [
+      1720,
+      750
+     ],
+     "level": "containers"
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:backlog->tick",
+     "from": "backlog",
+     "to": "tick",
+     "label": "reads"
+    },
+    {
+     "id": "e:tick->broker",
+     "from": "tick",
+     "to": "broker",
+     "label": "spawn"
+    },
+    {
+     "id": "e:broker->implementer",
+     "from": "broker",
+     "to": "implementer",
+     "label": ""
+    },
+    {
+     "id": "e:implementer->shepherd",
+     "from": "implementer",
+     "to": "shepherd",
+     "label": "PR"
+    },
+    {
+     "id": "e:shepherd->main",
+     "from": "shepherd",
+     "to": "main",
+     "label": "merge"
+    },
+    {
+     "id": "e:tick->shepherd",
+     "from": "tick",
+     "to": "shepherd",
+     "label": "re-register"
+    },
+    {
+     "id": "e:shepherd->broker",
+     "from": "shepherd",
+     "to": "broker",
+     "label": ""
+    },
+    {
+     "id": "e:reviewer->shepherd",
+     "from": "reviewer",
+     "to": "shepherd",
+     "label": ""
+    },
+    {
+     "id": "e:shepherd->seat",
+     "from": "shepherd",
+     "to": "seat",
+     "label": ""
+    },
+    {
+     "id": "e:shepherd->owner",
+     "from": "shepherd",
+     "to": "owner",
+     "label": "gates"
+    },
+    {
+     "id": "e:seat->owner",
+     "from": "seat",
+     "to": "owner",
+     "label": "asks"
+    }
+   ],
+   "flows": {
+    "flow:old": [
+     "backlog",
+     "tick",
+     "broker",
+     "implementer",
+     "shepherd",
+     "main"
+    ]
+   }
+  },
+  "new": {
+   "nodeBox": {
+    "w": 280,
+    "h": 116
+   },
+   "nodes": [
+    {
+     "id": "backlog",
+     "label": "Backlog",
+     "actor": "store",
+     "centre": [
+      200,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "plans",
+     "label": "Plans",
+     "actor": "store",
+     "centre": [
+      770,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "broker",
+     "label": "Broker",
+     "actor": "software",
+     "centre": [
+      1340,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "agents",
+     "label": "Agents",
+     "actor": "agent",
+     "centre": [
+      1720,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "ops",
+     "label": "Ops alarms",
+     "actor": "software",
+     "centre": [
+      960,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "ledger",
+     "label": "Runner",
+     "actor": "software",
+     "centre": [
+      1340,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "github",
+     "label": "GitHub + CI",
+     "actor": "software",
+     "centre": [
+      1720,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "owner",
+     "label": "Owner",
+     "actor": "human",
+     "centre": [
+      960,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "queue",
+     "label": "Merge queue",
+     "actor": "software",
+     "centre": [
+      1340,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "main",
+     "label": "Main",
+     "actor": "software",
+     "centre": [
+      1720,
+      750
+     ],
+     "level": "containers"
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:backlog->plans",
+     "from": "backlog",
+     "to": "plans",
+     "label": "plan"
+    },
+    {
+     "id": "e:plans->ledger",
+     "from": "plans",
+     "to": "ledger",
+     "label": "contracts"
+    },
+    {
+     "id": "e:ledger->broker",
+     "from": "ledger",
+     "to": "broker",
+     "label": "spawn"
+    },
+    {
+     "id": "e:broker->ledger",
+     "from": "broker",
+     "to": "ledger",
+     "label": "events"
+    },
+    {
+     "id": "e:broker->agents",
+     "from": "broker",
+     "to": "agents",
+     "label": ""
+    },
+    {
+     "id": "e:agents->github",
+     "from": "agents",
+     "to": "github",
+     "label": "push"
+    },
+    {
+     "id": "e:ledger->github",
+     "from": "ledger",
+     "to": "github",
+     "label": "polls"
+    },
+    {
+     "id": "e:ledger->queue",
+     "from": "ledger",
+     "to": "queue",
+     "label": ""
+    },
+    {
+     "id": "e:queue->main",
+     "from": "queue",
+     "to": "main",
+     "label": ""
+    },
+    {
+     "id": "e:ledger->owner",
+     "from": "ledger",
+     "to": "owner",
+     "label": ""
+    },
+    {
+     "id": "e:ledger->ops",
+     "from": "ledger",
+     "to": "ops",
+     "label": ""
+    }
+   ],
+   "flows": {
+    "flow:item": [
+     "backlog",
+     "plans",
+     "ledger",
+     "broker",
+     "agents",
+     "github",
+     "ledger",
+     "queue",
+     "main"
+    ],
+    "flow:ask": [
+     "ledger",
+     "owner"
+    ]
+   }
+  }
+ },
+ "shared_nodes": [
+  "backlog",
+  "broker",
+  "owner",
+  "main"
+ ],
+ "beats": [
+  {
+   "id": "a1-1-why",
+   "chapter": "ch1",
+   "assertion": "Two reviews before anyone builds v5",
+   "render": "StepRailBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "rail:v5 draft, two reviews, ready yet?",
+     "atCue": "version"
+    },
+    {
+     "action": "V11",
+     "target": "rail:build or buy",
+     "atCue": "buy"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "pipeline-redesign-v5-2026-10-14.md:32; adversarial-review-v5-opus-2026-10-14.md:1-7; adversarial-review-v5-vc-2026-10-14.md:1-12",
+     "fact_id": "A01"
+    }
+   ]
+  },
+  {
+   "id": "a1-2-pin",
+   "chapter": "ch1",
+   "assertion": "A marker stays valid until its pin moves",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "run:ci-hold",
+     "atCue": "step"
+    },
+    {
+     "action": "V11",
+     "target": "note:pin: tree, diff, event",
+     "atCue": "pin"
+    },
+    {
+     "action": "V11",
+     "target": "stale:ci",
+     "atCue": "tree"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "pipeline-redesign-v5-2026-10-14.md:21-23, 674",
+     "fact_id": "A02"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "ci",
+      "code": "await step('ci')",
+      "fact": "ci:green@tree",
+      "reads": []
+     },
+     {
+      "id": "verdict",
+      "code": "await step('verdict')",
+      "fact": "verdict:merge@diff",
+      "reads": []
+     },
+     {
+      "id": "hold",
+      "code": "await step('hold')",
+      "fact": "hold:none@event",
+      "reads": []
+     }
+    ],
+    "start": {
+     "markers": {}
+    }
+   }
+  },
+  {
+   "id": "a1-3-verdict",
+   "chapter": "ch1",
+   "assertion": "Both say not converged yet",
+   "render": "StatBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "stat:8 from opus",
+     "atCue": "Eight"
+    },
+    {
+     "action": "V11",
+     "target": "stat:6 from vc",
+     "atCue": "six"
+    },
+    {
+     "action": "V11",
+     "target": "chip:both: not converged",
+     "atCue": "converged"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "measured",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:17, 21",
+     "fact_id": "A03"
+    },
+    {
+     "kind": "measured",
+     "text": "adversarial-review-v5-vc-2026-10-14.md:14",
+     "fact_id": "A04"
+    }
+   ]
+  },
+  {
+   "id": "a2-1-orphan",
+   "chapter": "ch2",
+   "assertion": "A wait returns before the trap's check",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:orphan trap",
+     "atCue": "trap"
+    },
+    {
+     "action": "V11",
+     "target": "note:clean merge-up",
+     "atCue": "merge-up"
+    },
+    {
+     "action": "V11",
+     "target": "wait:ci",
+     "atCue": "returns"
+    },
+    {
+     "action": "V11",
+     "target": "orphan:verdict,owner",
+     "atCue": "fires"
+    },
+    {
+     "action": "V11",
+     "target": "note:520 of 999 merged up",
+     "atCue": "Five"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:23-27, 49-61; adversarial-review-v5-vc-2026-10-14.md:88-99",
+     "fact_id": "A05"
+    },
+    {
+     "kind": "measured",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:60; adversarial-review-v5-vc-2026-10-14.md:93",
+     "fact_id": "A06"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "plan",
+      "code": "await step('plan')",
+      "fact": "contract:approved",
+      "reads": []
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "plan"
+      ],
+      "agent": true
+     },
+     {
+      "id": "ci",
+      "code": "await wait('ci')",
+      "fact": "ci:green@tree",
+      "reads": [
+       "push"
+      ]
+     },
+     {
+      "id": "verdict",
+      "code": "await step('verdict')",
+      "fact": "verdict:merge@diff",
+      "reads": [
+       "ci"
+      ]
+     },
+     {
+      "id": "owner",
+      "code": "await wait('owner')",
+      "fact": "owner:approved@diff",
+      "reads": [
+       "verdict"
+      ]
+     },
+     {
+      "id": "land",
+      "code": "await step('land')",
+      "fact": "landed",
+      "reads": [
+       "owner"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "plan": "valid",
+      "push": "valid",
+      "verdict": "valid",
+      "owner": "valid",
+      "ci": "stale"
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-1f-orphan-fix",
+   "chapter": "ch2",
+   "assertion": "Alarm only on markers passed and skipped",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:call-site check",
+     "atCue": "proposes"
+    },
+    {
+     "action": "V11",
+     "target": "note:passed and skipped",
+     "atCue": "skipped"
+    },
+    {
+     "action": "V11",
+     "target": "wait:ci",
+     "atCue": "wait"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "v5-feedback-assessment-2026-10-14.md:39, 50, 118-124, 169",
+     "fact_id": "A07"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "plan",
+      "code": "await step('plan')",
+      "fact": "contract:approved",
+      "reads": []
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "plan"
+      ],
+      "agent": true
+     },
+     {
+      "id": "ci",
+      "code": "await wait('ci')",
+      "fact": "ci:green@tree",
+      "reads": [
+       "push"
+      ]
+     },
+     {
+      "id": "verdict",
+      "code": "await step('verdict')",
+      "fact": "verdict:merge@diff",
+      "reads": [
+       "ci"
+      ]
+     },
+     {
+      "id": "owner",
+      "code": "await wait('owner')",
+      "fact": "owner:approved@diff",
+      "reads": [
+       "verdict"
+      ]
+     },
+     {
+      "id": "land",
+      "code": "await step('land')",
+      "fact": "landed",
+      "reads": [
+       "owner"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "plan": "valid",
+      "push": "valid",
+      "verdict": "valid",
+      "owner": "valid",
+      "ci": "stale"
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-2-patchid",
+   "chapter": "ch2",
+   "assertion": "Patch-id ignores whitespace",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:pin: patch-id",
+     "atCue": "patch-id"
+    },
+    {
+     "action": "V11",
+     "target": "edit:perm|  permissions: write-all",
+     "atCue": "re-indents"
+    },
+    {
+     "action": "V11",
+     "target": "stale:job",
+     "atCue": "stale"
+    },
+    {
+     "action": "V11",
+     "target": "note:patch-id unchanged",
+     "atCue": "holds"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:33-34, 114-118; adversarial-review-v5-vc-2026-10-14.md:26-33; pipeline-redesign-v5-2026-10-14.md:674",
+     "fact_id": "A08"
+    }
+   ],
+   "recipe": {
+    "file": "ci.yml · the PR's diff",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "job",
+      "code": "deploy:",
+      "fact": "ci:green@tree",
+      "reads": []
+     },
+     {
+      "id": "perm",
+      "code": "    permissions: write-all",
+      "fact": "adversary:merge@diff",
+      "reads": []
+     },
+     {
+      "id": "pub",
+      "code": "    steps: [publish]",
+      "fact": "verdict:merge@diff",
+      "reads": []
+     }
+    ],
+    "start": {
+     "markers": {
+      "job": "valid",
+      "perm": "valid",
+      "pub": "valid"
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-2f-patchid-fix",
+   "chapter": "ch2",
+   "assertion": "Pin a hash of the verbatim diff",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:pin: verbatim diff",
+     "atCue": "pin"
+    },
+    {
+     "action": "V11",
+     "target": "stale:perm,pub",
+     "atCue": "verbatim"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "v5-feedback-assessment-2026-10-14.md:41, 47, 65-79; adversarial-review-v5-opus-2026-10-14.md:132-134; adversarial-review-v5-vc-2026-10-14.md:43-45",
+     "fact_id": "A09"
+    }
+   ],
+   "recipe": {
+    "file": "ci.yml · the PR's diff",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "job",
+      "code": "deploy:",
+      "fact": "ci:green@tree",
+      "reads": []
+     },
+     {
+      "id": "perm",
+      "code": "  permissions: write-all",
+      "fact": "adversary:merge@diff",
+      "reads": []
+     },
+     {
+      "id": "pub",
+      "code": "    steps: [publish]",
+      "fact": "verdict:merge@diff",
+      "reads": []
+     }
+    ],
+    "start": {
+     "markers": {
+      "perm": "valid",
+      "pub": "valid",
+      "job": "stale"
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-3-revert",
+   "chapter": "ch2",
+   "assertion": "A revert leaves the child's claim granted",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:parent reverted",
+     "atCue": "revert"
+    },
+    {
+     "action": "V11",
+     "target": "note:digest unchanged",
+     "atCue": "digest"
+    },
+    {
+     "action": "V11",
+     "target": "run:claim",
+     "atCue": "granted"
+    },
+    {
+     "action": "V11",
+     "target": "note:parent gone from main",
+     "atCue": "gone"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-vc-2026-10-14.md:72-81; adversarial-review-v5-opus-2026-10-14.md:162-169",
+     "fact_id": "A10"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/child.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "dep",
+      "code": "await step('dep')",
+      "fact": "parent:landed",
+      "reads": []
+     },
+     {
+      "id": "claim",
+      "code": "await claim('implementer')",
+      "fact": "claim:implementer",
+      "reads": [
+       "dep"
+      ],
+      "claim": true
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "claim"
+      ],
+      "agent": true
+     }
+    ],
+    "start": {
+     "markers": {
+      "dep": "valid"
+     },
+     "tokens": {
+      "free": 1,
+      "held": []
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-3f-revert-fix",
+   "chapter": "ch2",
+   "assertion": "Compare pins; spot reverts by metadata",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:integrator's proposal",
+     "atCue": "integrator"
+    },
+    {
+     "action": "V11",
+     "target": "stale:dep",
+     "atCue": "compare"
+    },
+    {
+     "action": "V11",
+     "target": "note:spotted by metadata",
+     "atCue": "metadata"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "v5-feedback-assessment-2026-10-14.md:43, 49, 81-90, 112-116; adversarial-review-v5-vc-2026-10-14.md:83-86; adversarial-review-v5-opus-2026-10-14.md:171-174",
+     "fact_id": "A11"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/child.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "dep",
+      "code": "await step('dep')",
+      "fact": "parent:landed",
+      "reads": []
+     },
+     {
+      "id": "claim",
+      "code": "await claim('implementer')",
+      "fact": "claim:implementer",
+      "reads": [
+       "dep"
+      ],
+      "claim": true
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "claim"
+      ],
+      "agent": true
+     }
+    ],
+    "start": {
+     "markers": {
+      "dep": "valid"
+     },
+     "tokens": {
+      "free": 1,
+      "held": []
+     }
+    }
+   }
+  },
+  {
+   "id": "a2-4-path",
+   "chapter": "ch2",
+   "assertion": "The path claim releases before review",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "run:ci",
+     "atCue": "claim"
+    },
+    {
+     "action": "V11",
+     "target": "release:path",
+     "atCue": "park"
+    },
+    {
+     "action": "V11",
+     "target": "note:free before review",
+     "atCue": "review"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:195-207; adversarial-review-v5-vc-2026-10-14.md:126-133",
+     "fact_id": "A12"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "path",
+      "code": "await claim('path')",
+      "fact": "claim:contract-path",
+      "reads": [],
+      "claim": true
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "path"
+      ],
+      "agent": true
+     },
+     {
+      "id": "ci",
+      "code": "await step('ci')",
+      "fact": "ci:green@tree",
+      "reads": [
+       "push"
+      ]
+     },
+     {
+      "id": "review",
+      "code": "await claim('reviewer')",
+      "fact": "verdict:merge@diff",
+      "reads": [
+       "ci"
+      ]
+     },
+     {
+      "id": "fix",
+      "code": "await step('fix')",
+      "fact": "fix:done",
+      "reads": [
+       "review"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "path": "valid",
+      "push": "valid"
+     },
+     "tokens": {
+      "free": 0,
+      "held": [
+       "path"
+      ]
+     }
+    },
+    "pool": "contract paths"
+   }
+  },
+  {
+   "id": "a2-4f-path-fix",
+   "chapter": "ch2",
+   "assertion": "Release the path when the item lands",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "run:review-land",
+     "atCue": "release"
+    },
+    {
+     "action": "V11",
+     "target": "release:path",
+     "atCue": "lands"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "v5-feedback-assessment-2026-10-14.md:45, 52; adversarial-review-v5-opus-2026-10-14.md:216-218; adversarial-review-v5-vc-2026-10-14.md:137-141",
+     "fact_id": "A13"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "path",
+      "code": "await claim('path')",
+      "fact": "claim:contract-path",
+      "reads": [],
+      "claim": true
+     },
+     {
+      "id": "push",
+      "code": "await step('push')",
+      "fact": "head:pushed",
+      "reads": [
+       "path"
+      ],
+      "agent": true
+     },
+     {
+      "id": "ci",
+      "code": "await step('ci')",
+      "fact": "ci:green@tree",
+      "reads": [
+       "push"
+      ]
+     },
+     {
+      "id": "review",
+      "code": "await claim('reviewer')",
+      "fact": "verdict:merge@diff",
+      "reads": [
+       "ci"
+      ]
+     },
+     {
+      "id": "fix",
+      "code": "await step('fix')",
+      "fact": "fix:done",
+      "reads": [
+       "review"
+      ]
+     },
+     {
+      "id": "land",
+      "code": "await step('land')",
+      "fact": "landed",
+      "reads": [
+       "fix"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "path": "valid",
+      "push": "valid",
+      "ci": "valid"
+     },
+     "tokens": {
+      "free": 0,
+      "held": [
+       "path"
+      ]
+     }
+    },
+    "pool": "contract paths"
+   }
+  },
+  {
+   "id": "a3-1-merge",
+   "chapter": "ch3",
+   "assertion": "Merging checks only the head",
+   "render": "CompareBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "left:merge checks head only",
+     "atCue": "merge"
+    },
+    {
+     "action": "V11",
+     "target": "left:moved main lands untested",
+     "atCue": "untested"
+    },
+    {
+     "action": "V11",
+     "target": "right:keep merge, check tree",
+     "atCue": "API"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:80-106; owner's call, 2026-10-14",
+     "fact_id": "A14"
+    }
+   ],
+   "titles": [
+    "as written",
+    "owner's call"
+   ]
+  },
+  {
+   "id": "a3-2-dedupe",
+   "chapter": "ch3",
+   "assertion": "A clean rebase drops the check run",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:clean rebase",
+     "atCue": "rebase"
+    },
+    {
+     "action": "V11",
+     "target": "note:deduped: no check",
+     "atCue": "deduped"
+    },
+    {
+     "action": "V11",
+     "target": "stale:publish",
+     "atCue": "tree"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:142-160; v5-feedback-assessment-2026-10-14.md:42",
+     "fact_id": "A15"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "verdict",
+      "code": "await step('verdict')",
+      "fact": "verdict:merge@diff",
+      "reads": []
+     },
+     {
+      "id": "publish",
+      "code": "await step('publish')",
+      "fact": "check:posted@diff",
+      "reads": [
+       "verdict"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "verdict": "valid",
+      "publish": "valid"
+     }
+    }
+   }
+  },
+  {
+   "id": "a3-3-milestones",
+   "chapter": "ch3",
+   "assertion": "M1's gate needs M2's events",
+   "render": "CompareBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "left:M1 gate needs events",
+     "atCue": "gate"
+    },
+    {
+     "action": "V11",
+     "target": "left:events arrive at M2",
+     "atCue": "two"
+    },
+    {
+     "action": "V11",
+     "target": "right:event log moves to M1",
+     "atCue": "log"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-vc-2026-10-14.md:106-122; v5-feedback-assessment-2026-10-14.md:51, 126-130",
+     "fact_id": "A16"
+    }
+   ],
+   "titles": [
+    "as written",
+    "proposed"
+   ]
+  },
+  {
+   "id": "a3-4-observed",
+   "chapter": "ch3",
+   "assertion": "A rules change sends no event",
+   "render": "RecipeRunBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "note:rule edit: no event",
+     "atCue": "event"
+    },
+    {
+     "action": "V11",
+     "target": "note:new check never read",
+     "atCue": "check"
+    },
+    {
+     "action": "V11",
+     "target": "run:land",
+     "atCue": "lands"
+    },
+    {
+     "action": "V11",
+     "target": "stale:rules",
+     "atCue": "source"
+    },
+    {
+     "action": "V11",
+     "target": "note:or a time limit",
+     "atCue": "limit"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-vc-2026-10-14.md:50-69; v5-feedback-assessment-2026-10-14.md:48",
+     "fact_id": "A17"
+    }
+   ],
+   "recipe": {
+    "file": "recipes/slice.ts",
+    "keying": "fact",
+    "steps": [
+     {
+      "id": "rules",
+      "code": "await step('rules')",
+      "fact": "land-rules@event",
+      "reads": []
+     },
+     {
+      "id": "ci",
+      "code": "await step('ci')",
+      "fact": "ci:green@tree",
+      "reads": []
+     },
+     {
+      "id": "land",
+      "code": "await step('land')",
+      "fact": "landed",
+      "reads": [
+       "rules",
+       "ci"
+      ]
+     }
+    ],
+    "start": {
+     "markers": {
+      "rules": "valid",
+      "ci": "valid"
+     }
+    }
+   }
+  },
+  {
+   "id": "a4-1-fact",
+   "chapter": "ch4",
+   "assertion": "Engines memoize per run; v5 needs pins",
+   "render": "CompareBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "left:memo per run",
+     "atCue": "engine"
+    },
+    {
+     "action": "V11",
+     "target": "left:key: position or step id",
+     "atCue": "position"
+    },
+    {
+     "action": "V11",
+     "target": "right:key: fact and pin",
+     "atCue": "none"
+    },
+    {
+     "action": "V11",
+     "target": "right:Shepherd replays from top",
+     "atCue": "Shepherd"
+    },
+    {
+     "action": "V11",
+     "target": "left:not bought",
+     "atCue": "built"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:338-378; adversarial-review-v5-vc-2026-10-14.md:195-199, 203, 218-219",
+     "fact_id": "A18"
+    }
+   ],
+   "titles": [
+    "engines",
+    "v5 needs"
+   ]
+  },
+  {
+   "id": "a4-2-queue",
+   "chapter": "ch4",
+   "assertion": "Build the core, buy five edges",
+   "render": "ScorecardTable",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "edge:merge queue|buy if eligible|GitHub, SaaS, own",
+     "atCue": "First"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:385-398, 466; adversarial-review-v5-vc-2026-10-14.md:206, 224-226; v5-feedback-assessment-2026-10-14.md:186",
+     "fact_id": "A19"
+    }
+   ]
+  },
+  {
+   "id": "a4-3-ingress",
+   "chapter": "ch4",
+   "assertion": "Webhooks and backups are bought",
+   "render": "ScorecardTable",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "edge:webhooks|buy|free tunnel",
+     "atCue": "webhooks"
+    },
+    {
+     "action": "V11",
+     "target": "edge:store backup|buy|Litestream (beta)",
+     "atCue": "Litestream"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:249-257; adversarial-review-v5-opus-2026-10-14.md:424-430, 451-452, 470, 473; adversarial-review-v5-vc-2026-10-14.md:204, 208, 221-223",
+     "fact_id": "A20"
+    }
+   ]
+  },
+  {
+   "id": "a4-4-hashes",
+   "chapter": "ch4",
+   "assertion": "Hashes, a lint and a grader are bought",
+   "render": "ScorecardTable",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "edge:pin hashes|buy the parts|git + libraries",
+     "atCue": "hashes"
+    },
+    {
+     "action": "V11",
+     "target": "edge:lint, grader|buy|ESLint, evals",
+     "atCue": "lint"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:408-414; adversarial-review-v5-opus-2026-10-14.md:454-458, 467, 474; adversarial-review-v5-vc-2026-10-14.md:203, 207, 212-213, 219-220",
+     "fact_id": "A21"
+    }
+   ]
+  },
+  {
+   "id": "a4-5-built",
+   "chapter": "ch4",
+   "assertion": "Claims and the bus stay built",
+   "render": "ScorecardTable",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "edge:claims, pools|build|not Kubernetes",
+     "atCue": "Claims"
+    },
+    {
+     "action": "V11",
+     "target": "edge:event bus|build|one SQLite store",
+     "atCue": "bus"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "adversarial-review-v5-opus-2026-10-14.md:417-422; adversarial-review-v5-opus-2026-10-14.md:433-438, 469; adversarial-review-v5-vc-2026-10-14.md:205, 208",
+     "fact_id": "A22"
+    }
+   ]
+  },
+  {
+   "id": "a5-1-design",
+   "chapter": "ch5",
+   "assertion": "Two design calls are yours",
+   "render": "HookBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "card:Q12 re-run on every bump?",
+     "atCue": "Twelve"
+    },
+    {
+     "action": "V11",
+     "target": "card:Q13 verdict on same diff?",
+     "atCue": "Thirteen"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "pipeline-redesign-v5-2026-10-14.md:648-649; adversarial-review-v5-vc-2026-10-14.md:43-48; adversarial-review-v5-opus-2026-10-14.md:132-140",
+     "fact_id": "A23"
+    }
+   ]
+  },
+  {
+   "id": "a5-2-accounts",
+   "chapter": "ch5",
+   "assertion": "Three account calls stay yours",
+   "render": "HookBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "card:repos location",
+     "atCue": "repos"
+    },
+    {
+     "action": "V11",
+     "target": "card:tunnel webhooks",
+     "atCue": "tunnel"
+    },
+    {
+     "action": "V11",
+     "target": "card:backup target",
+     "atCue": "backup"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "pipeline-redesign-v5-2026-10-14.md:39-42; v6-and-addendum-briefs-2026-10-14.md:45-47",
+     "fact_id": "A24"
+    }
+   ]
+  },
+  {
+   "id": "a5-3-next",
+   "chapter": "ch5",
+   "assertion": "Fixes are proposals until you decide",
+   "render": "OutroBeat",
+   "cues": [
+    {
+     "action": "V11",
+     "target": "title:v6, then a review round",
+     "atCue": "written"
+    }
+   ],
+   "chips": [
+    {
+     "kind": "docs-claim",
+     "text": "v6-and-addendum-briefs-2026-10-14.md:22-28, 66-68",
+     "fact_id": "A25"
+    }
+   ]
+  }
+ ]
+}
