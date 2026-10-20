@@ -151,15 +151,16 @@ describe("shepherd.register on a replay-diverged run", () => {
     expect(again).toMatchObject({ created: true, previousRunId: oldRunId, registration: { runId: again.runId, headSha: HEAD_A } });
   });
 
-  it("leaves a run cancelled for another reason", async () => {
+  it("restarts a run cancelled for another reason without seeding its last read head", async () => {
     const { next, oldRunId } = await parkedRun();
-    next.host.runtime.cancel(oldRunId, "owner stopped it");
+    next.host.runtime.cancel(oldRunId, "closed elsewhere: PR was closed outside Shepherd");
     await next.host.adopt();
     await next.host.runtime.wait(oldRunId);
 
     const again = await register(next);
 
-    expect(again).toMatchObject({ created: false, runId: oldRunId });
+    expect(again).toMatchObject({ created: true, previousRunId: oldRunId, previousStop: "cancelled" });
+    expect(again.registration.headSha).not.toBe(HEAD_A);
   });
 
   it("leaves a park that is not a replay divergence", async () => {

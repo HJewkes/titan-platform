@@ -56,7 +56,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 type VerbOf = (spec: string, description: string) => Command;
 
 function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
-  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
     .option("--base <name>", "the PR's base branch; with --head, Shepherd classes the PR's files from local git")

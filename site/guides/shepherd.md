@@ -52,13 +52,17 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
-A repeat starts a new run instead when the registration's run is dead: it failed, or it
-completed stopped `not-mergeable` or on a `conflict` while the pull request is still open,
-as when no agent took the conflict wake and a seat then pushed a fix. The new run starts at
-the pull request's current head, the registration and its recorded authors move to it, and
-the old run still reads. The verb prints `restarted after failed run <id>` or
-`restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
-reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
+A repeat starts a new run instead when the registration's run is dead: it failed, it
+completed stopped `not-mergeable`, on a `conflict` or `abandoned`, or it was cancelled, while
+the pull request is still open. Shepherd cancels a run only when its pull request read
+merged, closed or gone, so a cancelled run whose pull request is open again was ended on a
+read that no longer holds. The new run starts at the pull request's current head, or
+`--head`. The registration moves to it with its holds (an `owner-asked` hold included), kind
+and recorded authors, and the old run still reads. The verb prints
+`restarted after failed run <id>`, `restarted after run <id> stopped not-mergeable` or
+`restarted after run <id> stopped cancelled`. A run that merged, or stopped for any other
+reason (`closed`, `stuck-behind`, `merge-denied`), and a cancelled run whose pull request is
+closed, come back unchanged.
 
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
