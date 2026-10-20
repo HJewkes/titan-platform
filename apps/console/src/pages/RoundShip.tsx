@@ -7,6 +7,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
+import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
@@ -62,6 +63,7 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
     <Card variant="subtle">
       <CardContent>
         <VStack gap={2}>
+          <QuestionFrames question={question} />
           <Typography variant="subtitle1">{question.prompt}</Typography>
           {section?.changed ? <Typography variant="caption">{`Changed: ${section.changed}`}</Typography> : null}
           <QuestionFacts question={question} />

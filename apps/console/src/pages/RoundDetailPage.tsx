@@ -3,6 +3,7 @@ import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Sp
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { RoundFramesProvider } from "./QuestionFrames.js";
 import { RoundNote } from "./RoundNote.js";
 import { DesignRound } from "./RoundDesign.js";
 import { RoundSend } from "./RoundSend.js";
@@ -27,8 +28,8 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
 }
 
 function RoundBody({ round }: { round: ValidRound }): ReactNode {
-  if (round.ship) return <ShipRound round={round} />;
-  return round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
+  const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
+  return <RoundFramesProvider roundId={round.id} manifest={round.manifest}>{body}</RoundFramesProvider>;
 }
 
 function Framed({ id, children }: { id: string; children: ReactNode }): ReactNode {
