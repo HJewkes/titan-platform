@@ -83,15 +83,18 @@ export interface SetCarry {
   isVisual?: (stepId: string, prompt: string) => boolean;
   /** Absent reads as off. */
   setMode?: () => VisualSetCarry;
+  /** The run's visual globs; a set-origin approval follows a merge-up only when the base side matches none of them. */
+  visualPaths?: () => readonly string[] | undefined;
 }
 
-type SetRun = Pick<VisualAcceptRun, "acceptedSet"> & { target: CarryTarget; phases: Pick<ShepherdPhases, "visualSetCarry">; policy: { ownerGateReason?: OwnerGateReason } };
+type SetRun = Pick<VisualAcceptRun, "acceptedSet"> & { target: CarryTarget; phases: Pick<ShepherdPhases, "visualSetCarry">; policy: { ownerGateReason?: OwnerGateReason; visualPaths?: string[] } };
 type VisualGateTest = (stepId: string, prompt: string, ownerGateReason: OwnerGateReason | undefined) => string | undefined;
 
 /** The run's target, its accepted set, spent by clearing it, and its visual gate test; `isVisualGate` is passed in, since it imports this file's caller. */
 export const setCarryOf = (run: SetRun, isVisualGate: VisualGateTest): SetCarry & { target: CarryTarget } => ({
   ...{ target: run.target, acceptedSet: () => run.acceptedSet, spendSet: () => (run.acceptedSet = undefined), setMode: run.phases.visualSetCarry },
   isVisual: (stepId, prompt) => isVisualGate(stepId, prompt, run.policy.ownerGateReason) !== undefined,
+  visualPaths: () => run.policy.visualPaths,
 });
 
 /**
