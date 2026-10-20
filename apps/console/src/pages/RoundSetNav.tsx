@@ -4,6 +4,7 @@ import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { href, open, type Route } from "../router.js";
 import { setPositionOf, setQuery, type SetPosition } from "./round-set.js";
+import { typedInto } from "./typed-into.js";
 
 const roundRoute = (round: RoundSummary): Route => ({ view: "rounds", id: round.id });
 const setRoute = (set: string): Route => ({ view: "rounds", query: setQuery(set) });
@@ -53,11 +54,6 @@ function KeyHint(): ReactNode {
       <Typography variant="caption" color="secondary">[ and ] step through the set</Typography>
     </span>
   );
-}
-
-function typedInto(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 /** `[` and `]` open the previous and next round, unless a modifier is held or the owner is typing in a field. */
