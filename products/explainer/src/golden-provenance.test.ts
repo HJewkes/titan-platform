@@ -1,29 +1,28 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 const GOLDENS = new URL("../fixtures/spike/goldens/", import.meta.url);
 
-interface ToolRun {
-  tool: string;
-  sha256: string;
-  outputSha256: string;
-  dataTool?: { tool: string; sha256: string };
-}
-
-interface ScriptProvenance {
-  frozenScript: { path: string; sha256: string };
-  goldens: Record<string, ToolRun>;
-}
-
-interface Provenance {
-  bundle: { path: string; sha256: string };
-  scripts: Record<string, ScriptProvenance>;
-}
+const Pinned = z.object({ tool: z.string(), sha256: z.string() });
+const ToolRunSchema = Pinned.extend({ outputSha256: z.string(), dataTool: Pinned.optional() });
+const ProvenanceSchema = z.object({
+  bundle: z.object({ path: z.string(), sha256: z.string() }),
+  scripts: z.record(
+    z.string(),
+    z.object({
+      frozenScript: z.object({ path: z.string(), sha256: z.string() }),
+      goldens: z.record(z.string(), ToolRunSchema),
+    }),
+  ),
+});
+type ToolRun = z.infer<typeof ToolRunSchema>;
+type Provenance = z.infer<typeof ProvenanceSchema>;
 
 const sha256 = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
 const readGolden = (path: string): Buffer => readFileSync(new URL(path, GOLDENS));
-const loadProvenance = (): Provenance => JSON.parse(readGolden("provenance.json").toString("utf8")) as Provenance;
+const loadProvenance = (): Provenance => ProvenanceSchema.parse(JSON.parse(readGolden("provenance.json").toString("utf8")));
 
 const loadSums = (): Map<string, string> =>
   new Map(
