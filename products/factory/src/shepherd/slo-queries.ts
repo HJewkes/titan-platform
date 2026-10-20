@@ -16,6 +16,8 @@ export interface SloInput {
   runs: readonly WorkflowRun[];
   gates: readonly GateRecord[];
   events: readonly ShepherdEvent[];
+  /** Runs of registrations held now; a held run with no pending gate is waiting on an owner nobody has asked. */
+  heldRunIds: readonly string[];
   now: number;
   range: { from: string; to: string };
   cost: (range: StatsRange) => Promise<ReviewCostReport>;
@@ -182,9 +184,11 @@ const quality: Record<string, Query> = {
 };
 
 const ownerLoad: Record<string, Query> = {
-  "owner-load.overdue-owner-gates": ({ gates, now }) => {
+  "owner-load.overdue-owner-gates": ({ gates, heldRunIds, now }) => {
     const pending = gates.filter((gate) => gate.status === "pending" && !SEAT_STEPS.includes(stepOf(gate.id)));
-    return count(pending.filter((gate) => (now - Date.parse(gate.createdAt)) / HOUR > OVERDUE_HOURS).length, pending.length);
+    const asked = new Set(gates.filter((gate) => gate.status === "pending").map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
+    const unasked = heldRunIds.filter((runId) => !asked.has(runId));
+    return count(pending.filter((gate) => (now - Date.parse(gate.createdAt)) / HOUR > OVERDUE_HOURS).length + unasked.length, pending.length + unasked.length);
   },
   "owner-load.touches-per-day": (input) => perDay(resolvedIn(input).filter(isOwnerTouch).length, input.range),
   "owner-load.gate-wait-p90": (input) => percentile90(resolvedIn(input).filter(isOwnerTouch).map(hoursOpen), 1),

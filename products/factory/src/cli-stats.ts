@@ -149,10 +149,16 @@ function usageError(opts: StatsOpts): string | undefined {
   return undefined;
 }
 
+function heldRunIds(db: ReturnType<typeof openDatabase>): string[] {
+  const rows = db.prepare("SELECT run_id FROM shepherd_registration WHERE held = 1").all() as Array<{ run_id: string }>;
+  return rows.map((row) => row.run_id);
+}
+
 /** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
 function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): Promise<string> {
   const runs = shepherdRuns(db);
-  const base = { runs, gates: readAllGates(db), events: eventsSince(db), now, cost: (range: { from?: string; to?: string }) => reviewCost(runs, claudeTranscripts(), range) };
+  const cost = (range: { from?: string; to?: string }) => reviewCost(runs, claudeTranscripts(), range);
+  const base = { runs, gates: readAllGates(db), events: eventsSince(db), heldRunIds: heldRunIds(db), now, cost };
   return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
 }
 

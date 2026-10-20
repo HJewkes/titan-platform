@@ -28,7 +28,7 @@ const event = (kind: ShepherdEvent["kind"], at: number, runId: string | null = n
 const EMPTY_COST = { prs: [], weeks: [], totals: { prs: 0, completePrs: 0, usd: 0, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, unreadable: 0, p50Usd: null, p90Usd: null } };
 
 function input(over: Partial<SloInput> = {}): SloInput {
-  return { runs: [], gates: [], events: [], now: NOW, range: { from: "2026-10-07", to: "2026-10-08" }, cost: async () => EMPTY_COST, ...over };
+  return { runs: [], gates: [], events: [], heldRunIds: [], now: NOW, range: { from: "2026-10-07", to: "2026-10-08" }, cost: async () => EMPTY_COST, ...over };
 }
 
 /** Reviewer MERGE at T0 + 30m after a dispatch at T0 + 20m, merged at T0 + `mergeAfter` minutes. */
@@ -154,6 +154,13 @@ describe("owner-load queries", () => {
     const gates = [gate("a/approve-merge:0", NOW - 30 * HOUR), gate("b/approve-merge:0", NOW - HOUR), gate("c/ci-failed:0", NOW - 40 * HOUR)];
 
     expect(await value("owner-load.overdue-owner-gates", input({ gates }))).toEqual({ value: 1, n: 2 });
+  });
+
+  it("counts a held run with no pending gate as waiting, so a lost gate cannot read as a pass", async () => {
+    const gates = [gate("a/approve-merge:0", NOW - HOUR)];
+
+    expect(await value("owner-load.overdue-owner-gates", input({ gates, heldRunIds: ["a", "b"] }))).toEqual({ value: 1, n: 2 });
+    expect(await value("owner-load.overdue-owner-gates", input({ gates, heldRunIds: ["a"] }))).toEqual({ value: 0, n: 1 });
   });
 
   it("averages owner touches over the days in range and gives the delegated share", async () => {
