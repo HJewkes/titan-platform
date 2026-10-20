@@ -37,7 +37,7 @@ import { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 import { readPriorFeedback } from "./prior-feedback.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { shipBlockers } from "./ship-blockers.js";
+import { sendBackNoteBlocker, shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
 export const ADDRESSED_FILE = "addressed.json";
@@ -200,6 +200,27 @@ async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args:
   if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
 }
 
+type PickOne = Extract<Question, { kind: "pick-one" }>;
+type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
+
+const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
+const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
+  answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
+
+/**
+ * In a round with several PRs, each one sent back needs its own note (decision 513); the single-PR path is
+ * tp#2006's to move to the same rule.
+ */
+function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
+  const merges = manifest.questions.filter(isMergeQuestion);
+  if (merges.length < 2) return;
+  for (const question of merges) {
+    const answer = args.answers.find((each) => each.questionId === question.id);
+    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackNoteBlocker(args, question.id) : undefined;
+    if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
+  }
+}
+
 const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 
 /** Null when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
@@ -266,6 +287,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   checkFollowUps(manifest, args.followUps);
   const shipped = shippedHeads(manifest, args);
   if (shipped.length > 0) await refuseBlockedShip(source, manifest, args, shipped);
+  refuseSendBackWithoutNote(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };

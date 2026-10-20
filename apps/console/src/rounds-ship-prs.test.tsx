@@ -71,6 +71,14 @@ async function renderPrs(detail: Partial<RoundDetail> = {}): Promise<{ name: str
   return calls;
 }
 
+/** The two-PR round with its tiles side question required. */
+async function withRequiredSide(): Promise<Partial<RoundDetail>> {
+  const detail = await getRound(staged.source, ROUND);
+  if (!detail.valid) throw new Error("the two-PR fixture round is invalid");
+  const questions = detail.manifest.questions.map((question) => (question.id === "stripe-colour" ? { ...question, required: true } : question));
+  return { manifest: { ...detail.manifest, questions } };
+}
+
 const pr = (key: string) => within(screen.getByTestId(`pr-${key}`));
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const disabled = (label: string): boolean => button(label).getAttribute("aria-disabled") === "true";
@@ -102,8 +110,8 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     const calls = await renderPrs();
 
     fireEvent.click(button("Ship example/tiles#1"));
-    fireEvent.click(button("Send back example/panels#2"));
     fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: " Narrow it again. " } });
+    fireEvent.click(button("Send back example/panels#2"));
     fireEvent.click(button("Send answers"));
 
     expect(submits(calls)).toEqual([
@@ -117,8 +125,8 @@ describe("a Ship round with two PRs (TP-3329)", () => {
   it("keeps a PR's Ship open while its own Send back note is typed", async () => {
     await renderPrs();
 
-    fireEvent.click(button("Send back example/panels#2"));
     fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
+    fireEvent.click(button("Send back example/panels#2"));
 
     expect(disabled("Ship example/panels#2")).toBe(false);
   });
@@ -140,6 +148,34 @@ describe("a Ship round with two PRs (TP-3329)", () => {
 
     expect(disabled("Ship example/tiles#1")).toBe(true);
     expect(disabled("Ship example/panels#2")).toBe(false);
+  });
+
+  it("keeps a PR's Send back off until it has a note, and then holds the send", async () => {
+    await renderPrs();
+
+    expect(disabled("Send back example/panels#2")).toBe(true);
+    expect(screen.getByTestId("send-back-note-example/panels#2").textContent).toContain("a Send back needs a note");
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
+    fireEvent.click(button("Send back example/panels#2"));
+    fireEvent.click(button("Ship example/tiles#1"));
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: " " } });
+
+    expect(disabled("Send answers")).toBe(true);
+    expect(screen.getByTestId("prs-send-problems").textContent).toContain("add a note to send back example/panels#2");
+  });
+
+  it("sends a PR back with its note while a required side question is unanswered (decision 513)", async () => {
+    const calls = await renderPrs(await withRequiredSide());
+
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/tiles#1"), { target: { value: "Lower the stripe." } });
+    expect(disabled("Send back example/tiles#1")).toBe(false);
+    fireEvent.click(button("Send back example/tiles#1"));
+    fireEvent.click(button("Ship example/panels#2"));
+    fireEvent.click(button("Send answers"));
+
+    expect(submits(calls)).toEqual([
+      expect.objectContaining({ answers: [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }] }),
+    ]);
   });
 
   it("shows, once sent, which PR shipped and which went back", async () => {

@@ -138,6 +138,18 @@ export function shipScope(manifest: Manifest, mergeId: string): ReadonlySet<stri
   return new Set([...all].filter((id) => (claimedBy.get(id) ?? own) === own && (id === mergeId || !merges.some((other) => other.id === id))));
 }
 
+const SEND_BACK_NEEDS_NOTE = "a Send back needs a note: a comment on its Ship question or a round note";
+
+/**
+ * Why one PR's Send back is off (owner decision 513); undefined when it may go. The factory refuses an empty
+ * send-back note, so the fixer needs a comment on that PR's Ship question or a round note. An unanswered
+ * required side question never holds a Send back.
+ */
+export function sendBackNoteBlocker(draft: Pick<ShipDraft, "answers" | "general">, mergeId: string): string | undefined {
+  const note = draft.answers.find((answer) => answer.questionId === mergeId)?.comment;
+  return blank(note) && blank(draft.general) ? SEND_BACK_NEEDS_NOTE : undefined;
+}
+
 /** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
 export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): string[] {
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];

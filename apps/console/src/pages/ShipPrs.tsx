@@ -5,10 +5,10 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
-import { shipBlockers } from "../../server/ship-blockers.js";
+import { sendBackNoteBlocker, shipBlockers } from "../../server/ship-blockers.js";
 import { useSubmit } from "../data/submit.js";
 import { QuestionFrames } from "./QuestionFrames.js";
-import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
+import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { QuestionFacts } from "./RoundQuestion.js";
 import { Montages } from "./ShipMontages.js";
@@ -83,6 +83,8 @@ interface PrsState {
   verdicts: Verdicts;
   answers: SubmittedAnswer[];
   blockersOf: (unit: PrUnit) => string[];
+  /** Why this PR's Send back is off: it has no note of its own and the round has none. */
+  sendBackBlockerOf: (unit: PrUnit) => string | undefined;
   /** Sent or sending: side answers show as given and take no more edits. */
   locked: boolean;
   sent: boolean;
@@ -100,7 +102,9 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
   const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
-  const state: PrsState = { round, units, side, verdicts, answers, blockersOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
+  // Read from the note box, not the draft, so Send back turns on before it is chosen.
+  const sendBackBlockerOf = (unit: PrUnit) => sendBackNoteBlocker({ answers: [{ questionId: unit.question.id, comment: verdicts.notes[unit.question.id] ?? "" }], general: draft.general }, unit.question.id);
+  const state: PrsState = { round, units, side, verdicts, answers, blockersOf, sendBackBlockerOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
     <VStack gap={6}>
       <PrsHeading round={round} units={units} />
@@ -176,6 +180,7 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
   const { question, pr } = unit;
   const verdict = state.verdicts.verdicts[question.id];
   const blockers = state.blockersOf(unit);
+  const noNote = state.sendBackBlockerOf(unit);
   return (
     <Card variant="outline">
       <CardContent>
@@ -184,13 +189,14 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
             <Button color="success" variant={verdict === "ship" ? "solid" : "outline"} accessibilityLabel={`Ship ${pr}`} accessibilityState={{ selected: verdict === "ship" }} isDisabled={blockers.length > 0} onPress={() => state.verdicts.choose(question.id, "ship")}>
               <ButtonText>Ship</ButtonText>
             </Button>
-            <Button color="warning" variant={verdict === "back" ? "solid" : "outline"} accessibilityLabel={`Send back ${pr}`} accessibilityState={{ selected: verdict === "back" }} isDisabled={sendBackOf(question) === undefined} onPress={() => state.verdicts.choose(question.id, "back")}>
+            <Button color="warning" variant={verdict === "back" ? "solid" : "outline"} accessibilityLabel={`Send back ${pr}`} accessibilityState={{ selected: verdict === "back" }} isDisabled={sendBackOf(question) === undefined || noNote !== undefined} onPress={() => state.verdicts.choose(question.id, "back")}>
               <ButtonText>Send back</ButtonText>
             </Button>
           </HStack>
-          {verdict === "back" ? (
-            <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel={`Note for Send back on ${pr}`} value={state.verdicts.notes[question.id] ?? ""} onChangeText={(text) => state.verdicts.note(question.id, text)} />
-          ) : null}
+          {verdict === "ship" ? null : (
+            <Input multiline numberOfLines={3} label="Note for Send back" accessibilityLabel={`Note for Send back on ${pr}`} value={state.verdicts.notes[question.id] ?? ""} onChangeText={(text) => state.verdicts.note(question.id, text)} />
+          )}
+          {noNote !== undefined && verdict !== "ship" ? <Typography variant="caption" color="secondary" testID={`send-back-note-${pr}`}>{`Send back is off: ${noNote}.`}</Typography> : null}
           <ShipBlockedReason reasons={blockers} />
         </VStack>
       </CardContent>
@@ -239,21 +245,24 @@ function sendArgs(state: PrsState) {
   };
 }
 
-/** Why the one send is off beyond a missing answer: an undecided PR, or a Ship that is now blocked. */
+/** Why the one send is off: an undecided PR, a Ship that is now blocked, or a Send back whose note was cleared. */
 function sendProblems(state: PrsState): string[] {
-  const undecided = state.units.filter((unit) => state.verdicts.verdicts[unit.question.id] === undefined).map((unit) => unit.pr);
-  const blocked = state.units.filter((unit) => state.verdicts.verdicts[unit.question.id] === "ship" && state.blockersOf(unit).length > 0).map((unit) => unit.pr);
-  return [...(undecided.length > 0 ? [`choose Ship or Send back for ${undecided.join(", ")}`] : []), ...(blocked.length > 0 ? [`Ship is blocked for ${blocked.join(", ")}`] : [])];
+  const prsWhere = (test: (unit: PrUnit, verdict: Verdict | undefined) => boolean) => state.units.filter((unit) => test(unit, state.verdicts.verdicts[unit.question.id])).map((unit) => unit.pr);
+  const undecided = prsWhere((_, verdict) => verdict === undefined);
+  const blocked = prsWhere((unit, verdict) => verdict === "ship" && state.blockersOf(unit).length > 0);
+  const noNote = prsWhere((unit, verdict) => verdict === "back" && state.sendBackBlockerOf(unit) !== undefined);
+  return [
+    ...(undecided.length > 0 ? [`choose Ship or Send back for ${undecided.join(", ")}`] : []),
+    ...(blocked.length > 0 ? [`Ship is blocked for ${blocked.join(", ")}`] : []),
+    ...(noNote.length > 0 ? [`add a note to send back ${noNote.join(", ")}`] : []),
+  ];
 }
 
 function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnType<typeof useSubmit> }): ReactNode {
   const { available, state: sending, submit } = submitting;
-  const merges = new Set<Question>(state.units.map((unit) => unit.question));
-  // Decision 166: unanswered questions never block Ship, so they hold the send only when a PR goes back.
-  const sendsBack = state.units.some((unit) => state.verdicts.verdicts[unit.question.id] === "back");
-  const missing = sendsBack ? missingRequired(state.round.manifest.questions.filter((question) => !merges.has(question)), state.answers) : [];
+  // Decisions 166 and 513: an unanswered required side question holds neither Ship nor Send back.
   const problems = sendProblems(state);
-  const disabled = !available || sending.status === "sending" || missing.length > 0 || problems.length > 0;
+  const disabled = !available || sending.status === "sending" || problems.length > 0;
   return (
     <Card variant="outline">
       <CardContent>
@@ -263,7 +272,7 @@ function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnTyp
             <Button isDisabled={disabled} onPress={() => void submit(sendArgs(state))}><ButtonText>Send answers</ButtonText></Button>
           </HStack>
           {problems.length > 0 ? <Alert status="info" size="compact" message={`Before sending: ${problems.join("; ")}.`} testID="prs-send-problems" /> : null}
-          <ShipNotices blockers={[]} missing={missing} available={available} state={sending} />
+          <ShipNotices blockers={[]} missing={[]} available={available} state={sending} />
         </VStack>
       </CardContent>
     </Card>

@@ -513,10 +513,32 @@ describe("a round with two PRs (TP-3329)", () => {
     const answers = [{ questionId: "stripe-colour", pick: "Keep", comment: "Check the contrast." }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
 
     const both = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
-    const panelsOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-tiles", pick: "Don't ship" }, answers[2]], heads: { "ship-panels": PANELS_HEAD } });
+    const panelsOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, answers[2]], heads: { "ship-panels": PANELS_HEAD } });
 
     expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left a comment on "Keep the stripe colour?"' });
     expect(panelsOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each(["ship-tiles", "ship-panels"])("refuses %s sent back with no note, even beside a noted Send back, and writes nothing (decision 513)", async (bare) => {
+    const answers = ["ship-tiles", "ship-panels"].map((questionId) => ({ questionId, pick: "Don't ship", ...(questionId === bare ? {} : { comment: "Lower the stripe." }) }));
+
+    const { envelope, exitCode } = await submitTwo({ answers });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": a Send back needs a note: a comment on its Ship question or a round note` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("takes both PRs sent back on one round note while a required side question is unanswered", async () => {
+    const round = twoPrRound();
+    round.questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions).map((question) => (question.id === "stripe-colour" ? { ...question, required: true } : question));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship" }, { questionId: "ship-panels", pick: "Don't ship" }];
+
+    const { envelope } = await submit({ id: TWO, manifestSha256: sha256(bytes), answers, general: "Both need another pass." });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
 });
 
