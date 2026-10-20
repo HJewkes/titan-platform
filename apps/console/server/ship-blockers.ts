@@ -120,7 +120,7 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
 
-export const NOTHING_TO_FIX = "Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship.";
+const NOTHING_TO_FIX = "Nothing to fix in this PR: every comment is marked Follow-up. Add a note or Ship.";
 
 /**
  * Why Send back is off; undefined when it may go. The factory leaves follow-up comments out of the fixer's
