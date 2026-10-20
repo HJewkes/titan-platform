@@ -3,8 +3,12 @@ import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, readRubric, voidReason } from "./eval-evidence.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
-import { agreedTerms, bareKey, bareListItems, listedLabels, spokenTerms } from "./eval-cold-terms.js";
+import type { Labels } from "./eval-calibrate.js";
+import { agreedTerms, bareKey, bareListItems, listedLabels, spokenTerms, termKey } from "./eval-cold-terms.js";
+import { mentions } from "./lexicon.js";
 import type { PaceBeat } from "./pace-items.js";
+
+type ReaderGapGroup = Labels["items"][number];
 
 export const COLD_EVAL_ID = "L1-cold";
 /** The viewer's whole memory of earlier chapters; anything longer would let the transcript leak forward. */
@@ -60,25 +64,19 @@ export function chaptersOf(beats: readonly PaceBeat[]): ColdChapterBeats[] {
 
 const seconds = (s: number): string => `${s.toFixed(1)} s`;
 
-// An untimed label is not pinned to the beat's first second: that would claim a longer exposure than anyone measured.
-const exposure = (atS: number | null, startS: number): string => (atS === null ? "at an unknown second" : `from ${seconds(startS + atS)}`);
+const spokenBeat = (beat: PaceBeat, startS: number): string =>
+  [`[${beat.id}] from ${seconds(startS)}`, `spoken: ${beat.spoken}`, `beat ends at ${seconds(startS + beat.durationS)}`].join("\n");
 
-function playbackBeat(beat: PaceBeat, startS: number): string {
-  const shown = beat.items.map((i) => `\`${i.label}\` ${exposure(i.atS, startS)}`);
-  return [
-    `[${beat.id}] from ${seconds(startS)}`,
-    `spoken: ${beat.spoken}`,
-    ...(shown.length > 0 ? [`on screen: ${shown.join("; ")}`] : []),
-    `beat ends at ${seconds(startS + beat.durationS)}`,
-  ].join("\n");
-}
-
-/** One chapter as it plays: spoken words, each label's exposure second, each beat's end, on the chapter's clock. */
-export function playbackTranscript(beats: readonly PaceBeat[]): string {
+/**
+ * One chapter as it is heard: spoken words and each beat's end, on the chapter's clock. The screen is left out
+ * (TP-3807): the reader-gap labels come from readers who had the narration only, and a card naming "Tick" beside
+ * "burndown.json" let the viewer explain a word those readers could not.
+ */
+export function spokenTranscript(beats: readonly PaceBeat[]): string {
   let startS = 0;
   return beats
     .map((beat) => {
-      const block = playbackBeat(beat, startS);
+      const block = spokenBeat(beat, startS);
       startS += beat.durationS;
       return block;
     })
@@ -140,7 +138,7 @@ function poseQuestions(questions: readonly ColdQuestion[], canary: string): Pose
 function coldPrompt(rubric: string, chapter: ColdChapterBeats, summary: string, posed: readonly PosedQuestion[]): string {
   const memory = summary || "Nothing yet: this is the first chapter.";
   const questions = posed.map((q) => `- ${q.qid}: ${q.text}`).join("\n");
-  return `${rubric}\n\n## What you remember so far\n\n${memory}\n\n## Chapter ${chapter.chapter}, played once\n\n${playbackTranscript(chapter.beats)}\n\n## Questions\n\n${questions}\n`;
+  return `${rubric}\n\n## What you remember so far\n\n${memory}\n\n## Chapter ${chapter.chapter}, played once\n\n${spokenTranscript(chapter.beats)}\n\n## Questions\n\n${questions}\n`;
 }
 
 export interface ColdInput {
@@ -204,6 +202,7 @@ export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): str
     max_summary_lines: MAX_SUMMARY_LINES,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     bare_list_item: BARE.void_reason,
+    transcript: "spoken words and beat ends; no screen",
     spoken_terms: "glossary, identifiers and viewer-named terms, at first spoken use, unless a label shows them",
     viewer_terms: { rubric_sha: canonicalSha(readRubric(COLD_TERMS_RUBRIC)), runs: TERM_RUNS, quorum: TERM_QUORUM, fold: "case and plural" },
   });
@@ -285,6 +284,30 @@ export function agreedOddOnes(runs: readonly ColdResult[], quorum = 2): { beat: 
   return [...votes].flatMap(([beat, tally]) => [...tally].filter(([, n]) => n >= quorum).map(([item]) => ({ beat, item })));
 }
 
+export interface ReaderGapScore {
+  group: string;
+  /** The questions the group is scored on: each item's first, or its first-use beats' when no item is asked. */
+  asked: string[];
+  /** The lowest of those scores, so one unexplained item is a gap found; null when nothing was asked. */
+  score: 0 | 1 | 2 | null;
+}
+
+const matchesItem = (asked: string, item: string): boolean => mentions(termKey(asked), termKey(item));
+
+/**
+ * One run's score for each labelled reader-gap group, at the item's first question as `spokenTerms` places it. A
+ * group that names a whole list ("the seven jobs") matches no question by its words, so its first-use beats' do.
+ */
+export function readerGapScores(groups: readonly ReaderGapGroup[], result: ColdResult): ReaderGapScore[] {
+  const scores = result.chapters.flatMap((c) => c.scores);
+  return groups.map(({ group, items, first_used }) => {
+    const firsts = items.flatMap((item) => scores.find((s) => matchesItem(s.item, item)) ?? []);
+    const asked = firsts.length > 0 ? firsts : scores.filter((s) => first_used.includes(s.beat));
+    const lowest = asked.length > 0 ? (Math.min(...asked.map((s) => s.score)) as ColdGrade["score"]) : null;
+    return { group, asked: asked.map((s) => s.item), score: lowest };
+  });
+}
+
 const TermsSchema = z.strictObject({ terms: z.array(z.string()) });
 
 export interface ColdTermsInput {
@@ -304,7 +327,7 @@ export interface ColdTerms {
 }
 
 const termsPrompt = (rubric: string, beats: readonly PaceBeat[]): string =>
-  `${rubric}\n\n${chaptersOf(beats).map((c) => `## Chapter ${c.chapter}\n\n${playbackTranscript(c.beats)}`).join("\n\n")}\n`;
+  `${rubric}\n\n${chaptersOf(beats).map((c) => `## Chapter ${c.chapter}\n\n${spokenTranscript(c.beats)}`).join("\n\n")}\n`;
 
 /**
  * Plain words a script gives its own meaning ("head", "grant") are jargon nothing in their spelling flags, so fresh

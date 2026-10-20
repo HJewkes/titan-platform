@@ -5,8 +5,9 @@ import {
   coldEvalVersion,
   coldQuestions,
   coldTerms,
-  playbackTranscript,
+  readerGapScores,
   runCold,
+  spokenTranscript,
   type ColdInput,
 } from "./eval-cold.js";
 import { agreedTerms, termKey } from "./eval-cold-terms.js";
@@ -106,25 +107,32 @@ const input = (harness: JudgeHarness, run = 1): ColdInput => ({ scriptSha: "s".r
 
 const chapterScores = async (options: ViewerOptions) => (await runCold(input(fakeViewer(options).harness))).chapters;
 
-describe("the playback transcript", () => {
-  it("shows each label at its exposure second and each beat's end on the chapter's clock", () => {
+describe("the spoken transcript", () => {
+  it("gives each beat's spoken words and end on the chapter's clock", () => {
     const [a, b] = track();
-    const timed: PaceBeat = { ...b!, durationS: 4.5, items: [{ ...b!.items[0]!, atS: 2.8 }] };
 
-    const text = playbackTranscript([{ ...a!, durationS: 4 }, timed]);
+    const text = spokenTranscript([{ ...a!, durationS: 4 }, { ...b!, durationS: 4.5 }]);
 
-    expect(text).toContain("[c1-2] from 4.0 s\nspoken: Each parcel gets exactly one label");
-    expect(text).toContain("on screen: `one label per parcel` from 6.8 s\nbeat ends at 8.5 s");
+    expect(text).toBe(
+      "[c1-1] from 0.0 s\nspoken: The desk does three jobs for every parcel that comes in.\nbeat ends at 4.0 s\n\n" +
+        "[c1-2] from 4.0 s\nspoken: Each parcel gets exactly one label, because a second label ships twice.\nbeat ends at 8.5 s",
+    );
   });
 
-  // Mutation: reading a null atS as 0 shows the label "from" the beat's start second.
-  it("does not place a label with no word timing at the beat's start second", () => {
-    const [a, b] = track();
+  // Mutation: putting the screen back lets a card's label explain a word the narration never does (TP-3807).
+  it("shows the viewer no on-screen label in either cold prompt", async () => {
+    const beats = buildPaceBeats([source("s1-1", "ch1", "The sorter hands each parcel on.", ["card:sorter", "detail:belt robot"], 6)]);
+    const cold = fakeViewer();
+    const terms = termsViewer([[], [], []]);
 
-    const text = playbackTranscript([{ ...a!, durationS: 4 }, { ...b!, items: [{ ...b!.items[0]!, atS: null }] }]);
+    await runCold({ ...input(cold.harness), beats });
+    await coldTerms({ beats, rubric: termsRubric, harness: terms.harness });
 
-    expect(text).toContain("on screen: `one label per parcel` at an unknown second\n");
-    expect(text).not.toContain("`one label per parcel` from");
+    for (const prompt of [...cold.calls, ...terms.calls]) {
+      expect(prompt).toContain("spoken: The sorter hands each parcel on.");
+      expect(prompt).not.toContain("belt robot");
+      expect(prompt).not.toContain("on screen:");
+    }
   });
 });
 
@@ -357,5 +365,48 @@ describe("the terms cold viewers cannot define", () => {
 
     expect(questioned([])).toHaveLength(1);
     expect(questioned(terms)).toEqual(["head and chip", "grant and token", "carry", "ch1 nouns"]);
+  });
+});
+
+describe("reader-gap group scores", () => {
+  const gapTrack = (): PaceBeat[] =>
+    buildPaceBeats([
+      source("g1-1", "ch1", "Three jobs come first: scan, weigh and stamp.", ["job:scan", "job:weigh", "job:stamp"], 6),
+      source("g1-2", "ch1", "Each parcel joins a lane at the dock.", ["card:parcel"], 6),
+      source("g2-1", "ch2", "Later the lanes merge, and the dock closes.", ["card:merge"], 6),
+    ]);
+  const groups = [
+    { group: "lanes", items: ["lane", "dock"], first_used: ["g1-2"] },
+    { group: "the three jobs", items: ["the three jobs"], first_used: ["g1-1"] },
+    { group: "never asked", items: ["ledger"], first_used: ["g3-1"] },
+  ];
+  /** A viewer that explains every question except those whose text names one of `blank`. */
+  const scoredRun = async (blank: readonly string[]) => {
+    const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+      const first = promptBeats(prompt).at(-1)!;
+      const answers = promptQuestions(prompt).map(({ qid, text }) => {
+        const none = text.includes('"relay-') || blank.some((b) => text.includes(`"${b}"`));
+        const quotes = none ? [] : [{ beat: first.id, quote: quoteOf(first.spoken) }];
+        return { qid, not_stated: none, what: none ? "" : "a thing", what_quotes: quotes, why: none ? "" : "a reason", why_quotes: quotes, odd_one_out: null };
+      });
+      return { ok: true, output: schema.parse({ answers, summary: "" }), usd: 0, tokensIn: 0, tokensOut: 0 };
+    };
+    return runCold({ ...input(harness), beats: gapTrack(), glossary: ["lane", "dock"] });
+  };
+
+  // Mutation: taking the highest score lets the explained lane hide the unexplained dock.
+  it("scores a group at the lowest of its items' first questions", async () => {
+    const run = await scoredRun(["dock"]);
+
+    expect(readerGapScores(groups, run)[0]).toEqual({ group: "lanes", asked: ["lane", "dock"], score: 0 });
+    expect(readerGapScores(groups, await scoredRun([]))[0]!.score).toBe(2);
+  });
+
+  // Mutation: matching only by item words leaves a group named for a whole list unscored.
+  it("scores a group no question names by its first-use beats, and leaves an unasked one null", async () => {
+    const [, jobs, never] = readerGapScores(groups, await scoredRun([]));
+
+    expect(jobs).toEqual({ group: "the three jobs", asked: ["scan", "weigh", "stamp"], score: 0 });
+    expect(never).toEqual({ group: "never asked", asked: [], score: null });
   });
 });

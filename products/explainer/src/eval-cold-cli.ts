@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import type { EvalCliDeps } from "./eval-cli.js";
-import { agreedOddOnes, COLD_EVAL_ID, COLD_TERMS_EVAL_ID, COLD_TERMS_RUBRIC, coldEvalVersion, coldTerms, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
+import { LabelsSchema, type Labels } from "./eval-calibrate.js";
+import { agreedOddOnes, COLD_EVAL_ID, COLD_TERMS_EVAL_ID, COLD_TERMS_RUBRIC, coldEvalVersion, coldTerms, readerGapScores, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
 import { readRubric } from "./eval-evidence.js";
 import { createJudgeHarness, JudgeConfigSchema, judgeLabel } from "./eval-harness.js";
 import { CANARY_COLUMNS } from "./eval-judge-cli.js";
@@ -30,6 +31,7 @@ interface ColdFlags {
   bench: string;
   parent?: string;
   runs: string;
+  labels?: string;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -39,6 +41,7 @@ interface Prepared {
   record: Omit<DeterministicRun, "started" | "finished">;
   input: Omit<ColdInput, "run">;
   runs: number;
+  readerGaps: Labels["items"] | null;
 }
 
 function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
@@ -52,7 +55,8 @@ function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: COLD_EVAL_ID };
   const input = { scriptSha, beats, glossary, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
-  return { bench, record, input, runs };
+  const readerGaps = flags.labels ? LabelsSchema.parse(readJson(flags.labels)).items : null;
+  return { bench, record, input, runs, readerGaps };
 }
 
 function writeRows(p: Prepared, result: ColdResult, run: number): void {
@@ -70,7 +74,8 @@ function writeRows(p: Prepared, result: ColdResult, run: number): void {
 function report(p: Prepared, run: number, r: ColdResult): void {
   const perMinute = Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(c.undefined_per_minute.toFixed(2))]));
   const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
-  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
+  const gaps = p.readerGaps ? { reader_gaps: readerGapScores(p.readerGaps, r) } : {};
+  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
@@ -115,6 +120,7 @@ export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void)
     .option("--rules <file>", "rules/v1 registry, by default the shipped doctrine/rules.yaml; its sha is rules_sha on the run records")
     .option("--bench <dir>", "bench directory holding evals/ and scripts/", "bench")
     .option("--parent <sha>", "script_sha this script was derived from")
+    .option("--labels <file>", "labels/v1 file; each run's line adds its reader-gap group scores")
     .option("--runs <n>", "independent cold viewers; two of three must agree to flag an odd one out", String(COLD_RUNS))
     .exitOverride()
     .action(async (file: string, flags: ColdFlags) => {

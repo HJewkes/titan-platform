@@ -151,6 +151,22 @@ describe("explainer eval cold", () => {
     expect(await cold(failing, "sonnet", "--runs", "1")).toBe(1);
   });
 
+  it("adds each run's reader-gap group scores to its line when given labels", async () => {
+    const labels = write("labels.json", {
+      schema: "labels/v1",
+      script: "synthetic-cold",
+      source: "invented",
+      checks: [{ check: "M1", check_ids: [], level: "beat", true: [], false: [], borderline: [] }],
+      owner_named: { true: [], borderline: [] },
+      items: [{ group: "ledger", items: ["ledger"], first_used: ["c2-1"] }],
+    });
+
+    await cold(fakeViewer().harness, "sonnet", "--runs", "1", "--labels", labels);
+
+    const lines = vi.mocked(console.log).mock.calls.map(([line]) => JSON.parse(String(line)));
+    expect(lines.find((l) => l.run === 1)).toMatchObject({ reader_gaps: [{ group: "ledger", asked: ["Ledger"], score: 0 }] });
+  });
+
   it("exits 2 on a judge config it cannot parse, before any call", async () => {
     const viewer = fakeViewer();
 
