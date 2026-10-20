@@ -19,6 +19,7 @@ import { SHEPHERD_WORKFLOW } from "./services.js";
 import { CLOSED_ELSEWHERE, DELETED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere, mergedByShepherd } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
+import { GATE_DEMOTIONS } from "./auto-pass.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REREVIEW } from "./stale-gates.js";
@@ -780,6 +781,8 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
   });
 
   it("leaves the conflict gate the run opens at the same head after a review-again cancel with the owner, and the run does not fail", async () => {
+    GATE_DEMOTIONS.conflict = false;
+    cleanups.push(() => void (GATE_DEMOTIONS.conflict = true));
     const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { wokenAgent: true });
     Object.assign(fake.pr(1), { mergeableState: "dirty" });
     await resyncShepherd(host, services);

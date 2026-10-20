@@ -15,7 +15,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief, wantsFreshFixer } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
@@ -118,12 +118,12 @@ type Choice =
   | { mode: "resume" | "live"; agent: string; message: string; sessionId: string }
   | { mode: "successor"; agent: string; predecessor: string; message: string; cwd: string };
 
-/** A retired agent, or one whose resume agent-chat refused this wake, is not asked again; a successor takes over from it. */
-const resumable = (newest: AgentRow, refused: ReadonlySet<string>): boolean => newest.status !== "retired" && !refused.has(newest.name);
+/** A retired agent, one whose resume agent-chat refused this wake, or one a fresh-fixer wake passes over, is not asked again; a successor takes over. */
+const resumable = (newest: AgentRow, refused: ReadonlySet<string>, input: WakeInput): boolean => newest.status !== "retired" && !refused.has(newest.name) && !wantsFreshFixer(input.payload);
 
 /** A string is why nobody can be woken. */
 async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[], refused: ReadonlySet<string>): Promise<Choice | string> {
-  const path = newest.transcriptExists === true && newest.sessionId !== "" && resumable(newest, refused) ? newest.transcriptPath : null;
+  const path = newest.transcriptExists === true && newest.sessionId !== "" && resumable(newest, refused, task.input) ? newest.transcriptPath : null;
   const warmth = typeof path === "string" ? await (wiring.readWarmth ?? readWarmth)(path) : undefined;
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };

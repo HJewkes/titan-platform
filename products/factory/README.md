@@ -283,15 +283,21 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   three ways: update-branch fails with a 422, the head reads `dirty`, or the check that runs
   before a gate finds one. It then wakes the implementer once, with the files that likely
   conflict. The next round reads CI at the fixer's head. If that head is behind, it runs a
-  fresh update-branch first. If that head still conflicts, the gate opens and no second fixer
-  starts. The fixer already had the conflict and failed to settle it, so a second wake would
-  likely fail the same way. The count resets when a head reads green, so a later conflict gets
-  its own fixer. This is by design (TP-1753). Allowing a second fixer would change merge policy,
-  so it needs its own task.
+  fresh update-branch first. If that head still conflicts, `GATE_DEMOTIONS.conflict` (on, TP-3734)
+  wakes one fresh fixer: a successor, never the implementer whose attempt failed. If its head
+  still conflicts, the repo's seat gets a `conflict` notice and the run waits for a new head. The
+  gate opens only when that notice cannot go out, or with the flag off, which restores the
+  TP-1753 gate after one fixer. The count resets when a head reads green, so a later conflict
+  gets its own fixers.
 - `policy-denial`: the seat's authority policy does not allow an automated merge, so only the
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
-  timeout or an unanswered hold. Retrying again would only repeat the stall.
+  timeout or an unanswered hold. Retrying again would only repeat the stall. Rounds that all
+  failed on infrastructure get one fallback fresh reviewer first (`D7/fallback-reviewer`). If
+  it fails too, `GATE_DEMOTIONS.failedFallback` records `D7/ops-notice` and tells the hub seat,
+  naming the failed outcomes and the reviewer account; a seat-held run-out tells the seat under
+  `D7/seat-notice`. The run then waits for a new head, whose rounds count from zero. The gate
+  opens only when the notice cannot go out.
 - `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
   kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
   Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
