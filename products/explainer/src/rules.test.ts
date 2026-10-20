@@ -39,9 +39,9 @@ describe("the shipped Q-rule registry", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(60);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([41, 12, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
+    expect(registry.rules).toHaveLength(64);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([45, 12, 7]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E8", "Q-E9", "Q-F14", "Q-F15"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {

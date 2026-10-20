@@ -212,6 +212,30 @@ describe("answering a Ship round", () => {
     expect(submits(rendered)[0]).not.toHaveProperty("headSha");
   });
 
+  it("offers a comment on its side question and feedback on the round, and sends both with Ship", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.change(screen.getByLabelText("Comment on File the badge colour as a follow-up?"), { target: { value: "Only if design agrees." } });
+    fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "The diffs made this easy." } });
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({
+      general: "The diffs made this easy.",
+      answers: [{ questionId: "badge-follow-up", comment: "Only if design agrees." }, { questionId: "ship-tiles", pick: "Ship" }],
+    });
+  });
+
+  it("shows a sent Ship round's comments and round feedback read-only", async () => {
+    const notes = { general: "The diffs made this easy.", comments: { "badge-follow-up": "Only if design agrees.", "ship-tiles": "Stripe is low." } };
+    await renderShip({ answers: true, detail: { status: "sent", notes } });
+
+    expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Only if design agrees.");
+    expect(screen.getByTestId("round-comment-sent-ship-tiles").textContent).toContain("Stripe is low.");
+    expect(screen.getByTestId("round-general-sent").textContent).toContain("The diffs made this easy.");
+    expect(screen.queryByLabelText("Feedback on this round")).toBeNull();
+  });
+
   it("disables both answers on a snapshot page and sends nothing", async () => {
     const rendered = await renderShip();
 
