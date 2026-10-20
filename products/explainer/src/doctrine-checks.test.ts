@@ -110,11 +110,11 @@ describe("the shipped owner-feedback doctrine", () => {
     expect(codes).toContain("code-rule-in-prompt-enforcement");
   });
 
-  it("keeps FB4.2 not live while Q-E16 is pending, and flags it when marked live", () => {
+  it("keeps FB4.2 live now Q-E16 is implemented, and flags it when marked not live", () => {
     const rule = fb("owner-FB4.2");
-    const flipped = { ...rule, check: { kind: "qrule" as const, ref: "Q-E16", live: true } };
+    const flipped = { ...rule, check: { kind: "qrule" as const, ref: "Q-E16", live: false } };
 
-    expect(rule.check?.live).toBe(false);
+    expect(rule.check?.live).toBe(true);
     expect(checkDoctrine({ ...shipped(), rules: [flipped] }, loadRuleRegistry()).map((found) => found.code)).toContain("qrule-live-mismatch");
   });
 });

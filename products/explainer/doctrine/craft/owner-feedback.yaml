@@ -46,7 +46,7 @@ rules:
     scope: { layer: U }
     enforcement: [lint]
     stages: [qa]
-    check: { kind: qrule, ref: Q-E16, live: false }
+    check: { kind: qrule, ref: Q-E16, live: true }
   - id: owner-FB5
     source: { doc: owner-feedback, ref: FB5 }
     text: "Leave no long stretch of narration without a new on-screen digest."
