@@ -190,7 +190,7 @@ describe("the pace lints on the v4 spike script", () => {
     expect(sets.get("Q-E9")).toEqual(["r2-1-jobs", "r2-2-inv", "r2-3-limits", "r3-1-nouns"]);
   });
 
-  it("raises Q-E9 as an error on exactly the beats the v4 labels call true, none of the labelled false ones", () => {
+  it("raises Q-E9 as an error, flagging none of the beats the v4 labels call false", () => {
     const q9 = paceRows(beats(), spike().invariants).find((r) => r.check_id === "Q-E9");
 
     expect(q9?.severity).toBe("error");
