@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
 import { Alert, Button, ButtonText, Card, CardContent, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
-import { useSubmit } from "../data/submit.js";
+import type { useSubmit } from "../data/submit.js";
 import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentGeneral } from "./RoundComment.js";
 import type { RoundAnswers } from "./RoundSections.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
+type Submitting = ReturnType<typeof useSubmit>;
+
+/** Sent or sending, the round's questions lock: the page's own state until a reload, then feedback.json's. */
+export const lockedBy = (round: ValidRound, { state }: Submitting): boolean => round.status === "sent" || state.status === "sending" || state.status === "sent";
+
 /** The send card of a design or question round: all answers and the round's feedback go in one `rounds.submit`, once the required questions hold one. */
-export function RoundSend({ round, state }: { round: ValidRound; state: RoundAnswers }): ReactNode {
-  const { available, state: sending, submit } = useSubmit();
+export function RoundSend({ round, state, submitting }: { round: ValidRound; state: RoundAnswers; submitting: Submitting }): ReactNode {
+  const { available, state: sending, submit } = submitting;
   if (round.status === "withdrawn") return <Alert status="warning" message="Withdrawn: a newer round replaced this one." />;
   if (round.status === "sent" || sending.status === "sent") return <SentNotice round={round} already={sending.status === "sent" && sending.already} />;
   const answers = submittedAnswers(round.manifest.questions, state.answers, state.comments, state.optionNotes);

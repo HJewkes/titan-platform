@@ -1,3 +1,4 @@
+import { CapabilityVault, type WorkflowCapability } from "./capabilities.js";
 import { WorkflowOwnershipLostError } from "./store.js";
 import type { WorkflowOwnerFence, WorkflowRun } from "./types.js";
 
@@ -40,4 +41,13 @@ export function fenceOf(run: WorkflowRun): WorkflowOwnerFence {
 
 export function sameFence(owner: WorkflowOwnerFence, expected: WorkflowOwnerFence): boolean {
   return owner.runtimeId === expected.runtimeId && owner.generation === expected.generation;
+}
+
+export function vaultOf(capabilities: Readonly<Record<string, WorkflowCapability>> | undefined): CapabilityVault | undefined {
+  return capabilities && new CapabilityVault(capabilities);
+}
+
+/** The text a failed run records: secrets of the runtime's capabilities redacted. */
+export function failureText(error: unknown, vault: CapabilityVault | undefined): string {
+  return vault ? vault.redact(messageOf(error)) : messageOf(error);
 }

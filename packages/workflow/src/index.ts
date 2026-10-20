@@ -71,3 +71,5 @@ export { durableHarnessRunner } from "./durable-harness-runner.js";
 export { gateIdFor } from "./context.js";
 export type { RunTraceSources } from "./trace-projection.js";
 export { projectRunTrace } from "./trace-projection.js";
+export type { WorkflowCapability } from "./capabilities.js";
+export { CapabilityLeakError } from "./capabilities.js";
