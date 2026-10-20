@@ -511,6 +511,34 @@ describe("importRound takes a Ship round only as one main-vs-head package (TP-35
     await expectShipRefused(/a Ship round binds one merge, not 2 \(ship-cards, ship-cards-3\)/);
   });
 
+  /** Two Ship questions, each in its own section and PR group (TP-3329); `groupHead` overrides the second group's head. */
+  async function twoPrGroups(groupHead?: string): Promise<void> {
+    await editJson("round.json", (json) => {
+      const [ship] = jsonObjects.parse(json.questions);
+      const merge = jsonObject.parse(ship?.merge);
+      const [section] = jsonObjects.parse(json.sections);
+      json.questions = [ship, { ...ship, id: "ship-cards-3", prompt: "Ship example/cards#3 at 0123456789ab?", page: "example/cards#3", merge: { ...merge, pr: 3 } }];
+      json.sections = [{ ...section, questionIds: ["ship-cards"] }, { ...section, id: "cards-3", parts: undefined, variantKeys: [], questionIds: ["ship-cards-3"] }];
+      json.prGroups = [
+        { pr: "example/cards#2", headSha: merge.headSha, sectionIds: [section?.id] },
+        { pr: "example/cards#3", headSha: groupHead ?? merge.headSha, sectionIds: ["cards-3"] },
+      ];
+    });
+    await rebind();
+  }
+
+  it("imports a round with one Ship question per PR group", async () => {
+    await twoPrGroups();
+
+    expect(await runImport()).toMatchObject({ id: ID, created: true });
+  });
+
+  it("refuses a PR group whose head is not its Ship question's", async () => {
+    await twoPrGroups("f".repeat(40));
+
+    await expectShipRefused(/question ship-cards-3 ships example\/cards#3 at 0123456789abcdef0123456789abcdef01234567, its PR group is at f{40}/);
+  });
+
   it("refuses a frame with no main frame that is not marked new at head, naming the frame", async () => {
     await editVariant("card-dark", (variant) => delete variant.change);
     await rebind();

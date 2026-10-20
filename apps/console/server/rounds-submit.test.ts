@@ -9,7 +9,7 @@ import { EXIT, invokeCommand } from "@titan-design/registry";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
 import { feedbackProblems } from "./round-feedback.js";
 import { BLIND_AB_REFUSED, FeedbackSchema, RoundSchema } from "./round-schema.js";
@@ -461,7 +461,7 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
 
     expect(exitCode).toBe(EXIT.DATAERR);
-    expect(envelope).toMatchObject({ ok: false, error: "Send back refused: Send back needs a note: say what to fix in the Ship comment or the round note." });
+    expect(envelope).toMatchObject({ ok: false, error: 'Send back refused for question "ship-backoff": Send back needs a note: say what to fix in the Ship comment or the round note.' });
     expect(await exists(feedbackOf())).toBe(false);
   });
 
@@ -492,6 +492,81 @@ describe("a Ship round after earlier feedback (TP-3741)", () => {
     const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)) }));
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: HEAD } });
+  });
+});
+
+describe("a round with two PRs (TP-3329)", () => {
+  const TWO = "tiles-and-panels-r1";
+  let twoSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, "ship-tile-r1"), path.join(dir, TWO), { recursive: true });
+    const bytes = Buffer.from(JSON.stringify(twoPrRound()));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    twoSha = sha256(bytes);
+  });
+
+  const submitTwo = (overrides: Record<string, unknown>) => submit({ id: TWO, manifestSha256: twoSha, answers: [], ...overrides });
+
+  it("ships both PRs, each at its own head, and records every answer in one feedback.json", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep" }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } } });
+    const written = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(TWO), "utf8")));
+    expect(written.answers).toEqual(answers.map((answer) => expect.objectContaining(answer)));
+  });
+
+  it("ships one PR and sends the other back, its note blocking only its own Ship", async () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each([
+    ["a shipped PR with no head", { "ship-tiles": TILES_HEAD }, 'question "ship-panels" ships without its head sha in heads'],
+    ["a head from the other PR", { "ship-tiles": TILES_HEAD, "ship-panels": TILES_HEAD }, 'question "ship-panels" names a different head sha'],
+    ["a head for a PR that is not shipped", { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD, "stripe-colour": TILES_HEAD }, 'heads names "stripe-colour", which no Ship answer ships'],
+  ])("refuses %s and writes nothing", async (_, heads, error) => {
+    const { envelope, exitCode } = await submitTwo({ answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }], heads });
+
+    expect({ envelope, exitCode }).toEqual({ envelope: { ok: false, error, code: EXIT.DATAERR }, exitCode: EXIT.DATAERR });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("refuses a Ship whose own side question carries a comment, but not the other PR's", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep", comment: "Check the contrast." }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const both = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    const panelsOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, answers[2]], heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left a comment on "Keep the stripe colour?"' });
+    expect(panelsOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each(["ship-tiles", "ship-panels"])("refuses %s sent back with no note, even beside a noted Send back, and writes nothing (decision 513)", async (bare) => {
+    const answers = ["ship-tiles", "ship-panels"].map((questionId) => ({ questionId, pick: "Don't ship", ...(questionId === bare ? {} : { comment: "Lower the stripe." }) }));
+
+    const { envelope, exitCode } = await submitTwo({ answers });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": Send back needs a note: say what to fix in the Ship comment or the round note.` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("takes both PRs sent back on one round note while a required side question is unanswered", async () => {
+    const round = twoPrRound();
+    round.questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions).map((question) => (question.id === "stripe-colour" ? { ...question, required: true } : question));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship" }, { questionId: "ship-panels", pick: "Don't ship" }];
+
+    const { envelope } = await submit({ id: TWO, manifestSha256: sha256(bytes), answers, general: "Both need another pass." });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
 });
 

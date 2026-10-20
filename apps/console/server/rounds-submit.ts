@@ -6,7 +6,7 @@
  *
  * The answer is bound to what the owner was shown: the request names the sha256 of `round.json`
  * and is refused when the file on disk differs, and a merge-bound Ship names the head sha the
- * question carried. The round id resolves only to a real directory in the rounds dir, as
+ * question carried; a round with several PRs names each shipped question's own head (TP-3329). The round id resolves only to a real directory in the rounds dir, as
  * `rounds.get` does. The file is created with `wx` (O_CREAT|O_EXCL, which also refuses a symlink
  * planted at the name) and mode 0600, so a second submit finds it and is told so; nothing is
  * ever overwritten. A Ship pick is refused while `ship-blockers.ts` finds a reason against it: earlier
@@ -50,6 +50,8 @@ const submitArgs = z.strictObject({
   manifestSha256: z.string().regex(SHA256),
   /** The head sha a merge-bound question named; required when an answer picks its Ship option. */
   headSha: z.string().regex(GIT_SHA).optional(),
+  /** A round with several PRs (TP-3329): each shipped question's own head, by question id; `headSha` alone serves a round with one. */
+  heads: z.record(z.string().min(1), z.string().regex(GIT_SHA)).optional(),
   answers: z.array(SubmittedAnswer),
   general: z.string().default(""),
   /** The earlier rounds of this unit whose feedback the owner ticked Addressed; a Ship needs every one. */
@@ -66,6 +68,8 @@ const submitResult = z.discriminatedUnion("status", [
     path: z.string(),
     sha256: z.string(),
     headSha: z.string().nullable(),
+    /** Present when more than one question shipped: each one's head, by question id. */
+    heads: z.record(z.string(), z.string()).optional(),
     /** Present when Addressed ticks were sent: whether `addressed.json` holds them. */
     addressed: z.enum(["recorded", "unrecorded"]).optional(),
     /** Present when an answered question was marked follow-up: whether the sidecar holds the marks, and each inbox item, null where none was filed. */
@@ -153,17 +157,28 @@ function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
   }
 }
 
-/** Null when no answer ships a merge-bound question; otherwise the head sha every shipped question named. */
-function shippedHead(manifest: Manifest, { answers, headSha }: SubmitArgs): string | null {
+type Shipped = { id: string; headSha: string };
+
+/** Every shipped merge-bound question at the head it names, which the request must name too: in `heads`, or for a lone Ship in `headSha`. */
+function shippedHeads(manifest: Manifest, { answers, headSha, heads }: SubmitArgs): Shipped[] {
   const shipped = manifest.questions.flatMap((question) =>
     question.kind === "pick-one" && question.merge && answers.some((answer) => answer.questionId === question.id && question.merge?.ship.includes(answer.pick ?? ""))
-      ? [{ id: question.id, merge: question.merge }]
+      ? [{ id: question.id, headSha: question.merge.headSha }]
       : [],
   );
-  if (shipped.length === 0) return null;
-  if (headSha === undefined) return refuse("a Ship answer must carry the head sha its question names");
-  const stale = shipped.find(({ merge }) => merge.headSha !== headSha);
-  return stale === undefined ? headSha : refuse(`question "${stale.id}" names a different head sha`);
+  for (const { id, headSha: named } of shipped) {
+    const sent = heads?.[id] ?? (shipped.length === 1 ? headSha : undefined);
+    if (sent === undefined) refuse(shipped.length === 1 ? "a Ship answer must carry the head sha its question names" : `question "${id}" ships without its head sha in heads`);
+    if (sent !== named) refuse(`question "${id}" names a different head sha`);
+  }
+  const extra = Object.keys(heads ?? {}).find((id) => !shipped.some((each) => each.id === id));
+  return extra === undefined ? shipped : refuse(`heads names "${extra}", which no Ship answer ships`);
+}
+
+/** The lone shipped head as `headSha`; several as `heads` too, with `headSha` null. */
+function headsResult(shipped: readonly Shipped[]): { headSha: string | null; heads?: Record<string, string> } {
+  if (shipped.length < 2) return { headSha: shipped[0]?.headSha ?? null };
+  return { headSha: null, heads: Object.fromEntries(shipped.map(({ id, headSha }) => [id, headSha])) };
 }
 
 const isShipRound = (manifest: Manifest): boolean => manifest.questions.some((question) => question.kind === "pick-one" && question.merge);
@@ -180,25 +195,30 @@ function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer 
   return bytes.length <= MAX_FEEDBACK_BYTES ? bytes : refuse(`the feedback is over ${MAX_FEEDBACK_BYTES} bytes`);
 }
 
-async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args: SubmitArgs): Promise<void> {
-  const blockers = shipBlockers(manifest, await readPriorFeedback(manifest, () => readQueueRounds(source)), args);
+/** Each shipped PR is blocked only by its own answers, so another PR's Send back note never holds it. */
+async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args: SubmitArgs, shipped: readonly Shipped[]): Promise<void> {
+  const prior = await readPriorFeedback(manifest, () => readQueueRounds(source));
+  const blockers = [...new Set(shipped.flatMap(({ id }) => shipBlockers(manifest, prior, args, id)))];
   if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
 }
 
-/** A merge-bound question answered with anything but its Ship option: a pick outside `ship`, or a revision request. */
-function sendsBack(manifest: Manifest, answers: readonly SubmittedAnswer[]): boolean {
-  return manifest.questions.some(
-    (question) => question.kind === "pick-one" && question.merge !== undefined &&
-      answers.some((answer) => answer.questionId === question.id && (answer.revisionRequested === true || (answer.pick !== undefined && !question.merge?.ship.includes(answer.pick)))),
-  );
+type PickOne = Extract<Question, { kind: "pick-one" }>;
+type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
+
+const isMergeQuestion = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
+const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
+  answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
+
+/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question or the round note. */
+function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
+  for (const question of manifest.questions.filter(isMergeQuestion)) {
+    const answer = args.answers.find((each) => each.questionId === question.id);
+    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(args, question.id) : undefined;
+    if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
+  }
 }
 
-function refuseEmptySendBack(manifest: Manifest, args: SubmitArgs): void {
-  const blocker = sendsBack(manifest, args.answers) ? sendBackBlocker(manifest, args) : undefined;
-  if (blocker !== undefined) refuse(`Send back refused: ${blocker}`);
-}
-
-const errnoOf =(error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
+const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 
 /** Null when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
 async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
@@ -262,16 +282,16 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
-  const headSha = shippedHead(manifest, args);
-  if (headSha !== null) await refuseBlockedShip(source, manifest, args);
-  refuseEmptySendBack(manifest, args);
+  const shipped = shippedHeads(manifest, args);
+  if (shipped.length > 0) await refuseBlockedShip(source, manifest, args, shipped);
+  refuseSendBackWithoutNote(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };
   const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
-  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha, ...addressed, ...followUps }, round };
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps }, round };
 }
 
 async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
