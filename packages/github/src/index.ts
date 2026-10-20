@@ -3,6 +3,7 @@ export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubCon
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export type { Ancestry } from "./compare.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+export type { RefRead, RulesetList } from "./conditional-reads.js";
 export type { ReviewComment } from "./review-comment.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
