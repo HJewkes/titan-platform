@@ -12,6 +12,7 @@ import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
+import { ownerHoldOf, riskFactsOf, riskTier, type RiskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -98,6 +99,8 @@ export interface EvidenceRecord {
   carry?: CarryFact;
   ciPolicy?: CiPolicy;
   proofUnverified?: string;
+  /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
+  riskTier?: RiskTier;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -275,19 +278,23 @@ interface Observed {
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
   changedFilesUnread?: string;
+  changedLines?: number;
 }
 
 interface KindRead {
   kind?: string;
   /** Why the registration could not be read. */
   unread?: string;
+  /** The owner's own hold or gate on the run, for the risk tier. */
+  ownerHold?: string;
 }
 
 /** A store that is not bound or fails reads as no kind, which fails MRG-AU-RC closed instead of failing the evidence step. */
 export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead {
   try {
-    const kind = store.get().byRun(runId)?.kind;
-    return kind === undefined ? {} : { kind };
+    const registration = store.get().byRun(runId);
+    const ownerHold = ownerHoldOf(registration);
+    return { ...(registration?.kind !== undefined && { kind: registration.kind }), ...(ownerHold !== undefined && { ownerHold }) };
   } catch (error) {
     return { unread: `the registered kind is unreadable: store unreadable: ${errorClass(error)}` };
   }
@@ -331,17 +338,19 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   if (kind !== undefined) merge.kind = kind;
   const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
   const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }) };
+  return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }), ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
+  const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
+  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,
@@ -357,6 +366,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     ...(merge.carry && { carry: merge.carry }),
     ...ciPolicy,
     ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
+    riskTier: riskTier(risk),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
   return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };

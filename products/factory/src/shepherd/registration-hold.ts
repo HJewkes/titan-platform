@@ -1,6 +1,7 @@
 import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
+import { pathTouches } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
+import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
@@ -8,25 +9,6 @@ import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { adversaryTouches, requiredSignoffs } from "./signoffs.js";
 import type { ShepherdStore } from "./store.js";
-
-const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts"].map((name) => `**/${name}`);
-/** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
-const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
-/**
- * The owner's own levers: the console's tap and inbox actions, gate resolution and owner release (titan-coord's E1
- * amendment to 458). Globbed by name stem, so a helper split out of one of these files stays held.
- */
-const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts"];
-
-/** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5), and its agent profiles (458 E1); test files stay exempt in the panel. */
-const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];
-
-/** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
-const SHEPHERD_CLASS_RULES: ClassRules = {
-  ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES],
-  security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
-};
 
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
 const CAS_ATTEMPTS = 5;
