@@ -109,8 +109,8 @@ describe("M3-pre: beats that name their items without explaining them", () => {
 
   // Mutation: counting "five" in "five-hour" as a gloss of the "5-hour" label lifts the mean gloss to one and clears b1.
   it("does not count a spoken number that restates a digit on the label", () => {
-    const spoken = "Three hard stops: the five-hour ceiling, the seven-day reserve, the per-run cap.";
-    const cues: Spec["cues"] = [["row:5-hour ceiling", "five-hour"], ["row:7-day reserve", "seven-day"], ["row:per-run cap", "per-run"]];
+    const spoken = "Hard stops: the five-hour ceiling, the seven-day reserve, the three-strike rule.";
+    const cues: Spec["cues"] = [["row:5-hour ceiling", "five-hour"], ["row:7-day reserve", "seven-day"], ["row:3-strike rule", "three-strike"]];
 
     expect(explainRoutes(beatsOf({ b1: { spoken, cues } })).map((r) => r.beat)).toEqual(["b1"]);
   });
