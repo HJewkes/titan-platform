@@ -456,9 +456,13 @@ a restart replays the recorded notice instead of sending it again. A run that wa
 paused on one of these gates before the notice step existed keeps that gate.
 
 A review round's Ship pick at one head (decision 97) is the owner's merge approval at that
-head. Today it answers an `approve-merge` gate only after the gate is open, through
-`roundMergeDecisions` (`products/factory/src/shepherd/round-merge.ts`). Nothing reads a Ship
-record before the gate opens yet.
+head. Where `shepherd.consoleAnswers` is configured, serve's round ship sweep reads its
+`roundsDir` every minute and answers each open `approve-merge` gate through
+`roundMergeDecisions` (`products/factory/src/shepherd/round-ship-sweep.ts`). A Ship submitted
+before the gate opened answers it on the first sweep after it opens, for up to 24 hours. Per
+PR, only the round built last decides, so a re-ask, Don't ship or Send back voids an earlier
+Ship. The Ship counts only at the gate's exact head and only on a seat-policy or authority
+MRG-AU gate, and a held PR stays pending. The merge step still checks every hold.
 
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.

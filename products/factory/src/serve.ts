@@ -33,6 +33,7 @@ import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
+import { startRoundShipSweep } from "./shepherd/round-ship-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
@@ -152,7 +153,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
-  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep];
+  const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
