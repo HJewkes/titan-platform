@@ -51,21 +51,30 @@ describe("telling the asking seat its decision round was answered", () => {
     await listener.afterRoundSubmit(ROUND, { status: "submitted" });
     await listener.sweep();
 
-    expect(sent).toEqual([{ seat: SEAT, text: answerNotice(ROUND, feedbackPath()) }]);
-    expect(JSON.parse(await readFile(path.join(roundDir(), "notified.json"), "utf8"))).toEqual({ schema: "titan-console/notified@1", seat: SEAT, at: NOW.toISOString() });
+    expect(sent).toEqual([{ seat: SEAT, text: answerNotice(ROUND, feedbackPath(), "asker", false) }]);
+    expect(JSON.parse(await readFile(path.join(roundDir(), `notified-${SEAT}.json`), "utf8"))).toEqual({ schema: "titan-console/notified@1", seat: SEAT, reason: "asker", at: NOW.toISOString() });
   });
 
-  it("names the round and the feedback file, and nothing the filing seat wrote", () => {
-    expect(answerNotice(ROUND, "/state/rounds/kiln-schedule-r2/feedback.json")).toBe(
-      "titan-console: the owner answered your decision round kiln-schedule-r2. The answers are in /state/rounds/kiln-schedule-r2/feedback.json (titan-review/feedback@1).",
+  it("names the round, the feedback file and the free-text flag, and nothing the filing seat wrote", () => {
+    expect(answerNotice(ROUND, "/state/rounds/kiln-schedule-r2/feedback.json", "asker", true)).toBe(
+      "titan-console: the owner answered round kiln-schedule-r2 (you filed it). The answers are in /state/rounds/kiln-schedule-r2/feedback.json (titan-review/feedback@1). The answer carries free text (a comment, note or written answer); read it.",
     );
   });
 
-  it("tells no one about a round that has no asker record", async () => {
+  it("tells no one about a round that has no asker record when subscriptions are off", async () => {
     await fileAndAnswer();
     await rm(path.join(roundDir(), "asker.json"));
 
     await listeners().afterRoundSubmit(ROUND, { status: "submitted" });
+
+    expect(sent).toEqual([]);
+  });
+
+  it("does not tell an asker again that TP-3729's notified.json already names", async () => {
+    await fileAndAnswer();
+    await writeFile(path.join(roundDir(), "notified.json"), JSON.stringify({ schema: "titan-console/notified@1", seat: SEAT, at: NOW.toISOString() }));
+
+    await listeners().sweep();
 
     expect(sent).toEqual([]);
   });
@@ -84,8 +93,8 @@ describe("telling the asking seat its decision round was answered", () => {
     const failing = listeners({ notify: () => Promise.reject(new Error("no live session")), logger: { warn: (_fields, message) => warnings.push(message) } });
 
     await failing.afterRoundSubmit(ROUND, { status: "submitted" });
-    expect(await exists(path.join(roundDir(), "notified.json"))).toBe(false);
-    expect(warnings).toEqual([`${ROUND}: the asking seat was not told of the answer (no live session)`]);
+    expect(await exists(path.join(roundDir(), `notified-${SEAT}.json`))).toBe(false);
+    expect(warnings).toEqual([`${ROUND}: ${SEAT} was not told of the answer (no live session)`]);
 
     await listeners().sweep();
     expect(sent).toHaveLength(1);

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
 import { runEvalCli } from "./eval-cli.js";
+import { runGuideCli } from "./guide-plan-cli.js";
 
-process.exitCode = await runEvalCli(process.argv.slice(2));
+const argv = process.argv.slice(2);
+
+process.exitCode = argv[0] === "guide" ? await runGuideCli(argv) : await runEvalCli(argv);

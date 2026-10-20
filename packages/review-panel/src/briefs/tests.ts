@@ -24,16 +24,19 @@ function verdictLine(result: FixProofResult): string {
 }
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   error: "Shepherd marks this head's fix-proof unverified: the run ended in an error, which a head can cause on purpose.",
   untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
+  "no-repro-test-only": "Shepherd marks this head's fix-proof unverified: the PR changes only tests, so its proof found no test that fails on the base, and the review goes ahead.",
 };
 
 const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";
+
+const TEST_ONLY_RULE = "Judge each added test on its own: say FIX_FIRST unless it asserts behavior the code has; a MERGE here merges on green with the unverified standing recorded.";
 
 const JUDGE_YOURSELF = "Read each added test against the base code and say which would fail there.";
 
@@ -72,5 +75,5 @@ export function waivedLines(head: string, waivedAt: string | undefined): string[
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];
-  return reading === undefined ? [] : [reading, UNVERIFIED_RULE];
+  return reading === undefined ? [] : [reading, why === "no-repro-test-only" ? TEST_ONLY_RULE : UNVERIFIED_RULE];
 }

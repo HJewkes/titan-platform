@@ -270,7 +270,7 @@ declare const DEFAULT_PANEL_POLICY: PanelPolicy;
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-type FixProofUnverified = "error" | "untrusted" | "unread";
+type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
 
 /** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. `gh api` is denied in reviewer sessions, so the read is `gh pr view`, which reports the PR's current head rather than this one. */
 declare const CI_REVIEWER_TEST_RULE: string;
