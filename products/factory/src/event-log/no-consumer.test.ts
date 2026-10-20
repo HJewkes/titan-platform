@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 /** M1a ships emitters only (TP-3095 I7): no recipe or service may read the log until a rung registers a consumer. */
 const READS = /\b(readEvents|headSeq)\b/;
 const KEY_MODULES = /event-log\/[\w-]+-keys/;
+/** The webhook projections are an emitter: they build the rows the keys name and read none back (TP-3100 S2). */
+const KEY_EMITTERS = new Set(["ingress/kinds.ts"]);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -35,7 +37,7 @@ describe("event log reads", () => {
   it("registers no consumer of the CI or repository key derivations outside event-log/ and tests", () => {
     const importers = sourceFiles(SRC)
       .map((path) => relative(SRC, path).split(sep).join("/"))
-      .filter((path) => !mayRead(path))
+      .filter((path) => !mayRead(path) && !KEY_EMITTERS.has(path))
       .filter((path) => KEY_MODULES.test(readFileSync(join(SRC, path), "utf8")));
 
     expect(importers).toEqual([]);
