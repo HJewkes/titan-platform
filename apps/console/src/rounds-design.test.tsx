@@ -343,6 +343,22 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
     expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-muted", verdict: "chosen" }] });
   });
 
+  it("takes no more letter keys once the round is sent, so the frame shows the verdict it was sent with", async () => {
+    const rendered = await renderDesign();
+    await toSection("fill");
+    fireEvent.keyDown(window, { key: "1" });
+    await toSection("sketch");
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-sketch"));
+    fireEvent.keyDown(window, { key: "m" });
+
+    expect(await send(rendered)).toMatchObject({ variants: [{ key: "beacon-sketch", verdict: "maybe" }] });
+    const passedOn = fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "u" });
+
+    expect(passedOn).toBe(true);
+    expect(pressedVerdicts("beacon-sketch")).toEqual(["Maybe"]);
+  });
+
   it("gives see-also thumbnails no verdict of their own", async () => {
     await renderDesign();
     await toSection("fill");

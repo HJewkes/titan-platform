@@ -34,7 +34,7 @@ function useShipMarks() {
  * answer (at first the first one with choices) or frame that letter keys judge. A sent round's `notes` seed the answers,
  * so a reload shows them as sent.
  */
-export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes) {
+export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes, locked = false) {
   const [held] = useState(() => heldFromSent(notes));
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>(held.answers);
   const [comments, setComments] = useState<Record<string, string>>(held.comments);
@@ -44,7 +44,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const [target, setTarget] = useState<ActiveTarget | undefined>(() => firstChoosable(questions));
   const activeId = target?.kind === "question" ? target.id : undefined;
   const setActiveId = useCallback((id: string | undefined) => setTarget(id === undefined ? undefined : { kind: "question", id }), []);
-  const frames = useFrameFeedback(target, setTarget);
+  const frames = useFrameFeedback(target, setTarget, locked);
   const active = questions.find((question) => question.id === activeId);
   const choose = useCallback(
     (question: Question, choice: string) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) })),

@@ -40,7 +40,7 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const submitting = useSubmit();
   const locked = lockedBy(round, submitting);
-  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
+  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, locked);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
@@ -48,7 +48,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
   return (
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
-      <FrameFeedbackProvider value={{ ...state.frames, locked }}>
+      <FrameFeedbackProvider value={state.frames}>
         <VStack gap={4}>
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
