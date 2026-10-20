@@ -83,6 +83,16 @@ rules:
     fields: [beats.spoken]
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"] }
+  - id: Q-V11
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s"'
+    fields: [beats.spoken]
+    related: [Q-V5, Q-V7, Q-V9]
+    owner_support: none
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning."
+    l0:
+      severity: warning
+      status: implemented
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets"]
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'

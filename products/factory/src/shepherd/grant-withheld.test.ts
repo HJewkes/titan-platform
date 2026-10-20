@@ -38,6 +38,7 @@ function stoppingAtEvidence(policy: string): { ctx: WorkflowContext; inputs: Map
     historyNext: () => undefined,
     resumedGate: () => undefined,
     recoveredInFlight: () => [],
+    capability: () => { throw new Error("no capabilities in this fake"); },
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       inputs.set(stepId, JSON.parse(Object.values(options?.vars ?? {})[0] ?? "null"));
