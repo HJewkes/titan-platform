@@ -16,7 +16,8 @@
     {
       "key": "card-dark",
       "image": "frames/card-dark.png",
-      "label": "Card, dark"
+      "label": "Card, dark",
+      "change": "new"
     }
   ],
   "sections": [
