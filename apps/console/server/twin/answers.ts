@@ -255,6 +255,7 @@ const CONFIG_HOSTS: Served["config.hosts"]["result"] = {
 
 /** The answers for every source the file fixtures do not cover. */
 export const HAND_ANSWERS: readonly TwinCall[] = [
+  answer("console.build", {}, { build: { sha: HEAD, builtAt: at(3 * HOUR), dirty: false } }),
   answer("upstreams.health", {}, {
     checkedAt: new Date(TWIN_NOW).toISOString(),
     upstreams: [

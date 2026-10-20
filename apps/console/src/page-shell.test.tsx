@@ -45,10 +45,10 @@ function headingsReading(root: HTMLElement, text: string): Element[] {
   return [...root.querySelectorAll("h1, h2, h3, h4, h5, h6, [role=heading]")].filter((heading) => heading.textContent === text);
 }
 
-/** Text the shell draws around the routed view, so whatever is left belongs to the view. */
+/** Text the shell draws around the routed view, so whatever is left belongs to the view. The build footer is the shell's own line. */
 function textOutsideMain(main: HTMLElement): string {
   return [...(main.parentElement?.children ?? [])]
-    .filter((sibling) => sibling !== main)
+    .filter((sibling) => sibling !== main && sibling.querySelector("[data-testid=build-footer]") === null)
     .map((sibling) => sibling.textContent)
     .join("");
 }

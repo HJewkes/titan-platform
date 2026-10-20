@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
+import { buildInfoCommands } from "./build-info.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
@@ -18,7 +19,8 @@ import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
-import { roundsCommands, type RoundsSource } from "./rounds.js";
+import { roundsCommands } from "./rounds-commands.js";
+import type { RoundsSource } from "./rounds.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
@@ -118,6 +120,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
+    ...buildInfoCommands(),
     ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),

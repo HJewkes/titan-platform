@@ -1,0 +1,11 @@
+# Runs titan-console-update.service every 10 minutes, so a merge is served within about 15 (TP-2258).
+[Unit]
+Description=titan-console self-update every 10 minutes
+
+[Timer]
+OnActiveSec=2min
+OnUnitInactiveSec=10min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
