@@ -221,6 +221,67 @@ describe("the streamed cold-viewer probe", () => {
     expect(agreedOddOnes(runs.slice(1))).toEqual([]);
   });
 
+  // Mutation: grading a bare list item from the viewer's answer lets one judge reading flip the chapter (E9 ch2).
+  it("scores a roll call's bare items 0 both when the viewer credits the list's heading and when it does not", async () => {
+    const rollCall = buildPaceBeats([
+      source("r1-1", "ch1", "Four chores come first: sweep, mop and dust. Then polish.", ["job:sweep", "job:mop", "job:dust", "job:polish"], 6),
+    ]);
+    const run = async (options: ViewerOptions) => (await runCold({ ...input(fakeViewer(options).harness), beats: rollCall })).chapters[0]!;
+
+    const credited = await run({ why: "none" });
+    const declined = await run({ notStated: true });
+
+    for (const chapter of [credited, declined]) {
+      expect(chapter.scores.map((s) => [s.item, s.score, s.void_reason])).toEqual(
+        ["sweep", "mop", "dust", "polish"].map((item) => [item, 0, "named only in a list"]),
+      );
+    }
+    expect(credited.undefined_per_minute).toBe(declined.undefined_per_minute);
+  });
+
+  // Mutation: voiding every bare item, not only a roll call's, zeroes items whose glossed siblings explain them.
+  it("leaves one bare item among glossed siblings to the viewer's answer", async () => {
+    const glossed = buildPaceBeats([
+      source("g1-1", "ch1", "The desk scans each barcode, weighs every parcel on the scale, and labels.", ["job:scan", "job:weigh", "job:label"], 6),
+    ]);
+
+    const chapter = (await runCold({ ...input(fakeViewer({ why: "none" }).harness), beats: glossed })).chapters[0]!;
+
+    expect(chapter.scores.map((s) => [s.item, s.score])).toEqual([["scan", 1], ["weigh", 1], ["label", 1]]);
+  });
+
+  // Mutation: asking only the item track never asks a term the viewer only hears (E9: head, grant, token, rung).
+  it("asks each glossary term and spoken identifier once, where first spoken, unless a new item's label names it", () => {
+    const docks = buildPaceBeats([
+      source("d1-1", "ch1", "Each parcel waits at the dock until Z9 clears it.", ["card:parcel", "detail:Z9 sign-off"], 6),
+      source("d1-2", "ch1", "The dock sends cleared parcels to the van.", [], 6),
+      source("d2-1", "ch2", "The van leaves the dock at noon, and the manifest goes with it.", ["card:manifest"], 6),
+    ]);
+
+    const asked = coldQuestions(docks, ["dock", "manifest", "van"]).filter((q) => q.kind === "spoken-term");
+
+    expect(asked).toMatchObject([
+      { beat: "d1-1", item: "dock", text: 'What is "dock", and why is it there?' },
+      { beat: "d1-1", item: "Z9" },
+      { beat: "d1-2", item: "van" },
+    ]);
+  });
+
+  it("poses spoken terms in their chapter and counts an unexplained one as an undefined item", async () => {
+    const beats = buildPaceBeats([
+      source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6),
+      source("d2-1", "ch2", "The dock opens at noon.", ["card:noon"], 6),
+    ]);
+    const viewer = fakeViewer({ notStated: true });
+
+    const result = await runCold({ ...input(viewer.harness), beats, glossary: ["dock"] });
+
+    expect(viewer.calls[0]).toContain('"dock"');
+    expect(viewer.calls[1]).not.toContain('"dock"');
+    expect(result.chapters[0]!.scores.map((s) => [s.kind, s.item, s.score])).toEqual([["what-why", "parcel", 0], ["spoken-term", "dock", 0]]);
+    expect(result.chapters[0]!.undefined_items).toBe(2);
+  });
+
   // Mutation: leaving the judge identity out of eval_version mixes two judges' rows.
   it("versions the eval by rubric and judge", () => {
     expect(coldEvalVersion({ rubric, judge: sonnet })).not.toBe(coldEvalVersion({ rubric, judge: { ...sonnet, model: "opus" } }));
