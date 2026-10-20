@@ -8,7 +8,10 @@
  * question carried. The round id resolves only to a real directory in the rounds dir, as
  * `rounds.get` does. The file is created with `wx` (O_CREAT|O_EXCL, which also refuses a symlink
  * planted at the name) and mode 0600, so a second submit finds it and is told so; nothing is
- * ever overwritten. A design round is answered here only when it has a valid `frames/frames.json`, as the page then
+ * ever overwritten. A Ship pick is refused while `ship-blockers.ts` finds a reason against it: earlier
+ * feedback on the unit not named in `addressed`, or a change request in this answer. The strict feedback@1
+ * schema has no field for the Addressed ticks, so they go to an `addressed.json` sidecar once the feedback is
+ * written. A design round is answered here only when it has a valid `frames/frames.json`, as the page then
  * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
@@ -26,9 +29,12 @@ import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
 import type { Manifest, Question } from "./round-schema.js";
 import { FEEDBACK_SCHEMA_ID, FeedbackDocument, SubmittedAnswer } from "./round2-adapter.js";
-import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
+import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readPriorFeedback, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
+import { shipBlockers } from "./ship-blockers.js";
 
 export const MAX_FEEDBACK_BYTES = 64 * 1024;
+export const ADDRESSED_FILE = "addressed.json";
+export const ADDRESSED_SCHEMA_ID = "titan-console/addressed@1";
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 
@@ -39,6 +45,8 @@ const submitArgs = z.strictObject({
   headSha: z.string().regex(GIT_SHA).optional(),
   answers: z.array(SubmittedAnswer),
   general: z.string().default(""),
+  /** The earlier rounds of this unit whose feedback the owner ticked Addressed; a Ship needs every one. */
+  addressed: z.array(z.number().int()).max(100).default([]),
 });
 
 type SubmitArgs = z.infer<typeof submitArgs>;
@@ -49,6 +57,8 @@ const submitResult = z.discriminatedUnion("status", [
     path: z.string(),
     sha256: z.string(),
     headSha: z.string().nullable(),
+    /** Present when Addressed ticks were sent: whether `addressed.json` holds them. */
+    addressed: z.enum(["recorded", "unrecorded"]).optional(),
     /** One decision-log result per answered question; absent when the console has no decision log. */
     log: z.array(decisionLogResult.extend({ questionId: z.string() })).optional(),
   }),
@@ -158,6 +168,11 @@ function feedbackBytes(manifest: Manifest, args: SubmitArgs, now: Date): Buffer 
   return bytes.length <= MAX_FEEDBACK_BYTES ? bytes : refuse(`the feedback is over ${MAX_FEEDBACK_BYTES} bytes`);
 }
 
+async function refuseBlockedShip(source: RoundsSource, manifest: Manifest, args: SubmitArgs): Promise<void> {
+  const blockers = shipBlockers(manifest, await readPriorFeedback(source, manifest), args);
+  if (blockers.length > 0) refuse(`Ship refused: ${blockers.join("; ")}`);
+}
+
 const errnoOf = (error: unknown): unknown => (error instanceof Error && "code" in error ? error.code : undefined);
 
 /** Null when the file already exists. A failed write removes the file it created, so it cannot block a retry. */
@@ -167,20 +182,29 @@ async function writeOnce(file: string, bytes: Buffer): Promise<string | null> {
     handle = await open(file, "wx", 0o600);
   } catch (error) {
     if (errnoOf(error) === "EEXIST") return null;
-    throw failure(`${FEEDBACK_FILE} could not be created`, EXIT.UNAVAILABLE);
+    throw failure(`${path.basename(file)} could not be created`, EXIT.UNAVAILABLE);
   }
   try {
     await handle.writeFile(bytes);
   } catch {
     await handle.close();
     await rm(file, { force: true });
-    throw failure(`${FEEDBACK_FILE} could not be written`, EXIT.UNAVAILABLE);
+    throw failure(`${path.basename(file)} could not be written`, EXIT.UNAVAILABLE);
   }
   await handle.close();
   return file;
 }
 
-async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Date()): Promise<Submission> {
+/** The feedback is already on disk, so a sidecar that cannot be written is reported, never thrown. */
+async function recordAddressed(roundDir: string, addressed: readonly number[], now: Date): Promise<{ addressed?: "recorded" | "unrecorded" }> {
+  if (addressed.length === 0) return {};
+  const bytes = Buffer.from(`${JSON.stringify({ schema: ADDRESSED_SCHEMA_ID, rounds: addressed, at: now.toISOString() }, null, 2)}\n`);
+  const written = await writeOnce(path.join(roundDir, ADDRESSED_FILE), bytes).catch(() => null);
+  return { addressed: written === null ? "unrecorded" : "recorded" };
+}
+
+async function submitRound(source: RoundsSource, args: SubmitArgs, now = new Date()): Promise<Submission> {
+  const { dir } = source;
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
   if ((await statusOf(roundDir)) === "withdrawn") refuse("refused: withdrawn; this round was superseded and takes no answer");
@@ -192,11 +216,13 @@ async function submitRound({ dir }: RoundsSource, args: SubmitArgs, now = new Da
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
   const headSha = shippedHead(manifest, args);
+  if (headSha !== null) await refuseBlockedShip(source, manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null };
   const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
-  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha }, round };
+  const addressed = await recordAddressed(roundDir, args.addressed, now);
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), headSha, ...addressed }, round };
 }
 
 async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promise<LogEntry[]> {

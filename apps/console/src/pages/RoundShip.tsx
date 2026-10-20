@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import {
   Alert, Badge, Button, ButtonText, Card, CardContent, HStack, Input, Pill, Section, SectionContent, SectionHeader, Spinner, Typography, VStack,
 } from "@titan-design/react-ui";
@@ -11,7 +11,9 @@ import { inOrder, missingRequired, submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment, RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { QuestionFacts, RoundQuestion, chooseIn, type QuestionAnswer } from "./RoundQuestion.js";
+import { shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
+import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -40,7 +42,10 @@ export function ShipRound({ round }: { round: ValidRound }): ReactNode {
       <Montages round={round} />
       {round.manifest.questions.map((each, index) =>
         each === question ? (
-          <ShipAnswer key={each.id} round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side} />
+          <Fragment key={each.id}>
+            <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={side.addressed} onToggle={side.toggleAddressed} />
+            <ShipAnswer round={round} question={question} sideQuestions={round.manifest.questions.filter((other) => other !== question)} side={side} />
+          </Fragment>
         ) : (
           <SideQuestion key={each.id} question={each} position={index + 1} side={side} notes={round.notes} />
         ),
@@ -158,7 +163,9 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
   const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments);
   const missing = missingRequired(sideQuestions, sideAnswers);
-  const ship = () => submit({ ...sent, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
+  const blockers = shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed });
+  const addressed = side.addressed.length > 0 ? { addressed: side.addressed } : {};
+  const ship = () => submit({ ...sent, ...addressed, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) });
   const back = () => submit({ ...sent, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) });
   const disabled = !available || state.status === "sending" || missing.length > 0;
   return (
@@ -168,9 +175,10 @@ function ShipAnswer({ round, question, sideQuestions, side }: ShipAnswerProps): 
           <RoundGeneral value={side.general} onChange={side.setGeneral} />
           <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
           <HStack gap={3} wrap>
-            <Button color="success" isDisabled={disabled} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
+            <Button color="success" isDisabled={disabled || blockers.length > 0} onPress={() => void ship()}><ButtonText>Ship</ButtonText></Button>
             <Button variant="outline" color="warning" isDisabled={disabled || sendBack === undefined} onPress={() => void back()}><ButtonText>Send back</ButtonText></Button>
           </HStack>
+          <ShipBlockedReason reasons={blockers} />
           {missing.length > 0 ? <Alert status="warning" size="compact" message={`Answer the required ${missing.length === 1 ? "question" : "questions"} first: ${missing.map((other) => other.prompt).join("; ")}`} /> : null}
           {available ? null : <Typography variant="caption" color="secondary">This page is a snapshot: answer from the live console.</Typography>}
           {state.status === "failed" ? <Alert status="error" message={`Not sent: ${state.error}`} /> : null}
@@ -217,13 +225,15 @@ function AnswerOutcome({ answer, headSha, state }: { answer: GateAnswer; headSha
   return <Alert status={status} message={message} />;
 }
 
-/** The owner's picks, comments and round feedback on the round's other questions, held until the Ship or Send back press sends them. */
+/** The owner's picks, comments, round feedback and Addressed ticks, held until the Ship or Send back press sends them. */
 function useSideAnswers() {
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
   const [general, setGeneral] = useState("");
   const [activeId, setActiveId] = useState<string>();
-  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers };
+  const [addressed, setAddressed] = useState<number[]>([]);
+  const toggleAddressed = (round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]);
+  return { answers, comments, setComments, general, setGeneral, activeId, setActiveId, setAnswers, addressed, toggleAddressed };
 }
 
 type SideAnswers = ReturnType<typeof useSideAnswers>;
