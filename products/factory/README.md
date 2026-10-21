@@ -758,6 +758,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
 | `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
 | `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
+| `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
 ## GitHub event sources config
@@ -1026,6 +1027,16 @@ what each place scanned, and a `missing <place> <root>` line for a root that is 
 It exits 0 when clean and 1 on a hit; on a hit, revoke the token and rotate it. With no fingerprint it exits 69 and
 claims nothing: serve holds no bot token, so there is nothing to check. Files are read in 1 MiB chunks, so a large
 transcript is never held whole. The scan does not decode a token that was base64- or URL-encoded.
+
+### The bot token's expiry alarm
+
+The bot client's fetch reads GitHub's `github-authentication-token-expiration` header on every response,
+error answers included (`src/bot-token-expiry.ts`). `/health.bot.expiresAt` carries the last value as an ISO
+time; it is null before the bot's first response and for a token with no expiry. With 14 days or less left,
+serve logs one `factory: ops-alarm bot-token-expiry fingerprint=<12 hex> expiresAt=<iso> daysLeft=<n>` line per
+token fingerprint (the A17 fingerprint above, never the token). The set of alarmed fingerprints lives in
+memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
+follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
 
 ## Writing a gate brief
 
