@@ -171,8 +171,8 @@ describe("titan-factory serve", () => {
     writeFileSync(file, '{ "github": ');
     const after = await healthOf(server);
 
-    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000 });
-    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, configError: expect.stringMatching(/^invalid config /) });
+    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null });
+    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, configError: expect.stringMatching(/^invalid config /) });
   });
 
   it("health has no sources field when serve was given no reader", async () => {
@@ -414,6 +414,13 @@ describe("serve's reconciler (I9)", () => {
     await serve(dbFile(), landScenario(), { logger, sources, reconciler: { config, bot: rig().bot } });
 
     expect(started).toEqual([{ repos: [REPO, OTHER_REPO], effective: "polling", reason: "kill-switch", intervalMs: 45_000 }]);
+  });
+
+  it("health shows the start pass in sources.lastPassAt, with the interval the schedule runs at", async () => {
+    const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
+    const server = await serve(dbFile(), landScenario(), { sources, reconciler: { config, bot: rig().bot } });
+
+    await vi.waitFor(async () => expect(await healthOf(server)).toHaveProperty("sources", expect.objectContaining({ intervalMs: 45_000, lastPassAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) })));
   });
 
   it("starts no reconciler while reconciler.enabled is off", async () => {

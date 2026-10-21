@@ -340,3 +340,4 @@ export { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guid
 export { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type BeatDirective, type PlanOptions, type RegisterEditPlan, type RewriteRound, type ShapeProjection } from "./rewrite-plan.js";
 export { renderRewritePrompt, type RewritePromptDeps } from "./rewrite-prompt.js";
 export { rewriteScript, type RejectedBeat, type RevertedBeat, type RewriteCall, type RewriteDeps, type RewriteReport, type RewriteResult, type RoundReport, type TargetRow } from "./rewrite-pass.js";
+export { runRewriteCli, type RewriteCliDeps } from "./rewrite-cli.js";

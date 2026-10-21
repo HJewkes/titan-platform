@@ -2,7 +2,7 @@ import { z } from "zod";
 import { L0_CHECKS, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
-import { guardBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
+import { guardBeat, rewrittenBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
 import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
@@ -123,12 +123,6 @@ async function callChapter(chapter: ScriptChapter, script: ScriptV1, plan: Regis
   }
 }
 
-const withLabels = (beat: ScriptBeat, spoken: string, labels: readonly string[]): ScriptBeat => ({
-  ...beat,
-  spoken,
-  visual: { ...beat.visual, labels: [...beat.visual.labels, ...labels] },
-});
-
 interface Merged {
   beats: ScriptBeat[];
   rewritten: string[];
@@ -161,7 +155,7 @@ function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: Re
     return beat;
   }
   merged.rewritten.push(beat.id);
-  return withLabels(beat, reply.spoken, labelsAdded);
+  return rewrittenBeat(beat, { spoken: reply.spoken, labelsAdded });
 }
 
 /** The rewritten beats a failing error row names that it did not name before the round. */
