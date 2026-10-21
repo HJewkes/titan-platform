@@ -47,7 +47,7 @@ function latestApproveMerge(host: FactoryHost, runId: string): GateRecord | unde
  * gate, resolved by an owner class with `merge` at the head it asked about, and never read by the run, which records
  * the answer under the gate's own step key once it reads it.
  */
-export function unreadOwnerMerge(host: FactoryHost, run: WorkflowRun): OwnerMerge | undefined {
+function unreadOwnerMerge(host: FactoryHost, run: WorkflowRun): OwnerMerge | undefined {
   const gate = latestApproveMerge(host, run.id);
   if (gate?.status !== "resolved" || !OWNER_CLASSES.includes(gate.resolvedBy?.class ?? "")) return undefined;
   const stepKey = gate.id.slice(run.id.length + 1);
