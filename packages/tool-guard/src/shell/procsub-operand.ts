@@ -57,29 +57,41 @@ export function hasProcsubOperand(cmd: Pick<Unwrapped, "name" | "args">): boolea
 }
 
 /**
- * The text a body prints when it is echo or printf, read as the shell's script, and with it whatever main read from the
- * command without the substitution (`-c STR` after it is a positional the body may relay as `"$@"`). A body the guard
- * does not model (another program's output) adds no text, as the same body piped into the shell adds none; a body that
- * prints under one shell's reading of its `{name}` words and runs another program under another keeps the printed text.
+ * Every substitution the shell or sourcer may run once it runs one as its script: that one, and each later one, which
+ * the script may run by its positional (`bash <(echo 'bash "$1"') <(...)`), as main reads a trailing file operand.
+ */
+function procsubBodies(cmd: Pick<Unwrapped, "name" | "args">): Token[][] {
+  if (scriptOperand(cmd) === null) return [];
+  return cmd.args.flatMap((word) => word.procsub?.slice(0, 1) ?? []);
+}
+
+/**
+ * The text each body prints when it is echo or printf, or what cat or tee passes on of theirs, read as the shell's
+ * script, and with it whatever main read from the command without the substitutions (`-c STR` after it is a positional
+ * the body may relay as `"$@"`). A body the guard does not model (another program's output) adds no text, as the same
+ * body piped into the shell adds none; a body that prints under one shell's reading of its `{name}` words and runs
+ * another program under another keeps the printed text.
  */
 export function procsubScript<T extends Pick<Unwrapped, "name" | "args">>(cmd: T, rest: (plain: T) => Inline | null): Inline | null {
-  const body = scriptOperand(cmd);
-  if (body === null) return null;
-  const all = [...new Set(listText(body, true).flatMap((texts) => texts ?? []))];
+  const bodies = procsubBodies(cmd);
+  if (bodies.length === 0) return null;
+  const all = [...new Set(bodies.flatMap((body) => listText(body, true).flatMap((texts) => texts ?? [])))];
   if (all.length > MAX_TEXTS) throw new ReadingLimitError();
   const texts = [...all.flatMap((text) => pipedShellTexts(cmd.name, text)), ...(rest(withoutProcsubOperands(cmd))?.texts ?? [])];
   return texts.length === 0 ? null : { texts, wrap: "heredoc-shell" };
 }
 
 /**
- * The script a `<( )` operand reads when its body is a single `cat FILE`: that file. Echo and printf text is walked
- * from `procsubScript`, and any other body is left as the same body piped into the shell is, so neither adds a target.
- * A file the line names but cannot be resolved is refused, as the guard cannot read it.
+ * The scripts the substitutions `procsubBodies` names read when a body is a single `cat FILE`: that file. Echo and
+ * printf text is walked from `procsubScript`, and any other body is left as the same body piped into the shell is, so
+ * neither adds a target. A file the line names but cannot be resolved is refused, as the guard cannot read it.
  */
 export function procsubTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
-  const body = scriptOperand(cmd) ?? [];
-  const cat = procsubFile(body);
-  return (cat === null ? redirectedFiles(body) : [cat]).map((file) => {
+  const files = procsubBodies(cmd).flatMap((body) => {
+    const cat = procsubFile(body);
+    return cat === null ? redirectedFiles(body) : [cat];
+  });
+  return files.map((file) => {
     const path = resolvePath(cmd.dir, file, home);
     if (path === null) throw new UnreadableScriptError(null);
     return { path, kind: "shell" };

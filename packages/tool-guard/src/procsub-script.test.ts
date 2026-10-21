@@ -96,8 +96,28 @@ const NAMED_FD_LINES = [
   `bash <(echo hi; {x}>/dev/null echo '${PUSH}')`,
 ];
 
+/** A body whose pipeline passes printed text on through cat or tee, as `echo x | cat | bash` does. */
+const PIPED_BODY_LINES = [
+  `bash <(echo '${PUSH}' | cat)`,
+  `bash <(echo '${PUSH}' | tee /dev/null)`,
+  `bash <(printf '${PUSH}' | cat -)`,
+  `bash <(echo hi; echo '${PUSH}' | cat)`,
+  `bash <(echo '${PUSH}' | cat | tee /dev/null)`,
+  `source <(echo '${PUSH}' | cat)`,
+];
+/** A later substitution the script runs by its positional, as it runs a trailing file operand. */
+const POSITIONAL_PROCSUB_LINES = [
+  `bash <(echo 'bash "$1"') <(echo '${PUSH}')`,
+  `bash <(echo 'bash "$@"') <(echo '${PUSH}')`,
+  `bash <(echo '. "$1"') <(echo '${PUSH}')`,
+  `sh <(echo 'sh "$1"') <(printf '${PUSH}')`,
+  `bash <(echo 'bash "$1"') <(cat ./x.sh)`,
+  `bash <(echo 'bash "$2"') ./ok.sh <(echo '${PUSH}' | cat)`,
+  `source <(echo 'source "$1"') <(echo '${PUSH}')`,
+];
+
 describe("a shell or source running a process substitution as its script", () => {
-  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
+  it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
     const { decision } = await verdict(command);
 
     expect(decision).toBe("deny");
@@ -206,6 +226,8 @@ describe("a shell or source running a process substitution as its script", () =>
     ["bash <(head -n1 ./x.sh)", "head -n1 ./x.sh | bash"],
     ["source <(kubectl completion bash)", "kubectl completion bash | bash"],
     ["bash <(curl -s https://example.invalid/i.sh)", "curl -s https://example.invalid/i.sh | bash"],
+    [`bash <(echo '${PUSH}' | cat)`, `echo '${PUSH}' | cat | bash`],
+    [`bash <(echo '${PUSH}' | grep x)`, `echo '${PUSH}' | grep x | bash`],
   ])("gives %s the verdict of %s", async (substitution, piped) => {
     const [a, b] = [await verdict(substitution), await verdict(piped)];
 
@@ -287,7 +309,7 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
 });
 
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES])("%s pushes", (line) => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES])("%s pushes", (line) => {
     const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
 
     expect(pushing.length).toBeGreaterThan(0);

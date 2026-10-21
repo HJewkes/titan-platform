@@ -1,6 +1,7 @@
 import { caseNamed } from "./case-script.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
+import { passesThrough } from "./piped-stdin.js";
 import { printedOutput, type Shell } from "./printed.js";
 import { SPLICING_SHELLS } from "./sub-output.js";
 import { ReadingLimitError } from "./unsure-readings.js";
@@ -72,16 +73,23 @@ export function groupStdin(walk: object, op: string, words: WordToken[], redirec
 /**
  * Each distinct text the command's readings print under each shell, "" for a reading that runs no command; null for a
  * shell under which any reading's text is unknown, or with `known` every reading's, undefined when no reading runs one.
+ * A reading that passes on its stdin prints what `piped` holds under that shell.
  */
-function printedPiece(readings: ReadonlyArray<Unwrapped | null>, known = false): ShellTexts | undefined {
+function printedPiece(readings: ReadonlyArray<Unwrapped | null>, known = false, piped?: ShellTexts): ShellTexts | undefined {
   const runs = readings.filter((cmd): cmd is Unwrapped => cmd !== null && (cmd.name !== null || cmd.args.length > 0));
   if (runs.length === 0) return undefined;
-  return SHELLS.map((shell) => {
-    const texts = runs.map((cmd) => printedOutput(cmd.name, cmd.args, shell)).filter((text) => text !== null);
+  return SHELLS.map((shell, i) => {
+    const texts = runs.map((cmd) => readingText(cmd, shell, piped?.[i])).filter((text) => text !== null);
     if (texts.length === 0 || (!known && texts.length < runs.length)) return null;
-    if (runs.length < readings.length) texts.push("");
-    return [...new Set(texts)];
+    if (runs.length < readings.length) texts.push([""]);
+    return [...new Set(texts.flat())];
   });
+}
+
+function readingText(cmd: Unwrapped, shell: Shell | undefined, piped: Texts | undefined): Texts {
+  const text = printedOutput(cmd.name, cmd.args, shell);
+  if (text !== null) return [text];
+  return piped !== undefined && passesThrough(cmd) ? piped : null;
 }
 
 /** Every text a group may print under any shell; null when one shell's is unknown. */
@@ -154,20 +162,25 @@ function joinedIn(pieces: Texts[]): Texts {
 }
 
 /**
- * The texts a process substitution's commands print; a command piped on to another is left out. With `known`, a
- * command whose `{name}` readings print text under some readings and not others keeps the texts of those that do.
+ * The texts a process substitution's commands print. A command piped on to another prints nothing itself, and one that
+ * passes its stdin on (`echo x | cat`, `| tee f`) prints what was piped into it, as the shell's own pipe reader reads
+ * `echo x | cat | bash`. With `known`, a command whose `{name}` readings print text under some readings and not others
+ * keeps the texts of those that do.
  */
 export function listText(tokens: Token[], known = false): ShellTexts {
   const pieces: ShellTexts[] = [];
   let words: WordToken[] = [];
   let redirects: RedirectToken[] = [];
+  let piped: ShellTexts | undefined;
   for (const token of [...tokens, null]) {
     if (token?.type === "word") words.push(token);
     if (token?.type === "redirect") redirects.push(token);
     if (token !== null && token.type !== "op") continue;
     const readings = namedFdReadings(words, redirects)?.map((reading) => reading.words) ?? [words];
-    const piece = PIPES.has(token?.value ?? "") ? undefined : printedPiece(readings.map((each) => caseNamed(each)[0] ?? null), known);
-    if (piece !== undefined) pieces.push(piece);
+    const piece = printedPiece(readings.map((each) => caseNamed(each)[0] ?? null), known, piped);
+    const pipes = PIPES.has(token?.value ?? "");
+    piped = pipes ? piece : undefined;
+    if (!pipes && piece !== undefined) pieces.push(piece);
     words = [];
     redirects = [];
   }
