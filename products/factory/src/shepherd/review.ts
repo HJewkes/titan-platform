@@ -197,6 +197,8 @@ export interface ReviewWiring {
   panelPolicy?: PanelPolicy;
   /** A g10-adversary hold's own adversary member; absent plans none (`shepherd.gateReset.twoMergeRelease` off). */
   holdMember?: HoldMember;
+  /** Whether an agent-chat profile is installed headless; absent means a panel member lowered to a missing profile is refused only at dispatch. */
+  profileInstalled?: (profile: string) => boolean;
   /** The adversary member's account (`review.adversaryConfigDir`); absent means the intent's. */
   adversaryDispatch?: ReviewerDispatch;
   /** `shepherd.gateReset.twoMergeRelease` other than off: whether two MERGEs release a g10-adversary hold or only record that they would. */

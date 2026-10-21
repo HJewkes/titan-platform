@@ -178,6 +178,21 @@ describe("intentPlan", () => {
 
       expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer", "tests:reviewer"]);
     });
+
+    it("keeps an opus hold member beside an opus correctness member instead of lowering it to a profile that is not installed (TP-3907)", () => {
+      const policy = { ...panelPolicyFor(), installed: (profile: string) => profile !== "reviewer" };
+
+      const planned = intentPlan(large, policy, undefined, undefined, { holdMember: { profile: "bd-reviewer" }, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:bd-reviewer"]);
+      expect(planned.plan.members[1]).toMatchObject({ blocking: true, degraded: false });
+    });
+
+    it("prices a fable hold member at premium points beside an opus correctness member (TP-3907)", () => {
+      const planned = intentPlan(large, { ...panelPolicyFor(), points: { opus: 5, sonnet: 2 } }, undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(planned.plan.spendEstimate).toBe(5 + 5);
+    });
   });
 });
 
