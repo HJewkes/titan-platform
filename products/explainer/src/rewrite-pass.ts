@@ -210,6 +210,9 @@ const sum = (calls: readonly RewriteCall[], key: "usd" | "tokensIn" | "tokensOut
 
 const spellScript = (script: ScriptV1): ScriptV1 => ScriptSchema.parse({ ...script, beats: script.beats.map(spellSpokenNumbers) });
 
+/** Every beat was spelled on the way in, so this changes nothing unless a path let digits through. */
+const safetyNetSpelling = spellScript;
+
 function checkRounds(rounds: number): number {
   if (!Number.isInteger(rounds) || rounds < 1 || rounds > MAX_REWRITE_ROUNDS) {
     throw new RangeError(`rewrite rounds ${rounds} is outside 1..${MAX_REWRITE_ROUNDS}`);
@@ -236,8 +239,7 @@ export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promis
     if (outcome.report) reports.push(outcome.report);
     current = outcome;
   }
-  // A safety net: every beat was spelled on the way in, so this changes nothing.
-  const spelled = spellScript(current.script);
+  const spelled = safetyNetSpelling(current.script);
   const after = runL0(spelled, undefined, checks);
   return {
     script: spelled,
