@@ -8,6 +8,7 @@ import { holdSlotsMigration, registrationFactsMigration } from "./store-migratio
 import { spawnFacts } from "./spawn-facts.js";
 import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { DEFAULT_ADVERSARY_PROFILE, classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
+import { plannedPanel } from "./review-panel-step.js";
 
 const HEAD = "c".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
@@ -180,9 +181,7 @@ describe("intentPlan", () => {
     });
 
     it("keeps an opus hold member beside an opus correctness member instead of lowering it to a profile that is not installed (TP-3907)", () => {
-      const policy = { ...panelPolicyFor(), installed: (profile: string) => profile !== "reviewer" };
-
-      const planned = intentPlan(large, policy, undefined, undefined, { holdMember: { profile: "bd-reviewer" }, fullPanel: false });
+      const planned = intentPlan(large, panelPolicyFor(), undefined, undefined, { holdMember: { profile: "bd-reviewer" }, fullPanel: false });
 
       expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:bd-reviewer"]);
       expect(planned.plan.members[1]).toMatchObject({ blocking: true, degraded: false });
@@ -193,6 +192,19 @@ describe("intentPlan", () => {
 
       expect(planned.plan.spendEstimate).toBe(5 + 5);
     });
+  });
+});
+
+describe("plannedPanel's installed-profile check (TP-3907)", () => {
+  const input = { ...target, runId: "run-1", reviewer: "rv-demo-7", mode: "spawn" };
+  const panelPolicy = { ...panelPolicyFor(), shapeRoles: { adversary: { g10: "bd-reviewer", standard: "bd-reviewer" } } };
+
+  it("refuses the plan when the cap would lower a member to a profile that is not installed", async () => {
+    const deps = depsWith({ kind: "security" }, [source("src/auth.ts", 20), source("src/auth.test.ts", 10)]);
+
+    const planned = plannedPanel(deps, { panel: "on", panelPolicy, profileInstalled: (profile) => profile !== "reviewer" }, input, []);
+
+    await expect(planned).rejects.toThrow("the adversary member's profile 'bd-reviewer' would be lowered to 'reviewer', which is not installed");
   });
 });
 

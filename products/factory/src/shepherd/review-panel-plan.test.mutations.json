@@ -12,6 +12,15 @@
         "intentPlan a g10-adversary hold's member keeps an opus hold member beside an opus correctness member instead of lowering it to a profile that is not installed (TP-3907)",
         "intentPlan a g10-adversary hold's member prices a fable hold member at premium points beside an opus correctness member (TP-3907)"
       ]
+    },
+    {
+      "name": "plannedPanel drops the installed-profile check",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "...(profileInstalled && { installed: profileInstalled })",
+      "replace": "...(profileInstalled && {})",
+      "kills": [
+        "plannedPanel's installed-profile check (TP-3907) refuses the plan when the cap would lower a member to a profile that is not installed"
+      ]
     }
   ]
 }
