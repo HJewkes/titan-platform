@@ -3,7 +3,7 @@ import { Button, ButtonText, Input, Pill, Typography, VStack } from "@titan-desi
 import type { RoundNotes } from "../../server/rounds.js";
 import { EMPTY_DRAFT, VERDICTS, draftsFromSent, toggledVerdict, verdictForKey, type FrameDraft, type Verdict } from "./frame-feedback.js";
 import { nextPinId, pinNumber, type Pin, type PngWidths } from "./frame-pins.js";
-import { FramePinsProvider, PinList, useCoarsePointer, type FramePins } from "./FramePins.js";
+import { FramePinsProvider, PinList, useCoarsePointer, type DrawnPin, type FramePins } from "./FramePins.js";
 import { typedInto } from "./typed-into.js";
 
 /** What the round's keys act on: digits answer a question, letters judge a frame, never the other way round. */
@@ -135,9 +135,12 @@ interface FrameFigureProps {
   children: ReactNode;
 }
 
+/** A sent round's pins for the frame; undefined while answering or checking before the send, when the draft's pins stand. */
+const lockedPins = (feedback: FrameFeedbackValue, frameKey: string): readonly DrawnPin[] | undefined => (feedback.locked ? feedback.sent?.[frameKey]?.annotations : undefined);
+
 /** The pins the frame's image draws: the draft's while answering, the sent ones once locked, placeable only in pin mode. */
 function framePins(feedback: FrameFeedbackValue, frameKey: string, label: string): FramePins {
-  const pins = feedback.locked ? (feedback.sent?.[frameKey]?.annotations ?? []) : (feedback.drafts[frameKey] ?? EMPTY_DRAFT).pins;
+  const pins = lockedPins(feedback, frameKey) ?? (feedback.drafts[frameKey] ?? EMPTY_DRAFT).pins;
   const widths = feedback.widths.get(frameKey) ?? {};
   const notes = <DraftPinList frameKey={frameKey} feedback={feedback} focus />;
   return { frameKey, label, pins, widths, placing: feedback.pinning === frameKey, place: (pin) => feedback.addPin(frameKey, pin), leave: feedback.leavePins, notes };
@@ -183,7 +186,7 @@ interface FrameControlsProps {
 function FrameControls({ frameKey, label, pinnable, active, feedback }: FrameControlsProps): ReactNode {
   const draft = feedback.drafts[frameKey] ?? EMPTY_DRAFT;
   const coarse = useCoarsePointer();
-  if (feedback.locked) return <SentFrameFeedback frameKey={frameKey} draft={draft} pins={feedback.sent?.[frameKey]?.annotations ?? []} />;
+  if (feedback.locked) return <SentFrameFeedback frameKey={frameKey} draft={draft} pins={feedback.sent?.[frameKey]?.annotations ?? draft.pins} />;
   const pinning = feedback.pinning === frameKey;
   return (
     <div className="flex flex-col gap-1" inert={feedback.locked} data-testid={`frame-feedback-${frameKey}`}>

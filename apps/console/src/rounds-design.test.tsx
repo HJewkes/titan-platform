@@ -547,6 +547,17 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     expect(screen.getByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
   });
 
+  it("sends a placed pin through the check, then still draws it on the frame, placed no more", async () => {
+    const rendered = await renderDesign();
+    tap(await pinMode("beacon-busy"), 100, 50);
+
+    expect(await answerAndSend(rendered)).toMatchObject({ variants: [{ key: "beacon-busy", annotations: [{ id: "beacon-busy-1" }] }] });
+    await toSection("states");
+    scrollAll();
+    expect(await screen.findByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
+    expect(screen.queryByTestId("pin-layer-beacon-busy")).toBeNull();
+  });
+
   it("offers no Pin on a frame with no image to pin", async () => {
     await renderDesign();
     await toSection("sketch");
