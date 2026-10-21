@@ -91,13 +91,19 @@ export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexSt
     stats.paragraphs += indexDocument(db, spans, meta, text, sha256, prior);
     stats.indexed++;
   }
+  stats.removed = removeVanished(db, spans, known, seen);
+  return stats;
+}
+
+function removeVanished(db: Db, spans: SpanFtsTables, known: Map<string, ChapterRow>, seen: Set<string>): number {
+  let removed = 0;
   for (const [relPath, row] of known) {
     if (seen.has(relPath)) continue;
     spans.purgeOwner(chapterOwnerRef(row.id));
     db.prepare("DELETE FROM chapter WHERE source_id = ?").run(row.source_id);
-    stats.removed++;
+    removed++;
   }
-  return stats;
+  return removed;
 }
 
 function indexDocument(db: Db, spans: SpanFtsTables, meta: ChapterMeta, text: string, sha256: string, prior: ChapterRow | undefined): number {

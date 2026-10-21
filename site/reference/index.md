@@ -99,7 +99,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-protocol`, `cluster`, `daemon`, `decider`, `locator`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
-| [`corpus-query`](/reference/corpus-query) |  | none |
+| `corpus-query` | Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls | `app-paths`, `store-sqlite` |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
 | `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `evidence`, `graph-layout`, `pm`, `speech-vet` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
