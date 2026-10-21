@@ -95,7 +95,7 @@ function panelsOf(views: readonly FrameView[]): { label: string; side: string; v
 function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame }): ReactNode {
   const isNew = !frame.views.includes("base");
   return (
-    <FrameFigure frameKey={frame.key} label={frame.label} testID={`montage-${frame.key}`}>
+    <FrameFigure frameKey={frame.key} label={frame.label} pinnable={false} testID={`montage-${frame.key}`}>
       <HStack gap={2} align="center" wrap>
         <Typography variant="subtitle2">{frame.label}</Typography>
         {frame.theme ? <Pill variant="subtle" size="xs">{frame.theme}</Pill> : null}
