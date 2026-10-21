@@ -5,7 +5,7 @@ import { createJudgeHarness, JudgeConfigSchema, type JudgeCall, type JudgeConfig
 import { sentencesOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, needsSpeechVet, type SpeechVerdict } from "./lint-voice.js";
 import { migrateSpike } from "./migrate.js";
-import { rewriteScript, type RewriteReport } from "./rewrite-pass.js";
+import { rewriteScript, type ChapterVerdict, type RewriteReport } from "./rewrite-pass.js";
 import { MAX_REWRITE_ROUNDS } from "./rewrite-plan.js";
 import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
 import { verdictSummary, type SentenceVerdict, type SentenceVet } from "./speech-vet-gate.js";
@@ -94,6 +94,8 @@ async function speechCache(script: ScriptV1, flags: RewriteFlags, deps: RewriteC
 
 const rounded = (value: number): number => Number(value.toFixed(3));
 
+const chapterLine = ({ chapter, kept, why, rows }: ChapterVerdict) => ({ chapter, kept, ...(why ? { why } : {}), ...(rows ? { rows } : {}) });
+
 /** One stdout line: each target row before and after, what each round did, and the spend. */
 function summary(out: string, report: RewriteReport) {
   const before = new Map(report.before.map((row) => [row.check_id, row]));
@@ -102,8 +104,8 @@ function summary(out: string, report: RewriteReport) {
     judge: report.judge,
     pass: report.after.every((row) => row.pass),
     rows: report.after.map(({ check_id, value, pass }) => ({ check_id, before: rounded(before.get(check_id)?.value ?? NaN), after: rounded(value), pass })),
-    rounds: report.rounds.map(({ round, kept, rewritten, rejected, reverted }) =>
-      ({ round, kept, rewritten: rewritten.length, rejected: rejected.length, reverted: reverted.length })),
+    rounds: report.rounds.map(({ round, kept, rewritten, rejected, reverted, chapters }) =>
+      ({ round, kept, rewritten: rewritten.length, rejected: rejected.length, reverted: reverted.length, chapters: chapters.map(chapterLine) })),
     calls: report.calls.length,
     failed_calls: report.calls.filter((call) => !call.ok).length,
     usd: report.usd,

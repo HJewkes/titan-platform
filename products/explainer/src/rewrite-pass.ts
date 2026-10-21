@@ -58,6 +58,14 @@ export interface ChapterVerdict {
   why?: ChapterRefusal["why"];
   /** The rows that turned red, when a row did. */
   rows?: string[];
+  /** On a reverted chapter, what the guard accepted for each of its beats, so a replay can see what the revert threw away. */
+  candidates?: AcceptedCandidate[];
+}
+
+export interface AcceptedCandidate {
+  beat: string;
+  spoken: string;
+  labels_added: string[];
 }
 
 export interface RoundReport {
@@ -155,6 +163,7 @@ async function callChapter(chapter: ScriptChapter, script: ScriptV1, plan: Regis
 interface Merged {
   beats: ScriptBeat[];
   rewritten: string[];
+  accepted: AcceptedCandidate[];
   rejected: RejectedBeat[];
 }
 
@@ -163,7 +172,7 @@ function mergeReplies(script: ScriptV1, plan: RegisterEditPlan, replies: readonl
   const answered = new Map(replies.flatMap((reply) => reply.beats ?? []).map((beat) => [beat.id, beat]));
   const called = new Set(replies.filter((reply) => reply.beats).map((reply) => reply.call.chapter));
   const directed = new Set(plan.directives.map((directive) => directive.beat));
-  const merged: Merged = { beats: [], rewritten: [], rejected: [] };
+  const merged: Merged = { beats: [], rewritten: [], accepted: [], rejected: [] };
   for (const beat of script.beats) {
     const reply = directed.has(beat.id) && called.has(beat.chapter) ? answered.get(beat.id) : undefined;
     if (directed.has(beat.id) && called.has(beat.chapter) && !reply) {
@@ -186,6 +195,7 @@ function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: Re
     return beat;
   }
   merged.rewritten.push(beat.id);
+  merged.accepted.push({ beat: beat.id, spoken, labels_added: labelsAdded });
   return rewrittenBeat(beat, { spoken, labelsAdded });
 }
 
@@ -260,6 +270,11 @@ async function runRound({ script, rows, refused }: RoundInput, round: number, de
   const candidate = merged.beats.map((beat, i) => (back.has(beat.id) ? script.beats[i]! : beat));
   const greedy = keepChapters(script, rows, candidate, checks);
   const keptChapters = new Set(greedy.chapters.filter((verdict) => verdict.kept).map((verdict) => verdict.chapter));
+  const chapterOf = new Map(script.beats.map((beat) => [beat.id, beat.chapter]));
+  const withCandidates = (verdict: ChapterVerdict): ChapterVerdict => verdict.kept ? verdict : {
+    ...verdict,
+    candidates: merged.accepted.filter((accepted) => !back.has(accepted.beat) && chapterOf.get(accepted.beat) === verdict.chapter),
+  };
   const report: RoundReport = {
     round,
     kept: keptChapters.size > 0,
@@ -269,7 +284,7 @@ async function runRound({ script, rows, refused }: RoundInput, round: number, de
     rewritten: merged.rewritten.filter((id) => !back.has(id) && keptChapters.has(script.beats.find((beat) => beat.id === id)!.chapter)),
     rejected: merged.rejected,
     reverted,
-    chapters: greedy.chapters,
+    chapters: greedy.chapters.map(withCandidates),
   };
   return { script: greedy.script, rows: greedy.rows, calls: replies.map((reply) => reply.call), report };
 }
