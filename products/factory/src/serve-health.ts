@@ -1,13 +1,16 @@
 import type { RoutedRunner, WorkflowStatus } from "@titan-design/workflow";
 import type { BehindMain } from "./behind-main.js";
+import type { BotHealth } from "./bot-identity.js";
 import { factoryStateDir } from "./config.js";
 import { deployPendingHealth } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import type { GateNotifyWatch } from "./gate-notify-sweep.js";
+import type { GithubApiHealth } from "./github-api/status.js";
 import type { GithubHealth } from "./github-health.js";
-import type { SourcesReader } from "./github-sources/mode.js";
+import type { PassStamp, SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
+import type { IngressStatus } from "./ingress/listen.js";
 import type { OwnerKeys } from "./owner-keys.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
@@ -22,6 +25,7 @@ const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", 
 interface HealthOptions {
   routes: FactoryRoutes;
   sources?: SourcesReader;
+  githubApi?: () => GithubApiHealth;
   deployStateDir?: string;
   deployWatch?: DeployWatch;
   deployPacer?: DeployPacerOptions;
@@ -36,13 +40,18 @@ interface HealthInputs {
   ownerKeys: OwnerKeys;
   start: ServeStart | undefined;
   notify: GateNotifyWatch | undefined;
+  ingress: IngressStatus | undefined;
+  passStamp: PassStamp;
+  bot: BotHealth;
 }
 
-export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify }: HealthInputs): Record<string, unknown> {
+export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot }: HealthInputs): Record<string, unknown> {
   return {
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
     github: github.status(),
-    ...(options.sources && { sources: options.sources() }),
+    ...(options.sources && { sources: { ...options.sources(), lastPassAt: passStamp.read() } }),
+    ...(options.githubApi && { githubApi: options.githubApi() }),
+    ...(ingress && { ingress }),
     ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
     build: { sha: build.sha, behindMain: build.status() },
     lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
@@ -51,6 +60,7 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, { github,
     ...deployPendingHealth(options.deployPacer),
     ...(notify && { gateNotify: notify.status() }),
     ...visualDeliveryHealth(options.routes.shepherd),
+    bot,
     ownerKeys: ownerKeys.ok ? { count: ownerKeys.ids.length, ids: ownerKeys.ids } : { count: 0, refusal: ownerKeys.refusal },
     ...(start && serveStartsHealth(start, new Date((options.now ?? Date.now)()))),
   };

@@ -62,7 +62,9 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
 `sharedOctokit()` for one per process, behaves like this:
 - It reads its token from `gh auth token`, holds it in memory only, and re-reads it once on a 401.
 - `@octokit/plugin-throttling` waits out `retry-after` and `x-ratelimit-reset` and spaces writes.
-  A GET is retried once when the wait is a minute or less. A write is never retried.
+  A GET is retried once when the wait is a minute or less. A write is never retried. With
+  `poolOwnsWaits: true` (off by default) the throttle never waits or retries; the limit still
+  shows in `budget().cooldowns`, and a `githubApiPool` in front owns every wait.
 - `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
   landed is never sent twice.
 - Errors carry the status and a redacted message, with no body and no token.
@@ -189,7 +191,7 @@ failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `
 doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
 in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. `githubApiPool` calls it.
 
-`githubApiPool({ identity, send, clock, state? })` gates every call one GitHub identity makes.
+`githubApiPool({ identity, send, clock, probe, state?, onAvailable?, onAuthFailed? })` gates every call one GitHub identity makes.
 `pool.run(priority, callClass, call)` queues `call`, hands it to `send` when granted, and resolves
 to `send`'s answer or to `{ unavailable: { resetAt, reason, class } }`; an unavailable call never
 throws (a throw from `send` itself is passed on). Grants go by `POOL_PRIORITY` (1 outbox and
@@ -201,7 +203,25 @@ grants nothing and the identity's other classes grant only priority 1. A success
 own pair's streak; `unknown` and `error` answers pass through and change nothing. Calls already in
 flight when their pair trips count as the same trip. State lives in a `PoolStateStore`, by
 default `memoryPoolStateStore()`, one per pool; a product passes a durable one. `clock` supplies
-`now()` and `sleep(ms)`. Reopening still happens at `resetAt` with no probe or canary.
+`now()` and `sleep(ms)`.
+
+Reopening a closed pair: once its `resetAt` passes, the pool calls `probe` (a `GET /rate_limit`
+as the identity; it does not count against a limit). The pair stays closed unless the tripped
+bucket (`core` or `graphql`, or the answer's `x-ratelimit-resource`; a mutation trip always reads
+`core`) has `remaining > 0`. A bucket still at 0 keeps the pair closed to that bucket's own reset;
+a probe that fails, throws, or answers 5xx re-arms in `PROBE_REARM_MS` (60 s) without adding to
+the streak. A passing probe marks the pair `probed`, and exactly one queued call of that class,
+the highest-priority one, goes out as the canary (with nothing queued, the next call is the
+canary). The pair opens, and `onAvailable(identity, class, resetAt)` fires once, only when the
+canary returns ok; an `unavailable` canary closes the pair again with the streak doubled, and an
+`error` or `unknown` canary leaves it `probed` for the next call. Calls sent before the trip
+never reopen the pair.
+
+A 401 (after the client's one token re-read) puts the whole identity in auth state: every class
+grants nothing, priority 1 included, and `onAuthFailed(identity)` fires once per transition,
+never per call. No probe runs in auth state, because `GET /rate_limit` under a rejected token
+answers 401 too, so the probe cannot succeed. Only `pool.tokenChanged()` (the token reader saw a
+new token) or a restart clears it; auth state is held in memory, not in the `PoolStateStore`.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 

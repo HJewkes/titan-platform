@@ -5,14 +5,19 @@ import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
 import { deviceGateAuthorize } from "./device-gates.js";
 import { eventLogMigration } from "./event-log/event-log.js";
+import { headEpochMigration } from "./head-guard/epoch-store.js";
 import { GateAskStore, gateAskMigration } from "./gate-ask-store.js";
+import { githubApiPoolMigration } from "./github-api/pool-state.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
+import { botIntentMigration } from "./bot-intent.js";
 import { mergeLogMigration } from "./merge-log.js";
+import { reconcilerCursorMigration } from "./reconciler/cursor.js";
 import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
 import {
   routedRunner,
   type StepRoute,
+  type WorkflowCapability,
   type WorkflowEvent,
   workflowMigration,
   workflowOwnershipMigration,
@@ -47,6 +52,8 @@ export interface FactoryHostOptions {
   gatePollMs?: number;
   runtimeId?: string;
   onEvent?: (event: WorkflowEvent) => void;
+  /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
+  capabilities?: Record<string, WorkflowCapability>;
 }
 
 export interface PendingGate {
@@ -69,6 +76,8 @@ export interface ResumeReport {
 
 export interface FactoryHost {
   readonly runtime: WorkflowRuntime;
+  /** For writers that keep their own one-transaction append, such as the webhook ingress. */
+  readonly db: Db;
   /** The stored runs for reads that need no live run: statuses alone, or a page of history. */
   readonly runs: WorkflowRunStore;
   readonly gates: SqliteGateStore;
@@ -90,10 +99,10 @@ const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "faile
 
 /** The migrations every factory database runs; the harness opens its own database from this so it cannot drift from serve. */
 export function factoryMigrations(): Migration[] {
-  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30)];
+  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35), reconcilerCursorMigration(36), botIntentMigration(37)];
 }
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, and 30 the event log. */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, 35 the github-api pool state, 36 the reconciler cursor, and 37 the bot intent rows (31-33 are the Shepherd tenant's). */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
@@ -106,7 +115,8 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const runs = new WorkflowRunStore(db);
   const host: FactoryHost = {
     runtime,
-    runs: new WorkflowRunStore(db),
+    db,
+    runs,
     gates,
     batches: new GateBatchStore(db, options.now),
     asks: new GateAskStore(db, options.now),
@@ -114,12 +124,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     countRuns: (statuses) => runs.countByStatus(statuses),
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
-    close: () => {
-      runtime.shutdown();
-      unbindHost?.();
-      unbind?.();
-      db.close();
-    },
+    close: () => void (runtime.shutdown(), unbindHost?.(), unbind?.(), db.close()),
   };
   const unbindHost = options.routes.bindHost?.(host);
   return host;
@@ -136,6 +141,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     gatePollMs: options.gatePollMs,
     runtimeId: options.runtimeId,
     onEvent: options.onEvent,
+    capabilities: options.capabilities,
   });
   for (const definition of options.workflows) {
     assertDistinctStepIds(definition);

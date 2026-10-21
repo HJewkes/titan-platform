@@ -84,9 +84,13 @@ function optionNotes(question: Question, posted: SubmittedAnswer): Answer["optio
   return notes.length > 0 ? notes : undefined;
 }
 
-/** In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind. */
-function seenIn(manifest: Manifest, question: Question, answer: Answer): boolean {
-  return manifest.recommendations === "shown" && takesRecommendation(question) && question.recommendation !== undefined && isAnswered(question, answer);
+/**
+ * In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind; in an
+ * after-answer round it was not blind where the page says it was given while a revealed recommendation showed.
+ */
+function seenIn(manifest: Manifest, question: Question, posted: SubmittedAnswer, answer: Answer): boolean {
+  const seen = manifest.recommendations === "shown" || posted.recommendationSeen === true;
+  return seen && takesRecommendation(question) && question.recommendation !== undefined && isAnswered(question, answer);
 }
 
 function withPacket(manifest: Manifest, question: Question, posted: SubmittedAnswer, answer: Answer): Answer {
@@ -97,7 +101,7 @@ function withPacket(manifest: Manifest, question: Question, posted: SubmittedAns
     ...(posted.comment?.trim() ? { comment: posted.comment } : {}),
     ...(notes ? { optionNotes: notes } : {}),
     ...(after !== undefined ? { after } : {}),
-    ...(seenIn(manifest, question, answer) ? { recommendationSeen: true as const } : {}),
+    ...(seenIn(manifest, question, posted, answer) ? { recommendationSeen: true as const } : {}),
   };
 }
 

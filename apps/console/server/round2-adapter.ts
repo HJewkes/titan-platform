@@ -8,7 +8,11 @@ import { z } from "zod";
 
 export const FEEDBACK_SCHEMA_ID = "titan-review/feedback@1";
 
-/** What the owner sends for one question; the server adds the recommendation echo, `agreed`, `after` and `recommendationSeen` itself. */
+/**
+ * What the owner sends for one question; the server adds the recommendation echo, `agreed` and `after` itself, and
+ * `recommendationSeen` in a `shown` round. In an after-answer round the page sends `recommendationSeen` for an answer
+ * given while a revealed recommendation showed, and `rounds.submit` keeps it only where `rounds.reveal` recorded the reveal.
+ */
 export const SubmittedAnswer = z.strictObject({
   questionId: z.string().min(1),
   pick: z.string().optional(),
@@ -18,6 +22,7 @@ export const SubmittedAnswer = z.strictObject({
   text: z.string().optional(),
   comment: z.string().optional(),
   optionNotes: z.array(z.strictObject({ option: z.string(), note: z.string().min(1) })).optional(),
+  recommendationSeen: z.literal(true).optional(),
 });
 
 export type SubmittedAnswer = z.infer<typeof SubmittedAnswer>;

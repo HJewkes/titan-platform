@@ -45,6 +45,8 @@ export {
   signSession,
   verifySession,
 } from "./auth.js";
+export type { SecretParser } from "./token-file.js";
+export { SecretRejection, parseBase64Secret, trackSecretFile } from "./token-file.js";
 export type { RemoteTlsOptions } from "./tls-files.js";
 export { TlsFileError } from "./tls-files.js";
 export type { DaemonHandle, RemoteListenerOptions, StartDaemonOptions } from "./daemon.js";

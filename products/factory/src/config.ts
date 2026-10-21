@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
+import { ReconcilerConfigSchema, webhookIntervalProblem } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
@@ -197,6 +198,7 @@ export const FactoryConfigSchema = z.object({
   digest: DigestConfigSchema.optional(),
   service: ServiceConfigSchema.optional(),
   github: GithubConfigSchema.optional(),
+  reconciler: ReconcilerConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -269,6 +271,9 @@ export const FactoryConfigSchema = z.object({
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
+}).superRefine((config, ctx) => {
+  const problem = webhookIntervalProblem(config);
+  if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["reconciler", "intervalMs"] });
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;

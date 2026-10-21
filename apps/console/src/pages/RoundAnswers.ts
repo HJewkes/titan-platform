@@ -61,10 +61,19 @@ export const inOrder =(manifest: Manifest, answers: SubmittedAnswer[]): Submitte
   return [...answers].sort((left, right) => order.indexOf(left.questionId) - order.indexOf(right.questionId));
 };
 
-/** A revision request answers only once its comment says what to change, as feedback@1 requires. */
-const answers = (answer: SubmittedAnswer): boolean =>
-  answer.pick !== undefined || answer.picks !== undefined || answer.value !== undefined || answer.text !== undefined || (answer.revisionRequested === true && answer.comment !== undefined);
+/** The built-in revision request, or a pick of the round's own `revisionOption`, which the server reads as one. */
+export const asksRevision = (question: Question, answer: QuestionAnswer | SubmittedAnswer | undefined): boolean => {
+  if (answer === undefined) return false;
+  if ("revisionRequested" in answer && answer.revisionRequested === true) return true;
+  return question.kind === "pick-one" && question.revisionOption !== undefined && "pick" in answer && answer.pick === question.revisionOption;
+};
 
-/** The required questions the page holds no answer for, which block a send; a comment alone answers nothing. */
-export const missingRequired = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
-  questions.filter((question) => question.required && !submitted.some((answer) => answer.questionId === question.id && answers(answer)));
+/** A revision request answers only once its comment says what to change, as feedback@1 requires. */
+const answers = (question: Question, answer: SubmittedAnswer): boolean => {
+  if (asksRevision(question, answer)) return answer.comment !== undefined;
+  return answer.pick !== undefined || answer.picks !== undefined || answer.value !== undefined || answer.text !== undefined;
+};
+
+/** The questions the page holds no answer for; a comment alone answers nothing. */
+export const unanswered = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
+  questions.filter((question) => !submitted.some((answer) => answer.questionId === question.id && answers(question, answer)));

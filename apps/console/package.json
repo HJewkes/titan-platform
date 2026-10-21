@@ -28,7 +28,7 @@
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
     "@titan-design/react-app": "workspace:*",
-    "@titan-design/react-ui": "^0.20.0",
+    "@titan-design/react-ui": "^0.21.2",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-schema": "^0.1.0",
     "@titan-design/rpc-client": "workspace:*",
