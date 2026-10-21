@@ -12,7 +12,7 @@ export const REWRITE_TARGET_ROWS = [
   "register:sentence-cv",
 ] as const;
 
-/** Round 1 reshapes the script; round 2 only fixes the numbers and triads round 1 left or made (TP-3817 S0). */
+/** Round 1 reshapes the script; round 2 fixes the numbers and triads round 1 left or made, and reshapes beats still under the mean floor (TP-3817 S0, S13). */
 export const MAX_REWRITE_ROUNDS = 2;
 export type RewriteRound = 1 | 2;
 
@@ -160,6 +160,16 @@ function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDir
   };
 }
 
+const ownMean = (beat: PlanBeat): number => beatWords(beat) / Math.max(1, sentenceLengths(beat).length);
+
+/** Round 2: plans only the beats whose own sentence mean is still under the floor, so a beat already long enough is left alone. */
+function planStillShort(beats: readonly PlanBeat[], cap: number): ShapeCandidate {
+  const short = beats.flatMap((beat, i) => (ownMean(beat) < meanBand.min! ? [i] : []));
+  const subset = planShape(short.map((i) => beats[i]!), cap);
+  const shapes = beats.map((_, i) => subset.shapes[short.indexOf(i)]);
+  return { shapes, projected: project(shapes.flatMap((shape, i) => shape ?? sentenceLengths(beats[i]!))) };
+}
+
 const isRound = (n: number): n is RewriteRound => n === 1 || n === MAX_REWRITE_ROUNDS;
 
 const shapeFailing = (rows: readonly L0Result[]): boolean =>
@@ -167,12 +177,13 @@ const shapeFailing = (rows: readonly L0Result[]): boolean =>
 
 /**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
- * called on round 1's text with fresh rows and plans only the numbers and triads still there.
+ * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
+ * beat still under the mean floor while a shape row fails.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS } = options;
   if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
-  const shape = round === 1 && shapeFailing(rows) ? planShape(script.beats, cap) : undefined;
+  const shape = shapeFailing(rows) ? (round === 1 ? planShape(script.beats, cap) : planStillShort(script.beats, cap)) : undefined;
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
     const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };

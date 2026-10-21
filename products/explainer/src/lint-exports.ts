@@ -8,7 +8,7 @@ export {
 } from "./lint-why.js";
 export { MAX_NEW_NAMES_PER_CHAPTER, PUBLIC_PROFILE, evidenceCheck } from "./lint-evidence.js";
 export { flowCheck } from "./lint-flow.js";
-export { MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type Band, type RegisterMetric, type SpokenText, numberSpans, triadSpans, type TextSpan } from "./lint-register.js";
+export { MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type Band, type RegisterMetric, type SpokenText, numberSpans, triadSpans, deviceSpans, DEVICE_METRICS, type DeviceMetric, type TextSpan } from "./lint-register.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
