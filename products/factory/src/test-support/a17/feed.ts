@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "@titan-design/daemon";
-import { githubApiPool, memoryPoolStateStore } from "@titan-design/github";
+import { githubApiPool, type PoolAnswer, type PoolClock } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { ciKey, type CiKeyFn } from "../../event-log/ci-keys.js";
 import { headSeq, readEvents } from "../../event-log/event-log.js";
+import { sqlitePoolStateStore } from "../../github-api/pool-state.js";
 import { factoryMigrations } from "../../host.js";
 import { resolveSources, type SOURCES_MODES, type SourcesReader } from "../../github-sources/mode.js";
 import { DUE_CHECK_TICK_MS } from "../../github-sources/schedule.js";
@@ -14,7 +15,7 @@ import { signDelivery } from "../../ingress/signature.js";
 import { createObserve } from "../../reconciler/observe.js";
 import { startReconcilerSweep, type BackstopAnswer, type BackstopCall, type BotPorts } from "../../reconciler/service.js";
 import type { Sweep } from "../../sweep.js";
-import { fakePoolClock, rateLimitAnswer } from "../pool-clock.js";
+import { rateLimitAnswer } from "../pool-clock.js";
 import { rekeyedObservation, rekeyedProjection } from "./rekey.js";
 import { githubWorld, kindsOf, subjectOf, type GithubFact, type World } from "./world.js";
 
@@ -43,6 +44,12 @@ export interface Feed {
   transient(fact: GithubFact): Promise<Step[]>;
   /** The fact's delivery as GitHub posts it, signed with the feed's webhook secret unless `secret` says otherwise. */
   post(fact: GithubFact, options?: { deliveryId?: string; secret?: string }): Promise<IngressAnswer>;
+  /** GitHub answers the bot's next `reads` reads with `answer`, a limit or failure, instead of its state. */
+  limit(answer: PoolAnswer, reads?: number): void;
+  /** Reads GitHub has answered the bot, the start pass's included. */
+  reads(): number;
+  /** The head GitHub shows for an open PR, as a fresh read or `ls-remote` answers it. */
+  head(repo: string, pr: number): string | undefined;
   /** Reconciler passes so far, the start pass included. */
   passes(): number;
   read(subject: string, sinceSeq: number): ReturnType<typeof readEvents>;
@@ -82,16 +89,28 @@ function recordingLog(lines: LogLine[]): Logger {
   return { info: record, warn: record, error: record };
 }
 
-/** The bot's real pool over a fake transport; the tip guard confirms only a tip a pushed fact put on main. */
-function botPorts(world: World, onSnapshot: (repo: string) => void, now: () => number, key: CiKeyFn): BotPorts {
+/** What GitHub answers the bot: the world's state, or a queued limit; it counts every read it answers. */
+interface Github {
+  world: World;
+  limits: PoolAnswer[];
+  reads: number;
+  onSnapshot(repo: string): void;
+}
+
+/** The bot's real pool over a fake transport and the factory's own pool-state table; the tip guard confirms only a tip a pushed fact put on main. */
+function botPorts(github: Github, db: Db, timers: PoolTimers, key: CiKeyFn): BotPorts {
+  const { world } = github;
   const send = (call: BackstopCall): Promise<BackstopAnswer> => {
+    github.reads += 1;
+    if (call.kind === "snapshot") github.onSnapshot(call.request.repo);
+    const limited = github.limits.shift();
+    if (limited !== undefined) return Promise.resolve(limited);
     if (call.kind === "gates") return Promise.resolve({ status: 200, headers: {}, gates: { changed: true, etags: {} } });
-    onSnapshot(call.request.repo);
     return Promise.resolve({ status: 200, headers: {}, snapshot: world.snapshot(call.request.repo) });
   };
-  const poolState = memoryPoolStateStore();
-  const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send, clock: fakePoolClock(EPOCH), state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: (repo, _branch, sha) => (world.tip(repo) === sha ? { kind: "confirmed" } : { kind: "pending" }) }, now });
+  const poolState = sqlitePoolStateStore(db, timers.now);
+  const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send, clock: timers, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
+  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: (repo, _branch, sha) => (world.tip(repo) === sha ? { kind: "confirmed" } : { kind: "pending" }) }, now: timers.now });
   return { identity: BOT, pool, poolState, conditionalGates: false, observe: (repo, snapshot, cursor) => rekeyedObservation(observe(repo, snapshot, cursor), key) };
 }
 
@@ -128,15 +147,40 @@ interface Clock {
   set(at: number): void;
 }
 
+/** The pool's clock is the feed's: a pool sleep wakes when `advance` passes its instant, so a closed pair reopens on time. */
+interface PoolTimers extends PoolClock {
+  /** Wakes every sleep due by now, each followed by the work it starts. */
+  fire(): Promise<void>;
+}
+
+const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+function poolTimers(clock: Clock): PoolTimers {
+  const sleeps: { at: number; wake: () => void }[] = [];
+  return {
+    now: clock.now,
+    sleep: (ms) => new Promise<void>((wake) => void sleeps.push({ at: clock.now() + ms, wake })),
+    async fire() {
+      await settled();
+      for (let due = sleeps.findIndex((s) => s.at <= clock.now()); due !== -1; due = sleeps.findIndex((s) => s.at <= clock.now())) {
+        sleeps.splice(due, 1)[0]!.wake();
+        await settled();
+      }
+    },
+  };
+}
+
 /** Each 15 s mark of the fake clock is one schedule tick, as serve's timer fires it. */
-function ticker(clock: Clock, sweep: Sweep) {
+function ticker(clock: Clock, timers: PoolTimers, sweep: Sweep) {
   return async (ms: number): Promise<void> => {
     const target = clock.now() + ms;
     for (let mark = nextMark(clock.now()); mark <= target; mark = nextMark(mark)) {
       clock.set(mark);
+      await timers.fire();
       await sweep.tick();
     }
     clock.set(target);
+    await timers.fire();
   };
 }
 
@@ -154,15 +198,16 @@ export async function openFeed(mode: A17Mode, options: FeedOptions = {}): Promis
   const db = openDb();
   let at = EPOCH;
   const clock: Clock = { now: () => at, set: (next) => void (at = next) };
-  const world = githubWorld();
+  const timers = poolTimers(clock);
   const lines: LogLine[] = [];
   let passes = 0;
-  const bot = botPorts(world, (repo) => void (repo === FEED_REPOS[0] && (passes += 1)), clock.now, key);
+  const github: Github = { world: githubWorld(), limits: [], reads: 0, onSnapshot: (repo) => void (repo === FEED_REPOS[0] && (passes += 1)) };
+  const bot = botPorts(github, db, timers, key);
   const sweep = startReconcilerSweep({ config: { enabled: true, intervalMs: 300_000, fullEvery: 1, repos: [...FEED_REPOS] }, bot }, sources, db, recordingLog(lines), clock.now);
   if (sweep === undefined) throw new Error("the harness reconciler did not start");
   await sweep.inFlight();
   const ingress: IngressDeps = { sources, secret: () => WEBHOOK_SECRET, project: (event, payload) => rekeyedProjection(projectDelivery(event, payload), key), db, now: clock.now, log: recordingLog([]) };
-  return feedOver({ mode, intervalMs: sources().intervalMs, db, clock, world, lines, sweep, ingress, passes: () => passes });
+  return feedOver({ mode, intervalMs: sources().intervalMs, db, clock, timers, github, lines, sweep, ingress, passes: () => passes });
 }
 
 interface FeedParts {
@@ -171,15 +216,17 @@ interface FeedParts {
   intervalMs: number;
   db: Db;
   clock: Clock;
-  world: World;
+  timers: PoolTimers;
+  github: Github;
   lines: LogLine[];
   sweep: Sweep;
   ingress: IngressDeps;
   passes(): number;
 }
 
-function feedOver({ mode, intervalMs, db, clock, world, lines, sweep, ingress, passes }: FeedParts): Feed {
-  const advance = ticker(clock, sweep);
+function feedOver({ mode, intervalMs, db, clock, timers, github, lines, sweep, ingress, passes }: FeedParts): Feed {
+  const { world } = github;
+  const advance = ticker(clock, timers, sweep);
   const guids = new Map<string, string>();
   const guidFor = (name: string | undefined): string => (name === undefined ? randomUUID() : guids.get(name) ?? guids.set(name, randomUUID()).get(name)!);
   const post: Feed["post"] = (f, options) => answerDelivery(signedRequest(world.delivery(f), guidFor(options?.deliveryId), options?.secret ?? WEBHOOK_SECRET), ingress);
@@ -198,6 +245,9 @@ function feedOver({ mode, intervalMs, db, clock, world, lines, sweep, ingress, p
     fact,
     transient: async (f) => deliveredSteps(await post(f)),
     post,
+    limit: (answer, reads = 1) => void github.limits.push(...Array.from({ length: reads }, () => answer)),
+    reads: () => github.reads,
+    head: (repo, pr) => world.head(repo, pr),
     passes,
     read: (subject, sinceSeq) => readEvents(db, { subject, sinceSeq }),
     headSeq: () => headSeq(db),

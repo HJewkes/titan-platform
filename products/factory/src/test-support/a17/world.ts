@@ -26,6 +26,8 @@ export interface World {
   apply(fact: GithubFact): void;
   snapshot(repo: string): BackstopSnapshot;
   tip(repo: string): string | undefined;
+  /** The head of an open PR. */
+  head(repo: string, pr: number): string | undefined;
 }
 
 /** A CI fact with no open PR on its head lands on PR #1, which then shows that head. */
@@ -105,5 +107,6 @@ export function githubWorld(): World {
     apply: (fact) => applyFact(stateOf(fact.repo), fact),
     snapshot: (repo) => snapshotOf(repos.get(repo)),
     tip: (repo) => repos.get(repo)?.tip,
+    head: (repo, pr) => repos.get(repo)?.open.get(pr)?.head,
   };
 }
