@@ -32,6 +32,7 @@ beforeEach(() => vi.stubGlobal("IntersectionObserver", SilentObserver));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 async function recorded(detail: Partial<RoundDetail>): Promise<Snapshot> {

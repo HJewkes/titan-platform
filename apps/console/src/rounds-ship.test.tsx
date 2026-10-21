@@ -51,6 +51,7 @@ afterEach(() => {
   cleanup();
   observers.clear();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 /** A CI packet's tile-light: its head is the montage and `after` the changed image alone. */
