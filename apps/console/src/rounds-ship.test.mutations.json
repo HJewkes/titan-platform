@@ -9,6 +9,15 @@
       "kills": [
         "answering a Ship round reveals the Ship recommendation on demand and tags the Ship pressed after it seen"
       ]
+    },
+    {
+      "name": "the Ship press sends only the first side answer",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "[...tagged, { questionId: question.id, pick: question.merge.ship[0]",
+      "replace": "[...tagged.slice(0, 1), { questionId: question.id, pick: question.merge.ship[0]",
+      "kills": [
+        "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order"
+      ]
     }
   ]
 }
