@@ -92,8 +92,11 @@ export const autoPassRoute = (port: GitHubPort, now: () => number): StepRoute =>
 
 /** One record per rule and head, so a replay returns the recorded pass and a second pass at the same head posts nothing new. */
 export function recordAutoPass(ctx: WorkflowContext, input: AutoPassInput): Promise<AutoPassRecord> {
-  return step(ctx, `${AUTO_PASS_STEP}:${input.rule.replace("/", "-")}:${input.headSha}`, input, AutoPassResult);
+  return step(ctx, autoPassStepId(input.rule, input.headSha), input, AutoPassResult);
 }
+
+/** The step one rule's pass at one head records under. */
+export const autoPassStepId = (rule: AutoPassRule, headSha: string): string => `${AUTO_PASS_STEP}:${rule.replace("/", "-")}:${headSha}`;
 
 /** Owner gates a run passed on a demotion rule instead of opening, as the watch row and the owner digest show them. */
 export const AutoPassedSchema = z.array(z.object({ rule: z.enum(AUTO_PASS_RULES), headSha: z.string(), detail: z.string(), at: z.string() }));

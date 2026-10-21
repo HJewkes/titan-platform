@@ -1122,7 +1122,7 @@ describe("the fix-proof bounce cap", () => {
     hosts.splice(0).forEach((host) => host.close());
     dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   });
-  const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
+  const capReason = `fix-proof did not reproduce: ${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
   const HOLD = "sh-test-hold";
   /** Stands in for the review steps a real run records before any fix-proof wake, so a replay reads a record there. */
   const REVIEWED = "sh-test-reviewed";
