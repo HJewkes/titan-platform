@@ -806,7 +806,7 @@ existing piece, not worked around with local styles.
 | `SessionSummary` requires the session body, and `SessionList` has no way to ask for it on selection | Sessions are listed with an empty body, so a row shows no task count and opens nothing |
 | `Link` and `BreadcrumbItem` take `href` but render no anchor | Navigation goes through `onPress`; a row cannot be opened in a new tab |
 | No scrolling page container for `AppShell`'s content region | A long view overflows the frame and the document scrolls, top bar included |
-| `NavItem` sets `accessibilityState`, which react-native-web 0.21 does not turn into `aria-selected` | The active item is marked visually only; the test finds it by the accent bar |
+| `InitiativeHeader` renders its title as a level-5 heading (react-ui 0.23 maps each `Typography` heading variant to its `aria-level`) | The initiative detail page has no level-1 heading |
 
 ## Twin captures
 
