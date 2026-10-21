@@ -2,7 +2,7 @@ import type { CallClass } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { appendEvent } from "../event-log/event-log.js";
 
-export const API_AVAILABLE = "ApiAvailable";
+const API_AVAILABLE = "ApiAvailable";
 
 /** The identity rule (TP-3095 §2): one reopen of one (identity, class) is one occurrence, keyed by its trip's resetAt. */
 export function apiAvailableKey(identity: string, callClass: CallClass, resetAt: number): string {

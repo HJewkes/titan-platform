@@ -5,7 +5,7 @@ type ClassHealth = { state: "open" | "closed" | "probed" | "auth"; resetAt: stri
 /** Health's `githubApi` field: each call class's state, with `auth` over all of them while the token is rejected. */
 export type GithubApiHealth = Record<CallClass, ClassHealth>;
 
-export interface GithubApiStatus {
+interface GithubApiStatus {
   /** The pool's `onAuthFailed`: one ops-alarm line per transition into auth, never per call. */
   onAuthFailed(identity: string): void;
   /** Called beside the pool's `tokenChanged`, which leaves auth state. */
