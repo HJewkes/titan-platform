@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the probe reads patch ids for a merge-up straight onto the reviewed head",
+      "file": "products/factory/src/shepherd/tree-carry.ts",
+      "find": "  const offLine = trees.equal && parents.first !== input.fromHead;",
+      "replace": "  const offLine = trees.equal;",
+      "kills": [
+        "carry reads no PR diff for a merge-up straight onto the reviewed head"
+      ]
+    },
+    {
+      "name": "the patch id keeps blob ids",
+      "file": "products/factory/src/shepherd/tree-carry.ts",
+      "find": "diff.split(\"\\n\").filter((line) => !line.startsWith(\"index \")).map(",
+      "replace": "diff.split(\"\\n\").map(",
+      "kills": [
+        "carry reads the PR diff as unchanged when main moved the lines above the PR's hunk"
+      ]
+    },
+    {
+      "name": "the patch id keeps hunk line numbers",
+      "file": "products/factory/src/shepherd/tree-carry.ts",
+      "find": "(line.startsWith(\"@@\") ? \"@@\" : line.replace(/\\s+/g, \"\"))",
+      "replace": "line.replace(/\\s+/g, \"\")",
+      "kills": [
+        "carry reads the PR diff as unchanged when main moved the lines above the PR's hunk"
+      ]
+    },
+    {
+      "name": "the reviewed diff is read against the new base instead of its merge base",
+      "file": "products/factory/src/shepherd/tree-carry.ts",
+      "find": "[...DIFF_ARGS, reviewedBase, input.fromHead]",
+      "replace": "[...DIFF_ARGS, base, input.fromHead]",
+      "kills": [
+        "carry reads the PR diff as unchanged across a merge-up over an unreviewed merge-up (TP-3725)",
+        "carry reads the PR diff as unchanged when main moved the lines above the PR's hunk"
+      ]
+    }
+  ]
+}
