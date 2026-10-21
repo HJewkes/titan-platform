@@ -49,7 +49,7 @@ function guardAnswering(head: GuardVerdict, tip: GuardVerdict = head): HeadTipGu
   };
 }
 
-const CONFIRMED: GuardVerdict = { kind: "confirmed", by: "fast-forward" };
+const CONFIRMED: GuardVerdict = { kind: "confirmed" };
 
 function observeWith(guard: HeadTipGuard, snap: BackstopSnapshot, cursor: RepoCursor = { main: { value: CURSOR, at: AT } }, rulesets?: RulesetList): Observation {
   return createObserve({ guard, now: () => NOW })(REPO, snap, cursor, rulesets);

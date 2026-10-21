@@ -3,7 +3,6 @@ import type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopSnapshot, 
 import { ciEvent, fromBackstopContext, type BackstopContext, type Transport } from "../event-log/ci-keys.js";
 import type { NewEvent } from "../event-log/event-log.js";
 import { fromBackstopDonePr, fromBackstopMain, fromBackstopOpenPr, fromBackstopRulesets, repoEvent } from "../event-log/repo-keys.js";
-import type { ConfirmedBy } from "../head-guard/classify.js";
 import type { RepoCursor } from "./cursor.js";
 import type { Observation, Observe } from "./service.js";
 
@@ -11,8 +10,8 @@ const BRANCH = "main";
 
 const SeenRulesets = z.record(z.string(), z.string());
 
-/** TP-3097's answer for one read: only `confirmed` may become a row. */
-export type GuardVerdict = { kind: "confirmed"; by: ConfirmedBy } | { kind: "stale" | "pending" | "unknown" };
+/** TP-3097's answer for one read: only `confirmed` may become a row; `non-ancestor` is a tip off the cursor's line. */
+export type GuardVerdict = { kind: "confirmed"; by?: "non-ancestor" } | { kind: "stale" | "pending" | "unknown" };
 
 /** TP-3097's head and tip guard, injected with its verdicts already read, so observe stays pure. */
 export interface HeadTipGuard {
