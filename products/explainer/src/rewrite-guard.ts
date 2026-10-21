@@ -13,6 +13,7 @@ export type BeatRejectionRule =
   | "length"
   | "number-lost"
   | "number-invented"
+  | "number-vague"
   | "label-bare"
   | "list-lost"
   | "cue-lost"
@@ -103,6 +104,19 @@ function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
     ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
     ...surplus(formsIn(after.spoken), formsIn(before)).map((form) => ({ rule: "number-invented" as const, detail: `"${form}" was not in the original` })),
   ];
+}
+
+const VAGUE_QUANTIFIER = /(?<![\p{L}\p{N}'’-])(?:some|many|several|a few|a lot|lots|plenty|a handful|a bunch|a pile|numerous|countless)(?![\p{L}\p{N}'’-])/giu;
+
+const vagueIn = (spoken: string): string[] => (spoken.match(VAGUE_QUANTIFIER) ?? []).map(norm);
+
+/** A vague quantifier must not stand in for a number that left the line; one the original already used is not counted. */
+function vagueRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  if (movedNumbers(before, after).length === 0) return [];
+  return surplus(vagueIn(after.spoken), vagueIn(before)).map((word) => ({
+    rule: "number-vague" as const,
+    detail: `"${word}" was added where a number left the line; keep the number or cut the clause and let the label carry it`,
+  }));
 }
 
 /** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
@@ -211,6 +225,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...generic,
     ...terms,
     ...numberRejections(before.spoken, after),
+    ...vagueRejections(before.spoken, after),
     ...listRejections(before.spoken, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
