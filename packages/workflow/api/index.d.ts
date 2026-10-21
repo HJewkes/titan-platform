@@ -19,6 +19,12 @@ interface StepUsage {
     costUsd: number;
     inputTokens?: number;
     outputTokens?: number;
+    /** Absent when the runner did not report it; never a defaulted zero. */
+    cacheReadTokens?: number;
+    cacheWrite5mTokens?: number;
+    cacheWrite1hTokens?: number;
+    /** The one model the step ran on; absent when several did or none was reported. */
+    model?: string;
     /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
     costUnknown?: true;
 }
