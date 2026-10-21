@@ -11,7 +11,7 @@ import { EXIT, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_FRAME_BYTES, frameIndex, getFrame, listFrames, roundFramesCommands } from "./round-frames.js";
+import { MAX_FRAME_BYTES, frameIndex, getFrame, getFrameTargets, listFrames, roundFramesCommands } from "./round-frames.js";
 import { closedPort, send, sessionCookie, writeSelfSignedCert, type Reply, type SelfSignedPair } from "./test-support.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8 as a remote host.
@@ -188,6 +188,64 @@ describe("a design round's frames", () => {
     await writeFile(path.join(dir, DESIGN, "frames", "frames.json"), JSON.stringify({ schema: "titan-review/frames@0", frames: [] }));
 
     await expectRefused(listFrames({ dir }, DESIGN), /not a frames@1 index/);
+  });
+});
+
+describe("rounds.frameTargets", () => {
+  const BOXES = [
+    { x: 0, y: 0, width: 64, height: 64, target: { testId: "tile-root" } },
+    { x: 8, y: 8, width: 16, height: 16, target: { testId: "tile-icon", role: "img" } },
+  ];
+  const TARGETS_TEXT = JSON.stringify({ schema: "titan-review/frame-targets@1", boxes: BOXES });
+  const targets = (key = "tile-light") => getFrameTargets({ dir }, SHIP, key);
+
+  /** tile-light's record naming `frames/tile-light.targets.json` under `sha256`, the file holding `text`. */
+  async function writeTargets(text: string, sha256 = sha256Of(Buffer.from(text)), file = "frames/tile-light.targets.json"): Promise<void> {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFile(path.join(round, "frames", "tile-light.targets.json"), text);
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), targets: { file, sha256 } }]);
+  }
+
+  it("returns the boxes of the element map a record names, and lists the frame as having one", async () => {
+    await writeTargets(TARGETS_TEXT);
+
+    expect(await targets()).toEqual({ sha256: sha256Of(Buffer.from(TARGETS_TEXT)), boxes: BOXES });
+    expect((await listFrames({ dir }, SHIP)).frames.find((each) => each.key === "tile-light")).toMatchObject({ targets: true });
+  });
+
+  it("refuses a targets file whose bytes differ from the sha256 the index names", async () => {
+    await writeTargets(TARGETS_TEXT, "0".repeat(64));
+
+    await expectRefused(targets(), /^frame refused: the targets file does not match the frames index sha256$/);
+  });
+
+  it("refuses a targets file that is a symlink, even to a file inside the round", async () => {
+    await writeTargets(TARGETS_TEXT);
+    await writeFile(path.join(round, "frames", "real.targets.json"), TARGETS_TEXT);
+    await rm(path.join(round, "frames", "tile-light.targets.json"));
+    await symlink(path.join(round, "frames", "real.targets.json"), path.join(round, "frames", "tile-light.targets.json"));
+
+    await expectRefused(targets(), /the file is a symlink/);
+  });
+
+  it("refuses a frame whose record names no targets, and a key no record lists", async () => {
+    await expectRefused(targets("tile-dark"), /lists no targets for "tile-dark"/);
+    await expectRefused(targets("badge-new"), /lists no targets for "badge-new"/);
+  });
+
+  it("refuses a targets path that is not a relative .json path, and a file that is not frame-targets@1", async () => {
+    await writeTargets(TARGETS_TEXT, undefined, "../outside.json");
+    await expectRefused(targets(), /not a relative \.json path/);
+
+    await writeTargets(JSON.stringify({ schema: "titan-review/frame-targets@0", boxes: [] }));
+    await expectRefused(targets(), /not a frame-targets@1 file/);
+  });
+
+  it("drops a malformed targets record instead of refusing the index, so the frame's pins stay coordinates only", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), targets: { file: "frames/t.json" } }]);
+
+    expect((await listFrames({ dir }, SHIP)).frames.find((each) => each.key === "tile-light")).toEqual({ key: "tile-light", views: ["head"], indexed: true, unchanged: false });
   });
 });
 
