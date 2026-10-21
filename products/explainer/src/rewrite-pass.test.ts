@@ -295,12 +295,20 @@ describe("rewriteScript keeps or reverts each chapter", () => {
 
     expect(report.rounds[0]!.chapters).toEqual([
       { chapter: "ch4", kept: true },
-      { chapter: "ch3", kept: false, why: "more target rows fail", rows: ["register:sentence-mean"] },
+      { chapter: "ch3", kept: false, why: "more target rows fail", rows: ["register:sentence-mean"], candidates: [{ beat: "k1", spoken: CHOPPED_K1, labels_added: [] }] },
     ]);
     expect(spokenOf(out, "c2")).toBe(BEATS.c2![1].after);
     expect(spokenOf(out, "k1")).toBe(NEAR_BAND.k1);
     expect(report.rounds[0]).toMatchObject({ kept: true, rewritten: ["c2"], failing: { before: 1, after: 1 } });
     expect(report.rounds[0]!.distance.after).toBeLessThan(report.rounds[0]!.distance.before);
+  });
+
+  it("stores each accepted beat's candidate on the chapter it reverted, and none on the chapter it kept", async () => {
+    const { report } = await rewrite(nearBand(), fakeRewriter(flipsMean), { rounds: 1 });
+
+    const [kept, reverted] = report.rounds[0]!.chapters;
+    expect(kept).not.toHaveProperty("candidates");
+    expect(reverted!.candidates).toEqual([{ beat: "k1", spoken: CHOPPED_K1, labels_added: [] }]);
   });
 
   it("keeps the good chapter of a round the whole-round rule would have thrown away", async () => {
@@ -333,7 +341,9 @@ describe("rewriteScript keeps or reverts each chapter", () => {
     const { script: out, report } = await rewrite(nearBand({ w2 }), fakeRewriter(answering({ c2: longerC2 })), { rounds: 1 });
 
     expect(report.rounds[0]!.reverted).toEqual([]);
-    expect(report.rounds[0]!.chapters).toEqual([{ chapter: "ch4", kept: false, why: "more error rows fail", rows: ["Q-F16"] }]);
+    expect(report.rounds[0]!.chapters).toEqual([
+      { chapter: "ch4", kept: false, why: "more error rows fail", rows: ["Q-F16"], candidates: [{ beat: "c2", spoken: longerC2, labels_added: [] }] },
+    ]);
     expect(spokenOf(out, "c2")).toBe(NEAR_BAND.c2);
   });
 
@@ -343,12 +353,15 @@ describe("rewriteScript keeps or reverts each chapter", () => {
       k3: "The desk can wait. A refusal isn't an error, because the parcel may be late and its scan may still come later in the day.",
       k1: "It holds the rest. A row can be fresh, stale or missing, and the desk reads that state and prints only when it's fresh." };
     const script = nearBand(contracted);
-    const spelledOut = answering({ k1: "It holds the rest. A row can be fresh or stale or missing, and the desk reads that state and prints only when it is fresh." });
+    const spelledOutK1 = "It holds the rest. A row can be fresh or stale or missing, and the desk reads that state and prints only when it is fresh.";
+    const spelledOut = answering({ k1: spelledOutK1 });
 
     const { script: out, report } = await rewrite(script, fakeRewriter(spelledOut), { rounds: 1 });
 
     expect(runL0(script).find((r) => r.check_id === "register:contractions")!.pass).toBe(true);
-    expect(report.rounds[0]!.chapters).toEqual([{ chapter: "ch3", kept: false, why: "a protected row turned red", rows: ["register:contractions"] }]);
+    expect(report.rounds[0]!.chapters).toEqual([
+      { chapter: "ch3", kept: false, why: "a protected row turned red", rows: ["register:contractions"], candidates: [{ beat: "k1", spoken: spelledOutK1, labels_added: [] }] },
+    ]);
     expect(spokenOf(out, "k1")).toBe(contracted.k1);
   });
 });
