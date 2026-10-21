@@ -21,7 +21,7 @@ export interface BatchArtifact<T> {
   round?: number;
   /** For a confirm batch, the book it holds. */
   book?: string;
-  via: "primary" | "redo" | "unjudged";
+  via: "primary" | "redo" | "fallback" | "unjudged";
   passageIds: string[];
   items: T[];
   voided: Voided[];

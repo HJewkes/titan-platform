@@ -5,7 +5,7 @@ export interface Models {
   compile: string;
   screen: string;
   confirm: string;
-  /** Re-judges a batch whose first verdict failed; a stronger model than screen, so one safety stop is not final. */
+  /** Judges a batch its stage's own model failed twice; a stronger model than screen, so a safety stop is not final. */
   redo: string;
 }
 
@@ -24,8 +24,15 @@ export interface RouteConfig {
 }
 
 /**
+ * Every judge call sends a batch no other call repeats, and the shared prefix is too small to pay for itself, so a
+ * cache write (billed at twice the input rate for the CLI's 1h TTL) would never be read back. Measured on a 20-batch
+ * haiku screen wave, turning it off cut the cost per call by 17%.
+ */
+const NO_PROMPT_CACHE = { DISABLE_PROMPT_CACHING: "1" } as const;
+
+/**
  * One tool-less `claude -p` call per step. The harness runs bare (no tools, MCP, settings or skills), so the
- * system prompt is the child's whole world and the cached prefix stays small.
+ * system prompt is the child's whole world and stays small.
  */
 function stageRunner(config: RouteConfig, runnerFor: RunnerFor): LegacyStepRunner {
   return runnerFor({
@@ -33,6 +40,7 @@ function stageRunner(config: RouteConfig, runnerFor: RunnerFor): LegacyStepRunne
     maxTurns: 1,
     maxBudgetUsd: CALL_BUDGET_USD[config.stage],
     defaults: { harness: "claude-print", model: config.model, systemPrompt: config.systemPrompt },
+    deps: { env: { ...process.env, ...NO_PROMPT_CACHE } },
   });
 }
 

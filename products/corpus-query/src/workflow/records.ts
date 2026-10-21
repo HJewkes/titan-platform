@@ -28,7 +28,7 @@ export function batchArtifactSchema<T>(item: ZodType<T>): ZodType<BatchArtifact<
     stage: z.enum(["screen", "confirm"]),
     round: z.number().optional(),
     book: z.string().optional(),
-    via: z.enum(["primary", "redo", "unjudged"]),
+    via: z.enum(["primary", "redo", "fallback", "unjudged"]),
     passageIds: z.array(z.string()),
     items: z.array(item),
     voided: z.array(VoidedSchema),

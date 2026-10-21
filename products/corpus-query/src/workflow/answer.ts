@@ -75,11 +75,11 @@ interface RunState {
 const CONFIRMED_EVENTS: ReadonlySet<Candidate["event"]> = new Set(["won", "referenced"]);
 
 const screenJudge = (models: Models): StageJudge<ScreenVerdict, Candidate> => ({
-  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, redoModel: models.redo,
+  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, fallbackModel: models.redo,
 });
 
 const confirmJudge = (models: Models): StageJudge<ConfirmVerdict, ConfirmRow> => ({
-  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, redoModel: models.redo,
+  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, fallbackModel: models.redo,
 });
 
 const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passage.id, ref: passage.ref, text: readPassage(state.config.db, state.config.root, passage).join("\n\n") });

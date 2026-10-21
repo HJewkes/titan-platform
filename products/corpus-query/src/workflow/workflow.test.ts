@@ -32,6 +32,8 @@ function recordedSteps(runId: string): string[] {
 
 const screenCalls = (calls: ReturnType<typeof fakeJudges>["calls"]) => calls.filter((c) => c.stage === "screen");
 
+const haikuFails = (ref: string): Behave => (call) => (call.stage === "screen" && call.model === "haiku" && call.refs.includes(ref) ? { ok: true, output: "not json" } : undefined);
+
 const refuse = (ref: string): Behave => (call) => (call.stage === "screen" && call.refs.includes(ref) ? { ok: false, error: "refusal: the model declined", retryable: false } : undefined);
 
 describe("ask", () => {
@@ -75,6 +77,16 @@ describe("ask", () => {
     expect(byStage("confirm")).toEqual(new Set([`sonnet|${prefix(CONFIRM_ROLE)}`]));
   });
 
+  it("turns prompt caching off for every model call, because no batch is ever sent twice", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges();
+
+    await ask(options({ spec: undefined }), host(judges.runnerFor));
+
+    expect(new Set(judges.calls.map((c) => c.stage))).toEqual(new Set(["compile", "screen", "confirm"]));
+    expect(judges.calls.every((c) => c.env?.DISABLE_PROMPT_CACHING === "1")).toBe(true);
+  });
+
   it("finishes the warm call before launching any other call of the wave", async () => {
     fx = fixture(WINS);
     const judges = fakeJudges({ delayMs: 20 });
@@ -87,14 +99,14 @@ describe("ask", () => {
     expect(Math.max(...rest.map((c) => c.startedAt))).toBeLessThan(Math.min(...rest.map((c) => c.endedAt!)));
   });
 
-  it("redoes a refused batch once on sonnet, records it unjudged, and still judges every other batch", async () => {
+  it("redoes a refused batch on haiku, then once on sonnet, records it unjudged, and still judges every other batch", async () => {
     fx = fixture(WINS);
     const judges = fakeJudges({ behave: refuse("GR 1.2") });
 
     const result = await ask(options(), host(judges.runnerFor));
 
     const refused = screenCalls(judges.calls).filter((c) => c.refs.includes("GR 1.2"));
-    expect(refused.map((c) => c.model)).toEqual(["haiku", "sonnet"]);
+    expect(refused.map((c) => c.model)).toEqual(["haiku", "haiku", "sonnet"]);
     expect(result.status).toBe("completed");
     const { screen } = result.answer!.coverage;
     expect(screen).toMatchObject({ retrieved: 5, judged: 4, skipped: [] });
@@ -102,16 +114,36 @@ describe("ask", () => {
     expect(result.answer!.rows.map((r) => r.period)).toEqual(["GR 1.1", "GR 1.3", "GR 2.1", "GR 2.2"]);
   });
 
-  it("counts a batch whose first payload fails its schema once the sonnet redo answers", async () => {
+  it("counts a batch whose first payload fails its schema once the haiku redo answers, never calling sonnet", async () => {
     fx = fixture(WINS);
-    const judges = fakeJudges({ behave: (call) => (call.stage === "screen" && call.model === "haiku" && call.refs.includes("GR 2.1") ? { ok: true, output: "not json" } : undefined) });
+    const judges = fakeJudges({ behave: (call) => (call.stage === "screen" && call.refs.includes("GR 2.1") && !call.stepId.endsWith("/redo") ? { ok: true, output: "not json" } : undefined) });
 
     const result = await ask(options(), host(judges.runnerFor));
 
     const calls = screenCalls(judges.calls).filter((c) => c.refs.includes("GR 2.1"));
-    expect(calls.map((c) => c.model)).toEqual(["haiku", "sonnet"]);
+    expect(calls.map((c) => c.model)).toEqual(["haiku", "haiku"]);
     expect(result.answer!.coverage.screen).toMatchObject({ judged: 5, unjudged: [] });
     expect(result.answer!.rows).toHaveLength(5);
+  });
+
+  it("falls back to sonnet only when the haiku redo fails too", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges({ behave: haikuFails("GR 2.1") });
+
+    const result = await ask(options(), host(judges.runnerFor));
+
+    const calls = screenCalls(judges.calls).filter((c) => c.refs.includes("GR 2.1"));
+    expect(calls.map((c) => c.model)).toEqual(["haiku", "haiku", "sonnet"]);
+    expect(result.answer!.coverage.screen).toMatchObject({ judged: 5, unjudged: [] });
+  });
+
+  it("gives a confirm batch one sonnet redo and no third call", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges({ behave: (call) => (call.stage === "confirm" && call.refs.includes("GR 2.1") ? { ok: false, error: "refusal: declined", retryable: false } : undefined) });
+
+    await ask(options(), host(judges.runnerFor));
+
+    expect(judges.calls.filter((c) => c.stage === "confirm" && c.refs.includes("GR 2.1")).map((c) => c.model)).toEqual(["sonnet", "sonnet"]);
   });
 
   it("grows the lexicon until no reported name is new, then stops before the round cap", async () => {
@@ -194,5 +226,22 @@ describe("resume", () => {
     const artifacts = readdirSync(round).map((f) => readJson(path.join(round, f), batchArtifactSchema(z.unknown()))!);
     expect(artifacts.filter((a) => a.via === "unjudged").map((a) => a.passageIds)).toEqual([[expect.stringMatching(/^gull-rovers\/1\/2#/)]]);
     expect(resumed.answer!.coverage.screen).toMatchObject({ judged: 4, skipped: [] });
+  });
+
+  it("replays a batch the sonnet fallback judged without calling any model for it again", async () => {
+    fx = fixture(WINS);
+    const crash = new AbortController();
+    const hang: Behave = (call, input) => {
+      if (!(call.stage === "screen" && call.refs.includes("GR 2.1"))) return haikuFails("GR 1.2")(call, input);
+      setTimeout(() => crash.abort(), 0);
+      return new Promise((resolve) => input.signal.addEventListener("abort", () => resolve({ ok: false, error: "aborted", retryable: false })));
+    };
+    const first = await ask(options(), host(fakeJudges({ behave: hang }).runnerFor, { signal: crash.signal }));
+
+    const second = fakeJudges();
+    const resumed = await resume(first.runId, host(second.runnerFor));
+
+    expect(screenCalls(second.calls).flatMap((c) => c.refs)).toEqual(["GR 2.1", "GR 2.2"]);
+    expect(resumed.answer!.coverage.screen).toMatchObject({ judged: 5, unjudged: [] });
   });
 });
