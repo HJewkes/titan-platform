@@ -21,6 +21,7 @@ import { open, type Route } from "../router.js";
 import { AutoresearchBacklog } from "./AutoresearchBacklog.js";
 import { AutoresearchDecisions } from "./AutoresearchDecisions.js";
 import { AutoresearchHeader, RunStatusBadge } from "./AutoresearchHeader.js";
+import { AutoresearchProgress } from "./AutoresearchProgress.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
@@ -95,6 +96,7 @@ function RunSection({ runId }: { runId: string }): ReactNode {
       <AutoresearchHeader run={run.data} />
       <AutoresearchBacklog run={run.data} />
       <AutoresearchDecisions run={run.data} />
+      <AutoresearchProgress run={run.data} />
     </VStack>
   );
 }

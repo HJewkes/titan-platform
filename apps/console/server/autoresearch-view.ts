@@ -64,6 +64,8 @@ const outcome = z.object({
   head: z.string().optional(),
   branch: z.string().optional(),
   lesson: z.string().optional(),
+  /** Design G7: the noise the idea was judged against. Absent until the engine records it, and then σ reads as unlocked. */
+  against: z.object({ sigma: z.number().nonnegative(), pairs: z.number().int().nonnegative() }).optional(),
 });
 
 /** One picked idea's ladder: `outcome` is null while it runs. */
