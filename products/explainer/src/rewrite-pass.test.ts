@@ -42,7 +42,7 @@ describe("rewriteScript with compliant rewrites", () => {
 
     expect(out.beats.map((beat) => beat.fact_ids)).toEqual(script.beats.map((beat) => beat.fact_ids));
     expect(out.beats.filter((beat) => hasSpokenDigits(beat.spoken))).toEqual([]);
-    expect(spokenOf(out, "h2")).toContain("twelve parcels");
+    expect(spokenOf(out, "h2")).toContain("The desk held twelve parcels today.");
   });
 
   it("stops after the round that brings every target row into band, and sums the spend of each call", async () => {
@@ -270,8 +270,8 @@ describe("rewriteScript spells before it vets", () => {
     await rewrite(choppy(), fake, { rounds: 1 });
 
     const prompt = fake.prompts.find((p) => p.includes("# Chapter ch1"))!;
-    expect(prompt).toContain("twelve parcels");
-    expect(prompt).not.toContain("12 parcels");
+    expect(prompt).toContain("The desk held twelve parcels today.");
+    expect(prompt).not.toContain("The desk held 12 parcels today.");
   });
 
   it("leaves a spelled beat as it is when spelled again", () => {
