@@ -424,7 +424,8 @@ describe("a base that moves on every read in a repo that does not require up-to-
     const heads: HeadScript[] = [sentBack, sentBack, { state: "behind", reviews: ["MERGE"] }];
     const { host, replay } = startReplay({ ...LOOSE, heads }, { strict: false });
 
-    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 5_000, interval: 10 });
+    // Below the test timeout, so a run that never settles fails on the outcome rather than timing out.
+    await vi.waitFor(() => expect(settled(host, replay)).toBe("merged"), { timeout: 3_000, interval: 10 });
 
     expect(replay.trace).toEqual({ reviewers: 3, unscripted: [], fixers: [] });
     expect(replay.fake.effects).toMatchObject({ updateBranch: 0, merge: 1 });
