@@ -20,6 +20,8 @@ export interface SimpleCommand {
   name: string | null;
   /** The command word as typed, after literal expansion (`./x.sh`, `~/bin/x`); null when `name` is. */
   path: string | null;
+  /** The command word when it is a `<( )`, whose output `scripts.ts` reads as the program's script. */
+  program?: WordToken;
   args: WordToken[];
   /** Literal `NAME=value` prefixes. */
   env: Record<string, string>;

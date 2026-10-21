@@ -6,7 +6,7 @@ import { mayBeWritten } from "./line-writes.js";
 import { isNativeProgram, parseShebang, resolvesShellViaPath } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
-import { hasProcsubOperand, procsubTargets, withoutProcsubOperands } from "./shell/procsub-operand.js";
+import { hasProcsubOperand, procsubTargets, sourcedOperand, withoutProcsubOperands } from "./shell/procsub-operand.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
 import { ReadingLimitError, UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
@@ -94,7 +94,7 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
-  if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
+  if (SOURCERS.has(name)) return target(cmd, sourcedOperand(cmd.args), home, "shell");
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
   return runsByPath(cmd.path) ? typedTarget(cmd, cmd.path, home) : null;
 }

@@ -309,7 +309,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
-  const { name, path, args } = withoutProcsub(cmd);
+  const { name, path, program, args } = withoutProcsub(cmd);
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
@@ -320,7 +320,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   // Emission order is not run order, so a prefix that may reach later commands changes the whole line's PATH, as a store does.
   if (prefixOutlives(name) && (ownPath || prefixHomeUnsafe(cmd.assigned))) w.marks.pathChanged = true;
   const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
+  w.out.push({ name, path, ...(program ? { program } : {}), args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = procsubScript(cmd, (plain) => inlineScript(plain, redirects, piped, w.unsure, inherited)) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);

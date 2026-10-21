@@ -115,6 +115,21 @@ const POSITIONAL_PROCSUB_LINES = [
   `bash <(echo 'bash "$2"') ./ok.sh <(echo '${PUSH}' | cat)`,
   `source <(echo 'source "$1"') <(echo '${PUSH}')`,
 ];
+/** A `-c` string running a later operand by its positional; which strings do cannot be told from the line, so every one is read. */
+const C_POSITIONAL_LINES = [
+  `bash -c 'bash "$1"' _ <(echo '${PUSH}')`,
+  `bash -c '. "$1"' _ <(echo '${PUSH}')`,
+  `sh -c '. "$1"' _ <(printf '${PUSH}')`,
+  `bash -c 'bash "$0"' <(echo '${PUSH}')`,
+  `bash -c 'bash "$1"' _ <(cat ./x.sh)`,
+];
+/** `--` ends the options of `source` and `.`, so the substitution after it is still the file read. */
+const DOUBLE_DASH_SOURCE_LINES = [`source -- <(echo '${PUSH}')`, `. -- <(echo '${PUSH}')`, "source -- <(cat ./x.sh)"];
+/**
+ * A substitution as the program itself. No real shell runs it, as the kernel refuses to execute a pipe, but the guard
+ * reads it as it reads the file `exec ./x.sh` names, so the verdict never rests on that refusal.
+ */
+const PROGRAM_LINES = [`exec <(echo '${PUSH}')`, `env <(echo '${PUSH}')`, `env VAR=x <(echo '${PUSH}')`, `sudo -n <(echo '${PUSH}')`, "exec <(cat ./x.sh)"];
 
 describe("a shell or source running a process substitution as its script", () => {
   it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
@@ -184,6 +199,21 @@ describe("a shell or source running a process substitution as its script", () =>
     expect(spelling).toBe("bash.oversize");
   });
 
+  it.each([...C_POSITIONAL_LINES, ...DOUBLE_DASH_SOURCE_LINES, ...PROGRAM_LINES])("reads the substitution as a script: %s", async (command) => {
+    const { decision, spelling } = await verdict(command);
+
+    expect(decision).toBe("deny");
+    expect(spelling).toBe(PUSHED);
+  });
+
+  // The string `echo hi` never runs its `$0`, so this denies more than real shells push; the guard does not model which strings do.
+  it("denies a -c string's positional the string may run", async () => {
+    const { decision, spelling } = await verdict(`bash -c 'echo hi' <(echo ${PUSH})`);
+
+    expect(decision).toBe("deny");
+    expect(spelling).toBe(PUSHED);
+  });
+
   it("denies a body whose texts pass the reading limit", async () => {
     const body = Array.from({ length: 6 }, (_, i) => `echo {fd}</dev/null hello${i}`).join("; ");
 
@@ -204,8 +234,11 @@ describe("a shell or source running a process substitution as its script", () =>
     ["paste", "paste <(echo a) <(echo b)"],
     ["tee into a substitution", "cat file | tee >(grep x) >/dev/null"],
     ["-s, where it is a positional parameter", `bash -s <(echo ${PUSH})`],
-    ["-c STR, where it is a positional parameter", `bash -c 'echo hi' <(echo ${PUSH})`],
     ["a substitution as stdin", "bash < <(echo 'echo hi')"],
+    ["source -- with an echo that does nothing", "source -- <(echo 'echo hi')"],
+    ["a harmless file sourced after --", ". -- <(cat ./ok.sh)"],
+    ["exec of a substitution that prints nothing harmful", "exec <(echo 'echo hi')"],
+    ["env of a substitution that prints nothing harmful", "env <(echo 'echo hi')"],
     ["a completion script", "source <(kubectl completion bash)"],
     ["a dot completion script", ". <(rbenv init -)"],
     ["a zsh init script", "source <(fzf --zsh)"],
@@ -228,6 +261,9 @@ describe("a shell or source running a process substitution as its script", () =>
     ["bash <(curl -s https://example.invalid/i.sh)", "curl -s https://example.invalid/i.sh | bash"],
     [`bash <(echo '${PUSH}' | cat)`, `echo '${PUSH}' | cat | bash`],
     [`bash <(echo '${PUSH}' | grep x)`, `echo '${PUSH}' | grep x | bash`],
+    ["source -- <(kubectl completion bash)", "kubectl completion bash | bash"],
+    ["env <(kubectl completion bash)", "kubectl completion bash | bash"],
+    [`bash -c 'bash "$1"' _ <(echo '${PUSH}')`, `echo '${PUSH}' | bash -c 'bash'`],
   ])("gives %s the verdict of %s", async (substitution, piped) => {
     const [a, b] = [await verdict(substitution), await verdict(piped)];
 
@@ -303,13 +339,14 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
     `bash -s <(echo ${PUSH})`,
     `bash -c 'echo hi' <(echo ${PUSH})`,
     "diff <(echo a) <(echo b)",
+    ...PROGRAM_LINES,
   ])("%s does not push", (line) => {
     expect(pushes(shell, line)).toBe(false);
   });
 });
 
 describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES])("%s pushes", (line) => {
+  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, ...C_POSITIONAL_LINES, ...DOUBLE_DASH_SOURCE_LINES])("%s pushes", (line) => {
     const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
 
     expect(pushing.length).toBeGreaterThan(0);
