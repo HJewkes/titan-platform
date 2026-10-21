@@ -7,7 +7,7 @@ import { PinLayer, naturalSize, useCoarsePointer, useFramePins, type FramePins }
 export type FrameView = ConsoleCommands["rounds.frame"]["args"]["view"];
 
 /** Frames start loading this far below the fold, so a scroll rarely shows an empty panel. */
-const NEAR_VIEWPORT = "400px";
+export const NEAR_VIEWPORT = "400px";
 
 interface FrameImageProps {
   roundId: string;
@@ -76,6 +76,17 @@ function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay, onNatur
   );
 }
 
+/** A full-size view leaves on Escape. */
+export function useEscapeKey(onClose: () => void): void {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+}
+
 interface EnlargeProps {
   src: string;
   alt: string;
@@ -87,13 +98,7 @@ interface EnlargeProps {
 /** The image at least as wide as the screen, scrolling sideways when it is wider; Escape or Close leaves. */
 function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
   const image = useRef<HTMLImageElement>(null);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
   return (
     <div role="dialog" aria-modal="true" aria-label={alt} className="fixed inset-0 z-50 flex flex-col gap-3 bg-surface-base p-4">
       <HStack gap={3} align="center" justify="between">
