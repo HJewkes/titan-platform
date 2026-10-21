@@ -68,7 +68,3 @@ const answers = (answer: SubmittedAnswer): boolean =>
 /** The questions the page holds no answer for; a comment alone answers nothing. */
 export const unanswered = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
   questions.filter((question) => !submitted.some((answer) => answer.questionId === question.id && answers(answer)));
-
-/** The required questions the page holds no answer for, which block a send. */
-export const missingRequired = (questions: readonly Question[], submitted: readonly SubmittedAnswer[]): Question[] =>
-  unanswered(questions.filter((question) => question.required), submitted);
