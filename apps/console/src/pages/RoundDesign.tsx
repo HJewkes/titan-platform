@@ -45,7 +45,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
   const strip = { roundId: round.id, indexed, labels };
   const anchored = anchoredKeys(round.manifest);
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
-  const widths = useMemo(() => declaredWidths(round.manifest, listed), [round.manifest, listed]);
+  const widths = useMemo(() => declaredWidths(round, listed), [round, listed]);
   return (
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
       <FrameFeedbackProvider value={state.frames} widths={widths}>
@@ -74,14 +74,14 @@ function useDesignAnswers(round: ValidRound, frozen: boolean) {
   return useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys);
 }
 
-/** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in. */
-function declaredWidths(manifest: ValidRound["manifest"], listed: FramesList): Map<string, PngWidths> {
-  const viewports = new Map(listed.frames.map((frame) => [frame.key, frame.viewportWidth]));
+/** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in, and whether it has an element map. */
+function declaredWidths({ id, manifest }: ValidRound, listed: FramesList): Map<string, PngWidths> {
+  const records = new Map(listed.frames.map((frame) => [frame.key, frame]));
   return new Map(
     manifest.variants.map((variant) => {
       const referenceWidth = variant.frameReference?.frame.width;
-      const viewportWidth = viewports.get(variant.key);
-      return [variant.key, { ...(viewportWidth !== undefined && { viewportWidth }), ...(referenceWidth !== undefined && { referenceWidth }) }];
+      const { viewportWidth, targets } = records.get(variant.key) ?? {};
+      return [variant.key, { ...(viewportWidth !== undefined && { viewportWidth }), ...(referenceWidth !== undefined && { referenceWidth }), ...(targets && { targetsRoundId: id }) }];
     }),
   );
 }

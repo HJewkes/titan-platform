@@ -51,7 +51,7 @@ afterEach(() => {
 type Listing = Snapshot["calls"][string];
 
 /** The daemon's answers over the synthetic design fixture; `detail` overrides rounds.get, `listing` replaces rounds.frames, `rounds` is where rounds.get reads. */
-async function recorded(detail: Partial<RoundDetail>, listing?: Listing, rounds: RoundsSource = source): Promise<Snapshot> {
+async function recorded(detail: Partial<RoundDetail>, listing?: Listing, rounds: RoundsSource = source, extra: Snapshot["calls"] = {}): Promise<Snapshot> {
   const frames = await Promise.all(
     STATES.map(async ([key]) => [snapshotKey("rounds.frame", { id: DESIGN, key, view: "head" }), successEnvelope(await getFrame(source, DESIGN, key, "head"))] as const),
   );
@@ -62,6 +62,7 @@ async function recorded(detail: Partial<RoundDetail>, listing?: Listing, rounds:
       [snapshotKey("rounds.get", { id: DESIGN })]: successEnvelope({ ...(await getRound(rounds, DESIGN)), ...detail }),
       [snapshotKey("rounds.frames", { id: DESIGN })]: listing ?? successEnvelope(await listFrames(source, DESIGN)),
       ...Object.fromEntries(frames),
+      ...extra,
     },
   };
 }
@@ -71,8 +72,9 @@ interface Rendered {
 }
 
 /** Renders the design round over a recorded snapshot; rounds.submit answers "submitted". */
-async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource } = {}): Promise<Rendered> {
-  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded(options.detail ?? {}, options.listing, options.rounds)), "text/html");
+async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource; extra?: Snapshot["calls"] } = {}): Promise<Rendered> {
+  const snapshot = await recorded(options.detail ?? {}, options.listing, options.rounds, options.extra);
+  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
   const calls: Rendered["calls"] = [];
   const submitted = successEnvelope({ status: "submitted", path: "feedback.json", sha256: "0".repeat(64), headSha: null });
@@ -583,6 +585,45 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-error"));
     fireEvent.keyDown(window, { key: "a" });
     expect(screen.queryByTestId("pin-layer-beacon-error")).toBeNull();
+  });
+});
+
+describe("a design round's frame pins on an element map (TP-3773 S5)", () => {
+  beforeEach(layOut);
+  afterEach(() => vi.restoreAllMocks());
+
+  /** beacon-busy's record names an element map: the frame's root, and the dot inside it. */
+  async function withTargets(): Promise<{ listing: Listing; extra: Snapshot["calls"] }> {
+    const listed = await listFrames(source, DESIGN);
+    const frames = listed.frames.map((frame) => (frame.key === "beacon-busy" ? { ...frame, targets: true as const } : frame));
+    const boxes = [
+      { x: 0, y: 0, width: 320, height: 180, target: { testId: "beacon-root" } },
+      { x: 150, y: 70, width: 50, height: 30, target: { testId: "beacon-dot", role: "status" } },
+    ];
+    return { listing: successEnvelope({ ...listed, frames }), extra: { [snapshotKey("rounds.frameTargets", { id: DESIGN, key: "beacon-busy" })]: successEnvelope({ sha256: "0".repeat(64), boxes }) } };
+  }
+
+  it("records the innermost element under a pin and names it in the pin list", async () => {
+    const rendered = await renderDesign(await withTargets());
+    const layer = await pinMode("beacon-busy");
+    await waitFor(() => expect(rendered.calls.some((call) => call.name === "rounds.frameTargets")).toBe(true));
+    await act(() => Promise.resolve());
+
+    tap(layer, 100, 50);
+
+    expect(screen.getByText("Pin 1 · #beacon-dot status")).toBeTruthy();
+    expect(await answerAndSend(rendered)).toMatchObject({
+      variants: [{ key: "beacon-busy", annotations: [{ id: "beacon-busy-1", x: 171, y: 85, target: { testId: "beacon-dot", role: "status" } }] }],
+    });
+  });
+
+  it("reads no element map for a frame whose record names none, so its pin is coordinates only", async () => {
+    const rendered = await renderDesign(await withTargets());
+
+    tap(await pinMode("beacon-idle"), 100, 50);
+
+    expect(screen.getByText("Pin 1 · coordinates only")).toBeTruthy();
+    expect(rendered.calls.some((call) => call.name === "rounds.frameTargets")).toBe(false);
   });
 });
 
