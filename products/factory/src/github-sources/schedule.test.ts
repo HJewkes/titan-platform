@@ -1,7 +1,7 @@
 import type { Logger } from "@titan-design/daemon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Sweep } from "../sweep.js";
-import { resolveSources, type SourcesReader } from "./mode.js";
+import { createPassStamp, resolveSources, type PassStamp, type SourcesReader } from "./mode.js";
 import { DUE_CHECK_TICK_MS, startReconcilerSchedule } from "./schedule.js";
 
 type GithubBlock = NonNullable<Parameters<typeof resolveSources>[0]["github"]>;
@@ -12,6 +12,7 @@ const MINUTE = 60_000;
 
 interface Harness {
   sweep: Sweep;
+  stamp: PassStamp;
   passes: number[];
   lines: { msg: string; fields: Record<string, unknown> }[];
   set(github: GithubBlock): void;
@@ -25,9 +26,10 @@ function harness(github: GithubBlock, pass: () => Promise<void> = async () => un
   const lines: Harness["lines"] = [];
   const record = (fields: Record<string, unknown>, msg: string) => void lines.push({ msg, fields });
   const log: Logger = { info: record, warn: record, error: record };
-  const sweep = startReconcilerSchedule({ sources, now: Date.now, log, pass: () => (passes.push(Date.now() - T0), pass()) });
+  const stamp = createPassStamp();
+  const sweep = startReconcilerSchedule({ sources, now: Date.now, log, stamp, pass: () => (passes.push(Date.now() - T0), pass()) });
   sweeps.push(sweep);
-  return { sweep, passes, lines, set: (next) => void (block = next) };
+  return { sweep, stamp, passes, lines, set: (next) => void (block = next) };
 }
 
 const T0 = Date.parse("2027-01-15T08:00:00Z");
@@ -144,5 +146,42 @@ describe("reconciler schedule mode change (I5)", () => {
     await vi.advanceTimersByTimeAsync(5 * MINUTE);
 
     expect(sourceLines(h)).toEqual([]);
+  });
+});
+
+describe("reconciler schedule last pass stamp (TP-3099 F11)", () => {
+  it("is null before the first pass, then the completion time, then a newer one after the next due pass", async () => {
+    const h = harness({ sources: "polling", pollingIntervalMs: MINUTE });
+    expect(h.stamp.read()).toBeNull();
+
+    await h.sweep.tick();
+    expect(h.stamp.read()).toBe(new Date(T0).toISOString());
+
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(h.stamp.read()).toBe(new Date(T0 + MINUTE).toISOString());
+  });
+
+  it("stamps when the pass finishes, not when it starts", async () => {
+    const h = harness({ sources: "polling", pollingIntervalMs: MINUTE }, () => new Promise((resolve) => setTimeout(resolve, 5_000)));
+
+    const running = h.sweep.tick();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await running;
+
+    expect(h.stamp.read()).toBe(new Date(T0 + 5_000).toISOString());
+  });
+
+  it("keeps the old stamp when a later pass fails, so the stamp ages", async () => {
+    let fail = false;
+    const h = harness({ sources: "polling", pollingIntervalMs: MINUTE }, async () => {
+      if (fail) throw new Error("github unreachable");
+    });
+    await h.sweep.tick();
+
+    fail = true;
+    await vi.advanceTimersByTimeAsync(3 * MINUTE);
+
+    expect(h.passes.length).toBeGreaterThan(1);
+    expect(h.stamp.read()).toBe(new Date(T0).toISOString());
   });
 });
