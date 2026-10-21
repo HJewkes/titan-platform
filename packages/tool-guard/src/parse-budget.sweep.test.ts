@@ -6,6 +6,7 @@ import { handle, MAX_COMMAND_BYTES } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import { SPELLINGS } from "./spellings.js";
 import type { FamilyName } from "./spellings.js";
+import { cpuBudgetIt } from "./test-support/cpu-budget.js";
 import { bashEvent, withinParseBudget } from "./test-support/parse-budget.js";
 import type { HookRun } from "./test-support/parse-budget.js";
 
@@ -13,6 +14,8 @@ const HOME = "/home/you";
 const DEPTH = 8;
 const PAD = "echo hi;";
 // The helper's 250 ms default holds: the worst case measured 47 ms of CPU (secret inside cmd-subst, 2026-10-14).
+// Each test also pads its line to the cap; the slowest took 0.5 s of wall time on a green CI run.
+const TEST_CPU_MS = 2_000;
 
 const noFs: ReadFs = {
   realpath: () => {
@@ -82,7 +85,7 @@ const shapes = Object.entries(SHAPES);
 const grid = sentinels.flatMap(([family, sentinel]) => shapes.map(([name, shape]) => [family, name, shape, sentinel] as const));
 
 describe("every guarded family's sentinel", () => {
-  it.each(sentinels)("%s denies on its own", async (_family, sentinel) => {
+  cpuBudgetIt.each(sentinels)("%s denies on its own", TEST_CPU_MS, async (_family, sentinel) => {
     const { problems } = await withinParseBudget(run, sentinel, { mustDeny: true });
 
     expect(problems).toEqual([]);
@@ -104,7 +107,7 @@ describe("each shape's generator", () => {
 });
 
 describe("the parse budget at depth 8, padded to the size cap", () => {
-  it.each(grid)("%s inside %s denies under budget", async (_family, _name, shape, sentinel) => {
+  cpuBudgetIt.each(grid)("%s inside %s denies under budget", TEST_CPU_MS, async (_family, _name, shape, sentinel) => {
     const line = padToCeiling(shape, sentinel);
 
     const result = await withinParseBudget(run, line, { mustDeny: true });
@@ -114,7 +117,7 @@ describe("the parse budget at depth 8, padded to the size cap", () => {
     expect(result.problems).toEqual([]);
   });
 
-  it.each(shapes)("benign %s stays under budget", async (_name, shape) => {
+  cpuBudgetIt.each(shapes)("benign %s stays under budget", TEST_CPU_MS, async (_name, shape) => {
     const line = padToCeiling(shape, "echo ok");
 
     const result = await withinParseBudget(run, line);

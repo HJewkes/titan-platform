@@ -191,6 +191,10 @@ instructions in the excluded human docs.
   the worker. The 3.5 s deadline leaves 1.5 s of the 5 s `timeout` in the printed settings entry
   for node start-up, the deny and the log append. The worker adds about 50 ms to every call.
   A crash of the bin's main thread still lets the call run.
+- A test that asserts thread CPU or a time ratio is written with `cpuBudgetIt`, which sets its
+  wall timeout from its CPU budget. Load on CI stretches wall time far more than CPU, so a fixed
+  timeout fails such a test before its assertion can (TP-3877). The rule and the reasoning are
+  in `packages/tool-guard/src/test-support/README.md`.
 
 ## Where it came from
 
