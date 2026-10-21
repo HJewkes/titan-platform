@@ -41,7 +41,11 @@ const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/act
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
-type FixProofRead = ({ kind: "result"; testOnlyProceed?: true } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string } | WorkflowCiRead;
+type FixProofRead =
+  | ({ kind: "result"; testOnlyProceed?: true } & Parsed)
+  | ({ kind: "untrusted"; reason: string } & Parsed)
+  | { kind: "skipped" | "missing" | "error"; reason: string }
+  | WorkflowCiRead;
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [

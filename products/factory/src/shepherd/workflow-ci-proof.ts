@@ -47,7 +47,8 @@ async function workflowOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number): P
 function citeAt(runs: readonly CheckRun[], sha: string, checks: RequiredChecks): CiCitation[] {
   return checks.contexts.map((name) => {
     const pins = checks.pins?.[name];
-    const run = latestPerName(runs.filter((candidate) => candidate.name === name && candidate.headSha === sha && (pins === undefined || (candidate.appId !== null && pins.includes(candidate.appId)))))[0];
+    const counts = (candidate: CheckRun) => pins === undefined || (candidate.appId !== null && pins.includes(candidate.appId));
+    const run = latestPerName(runs.filter((candidate) => candidate.name === name && candidate.headSha === sha && counts(candidate)))[0];
     return { name, sha, runId: run?.id ?? null, conclusion: run?.status === "completed" ? run.conclusion : null };
   });
 }
