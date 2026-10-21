@@ -61,6 +61,15 @@ describe("batching", () => {
     expect(batch.message.slice(lastHeader)).toContain(batch.canary!.id);
   });
 
+  it("shows the canary with an id and ref shaped like a real passage", () => {
+    const batch = batchFor();
+    const realIds = passages.map((p) => p.id);
+    expect(batch.message).not.toMatch(/canary/i);
+    expect(realIds).not.toContain(batch.canary!.id);
+    expect(batch.canary!.id).toMatch(/^PM\/\d+\/\d+#p\d+-\d+$/);
+    expect(batch.canary!.ref).toMatch(/^PM \d+\.\d+$/);
+  });
+
   it("splits on the token budget without splitting a passage and keeps order", () => {
     const batches = buildBatches(passages, { tokenBudget: 40, prefixSha: "x", canaries: spec.canaries });
     expect(batches.map((b) => b.passages.map((p) => p.id))).toEqual([[passages[0]!.id], [passages[1]!.id]]);

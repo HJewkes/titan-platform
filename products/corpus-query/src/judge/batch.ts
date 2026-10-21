@@ -31,6 +31,19 @@ export function batchKey(passageIds: readonly string[], prefixSha: string): stri
   return hash.digest("hex").slice(0, 16);
 }
 
+/**
+ * A shown id or ref for the canary: the last real one with each number shifted by a seeded amount,
+ * so the canary has the shape of its neighbours and the judge cannot tell it is a control.
+ */
+function lookalike(template: string, seed: string, taken: ReadonlySet<string>): string {
+  for (let salt = 0; ; salt++) {
+    const digest = createHash("sha256").update(`${seed}:${salt}`).digest();
+    let at = 0;
+    const candidate = template.replace(/\d+/g, (n) => String(Number(n) + 1 + (digest[at++ % digest.length]! % 7)));
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 /** Packs passages, already in story order, into groups under the budget without splitting one. */
 function pack(passages: readonly ShownPassage[], tokenBudget: number): ShownPassage[][] {
   const groups: ShownPassage[][] = [];
@@ -68,7 +81,13 @@ export function buildBatches(passages: readonly ShownPassage[], options: BatchOp
       options.prefixSha,
     );
     const [picked] = pickControls(options.canaries, key, 1);
-    const canary = picked && { id: `canary-${key}`, ref: "CANARY", text: picked.text, expect: picked.expect };
+    const last = group[group.length - 1]!;
+    const canary = picked && {
+      id: lookalike(last.id, key, new Set(group.map((p) => p.id))),
+      ref: lookalike(last.ref, key, new Set(group.map((p) => p.ref))),
+      text: picked.text,
+      expect: picked.expect,
+    };
     const shown = canary ? [...group, canary] : group;
     const head = options.preamble ? `${options.preamble}\n\n` : "";
     return { key, passages: group, canary, message: head + shown.map(show).join("\n\n") };
