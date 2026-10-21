@@ -4,7 +4,7 @@ layout: home
 hero:
   name: titan-platform
   text: Shared parts for agentic tools
-  tagline: Thirty-five packages in a strict acyclic DAG, and the products composed thinly on top of them.
+  tagline: <!-- generated:package-count start -->58<!-- generated:package-count end --> packages in a strict acyclic DAG, and the products composed thinly on top of them.
   actions:
     - theme: brand
       text: Get started

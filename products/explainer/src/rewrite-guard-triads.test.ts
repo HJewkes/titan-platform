@@ -187,4 +187,37 @@ describe("guardBeat on triad collapses", () => {
       expect(rulesFor(BEFORE, after)).toContain("terms");
     });
   });
+
+  describe("the number words a rewrite may add", () => {
+    it("accepts a one that a pronoun one of the original licenses", () => {
+      const before = "One of three actors speaks first, and the stage stays lit.";
+      expect(rulesFor(before, rewrite("One actor speaks first, and the stage stays lit.", ["three actors"]))).toEqual([]);
+    });
+
+    it("rejects a one when the original had no pronoun one", () => {
+      const before = "The climb has four rungs, the first, the second, the third and the last.";
+      const after = rewrite("One rung, another, a third. The climb has four rungs.", []);
+      expect(rulesFor(before, after)).toContain("number-invented");
+    });
+
+    describe("two lists of three", () => {
+      const before = "We skip the oven timer, glaze notes and crate labels. We also skip the flour bin, the sugar jar and the salt tin.";
+      const labels = ["oven timer", "glaze notes", "crate labels", "flour bin", "sugar jar", "salt tin"];
+      const said = "We skip the other six things the screen lists, and it shows each of them in turn there.";
+
+      it("accepts the other N equal to the items summed over both lists", () => {
+        expect(rulesFor(before, rewrite(said, labels))).toEqual([]);
+      });
+
+      it("rejects the same count with only five items labelled", () => {
+        expect(rulesFor(before, rewrite(said, labels.slice(0, 5)))).toContain("number-invented");
+      });
+    });
+
+    it("rejects a count of four for three carried items", () => {
+      const before = "We skip the oven timer, glaze notes and crate labels.";
+      const after = rewrite("We skip four things the screen lists.", ["oven timer", "glaze notes", "crate labels"]);
+      expect(rulesFor(before, after)).toContain("number-invented");
+    });
+  });
 });

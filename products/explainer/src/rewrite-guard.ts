@@ -55,6 +55,12 @@ const ONE_AFTER = /^\s+(?:of|that|who|which|matters|among)\b/i;
 const pronounOne = (text: string, span: TextSpan): boolean =>
   /^one$/i.test(span.text) && (ONE_BEFORE.test(text.slice(0, span.index)) || ONE_AFTER.test(text.slice(span.index + span.text.length)));
 
+/** How many pronoun "one"s a line holds: each licenses one "1" in a rewrite, as in "one of three actors" to "one actor". */
+const pronounOnesIn = (spoken: string): number => {
+  const text = spokenText([spoken]).text;
+  return numberSpans(text).filter((span) => pronounOne(text, span)).length;
+};
+
 const countSpans = (text: string): TextSpan[] => numberSpans(text).filter((span) => !pronounOne(text, span));
 
 /** The number mentions the numbers rows count in a spoken line, after markup is reduced to its words. */
@@ -212,33 +218,41 @@ function emptiedListRejections(lists: readonly NamedList[], after: BeatRewrite):
     }));
 }
 
-/** Numbers of the new line said as "N more" or "N other": the only way a count of some of a list's items may appear. */
+const OTHER_BEFORE = /\bthe\s+other\s+$/i;
+const MORE_AFTER = /^\s+(?:more|other)\b/i;
+
+/** Numbers of the new line said as "N more", "N other" or "the other N": the only way a count of some of a list's items may appear. */
 function partialCounts(spoken: string): string[] {
   const text = spokenText([spoken]).text;
   return countSpans(text)
-    .filter((span) => /^\s+(?:more|other)\b/i.test(text.slice(span.index + span.text.length)))
+    .filter((span) => MORE_AFTER.test(text.slice(span.index + span.text.length)) || OTHER_BEFORE.test(text.slice(0, span.index)))
     .map((span) => numberForm(span.text));
 }
 
+const sum = (counts: readonly number[]): number => counts.reduce((total, n) => total + n, 0);
+
 /**
  * Count words a list collapse may add: the list's full size when every item is still in the line or in a label, and
- * "N more" or "N other" when N items moved to labels.
+ * a partial count when that many items moved to labels, for one list or summed over every list in the beat.
  */
 function allowedCounts(lists: readonly NamedList[], after: BeatRewrite): string[] {
   const partial = partialCounts(after.spoken);
-  return lists.flatMap(({ items }) => {
+  const perList = lists.map(({ items }) => {
     const labelled = items.filter((item) => itemCarried(item, after));
     const moved = labelled.filter((item) => !itemInLine(item, after));
     const whole = items.every((item) => itemInLine(item, after) || itemCarried(item, after)) ? [String(items.length)] : [];
     const some = [labelled.length, moved.length].map(String).filter((n) => n !== "0" && partial.includes(n));
-    return [...new Set([...whole, ...some])];
+    return { counts: [...new Set([...whole, ...some])], labelled: labelled.length, moved: moved.length };
   });
+  const summed = [sum(perList.map((l) => l.labelled)), sum(perList.map((l) => l.moved))].map(String).filter((n) => n !== "0" && partial.includes(n));
+  return [...perList.flatMap(({ counts }) => counts), ...summed];
 }
 
 function numberRejections(before: string, after: BeatRewrite, lists: readonly NamedList[]): BeatRejection[] {
   const moved = movedNumbers(before, after);
   const lost = moved.filter((form) => !inLabel(after.labelsAdded, form));
-  const invented = surplus(surplus(formsIn(after.spoken), formsIn(before)), allowedCounts(lists, after));
+  const pronounOnes = Array<string>(pronounOnesIn(before)).fill("1");
+  const invented = surplus(surplus(formsIn(after.spoken), formsIn(before)), [...allowedCounts(lists, after), ...pronounOnes]);
   return [
     ...lost.map((form) => ({ rule: "number-lost" as const, detail: `"${form}" left the line and is not in an appended label` })),
     ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
