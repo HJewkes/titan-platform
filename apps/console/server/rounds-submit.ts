@@ -31,6 +31,7 @@ import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
+import { refuseUnrevealedSeen } from "./round-reveal.js";
 import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
 import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
@@ -38,9 +39,13 @@ import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, 
 import { readPriorFeedback } from "./prior-feedback.js";
 import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
+import { frameScope, sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
-export const MAX_FEEDBACK_BYTES = 64 * 1024;
+/**
+ * Room for a 24-frame round whose frames all hold the longest comment and pins in one-byte text; the same round in
+ * two-byte text would not fit. Every reader of feedback.json allows 1 MiB.
+ */
+export const MAX_FEEDBACK_BYTES = 256 * 1024;
 export { ADDRESSED_FILE };
 const SHA256 = /^[0-9a-f]{64}$/;
 const GIT_SHA = /^[0-9a-f]{40}$/;
@@ -224,11 +229,13 @@ const isMergeQuestion = (question: Question): question is MergeQuestion => quest
 const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
   answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
 
-/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question or the round note. */
+/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question, the round note or its own frames' words. */
 function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
   for (const question of manifest.questions.filter(isMergeQuestion)) {
     const answer = args.answers.find((each) => each.questionId === question.id);
-    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(args, question.id) : undefined;
+    const frames = frameScope(manifest, question.id);
+    const own = { ...args, variants: args.variants.filter((variant) => frames.has(variant.key)) };
+    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(own, question.id) : undefined;
     if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
   }
 }
@@ -296,6 +303,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const design = manifest.variants.length > 0 && !isShipRound(manifest);
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
+  await refuseUnrevealedSeen(roundDir, manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
   checkVariants(manifest, args.variants);
   const shipped = shippedHeads(manifest, args);

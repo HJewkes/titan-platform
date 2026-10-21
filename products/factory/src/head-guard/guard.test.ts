@@ -3,6 +3,9 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import type { Ancestry, Unavailable } from "./classify.js";
 import { advanceEpoch, headEpochMigration, readEpoch } from "./epoch-store.js";
 import { guardedHeadRead, RETRY_DELAYS_MS, type GuardDeps } from "./guard.js";
+import type { Feed } from "../test-support/a17/feed.js";
+import { a17Event } from "../test-support/a17/register.js";
+import type { RepoFact } from "../test-support/a17/repo-shapes.js";
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
@@ -48,16 +51,40 @@ const seed = (db: Db, ...heads: string[]): void => {
   heads.forEach((head, index) => advanceEpoch(db, { ...KEY, expectedEpoch: index, head, by: index === 0 ? "bootstrap" : "fast-forward", at: AT }));
 };
 
-describe.each(["webhook", "polling"])("sources=%s", () => {
-  it("a stale head read moves no epoch", async () => {
-    const { db, deps, sleeps } = harness({ reads: [SHA_A], ancestry: "behind", lsRemote: SHA_B });
-    seed(db, SHA_A, SHA_B);
+/** Heads pushed to one PR in order, each a fast-forward of the one before; GitHub's compare answers from that order. */
+function pushOrder(heads: readonly string[]): GuardDeps["ancestry"] {
+  return async (_key, base, head) => {
+    const [from, to] = [heads.indexOf(base), heads.indexOf(head)];
+    if (from === -1 || to === -1) return "diverged";
+    return to > from ? "ahead" : "behind";
+  };
+}
 
-    const result = await guardedHeadRead(deps, KEY);
+/** The guard over the feed's GitHub: `ls-remote` answers the live head, and the REST replica answers `replica()`. */
+function feedGuard(feed: Feed, heads: readonly string[], replica: () => string): GuardDeps {
+  const live = async (): Promise<string | null> => feed.head(KEY.repo, KEY.pr) ?? null;
+  return { db: feed.db, readHead: async () => replica(), ancestry: pushOrder(heads), lsRemote: live, sleep: (ms) => feed.advance(ms), now: () => new Date(feed.now()) };
+}
+
+const pushed = (head: string, action: "opened" | "synchronize"): RepoFact => ({ type: "pr", repo: KEY.repo, pr: KEY.pr, head, base: "main", action });
+
+describe("D-M1a-04 through the guard on the feed (TP-3097)", () => {
+  a17Event("a stale head read moves no epoch", async (feed) => {
+    const heads = [SHA_A, SHA_B];
+    let replica = SHA_A;
+    const guard = feedGuard(feed, heads, () => replica);
+    await feed.fact(pushed(SHA_A, "opened"));
+    await guardedHeadRead(guard, KEY);
+    await feed.fact(pushed(SHA_B, "synchronize"));
+    replica = SHA_B;
+    await guardedHeadRead(guard, KEY);
+    replica = SHA_A;
+
+    const result = await guardedHeadRead(guard, KEY);
 
     expect(result).toEqual({ outcome: "unknown" });
-    expect(readEpoch(db, KEY)).toMatchObject({ head: SHA_B, epoch: 2 });
-    expect(sleeps).toHaveLength(5);
+    expect(readEpoch(feed.db, KEY)).toMatchObject({ head: SHA_B, epoch: 2, earlierConfirmed: [SHA_A] });
+    expect(feed.read(`${KEY.repo}#${KEY.pr}`, 0).filter((row) => row.kind === "HeadPushed").map((row) => row.keys)).toMatchObject([{ value: SHA_A }, { value: SHA_B }]);
   });
 });
 

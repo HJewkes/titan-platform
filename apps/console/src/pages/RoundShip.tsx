@@ -1,21 +1,28 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Alert, Button, ButtonText, Card, CardContent, HStack, Input, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
+import { FrameFeedbackProvider } from "./FrameFeedback.js";
+import { frameDrafts } from "./frame-feedback.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment.js";
 import { InlineMarkdown } from "./RoundMarkdown.js";
 import { RoundNote } from "./RoundNote.js";
 import { QuestionFacts } from "./RoundQuestion.js";
+import { DraftDiscarded } from "./RoundDraft.js";
+import { useRecommendation, useWithSeen } from "./RoundReveal.js";
+import { useDraftBinding } from "./RoundSend.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
-import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
+import { sendBackBlocker, shipBlockerItems } from "../../server/ship-blockers.js";
+import { ShipContext } from "./ShipContext.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { Montages } from "./ShipMontages.js";
-import { ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { ShipPrsRound } from "./ShipPrs.js";
-import { ShipNotices, SideQuestion, sideMarks } from "./ShipSide.js";
+import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
+import { PrTabs, ShipTarget } from "./ShipTabs.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -40,20 +47,36 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const sideQuestions = round.manifest.questions.filter((each) => each !== question);
   const submitting = useSubmit();
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
+  const draft = useDraftBinding(round, submitting.state.status === "sent");
   // Locked, the side questions are not handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes);
+  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes, locked, undefined, draft);
   if (question === undefined) return null;
+  const pr = `${question.merge.repo}#${question.merge.pr}`;
+  const priorItems = priorFor(round.priorFeedback ?? [], pr);
+  const prior = <ShipPriorFeedback items={priorItems} pr={pr} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />;
+  const review = round.manifest.questions.map((each, index) =>
+    each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
+  );
   return (
     <VStack gap={4}>
+      <DraftDiscarded discarded={side.draftDiscarded} />
       <ShipHeading round={round} question={question} />
-      <Montages round={round} merge={question.merge} />
-      {round.manifest.questions.map((each, index) =>
-        each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
-      )}
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
-      <ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />
+      <PrTabs
+        pr={pr}
+        review={sideQuestions.length === 0 && priorItems.length === 0 ? <NothingToReview /> : <>{review}{prior}</>}
+        // Only the montages judge frames: a frame the Ship question draws above itself is one of them, shown again.
+        diff={<FrameFeedbackProvider value={side.frames}><Montages round={round} merge={question.merge} /></FrameFeedbackProvider>}
+        context={<ShipContext pr={pr} group={round.manifest.prGroups?.find((group) => group.pr === pr)} />}
+        bar={<ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />}
+      />
     </VStack>
   );
+}
+
+/** Sent, the Ship question's pick from feedback.json, so its recommendation shows the verdict. */
+function sentPick(round: ValidRound, question: MergeQuestion): { pick: string } | undefined {
+  const pick = round.notes?.answers[question.id]?.pick;
+  return pick === undefined ? undefined : { pick };
 }
 
 function ShipHeading({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
@@ -65,9 +88,9 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
           <QuestionFrames question={question} />
           <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
           {section?.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
-          <QuestionFacts question={question} />
+          <QuestionFacts question={question} answer={sentPick(round, question)} />
           <ShipLineageLine lineage={round.lineage} />
-          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
+          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation is hidden until you answer; reveal it first if you want it.</Typography> : null}
         </VStack>
       </CardContent>
     </Card>
@@ -82,20 +105,32 @@ interface ShipAnswerProps {
   submitting: ReturnType<typeof useSubmit>;
 }
 
+/** How the answers are tagged `recommendationSeen`: the side ones as answered, the Ship pick when its recommendation shows at the press. */
+interface SeenTags {
+  withSeen: (answers: SubmittedAnswers) => SubmittedAnswers;
+  shipSeen: boolean;
+}
+
+type SubmittedAnswers = ReturnType<typeof submittedAnswers>;
+
 /** The two presses' `rounds.submit` args, and why each is off: Ship by its blockers, Send back until the fixer would get a note. */
-function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string) {
+function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string, { withSeen, shipSeen }: SeenTags) {
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
   const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments, side.optionNotes);
+  const tagged = withSeen(sideAnswers);
+  const seen = shipSeen ? { recommendationSeen: true as const } : {};
   const { addressed, followUps } = sideMarks(side);
-  const shipArgs = { ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) };
-  const backArgs = { ...sent, ...followUps, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) };
+  const variants = frameDrafts(round.manifest.variants.map((variant) => variant.key), side.frames.drafts);
+  const framed = variants.length > 0 ? { variants } : {};
+  const shipArgs = { ...sent, ...addressed, ...followUps, ...framed, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: question.merge.ship[0], ...seen }]) };
+  const backArgs = { ...sent, ...followUps, ...framed, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}), ...seen }]) };
   return {
     shipArgs,
     backArgs,
     canSendBack: sendBack !== undefined,
-    blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps }),
+    blockers: shipBlockerItems(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps, variants }),
     noNote: sendBackBlocker(backArgs, question.id),
   };
 }
@@ -104,16 +139,19 @@ function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProp
 function ShipAnswer(props: ShipAnswerProps): ReactNode {
   const { round, question, side, submitting } = props;
   const { available, state, submit } = submitting;
-  const [note, setNote] = useState("");
+  const withSeen = useWithSeen();
+  const shipSeen = useRecommendation(question, undefined).visible && round.recommendationsWithheld;
   if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
-  const draft = shipDraft(props, note);
+  const note = side.backNotes[question.id] ?? "";
+  const draft = shipDraft(props, note, { withSeen, shipSeen });
   const disabled = !available || state.status === "sending";
   return (
-    <Card variant="outline">
+    <Card variant="outline" testID="ship-bar">
       <CardContent>
         <VStack gap={3}>
-          <RoundGeneral value={side.general} onChange={side.setGeneral} />
-          <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
+          <ShipTarget target={{ kind: "general" }}><RoundGeneral value={side.general} onChange={side.setGeneral} /></ShipTarget>
+          <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={(text) => side.setBackNote(question.id, text)} />
+          <ShipsAfterNote manifest={round.manifest} question={question} />
           <HStack gap={3} wrap>
             <Button color="success" isDisabled={disabled || draft.blockers.length > 0} onPress={() => void submit(draft.shipArgs)}><ButtonText>Ship</ButtonText></Button>
             <Button variant="outline" color="warning" isDisabled={disabled || draft.noNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>

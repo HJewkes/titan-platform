@@ -4,7 +4,7 @@ import { GithubConfigSchema, configPath, readConfig } from "../config.js";
 
 export const SOURCES_MODES = ["webhook", "polling"] as const;
 
-type SourcesMode = (typeof SOURCES_MODES)[number];
+export type SourcesMode = (typeof SOURCES_MODES)[number];
 
 /** `kill-switch`: the deployment chose webhook but ingress is off, so it runs as polling. */
 type SourcesReason = "configured" | "kill-switch";
@@ -22,6 +22,17 @@ interface SourcesStatus extends SourcesState {
 }
 
 export type SourcesReader = () => SourcesStatus;
+
+/** When the last pass completed, as health shows it; a pass that threw never stamps, so an ageing stamp is the stalled-reconciler signal. */
+export interface PassStamp {
+  record(at: number): void;
+  read(): string | null;
+}
+
+export function createPassStamp(): PassStamp {
+  let at: number | undefined;
+  return { record: (when) => void (at = when), read: () => (at === undefined ? null : new Date(at).toISOString()) };
+}
 
 /** Absent block means the defaults; a contradictory block throws, as it fails the config load. */
 export function resolveSources(config: { github?: z.input<typeof GithubConfigSchema> }): SourcesState {
