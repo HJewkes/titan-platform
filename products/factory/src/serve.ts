@@ -10,7 +10,7 @@ import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
-import type { SourcesReader } from "./github-sources/mode.js";
+import { resolveSources, type SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns } from "./restart-drain.js";
@@ -57,6 +57,8 @@ export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
 const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
+/** With no reader the reconciler runs as a polling deployment at the default interval, as the absent config block means. */
+const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
@@ -75,7 +77,7 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
-  /** Behind health's `sources` field: where GitHub events come from and why; absent means no field. Nothing else reads it yet. */
+  /** Behind health's `sources` field, the ingress kill switch and the reconciler's cadence; absent means no field and the polling defaults. */
   sources?: SourcesReader;
   /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
   githubApi?: () => GithubApiHealth;
@@ -166,7 +168,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const reconcilerSweep = startReconcilerSweep(options.reconciler, host.db, log, options.now);
+  const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
   sweeps.push(reconcilerSweep);
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);

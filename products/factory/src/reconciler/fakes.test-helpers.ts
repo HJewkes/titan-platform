@@ -25,12 +25,15 @@ class FakeGithub {
   readonly calls: BackstopCall[] = [];
   /** Holds every snapshot answer until released; for the non-blocking start pass. */
   hold: Promise<void> | null = null;
+  /** Replaces the main-only answer with a whole repo, as TP-3099's kind scenario reads it. */
+  snapshot: (() => BackstopSnapshot) | null = null;
 
   async send(call: BackstopCall): Promise<BackstopAnswer> {
     this.calls.push(call);
     if (this.hold) await this.hold;
     if (this.limited.has(call.kind)) return { status: 429, headers: {} };
     if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: "\"e1\"" } } };
+    if (this.snapshot) return { status: 200, headers: {}, snapshot: this.snapshot() };
     const stop = this.main.findIndex((c) => c.oid === call.request.mainCursor);
     const commits = stop >= 0 ? this.main.slice(0, stop) : this.main;
     return { status: 200, headers: {}, snapshot: snapshotOf(this.main[0]?.oid ?? "c0", commits) };
