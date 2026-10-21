@@ -39,13 +39,22 @@ export async function recordFixFirst(ctx: WorkflowContext, at: { repo: RepoSlug;
   return (await step(ctx, FIX_FIRST_STEP, { ...at, fixFirst: fixFirstCount(ctx) + 1 }, FixFirstRecord)).fixFirst;
 }
 
+/**
+ * A NO_REPRO is no reviewer's FIX_FIRST, so it spends only the fix-proof wake cap (TP-3900). A record from before that
+ * counted it as one, and its replay reads that record so the run does not diverge.
+ */
+function recordedNoReproAsFixFirst(ctx: WorkflowContext): boolean {
+  return ctx.historyNext() === FIX_FIRST_STEP;
+}
+
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
 export async function countRound(run: RoundCounts, routed: Routed): Promise<Escalated | undefined> {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (kind === "fix-first" && routed.verdict.kind === "NO_REPRO" && !recordedNoReproAsFixFirst(run.ctx)) return undefined;
   if (kind === "fix-first") {
-    run.fixFirstTrail.push(fixFirstEntry(headSha, routed.verdict.kind === "FIX_FIRST" ? routed.verdict.text : ""));
+    run.fixFirstTrail.push(routed.verdict.kind === "FIX_FIRST" ? fixFirstEntry(headSha, routed.verdict.text) : { headSha, text: "", noRepro: true });
     return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
   }
   // A held MERGE is a verdict waiting on the seat, not a failed review, and its next round starts nobody.
