@@ -29,10 +29,11 @@ const keyed = (index: number, text: string): string => (index < MAX_KEYED ? `${i
 const pickedIn = (answer: QuestionAnswer | undefined): string | undefined => (answer && "pick" in answer ? answer.pick : undefined);
 
 /**
- * Feedback@1 has no "neither" or "both" field, so neither is the built-in revision request a required pick-one
- * without its own revision option already offers, and "both" is whatever further option the round lists.
+ * A required pick-one without its own `revisionOption` offers the built-in revision request, as the server's feedback
+ * writer accepts it (G10). Feedback@1 has no "neither" or "both" field, so on an A/B neither is that request, and
+ * "both" is whatever further option the round lists.
  */
-const offersNeither = (question: Question): boolean => question.kind === "pick-one" && question.required === true && question.revisionOption === undefined;
+export const offersBuiltInRevision = (question: Question): boolean => question.kind === "pick-one" && question.required === true && question.revisionOption === undefined;
 
 /** Two options side by side, each with its frame, its pick and a note; stacked on a phone. */
 export function QuestionAB(props: QuestionABProps): ReactNode {
@@ -46,7 +47,6 @@ export function QuestionAB(props: QuestionABProps): ReactNode {
         ))}
       </div>
       <OtherAnswers {...props} revising={revising} />
-      {revising ? <Typography variant="caption" color="secondary">Neither: say what to change in the comment below; the round sends once it has one.</Typography> : null}
     </VStack>
   );
 }
@@ -100,7 +100,7 @@ function SideFrame({ side }: { side: ABSide }): ReactNode {
 function OtherAnswers({ question, sides, answer, onChoose, onNeither, revising }: QuestionABProps & { revising: boolean }): ReactNode {
   const sideOptions = new Set(sides.map((side) => side.option));
   const others = question.kind === "pick-one" ? question.options.map((option, index) => ({ option, index })).filter(({ option }) => !sideOptions.has(option)) : [];
-  if (others.length === 0 && !offersNeither(question)) return null;
+  if (others.length === 0 && !offersBuiltInRevision(question)) return null;
   return (
     <HStack gap={2} align="center" wrap>
       {others.map(({ option, index }) => (
@@ -108,7 +108,7 @@ function OtherAnswers({ question, sides, answer, onChoose, onNeither, revising }
           <ButtonText>{keyed(index, plainText(option))}</ButtonText>
         </Button>
       ))}
-      {offersNeither(question) ? (
+      {offersBuiltInRevision(question) ? (
         <Button variant={revising ? "solid" : "outline"} color="warning" size="sm" aria-pressed={revising} onPress={onNeither}>
           <ButtonText>Neither: request a revision</ButtonText>
         </Button>

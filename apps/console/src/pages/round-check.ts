@@ -1,6 +1,6 @@
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Manifest, Question } from "../../server/round-schema.js";
-import { unanswered } from "./RoundAnswers.js";
+import { asksRevision, unanswered } from "./RoundAnswers.js";
 import { orderedQuestions } from "./RoundSections.js";
 import type { PostedVariant, VERDICTS } from "./frame-feedback.js";
 import type { Pin } from "./frame-pins.js";
@@ -71,10 +71,6 @@ export function answerText(manifest: Manifest, answer: SubmittedAnswer | undefin
   return answer.text;
 }
 
-/** A revision request, built in or the round's own `revisionOption` picked, whether or not its comment is there yet. */
-const requestsRevision = (question: Question, answer: SubmittedAnswer): boolean =>
-  answer.revisionRequested === true || (question.kind === "pick-one" && question.revisionOption !== undefined && answer.pick === question.revisionOption);
-
 /**
  * What `rounds.submit` would refuse even as a partial send: a revision request with no comment saying what to change.
  * The check screen lists these and holds the send until they are fixed.
@@ -82,7 +78,7 @@ const requestsRevision = (question: Question, answer: SubmittedAnswer): boolean 
 export function sendProblems(questions: readonly Question[], submitted: readonly SubmittedAnswer[]): string[] {
   return questions.flatMap((question) => {
     const answer = submitted.find((each) => each.questionId === question.id);
-    return answer && requestsRevision(question, answer) && !answer.comment ? [`Say what to change in the comment on "${question.prompt}": a revision request needs one.`] : [];
+    return asksRevision(question, answer) && !answer?.comment ? [`Say what to change in the comment on "${question.prompt}": a revision request needs one.`] : [];
   });
 }
 
