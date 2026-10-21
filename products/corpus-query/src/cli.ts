@@ -6,6 +6,7 @@ import { openDatabase } from "@titan-design/store-sqlite";
 import { Command, CommanderError } from "commander";
 import { indexCorpus, type IndexStats } from "./index-corpus.js";
 import { LAYOUTS } from "./layout.js";
+import type { MatchTerms } from "./match.js";
 import { DEFAULT_WINDOW, readPassage, retrieve } from "./retrieve.js";
 import { QuerySpecSchema } from "./types.js";
 
@@ -26,8 +27,18 @@ export function formatStats(s: IndexStats): string {
   return `documents ${s.documents}, indexed ${s.indexed}, unchanged ${s.unchanged}, removed ${s.removed}, skipped ${s.skipped}, headerless ${s.headerless}, paragraphs ${s.paragraphs}`;
 }
 
-export async function runCli(argv: string[], write: (line: string) => void = console.log): Promise<number> {
-  const program = new Command("corpus-query").exitOverride().configureOutput({ writeOut: write, writeErr: write });
+type Write = (line: string) => void;
+
+function printHits(db: ReturnType<typeof openDatabase>, root: string, terms: MatchTerms, opts: { window: string; summary?: boolean }, write: Write): void {
+  const { passages, hitParagraphs } = retrieve(db, terms, { window: Number(opts.window) });
+  if (opts.summary) {
+    write(`hit paragraphs ${hitParagraphs}, passages ${passages.length}, chapters ${new Set(passages.map((p) => p.chapterId)).size}`);
+    return;
+  }
+  for (const p of passages) write(formatHit(p.ref, p.firstParagraph, p.lastParagraph, readPassage(db, root, p)));
+}
+
+function addIndexCommand(program: Command, write: Write): void {
   program
     .command("index <root>")
     .description("Index a text corpus into a local paragraph search index")
@@ -43,6 +54,9 @@ export async function runCli(argv: string[], write: (line: string) => void = con
         db.close();
       }
     });
+}
+
+function addHitsCommand(program: Command, write: Write): void {
   program
     .command("hits <root>")
     .description("List passages matching a spec or phrase, with no model call")
@@ -56,16 +70,17 @@ export async function runCli(argv: string[], write: (line: string) => void = con
       const terms = opts.spec === undefined ? { phrases: [opts.phrase!] } : TermsFileSchema.parse(JSON.parse(readFileSync(opts.spec, "utf8")));
       const db = openDatabase(opts.db ?? defaultIndexPath(root));
       try {
-        const { passages, hitParagraphs } = retrieve(db, terms, { window: Number(opts.window) });
-        if (opts.summary) {
-          write(`hit paragraphs ${hitParagraphs}, passages ${passages.length}, chapters ${new Set(passages.map((p) => p.chapterId)).size}`);
-          return;
-        }
-        for (const p of passages) write(formatHit(p.ref, p.firstParagraph, p.lastParagraph, readPassage(db, path.resolve(root), p)));
+        printHits(db, path.resolve(root), terms, opts, write);
       } finally {
         db.close();
       }
     });
+}
+
+export async function runCli(argv: string[], write: Write = console.log): Promise<number> {
+  const program = new Command("corpus-query").exitOverride().configureOutput({ writeOut: write, writeErr: write });
+  addIndexCommand(program, write);
+  addHitsCommand(program, write);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
