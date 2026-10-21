@@ -16,7 +16,7 @@
       "find": "  if (ci.verdict !== \"green\" || ci.headSha !== merge.headSha) return undefined;",
       "replace": "  if (ci.verdict !== \"green\") return undefined;",
       "kills": [
-        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A moved head restarts and asks again"
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A moved head restarts and asks again, never sending a merge for the head the owner approved"
       ]
     },
     {

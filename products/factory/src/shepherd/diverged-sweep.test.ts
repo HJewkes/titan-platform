@@ -256,11 +256,13 @@ describe("restartDivergedRuns on an owner answer given while the run was parked 
     expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
   });
 
-  it("A moved head restarts and asks again", async () => {
+  it("A moved head restarts and asks again, never sending a merge for the head the owner approved", async () => {
     const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
     answered.next.fake.pushHead(1, fakeSha("head-c"));
+    const merge = vi.spyOn(answered.next.routes.shepherd!.port, "merge");
 
     await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+    expect(merge).not.toHaveBeenCalled();
   });
 
   it("An abandon answer cancels the parked run and restarts it as before, merging nothing", async () => {
@@ -312,6 +314,18 @@ describe("restartDivergedRuns on an owner answer given while the run was parked 
     vi.spyOn(gates, "get").mockImplementation((id) => (id === answered.gateId ? { ...get(id)!, resolvedBy: coordinator } : get(id)));
 
     await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("restarts as before when the run already read the merge answer before it was parked", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    const run = answered.next.host.runtime.status(answered.runId)!;
+    const read = { stepId: "approve-merge", iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "merge", headSha: HEAD_B } };
+    vi.spyOn(answered.next.host.runtime, "status").mockImplementation((id) => (id === answered.runId ? { ...run, stepResults: { ...run.stepResults, "approve-merge": read } } : undefined));
+
+    const sweep = await restartDivergedRuns(ctxOf(answered.next));
+
+    expect(sweep.merged).toEqual([]);
+    expect(answered.next.fake.merges).toEqual([]);
   });
 
   it("restarts as before when the approved gate named another base", async () => {

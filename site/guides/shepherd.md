@@ -60,6 +60,8 @@ the old run still reads. The verb prints `restarted after failed run <id>` or
 `restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
 reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
 
+A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
+
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
