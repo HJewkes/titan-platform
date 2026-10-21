@@ -19,6 +19,15 @@ const options = (overrides: Partial<AskOptions> = {}): AskOptions => ({ question
 
 const host = (runnerFor: HostOptions["runnerFor"], extra: Partial<HostOptions> = {}): HostOptions => ({ dataDir: fx.dataDir, runnerFor, ...extra });
 
+function recordedSteps(runId: string): string[] {
+  const db = openDatabase(path.join(fx.dataDir, "state.sqlite3"));
+  try {
+    return Object.values(new WorkflowRunStore(db).get(runId)!.stepResults).map((r) => r.stepId);
+  } finally {
+    db.close();
+  }
+}
+
 const screenCalls = (calls: ReturnType<typeof fakeJudges>["calls"]) => calls.filter((c) => c.stage === "screen");
 
 const refuse = (ref: string): Behave => (call) => (call.stage === "screen" && call.refs.includes(ref) ? { ok: false, error: "refusal: the model declined", retryable: false } : undefined);
@@ -94,11 +103,12 @@ describe("ask", () => {
 
   it("grows the lexicon until no reported name is new, then stops before the round cap", async () => {
     fx = fixture([...WINS, ...CHAIN]);
-    const judges = fakeJudges({ names: { "Pebble Cup": ["Kestrel Shield"] } });
+    const judges = fakeJudges({ names: { "Pebble Cup": ["Kestrel Shield"], "Kestrel Shield": ["kestrel shield", "Pebble Cup"] } });
 
-    const result = await ask(options({ rounds: 2 }), host(judges.runnerFor));
+    const result = await ask(options({ rounds: 2, spec: { ...SPEC, seedLexicon: ["Pebble Cup"] } }), host(judges.runnerFor));
 
     expect(result.answer!.rounds).toBe(2);
+    expect(recordedSteps(result.runId).filter((id) => id.startsWith("retrieve:"))).toEqual(["retrieve:r0", "retrieve:r1"]);
     expect(screenCalls(judges.calls).filter((c) => c.stepId.startsWith("screen:r1")).flatMap((c) => c.refs)).toEqual(["GR 3.1"]);
     expect(judges.calls.some((c) => c.stepId.startsWith("screen:r2"))).toBe(false);
   });

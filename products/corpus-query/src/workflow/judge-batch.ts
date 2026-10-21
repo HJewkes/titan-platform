@@ -9,7 +9,7 @@ export interface StageJudge<V, T extends QuotedItem> {
   schema: ZodType<V>;
   judged: (verdict: V) => string[];
   items: (verdict: V) => T[];
-  /** The route's own model, recorded with each call's usage. */
+  /** The route's own model; recorded with usage only, because the route, not the dispatch, picks it. */
   model: string;
   redoModel: string;
 }
@@ -26,9 +26,14 @@ const BATCH_TEMPLATE = "{{BATCH}}";
 
 type Attempt<T extends QuotedItem> = { ok: true; verified: VerifiedBatch<T>; result: StepResult } | { ok: false; reason: string };
 
-async function attempt<V, T extends QuotedItem>(ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, model: string, usage: UsageEntry[]): Promise<Attempt<T>> {
+function dispatchBatch<V, T extends QuotedItem>(ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined): Promise<StepResult> {
+  return ctx.dispatch(stepId, BATCH_TEMPLATE, { schema: judge.schema as ZodType<V & Record<string, unknown>>, ...(modelOverride ? { model: modelOverride } : {}), vars: { BATCH: job.batch.message } });
+}
+
+async function attempt<V, T extends QuotedItem>(ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[]): Promise<Attempt<T>> {
+  const model = modelOverride ?? judge.model;
   try {
-    const result = await ctx.dispatch(stepId, BATCH_TEMPLATE, { schema: judge.schema as ZodType<V & Record<string, unknown>>, model, vars: { BATCH: job.batch.message } });
+    const result = await dispatchBatch(ctx, stepId, job, judge, modelOverride);
     if (result.usage) usage.push({ stepId, model, usage: result.usage });
     const verdict = result.data as V;
     return { ok: true, result, verified: verifyVerdict(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) }) };
@@ -80,9 +85,8 @@ function artifactOf<T extends QuotedItem>(job: BatchJob, judge: { stage: "screen
 /** A batch finished in an earlier drive: answer from the record through the one call that counted, never paying again. */
 function replayFinished<V, T extends QuotedItem>(ctx: WorkflowContext, itemStepId: string, job: BatchJob, judge: StageJudge<V, T>, done: BatchArtifact<T>): Promise<StepResult> {
   if (done.via === "unjudged") return ctx.seed(`${itemStepId}/unjudged`, async () => ({ data: {} }));
-  const stepId = done.via === "redo" ? `${itemStepId}/redo` : itemStepId;
-  const model = done.via === "redo" ? judge.redoModel : judge.model;
-  return ctx.dispatch(stepId, BATCH_TEMPLATE, { schema: judge.schema as ZodType<V & Record<string, unknown>>, model, vars: { BATCH: job.batch.message } });
+  if (done.via === "redo") return dispatchBatch(ctx, `${itemStepId}/redo`, job, judge, judge.redoModel);
+  return dispatchBatch(ctx, itemStepId, job, judge, undefined);
 }
 
 /**
@@ -93,7 +97,7 @@ export async function judgeBatch<V, T extends QuotedItem>(ctx: WorkflowContext, 
   const done = readJson<BatchArtifact<T>>(job.file);
   if (done) return replayFinished(ctx, itemStepId, job, judge, done);
   const usage: UsageEntry[] = [];
-  const first = await attempt(ctx, itemStepId, job, judge, judge.model, usage);
+  const first = await attempt(ctx, itemStepId, job, judge, undefined, usage);
   if (trusted(first)) return saved(job, artifactOf(job, judge, { via: "primary", usage, misses: 0, verified: first.verified }), first.result);
   const redo = await attempt(ctx, `${itemStepId}/redo`, job, judge, judge.redoModel, usage);
   if (trusted(redo)) return saved(job, artifactOf(job, judge, { via: "redo", usage, misses: canaryMisses(first), verified: redo.verified }), { ...redo.result, usage: summedUsage(usage) });
