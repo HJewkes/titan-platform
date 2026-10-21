@@ -67,8 +67,7 @@ describe("the autoresearch page", () => {
 
     const quota = await screen.findByTestId("autoresearch-quota-bold");
 
-    expect(within(quota).getByText("[EXEMPT]")).toBeTruthy();
-    expect(within(quota).getByText("The requeued bold idea still stands in the pool")).toBeTruthy();
+    expect(within(quota).getByText("[EXEMPT] The requeued bold idea still stands in the pool")).toBeTruthy();
   });
 
   it("labels a superseded winner as requeued in its round's decisions", async () => {

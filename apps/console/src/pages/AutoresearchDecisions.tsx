@@ -27,6 +27,9 @@ const VERDICT_TONE: Record<ArOutcome["verdict"], PillTone> = { kept: "success", 
 
 const SECONDS_PER_MINUTE = 60;
 
+/** Below this the decisions scroll sideways rather than squeeze their ten columns into overlap. */
+const DECISIONS_MIN_WIDTH = 1040;
+
 /** Design §1.4: decisions grouped by round, the newest open and the earlier ones collapsed. */
 export function AutoresearchDecisions({ run }: { run: ArRunView }): ReactNode {
   const newestFirst = [...run.rounds].reverse();
@@ -60,7 +63,7 @@ function RoundDecisions({ run, round }: { run: ArRunView; round: ArRound }): Rea
   const rows = decided(round);
   if (rows.length === 0) return <EmptyState title="No idea has reached a decision this round" />;
   return (
-    <Table density="dense">
+    <Table density="dense" contentMinWidth={DECISIONS_MIN_WIDTH}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Idea</TableHeaderCell>

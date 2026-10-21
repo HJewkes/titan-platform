@@ -18,15 +18,17 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
-  Typography,
 } from "@titan-design/react-ui";
 import type { ArIdea, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { shortId } from "./autoresearch-format.js";
 
+/** Below this the backlog scrolls sideways rather than squeeze its eight columns into overlap. */
+const BACKLOG_MIN_WIDTH = 880;
+
 interface Quota {
   tone: PillTone;
   text: string;
-  /** The planner's own words, which can run long, so they wrap as text beside the pill. */
+  /** The planner's own words, which can run long: DataRow wraps a string value but not a node, so this shows as text. */
   reason?: string;
 }
 
@@ -40,9 +42,9 @@ export function AutoresearchBacklog({ run }: { run: ArRunView }): ReactNode {
     <Section testID="autoresearch-backlog">
       <SectionHeader title="Backlog" subtitle={`Round ${round.round}: ${queued.length} queued after the picks`} />
       <SectionContent>
-        <DataRow label="Pool" value={<QuotaPill quota={poolQuota(round, run.settings.minPool)} />} />
-        <DataRow label="Bold quota" value={<QuotaPill quota={boldQuota(round)} />} testID="autoresearch-quota-bold" />
-        <DataRow label="Follow-up quota" value={<QuotaPill quota={followupQuota(round, previous)} />} />
+        <DataRow label="Pool" value={quotaValue(poolQuota(round, run.settings.minPool))} />
+        <DataRow label="Bold quota" value={quotaValue(boldQuota(round))} testID="autoresearch-quota-bold" />
+        <DataRow label="Follow-up quota" value={quotaValue(followupQuota(round, previous))} />
         <RejectedAdds round={round} />
         {queued.length === 0 ? <EmptyState title="Every queued idea was picked this round" /> : <BacklogTable round={round} ideas={queued} />}
       </SectionContent>
@@ -50,14 +52,12 @@ export function AutoresearchBacklog({ run }: { run: ArRunView }): ReactNode {
   );
 }
 
-function QuotaPill({ quota }: { quota: Quota }): ReactNode {
+function quotaValue(quota: Quota): ReactNode {
+  if (quota.reason !== undefined) return `${quota.text} ${quota.reason}`;
   return (
-    <HStack gap={2} align="center" justify="end" wrap>
-      <Pill variant="subtle" size="xs" tone={quota.tone}>
-        {quota.text}
-      </Pill>
-      {quota.reason === undefined ? null : <Typography variant="caption">{quota.reason}</Typography>}
-    </HStack>
+    <Pill variant="subtle" size="xs" tone={quota.tone}>
+      {quota.text}
+    </Pill>
   );
 }
 
@@ -106,7 +106,7 @@ function RejectedAdds({ round }: { round: ArRound }): ReactNode {
 
 function BacklogTable({ round, ideas }: { round: ArRound; ideas: readonly ArIdea[] }): ReactNode {
   return (
-    <Table density="dense">
+    <Table density="dense" contentMinWidth={BACKLOG_MIN_WIDTH}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Priority</TableHeaderCell>
