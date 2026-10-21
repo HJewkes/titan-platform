@@ -6,6 +6,7 @@ import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source, sentRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
+import type { Question } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
@@ -642,5 +643,89 @@ describe("a design round's frame pins on an element map (TP-3773 S5)", () => {
 
     expect(screen.getByText("Pin 1 · coordinates only")).toBeTruthy();
     expect(rendered.calls.some((call) => call.name === "rounds.frameTargets")).toBe(false);
+  });
+});
+
+/** The fill pick with each option picking a states frame; three of them, so it is no A/B and the frames stay on the states strip. */
+async function withLinkedPick(kind: "pick-one" | "pick-many" = "pick-one"): Promise<Partial<RoundDetail>> {
+  const { manifest } = await designRound();
+  const linked = { options: ["Filled", "Ring", "Halo"], optionVariants: { Filled: "beacon-idle", Ring: "beacon-busy", Halo: "beacon-error" } };
+  const relink = (each: Question): Question => {
+    if (each.id !== "beacon-fill-pick" || each.kind !== "pick-one") return each;
+    return kind === "pick-one" ? { ...each, ...linked } : { id: each.id, prompt: each.prompt, kind, ...linked };
+  };
+  return { manifest: { ...manifest, questions: manifest.questions.map(relink) } };
+}
+
+/** The fill pick as an A/B whose sides pick Idle and Busy, drawn in its columns. */
+async function withABPick(): Promise<Partial<RoundDetail>> {
+  const { manifest } = await designRound();
+  const ab = { optionVariants: { Filled: "beacon-idle", Ring: "beacon-busy" } };
+  return { manifest: { ...manifest, questions: manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, ...ab } : each)) } };
+}
+
+const checkedOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest("[aria-checked]")?.getAttribute("aria-checked");
+
+describe("a design round's picks and frame verdicts, kept in step (TP-3773 S7)", () => {
+  it("marks the frame an option picks Chosen, and un-chooses the frame of the pick it replaced", async () => {
+    await renderDesign({ detail: await withLinkedPick() });
+    await toSection("fill");
+
+    fireEvent.keyDown(window, { key: "2" });
+    fireEvent.keyDown(window, { key: "1" });
+    await toSection("states");
+
+    expect(pressedVerdicts("beacon-idle")).toEqual(["Chosen"]);
+    expect(pressedVerdicts("beacon-busy")).toEqual([]);
+  });
+
+  it("clears the pick when its frame stops being Chosen", async () => {
+    await renderDesign({ detail: await withLinkedPick() });
+    await toSection("fill");
+    fireEvent.keyDown(window, { key: "2" });
+    await toSection("states");
+
+    fireEvent.click(verdictButton("beacon-busy", "Chosen"));
+    await toSection("fill");
+
+    expect(pickOf("Ring")).toBe("false");
+  });
+
+  it("picks the option of a frame chosen on the strip, which un-chooses the frame picked before", async () => {
+    const rendered = await renderDesign({ detail: await withLinkedPick() });
+
+    fireEvent.click(verdictButton("beacon-busy", "Chosen"));
+    fireEvent.click(verdictButton("beacon-idle", "Chosen"));
+
+    expect(pressedVerdicts("beacon-busy")).toEqual([]);
+    await toSection("fill");
+    expect(pickOf("Filled")).toBe("true");
+    await toSection("sketch");
+    expect(await send(rendered)).toMatchObject({ answers: [{ questionId: "beacon-fill-pick", pick: "Filled" }], variants: [{ key: "beacon-idle", verdict: "chosen" }] });
+  });
+
+  it("adds a chosen frame's option to a pick-many's picks without replacing them", async () => {
+    await renderDesign({ detail: await withLinkedPick("pick-many") });
+    await toSection("fill");
+    fireEvent.keyDown(window, { key: "1" });
+    await toSection("states");
+
+    fireEvent.click(verdictButton("beacon-error", "Chosen"));
+
+    expect(pressedVerdicts("beacon-idle")).toEqual(["Chosen"]);
+    await toSection("fill");
+    expect([checkedOf("Filled"), checkedOf("Ring"), checkedOf("Halo")]).toEqual(["true", "false", "true"]);
+  });
+
+  it("gives each A/B side's frame a verdict that its pick sets", async () => {
+    await renderDesign({ detail: await withABPick() });
+    await toSection("fill");
+
+    fireEvent.keyDown(window, { key: "1" });
+    expect(pressedVerdicts("beacon-idle")).toEqual(["Chosen"]);
+    fireEvent.click(verdictButton("beacon-busy", "Chosen"));
+
+    expect(pressedVerdicts("beacon-idle")).toEqual([]);
+    expect(within(screen.getByTestId("question-ab-side-beacon-fill-pick-B")).getByRole("button", { name: "Picked B" })).toBeTruthy();
   });
 });
