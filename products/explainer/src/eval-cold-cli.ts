@@ -76,7 +76,8 @@ function report(p: Prepared, run: number, r: ColdResult): void {
   const perMinute = (rate: (c: ColdResult["chapters"][number]) => number) => Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(rate(c).toFixed(2))]));
   const failedCanaries = r.chapters.flatMap((c) => c.canaries).filter((k) => !k.pass).map((k) => `${k.canary}=${k.got}`);
   const gaps = p.readerGaps ? { reader_gaps: readerGapScores(p.readerGaps, r) } : {};
-  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute((c) => c.undefined_per_minute), undefined_terms_per_minute: perMinute((c) => c.undefined_terms_per_minute), failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
+  const rates = { undefined_per_minute: perMinute((c) => c.undefined_per_minute), undefined_terms_per_minute: perMinute((c) => c.undefined_terms_per_minute) };
+  const verdict = { trusted: r.trusted, ...rates, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
