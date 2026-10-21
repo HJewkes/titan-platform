@@ -758,6 +758,25 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
+## GitHub event sources config
+
+The top-level `github` block in the config file picks where GitHub events come from. Every key is optional. Polling is a
+permanent, supported configuration, not a fallback.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `github.sources` | `"polling"`, `"webhook"` | `"polling"` |
+| `github.ingress` | `"on"`, `"off"` (the kill switch, applied with no restart) | `"off"` |
+| `github.pollingIntervalMs` | 30000 to 600000, not above `backstopIntervalMs` | 60000 |
+| `github.backstopIntervalMs` | 300000 to 600000 | 300000 |
+
+Health's `sources` field shows `configured`, `effective`, `reason`, `intervalMs` and `lastPassAt`. The effective-mode table and
+the rest are in the [factory guide](https://github.com/HJewkes/titan-platform/blob/main/site/guides/factory.md#github-event-sources).
+
 ## Shepherd reviewer config
 
 Two keys under `shepherd` in the config file turn the review phase on. Both are optional.
