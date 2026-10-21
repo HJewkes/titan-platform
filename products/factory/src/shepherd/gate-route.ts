@@ -203,9 +203,10 @@ export function unhandledSendBack(run: GateRun, kind: string, headSha: string, o
         const { prompt, situation } = ownerSentBackPrompt(run.target, headSha, ownerNote, unsent);
         return sentBackGate(run, headSha, prompt, "a human abandoned the PR after the owner sent it back", situation);
       }
-      const what = noRepro ? `${NO_REPRO_WORDS} at PR #${run.target.pr} in ${run.target.repo} at head ${headSha}` : `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}`;
+      const where = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha}`;
+      const what = noRepro ? `${NO_REPRO_WORDS} at ${where}` : `The review of ${where} said ${kind}`;
       const prompt = `${what}, and no agent took the wake${unsent}. Await a new head or abandon?`;
-      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, kind === "NO_REPRO");
+      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, noRepro);
     },
   );
 }

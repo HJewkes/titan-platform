@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowDefinition } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { autoPassStepId } from "./auto-pass.js";
@@ -27,7 +28,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "synthetic-transcript" } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>();
 const D8_STEP = /^sh-auto-pass:D8-convergence-review/;
 
 type Answer = "NO_REPRO" | "FIX_FIRST" | "MERGE";
@@ -153,9 +154,11 @@ describe("a run recorded before TP-3900, which counted a NO_REPRO as a FIX_FIRST
     const second = openHost(fake, store, shepherdPrWorkflow(unhandled), dbPath);
     await second.adopt();
 
-    await vi.waitFor(() => expect(pendingOf(second, runId).length > 0 || second.runtime.status(runId)?.status === "recovery_required").toBe(true), { timeout: 5_000 });
-    expect(second.runtime.status(runId)?.status).not.toBe("recovery_required");
-    expect(pendingOf(second, runId).map((gate) => gate.stepId)).toEqual(["sh-sent-back"]);
+    await vi.waitFor(() => expect(pendingOf(second, runId).map((gate) => gate.stepId)).toEqual(["sh-sent-back"]), { timeout: 5_000 });
+    second.runtime.signal(runId, "sh-sent-back", { decision: "abandon" }, OWNER);
+
+    await vi.waitFor(() => expect(["completed", "failed", "recovery_required"]).toContain(second.runtime.status(runId)?.status), { timeout: 5_000 });
+    expect(second.runtime.status(runId)?.status).toBe("completed");
   });
 });
 
@@ -163,8 +166,11 @@ describe("D8's convergence review entry (TP-3900)", () => {
   const H2 = fakeSha("tp3900-h2");
   const recorded: string[] = [];
   const run = (overrides: Partial<FixFirstDemotionRun> = {}, next?: string): FixFirstDemotionRun => {
-    const dispatch = async (stepId: string) => (recorded.push(stepId), { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { result: {} } });
-    const ctx = partialFake<WorkflowContext>({ runId: "run-1", historyNext: () => next, dispatch: dispatch as unknown as WorkflowContext["dispatch"] });
+    const passed = { rule: "D8/convergence-review", headSha: H2, detail: "", evidence: [], commentId: null };
+    const dispatch: WorkflowContext["dispatch"] = async (stepId, _template, options) => (
+      recorded.push(stepId), { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", ...(options?.schema && { data: options.schema.parse({ result: passed }) }) }
+    );
+    const ctx = partialFake<WorkflowContext>({ runId: "run-1", historyNext: () => next, dispatch });
     return { ...{ ctx, target: { repo: REPO, pr: 1 }, state: { waits: 0 } }, ...{ reviews: new Map(), fresh: new Set<string>(), fixFirstTrail: [] }, ...overrides };
   };
   const runaway = { escalation: "fix-first-runaway", detail: "the last at h" } as const;
