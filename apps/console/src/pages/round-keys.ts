@@ -9,7 +9,7 @@ export interface RoundKey {
 }
 
 export const ROUND_KEY_GROUPS = ["Questions", "Sections and rounds", "Frames", "Sending", "Help"] as const;
-export type RoundKeyGroup = (typeof ROUND_KEY_GROUPS)[number];
+type RoundKeyGroup = (typeof ROUND_KEY_GROUPS)[number];
 
 /**
  * Every key a round page binds, in legend order. Each handler matches its key from here and the legend lists this

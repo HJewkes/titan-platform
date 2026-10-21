@@ -32,7 +32,7 @@ export function useAdvanceKey(advance: (() => void) | undefined): void {
 }
 
 /** The open question after `from` in round order, wrapping round to the first open one. */
-export function nextOpen(all: readonly Question[], open: readonly Question[], from: string | undefined): Question | undefined {
+function nextOpen(all: readonly Question[], open: readonly Question[], from: string | undefined): Question | undefined {
   const at = all.findIndex((question) => question.id === from);
   return open.find((question) => all.indexOf(question) > at) ?? open[0];
 }
