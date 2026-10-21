@@ -10,6 +10,8 @@ import type { PngWidths } from "./frame-pins.js";
 import { RoundFramesProvider, RoundVariantFrame, anchoredKeys, useFrameMedia } from "./QuestionFrames.js";
 import { DraftDiscarded, type DraftBinding } from "./RoundDraft.js";
 import { FrameImage } from "./RoundFrame.js";
+import { SequenceFigure } from "./FrameSequence.js";
+import { groupProgressStills, type StillSequence } from "./progress-stills-heuristic.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { PagedSections } from "./RoundPager.js";
 import { ROUND_KEYS } from "./round-keys.js";
@@ -100,7 +102,8 @@ function declaredWidths({ id, manifest }: ValidRound, listed: FramesList): Map<s
 /** Each section's strip. */
 function useStrips(round: ValidRound, indexed: ReadonlySet<string>) {
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
-  const strip = { roundId: round.id, indexed, labels };
+  const images = new Set(round.manifest.variants.filter((variant) => variant.image !== undefined).map((variant) => variant.key));
+  const strip = { roundId: round.id, indexed, labels, images };
   const anchored = useMemo(() => anchoredKeys(round.manifest), [round.manifest]);
   return {
     labels,
@@ -112,6 +115,8 @@ interface StripProps {
   roundId: string;
   indexed: ReadonlySet<string>;
   labels: ReadonlyMap<string, string>;
+  /** Image variants' keys, the only ones a motion's stills are guessed from. */
+  images: ReadonlySet<string>;
 }
 
 /** A section's strip leaves out the frames a question draws above itself. */
@@ -154,12 +159,15 @@ const STRIP_GRID = {
   thumb: "grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-6",
 } as const;
 
-/** One figure per key, labelled from its variant; a key frames.json does not list is named and never fetched. */
-function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { keys: readonly string[]; size: keyof typeof STRIP_GRID }): ReactNode {
+/** One figure per key, labelled from its variant; a key frames.json does not list is named and never fetched. A strip draws a motion's stills as one viewer. */
+function FrameStrip({ keys, size, roundId, indexed, labels, images }: StripProps & { keys: readonly string[]; size: keyof typeof STRIP_GRID }): ReactNode {
   const media = useFrameMedia();
+  const items = size === "strip" ? groupProgressStills(keys, (key) => images.has(key)) : keys.map((key) => ({ kind: "frame" as const, key }));
   return (
     <div className={STRIP_GRID[size]}>
-      {keys.map((key) => {
+      {items.map((item) => {
+        if (item.kind === "sequence") return <StripSequence key={item.sequence.base} sequence={item.sequence} indexed={indexed} labels={labels} />;
+        const { key } = item;
         const label = labels.get(key) ?? key;
         const body = (
           <>
@@ -178,5 +186,20 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         return <FrameFigure key={key} frameKey={key} label={label} pinnable={pinnableFrame(indexed.has(key), media(key))} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
+  );
+}
+
+/** A motion's stills in a strip, one viewer judged as each still it shows. */
+function StripSequence({ sequence, indexed, labels }: Pick<StripProps, "indexed" | "labels"> & { sequence: StillSequence }): ReactNode {
+  const media = useFrameMedia();
+  return (
+    <SequenceFigure
+      sequence={sequence}
+      labels={labels}
+      pinnable={(key) => pinnableFrame(indexed.has(key), media(key))}
+      header={(label) => <Typography variant="subtitle2">{label}</Typography>}
+      renderStep={(key, label) => <RoundVariantFrame frameKey={key} alt={label} loadable={indexed.has(key)} missing="Not in frames.json" />}
+      testID={`design-sequence-${sequence.base}`}
+    />
   );
 }
