@@ -333,7 +333,8 @@ async function restartAndConfirm({ ports, io, options }: Deploy, target: string)
     const warning = writeWindowRecord(ports, options.stateDir, intent);
     if (warning !== undefined) io.stderr(warning);
   };
-  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record }, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+  const report = (line: string): void => io.stdout(`${line}\n`);
+  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record, report }, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
 }
 
 /** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */

@@ -190,6 +190,40 @@ describe("watchServe run errors after a restart", () => {
     expect(await watch([answer([]), closedPr(["merged-pr", "open-pr"], ["merged-pr"])], drained([])).why).toContain("1 more run(s) failed or need recovery");
   });
 
+  describe("when the new build changed a workflow's step shape (TP-3889)", () => {
+    const superseded = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"];
+    const closed = ["c1", "c2", "c3", "c4"];
+    const diverged = (parked: readonly string[], restarted: readonly string[], failed = 225) => ({
+      ...answer(parked, failed),
+      recoveryReplayDiverged: [...parked],
+      divergedRestarts: restarted.map((runId) => ({ runId, newRunId: `${runId}-next` })),
+    });
+    /** Every run parks as diverged on adoption; by the window's end the sweep has restarted six and the rest still wait for it. */
+    const incident = (failed = 225) => [answer([]), diverged([...superseded, ...closed], []), diverged(["s7", "s8", ...closed], superseded.slice(0, 6), failed)];
+
+    it("keeps the new build when 8 runs are superseded and 4 end on closed PRs, none failed, and reports them", async () => {
+      const machine = answering(incident());
+      const reported: string[] = [];
+
+      const why = await watchServe({ ...machine.ports, report: (line) => void reported.push(line) }, { confirmed: answer([]), atRestart: drained([]) }, TARGET, DEFAULT_WATCH_WINDOW);
+
+      expect(why).toBeUndefined();
+      expect(reported).toEqual([
+        "replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next, s2 -> s2-next, s3 -> s3-next, s4 -> s4-next, s5 -> s5-next, s6 -> s6-next); 6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)",
+      ]);
+    });
+
+    it("still rolls back when a run fails under the new build among the diverged ones", async () => {
+      expect(await watch(incident(226), drained([])).why).toContain("1 more run(s) failed or need recovery during the 120 s watch");
+    });
+
+    it("still counts a run parked for another reason beside the diverged ones", async () => {
+      const end = { ...diverged(["s7", "s8"], []), recoveryRequired: ["s7", "s8", "idle"], runs: { failed: 225, recovery_required: 3 } };
+
+      expect(await watch([answer([]), end], drained([])).why).toContain("1 more run(s) failed or need recovery");
+    });
+  });
+
   it("judges against the confirmed answer when the drain read no answer before the restart", async () => {
     expect(await watch([answer(["p1"]), answer(["p1", "p2"])], null).why).toContain("1 more run(s)");
   });

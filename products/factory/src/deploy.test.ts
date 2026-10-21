@@ -62,6 +62,8 @@ interface MachineInit {
   busy?: { runId: string; step: string; phase: string }[];
   /** After a kickstart onto a new build, `healthWithin` probes `from` to `to` (1-based, inclusive) list these runs as recovery_required. */
   parks?: { ids: string[]; from: number; to: number };
+  /** The parked runs strict replay parked as diverged, and the runs the diverged sweep restarted, each listed with a `<id>-next` successor. */
+  diverged?: { parked: string[]; restarted: string[] };
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -118,6 +120,13 @@ function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<Machin
   const ids = probe >= parks.from && probe <= parks.to ? parks.ids : [];
   const runs = typeof answer.runs === "object" && answer.runs !== null ? answer.runs : {};
   return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
+}
+
+function divergedAnswer(answer: Record<string, unknown>, diverged: MachineInit["diverged"]): Record<string, unknown> {
+  if (diverged === undefined) return answer;
+  const listed = Array.isArray(answer.recoveryRequired) ? answer.recoveryRequired : [];
+  const parked = diverged.parked.filter((id) => listed.includes(id));
+  return { ...answer, recoveryReplayDiverged: parked, divergedRestarts: diverged.restarted.map((runId) => ({ runId, newRunId: `${runId}-next` })) };
 }
 
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
@@ -203,7 +212,7 @@ function fakeMachine(init: MachineInit = {}) {
       if (!answer || !replaced()) return answer;
       if (init.misreports) return { ...answer, build: { sha: init.misreports } };
       const failing = init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
-      return init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing;
+      return divergedAnswer(init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing, init.diverged);
     },
     incident: async (incident) => void incidents.push(incident),
     mkdir: () => undefined,
@@ -753,6 +762,34 @@ describe("service deploy rollback pause", () => {
       const { code } = await deploy(machine);
 
       expect(code).toBe(1);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+  });
+
+  describe("after a deploy that changed a workflow's step shape, as on 2026-10-21 (TP-3889)", () => {
+    const parked = ["s7", "s8", "c1", "c2", "c3", "c4"];
+    const diverged = { parked, restarted: ["s1", "s2", "s3", "s4", "s5", "s6"] };
+
+    it("stays up when 8 runs are superseded and 4 end on closed PRs with none failed, and reports them", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged });
+
+      const { code, out } = await deploy(machine);
+
+      expect(code).toBe(0);
+      expect(machine.serving()).toBe(TIP);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+      expect(machine.pause()).toEqual({ paused: false });
+      expect(out).toContain("replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next");
+      expect(out).toContain("6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)");
+    });
+
+    it("still rolls back when a run fails under the new build", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged, failsRunAfter: 3 });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.serving()).toBe(BASE);
       expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
     });
   });
