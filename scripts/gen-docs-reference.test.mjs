@@ -38,6 +38,8 @@ describe("collect", () => {
 });
 
 const MARKERS = {
+  "README.md": "<!-- generated:package-count start -->99<!-- generated:package-count end --> reusable packages.\n",
+  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages.\n",
   "site/guides/architecture.md": "<!-- generated:arch-graph start --><!-- generated:arch-graph end -->\n\n<!-- generated:arch-leaves start --><!-- generated:arch-leaves end -->\n\n<!-- generated:arch-products start --><!-- generated:arch-products end -->\n\nComposes <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
   "site/guides/index.md": "Case study: <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
 };
@@ -101,6 +103,18 @@ describe("architecture page generation", () => {
     expect(page(root, "site/guides/index.md")).toContain("start -->two<!--");
   });
 
+  it("counts only the publishable packages under packages/ on the README and the landing page", () => {
+    const root = workspaceWithNewUnit();
+    writeManifest(root, "packages/hidden", JSON.stringify({ name: "@titan-design/hidden", private: true }));
+    writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [{ type: "layered-deps", $tiers: {
+      0: ["packages/alpha", "packages/hidden"], 1: ["packages/fresh-unit"], product: ["products/session-miner"],
+    } }] }));
+
+    const counts = ["README.md", "site/index.md"].map((path) => page(root, path).match(/start -->(\w+)<!--/)[1]);
+
+    expect(counts).toEqual(["2", "2"]);
+  });
+
   it("reports a package that has no family on the families page", () => {
     const root = workspaceWithNewUnit();
     for (const { path, content } of outputs(root)) writeFileSync(join(root, path), content);
@@ -121,7 +135,7 @@ describe("architecture page generation", () => {
     writeFileSync(join(root, "site/reference/beta.md"), "");
     writeFileSync(join(root, "site/guides/package-families.md"), "`alpha`, `beta` and `fresh-unit`");
 
-    expect(problems(root)).toEqual([expect.stringMatching(/out of date: .*site\/reference\/index\.md, site\/guides\/architecture\.md\./)]);
+    expect(problems(root)).toEqual([expect.stringMatching(/out of date: .*site\/reference\/index\.md, README\.md, site\/index\.md, site\/guides\/architecture\.md\./)]);
   });
 
   it("fails naming the page when its generated markers are gone", () => {
