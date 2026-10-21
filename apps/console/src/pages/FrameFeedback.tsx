@@ -5,13 +5,11 @@ import { EMPTY_DRAFT, VERDICTS, draftsFromSent, toggledVerdict, verdictForKey, t
 import type { VerdictChange } from "./frame-link.js";
 import { nextPinId, pinNumber, type Pin, type PngWidths } from "./frame-pins.js";
 import { FramePinsProvider, PinList, useCoarsePointer, type DrawnPin, type FramePins } from "./FramePins.js";
+import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
 
 /** What the round's keys act on: digits answer a question, letters judge a frame, never the other way round. */
 export type ActiveTarget = { kind: "question"; id: string } | { kind: "frame"; key: string; pinning?: true };
-
-/** The harness's annotate key: it toggles the active frame's pin mode. */
-const PIN_KEY = "a";
 
 interface FrameKeyActions {
   verdict: (key: string, verdict: Verdict | null) => void;
@@ -28,9 +26,9 @@ function useFrameKeys(active: ActiveTarget | undefined, actions: FrameKeyActions
     if (active?.kind !== "frame") return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.key === "Escape") return actions.leavePins();
+      if (pressed(ROUND_KEYS.leavePins, event)) return actions.leavePins();
       if (typedInto(event.target)) return;
-      if (event.key === PIN_KEY) {
+      if (pressed(ROUND_KEYS.pins, event)) {
         event.preventDefault();
         return actions.togglePins(active.key);
       }

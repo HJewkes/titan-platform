@@ -12,6 +12,7 @@ import { DraftDiscarded, type DraftBinding } from "./RoundDraft.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { PagedSections } from "./RoundPager.js";
+import { ROUND_KEYS } from "./round-keys.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -39,7 +40,7 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 }
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
-  const { submitting, check, checking, locked, frozen, draft } = useRoundSend(round);
+  const { submitting, check, checking, locked, frozen, draft, review } = useRoundSend(round);
   const state = useDesignAnswers(round, frozen, draft);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const { labels, ...strips } = useStrips(round, indexed);
@@ -58,6 +59,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
             {...strips}
             check={check}
             checking={checking}
+            review={review}
             send={<RoundSend round={round} state={state} submitting={submitting} check={check} variants={variants} />}
           />
         </VStack>
@@ -71,7 +73,7 @@ function DesignNotes({ discarded, withheld }: { discarded: boolean; withheld: bo
     <>
       <DraftDiscarded discarded={discarded} />
       <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
-      {withheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
+      {withheld ? <Typography variant="caption" color="secondary">{`Recommendations are hidden until you answer; reveal one first with ${ROUND_KEYS.reveal.label}.`}</Typography> : null}
     </>
   );
 }
