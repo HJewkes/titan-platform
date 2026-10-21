@@ -54,22 +54,27 @@ class NearObserver {
   disconnect(): void {}
 }
 
-let staged: StagedRound;
-beforeEach(async () => {
-  vi.stubGlobal("IntersectionObserver", NearObserver);
-  staged = await stagedRound("beacon-states-r1", ROUND, manifest);
-  const dir = path.join(staged.source.dir, ROUND);
-  await mkdir(path.join(dir, "frames"), { recursive: true });
-  await writeFile(path.join(dir, "frames", "frames.json"), JSON.stringify(await framesIndex(dir)));
-});
+let staged: StagedRound | undefined;
+beforeEach(() => vi.stubGlobal("IntersectionObserver", NearObserver));
 afterEach(async () => {
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
-  await staged.remove();
+  await staged?.remove();
+  staged = undefined;
 });
 
-async function renderRound(): Promise<{ name: string; args: unknown }[]> {
+/** A temp rounds dir holding `round` over the beacon fixture's PNGs, with a frames.json listing every still. */
+async function stage(round: unknown): Promise<StagedRound> {
+  const made = await stagedRound("beacon-states-r1", ROUND, round);
+  const dir = path.join(made.source.dir, ROUND);
+  await mkdir(path.join(dir, "frames"), { recursive: true });
+  await writeFile(path.join(dir, "frames", "frames.json"), JSON.stringify(await framesIndex(dir)));
+  return made;
+}
+
+async function renderRound(round: unknown = manifest): Promise<{ name: string; args: unknown }[]> {
+  staged = await stage(round);
   const { source } = staged;
   const frames = await Promise.all(STILLS.map(async ([key]) => [snapshotKey("rounds.frame", { id: ROUND, key, view: "head" }), successEnvelope(await getFrame(source, ROUND, key, "head"))] as const));
   const calls = {
@@ -120,5 +125,16 @@ describe("a design round with a motion's progress stills", () => {
     await act(async () => screen.findByText("Answers sent"));
     expect(calls.find((call) => call.name === "rounds.submit")?.args).toMatchObject({ variants: [{ key: "count-p0_5", verdict: "chosen" }] });
   });
-});
 
+  it("draws a question's own stills above it as one viewer, its frame links landing on that viewer", async () => {
+    const reel = STILLS.filter(([key]) => key.startsWith("reel")).map(([key]) => key);
+    await renderRound({ ...manifest, questions: [{ ...manifest.questions[0], frames: reel }] });
+
+    const above = screen.getByTestId("question-frames-motion-notes");
+    expect(within(above).getByTestId("frame-sequence-reel")).toBeTruthy();
+    expect(screen.getAllByTestId(/^frame-sequence-/).map((each) => each.dataset.testid)).toEqual(["frame-sequence-count", "frame-sequence-reel"]);
+    for (const key of reel) {
+      expect(screen.getByRole("link", { name: labelOf(key) }).getAttribute("href")).toBe("#question-motion-notes-frame-reel-p0");
+    }
+  });
+});
