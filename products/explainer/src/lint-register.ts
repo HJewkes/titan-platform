@@ -61,6 +61,16 @@ export const numberSpans = (text: string): TextSpan[] => spans(NUM_RUN, text);
 
 /** The lists of three the `triads` row counts, in order. */
 export const triadSpans = (text: string): TextSpan[] => spans(TRIAD, text);
+
+const DEVICE_PATTERNS = { "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TAIL, semicolons: SEMICOLON, lets: LETS } as const;
+
+/** The style devices a rewrite must not add, each a register row that caps near zero. */
+export type DeviceMetric = keyof typeof DEVICE_PATTERNS;
+
+export const DEVICE_METRICS = Object.keys(DEVICE_PATTERNS) as readonly DeviceMetric[];
+
+/** The matches of one device row, in order; their count is the row's count for the same text. */
+export const deviceSpans = (metric: DeviceMetric, text: string): TextSpan[] => spans(DEVICE_PATTERNS[metric], text);
 const per1k = (pattern: RegExp) => (s: SpokenText): number => (1000 * count(pattern, s.text)) / Math.max(s.words.length, 1);
 const punctuatedOnly = (measure: (s: SpokenText) => number | undefined) => (s: SpokenText): number | undefined =>
   s.punctuated ? measure(s) : undefined;
