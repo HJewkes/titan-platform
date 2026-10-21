@@ -1,6 +1,7 @@
 import type { L0Result } from "./eval-l0.js";
 import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
+import type { BeatRejectionRule } from "./rewrite-guard.js";
 import type { ScriptBeat } from "./script-schema.js";
 
 /** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
@@ -16,6 +17,9 @@ export const REWRITE_TARGET_ROWS = [
 export const MAX_REWRITE_ROUNDS = 2;
 export type RewriteRound = 1 | 2;
 
+/** Why a beat's last rewrite was refused: a guard rule, or `missing` when the reply skipped the beat. */
+export type RefusalRule = BeatRejectionRule | "missing";
+
 /** What one beat's rewrite must do, in the beat's own terms: spans and counts, never a band value. */
 export interface BeatDirective {
   beat: string;
@@ -26,6 +30,8 @@ export interface BeatDirective {
   triads?: string[];
   /** Planned sentence lengths in words, shortest first. */
   shape?: number[];
+  /** Why the previous round refused this beat's rewrite, each rule once; the prompt says it in plain words. */
+  refused?: RefusalRule[];
 }
 
 /** The script-level sentence shape the planned lengths add up to. */
@@ -46,6 +52,8 @@ export interface PlanOptions {
   round?: number;
   /** The longest sentence the guard accepts; a planned long sentence stays under it. */
   cap?: number;
+  /** The beats the previous round refused, with the rules that refused them (TP-3817 S20). */
+  refused?: ReadonlyMap<string, readonly RefusalRule[]>;
 }
 
 type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken">;
@@ -175,19 +183,25 @@ const isRound = (n: number): n is RewriteRound => n === 1 || n === MAX_REWRITE_R
 const shapeFailing = (rows: readonly L0Result[]): boolean =>
   failing(rows, "register:sentence-mean") !== undefined || failing(rows, "register:sentence-cv") !== undefined;
 
+/** A refusal rides on a beat the plan already directs; it never directs a beat on its own. */
+function refusedFor(beat: string, refused: PlanOptions["refused"]): Pick<BeatDirective, "refused"> {
+  const rules = refused?.get(beat) ?? [];
+  return rules.length > 0 ? { refused: [...new Set(rules)] } : {};
+}
+
 /**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
  * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
- * beat still under the mean floor while a shape row fails.
+ * beat still under the mean floor while a shape row fails. A directed beat the previous round refused carries why.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
-  const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS } = options;
+  const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS, refused } = options;
   if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
   const shape = shapeFailing(rows) ? (round === 1 ? planShape(script.beats, cap) : planStillShort(script.beats, cap)) : undefined;
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
     const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };
-    return Object.keys(directive).length > 0 ? [{ beat: beat.id, chapter: beat.chapter, ...directive }] : [];
+    return Object.keys(directive).length > 0 ? [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }] : [];
   });
   return { round, directives, ...(shape ? { projected: shape.projected } : {}) };
 }
