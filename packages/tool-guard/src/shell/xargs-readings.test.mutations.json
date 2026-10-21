@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 1.05 s of CPU on an xargs line with -J",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.includes(\"xargs -I\") && event.command.includes(\" -J % \")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 1050000; );",
+      "kills": [
+        "added xargs readings on a long input stay under the cap and the hook timeout under -I -i -J %",
+        "added xargs readings on a long input stay under the cap and the hook timeout under -I{} -J %"
+      ]
+    }
+  ]
+}

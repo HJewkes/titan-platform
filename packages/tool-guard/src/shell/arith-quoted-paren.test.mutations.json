@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 2.1 s of CPU on quoted-paren arithmetic nested past the limit",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && (event.command.includes(\" + 1 + 1 + 1\") || event.command.split(\"$(( '(' \").length > 5)) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 2100000; );",
+      "kills": [
+        "a quoted paren in $(( )) reads quoted-paren arithmetic nested at the limit (4 deep) in bounded time and passs it",
+        "a quoted paren in $(( )) reads quoted-paren arithmetic nested far past the limit (24 deep) in bounded time and denys it",
+        "a quoted paren in $(( )) reads quoted-paren arithmetic nested past the limit (5 deep) in bounded time and denys it",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through a backquote, 12 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through a backquote, 5 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through a heredoc, 22 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through a heredoc, 5 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through double quotes, 22 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through double quotes, 5 deep, in bounded time"
+      ]
+    }
+  ]
+}

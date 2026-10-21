@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 1.05 s of CPU on a line of many echoes under nested evals",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.includes(\"echo hi;echo hi;echo hi;\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 1050000; );",
+      "kills": [
+        "the budget for text that splicing a substitution's output adds refuses an 8 KiB line of eight nested evals in well under a second, not after 2^8 walks"
+      ]
+    }
+  ]
+}

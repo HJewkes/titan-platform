@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 4.1 s of CPU on a 64 KB here-string",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.includes(\"#\".repeat(1000))) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 4100000; );",
+      "kills": [
+        "stdin text read for a literal operand is charged to the script budget refuses or reads a 64KB here-string under an operand without timing out"
+      ]
+    }
+  ]
+}
