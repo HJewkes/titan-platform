@@ -170,6 +170,61 @@ stays out of the repo.
   and keeps the branch with a caveat while any of them is still based on it.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
+### GitHub event sources {#github-event-sources}
+
+The `github` block, at the top level of the file and not under `shepherd`, chooses where GitHub events come from. Every key is
+optional, and an unknown key fails the load.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default | What it does |
+| --- | --- | --- | --- |
+| `sources` | `"polling"`, `"webhook"` | `"polling"` | The mode the deployment is configured for |
+| `ingress` | `"on"`, `"off"` | `"off"` | The kill switch for the [webhook ingress](#webhook-ingress) |
+| `pollingIntervalMs` | integer, 30000 to 600000 | 60000 | The reconciler's cadence while the effective mode is polling |
+| `backstopIntervalMs` | integer, 300000 to 600000 | 300000 | The reconciler's cadence while the effective mode is webhook |
+
+The load fails when `pollingIntervalMs` exceeds `backstopIntervalMs`, and when `ingress` is `"on"` with `sources` `"polling"`
+(under polling the route answers 404, so the combination can only be a mistake).
+
+**Polling is a permanent, supported configuration.** It is the right choice for a deployment that does not want to expose a
+webhook route, and it is the default. It is not a fallback that webhooks are meant to replace (389(6)). Webhook mode adds a
+low-latency path for deployments that want one, and the reconciler stays on as its backstop.
+
+The effective mode is what actually runs. It follows from the two switches:
+
+| `sources` | `ingress` | Effective mode | Reason | Reconciler cadence |
+| --- | --- | --- | --- | --- |
+| `polling` | `off` | polling | `configured` | `pollingIntervalMs` |
+| `webhook` | `off` | polling | `kill-switch` | `pollingIntervalMs` |
+| `webhook` | `on` | webhook | `configured` | `backstopIntervalMs` |
+
+The cadence keys are `github.pollingIntervalMs` and `github.backstopIntervalMs`. The schedule does not read
+`reconciler.intervalMs` (TP-3431 decides its fate), so do not set it to change how often GitHub is read.
+
+**The kill switch needs no restart.** Serve re-reads the config file whenever health or the schedule asks. To drop a webhook
+deployment back to polling, set `github.ingress` to `"off"` and save: the next ingress request gets `404 {"error":"ingress off"}`
+and the next tick runs at `pollingIntervalMs`. Set it back to `"on"` to return. A half-saved or invalid edit keeps the last good
+value and reports the error in `health.sources.configError`, so a typo never turns a webhook deployment into a polling one. A file
+that is invalid at start fails the start.
+
+**What health reports.** `GET /health` carries a `sources` object:
+
+| Field | Meaning |
+| --- | --- |
+| `configured` | `sources` as written in the file |
+| `effective` | `polling` or `webhook`, as the table above resolves it |
+| `reason` | `configured`, or `kill-switch` when a webhook deployment runs as polling |
+| `intervalMs` | The cadence in force for the effective mode |
+| `lastPassAt` | ISO time the reconciler last completed a pass, or `null` before the first completed pass (tp#2090). A pass that threw never stamps, so a stamp that keeps ageing is the sign of a stalled reconciler |
+| `configError` | Present only while the file on disk is invalid |
+
+**Going live with webhooks.** The polling-first gate (F11, TP-3103) is the order webhooks go live in: run on polling for the
+48 hours first, then register the webhooks and flip `ingress`. It sequences a move to webhook mode and is not a reason polling
+exists. The owner steps, Funnel route and rollback are in [Webhook ingress](#webhook-ingress).
+
 A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
 (`products/factory/src/bad-config.test.ts`).
