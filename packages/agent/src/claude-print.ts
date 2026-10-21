@@ -59,7 +59,7 @@ function isExecutableFile(path: string): boolean {
 export function buildClaudePrintArgs(config: AgentRunConfig<unknown>): string[] {
   const args = [
     "-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--mcp-config", EMPTY_MCP_CONFIG,
-    "--setting-sources", "", "--max-turns", String(claudePrintMaxTurns(config)), "--max-budget-usd", String(config.maxBudgetUsd),
+    "--setting-sources", "", "--disable-slash-commands", "--max-turns", String(claudePrintMaxTurns(config)), "--max-budget-usd", String(config.maxBudgetUsd),
   ];
   if (config.model) args.push("--model", config.model);
   if (config.systemPrompt !== undefined) args.push("--system-prompt", config.systemPrompt);
