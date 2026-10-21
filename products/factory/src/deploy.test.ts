@@ -354,8 +354,8 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations()).toEqual([]);
   });
 
-  it("fast-forwards an untouched range without building or restarting, and records skipped", async () => {
-    const machine = fakeMachine();
+  it("fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build", async () => {
+    const machine = fakeMachine({ changes: { [DOCS]: ["README.md"], [CORE]: ["site/index.md"], [TIP]: ["site/guides/factory.md"] } });
 
     const { code } = await deploy(machine, DOCS);
 
@@ -365,11 +365,24 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
   });
 
+  it("deploys origin/main when the asked sha reaches no factory path but a later main commit does", async () => {
+    const machine = fakeMachine();
+
+    const { code, out } = await deploy(machine, DOCS);
+
+    expect(code).toBe(0);
+    expect(out).toContain(`${DOCS} reaches no factory path, but origin/main at ${TIP} does`);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build", `launchctl kickstart -k ${TARGET}`]);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE, touched: ["products/factory/src/serve.ts"] });
+  });
+
   const RELEASE = { [CORE]: ["products/factory/package.json", "products/factory/CHANGELOG.md"] };
   const factoryManifest = (version: string, dependencies: Record<string, string> = {}): string => JSON.stringify({ name: "@titan-design/factory", version, dependencies });
 
   it("records a Version Packages merge as skipped without building or restarting", async () => {
-    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: factoryManifest("0.19.0") };
+    const release = factoryManifest("0.19.0");
+    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: release, [`${TIP}:products/factory/package.json`]: release };
     const machine = fakeMachine({ changes: RELEASE, blobs });
 
     const { code } = await deploy(machine, CORE);
