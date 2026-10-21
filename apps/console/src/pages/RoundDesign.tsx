@@ -7,12 +7,13 @@ import { useQuery } from "../data/rpc.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
 import type { PngWidths } from "./frame-pins.js";
-import { RoundFramesProvider, RoundVariantFrame, anchoredKeys } from "./QuestionFrames.js";
+import { RoundFramesProvider, RoundVariantFrame, anchoredKeys, useFrameMedia } from "./QuestionFrames.js";
 import { DraftDiscarded, type DraftBinding } from "./RoundDraft.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { PagedSections } from "./RoundPager.js";
 import { ROUND_KEYS } from "./round-keys.js";
+import { pinnableFrame } from "./TrueSize.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -155,6 +156,7 @@ const STRIP_GRID = {
 
 /** One figure per key, labelled from its variant; a key frames.json does not list is named and never fetched. */
 function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { keys: readonly string[]; size: keyof typeof STRIP_GRID }): ReactNode {
+  const media = useFrameMedia();
   return (
     <div className={STRIP_GRID[size]}>
       {keys.map((key) => {
@@ -173,7 +175,7 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         );
         // A see-also thumbnail points at a frame judged where it is drawn full width, so it takes no verdict of its own.
         if (size === "thumb") return <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`see-also-${key}`}>{body}</figure>;
-        return <FrameFigure key={key} frameKey={key} label={label} pinnable={indexed.has(key)} testID={`design-frame-${key}`}>{body}</FrameFigure>;
+        return <FrameFigure key={key} frameKey={key} label={label} pinnable={pinnableFrame(indexed.has(key), media(key))} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
   );
