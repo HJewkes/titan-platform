@@ -14,12 +14,12 @@ export function clockRuleViolations(files: ReadonlyArray<readonly [string, strin
   const readers = new Map<string, string>();
   for (const [file, text] of files) {
     const read = isTestModule(file) && file !== CLOCK_HOME ? CLOCK_READ.exec(text) : null;
-    if (read) readers.set(file, read[0]);
+    if (read) readers.set(file, `${read[0]})`);
   }
   const unlisted = [...readers].filter(([file]) => !(file in allowed));
   const stale = Object.keys(allowed).filter((file) => !readers.has(file));
   return [
-    ...unlisted.map(([file, read]) => `${file} reads a clock (${read}). Time a CPU or ratio check with cpuBudgetIt from ${CLOCK_HOME}, whose wall timeout follows from its CPU budget (TP-3877).`),
+    ...unlisted.map(([file, read]) => `${file} reads a clock with ${read}. Time a CPU or ratio check with cpuBudgetIt from ${CLOCK_HOME}, whose wall timeout follows from its CPU budget (TP-3877).`),
     ...stale.map((file) => `${file} no longer reads a clock; remove its entry from the allowlist.`),
   ];
 }
