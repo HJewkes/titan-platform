@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guardBeat, type BeatRewrite } from "./rewrite-guard.js";
-import { ScriptSchema, type ScriptBeat } from "./script-schema.js";
+import { guardBeat, rewrittenBeat, type BeatRewrite } from "./rewrite-guard.js";
+import { ScriptSchema, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
 const ORIGINAL =
@@ -134,5 +134,64 @@ describe("guardBeat", () => {
     const before = beatWith({}, "The desk reads the Alder store, the Birch store, and the Cedar store. It writes them all. The ledger keeps them.");
     const after = { spoken: "The desk reads three stores. Alderman writes them all. The ledger keeps them.", labelsAdded: [] };
     expect(rules(before, after)).toContain("list-lost");
+  });
+
+  it("does not count the words of a number moved into a label as dropped terms", () => {
+    const before = beatWith({}, "The desk ledger can hold 5000 rows before it rolls over.");
+    const after = { spoken: "The desk ledger keeps its rows until it rolls over.", labelsAdded: ["5000 rows"] };
+    expect(guardBeat(before, after)).toEqual([]);
+  });
+
+  it("still rejects a moved number's rewrite that drops a real content term as well", () => {
+    const before = beatWith({}, "The desk ledger can hold 5000 rows before it rolls over.");
+    const after = { spoken: "The ledger keeps its rows until it rolls over.", labelsAdded: ["5000 rows"] };
+    expect(rules(before, after)).toEqual(["terms"]);
+  });
+
+  describe("with a spelled number moved to a digit label", () => {
+    const SPELLED = "The factory had twenty-eight implementer slots this morning. It filled almost none of them.";
+    const MOVED = "The factory had plenty of implementer slots this morning, and it filled almost none of them.";
+
+    it("accepts the label written in digits", () => {
+      expect(guardBeat(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: ["28 slots"] })).toEqual([]);
+    });
+
+    it("accepts a spelled hundred read with an and", () => {
+      const before = beatWith({}, "A hundred and ninety tasks were marked ready, and the tick dispatched none of them.");
+      const after = { spoken: "Many tasks were marked ready, and the tick dispatched none of them.", labelsAdded: ["190 tasks ready"] };
+      expect(guardBeat(before, after)).toEqual([]);
+    });
+
+    it("still rejects the number when the label holds a different one, or none", () => {
+      expect(rules(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: ["27 slots"] })).toContain("number-lost");
+      expect(rules(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: [] })).toContain("number-lost");
+    });
+
+    it("rejects a digit rewrite of a spelled number that changes its value", () => {
+      const after = { spoken: SPELLED.replace("twenty-eight", "29"), labelsAdded: [] };
+      expect(rules(beatWith({}, SPELLED), after)).toEqual(expect.arrayContaining(["number-lost", "number-invented"]));
+    });
+
+    it("keeps a cue on the moved number by landing it on the label's noun the line still speaks", () => {
+      const before = withCues(["twenty-eight"], SPELLED);
+      const after = { spoken: MOVED, labelsAdded: ["28 slots"] };
+
+      const beat = rewrittenBeat(before, after);
+
+      expect(guardBeat(before, after)).toEqual([]);
+      expect(beat.visual.cues.map((cue) => cue.atCue)).toEqual(["slots"]);
+      expect(spokenWordIndex(beat)("slots")).toBe(MOVED.split(" ").indexOf("slots"));
+      expect(beat.visual.labels).toEqual(["28 slots"]);
+    });
+
+    it("lands that cue on a later noun of the label when the line does not speak the first", () => {
+      const after = { spoken: MOVED, labelsAdded: ["28 open slots"] };
+      expect(rewrittenBeat(withCues(["twenty-eight"], SPELLED), after).visual.cues.map((cue) => cue.atCue)).toEqual(["slots"]);
+    });
+
+    it("rejects that cue when the line no longer speaks the label's noun", () => {
+      const after = { spoken: MOVED.replace("implementer slots", "implementer seats"), labelsAdded: ["28 slots"] };
+      expect(rules(withCues(["twenty-eight"], SPELLED), after)).toContain("cue-lost");
+    });
   });
 });

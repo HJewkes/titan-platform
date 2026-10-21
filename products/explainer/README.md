@@ -115,6 +115,22 @@ intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rule
 chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
 the digest gap) reach the planner only as L0 failures. With `--spine` (or `guidePlan`'s `spine` dep) the guide ends with the spine's rows and ledger per act (chapter). It exits 2 on an unknown stage.
 
+`explainer rewrite <script.json> --judge <judge.json> --out <file> [--format spike|v1] [--rounds 1|2]
+[--speech-vet] [--report <file>]` runs `rewriteScript` on a drafted script: it rewrites `spoken` toward the five
+Q-V11 rows the planner guide alone does not move (`register:numbers`, `register:numbers-per-beat`, `register:triads`,
+`register:sentence-mean`, `register:sentence-cv`), one schema-bound call per chapter a round through the judge the
+config names (default 2 rounds). Each beat's rewrite passes `guardBeat` or keeps its original line: facts, cue words
+and their order, new terms and markup survive, and a number that leaves `spoken` must reach `visual.labels` with its
+noun ("5000 rows"), whose words then no longer count as dropped terms. Numbers compare spelled or in digits alike
+("twenty-eight" and "28"), and a cue on a moved number lands on the label's noun when the line still speaks it. A beat that gains an L0 error row is reverted,
+and a round that does not bring the rows closer to band is discarded. Remaining digits are spelled for the voice. It
+writes the script/v1 result to `--out` (a spike input is migrated first) and the full report to `--report`, and
+prints one JSON line: each target row before and after, what each round kept, rejected and reverted, the call count
+and the spend. `--speech-vet` vets each 26-32 word sentence of the input and of every reply with local Kokoro and
+Whisper, so the pass may keep it under Q-V9's vetted cap; it is off by default, which keeps the 25-word cap. Exit 0
+when the result is written and every target row passes, 1 when it is written but a target row is still red, 2 on
+usage or an input or judge config that does not parse. Run `explainer eval smoke --judge <judge.json>` first.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
