@@ -48,8 +48,11 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
 );
 const FALLBACK_NOTE = "it changed what the beat says; stay closer to the original";
 
+/** Why a refused rewrite was not used, in plain words; a rule with no note of its own gets a generic one. */
+export const refusalNote = (rule: string): string => REFUSAL_NOTES.get(rule) ?? FALLBACK_NOTE;
+
 const refusalLines = (refused: readonly string[]): string[] =>
-  [...new Set(refused.map((rule) => REFUSAL_NOTES.get(rule) ?? FALLBACK_NOTE))].map((note) => `- Your last version was not used: ${note}.`);
+  [...new Set(refused.map(refusalNote))].map((note) => `- Your last version was not used: ${note}.`);
 
 function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
   const { numbers, triads, shape, refused } = directive;

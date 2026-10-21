@@ -4,7 +4,7 @@ import { findPromptLeaks } from "./doctrine-slice.js";
 import { REGISTER_BANDS } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
-import { renderRewritePrompt } from "./rewrite-prompt.js";
+import { refusalNote, renderRewritePrompt } from "./rewrite-prompt.js";
 import { loadRuleRegistry } from "./rules.js";
 import { tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
 
@@ -30,9 +30,9 @@ const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "number-vague", "device-added",
   "label-bare", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
 ];
-const refusedPlan = (refused: string[]): RegisterEditPlan => ({
+const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
-  directives: [{ beat: "w2", chapter: "ch2", triads: ["the scan, the row and the label."], refused: refused as RefusalRule[] }],
+  directives: [{ beat: "w2", chapter: "ch2", triads: ["the scan, the row and the label."], refused }],
 });
 const notesIn = (prompt: string): string[] => prompt.split("\n").filter((line) => line.startsWith("- Your last version was not used: "));
 const LIMITS = [MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, ...Object.values(REGISTER_BANDS).flatMap((b) => [b.min, b.max])].filter((n) => n !== undefined);
@@ -95,20 +95,20 @@ describe("renderRewritePrompt", () => {
   });
 
   it("has its own note for every refusal rule and a plain fallback for one it does not know", () => {
-    const fallback = notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(["some-new-rule"])));
-    const notes = EVERY_REFUSAL.map((rule) => notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan([rule])))[0]);
+    const notes = EVERY_REFUSAL.map(refusalNote);
 
-    expect(fallback).toEqual(["- Your last version was not used: it changed what the beat says; stay closer to the original."]);
-    expect(new Set([...notes, fallback[0]]).size).toBe(EVERY_REFUSAL.length + 1);
+    expect(refusalNote("some-new-rule")).toBe("it changed what the beat says; stay closer to the original");
+    expect(new Set([...notes, refusalNote("some-new-rule")]).size).toBe(EVERY_REFUSAL.length + 1);
+    expect(notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(EVERY_REFUSAL)))).toHaveLength(EVERY_REFUSAL.length);
   });
 
   it("names no rule id, code-enforced rule or band number in any refusal note", () => {
-    const prompt = renderRewritePrompt(chapter, chapterBeats, refusedPlan([...EVERY_REFUSAL, "some-new-rule"]));
+    const prompt = renderRewritePrompt(chapter, chapterBeats, refusedPlan(EVERY_REFUSAL));
     const notes = notesIn(prompt).join("\n");
 
     expect(findPromptLeaks(prompt, loadDoctrine(), loadRuleRegistry())).toEqual([]);
     noLimitIn(prompt);
-    expect(notes).not.toMatch(/\d/);
+    expect([notes, refusalNote("some-new-rule")].join("\n")).not.toMatch(/\d/);
     for (const rule of EVERY_REFUSAL.filter((r) => r.includes("-"))) expect(prompt).not.toContain(rule);
   });
 
