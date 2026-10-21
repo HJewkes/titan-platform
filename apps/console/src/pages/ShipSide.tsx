@@ -3,7 +3,7 @@ import { Alert, Typography } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import type { SubmitState } from "../data/submit.js";
-import { submittedAnswers } from "./RoundAnswers.js";
+import { asksRevision, submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundQuestion } from "./RoundQuestion.js";
@@ -62,7 +62,7 @@ export function SideQuestion({ round, question, position, side, locked }: SideQu
         onActivate={unlessLocked(locked, () => setActiveId(question.id))}
         ab={abAnswering(side, question, locked)}
       />
-      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} />
+      <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} revising={asksRevision(question, answers[question.id])} />
       <SideStake round={round} question={question} side={side} locked={locked} />
     </LockedQuestion>
   );

@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
-import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
+import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
@@ -76,7 +76,10 @@ interface RoundQuestionProps {
   onActivate: () => void;
   /** Present only where the page submits text answers; without it a text question shows a placeholder. */
   onText?: (text: string) => void;
-  /** Present where the page takes A/B notes; with it a pick-one whose options pick two frames lays them side by side. */
+  /**
+   * Present where the page takes A/B notes; with it a pick-one whose options pick two frames lays them side by side.
+   * Its `onNeither` is the page's revision request, which a plain pick-one offers too.
+   */
   ab?: ABAnswering;
 }
 
@@ -99,7 +102,7 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
           {ab && sides ? (
             <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
           ) : (
-            <Choices question={question} answer={answer} onChoose={choose} onText={onText} recommended={recommendedChoices(shown)} />
+            <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} recommended={recommendedChoices(shown)} />
           )}
           <QuestionFacts question={question} answer={answer} />
         </VStack>
@@ -142,11 +145,13 @@ interface ChoicesProps {
   answer: QuestionAnswer | undefined;
   onChoose: (choice: string) => void;
   onText?: (text: string) => void;
+  /** Present where the page takes a revision request; a question offering the built-in one lists it last. */
+  onRevise?: () => void;
   /** The options a shown recommendation picks, badged. */
   recommended: readonly string[];
 }
 
-function Choices({ question, answer, onChoose, onText, recommended }: ChoicesProps): ReactNode {
+function Choices({ question, answer, onChoose, onText, onRevise, recommended }: ChoicesProps): ReactNode {
   const choices = choicesOf(question);
   const frameOf = useOptionFrame(question);
   if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
@@ -164,7 +169,7 @@ function Choices({ question, answer, onChoose, onText, recommended }: ChoicesPro
       </CheckboxGroup>
     );
   }
-  return <PickOne question={question} answer={answer} onChoose={onChoose} choices={choices} frameOf={frameOf} recommended={recommended} />;
+  return <PickOne question={question} answer={answer} onChoose={onChoose} onRevise={onRevise} choices={choices} frameOf={frameOf} recommended={recommended} />;
 }
 
 interface PickOneProps extends Omit<ChoicesProps, "onText"> {
@@ -172,18 +177,39 @@ interface PickOneProps extends Omit<ChoicesProps, "onText"> {
   frameOf: (choice: string) => string | undefined;
 }
 
-/** A pick-one or scale as radios; a sent revision request says so, as it picks none of them. */
-function PickOne({ question, answer, onChoose, choices, frameOf, recommended }: PickOneProps): ReactNode {
-  const value = answer && "pick" in answer ? answer.pick : answer && "value" in answer ? String(answer.value) : null;
+/** The built-in revision request's radio value, which no round's option text plausibly matches. */
+const REVISION = "titan-review:revision-request";
+
+/** The harness's wording for the built-in revision request (QuestionBlock). */
+const REVISION_LABEL = "None of these, request a revision";
+
+/** The radio the answer selects: its pick, its scale step, or the built-in revision request. */
+function selectedValue(answer: QuestionAnswer | undefined): string | null {
+  if (answer === undefined) return null;
+  if ("pick" in answer) return answer.pick;
+  if ("value" in answer) return String(answer.value);
+  return "revisionRequested" in answer ? REVISION : null;
+}
+
+/** A pick-one or scale as radios, with the built-in revision request last where the question offers it (G10). */
+function PickOne({ question, answer, onChoose, onRevise, choices, frameOf, recommended }: PickOneProps): ReactNode {
+  const value = selectedValue(answer);
+  const revisable = onRevise !== undefined && offersBuiltInRevision(question);
+  const change = (next: string): void => (next === REVISION ? onRevise?.() : onChoose(next));
   return (
     <VStack gap={1}>
-      {answer && "revisionRequested" in answer ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
-      <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
+      {answer && "revisionRequested" in answer && !revisable ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
+      <RadioGroup value={value} onChange={change} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
         {choices.map((choice, index) => (
           <Radio key={choice} value={choice} aria-checked={value === choice}>
             <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
           </Radio>
         ))}
+        {revisable ? (
+          <Radio value={REVISION} aria-checked={value === REVISION}>
+            {REVISION_LABEL}
+          </Radio>
+        ) : null}
       </RadioGroup>
     </VStack>
   );
