@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { getFrame } from "./round-frames.js";
+import { getFrame, getFrameTargets } from "./round-frames.js";
 import { importRound } from "./round-import.js";
 import { getRound, listRounds } from "./rounds.js";
 
@@ -494,7 +494,7 @@ describe("importRound copies a record's targets file beside its PNG (TP-3856)", 
     await editFrames((_frames, light) => (light.targets = { file, sha256 }));
   }
 
-  it("copies the targets file 0600 with the sha256 frames.json names", async () => {
+  it("copies the targets file 0600 with the sha256 frames.json names, and rounds.frameTargets reads it", async () => {
     await addTargets();
 
     expect((await runImport()).frames).toBe(5);
@@ -503,6 +503,7 @@ describe("importRound copies a record's targets file beside its PNG (TP-3856)", 
     expect(copied).toEqual(targetsBytes);
     expect(sha256Of(copied)).toBe(sha256Of(targetsBytes));
     expect((await stat(path.join(roundsDir, ID, TARGETS))).mode & 0o777).toBe(0o600);
+    expect((await getFrameTargets({ dir: roundsDir }, ID, "card-light")).sha256).toBe(sha256Of(targetsBytes));
   });
 
   it("imports a round whose records name no targets as before, writing no targets file", async () => {
