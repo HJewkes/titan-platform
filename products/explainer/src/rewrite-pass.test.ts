@@ -213,6 +213,7 @@ describe("rewriteScript fails closed", () => {
     expect(labelsOf(out, "w1")).toEqual([]);
     expect(fake.prompts.filter((prompt) => prompt.includes("# Chapter ch2"))).toHaveLength(1);
     expect(report.calls.find((call) => call.chapter === "ch2")).toMatchObject({ ok: false, reason: "budget_exceeded: over cap", usd: 0.002 });
+    expect(report.rounds[0]!.rejected).toEqual([]);
     expect(spokenOf(out, "h1")).toBe(BEATS.h1![1].after);
   });
 
