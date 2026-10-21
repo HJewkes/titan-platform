@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopSnapshot, RulesetList } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { appendEvent, eventLogMigration, type AppendResult } from "../event-log/event-log.js";
+import { appendEvent, eventLogMigration } from "../event-log/event-log.js";
 import { pullRequestDelivery, reviewDelivery, rulesetDelivery, type PrFact } from "../event-log/repo-shapes.test-helpers.js";
 import { INGRESS_KINDS, projectDelivery } from "../ingress/kinds.js";
 import { checkRunDelivery, statusDelivery, type CiFact } from "../test-support/a17/ci-shapes.js";
 import type { RepoCursor } from "./cursor.js";
 import { createObserve, type GuardVerdict, type HeadTipGuard } from "./observe.js";
 import type { Observation } from "./service.js";
+
+type AppendResult = ReturnType<typeof appendEvent>;
 
 const REPO = "example-org/widgets";
 const HEAD = "a".repeat(40);

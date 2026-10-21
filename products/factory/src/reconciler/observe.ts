@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopSnapshot, RollupContext, RulesetList } from "@titan-design/github";
 import { ciEvent, fromBackstopContext, type BackstopContext, type Transport } from "../event-log/ci-keys.js";
 import type { NewEvent } from "../event-log/event-log.js";
@@ -7,6 +8,8 @@ import type { RepoCursor } from "./cursor.js";
 import type { Observation, Observe } from "./service.js";
 
 const BRANCH = "main";
+
+const SeenRulesets = z.record(z.string(), z.string());
 
 /** TP-3097's answer for one read: only `confirmed` may become a row. */
 export type GuardVerdict = { kind: "confirmed"; by: ConfirmedBy } | { kind: "stale" | "pending" | "unknown" };
@@ -43,7 +46,7 @@ export function createObserve(deps: ObserveDeps): Observe {
     return {
       events: parts.flatMap((part) => part.events),
       disagreements: parts.flatMap((part) => part.disagreements),
-      cursor: omitUndefined({ main: main.cursor, done: newestDone(snapshot.done, cursor.done?.value), rulesets: ruleset.cursor }),
+      cursor: definedOnly({ main: main.cursor, done: newestDone(snapshot.done, cursor.done?.value), rulesets: ruleset.cursor }),
     };
   };
 }
@@ -83,12 +86,14 @@ function ciRows(repo: string, commit: BackstopCommit, transport: Transport): Bac
 }
 
 function contextNode(context: RollupContext): BackstopContext {
-  if (context.kind === "check") return { __typename: "CheckRun", databaseId: context.databaseId, name: context.name, status: context.status, conclusion: context.conclusion, completedAt: context.completedAt };
-  return { __typename: "StatusContext", context: context.context, state: context.state, createdAt: context.createdAt };
+  if (context.kind === "status") return { __typename: "StatusContext", context: context.context, state: context.state, createdAt: context.createdAt };
+  const { databaseId, name, status, conclusion, completedAt } = context;
+  return { __typename: "CheckRun", databaseId, name, status, conclusion, completedAt };
 }
 
 function doneNode(pr: BackstopDonePr) {
-  return { number: pr.number, merged: pr.merged, mergedBy: pr.mergedBy === null ? null : { login: pr.mergedBy }, mergeCommit: pr.mergeCommit === null ? null : { oid: pr.mergeCommit }, closedAt: pr.closedAt };
+  const mergedBy = pr.mergedBy === null ? null : { login: pr.mergedBy };
+  return { number: pr.number, merged: pr.merged, mergedBy, mergeCommit: pr.mergeCommit === null ? null : { oid: pr.mergeCommit }, closedAt: pr.closedAt };
 }
 
 /**
@@ -110,13 +115,15 @@ const running = (context: RollupContext): boolean => (context.kind === "check" ?
 
 /** The reconciler reads only main, so the cursor stops below the oldest commit whose checks still run; the next read re-reads it. */
 function heldCursor(main: BackstopSnapshot["main"], kept: string | undefined): string | undefined {
-  const oldestRunning = main.commits.findLastIndex((commit) => commit.contexts.some(running));
+  const newestFirst = main.commits.map((commit) => commit.contexts.some(running));
+  const oldestRunning = newestFirst.lastIndexOf(true);
   if (oldestRunning < 0) return main.tip;
   return main.commits[oldestRunning + 1]?.oid ?? kept;
 }
 
 function newestDone(done: BackstopDonePr[], kept: string | undefined): string | undefined {
-  return [...done.map((pr) => pr.updatedAt), ...(kept === undefined ? [] : [kept])].reduce<string | undefined>((newest, at) => (newest === undefined || Date.parse(at) > Date.parse(newest) ? at : newest), undefined);
+  const stamps = [...done.map((pr) => pr.updatedAt), ...(kept === undefined ? [] : [kept])];
+  return stamps.reduce<string | undefined>((newest, at) => (newest === undefined || Date.parse(at) > Date.parse(newest) ? at : newest), undefined);
 }
 
 /**
@@ -125,11 +132,12 @@ function newestDone(done: BackstopDonePr[], kept: string | undefined): string | 
  */
 function observeRulesets(repo: string, list: RulesetList | undefined, cursor: RepoCursor, transport: Transport): { events: BackstopEvent[]; cursor: string | undefined } {
   if (list === undefined || list.notModified || list.unreadable) return { events: [], cursor: undefined };
-  const seen = JSON.parse(cursor.rulesets?.value ?? "{}") as Record<string, string>;
+  const seen = SeenRulesets.parse(JSON.parse(cursor.rulesets?.value ?? "{}"));
   const moved = Object.fromEntries(Object.entries(list.rulesets).filter(([id, at]) => seen[id] !== at));
   return { events: fromBackstopRulesets(repo, moved).map((o) => backstopRow(repoEvent(o, transport))), cursor: JSON.stringify(list.rulesets) };
 }
 
-function omitUndefined<T extends Record<string, string | undefined>>(record: T): Partial<Record<keyof T, string>> {
-  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined)) as Partial<Record<keyof T, string>>;
+function definedOnly(next: Record<"main" | "done" | "rulesets", string | undefined>): Observation["cursor"] {
+  const { main, done, rulesets } = next;
+  return { ...(main !== undefined && { main }), ...(done !== undefined && { done }), ...(rulesets !== undefined && { rulesets }) };
 }
