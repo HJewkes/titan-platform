@@ -65,7 +65,7 @@ async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: R
     sweep.kept.push({ runId: known.runId, gateId });
     return;
   }
-  const merged = await mergeOnOwnerAnswer(ctx.host, ctx.shepherd!.port, known, run, head);
+  const merged = await mergeOnOwnerAnswer(ctx.host, ctx.shepherd!.port, known, run);
   if (merged !== undefined) {
     sweep.merged.push(merged);
     return;

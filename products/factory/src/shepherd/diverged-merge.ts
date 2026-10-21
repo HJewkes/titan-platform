@@ -79,9 +79,9 @@ async function landableBase(port: GitHubPort, known: Registration, merge: OwnerM
  * and ends the run with a step row naming the answer. Undefined leaves the sweep to restart it as before: no unread
  * owner merge, a head that moved since, or a precondition that fails now.
  */
-export async function mergeOnOwnerAnswer(host: FactoryHost, port: GitHubPort, known: Registration, run: WorkflowRun, head: string): Promise<DivergedMerge | undefined> {
+export async function mergeOnOwnerAnswer(host: FactoryHost, port: GitHubPort, known: Registration, run: WorkflowRun): Promise<DivergedMerge | undefined> {
   const merge = unreadOwnerMerge(host, run);
-  if (merge === undefined || merge.headSha !== head) return undefined;
+  if (merge === undefined) return undefined;
   const base = await landableBase(port, known, merge);
   if (base === undefined) return undefined;
   const target = { repo: known.repo, pr: known.pr!, sha: merge.headSha, method: known.policy.mergeMethod, taskIds: taskIdOf(known.task), base };
