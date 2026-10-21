@@ -558,6 +558,21 @@ describe("a round with two PRs (TP-3329)", () => {
     expect(tilesOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: TILES_HEAD } });
   });
 
+  it("refuses a stacked PR's Ship while the PR it is stacked on is sent back, and takes it once that ships (TP-3883)", async () => {
+    const round = twoPrRound();
+    round.prGroups = z.array(z.record(z.string(), z.unknown())).parse(round.prGroups).map((group) => (group.pr === "example/panels#2" ? { ...group, stackedOn: { repo: "example/tiles", pr: 1, headSha: TILES_HEAD } } : group));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const panelsShip = { questionId: "ship-panels", pick: "Ship" };
+
+    const held = await submit({ id: TWO, manifestSha256: sha256(bytes), answers: [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, panelsShip], heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(held.envelope).toMatchObject({ ok: false, error: `Ship refused: stacked on example/tiles#1, which may not ship: it is answered "Don't ship"` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+    const both = await submit({ id: TWO, manifestSha256: sha256(bytes), answers: [{ questionId: "ship-tiles", pick: "Ship" }, panelsShip], heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    expect(both.envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
   it("takes a Send back whose only note is a comment on its own frame, never on the other PR's (TP-3773 S6b)", async () => {
     const answers = [{ questionId: "ship-panels", pick: "Don't ship" }];
 

@@ -1,6 +1,7 @@
 import { TokenFileError, trackSecretFile, type Logger, type TokenFileProblem } from "@titan-design/daemon";
 import { octokitClient, parseGitHubToken, rateBudget, type GitHubClient } from "@titan-design/github";
 import type { WorkflowCapability } from "@titan-design/workflow";
+import { botTokenExpiryWatch, observingFetch } from "./bot-token-expiry.js";
 import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js";
 
 /**
@@ -17,7 +18,8 @@ const BOT_THROTTLE_ID = "github-bot";
 
 type BotTokenProblem = TokenFileProblem | "unreadable";
 
-export type BotHealth = { state: "ok" } | { state: "absent" } | { state: "refused"; problem: BotTokenProblem };
+/** `expiresAt` is from GitHub's expiration header on the last bot response: null before the first, or for a token with no expiry. */
+export type BotHealth = { state: "ok"; expiresAt: string | null } | { state: "absent" } | { state: "refused"; problem: BotTokenProblem };
 
 /** Blocked carries no client: a bot step has nothing to fall back on, least of all the user login's identity. */
 export type BotAccess = { state: "ok"; client: GitHubClient } | { state: "blocked"; reason: "absent" | "refused" };
@@ -39,6 +41,10 @@ interface BotIdentityOptions {
   path?: string | undefined;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
+  /** Where the 14-day expiry alarm's ops-alarm line goes. */
+  log?: (line: string) => void;
+  /** Fingerprints already alarmed; tests pass their own so one test's alarm cannot silence another's. */
+  alarmed?: Set<string>;
 }
 
 /** Only handles this module made pass `isBotHandle`, so no other capability can pose as the bot. */
@@ -74,9 +80,12 @@ type TokenRead = { state: "ok"; token: string } | Exclude<BotHealth, { state: "o
 export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_PATH }): BotIdentity {
   const read = readToken(options.path);
   if (read.state !== "ok") return disabled(read);
-  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch: options.fetch, now: options.now });
+  const fingerprint = tokenFingerprint(read.token);
+  const expiry = botTokenExpiryWatch({ fingerprint, now: options.now, log: options.log, alarmed: options.alarmed });
+  const fetch = observingFetch(options.fetch, expiry.observe);
+  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch, now: options.now });
   const access = (): BotAccess => ({ state: "ok", client });
-  return { health: () => ({ state: "ok" }), fingerprint: tokenFingerprint(read.token), capabilities: capabilitiesOf({ access }, [read.token]) };
+  return { health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, capabilities: capabilitiesOf({ access }, [read.token]) };
 }
 
 function disabled(health: Exclude<BotHealth, { state: "ok" }>): BotIdentity {

@@ -29,14 +29,41 @@ describe("reading a repo's backstop snapshot", () => {
         headRefOid: head,
         baseRefName: "main",
         updatedAt: RECENT,
-        head: { oid: head, contexts: [expect.objectContaining({ kind: "check", databaseId: 7, conclusion: "SUCCESS" }), { kind: "status", context: "ci/legacy", state: "SUCCESS", createdAt: "2026-01-01T00:00:00Z" }] },
+        head: { oid: head, contexts: [expect.objectContaining({ kind: "check", databaseId: 7, conclusion: "SUCCESS" }), { kind: "status", context: "ci/legacy", state: "SUCCESS", createdAt: "2026-01-01T00:00:00Z", creator: null }] },
         reviews: [review(9)],
       },
     ]);
     expect(snapshot.done).toEqual([{ number: 1, merged: true, mergedBy: "octo", mergeCommit: fakeSha("merge-1"), closedAt: RECENT, updatedAt: RECENT }]);
     expect(snapshot.main).toEqual({ tip: fakeSha("tip"), commits: [{ oid: fakeSha("tip"), contexts: [] }] });
+    expect(snapshot.trains).toEqual([]);
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.variables).toMatchObject({ owner: "o", name: "r", branch: "refs/heads/main", since: REQUEST.since, withOpen: true, withDone: true, withHistory: true });
+    expect(sent[0]!.variables).toMatchObject({ owner: "o", name: "r", branch: "refs/heads/main", since: REQUEST.since, withOpen: true, withDone: true, withHistory: true, withTrains: true });
+  });
+
+  it("names who wrote each review and status, and the commit a review is on", async () => {
+    const head = fakeSha("head-1");
+    const byBot = { ...review(9), author: { login: "synthetic-bot" }, commit: { oid: head } };
+    const repo = repoWith({ open: [{ number: 1, head, updatedAt: RECENT }], contexts: new Map([[head, [{ ...status("ci/legacy"), creator: { login: "synthetic-bot" } }]]]), reviews: new Map([[1, [byBot]]]) });
+    const { api, sent } = backstopApi(repo);
+
+    const snapshot = await readBackstopSnapshot(api, REQUEST);
+
+    expect(snapshot.open[0]!.reviews).toEqual([byBot]);
+    expect(snapshot.open[0]!.head!.contexts).toEqual([expect.objectContaining({ kind: "status", creator: "synthetic-bot" })]);
+    expect(sent[0]!.query).toMatch(/author \{ login \} commit \{ oid \}/);
+    expect(sent[0]!.query).toMatch(/creator \{ login \}/);
+  });
+
+  it("pages every shepherd-train branch head under its full branch name", async () => {
+    const trains = range(70).map((n) => ({ name: `widgets-${n}`, oid: fakeSha(`train-${n}`) }));
+    const { api, sent } = backstopApi(repoWith({ trains }));
+
+    const snapshot = await readBackstopSnapshot(api, REQUEST);
+
+    expect(snapshot.trains).toHaveLength(70);
+    expect(snapshot.trains[0]).toEqual({ ref: "shepherd-train/widgets-1", oid: fakeSha("train-1") });
+    expect(sent.map((query) => query.variables.withTrains)).toEqual([true, true]);
+    expect(sent[0]!.query).toContain('refPrefix: "refs/heads/shepherd-train/"');
   });
 
   it("pages more than 50 open PRs to the end, re-reading no other range", async () => {
@@ -127,6 +154,12 @@ describe("a backstop range past its cap", () => {
 
     await expect(rejectionOf(readBackstopSnapshot(api, REQUEST), BackstopTruncated)).resolves.toMatchObject({ range: "done" });
   });
+
+  it("throws BackstopTruncated past 200 shepherd-train branches", async () => {
+    const { api } = backstopApi(repoWith({ trains: range(201).map((n) => ({ name: `t-${n}`, oid: fakeSha(`t-${n}`) })) }));
+
+    await expect(rejectionOf(readBackstopSnapshot(api, REQUEST), BackstopTruncated)).resolves.toMatchObject({ range: "trains" });
+  });
 });
 
 describe("a backstop query GitHub answers with errors", () => {
@@ -159,14 +192,14 @@ describe("a backstop snapshot through Octokit's fetch", () => {
 
 describe("what a backstop snapshot costs", () => {
   it("computes 2 points for a full page set of every range", () => {
-    const requests = snapshotRequests({ open: true, done: true, history: true });
+    const requests = snapshotRequests({ open: true, done: true, history: true, trains: true });
 
-    expect(requests).toBe(203);
+    expect(requests).toBe(204);
     expect(graphqlPoints(requests)).toBe(2);
   });
 
   it("computes 1 point for a later page of one range, the minimum", () => {
-    expect(graphqlPoints(snapshotRequests({ open: false, done: true, history: false }))).toBe(1);
+    expect(graphqlPoints(snapshotRequests({ open: false, done: true, history: false, trains: false }))).toBe(1);
   });
 
   it("surfaces the summed cost GitHub reported and the last query's remaining points", async () => {

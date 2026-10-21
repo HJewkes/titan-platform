@@ -111,7 +111,7 @@ function botPorts(github: Github, db: Db, timers: PoolTimers, key: CiKeyFn): Bot
   const poolState = sqlitePoolStateStore(db, timers.now);
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send, clock: timers, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
   const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: (repo, _branch, sha) => (world.tip(repo) === sha ? { kind: "confirmed" } : { kind: "pending" }) }, now: timers.now });
-  return { identity: BOT, pool, poolState, conditionalGates: false, observe: (repo, snapshot, cursor) => rekeyedObservation(observe(repo, snapshot, cursor), key) };
+  return { identity: BOT, login: BOT, pool, poolState, conditionalGates: false, observe: (repo, snapshot, cursor) => rekeyedObservation(observe(repo, snapshot, cursor), key) };
 }
 
 function signedRequest(delivery: { event: string; body: unknown }, guid: string, secret: string) {

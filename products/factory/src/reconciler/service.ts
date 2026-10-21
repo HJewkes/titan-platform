@@ -1,12 +1,14 @@
 import type { Logger } from "@titan-design/daemon";
 import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
+import { hasBotIntent, markNotFactory } from "../bot-intent.js";
 import { appendEvent, type NewEvent } from "../event-log/event-log.js";
 import { startReconcilerSchedule } from "../github-sources/schedule.js";
 import type { PassStamp, SourcesReader } from "../github-sources/mode.js";
 import type { Sweep } from "../sweep.js";
 import type { ReconcilerConfig } from "./config.js";
 import { sqliteReconcilerCursor, type ReconcilerCursorStore, type RepoCursor } from "./cursor.js";
+import { botActions, unloggedActions } from "./unlogged.js";
 
 /** With no cursor, `main` and `done` are read this far back. */
 const FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -51,6 +53,8 @@ export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCur
 /** What the bot side supplies (TP-3431 wires the real ones); no other GitHub handle reaches the service. */
 export interface BotPorts {
   identity: string;
+  /** The bot's GitHub login, so C7 can tell its reviews, statuses and merges from everyone else's. */
+  login: string;
   pool: GithubApiPool<BackstopCall, BackstopAnswer>;
   /** The pool's pair state: a backstop claim waits while any pair is closed, so the service refuses itself instead. */
   poolState: PoolStateStore;
@@ -110,6 +114,7 @@ async function runUnit(repo: string, state: RepoState, fullEvery: number, deps: 
   granted(state);
   const observation = deps.observe(repo, snapshot.value, cursor);
   appendAll(repo, observation, deps);
+  flagUnlogged(repo, snapshot.value, deps);
   deps.cursor.write(repo, observation.cursor);
   Object.assign(state, { forced: false, quietTicks: 0, pending: hasPending(snapshot.value) });
 }
@@ -160,6 +165,19 @@ function appendAll(repo: string, observation: Observation, deps: ReconcilerDeps)
     else deps.log.info({ repo, kind: event.kind, seq: result.seq, by: result.by }, "reconciler.confirmed");
   }
   for (const { class: disagree, subject, detail } of observation.disagreements) deps.log.info({ repo, class: disagree, subject, detail }, "reconciler.disagree");
+}
+
+/**
+ * TP-3094 C7: a bot write with no factory intent row. Intent rows are written before the call, so one that exists at all
+ * exists by the time a pass reads the write. The mark persists, so each action alarms once, not on every pass that re-reads it.
+ */
+function flagUnlogged(repo: string, snapshot: BackstopSnapshot, deps: ReconcilerDeps): void {
+  const observedAt = new Date(deps.now()).toISOString();
+  const missing = unloggedActions(botActions(snapshot, deps.login), (kind, subject) => hasBotIntent(deps.db, repo, kind, subject));
+  for (const action of missing) {
+    if (!markNotFactory(deps.db, { repo, ...action, observedAt })) continue;
+    deps.log.warn({ repo, kind: action.kind, id: action.id, subject: action.subject }, `ops-alarm BotActionUnlogged ${repo} ${action.kind} ${action.id}`);
+  }
 }
 
 const TERMINAL_STATUS = new Set(["SUCCESS", "FAILURE", "ERROR"]);

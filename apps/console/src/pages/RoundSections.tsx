@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type Dispatch, type ReactNode, type Set
 import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundNotes } from "../../server/rounds.js";
+import { isAddressed, type AddressedTick, type PriorFeedback } from "../../server/ship-blockers.js";
 import type { ABAnswering } from "./QuestionAB.js";
 import { asksRevision, heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
@@ -29,11 +30,16 @@ export function orderedQuestions(manifest: Manifest): { section: RoundSection | 
  * question's held verdict and Send back note, all kept in the round's draft (TP-3870).
  */
 function useShipMarks(seed: ShipDraft) {
-  const [addressed, setAddressed] = useState<number[]>(seed.addressed);
+  const [addressed, setAddressed] = useState<AddressedTick[]>(seed.addressed);
   const [followUps, setFollowUps] = useState<string[]>(seed.followUps);
   const [verdicts, setVerdicts] = useState<Record<string, ShipVerdict>>(seed.verdicts);
   const [backNotes, setBackNotes] = useState<Record<string, string>>(seed.backNotes);
-  const toggleAddressed = useCallback((round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]), []);
+  // A card on one PR's tab ticks for that PR alone (TP-3885); unticking it also drops a bare tick an older draft left.
+  const toggleAddressed = useCallback(
+    (item: Pick<PriorFeedback, "round" | "pr">, checked: boolean) =>
+      setAddressed((current) => [...current.filter((tick) => !isAddressed([tick], item)), ...(checked ? [item.pr === undefined ? item.round : { round: item.round, pr: item.pr }] : [])]),
+    [],
+  );
   const setFollowUp = useCallback((questionId: string, followUp: boolean) => setFollowUps((current) => [...current.filter((each) => each !== questionId), ...(followUp ? [questionId] : [])]), []);
   const chooseVerdict = useCallback((questionId: string, verdict: ShipVerdict) => setVerdicts((current) => ({ ...current, [questionId]: verdict })), []);
   const setBackNote = useCallback((questionId: string, text: string) => setBackNotes((current) => ({ ...current, [questionId]: text })), []);

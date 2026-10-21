@@ -1,12 +1,15 @@
 import type { Logger } from "@titan-design/daemon";
 import { githubApiPool, memoryPoolStateStore, type BackstopCommit, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { botIntentMigration } from "../bot-intent.js";
 import { eventLogMigration } from "../event-log/event-log.js";
+import { mergeLogMigration } from "../merge-log.js";
 import { fakePoolClock, rateLimitAnswer, type FakePoolClock } from "../test-support/pool-clock.js";
 import { reconcilerCursorMigration, sqliteReconcilerCursor, type ReconcilerCursorStore } from "./cursor.js";
 import type { BackstopAnswer, BackstopCall, BotPorts, Observation, Observe, ReconcilerDeps } from "./service.js";
 
 const BOT = "synthetic-bot[bot]";
+export const BOT_LOGIN = "synthetic-bot";
 export const REPO = "example-org/widgets";
 export const OTHER_REPO = "example-org/gadgets";
 
@@ -45,7 +48,7 @@ class FakeGithub {
 }
 
 function snapshotOf(tip: string, commits: BackstopCommit[]): BackstopSnapshot {
-  return { open: [], done: [], main: { tip, commits }, rateLimit: { cost: 1, remaining: 4999, resetAt: "2027-01-15T09:00:00Z", queries: 1 } };
+  return { open: [], done: [], main: { tip, commits }, trains: [], rateLimit: { cost: 1, remaining: 4999, resetAt: "2027-01-15T09:00:00Z", queries: 1 } };
 }
 
 /** Stands in for S3: one identity row per main check context, plus whatever disagreements a test plants. */
@@ -107,9 +110,10 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
   const claims: Claim[] = [];
   const poolState = memoryPoolStateStore();
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send: (call) => github.send(call), clock, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const bot: BotPorts = { identity: BOT, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe: options.observe ?? fakeObserve() };
+  const observe = options.observe ?? fakeObserve();
+  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe };
   const db = openDatabase(":memory:");
-  runMigrations(db, [eventLogMigration(), reconcilerCursorMigration()]);
+  runMigrations(db, [mergeLogMigration(), eventLogMigration(), reconcilerCursorMigration(), botIntentMigration()]);
   const cursor = sqliteReconcilerCursor(db, clock.now);
   const lines: Rig["lines"] = [];
   const record = (level: "info" | "warn") => (fields: Record<string, unknown>, msg: string) => void lines.push({ level, msg, fields });
