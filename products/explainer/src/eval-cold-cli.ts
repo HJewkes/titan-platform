@@ -68,12 +68,12 @@ function writeRows(p: Prepared, result: ColdResult, run: number): void {
   appendTsv(join(p.bench.evals, "cold-scores.tsv"), COLD_SCORE_COLUMNS, scores);
   appendTsv(join(p.bench.evals, "cold-chapters.tsv"), COLD_CHAPTER_COLUMNS, result.chapters.map((c) => ({ ...key(c.chapter), ...c })));
   // canaries.tsv is shared with l1 and l2, so it keeps their columns; the relay label names the chapter's canary.
-  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, result.chapters.map((c) => ({ ...key(c.chapter), ...c.canary })));
+  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, result.chapters.flatMap((c) => c.canaries.map((k) => ({ ...key(c.chapter), ...k }))));
 }
 
 function report(p: Prepared, run: number, r: ColdResult): void {
   const perMinute = Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(c.undefined_per_minute.toFixed(2))]));
-  const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
+  const failedCanaries = r.chapters.flatMap((c) => c.canaries).filter((k) => !k.pass).map((k) => `${k.canary}=${k.got}`);
   const gaps = p.readerGaps ? { reader_gaps: readerGapScores(p.readerGaps, r) } : {};
   const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));

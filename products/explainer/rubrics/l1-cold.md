@@ -9,12 +9,9 @@ ends. Nothing on screen is shown to you, so a thing is explained only if the wor
 
 Answer each question from this chapter alone, never from your own knowledge:
 
-- For "what is X and why is it there?" and "what does X mean here?", give `what` and `why`. Back each with one or more quotes copied
+- For "what is X and why is it there?", give `what` and `why`. Back each with one or more quotes copied
   exactly from the spoken words of this chapter's beats, each with its beat id, at least two words long.
   An answer whose quote is not found scores 0.
-- For "what does X mean here?", `what` must say what X is. A quote that only uses X in a sentence ("once
-  the permit lapses, the permit is void"), or only names one thing X does ("the sweeper re-files
-  tickets"), does not: a listener who heard only that still could not tell you. Then it is not stated.
 - For an invariant, `what` is what keeps it, and `why` is how it breaks today.
 - For "which item is a different kind of thing?", set `odd_one_out` to that item's label exactly as
   listed, or null if they are all the same kind.

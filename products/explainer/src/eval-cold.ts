@@ -20,6 +20,8 @@ export const TERM_RUNS = 3;
 export const TERM_QUORUM = 2;
 export const COLD_TERMS_EVAL_ID = "L1-cold-terms";
 export const COLD_TERMS_RUBRIC = "l1-cold-terms.md";
+/** The rubric for spoken-term questions, asked in a call of their own so their stricter bar cannot reach item labels. */
+export const COLD_SPOKEN_RUBRIC = "l1-cold-spoken.md";
 
 type ScoredKind = "what-why" | "invariant" | "spoken-term";
 
@@ -28,8 +30,8 @@ export type ColdQuestion =
   | { kind: "odd-one-out"; beat: string; items: string[]; text: string };
 
 const whatWhyText = (item: string): string => `What is "${item}", and why is it there?`;
-// A spoken term is asked what it means, so the rubric can hold it to the readers' bar: a sentence that only uses it
-// leaves it undefined. Item labels keep the looser question; held to that bar, "5-hour ceiling" scored 0 too.
+// A spoken term is asked what it means, under its own rubric, held to the readers' bar: a sentence that only uses it
+// leaves it undefined. Item labels keep the looser bar; asked beside the stricter one, v4's ch9 went from 0 to 22 a minute.
 const termText = (term: string): string => `What does "${term}" mean here, and why is it there?`;
 const invariantText = (item: string): string => `"${item}" must always hold. What keeps it, or how does it break today?`;
 const oddOneOutText = (items: readonly string[]): string =>
@@ -132,9 +134,9 @@ const canaryItem = (input: ColdInput, chapter: string): string =>
   `relay-${canonicalSha({ scriptSha: input.scriptSha, run: input.run, chapter }).slice(0, 6)}`;
 
 /** The canary sits at a nonce-chosen place under an ordinary qid, so its position does not give it away. */
-function poseQuestions(questions: readonly ColdQuestion[], canary: string): PosedQuestion[] {
+function poseQuestions(questions: readonly ColdQuestion[], canary: string, ask: (item: string) => string): PosedQuestion[] {
   const posed: Omit<PosedQuestion, "qid">[] = questions.map((question) => ({ text: question.text, question }));
-  posed.splice(Number.parseInt(canary.slice(-6), 16) % (posed.length + 1), 0, { text: whatWhyText(canary), question: null });
+  posed.splice(Number.parseInt(canary.slice(-6), 16) % (posed.length + 1), 0, { text: ask(canary), question: null });
   return posed.map((q, i) => ({ qid: `q${i + 1}`, ...q }));
 }
 
@@ -180,7 +182,8 @@ export interface ColdChapter {
   odd_one_out: OddOneOutPick[];
   undefined_items: number;
   undefined_per_minute: number;
-  canary: CanaryResult;
+  /** One a call: the item call's, then the spoken-term call's when the chapter speaks a term. */
+  canaries: CanaryResult[];
 }
 
 export interface ColdResult {
@@ -207,6 +210,7 @@ export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): str
     bare_list_item: BARE.void_reason,
     transcript: "spoken words and beat ends; no screen",
     spoken_terms: "glossary, identifiers and viewer-named terms, at first spoken use, unless a label shows them",
+    spoken_rubric_sha: canonicalSha(readRubric(COLD_SPOKEN_RUBRIC)),
     viewer_terms: { rubric_sha: canonicalSha(readRubric(COLD_TERMS_RUBRIC)), runs: TERM_RUNS, quorum: TERM_QUORUM, fold: "case and plural" },
   });
 
@@ -222,13 +226,19 @@ function canaryResult(canary: string, answer: ColdAnswer | undefined): CanaryRes
   return { canary, dim: "canary", got, pass: got === "not_stated" };
 }
 
-interface PosedChapter {
-  chapter: ColdChapterBeats;
+interface ChapterCall {
   canary: string;
   posed: readonly PosedQuestion[];
+  reply: ColdReply;
 }
 
-function gradeChapter({ chapter, canary: canaryLabel, posed }: PosedChapter, reply: ColdReply, summary: string): ColdChapter {
+interface GradedCall {
+  scores: ColdScore[];
+  oddOneOut: OddOneOutPick[];
+  canary: CanaryResult;
+}
+
+function gradeCall(chapter: ColdChapterBeats, { canary, posed, reply }: ChapterCall): GradedCall {
   const answerOf = (qid: string) => (reply.ok ? reply.output.answers.find((a) => a.qid === qid) : undefined);
   const spoken = new Map(chapter.beats.map((b) => [b.id, b.spoken]));
   const bare = bareListItems(chapter.beats, ODD_ONE_OUT_MIN_ITEMS);
@@ -241,29 +251,66 @@ function gradeChapter({ chapter, canary: canaryLabel, posed }: PosedChapter, rep
     if (question?.kind === "odd-one-out") oddOneOut.push({ qid, beat: question.beat, items: question.items, picked: pickOf(answer, question.items) });
     else if (question) scores.push({ qid, kind: question.kind, beat: question.beat, item: question.item, ...grade(question, answer) });
   }
-  const canary = canaryResult(canaryLabel, answerOf(posed.find((q) => q.question === null)!.qid));
+  return { scores, oddOneOut, canary: canaryResult(canary, answerOf(posed.find((q) => q.question === null)!.qid)) };
+}
+
+function gradeChapter(chapter: ColdChapterBeats, calls: readonly ChapterCall[], summary: string): ColdChapter {
+  const graded = calls.map((call) => gradeCall(chapter, call));
+  const scores = graded.flatMap((g) => g.scores);
   const minutes = chapter.beats.reduce((sum, b) => sum + b.durationS, 0) / 60;
   const undefinedItems = scores.filter((s) => s.kind !== "invariant" && s.score === 0).length;
-  return { chapter: chapter.chapter, minutes, summary, scores, odd_one_out: oddOneOut, undefined_items: undefinedItems, undefined_per_minute: minutes > 0 ? undefinedItems / minutes : 0, canary };
+  return {
+    chapter: chapter.chapter,
+    minutes,
+    summary,
+    scores,
+    odd_one_out: graded.flatMap((g) => g.oddOneOut),
+    undefined_items: undefinedItems,
+    undefined_per_minute: minutes > 0 ? undefinedItems / minutes : 0,
+    canaries: graded.map((g) => g.canary),
+  };
+}
+
+interface ChapterAsk {
+  input: ColdInput;
+  chapter: ColdChapterBeats;
+  summary: string;
+  questions: readonly ColdQuestion[];
+}
+
+/** One call: these questions, the chapter as heard, the summary so far, and a canary under its own nonce. */
+async function askCall({ input, chapter, summary, questions }: ChapterAsk, rubric: string, nonce: string, ask: (item: string) => string): Promise<ChapterCall> {
+  const canary = canaryItem(input, nonce);
+  const posed = poseQuestions(questions, canary, ask);
+  return { canary, posed, reply: await input.harness({ prompt: coldPrompt(rubric, chapter, summary, posed), schema: ReplySchema }) };
+}
+
+/** The item call always runs, since it carries the summary forward; the spoken-term call runs when a term is asked. */
+async function askChapter(ask: ChapterAsk, spokenRubric: string): Promise<ChapterCall[]> {
+  const ids = new Set(ask.chapter.beats.map((b) => b.id));
+  const mine = ask.questions.filter((q) => ids.has(q.beat));
+  const terms = mine.filter((q) => q.kind === "spoken-term");
+  const items = await askCall({ ...ask, questions: mine.filter((q) => q.kind !== "spoken-term") }, ask.input.rubric, ask.chapter.chapter, whatWhyText);
+  if (terms.length === 0) return [items];
+  return [items, await askCall({ ...ask, questions: terms }, spokenRubric, `${ask.chapter.chapter}:terms`, termText)];
 }
 
 /**
- * One cold-viewer run: a fresh call per chapter in order. The viewer sees only that chapter's playback
+ * One cold-viewer run: fresh calls per chapter in order. The viewer hears only that chapter's narration
  * and its own summary of the chapters before, the way a first viewer who cannot scroll back remembers them.
  */
 export async function runCold(input: ColdInput): Promise<ColdResult> {
   const chapters: ColdChapter[] = [];
   const replies: ColdReply[] = [];
-  let summary = "";
+  const spokenRubric = readRubric(COLD_SPOKEN_RUBRIC);
   const questions = coldQuestions(input.beats, input.glossary);
+  let summary = "";
   for (const chapter of chaptersOf(input.beats)) {
-    const canary = canaryItem(input, chapter.chapter);
-    const ids = new Set(chapter.beats.map((b) => b.id));
-    const posed = poseQuestions(questions.filter((q) => ids.has(q.beat)), canary);
-    const reply = await input.harness({ prompt: coldPrompt(input.rubric, chapter, summary, posed), schema: ReplySchema });
-    replies.push(reply);
-    if (reply.ok) summary = clampSummary(reply.output.summary);
-    chapters.push(gradeChapter({ chapter, canary, posed }, reply, summary));
+    const calls = await askChapter({ input, chapter, summary, questions }, spokenRubric);
+    replies.push(...calls.map((c) => c.reply));
+    const items = calls[0]!.reply;
+    if (items.ok) summary = clampSummary(items.output.summary);
+    chapters.push(gradeChapter(chapter, calls, summary));
   }
   const failures = replies.flatMap((r) => (r.ok ? [] : [r.reason]));
   return {
@@ -271,7 +318,7 @@ export async function runCold(input: ColdInput): Promise<ColdResult> {
     judge: judgeLabel(input.judge),
     chapters,
     failures,
-    trusted: failures.length === 0 && chapters.every((c) => c.canary.pass),
+    trusted: failures.length === 0 && chapters.every((c) => c.canaries.every((k) => k.pass)),
     spend: sumSpend(replies),
   };
 }
@@ -295,7 +342,9 @@ export interface ReaderGapScore {
   score: 0 | 1 | 2 | null;
 }
 
-const matchesItem = (asked: string, item: string): boolean => mentions(termKey(asked), termKey(item));
+// The term's own question wins over a longer label that carries it: "I2 verdict at head" asks about the invariant.
+const firstAsking = (scores: readonly ColdScore[], item: string): ColdScore | undefined =>
+  scores.find((s) => termKey(s.item) === termKey(item)) ?? scores.find((s) => mentions(termKey(s.item), termKey(item)));
 
 /**
  * One run's score for each labelled reader-gap group, at the item's first question as `spokenTerms` places it. A
@@ -304,7 +353,7 @@ const matchesItem = (asked: string, item: string): boolean => mentions(termKey(a
 export function readerGapScores(groups: readonly ReaderGapGroup[], result: ColdResult): ReaderGapScore[] {
   const scores = result.chapters.flatMap((c) => c.scores);
   return groups.map(({ group, items, first_used }) => {
-    const firsts = items.flatMap((item) => scores.find((s) => matchesItem(s.item, item)) ?? []);
+    const firsts = items.flatMap((item) => firstAsking(scores, item) ?? []);
     const asked = firsts.length > 0 ? firsts : scores.filter((s) => first_used.includes(s.beat));
     const lowest = asked.length > 0 ? (Math.min(...asked.map((s) => s.score)) as ColdGrade["score"]) : null;
     return { group, asked: asked.map((s) => s.item), score: lowest };

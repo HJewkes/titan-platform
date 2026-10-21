@@ -199,9 +199,9 @@ describe("the streamed cold-viewer probe", () => {
     const guesser = await runCold(input(fakeViewer({ answerCanary: true }).harness));
 
     expect(careful.trusted).toBe(true);
-    expect(careful.chapters.map((c) => c.canary.pass)).toEqual([true, true]);
+    expect(careful.chapters.map((c) => c.canaries.map((k) => k.pass))).toEqual([[true], [true]]);
     expect(guesser.trusted).toBe(false);
-    expect(guesser.chapters.map((c) => c.canary.got)).toEqual(["answered", "answered"]);
+    expect(guesser.chapters.map((c) => c.canaries.map((k) => k.got))).toEqual([["answered"], ["answered"]]);
   });
 
   // Mutation: recording a placeholder per chapter instead of the label the viewer was asked about.
@@ -212,7 +212,7 @@ describe("the streamed cold-viewer probe", () => {
 
     const asked = viewer.calls.map((prompt) => /"(relay-[0-9a-f]{6})"/.exec(prompt)?.[1]);
     expect(asked).toEqual([expect.stringMatching(/^relay-[0-9a-f]{6}$/), expect.stringMatching(/^relay-[0-9a-f]{6}$/)]);
-    expect(result.chapters.map((c) => c.canary.canary)).toEqual(asked);
+    expect(result.chapters.map((c) => c.canaries[0]!.canary)).toEqual(asked);
   });
 
   it("does not trust a run with a failed call, and carries the last good summary past it", async () => {
@@ -299,10 +299,37 @@ describe("the streamed cold-viewer probe", () => {
 
     const result = await runCold({ ...input(viewer.harness), beats, glossary: ["dock"] });
 
-    expect(viewer.calls[0]).toContain('"dock"');
-    expect(viewer.calls[1]).not.toContain('"dock"');
+    const asksDock = viewer.calls.map((prompt) => prompt.includes('"dock"'));
+    expect(asksDock).toEqual([false, true, false]);
     expect(result.chapters[0]!.scores.map((s) => [s.kind, s.item, s.score])).toEqual([["what-why", "parcel", 0], ["spoken-term", "dock", 0]]);
     expect(result.chapters[0]!.undefined_items).toBe(2);
+  });
+
+  // Mutation: asking terms beside the item labels lets their what-it-is bar zero labels too (v4 ch9: 0 to 22 a minute).
+  it("asks spoken terms in a call of their own, under the spoken rubric, with its own canary", async () => {
+    const beats = buildPaceBeats([source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6)]);
+    const viewer = fakeViewer();
+
+    const result = await runCold({ ...input(viewer.harness), beats, glossary: ["dock"] });
+
+    const [items = "", terms = ""] = viewer.calls;
+    expect(items.startsWith(rubric)).toBe(true);
+    expect(items).not.toContain("mean here");
+    expect(terms.startsWith(readRubric("l1-cold-spoken.md"))).toBe(true);
+    expect(promptQuestions(terms).map((q) => q.text)).toEqual(expect.arrayContaining(['What does "dock" mean here, and why is it there?']));
+    expect(promptQuestions(terms)).toHaveLength(2);
+    expect(result.chapters[0]!.canaries.map((k) => k.pass)).toEqual([true, true]);
+    expect(new Set(result.chapters[0]!.canaries.map((k) => k.canary)).size).toBe(2);
+  });
+
+  it("does not trust a run whose viewer answers the spoken-term call's canary", async () => {
+    const beats = buildPaceBeats([source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6)]);
+    const guessesTerms: JudgeHarness = (call) => fakeViewer({ answerCanary: call.prompt.includes("mean here") }).harness(call);
+
+    const result = await runCold({ ...input(guessesTerms), beats, glossary: ["dock"] });
+
+    expect(result.chapters[0]!.canaries.map((k) => k.got)).toEqual(["not_stated", "answered"]);
+    expect(result.trusted).toBe(false);
   });
 
   // Mutation: leaving the judge identity out of eval_version mixes two judges' rows.
@@ -409,6 +436,16 @@ describe("reader-gap group scores", () => {
 
     expect(readerGapScores(groups, run)[0]).toEqual({ group: "lanes", asked: ["lane", "dock"], score: 0 });
     expect(readerGapScores(groups, await scoredRun([]))[0]!.score).toBe(2);
+  });
+
+  // Mutation: taking the first question that mentions "dock" scores the explained label, not the unexplained term.
+  it("scores a term by its own question over an earlier label that carries it", async () => {
+    const beats = buildPaceBeats([source("h1-1", "ch1", "The dock shuts at noon, and the dock is cleared.", ["card:dock shuts at noon"], 6)]);
+    const harness: JudgeHarness = (call) => fakeViewer({ notStated: call.prompt.includes("mean here") }).harness(call);
+
+    const run = await runCold({ ...input(harness), beats, glossary: ["dock"] });
+
+    expect(readerGapScores([{ group: "dock", items: ["dock"], first_used: ["h1-1"] }], run)).toEqual([{ group: "dock", asked: ["dock"], score: 0 }]);
   });
 
   // Mutation: matching only by item words leaves a group named for a whole list unscored.
