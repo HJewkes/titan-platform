@@ -221,9 +221,11 @@ Origin guards on 7410 stay as they are, and a Funnel typo cannot expose `/rpc` o
 | --- | --- |
 | Path | `/ingress/github` (POST only) |
 | Local listener | `127.0.0.1:7411` |
-| Public route | `https://basement.tailb52ff2.ts.net/ingress/github`, forwarded to `http://127.0.0.1:7411/ingress/github` |
-| Secret file | `$XDG_CONFIG_HOME/titan-factory/secrets/github-webhook.token`; on basement `~/.config/titan-factory/secrets/github-webhook.token` (directory 0700, file 0600) |
+| Public route | `https://<host>.<tailnet>.ts.net/ingress/github`, forwarded to `http://127.0.0.1:7411/ingress/github` |
+| Secret file | `$XDG_CONFIG_HOME/titan-factory/secrets/github-webhook.token`; on the serve host `~/.config/titan-factory/secrets/github-webhook.token` (directory 0700, file 0600) |
 | Kill switch | `github.ingress` (`"on"` or `"off"`, default `"off"`) in `~/.config/titan-factory/config.json` |
+
+`<host>.<tailnet>.ts.net` stands for the serve host's Funnel name, shown by `tailscale status --json | jq -r .Self.DNSName`.
 
 The route is live only when `github.sources` is `"webhook"` **and** `github.ingress` is `"on"`. Otherwise every request gets
 `404 {"error":"ingress off"}` before the body or the secret is read. The listener binds even when the switch is off, so a flip
@@ -236,11 +238,11 @@ event, and acts on nothing. No recipe or service reads what it writes at M1a.
 
 ### Owner steps
 
-D1 and D2 (the tailnet ACL `funnel` nodeAttr, scoped to basement and never `"*"`) are separate and can run now. D6 needs no code
-and can run now. D3 to D5 wait until the ingress listener is deployed on basement: before that, 7411 has no listener and Funnel
+D1 and D2 (the tailnet ACL `funnel` nodeAttr, scoped to the serve host and never `"*"`) are separate and can run now. D6 needs no code
+and can run now. D3 to D5 wait until the ingress listener is deployed on the serve host: before that, 7411 has no listener and Funnel
 answers 502.
 
-**D3. Check that serve's ingress listener is up** (on basement):
+**D3. Check that serve's ingress listener is up** (on the serve host):
 
 ```sh
 ss -ltn 'sport = :7411'
@@ -249,7 +251,7 @@ curl -sS -X POST http://127.0.0.1:7411/ingress/github
 
 The first line must list `127.0.0.1:7411`. The curl must print `{"error":"ingress off"}`.
 
-**D4. Add the one Funnel route** (on basement):
+**D4. Add the one Funnel route** (on the serve host):
 
 ```sh
 sudo tailscale funnel --bg --set-path /ingress/github http://127.0.0.1:7411/ingress/github
@@ -261,18 +263,18 @@ Never run `tailscale funnel 7410`, and never run `tailscale funnel` without `--s
 
 ```sh
 tailscale funnel status
-curl -sS -X POST https://basement.tailb52ff2.ts.net/ingress/github
-curl -sS -o /dev/null -w '%{http_code}\n' https://basement.tailb52ff2.ts.net/health
+curl -sS -X POST https://<host>.<tailnet>.ts.net/ingress/github
+curl -sS -o /dev/null -w '%{http_code}\n' https://<host>.<tailnet>.ts.net/health
 ```
 
-- `funnel status` must list exactly one entry: `https://basement.tailb52ff2.ts.net/ingress/github`, proxying to
+- `funnel status` must list exactly one entry: `https://<host>.<tailnet>.ts.net/ingress/github`, proxying to
   `http://127.0.0.1:7411/ingress/github`.
 - The first curl must print `{"error":"ingress off"}`.
 - The second curl must print `404`. That 404 comes from Tailscale and shows serve's `/health` is not public.
 - If the first curl prints `{"error":"not found"}` instead, Tailscale appended the mount path twice. Run
   `sudo tailscale funnel --set-path /ingress/github off`, then re-run D4 with the target `http://127.0.0.1:7411`, then re-run D5.
 
-**D6. Make the webhook secret straight into its file** (on basement, as the serve user):
+**D6. Make the webhook secret straight into its file** (on the serve host, as the serve user):
 
 ```sh
 umask 077
@@ -297,7 +299,7 @@ admin, so it runs as HJewkes. The secret goes from the file through stdin, never
 for repo in titan-platform titan-design agent-chat voltras-mcp; do
   jq -n --rawfile s ~/.config/titan-factory/secrets/github-webhook.token '{name:"web",active:true,
     events:["check_run","status","pull_request","pull_request_review","push","repository_ruleset"],
-    config:{url:"https://basement.tailb52ff2.ts.net/ingress/github",content_type:"json",insecure_ssl:"0",secret:($s|rtrimstr("\n"))}}' \
+    config:{url:"https://<host>.<tailnet>.ts.net/ingress/github",content_type:"json",insecure_ssl:"0",secret:($s|rtrimstr("\n"))}}' \
   | gh api -X POST "repos/HJewkes/$repo/hooks" --input - --jq '.id'
 done
 ```
