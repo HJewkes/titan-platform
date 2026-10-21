@@ -1,6 +1,6 @@
 # titan-platform
 
-Reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
+<!-- generated:package-count start -->58<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
 composed thinly on top of them. This is the destination monorepo for the Titan platform
 decomposition: shared concerns that grew independently in brain, active-work, codewatch,
 and the session-miner get extracted here one package at a time, and each old repo keeps
