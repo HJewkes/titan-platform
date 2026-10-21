@@ -15,7 +15,7 @@ export interface ProgressPoint {
 }
 
 /** The σ band's half-width; `locked` once the noise estimate has the pairs the target asks for. */
-export interface Band {
+interface Band {
   halfWidth: number;
   locked: boolean;
 }
@@ -51,7 +51,7 @@ export function bandFor(noise: NoiseConfig, reading: NoiseReading): Band {
   return { halfWidth: Math.max(noise.bandSigmas * (sigma ?? 0), noise.defaultBandPp), locked: false };
 }
 
-export function median(values: readonly number[]): number | null {
+function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
