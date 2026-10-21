@@ -16,6 +16,7 @@ const write = (name: string, value: unknown): string => {
   return path;
 };
 const readJson = (name: string): unknown => JSON.parse(readFileSync(join(dir, name), "utf8"));
+const readReport = (): RewriteReport => JSON.parse(readFileSync(join(dir, "report.json"), "utf8"));
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "explainer-rewrite-"));
@@ -51,8 +52,8 @@ describe("explainer rewrite", () => {
 
     expect(code).toBe(0);
     expect(ScriptSchema.parse(readJson("out.json")).beats.find((beat) => beat.id === "h2")!.visual.labels).toEqual(["3 sent back"]);
-    expect((readJson("report.json") as RewriteReport).rounds[0]).toMatchObject({ round: 1, kept: true });
-    const line = JSON.parse(out) as { pass: boolean; rows: { pass: boolean }[]; calls: number; usd: number };
+    expect(readReport().rounds[0]).toMatchObject({ round: 1, kept: true });
+    const line = JSON.parse(out);
     expect(line).toMatchObject({ pass: true, calls: 4, failed_calls: 0, out: join(dir, "out.json") });
     expect(line.rows).toHaveLength(5);
     expect(line.usd).toBeCloseTo(0.04);
@@ -104,7 +105,7 @@ describe("explainer rewrite --speech-vet", () => {
     });
 
     expect(vet.vetted).toContain(LONG_H1);
-    expect((readJson("report.json") as RewriteReport).rounds[0]!.rewritten).toContain("h1");
+    expect(readReport().rounds[0]!.rewritten).toContain("h1");
   });
 
   it("rejects that sentence when speech-vet does not accept it", async () => {
@@ -115,7 +116,7 @@ describe("explainer rewrite --speech-vet", () => {
       speechVet: vet.speechVet,
     });
 
-    const rejected = (readJson("report.json") as RewriteReport).rounds[0]!.rejected.find((beat) => beat.beat === "h1");
+    const rejected = readReport().rounds[0]!.rejected.find((beat) => beat.beat === "h1");
     expect(rejected?.rejections.map((r) => r.rule)).toContain("sentence-cap");
     expect(err).toContain("speech-vet: vetted 1 sentence(s) of 26-32 words: 1 rejected");
   });
@@ -129,7 +130,7 @@ describe("explainer rewrite --speech-vet", () => {
     });
 
     expect(vet.vetted).toEqual([]);
-    expect((readJson("report.json") as RewriteReport).rounds[0]!.rewritten).not.toContain("h1");
+    expect(readReport().rounds[0]!.rewritten).not.toContain("h1");
   });
 
   it("runs without verdicts and says so when no vetter can be built", async () => {
