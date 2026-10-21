@@ -23,6 +23,8 @@ import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import { recordServeStart, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
+import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
+import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
@@ -76,6 +78,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   sources?: SourcesReader;
   /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
   githubApi?: () => GithubApiHealth;
+  /** The webhook ingress listener beside the daemon, gated per request by `sources`; absent means serve binds no ingress port. */
+  ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
   build?: { sha: string; behindMain?: BehindMain };
   /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
@@ -128,7 +132,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
   const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, notify));
+  const ingressRef: { listener?: IngressListener } = {};
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status() }));
+  const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
@@ -158,7 +164,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
-  const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
+  const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
 
@@ -188,12 +194,12 @@ function stateDirOf(options: FactoryServerOptions): string {
 type BuildHealth = BehindMain & { sha: string };
 
 /** The pid file is read before startDaemon removes a stale one: a leftover file means the last serve exited without cleaning up. A refused start is not counted. */
-async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger, notify: GateNotifyWatch | undefined): Promise<DaemonHandle> {
+async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger, extras: ServeExtras): Promise<DaemonHandle> {
   const stateDir = stateDirOf(options);
   try {
     const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
     const recorded: { start?: ServeStart } = {};
-    const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, notify }));
+    const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, ...extras }));
     recorded.start = recordStart(stateDir, unclean, options, log);
     return daemon;
   } catch (err) {
@@ -217,13 +223,18 @@ function ownerProofs(options: FactoryServerOptions): OwnerProofs {
   return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
 }
 
+type ServeExtras = Pick<DaemonExtras, "notify" | "ingress">;
+
 interface DaemonExtras {
   proofs: OwnerProofs;
   start: () => ServeStart | undefined;
   notify: GateNotifyWatch | undefined;
+  /** Started after the daemon, so a second serve beside a live one never binds the ingress port. */
+  ingress: () => IngressStatus | undefined;
 }
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, { proofs, start, notify }: DaemonExtras): StartDaemonOptions<FactoryContext> {
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, extras: DaemonExtras): StartDaemonOptions<FactoryContext> {
+  const { proofs, start, notify, ingress } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
@@ -235,7 +246,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress() }),
     mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };

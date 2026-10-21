@@ -9,6 +9,7 @@ import type { GithubApiHealth } from "./github-api/status.js";
 import type { GithubHealth } from "./github-health.js";
 import type { SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
+import type { IngressStatus } from "./ingress/listen.js";
 import type { OwnerKeys } from "./owner-keys.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { heldRun } from "./serve-holds.js";
@@ -38,14 +39,16 @@ interface HealthInputs {
   ownerKeys: OwnerKeys;
   start: ServeStart | undefined;
   notify: GateNotifyWatch | undefined;
+  ingress: IngressStatus | undefined;
 }
 
-export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify }: HealthInputs): Record<string, unknown> {
+export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify, ingress }: HealthInputs): Record<string, unknown> {
   return {
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
     github: github.status(),
     ...(options.sources && { sources: options.sources() }),
     ...(options.githubApi && { githubApi: options.githubApi() }),
+    ...(ingress && { ingress }),
     ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
     build: { sha: build.sha, behindMain: build.status() },
     lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
