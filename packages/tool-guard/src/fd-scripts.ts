@@ -1,8 +1,8 @@
-import { SOURCERS } from "./scripts.js";
 import { SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken, WordToken } from "./shell/lexer.js";
 import { shellOperands } from "./shell/shell-options.js";
+import { sourcedOperand, SOURCERS } from "./shell/sourced.js";
 import { UnknownStdinError } from "./shell/unsure-readings.js";
 
 /** The tail after `/dev/fd/` or `/proc/<pid>/fd/`; anything but digits is an fd the line only names at run time. */
@@ -34,7 +34,7 @@ export function refuseFdScripts(commands: readonly SimpleCommand[]): void {
 /** The word a shell or `source` takes as its script file: not a `-c` string, whose operands are positional parameters. */
 function scriptOperand(cmd: SimpleCommand): WordToken | null {
   if (cmd.name === null) return null;
-  if (SOURCERS.has(cmd.name)) return cmd.args[0] ?? null;
+  if (SOURCERS.has(cmd.name)) return sourcedOperand(cmd.args) ?? null;
   if (!SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args, cmd.name);
   return hasC ? null : positional;

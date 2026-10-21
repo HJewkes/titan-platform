@@ -18,8 +18,11 @@ const context: ClassifyContext = {
   readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/f`].includes(file) ? "echo hi\n" : null),
 };
 
-async function verdict(command: string): Promise<"deny" | "pass"> {
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+/** The hook's own descriptors read as harmless text, as they may in a real hook, so only the fd model can deny. */
+const heldContext: ClassifyContext = { ...context, readScript: (file) => (/^\/dev\/(fd\/\d+|stdin)$/.test(file) ? "echo hi\n" : context.readScript(file)) };
+
+async function verdict(command: string, ctx: ClassifyContext = context): Promise<"deny" | "pass"> {
+  const port: HookPort = { context: ctx, now: () => new Date(0), loadDecide: async () => decide };
   const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
   const { stdout } = await handle(event, { PATH: "/usr/bin" }, port);
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
@@ -104,9 +107,28 @@ const ALREADY_DENIED = [
   "exec 3< ./x.sh; bash <&3",
 ];
 
+/** `--` ends the options of `source` and `.`, quoted or escaped too, so the fd after it is still the file read. */
+const DOUBLE_DASH_SOURCE = [
+  "exec {fd}< ./x.sh; source -- /dev/fd/$fd",
+  "exec {fd}< ./x.sh; . '--' /dev/fd/$fd",
+  "exec {fd}< ./x.sh; source \\-\\- /dev/fd/$fd",
+  "exec 3< ./x.sh; . -- /dev/fd/3",
+  "exec 3< ./x.sh; source \"--\" /dev/fd/3",
+  "exec < ./x.sh; source -- /dev/stdin",
+  "exec < ./x.sh; . \\-\\- /dev/stdin",
+];
+
 describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
   it.each([...RUN_TIME_OPERAND, ...NAMED_ON_COMMAND, ...INNER_EXEC, ...INDIRECT, ...SWAPPED_STDIN, ...ALREADY_DENIED])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(DOUBLE_DASH_SOURCE)("denies %s, whatever the hook's own descriptor holds", async (line) => {
+    expect(await verdict(line, heldContext)).toBe("deny");
+  });
+
+  it("allows a harmless file sourced after -- with an fd open", async () => {
+    expect(await verdict("exec {fd}< f; source -- ./ok.sh", heldContext)).toBe("pass");
   });
 
   it("refuses a run-time fd operand with nothing opened, as it does a literal one", async () => {
@@ -184,6 +206,7 @@ const PREMISES: Array<[string, string[]]> = [
   ["exec < ./x.sh; bash", ["bash", "zsh -f", "dash"]],
   ["exec < ./x.sh; bash -s", ["bash", "zsh -f", "dash"]],
   ["exec 3< ./x.sh; exec <&3; bash", ["bash", "zsh -f", "dash"]],
+  ...DOUBLE_DASH_SOURCE.map((line): [string, string[]] => [line, ["bash", "zsh -f"]]),
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash and zsh run the push the denied lines hide (TP-3314)", () => {
