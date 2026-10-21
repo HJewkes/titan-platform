@@ -102,7 +102,9 @@ describe("planRegisterEdits: round 2", () => {
   describe("shape for beats still under the mean floor", () => {
     const long = "Then the desk asks the ledger for the parcel row and waits until the answer comes back before it prints anything.";
     const longBeat = `The desk reads it first. ${long}`;
-    const mixed = script([...Array.from({ length: 6 }, () => longBeat), ...choppyLines(18)]);
+    // One 24-word sentence is over the floor on its own, but a script-wide plan would still split it.
+    const steady = "The desk asks the ledger for the parcel row and waits patiently until the answer comes back before it prints a label.";
+    const mixed = script([...Array.from({ length: 6 }, () => steady), ...choppyLines(18)]);
 
     it("gives a choppy beat a shape line and a beat already long enough none", () => {
       const { directives, projected } = plan(mixed, 2);
