@@ -181,6 +181,7 @@ graph TD
   activeWork --> sessionRead
   activeWork --> storeSqlite
   corpusQuery --> appPaths
+  corpusQuery --> evidence
   corpusQuery --> storeSqlite
   evals --> agent
   evals --> authority
