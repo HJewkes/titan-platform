@@ -913,9 +913,8 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
-    devDependencies:
       zod:
-        specifier: ^4.4.3
+        specifier: ^4.0.0
         version: 4.5.4
 
   packages/workflow:
