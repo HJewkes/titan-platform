@@ -8,6 +8,7 @@ import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
 import { hasProcsubOperand, procsubTargets, withoutProcsubOperands } from "./shell/procsub-operand.js";
 import { shellOperands, shellStdin } from "./shell/shell-options.js";
+import { sourcedOperand, SOURCERS } from "./shell/sourced.js";
 import { ReadingLimitError, UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
@@ -81,7 +82,6 @@ export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolea
   }
 }
 
-export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
 /** The scripts a command runs by path; a shell runs every file on the descriptor it reads, as zsh's MULTIOS joins them. */
@@ -94,7 +94,7 @@ export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] 
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
-  if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
+  if (SOURCERS.has(name)) return target(cmd, sourcedOperand(cmd.args), home, "shell");
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
   return runsByPath(cmd.path) ? typedTarget(cmd, cmd.path, home) : null;
 }
