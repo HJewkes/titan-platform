@@ -568,7 +568,7 @@ describe("every math write operator, spacing and side around a computed name", (
       const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
     }, top);
-  });
+  }, LINEARITY_TIMEOUT_MS);
 });
 
 /** The lexer refuses these before a command walk can see them (TP-3294); the walk's own reading of them is covered by the arithmetic spans above. */
