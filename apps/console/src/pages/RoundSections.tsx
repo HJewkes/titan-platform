@@ -3,7 +3,7 @@ import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/re
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundNotes } from "../../server/rounds.js";
 import type { ABAnswering } from "./QuestionAB.js";
-import { heldFromSent } from "./RoundAnswers.js";
+import { asksRevision, heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
 import { useFrameFeedback, type ActiveTarget, type VerdictLink } from "./FrameFeedback.js";
 import { pickVerdicts, verdictAnswers } from "./frame-link.js";
@@ -146,7 +146,7 @@ export function RoundSections({ manifest, state, textAnswers = false, frames, lo
             onActivate={unlessLocked(locked, () => setActiveId(question.id))}
             ab={abAnswering(state, question, locked)}
           />
-          <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} />
+          <RoundComment question={question} value={comments[question.id] ?? ""} onChange={unlessLocked(locked, (text: string) => comment(question, text))} sent={sentComment(comments, question, locked)} revising={asksRevision(question, answers[question.id])} />
         </LockedQuestion>
       ))}
     </QuestionSection>
