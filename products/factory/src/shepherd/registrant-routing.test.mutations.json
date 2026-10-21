@@ -1,0 +1,59 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a seat's registration sends to nobody, so the repo's seat hears it",
+      "file": "products/factory/src/shepherd/registrant.ts",
+      "find": "  if (!registrant.fixer) return registrant.name;",
+      "replace": "  if (!registrant.fixer) return undefined;",
+      "kills": [
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a run tp-operator registered sends its seat notice and its digest to tp-operator only",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again"
+      ]
+    },
+    {
+      "name": "a self-registered fixer hears its own notices",
+      "file": "products/factory/src/shepherd/registrant.ts",
+      "find": "  return roster && lineageSeat({ implementer: registrant.name, successors }, roster);",
+      "replace": "  return registrant.name;",
+      "kills": [
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a fixer that registered its own PR has its notices sent to the session that spawned it",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
+      ]
+    },
+    {
+      "name": "a repeat registration replaces the first registrant",
+      "file": "products/factory/src/shepherd/registration-facts.ts",
+      "find": "WHERE run_id = ? AND registrant IS NULL\";",
+      "replace": "WHERE run_id = ?\";",
+      "kills": [
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
+      ]
+    },
+    {
+      "name": "notices ignore the run's lineage",
+      "file": "products/factory/src/shepherd/exit-notice.ts",
+      "find": "  return lineage ?? ports.seatFor(target.repo);",
+      "replace": "  return ports.seatFor(target.repo);",
+      "kills": [
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a run tp-operator registered sends its seat notice and its digest to tp-operator only",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a fixer that registered its own PR has its notices sent to the session that spawned it",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
+      ]
+    },
+    {
+      "name": "the digest ignores the run's lineage",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "  return (run) => named.get(run.runId) ?? seatFor(run.repo);",
+      "replace": "  return (run) => seatFor(run.repo);",
+      "kills": [
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a run tp-operator registered sends its seat notice and its digest to tp-operator only",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a fixer that registered its own PR has its notices sent to the session that spawned it",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again",
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
+      ]
+    }
+  ]
+}

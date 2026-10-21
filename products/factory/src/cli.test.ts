@@ -350,6 +350,14 @@ describe("shepherd register with only a target", () => {
     expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "seat-x" });
   });
 
+  it("records the agent-chat session that ran it as the run's registrant, so the run's notices follow that session", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--offline", "--json", "--port", String(await deadPort())], deps, { AGENT_CHAT_NAME: "tp-operator" });
+
+    expect(JSON.parse(result.out).registration).toMatchObject({ implementer: "tc-tp-2239", registrant: { name: "tp-operator", fixer: false } });
+  });
+
   it("exits with a usage error naming --task and the branch when the head branch has no task id", async () => {
     const deps = inferDeps("agent-chat/review-errors");
 

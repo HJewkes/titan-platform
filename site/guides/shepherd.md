@@ -474,7 +474,16 @@ takes the gate's default action:
 | `sh-sent-back` | a `FIX_FIRST` or `NO_REPRO` no agent took, a spent repair budget, or a fixer exit (the exit notice above) | wait for a new head |
 | `stuck-behind` | the update budget and its retries are spent | answer `retry`: `update-branch` runs again with a fresh budget |
 
-The gate opens only when no notice was sent: no single seat owns the repo, no notice is wired,
+Who receives a seat notice, an exit notice and the seat digest follows the run, not the repo
+(TP-3653). `shepherd register` records the agent-chat session that ran it (`AGENT_CHAT_NAME`),
+and only the first registrant is kept, so a restarted run or a successor's repeat registration
+still reaches it. A session that registered a PR it does not implement, such as a coordinator,
+receives them. An implementer that registered its own PR exits at turn end, so the first
+session that spawned its lineage receives them. A run with no registrant, or whose lineage
+names no session, goes to the repo's seat as before. A held run naming no seat and a
+reviewer-infrastructure notice still go to the hub seat.
+
+The gate opens only when no notice was sent: no seat was found, no notice is wired,
 or the send failed. Its prompt then names why. A run tells the seat once per gate and head, and
 a restart replays the recorded notice instead of sending it again. A run that was already
 paused on one of these gates before the notice step existed keeps that gate.
