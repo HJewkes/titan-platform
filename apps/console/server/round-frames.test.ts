@@ -96,7 +96,7 @@ describe("rounds.frame reads a listed frame", () => {
     const { entries } = await frameIndex(round);
     const story = await frameIndex(path.join(dir, "lantern-cards-r1"));
 
-    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true, unchanged: false });
+    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true, unchanged: false, viewportWidth: 64 });
     expect(entries.get("panel-wide")?.files).toEqual({ head: "images/panel-wide.png", base: "base/panel-wide.png" });
     expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false, unchanged: false });
     expect(story.entries.size).toBe(0);
@@ -132,13 +132,22 @@ describe("rounds.frames", () => {
       data: {
         indexed: true,
         frames: [
-          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true, unchanged: false },
-          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true, unchanged: false },
-          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true, unchanged: false },
+          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true, unchanged: false, viewportWidth: 64 },
+          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true, unchanged: false, viewportWidth: 64 },
+          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true, unchanged: false, viewportWidth: 96 },
           { key: "badge-new", views: ["head"], indexed: false, unchanged: false },
         ],
       },
     });
+  });
+
+  it("drops a malformed viewport instead of refusing the index, so the frame's pins fall back to its pixels", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), viewport: { width: "wide" } }]);
+
+    const { frames } = await listFrames({ dir }, SHIP);
+
+    expect(frames.find((each) => each.key === "tile-light")).toEqual({ key: "tile-light", views: ["head"], indexed: true, unchanged: false });
   });
 });
 

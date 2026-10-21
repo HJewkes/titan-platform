@@ -55,6 +55,8 @@ export const FramesIndexSchema = z.object({
       base: indexedFile.optional(),
       after: indexedFile.optional(),
       diff: indexedFile.optional(),
+      /** The CSS px the harness shot the frame at; pins are measured in them. A malformed one is dropped, not refused. */
+      viewport: z.object({ width: z.number().positive() }).optional().catch(undefined),
     }),
   ),
 });
@@ -67,6 +69,7 @@ interface FrameEntry {
   indexed: boolean;
   /** frames.json gives the head and its base one sha256: main and head render the same. */
   unchanged: boolean;
+  viewportWidth?: number;
 }
 
 interface FrameIndex {
@@ -83,7 +86,17 @@ type FrameRead = z.infer<typeof frameResult>;
 const framesResult = z.object({
   /** Whether the round has a frames/frames.json; a design round without one is answered in the harness. */
   indexed: z.boolean(),
-  frames: z.array(z.object({ key: z.string(), theme: z.enum(THEME_MODES).optional(), views: z.array(z.enum(FRAME_VIEWS)), indexed: z.boolean(), unchanged: z.boolean() })),
+  frames: z.array(
+    z.object({
+      key: z.string(),
+      theme: z.enum(THEME_MODES).optional(),
+      views: z.array(z.enum(FRAME_VIEWS)),
+      indexed: z.boolean(),
+      unchanged: z.boolean(),
+      /** frames.json's viewport width, the CSS px a pin on the frame is measured in; absent when the record has none. */
+      viewportWidth: z.number().optional(),
+    }),
+  ),
 });
 type FramesList = z.infer<typeof framesResult>;
 
@@ -177,7 +190,7 @@ function indexEntries(roundDir: string, index: FramesIndex | null): FrameIndex {
   const entries = new Map<string, FrameEntry>();
   const sha256 = new Map<string, string>();
   for (const record of index?.frames ?? []) {
-    const entry = { files: recordFiles(record), indexed: true, unchanged: record.base?.sha256 === record.sha256 };
+    const entry = { files: recordFiles(record), indexed: true, unchanged: record.base?.sha256 === record.sha256, ...(record.viewport && { viewportWidth: record.viewport.width }) };
     entries.set(record.key, record.theme === undefined ? entry : { ...entry, theme: record.theme });
     for (const listed of [record, record.base, record.after, record.diff]) if (listed) sha256.set(canonical(roundDir, listed.file), listed.sha256);
   }
@@ -221,7 +234,14 @@ async function roundFrameIndex(dir: string, id: string): Promise<{ roundDir: str
 /** Which views each frame has, and whether frames.json lists it, so the page asks only for files the round lists. */
 export async function listFrames({ dir }: RoundsSource, id: string): Promise<FramesList> {
   const { index } = await roundFrameIndex(dir, id);
-  const frames = [...index.entries].map(([key, { files, theme, indexed, unchanged }]) => ({ key, theme, views: FRAME_VIEWS.filter((view) => files[view] !== undefined), indexed, unchanged }));
+  const frames = [...index.entries].map(([key, { files, theme, indexed, unchanged, viewportWidth }]) => ({
+    key,
+    theme,
+    views: FRAME_VIEWS.filter((view) => files[view] !== undefined),
+    indexed,
+    unchanged,
+    ...(viewportWidth !== undefined && { viewportWidth }),
+  }));
   return { indexed: index.present, frames };
 }
 
