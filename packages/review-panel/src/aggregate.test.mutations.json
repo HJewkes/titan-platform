@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a vacuous line its mutants prove still counts as a bad fix-proof",
+      "file": "packages/review-panel/src/aggregate.ts",
+      "find": "(BAD_FIX_PROOF.has(parsed.result.verdict) && !provedByMutants(parsed.result))",
+      "replace": "BAD_FIX_PROOF.has(parsed.result.verdict)",
+      "kills": ["aggregate reads a fix-proof/v1 line merges a vacuous line its killed mutants prove, with no unplanned tests member (tp#2145)"]
+    },
+    {
+      "name": "any vacuous line carrying mutants passes, whatever they came to",
+      "file": "packages/review-panel/src/aggregate.ts",
+      "find": "!provedByMutants(parsed.result))",
+      "replace": "parsed.result.mutants === undefined)",
+      "kills": [
+        "aggregate reads a fix-proof/v1 line still withholds MERGE for a vacuous line whose mutants are not-killed",
+        "aggregate reads a fix-proof/v1 line still withholds MERGE for a vacuous line whose mutants are error"
+      ]
+    },
+    {
+      "name": "the unplanned tests shortfall is never marked",
+      "file": "packages/review-panel/src/aggregate.ts",
+      "find": "outcome === \"no-verdict\" && onlyUnplannedTestsMissing(blocking)",
+      "replace": "false",
+      "kills": ["aggregate reads a fix-proof/v1 line marks a no-verdict whose only missing member is the unplanned tests seat as a fix-proof shortfall"]
+    },
+    {
+      "name": "a planned member's silence is marked a fix-proof shortfall too",
+      "file": "packages/review-panel/src/aggregate.ts",
+      "find": "blocking.includes(UNPLANNED_TESTS) && blocking.filter((s) => s.status !== \"MERGE\").every((s) => s === UNPLANNED_TESTS)",
+      "replace": "blocking.includes(UNPLANNED_TESTS)",
+      "kills": ["aggregate reads a fix-proof/v1 line marks a no-verdict whose only missing member is the unplanned tests seat as a fix-proof shortfall"]
+    }
+  ]
+}

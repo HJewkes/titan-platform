@@ -285,8 +285,12 @@ export async function readFixProofAt(ctx: WorkflowContext, target: { repo: strin
  */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
   if (read.kind === "workflow-ci") return read.proved || read.head !== head ? undefined : { kind: "NO_REPRO", headSha: head, result: read };
-  if (read.kind !== "result" || typeof read.line !== "string") return undefined;
-  const parsed = parseResultLine(read.line);
+  return read.kind === "result" && typeof read.line === "string" ? noReproOfLine(read.line, head) : undefined;
+}
+
+/** A vacuous or test-less line at `head` its mutants do not prove is NO_REPRO, carrying the parsed result; any other line is not. */
+export function noReproOfLine(line: string, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
+  const parsed = parseResultLine(line);
   if (!parsed.ok || parsed.result.head !== head || !NO_REPRO_VERDICTS.has(parsed.result.verdict)) return undefined;
   if (provedByMutants(parsed.result)) return undefined;
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };

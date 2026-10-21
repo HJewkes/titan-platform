@@ -16,6 +16,7 @@
         "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; . '--' /dev/fd/$fd, whatever the hook's own descriptor holds",
         "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; . /dev/fd/$fd",
         "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source -- /dev/fd/$fd, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source -p . /dev/fd/$fd",
         "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source /dev/fd/$fd",
         "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source \\-\\- /dev/fd/$fd, whatever the hook's own descriptor holds"
       ]

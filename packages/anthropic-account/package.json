@@ -42,10 +42,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
-  "peerDependencies": {
+  "dependencies": {
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "zod": "^4.4.3"
   }
 }
