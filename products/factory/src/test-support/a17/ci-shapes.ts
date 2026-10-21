@@ -1,3 +1,4 @@
+import type { RollupContext } from "@titan-design/github";
 import type { BackstopContext } from "../../event-log/ci-keys.js";
 
 /** A concluded CI fact; the two builders below render it in each source's wire shape. */
@@ -33,4 +34,11 @@ export function backstopNode(fact: CiFact): BackstopContext {
     return { __typename: "CheckRun", databaseId: fact.checkRunId ?? 0, name: fact.context, status: "COMPLETED", conclusion: outcome, completedAt: fact.at };
   }
   return { __typename: "StatusContext", context: fact.context, state: outcome, createdAt: fact.at };
+}
+
+/** The same node as the backstop snapshot read returns it, for the reconciler's observe. */
+export function rollupContext(fact: CiFact): RollupContext {
+  const node = backstopNode(fact);
+  if (node.__typename === "CheckRun") return { kind: "check", databaseId: node.databaseId, name: node.name, status: node.status, conclusion: node.conclusion, completedAt: node.completedAt };
+  return { kind: "status", context: node.context, state: node.state, createdAt: node.createdAt };
 }

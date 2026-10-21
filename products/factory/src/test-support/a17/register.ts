@@ -6,7 +6,16 @@ type Registrar = (name: string, fn: () => void | Promise<void>) => void;
 
 /** Injectable registrar, so the harness's own test can read the titles it would register. */
 export function registerA17(title: string, body: (feed: Feed) => void | Promise<void>, register: Registrar): void {
-  for (const mode of SOURCES_MODES) register(`A17: ${title} [${mode}]`, () => body(openFeed(mode)));
+  for (const mode of SOURCES_MODES) {
+    register(`A17: ${title} [${mode}]`, async () => {
+      const feed = await openFeed(mode);
+      try {
+        await body(feed);
+      } finally {
+        feed.close();
+      }
+    });
+  }
 }
 
 /**
