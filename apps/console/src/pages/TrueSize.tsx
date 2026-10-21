@@ -8,6 +8,8 @@ import { Button, ButtonText, HStack, Spinner, Typography, VStack } from "@titan-
 import { frameSizeMismatch } from "../../server/review-schema-0.3/media.js";
 import type { Manifest } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
+import { RoundAudio } from "./AudioPlayer.js";
+import { RoundClip } from "./ClipPlayer.js";
 import { PinLayer, useFramePins } from "./FramePins.js";
 import { FrameImage, useNearViewport } from "./RoundFrame.js";
 
@@ -18,8 +20,11 @@ type FrameSize = FrameReference["frame"];
 type LadderRung = FrameReference["ladder"][number];
 type Candidate = ScaleReference["candidates"][number];
 
-/** How a variant asks to be sized: a true-size `frameReference`, or a `scale` question's candidates. */
-export type FrameMedia = Pick<Variant, "frameReference" | "scale">;
+/** How a variant asks to be drawn: a recorded `clip` and its `motion`, a sound, a true-size `frameReference`, or a `scale` question's candidates. */
+export type FrameMedia = Pick<Variant, "frameReference" | "scale" | "clip" | "motion" | "audio" | "transcript" | "durationMs">;
+
+/** A clip or a sound plays instead of drawing a PNG. */
+export const playsMedia = (media: FrameMedia | undefined): boolean => media?.clip !== undefined || media?.audio !== undefined;
 
 /** Fit draws the frame across its box; actual draws it at its declared CSS px and scrolls. */
 const SIZE_VIEWS = [
@@ -49,8 +54,8 @@ function scaleColumns({ frame, candidates }: ScaleReference): { ladder: number; 
 
 const share = (px: number, of: number): string => `${(px / of) * 100}%`;
 
-/** A frame takes pins when its PNG loads, or when it is a scale frame, whose pins sit on the composed frame. */
-export const pinnableFrame = (loadable: boolean, media: FrameMedia | undefined): boolean => loadable || media?.scale !== undefined;
+/** A frame takes pins when its PNG loads, or when it is a scale frame, whose pins sit on the composed frame; a clip or a sound takes none. */
+export const pinnableFrame = (loadable: boolean, media: FrameMedia | undefined): boolean => !playsMedia(media) && (loadable || media?.scale !== undefined);
 
 /** The share of its declared width a fitted frame is drawn at, never above 1; undefined until its box has been measured. */
 function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
@@ -86,8 +91,10 @@ interface VariantFrameProps {
   missing: string;
 }
 
-/** A frame as its variant asks: a scale question's candidates in one frame, a true-size PNG, or the PNG fitted as before. */
+/** A frame as its variant asks: a playing clip, a sound and its transcript, a scale question's candidates in one frame, a true-size PNG, or the PNG fitted as before. */
 export function VariantFrame({ roundId, frameKey, alt, media, loadable, candidateLoadable, missing }: VariantFrameProps): ReactNode {
+  if (media?.clip !== undefined) return <RoundClip roundId={roundId} frameKey={frameKey} alt={alt} motion={media.motion} />;
+  if (media?.audio !== undefined) return <RoundAudio roundId={roundId} frameKey={frameKey} alt={alt} transcript={media.transcript} durationMs={media.durationMs} />;
   if (media?.scale) return <ScaleFrame roundId={roundId} frameKey={frameKey} alt={alt} scale={media.scale} loadable={candidateLoadable} />;
   if (!loadable) return <Typography variant="caption" color="secondary">{missing}</Typography>;
   if (media?.frameReference) return <TrueSizeFrame roundId={roundId} frameKey={frameKey} alt={alt} reference={media.frameReference} />;
