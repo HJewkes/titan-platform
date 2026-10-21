@@ -20,7 +20,7 @@ export const PHONE_WIDTH = "(max-width: 639px)";
 /** The height a frame takes before the bridge has measured its story. */
 const UNMEASURED_HEIGHT = 480;
 
-export type LivePhase = "mounting" | "live" | "dead";
+type LivePhase = "mounting" | "live" | "dead";
 
 export interface LiveState {
   phase: LivePhase;
@@ -76,7 +76,7 @@ export function liveSrc(url: string, storyOrigin: string, pageOrigin: string): s
   return src.href;
 }
 
-export type FrameHeight = "auto" | number;
+type FrameHeight = "auto" | number;
 
 /** A declared height is fixed; `auto` follows the bridge's measure, capped at `maxHeight`, past which the story scrolls inside. */
 export function frameHeight(declared: FrameHeight, measured: number | undefined, maxHeight: number): number {
@@ -103,7 +103,7 @@ export const isShipQuestion = (question: Question): boolean => question.decision
 function shipBoundKeys(manifest: Manifest): Set<string> {
   const ships = manifest.questions.filter(isShipQuestion);
   const shipIds = new Set(ships.map((question) => question.id));
-  const sectionKeys = (manifest.sections ?? []).filter((section) => section.questionIds.some((id) => shipIds.has(id))).flatMap((section) => section.variantKeys);
+  const sectionKeys = manifest.sections.filter((section) => section.questionIds.some((id) => shipIds.has(id))).flatMap((section) => section.variantKeys);
   return new Set([...ships.flatMap((question) => question.frames ?? []), ...sectionKeys]);
 }
 
@@ -136,7 +136,7 @@ export function liveEntries(manifest: Manifest, live: RoundLive | undefined): Ma
   );
 }
 
-export interface LiveSlots {
+interface LiveSlots {
   request: (id: symbol) => void;
   release: (id: symbol) => void;
   granted: (id: symbol, cap: number) => boolean;

@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sandbox lets the story navigate the console page",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "export const LIVE_SANDBOX = \"allow-scripts allow-same-origin allow-forms\";",
+      "replace": "export const LIVE_SANDBOX = \"allow-scripts allow-same-origin allow-forms allow-top-navigation\";",
+      "kills": ["is sandboxed to scripts, its own origin and forms, with no permissions"]
+    },
+    {
+      "name": "a bridge message is trusted from any window",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "event.source !== frame || ",
+      "replace": "",
+      "kills": ["swaps its PNG for the story on its own frame's ready, and ignores the same message from another window"]
+    },
+    {
+      "name": "a bridge message is trusted from any origin",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": " || event.origin !== storyOrigin",
+      "replace": "",
+      "kills": ["swaps its PNG for the story on its own frame's ready, and ignores the same message from another window"]
+    },
+    {
+      "name": "a dead story remounts forever",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "const AUTO_REMOUNTS = 1;",
+      "replace": "const AUTO_REMOUNTS = Infinity;",
+      "kills": ["remounts once when no ready comes within 10 s, then shows the PNG with a notice and Retry"]
+    },
+    {
+      "name": "every section is live by default, Ship-bound ones too",
+      "file": "apps/console/src/pages/LiveFrame.tsx",
+      "find": "useState(!shipBound)",
+      "replace": "useState(true)",
+      "kills": ["in a Ship-bound section shows the approved PNG with Open live, and mounts no story until asked"]
+    },
+    {
+      "name": "no cap on mounted stories",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "return at !== -1 && at < cap;",
+      "replace": "return at !== -1;",
+      "kills": ["mounts at most 4 stories on a phone; the rest wait as their PNG"]
+    },
+    {
+      "name": "a frame's reason is not shown",
+      "file": "apps/console/src/pages/LiveFrame.tsx",
+      "find": "<Typography variant=\"caption\" color=\"secondary\">{note}</Typography>",
+      "replace": "",
+      "kills": ["with only a reason, shows its PNG and the reason, and mounts no story"]
+    }
+  ]
+}
