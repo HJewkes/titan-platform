@@ -241,7 +241,7 @@ describe("a question round's free text", () => {
 
 const checkScreen = (): HTMLElement | null => screen.queryByTestId("round-check");
 const checkRow = (questionId: string): HTMLElement => screen.getByTestId(`round-check-answer-${questionId}`);
-const press = (target: EventTarget, key: string, modifiers: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}): void => {
+const press = (target: Element | Window, key: string, modifiers: Partial<Record<"metaKey" | "ctrlKey" | "altKey" | "shiftKey", boolean>> = {}): void => {
   fireEvent.keyDown(target, { key, ...modifiers });
 };
 
@@ -346,7 +346,7 @@ describe("a round's check before sending (TP-3775)", () => {
     press(window, "1");
     press(window, "p");
 
-    expect(within(checkRow("ramp-default")).getByText("Single slope")).toBeTruthy();
+    expect(checkRow("report-columns").getAttribute("data-unanswered")).toBe("true");
     press(window, "Escape");
     expect(shownSection()).toBe("report");
   });

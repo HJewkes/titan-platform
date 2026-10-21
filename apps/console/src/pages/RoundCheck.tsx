@@ -124,7 +124,7 @@ function CheckSection({ manifest, group }: { manifest: Manifest; group: CheckGro
 function AnswerRow({ manifest, row: { question, position, answer, open } }: { manifest: Manifest; row: CheckRow }): ReactNode {
   const text = answerText(manifest, answer);
   return (
-    <div className={open ? "border-l-2 border-warning pl-3" : "border-l-2 border-transparent pl-3"} data-testid={`round-check-answer-${question.id}`} data-unanswered={open || undefined}>
+    <div className={open ? "border-l-2 border-status-warning pl-3" : "border-l-2 border-transparent pl-3"} data-testid={`round-check-answer-${question.id}`} data-unanswered={open || undefined}>
       <VStack gap={1}>
         <Typography variant="subtitle2">{`${position}. `}<InlineMarkdown text={question.prompt} /></Typography>
         <HStack gap={2} wrap align="center">
