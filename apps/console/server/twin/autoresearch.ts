@@ -1,5 +1,5 @@
 // A synthetic autoresearch run for the twin's `autoresearch.*` answers: three rounds, one idea kept, one superseded, one
-// stopped at L0, one still implementing and one in its seed eval. Every id, sha and metric name is invented.
+// stopped at L0, one rejected at L2, one still implementing and one in its seed eval. Every id, sha and metric name is invented.
 import type { ArLadder, ArRunSummary, ArRunView } from "../autoresearch-view.js";
 import { TWIN_NOW } from "./clock.js";
 
@@ -29,8 +29,9 @@ function evalRun(repeat: string, score: number): EvalRun {
 const KEPT = idea("i-3f9a0c1d2e4b", 1, "accept-gate:stricter-tree", { priority: 9 });
 const SUPERSEDED = idea("i-0d4e8f2a6b1c", 1, "config-param:lower-thresh", { priority: 7, bold: true });
 const L0_STOP = idea("i-5b3c7e9a1d0f", 2, "planner-ranking:fanout-first");
+const L2_REJECT = idea("i-c81e5a7f3b20", 2, "config-param:raise-slack");
 const RUNNING = idea("i-77aa2b4c6d8e", 3, "accept-gate:per-file-cap", { source: "followup", parent: KEPT.id, lineage: KEPT.id });
-const EVALUATING = idea("i-c22d9e1f3a5b", 3, "config-param:raise-slack", { priority: 6 });
+const EVALUATING = idea("i-c22d9e1f3a5b", 3, "config-param:widen-band", { priority: 6 });
 const REQUEUED = { ...SUPERSEDED, round: 2, source: "requeue" as const };
 
 const ladderSteps = (round: number, id: string, steps: readonly string[], endedAgo: number) =>
@@ -57,6 +58,12 @@ const l0Ladder: ArLadder = {
   outcome: { verdict: "rejected", reason: "rejected:post:unit", rungReached: "L0", sigma: 0.62, lesson: "The unit suite pins the old ranking order" },
 };
 
+const l2Ladder: ArLadder = {
+  idea: L2_REJECT, implementer: { agent: "ar-impl-7c1e-5", sessionId: "00000000-0000-4000-8000-00000000a005" }, active: null, completed: ladderSteps(2, L2_REJECT.id, ["alloc", "implement", "l0", "l1", "eval", "release"], 200), implementUsd: 1.3,
+  l0: { ok: true }, micro: { predictedDirectionMet: true }, evals: [evalRun("r1", 232.8)],
+  outcome: { verdict: "rejected", reason: "clearly-worse", rungReached: "L2", delta: -1.6, sigma: 0.62, lesson: "A looser slack lets the hidden cases through" },
+};
+
 const runningLadder: ArLadder = {
   idea: RUNNING, implementer: { agent: "ar-impl-7c1e-3", sessionId: "00000000-0000-4000-8000-00000000a003", resumedFrom: KEPT.id }, active: { stepId: `ar-implement:3/${RUNNING.id}`, firstStartedAt: at(11), restarts: 0 },
   completed: ladderSteps(3, RUNNING.id, ["alloc"], 11), implementUsd: null, l0: null, micro: null, evals: [], outcome: null,
@@ -78,10 +85,10 @@ const ROUNDS: ArRunView["rounds"] = [
     ladders: [keptLadder, supersededLadder], ratchet: { from: PIN, to: KEPT_HEAD },
   },
   {
-    round: 2, queue: [L0_STOP, REQUEUED], rejected: [{ code: "dead-end" }], plannerRetried: true, analysis: ["The ranking tests assume a fixed order"],
+    round: 2, queue: [L0_STOP, L2_REJECT, REQUEUED], rejected: [{ code: "dead-end" }], plannerRetried: true, analysis: ["The ranking tests assume a fixed order"],
     exempt: { followup: "The kept gate has no sibling cell left to try" },
-    selection: { picks: [L0_STOP.id], draws: [{ id: L0_STOP.id, draw: 0.63 }, { id: REQUEUED.id, draw: 0.21 }], plannerTopK: [L0_STOP.id] },
-    ladders: [l0Ladder], ratchet: null,
+    selection: { picks: [L0_STOP.id, L2_REJECT.id], draws: [{ id: L0_STOP.id, draw: 0.63 }, { id: L2_REJECT.id, draw: 0.57 }, { id: REQUEUED.id, draw: 0.21 }], plannerTopK: [L0_STOP.id, L2_REJECT.id] },
+    ladders: [l0Ladder, l2Ladder], ratchet: null,
   },
   {
     round: 3, queue: [RUNNING, EVALUATING, REQUEUED], rejected: [{ code: "duplicate" }, { code: "bounds" }], plannerRetried: false, analysis: [],
@@ -113,11 +120,12 @@ export const AR_RUN_FIXTURE: ArRunView = {
     { cell: "accept-gate:stricter-tree", trials: 1, meanAbsDeltaOverSigma: 1.9, keepRate: 1, flag: "explore" },
     { cell: "config-param:lower-thresh", trials: 1, meanAbsDeltaOverSigma: 1.5, keepRate: 0, flag: "explore" },
     { cell: "planner-ranking:fanout-first", trials: 1, meanAbsDeltaOverSigma: 0, keepRate: 0, flag: "explore" },
+    { cell: "config-param:raise-slack", trials: 1, meanAbsDeltaOverSigma: 2.6, keepRate: 0, flag: "demote" },
   ],
 };
 
 /** The fixture's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
 export const AR_RUN_SUMMARY: ArRunSummary = {
   runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, round: 3, rounds: AR_RUN_FIXTURE.settings.rounds, status: AR_RUN_FIXTURE.status,
-  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 8.3,
+  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 9.9,
 };

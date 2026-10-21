@@ -47,7 +47,7 @@ describe("the autoresearch page", () => {
     expect(rowValue(header, "Round")).toContain("3 / 50");
     expect(rowValue(header, "Best score")).toContain("231.2 (+3.3 vs B₀ 234.5, +5.3σ)");
     expect(rowValue(header, "Noise")).toContain("σ 0.62 · band ±1.24");
-    expect(rowValue(header, "Decisions")).toContain("kept 1 · rejected 1 · stopped 0 · superseded 1");
+    expect(rowValue(header, "Decisions")).toContain("kept 1 · rejected 2 · stopped 0 · superseded 1");
     expect(rowValue(header, "Lanes in use")).toContain("2 / 3");
   });
 
