@@ -146,7 +146,7 @@ const MERGE_RECIPE = "Merge the base branch from origin: `git fetch origin`, `gi
 function conflictReason(input: WakeFacts, conflict: Conflict): string {
   const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below. ${MERGE_RECIPE}`;
   if (generatedOnly(conflict)) {
-    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
+    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Once merged, take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
   }
   const registries = conflict.files.some(isRegistry) ? ` Do not hand-merge a file marked (generated registry): take the base's side of it, then ${REGENERATE}.` : "";
   return `${intro} The files both sides changed follow.${registries}`;

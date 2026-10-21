@@ -65,7 +65,7 @@ describe("review wake brief: the PR's review comments", () => {
   });
 
   it.each([
-    ["no comments"],
+    ["no comments", []],
     ["only resolved comments", [comment("alice", "src/a.ts", 1, "Done.", true)]],
   ])("leaves the first and the structural brief byte for byte as before with %s", async (_label, comments) => {
     const { wake } = scene(comments);
@@ -378,7 +378,7 @@ describe("wake brief: who merges the base branch", () => {
 
 describe("conflict wake brief: how the fixer brings in the base", () => {
   const RECIPE = "`git fetch origin`, `git merge origin/<base>`";
-  const CAP = Array.from({ length: 1000 }, (_, i) => `gen/file-${i}.ts`);
+  const CAP = ["src/a.ts", ...Array.from({ length: 300 }, (_, i) => `gen/file-${i}.ts`)];
   const shapes: Array<[string, string[], string[]]> = [
     ["generated-only", ["CAPABILITIES.md"], ["CAPABILITIES.md"]],
     ["mixed with registries", ["CAPABILITIES.md", "src/a.ts"], ["CAPABILITIES.md", "src/a.ts"]],
