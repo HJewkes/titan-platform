@@ -23,7 +23,7 @@ export const MAX_SIDECAR_BYTES = 2 * 1024 * 1024;
 export const BUILD_ID = /^[0-9a-f]{64}$/;
 const MAX_PATH = 512;
 /** The files the live frame needs: the story host page and the index the story-id check reads. */
-const IFRAME_FILE = "iframe.html";
+export const IFRAME_FILE = "iframe.html";
 export const INDEX_FILE = "index.json";
 /** No dot first (so no `.`, `..` or dotfile, which the story origin never serves), no slash, backslash, colon or control character. */
 const PATH_SEGMENT = /^[^./\\:\p{Cc}][^/\\:\p{Cc}]*$/u;
@@ -57,7 +57,7 @@ const liveFrame = z.union([
 export type LiveFrame = z.infer<typeof liveFrame>;
 
 export const roundLive = z.object({
-  /** The story origin the urls resolve against; null until the console serves one (TP-3793 S3). */
+  /** The story origin the urls resolve against, for the listener the page came through; null when the console serves none. */
   origin: z.string().nullable(),
   /** One entry per story variant, by variant key: a url relative to the story origin, or why it shows its PNG. */
   frames: z.record(z.string(), liveFrame),

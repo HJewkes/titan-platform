@@ -9,6 +9,7 @@ import {
   mountStaticApp,
   rotateTokenFile,
   startDaemon,
+  type ContentOriginOptions,
   type DaemonHandle,
   type Logger,
   type RemoteListenerOptions,
@@ -22,6 +23,7 @@ import type { ConsoleSources } from "./commands.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
+import { mountStoryRoutes } from "./story-origin.js";
 import { createSources } from "./upstreams.js";
 import { mountVideoMedia } from "./videos.js";
 
@@ -43,9 +45,11 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const { config, staticRoot } = options;
   const remote = lanListener(config);
   const logger = options.logger ?? consoleLogger;
-  const sources = createSources(config, logger);
+  const ports = { console: config.port, story: config.storyPort ?? null };
+  const sources = withStoryOrigin(createSources(config, logger), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
+  const contentOrigin = storyContentOrigin(config, ports);
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
@@ -53,12 +57,15 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     port: config.port,
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
+    ...(contentOrigin && { contentOrigin }),
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
     mountRoutes: (app) => mountRoutes(app, sources, staticRoot),
     logger,
   });
+  ports.console = handle.port;
+  ports.story = handle.contentPort ?? null;
   void sources.listeners?.sweep();
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
   const close = async (): Promise<void> => {
@@ -72,6 +79,43 @@ function mountRoutes(app: Parameters<typeof mountStaticApp>[0], sources: Console
   if (sources.videos) mountVideoMedia(app, sources.videos);
   mountRoundMedia(app, sources.rounds);
   if (staticRoot) mountStaticApp(app, { root: staticRoot });
+}
+
+/** Bound ports, read per request: with port 0 they are known only once the daemon has bound them. */
+interface BoundPorts {
+  console: number;
+  story: number | null;
+}
+
+/**
+ * The story origin (TP-3793): stored Storybook builds on a port of their own, so story code never
+ * runs as the console. It has the LAN listener's TLS pair and auth gate, and nothing but the story routes.
+ */
+function storyContentOrigin(config: ConsoleConfig, ports: BoundPorts): ContentOriginOptions | null {
+  const { storybooksDir } = config;
+  if (ports.story === null || storybooksDir === undefined) return null;
+  const consoleOrigins = () => consolePageOrigins(config, ports.console);
+  return { port: ports.story, mountRoutes: (app) => mountStoryRoutes(app, { storybooksDir, consoleOrigins }) };
+}
+
+/** `rounds.get` names the story origin a page on that listener can frame: the LAN page gets the LAN one. */
+function withStoryOrigin(sources: ConsoleSources, config: ConsoleConfig, ports: BoundPorts): ConsoleSources {
+  if (ports.story === null || config.storybooksDir === undefined) return sources;
+  const storyOrigin = (remote: boolean): string | null => {
+    if (ports.story === null) return null;
+    return remote ? lanOrigin(config, ports.story) : `http://${LOOPBACK}:${ports.story}`;
+  };
+  return { ...sources, rounds: { ...sources.rounds, storyOrigin } };
+}
+
+const LOOPBACK = "127.0.0.1";
+
+/** Every origin a console page is served from: loopback by address and by name, and each LAN name and the LAN address. */
+export function consolePageOrigins(config: ConsoleConfig, port: number): string[] {
+  const loopback = [LOOPBACK, "localhost"].map((host) => `http://${host}:${port}`);
+  if (config.lanHost === null) return loopback;
+  const lanAddress = isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost;
+  return [...loopback, ...[...config.lanNames, lanAddress].map((host) => `https://${host}:${port}`)];
 }
 
 const SIGN_IN_HINT = "Ask the operator for a fresh sign-in link. It is minted on the host with titan-console login-link.";
