@@ -3,7 +3,7 @@ import { reviewerBrief, type ReviewerBriefInput } from "../reviewer-brief.js";
 import type { ReviewShape } from "../types.js";
 import { ADVERSARY_OVERLAY, holdContextLines, type AdversaryHoldContext } from "./adversary.js";
 import { PERF_OVERLAY } from "./perf.js";
-import { TESTS_OVERLAY, fixProofLines, waivedLines } from "./tests.js";
+import { TESTS_OVERLAY, fixProofLines, waivedLines, workflowCiLines } from "./tests.js";
 import { VISUAL_OVERLAY } from "./visual.js";
 
 /** The shapes that carry an overlay; correctness is the base brief itself. */
@@ -50,7 +50,7 @@ export interface ShapeBriefInput extends ReviewerBriefInput {
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
   const { fixProof, holdContext, ...base } = input;
-  const waived = waivedLines(input.head, input.fixProofWaivedAt).length > 0;
-  const extra = shape === "tests" && !waived ? ["", ...fixProofLines(input.head, fixProof)] : shape === "adversary" ? holdContextLines(holdContext) : [];
+  const proved = waivedLines(input.head, input.fixProofWaivedAt).length > 0 || workflowCiLines(input.head, input.workflowCiProof).length > 0;
+  const extra = shape === "tests" && !proved ? ["", ...fixProofLines(input.head, fixProof)] : shape === "adversary" ? holdContextLines(holdContext) : [];
   return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief(base)].join("\n");
 }

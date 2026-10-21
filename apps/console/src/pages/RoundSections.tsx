@@ -6,6 +6,7 @@ import type { ABAnswering } from "./QuestionAB.js";
 import { asksRevision, heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
 import { useDraftSeed, useDraftWrite, type DraftBinding } from "./RoundDraft.js";
+import { NO_SHIP_DRAFT, type ShipDraft } from "./round-draft.js";
 import { useFrameFeedback, type ActiveTarget, type VerdictLink } from "./FrameFeedback.js";
 import { pickVerdicts, verdictAnswers } from "./frame-link.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
@@ -23,14 +24,24 @@ export function orderedQuestions(manifest: Manifest): { section: RoundSection | 
   return loose.length > 0 ? [...sections, { section: null, questions: loose }] : sections;
 }
 
-/** A Ship round's Addressed ticks on earlier rounds (TP-3741) and the questions marked follow-up (TP-3346). */
-function useShipMarks() {
-  const [addressed, setAddressed] = useState<number[]>([]);
-  const [followUps, setFollowUps] = useState<string[]>([]);
+/**
+ * A Ship round's Addressed ticks on earlier rounds (TP-3741), the questions marked follow-up (TP-3346), and each Ship
+ * question's held verdict and Send back note, all kept in the round's draft (TP-3870).
+ */
+function useShipMarks(seed: ShipDraft) {
+  const [addressed, setAddressed] = useState<number[]>(seed.addressed);
+  const [followUps, setFollowUps] = useState<string[]>(seed.followUps);
+  const [verdicts, setVerdicts] = useState<Record<string, ShipVerdict>>(seed.verdicts);
+  const [backNotes, setBackNotes] = useState<Record<string, string>>(seed.backNotes);
   const toggleAddressed = useCallback((round: number, checked: boolean) => setAddressed((current) => [...current.filter((each) => each !== round), ...(checked ? [round] : [])]), []);
   const setFollowUp = useCallback((questionId: string, followUp: boolean) => setFollowUps((current) => [...current.filter((each) => each !== questionId), ...(followUp ? [questionId] : [])]), []);
-  return { addressed, toggleAddressed, followUps, setFollowUp };
+  const chooseVerdict = useCallback((questionId: string, verdict: ShipVerdict) => setVerdicts((current) => ({ ...current, [questionId]: verdict })), []);
+  const setBackNote = useCallback((questionId: string, text: string) => setBackNotes((current) => ({ ...current, [questionId]: text })), []);
+  const ship = useMemo((): ShipDraft => ({ addressed, followUps, verdicts, backNotes }), [addressed, followUps, verdicts, backNotes]);
+  return { marks: { addressed, toggleAddressed, followUps, setFollowUp, verdicts, chooseVerdict, backNotes, setBackNote }, ship };
 }
+
+export type ShipVerdict = ShipDraft["verdicts"][string];
 
 /**
  * The page's picks, text, comments, option notes, frame verdicts and Ship marks, and the active question that digit keys
@@ -45,7 +56,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const [comments, setComments] = useState<Record<string, string>>(held.comments);
   const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>(held.optionNotes);
   const [general, setGeneral] = useState(held.general);
-  const marks = useShipMarks();
+  const { marks, ship } = useShipMarks(seed.draft?.ship ?? NO_SHIP_DRAFT);
   const [target, setTarget] = useState<ActiveTarget | undefined>(() => firstChoosable(questions));
   const activeId = target?.kind === "question" ? target.id : undefined;
   const setActiveId = useCallback((id: string | undefined) => setTarget(id === undefined ? undefined : { kind: "question", id }), []);
@@ -62,7 +73,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   );
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  useDraftWrite(draft, useMemo(() => ({ answers, comments, optionNotes, general, frames: frames.drafts }), [answers, comments, optionNotes, general, frames.drafts]));
+  useDraftWrite(draft, useMemo(() => ({ answers, comments, optionNotes, general, frames: frames.drafts, ship }), [answers, comments, optionNotes, general, frames.drafts, ship]));
   return { answers, comments, optionNotes, general, setGeneral, draftDiscarded: seed.discarded, activeId, setActiveId, choose, write, comment, revise, note, frames, ...marks };
 }
 

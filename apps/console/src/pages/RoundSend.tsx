@@ -31,9 +31,14 @@ export function useRoundSend(round: ValidRound) {
   const locked = lockedBy(round, submitting);
   const sent = sentBy(round, submitting);
   const checking = check.open && !sent;
-  const closed = sent || round.status !== "open";
-  const draft = useMemo((): DraftBinding => ({ roundId: round.id, manifestSha256: round.manifestSha256, closed }), [round.id, round.manifestSha256, closed]);
+  const draft = useDraftBinding(round, sent);
   return { submitting, check, checking, locked, frozen: locked || checking, draft };
+}
+
+/** The round's draft binding: closed once `sent`, on this visit or an earlier one, or withdrawn. */
+export function useDraftBinding(round: ValidRound, sent: boolean): DraftBinding {
+  const closed = sent || round.status !== "open";
+  return useMemo(() => ({ roundId: round.id, manifestSha256: round.manifestSha256, closed }), [round.id, round.manifestSha256, closed]);
 }
 
 interface RoundSendProps {

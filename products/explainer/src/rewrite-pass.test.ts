@@ -182,6 +182,26 @@ describe("rewriteScript rounds", () => {
     expect(failingTargets(out)).toEqual([]);
   });
 
+  it("tells round 2 why round 1 refused a beat, and says nothing to a beat round 1 accepted", async () => {
+    const LONG_H3 = "It checks the scan and the row before the label, so nothing is skipped and the courier never sees a guess and the check is always fast.";
+    const refusesH3KeepsC2: Rewriter = (id, prompt) => {
+      if (isRoundTwo(prompt)) return compliant(id, prompt);
+      if (id === "h3") return { id, spoken: LONG_H3, labels_added: [] };
+      if (id === "c2") return { id, spoken: BEATS.c2![1].before.replace("That order matters.", "That order matters a lot."), labels_added: [] };
+      return compliant(id, prompt);
+    };
+    const fake = fakeRewriter(refusesH3KeepsC2);
+
+    const { report } = await rewrite(choppy(), fake);
+
+    const sectionOf = (id: string): string => fake.prompts.filter(isRoundTwo).flatMap((prompt) => prompt.split("\n\n")).find((part) => part.startsWith(`## ${id}\n`))!;
+    expect(report.rounds[0]!.rejected.map((r) => [r.beat, r.rejections.map((rejection) => rejection.rule)])).toEqual([["h3", ["sentence-cap"]]]);
+    expect(report.rounds[0]!.rewritten).toContain("c2");
+    expect(sectionOf("h3")).toContain("- Your last version was not used: a sentence was too long to say in one breath; split it.");
+    expect(sectionOf("c2")).toContain("Directive:");
+    expect(sectionOf("c2")).not.toContain("Your last version was not used");
+  });
+
   it("stops after the rounds it is given", async () => {
     const fake = fakeRewriter(() => undefined);
 
