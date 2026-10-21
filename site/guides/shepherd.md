@@ -69,7 +69,13 @@ head an earlier merge-up carried that MERGE to), its second parent is on the bas
 its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
 commit or a rebase gets a fresh review. The run log records each clean merge-up as an
 `sh-merge-up` step naming the reviewed head, the new head, the base commit and the rule
-`clean-merge-up`. The kind also opens the fix-proof gate described next: `correctness`,
+`clean-merge-up`. A run that never held a G10 hold also carries a tree-equal update whose
+first parent is off that line, such as a merge-up over an earlier merge-up that never reached a
+review, when the pull request's own diff is unchanged: the probe's `patchEqual` compares a
+patch id (blob ids, hunk line numbers and whitespace dropped) of the new head's diff against
+its second parent with the reviewed head's diff against its merge base with that commit. That
+carry records no `sh-merge-up` step, so no G10 release follows it (TP-3725). The kind also
+opens the fix-proof gate described next: `correctness`,
 `security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
 `correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving

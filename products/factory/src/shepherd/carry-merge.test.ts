@@ -501,6 +501,7 @@ describe("carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725
 
     const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
 
+    expect(verdict).toMatchObject({ kind: "MERGE" });
     expect(verdict).not.toHaveProperty("mergeUpFrom");
     expect(ids(r).some((id) => id.startsWith("sh-merge-up:"))).toBe(false);
   });
