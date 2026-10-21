@@ -175,6 +175,16 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 - Range requests are not honoured: every file comes back whole, with no `Accept-Ranges`,
   so byte-range use such as large source maps or media is out of scope.
 
+## A content origin
+
+`contentOrigin: { port, mountRoutes }` opens a read-only origin on its own port for content
+the daemon must not trust: product routes only, `GET` and `HEAD` only, no `/rpc`, `/events`,
+`/health`, `/mcp` or `/auth/*`. With `remote` it also binds the remote address behind the
+same TLS pair, Host check and auth gate, so the main listener's session cookie works there.
+`handle.contentPort` reports the bound port. `containedFile(root, pathname)` resolves a URL
+path under a root chosen per request with `mountStaticApp`'s traversal rules, for
+`fileResponse` to serve. Details: `site/reference/daemon.md`.
+
 ## The seams
 
 - `createContext(surface)` builds the per-request context. The daemon never knows what a

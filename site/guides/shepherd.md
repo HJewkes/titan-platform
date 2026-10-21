@@ -617,7 +617,8 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   - `slowOwnerGated`: the slow merges whose wait held an owner `approve-merge` gate inside the
     window from `MERGE` to merged. The rest are slow for some other reason.
   - `mergeUps`: Shepherd's own update-branch steps, by the CI read before each one.
-    `landTime` is a refresh after the merge decision, when the base had moved since the green.
+    `landTime` is a refresh after the merge decision, when the base had moved since the green;
+    runs from TP-3891 on make none.
     `strictChase` is an update before the decision, which only a strict repo forces.
     `freezeHold` is an update from a freeze hold after a thaw, `baseRed` is an update from a
     freeze hold after the red base it waited on moved, and `retry` is an update after
@@ -1076,12 +1077,20 @@ that gate is answered.
 
 ## When Shepherd merges the base {#merge-up}
 
-Shepherd brings a pull request up to date with its base once, at land time. The PR is reviewed
-and approved at the head it has. When the merge decision allows it and the base has moved
-since the green, Shepherd runs update-branch once. It waits for green required checks at the new
-head, carries the `MERGE` across the clean merge-up, and merges. If the base moves again after
-that refresh, Shepherd does not update again. The code is `landsAsIs` and `onBehind` in
-`products/factory/src/workflows/land.ts`. `stats` counts these as `mergeUps.landTime`.
+In a repo that does not require up-to-date heads, Shepherd merges a pull request at the head
+it reviewed and approved. It does not update the branch first, even when the base moved after
+the head went green. GitHub merges that head as it stands. Main's own CI after the merge judges
+what the merge brought together, and a red main goes to [main-red](#after-the-merge). Shepherd updates
+a branch only when GitHub refuses the merge as it stands: a strict repo reads the head `behind`.
+A conflict goes to the fixer. The code is `landsAsIs` and `onBehind` in
+`products/factory/src/workflows/land.ts`.
+
+Until TP-3891, Shepherd refreshed an approved head once at land time when the base had moved
+since the green. `stats` counts those as `mergeUps.landTime`. Each refresh restarted a
+20-minute validate. A base that moved during that run sent the next round's head back for
+another refresh, so tp#2054 chased main through three green heads after its `MERGE`. About
+6 percent of refreshed heads went red after a green head (`refreshRedRate` in
+[`stats`](#stats), weeks 41 to 43 of 2026). That is the main-red risk this change accepts.
 
 **"Require branches to be up to date before merging" must stay off** in every Shepherd repo's
 ruleset. With it on, a head is `behind` every time main moves. Shepherd then has to update every
@@ -1112,8 +1121,8 @@ means an agent merged the base when it should not have.
 
 ## Merge train {#merge-train}
 
-Per repo, one Shepherd run at a time is in the land sequence: update the branch if it is
-behind, wait for green required checks at the new head, merge, then let the next run in
+Per repo, one Shepherd run at a time is in the land sequence: update the branch if a strict
+repo reads it behind, wait for green required checks at the new head, merge, then let the next run in
 (`products/factory/src/shepherd/train.ts`). Without it, two pull requests approved at once
 both reach the merge; the first merge puts the second behind its base, and the second merge
 fails.
@@ -1127,8 +1136,8 @@ owner/repo#124 merging 4d5e6f7 waiting for the merge train behind run ab0f9228-�
 ```
 
 A run that has just boarded merges at once only when the train was free and its head is
-current. Otherwise land reads CI again, so a branch the last merge put behind is updated
-while the run holds the train. The run gives the train up in the `sh-train-leave` step when
+current. Otherwise land reads CI again, so in a strict repo a branch the last merge put
+behind is updated while the run holds the train. The run gives the train up in the `sh-train-leave` step when
 its land round ends: merged, red CI, a send-back, or a conflict. A red head goes to the fixer
 after the train has moved on.
 
@@ -1215,7 +1224,7 @@ closed is skipped.
 | --- | --- | --- |
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
-| `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved as is and refreshed once before the merge | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
+| `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved and merged as is | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
 | `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
