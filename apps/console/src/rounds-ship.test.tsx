@@ -243,8 +243,13 @@ describe("answering a Ship round", () => {
   it("reveals the Ship recommendation on demand and tags the Ship pressed after it seen", async () => {
     const rendered = await renderShip({ answers: true });
 
-    fireEvent.click(screen.getByTestId("reveal-ship-tiles"));
-    expect(await screen.findByText("Recommended: Ship (80%, fixture-agent)")).toBeTruthy();
+    // react-native-web hands a Pressable its new onPress in a passive effect, so the reveal must settle inside act
+    // or a loaded runner presses Ship while it still holds the pre-reveal draft.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("reveal-ship-tiles"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText("Recommended: Ship (80%, fixture-agent)")).toBeTruthy();
     fireEvent.click(button("Ship"));
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));

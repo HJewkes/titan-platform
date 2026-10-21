@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Ship pick drops its recommendationSeen tag",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "pick: question.merge.ship[0], ...seen }",
+      "replace": "pick: question.merge.ship[0] }",
+      "kills": [
+        "answering a Ship round reveals the Ship recommendation on demand and tags the Ship pressed after it seen"
+      ]
+    }
+  ]
+}
