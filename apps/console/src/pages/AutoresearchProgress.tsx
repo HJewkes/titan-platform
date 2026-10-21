@@ -34,6 +34,9 @@ const AXES: readonly { axis: ProgressAxis; label: string }[] = [
 
 const PERCENT = 100;
 
+/** Below this the cell table scrolls sideways rather than overlap a long cell name with its trial count. */
+const CELLS_MIN_WIDTH = 560;
+
 /** Design §1.5: the scoreboard, wins and losses, the progress chart and the planner's per-cell table. */
 export function AutoresearchProgress({ run }: { run: ArRunView }): ReactNode {
   const board = scoreboard(run);
@@ -56,15 +59,19 @@ export function AutoresearchProgress({ run }: { run: ArRunView }): ReactNode {
 
 function ScoreboardRow({ board }: { board: Scoreboard }): ReactNode {
   return (
-    <MetricGroup testID="autoresearch-scoreboard">
-      <Metric size="sm" label="Kept" value={String(board.kept)} />
-      <Metric size="sm" label="Rejected" value={String(board.rejected)} />
-      <Metric size="sm" label="Stopped" value={String(board.stopped)} />
-      <Metric size="sm" label="Superseded" value={String(board.superseded)} />
-      <Metric size="sm" label="Keep rate" value={board.keepRate === undefined ? "—" : `${Math.round(board.keepRate * PERCENT)}%`} />
-      <Metric size="sm" label="$ per kept" value={board.usdPerKept === undefined ? "—" : formatCost(board.usdPerKept)} />
-      <Metric size="sm" label="Wasted $" value={formatCost(board.wastedUsd)} />
-    </MetricGroup>
+    <VStack gap={2} testID="autoresearch-scoreboard">
+      <MetricGroup>
+        <Metric size="sm" label="Kept" value={String(board.kept)} />
+        <Metric size="sm" label="Rejected" value={String(board.rejected)} />
+        <Metric size="sm" label="Stopped" value={String(board.stopped)} />
+        <Metric size="sm" label="Superseded" value={String(board.superseded)} />
+      </MetricGroup>
+      <MetricGroup>
+        <Metric size="sm" label="Keep rate" value={board.keepRate === undefined ? "—" : `${Math.round(board.keepRate * PERCENT)}%`} />
+        <Metric size="sm" label="$ per kept" value={board.usdPerKept === undefined ? "—" : formatCost(board.usdPerKept)} />
+        <Metric size="sm" label="Wasted $" value={formatCost(board.wastedUsd)} />
+      </MetricGroup>
+    </VStack>
   );
 }
 
@@ -136,7 +143,7 @@ function progressSummary(run: ArRunView, progress: RunProgress): string {
 function CellTable({ cells }: { cells: ArRunView["cells"] }): ReactNode {
   if (cells.length === 0) return <EmptyState title="The planner digest has no cell yet" />;
   return (
-    <Table density="dense" testID="autoresearch-cells">
+    <Table density="dense" contentMinWidth={CELLS_MIN_WIDTH} testID="autoresearch-cells">
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Cell</TableHeaderCell>
