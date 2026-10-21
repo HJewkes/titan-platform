@@ -135,7 +135,39 @@ describe("agentRunner", () => {
     const outcome = await runner.run({ runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal });
 
     expect(outcome.ok && JSON.parse(outcome.output)).toEqual({ verdict: "confirmed" });
-    expect(outcome.ok && outcome.usage).toEqual({ costUsd: 0.12, inputTokens: 900, outputTokens: 80 });
+    expect(outcome.ok && outcome.usage).toEqual({ costUsd: 0.12, inputTokens: 900, outputTokens: 80, model: "claude-sonnet-5" });
+  });
+
+  it("reports cache reads and the 5m and 1h cache writes the run made", async () => {
+    const runner = agentRunner({
+      cwd: "/tmp",
+      maxTurns: 1,
+      maxBudgetUsd: 1,
+      defaults: { outputSchema: z.object({ verdict: z.string() }) },
+      deps: {
+        query: structuredQuery(
+          { verdict: "confirmed" },
+          {
+            usage: { cache_creation: { ephemeral_5m_input_tokens: 11, ephemeral_1h_input_tokens: 17_056 } },
+            modelUsage: { "claude-haiku-5-5": { inputTokens: 5, outputTokens: 9, cacheReadInputTokens: 31_546, cacheCreationInputTokens: 17_067, costUSD: 0.004 } },
+          },
+        ),
+        env: { CLAUDE_CODE_OAUTH_TOKEN: "sk-oauth" },
+      },
+    });
+
+    const outcome = await runner.run({ runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal });
+
+    expect(outcome.ok && outcome.usage).toMatchObject({ cacheReadTokens: 31_546, cacheWrite5mTokens: 11, cacheWrite1hTokens: 17_056, model: "claude-haiku-5-5" });
+  });
+
+  it("invents no cache fields when the run reported none", async () => {
+    const runner = agentRunner({ cwd: "/tmp", maxTurns: 1, maxBudgetUsd: 1, defaults: { outputSchema: z.object({ verdict: z.string() }) }, deps: { query: structuredQuery({ verdict: "x" }), env: { CLAUDE_CODE_OAUTH_TOKEN: "sk-oauth" } } });
+
+    const outcome = await runner.run({ runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal });
+
+    expect(outcome.ok && outcome.usage).not.toHaveProperty("cacheReadTokens");
+    expect(outcome.ok && outcome.usage).not.toHaveProperty("cacheWrite1hTokens");
   });
 
   const stepInput = { runId: "r", workflowName: "w", stepId: "s", iteration: 0, prompt: "judge", signal: new AbortController().signal };
