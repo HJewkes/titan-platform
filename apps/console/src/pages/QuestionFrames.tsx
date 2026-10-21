@@ -3,12 +3,13 @@ import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { optionKey } from "./frame-link.js";
-import { FrameImage } from "./RoundFrame.js";
+import { VariantFrame, type FrameMedia } from "./TrueSize.js";
 
-/** What a question needs to draw the frames it names: the round, each variant's label, and which keys have an image. */
+/** What a question needs to draw the frames it names: the round, each variant's label and sizing, and which keys have an image. */
 interface RoundFrames {
   roundId: string;
   labels: ReadonlyMap<string, string>;
+  media: ReadonlyMap<string, FrameMedia>;
   loadable: ReadonlySet<string>;
 }
 
@@ -26,8 +27,9 @@ interface RoundFramesProviderProps {
 export function RoundFramesProvider({ roundId, manifest, indexed, children }: RoundFramesProviderProps): ReactNode {
   const value = useMemo(() => {
     const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
+    const media = new Map(manifest.variants.map(({ key, frameReference, scale }) => [key, { frameReference, scale }]));
     const images = manifest.variants.filter((variant) => variant.image !== undefined).map((variant) => variant.key);
-    return { roundId, labels, loadable: new Set([...images, ...(indexed ?? [])]) };
+    return { roundId, labels, media, loadable: new Set([...images, ...(indexed ?? [])]) };
   }, [roundId, manifest, indexed]);
   return <RoundFramesContext.Provider value={value}>{children}</RoundFramesContext.Provider>;
 }
@@ -76,6 +78,21 @@ export function useFrameSource(): { roundId: string; loadable: (key: string) => 
   return frames && { roundId: frames.roundId, loadable: (key) => frames.loadable.has(key) };
 }
 
+interface RoundVariantFrameProps {
+  frameKey: string;
+  alt: string;
+  /** Whether the frame's own PNG may be fetched; a scale frame asks the round for each candidate's instead. */
+  loadable: boolean;
+  missing: string;
+}
+
+/** A round's frame drawn as its variant asks: true size, a scale question's candidates, or a plain PNG. Nothing outside a provider. */
+export function RoundVariantFrame(props: RoundVariantFrameProps): ReactNode {
+  const frames = useContext(RoundFramesContext);
+  if (frames === null) return null;
+  return <VariantFrame {...props} roundId={frames.roundId} media={frames.media.get(props.frameKey)} candidateLoadable={(key) => frames.loadable.has(key)} />;
+}
+
 function optionFrame(question: Question, option: string, labels: ReadonlyMap<string, string>): string | undefined {
   const key = optionKey(question, option, labels);
   return key === undefined ? undefined : labels.get(key);
@@ -115,11 +132,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
                 <Typography variant="subtitle2">{label}</Typography>
                 <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>
               </HStack>
-              {frames.loadable.has(key) ? (
-                <FrameImage roundId={frames.roundId} frameKey={key} view="head" alt={label} />
-              ) : (
-                <Typography variant="caption" color="secondary">No image for this frame</Typography>
-              )}
+              <RoundVariantFrame frameKey={key} alt={label} loadable={frames.loadable.has(key)} missing="No image for this frame" />
             </FrameFigure>
           );
         })}
