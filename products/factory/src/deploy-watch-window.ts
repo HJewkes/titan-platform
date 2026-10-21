@@ -52,8 +52,8 @@ interface WatchPorts {
   alive: (pid: number) => boolean;
   /** Called once as the window opens; absent records nothing. */
   record?: (intent: WatchIntent) => void;
-  /** Told, as the window ends, what the watch saw but did not count against the build; absent reports nothing. */
-  report?: (line: string) => void;
+  /** Told, as the window ends, what the watch saw but did not count against the build, one newline-terminated line; absent reports nothing. */
+  report?: (text: string) => void;
 }
 
 /** How serve stood just before the restart and just after it. */
@@ -172,9 +172,11 @@ const describeLatency = (reading: Reading): string => (reading.kind === "miss" ?
  * The window's verdict once it has run out; the last tick is an answer, since a miss keeps the window open.
  * Run errors must stand on the last two answers, so no single tick decides them.
  */
-function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, during: string): string | undefined {
+function atWindowEnd(readings: readonly Reading[], baseline: WatchBaseline, during: string, report?: (text: string) => void): string | undefined {
   const answers = readings.flatMap((reading) => (reading.kind === "answer" ? [reading.health] : [])).slice(-2);
   if (answers.length === 0) return undefined;
+  const diverged = divergedReport(answers.at(-1)!);
+  if (diverged !== undefined) report?.(`${diverged}\n`);
   const added = Math.min(...answers.map((health) => addedErrors(baseline, health)));
   if (added > 0) return `${added} more run(s) failed or need recovery ${during}`;
   return readings.every((reading) => reading.slow) ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
@@ -228,12 +230,5 @@ export async function watchServe(ports: WatchPorts, baseline: WatchBaseline, tar
     const why = reading.kind === "answer" ? drift(baseline.confirmed, reading.health, target) : undefined;
     if (why !== undefined) return `${why} ${during}`;
   }
-  reportDiverged(ports, readings);
-  return atWindowEnd(readings, baseline, during);
-}
-
-function reportDiverged(ports: WatchPorts, readings: readonly Reading[]): void {
-  const last = readings.at(-1);
-  const line = last?.kind === "answer" ? divergedReport(last.health) : undefined;
-  if (line !== undefined) ports.report?.(line);
+  return atWindowEnd(readings, baseline, during, ports.report);
 }

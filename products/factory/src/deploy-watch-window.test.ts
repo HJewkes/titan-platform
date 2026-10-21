@@ -209,7 +209,7 @@ describe("watchServe run errors after a restart", () => {
 
       expect(why).toBeUndefined();
       expect(reported).toEqual([
-        "replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next, s2 -> s2-next, s3 -> s3-next, s4 -> s4-next, s5 -> s5-next, s6 -> s6-next); 6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)",
+        "replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next, s2 -> s2-next, s3 -> s3-next, s4 -> s4-next, s5 -> s5-next, s6 -> s6-next); 6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)\n",
       ]);
     });
 
