@@ -1,19 +1,27 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
-import { SNAPSHOT_FORMAT, type Snapshot } from "@titan-design/rpc-client";
+import { RpcProvider } from "@titan-design/react-app";
+import { errorEnvelope } from "@titan-design/registry";
+import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
+import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
+
+let twin: Snapshot;
+
+beforeAll(async () => {
+  twin = await twinSnapshot();
+});
 
 afterEach(cleanup);
 
-const EMPTY: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T12:00:30.000Z", calls: {} };
-
-function renderConsole(hash: string): void {
-  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", EMPTY), "text/html");
+function renderConsole(hash: string, snapshot: Snapshot = twin): void {
   window.location.hash = hash;
   render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
+    <RpcProvider source={staticSource({ snapshot })}>
       <App />
     </RpcProvider>,
   );
@@ -21,20 +29,21 @@ function renderConsole(hash: string): void {
 
 const rowValue = (header: HTMLElement, label: string): string => within(header).getByText(label).parentElement?.parentElement?.textContent ?? "";
 
-describe("the autoresearch page", () => {
-  it("lists the synthetic run and opens its header", async () => {
-    renderConsole("#/autoresearch");
-    expect(screen.getByText(/^Preview: a synthetic run\./)).toBeTruthy();
+const withAnswer = (command: string, args: unknown, envelope: Snapshot["calls"][string]): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey(command, args)]: envelope } });
 
-    fireEvent.click(within(screen.getByTestId("autoresearch-run-ar-7c1e")).getByText("ar-7c1e"));
+describe("the autoresearch page", () => {
+  it("lists the run the twin's autoresearch.runs answers and opens its header", async () => {
+    renderConsole("#/autoresearch");
+
+    fireEvent.click(within(await screen.findByTestId("autoresearch-run-ar-7c1e")).getByText("ar-7c1e"));
 
     await waitFor(() => expect(window.location.hash).toBe("#/autoresearch/ar-7c1e"));
     expect(await screen.findByTestId("autoresearch-header")).toBeTruthy();
   });
 
-  it("reads the run header from the fixture, with the superseded winner apart from the stops", () => {
+  it("reads the run header from autoresearch.run, with the superseded winner apart from the stops", async () => {
     renderConsole("#/autoresearch/ar-7c1e");
-    const header = screen.getByTestId("autoresearch-header");
+    const header = await screen.findByTestId("autoresearch-header");
 
     expect(within(header).getByText("fixture-target · ar-7c1e")).toBeTruthy();
     expect(rowValue(header, "Round")).toContain("3 / 50");
@@ -43,9 +52,17 @@ describe("the autoresearch page", () => {
     expect(rowValue(header, "Lanes in use")).toContain("1 / 3");
   });
 
-  it("names a run it does not hold rather than show another", () => {
-    renderConsole("#/autoresearch/ar-0000");
-    expect(screen.getByText("No autoresearch run ar-0000")).toBeTruthy();
+  it("shows the factory's error instead of an empty list when the runs read fails", async () => {
+    renderConsole("#/autoresearch", withAnswer("autoresearch.runs", {}, errorEnvelope("factory not answering on port 7410: connect ECONNREFUSED", 69)));
+
+    expect(await screen.findByText(/^Could not load the autoresearch runs: factory not answering/)).toBeTruthy();
+    expect(screen.queryByText("The factory holds no autoresearch run")).toBeNull();
+  });
+
+  it("names a run the factory does not hold rather than show another", async () => {
+    renderConsole("#/autoresearch/ar-0000", withAnswer("autoresearch.run", { runId: "ar-0000" }, errorEnvelope("factory autoresearch.run: no autoresearch run ar-0000", 64)));
+
+    expect(await screen.findByText(/^Could not load autoresearch run ar-0000: .*no autoresearch run ar-0000/)).toBeTruthy();
     expect(screen.queryByTestId("autoresearch-header")).toBeNull();
   });
 
@@ -53,5 +70,16 @@ describe("the autoresearch page", () => {
     renderConsole("#/research");
     expect(within(screen.getByRole("tab", { name: "Home" })).getByTestId("nav-item-accent")).toBeTruthy();
     expect(screen.queryByTestId("autoresearch-header")).toBeNull();
+  });
+});
+
+const SRC = path.dirname(fileURLToPath(import.meta.url));
+
+describe("the browser bundle", () => {
+  it("imports no twin fixture, so the synthetic run stays out of the served page", async () => {
+    const files = (await readdir(SRC, { recursive: true })).filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file));
+    const sources = await Promise.all(files.map(async (file) => [file, await readFile(path.join(SRC, file), "utf8")] as const));
+
+    expect(sources.filter(([, text]) => /from "[^"]*server\/twin\//.test(text)).map(([file]) => file)).toEqual([]);
   });
 });
