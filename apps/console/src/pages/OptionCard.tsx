@@ -4,7 +4,7 @@ import type { Question } from "../../server/round-schema.js";
 import { RoundProse } from "./RoundMarkdown.js";
 
 type PickQuestion = Extract<Question, { kind: "pick-one" | "pick-many" }>;
-export type OptionDetail = NonNullable<PickQuestion["optionDetails"]>[string];
+type OptionDetail = NonNullable<PickQuestion["optionDetails"]>[string];
 
 /** What a page that takes option notes holds for one question: a note per option, by option text. */
 export interface OptionNoting {
