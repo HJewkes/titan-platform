@@ -8,6 +8,7 @@ import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
 import type { PngWidths } from "./frame-pins.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
+import { DraftDiscarded, type DraftBinding } from "./RoundDraft.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { PagedSections } from "./RoundPager.js";
@@ -38,8 +39,8 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 }
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
-  const { submitting, check, checking, locked, frozen } = useRoundSend(round);
-  const state = useDesignAnswers(round, frozen);
+  const { submitting, check, checking, locked, frozen, draft } = useRoundSend(round);
+  const state = useDesignAnswers(round, frozen, draft);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
@@ -50,6 +51,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
       <FrameFeedbackProvider value={state.frames} widths={widths}>
         <VStack gap={4}>
+          <DraftDiscarded discarded={state.draftDiscarded} />
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
           <PagedSections
@@ -69,9 +71,9 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
 }
 
 /** The round's answers; an option picking one of its frames stays in step with that frame's Chosen verdict. */
-function useDesignAnswers(round: ValidRound, frozen: boolean) {
+function useDesignAnswers(round: ValidRound, frozen: boolean, draft: DraftBinding) {
   const frameKeys = useMemo(() => round.manifest.variants.map((variant) => variant.key), [round.manifest]);
-  return useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys);
+  return useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys, draft);
 }
 
 /** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in, and whether it has an element map. */

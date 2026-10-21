@@ -5,6 +5,7 @@ import type { RoundNotes } from "../../server/rounds.js";
 import type { ABAnswering } from "./QuestionAB.js";
 import { heldFromSent } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
+import { useDraftSeed, useDraftWrite, type DraftBinding } from "./RoundDraft.js";
 import { useFrameFeedback, type ActiveTarget, type VerdictLink } from "./FrameFeedback.js";
 import { pickVerdicts, verdictAnswers } from "./frame-link.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
@@ -33,10 +34,12 @@ function useShipMarks() {
 /**
  * The page's picks, text, comments, option notes, frame verdicts and Ship marks, and the active question that digit keys
  * answer (at first the first one with choices) or frame that letter keys judge. A sent round's `notes` seed the answers,
- * so a reload shows them as sent. An option picking one of `frameKeys` and that frame's Chosen verdict stay in step.
+ * so a reload shows them as sent; an unsent round bound to a `draft` starts from the one stored for it and keeps it
+ * current. An option picking one of `frameKeys` and that frame's Chosen verdict stay in step.
  */
-export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes, locked = false, frameKeys: readonly string[] = NO_FRAMES) {
-  const [held] = useState(() => heldFromSent(notes));
+export function useRoundAnswers(questions: readonly Question[], notes?: RoundNotes, locked = false, frameKeys: readonly string[] = NO_FRAMES, draft?: DraftBinding) {
+  const seed = useDraftSeed(draft);
+  const [held] = useState(() => seed.draft ?? heldFromSent(notes));
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>(held.answers);
   const [comments, setComments] = useState<Record<string, string>>(held.comments);
   const [optionNotes, setOptionNotes] = useState<Record<string, Record<string, string>>>(held.optionNotes);
@@ -47,7 +50,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const setActiveId = useCallback((id: string | undefined) => setTarget(id === undefined ? undefined : { kind: "question", id }), []);
   const keys = useMemo(() => new Set(frameKeys), [frameKeys]);
   const link = useVerdictLink(questions, keys, answers, setAnswers);
-  const frames = useFrameFeedback(target, setTarget, locked, notes?.frames, link);
+  const frames = useFrameFeedback(target, setTarget, locked, notes?.frames, link, seed.draft?.frames);
   const active = questions.find((question) => question.id === activeId);
   const { choose, revise } = useLinkedChoices(keys, frames, answers, setAnswers);
   const write = useCallback((question: Question, text: string) => setAnswers((current) => ({ ...current, [question.id]: { text } })), []);
@@ -58,7 +61,8 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   );
   const chooseActive = useCallback((choice: string) => (active ? choose(active, choice) : undefined), [active, choose]);
   useChoiceKeys(active, chooseActive);
-  return { answers, comments, optionNotes, general, setGeneral, activeId, setActiveId, choose, write, comment, revise, note, frames, ...marks };
+  useDraftWrite(draft, useMemo(() => ({ answers, comments, optionNotes, general, frames: frames.drafts }), [answers, comments, optionNotes, general, frames.drafts]));
+  return { answers, comments, optionNotes, general, setGeneral, draftDiscarded: seed.discarded, activeId, setActiveId, choose, write, comment, revise, note, frames, ...marks };
 }
 
 const NO_FRAMES: readonly string[] = [];
