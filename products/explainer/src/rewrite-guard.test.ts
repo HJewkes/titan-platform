@@ -135,4 +135,16 @@ describe("guardBeat", () => {
     const after = { spoken: "The desk reads three stores. Alderman writes them all. The ledger keeps them.", labelsAdded: [] };
     expect(rules(before, after)).toContain("list-lost");
   });
+
+  it("does not count the words of a number moved into a label as dropped terms", () => {
+    const before = beatWith({}, "The desk ledger can hold 5000 rows before it rolls over.");
+    const after = { spoken: "The desk ledger keeps its rows until it rolls over.", labelsAdded: ["5000 rows"] };
+    expect(guardBeat(before, after)).toEqual([]);
+  });
+
+  it("still rejects a moved number's rewrite that drops a real content term as well", () => {
+    const before = beatWith({}, "The desk ledger can hold 5000 rows before it rolls over.");
+    const after = { spoken: "The ledger keeps its rows until it rolls over.", labelsAdded: ["5000 rows"] };
+    expect(rules(before, after)).toEqual(["terms"]);
+  });
 });

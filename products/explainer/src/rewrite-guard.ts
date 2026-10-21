@@ -63,12 +63,33 @@ function surplus(left: readonly string[], right: readonly string[]): string[] {
   });
 }
 
+/** The number mentions that left the spoken line, normalized, with repeats. */
+const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(numbersIn(before).map(norm), numbersIn(after.spoken).map(norm));
+
+const inLabel = (labels: readonly string[], span: string): boolean => labels.some((label) => hasWord(norm(label), span));
+
+/**
+ * The original line, markup reduced, without the number mentions an appended label now carries. The terms rule reads
+ * this, so "5000 rows" moved to a label does not count "thousand" as a dropped content term.
+ */
+function withoutCarriedNumbers(before: string, after: BeatRewrite): string {
+  const carried = movedNumbers(before, after).filter((span) => inLabel(after.labelsAdded, span));
+  const text = spokenText([before]).text;
+  const cut = numberSpans(text).filter((span) => {
+    const at = carried.indexOf(norm(span.text));
+    if (at === -1) return false;
+    carried.splice(at, 1);
+    return true;
+  });
+  return cut.reduceRight((line, span) => line.slice(0, span.index) + line.slice(span.index + span.text.length), text);
+}
+
 function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const was = numbersIn(before).map(norm);
   const now = numbersIn(after.spoken).map(norm);
   const labels = after.labelsAdded.map(norm);
-  const moved = surplus(was, now);
-  const lost = moved.filter((span) => !labels.some((label) => hasWord(label, span)));
+  const moved = movedNumbers(before, after);
+  const lost = moved.filter((span) => !inLabel(labels, span));
   return [
     ...lost.map((span) => ({ rule: "number-lost" as const, detail: `"${span}" left the line and is not in an appended label` })),
     ...bareLabelRejections(moved, labels),
@@ -138,9 +159,12 @@ function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: 
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
   const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, ...opts.guard };
   const generic: BeatRejection[] = guardRewrite(before.spoken, after.spoken, "", guard)
-    .flatMap(({ rule, detail }) => (rule === "number" ? [] : [{ rule, detail }]));
+    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" ? [] : [{ rule, detail }]));
+  const terms: BeatRejection[] = guardRewrite(withoutCarriedNumbers(before.spoken, after), after.spoken, "", guard)
+    .flatMap(({ rule, detail }) => (rule === "terms" ? [{ rule, detail }] : []));
   return [
     ...generic,
+    ...terms,
     ...numberRejections(before.spoken, after),
     ...listRejections(before.spoken, after),
     ...cueRejections(before, after.spoken),
