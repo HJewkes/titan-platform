@@ -44,6 +44,7 @@ its upstreams uses, and on a port value that is not a number.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `TITAN_CONSOLE_PORT` | `7500` | The console daemon's own port |
+| `TITAN_CONSOLE_STORY_PORT` | `7501` | The story origin's port, which serves review rounds' stored Storybook builds (see "The story origin"). `0` turns it off. Refused if it equals the console's own port or an upstream's |
 | `TITAN_CONSOLE_STATE` | `~/.local/state/titan-console` | Holds the daemon's pid file; a second console over the same directory is refused |
 | `TITAN_CONSOLE_ACTIVE_WORK_PORT` | `7400` | Loopback port of the active-work daemon |
 | `TITAN_CONSOLE_AGENT_CHAT_PORT` | `7600` | Loopback port of the agent-chat broker |
@@ -146,7 +147,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
 | `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it), plus `dir`, the rounds dir the server reads. A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
-| `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped and `revealable` lists the questions `rounds.reveal` can hand one back for (empty otherwise). A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). A Ship round also carries `lineage`: `{known: true, provenSha, state, merged, mergeSha, headSha, baseRef, baseSha, behind}` read from GitHub's PR and base tip and cached per repo, PR and head for a minute (`behind` is null unless the PR is open and still at the proven head), or `{known: false, reason}`. A sent round carries `notes {general, comments, answers, addressed}`: `answers` holds each question's sent `pick`, `picks`, `value`, `text`, `revisionRequested`, `optionNotes` and `recommendationSeen` by question id, and `addressed` the earlier rounds its `addressed.json` ticked, so a reload shows every question locked with its sent answer, and an optional `frames` holds each frame sent a verdict, comment or pin as `{verdict, comment, annotations}` by variant key (each pin's `id`, `xPct`, `yPct`, `note` and `target`), absent when no frame was. An open or sent Ship round carries `priorFeedback`; an earlier round's entry holds `frames`, one line per frame it left a comment, pin or Rejected verdict on. An earlier round with several PRs gives one entry per PR this round still asks about, each with `pr` (`repo#pr`) and only that PR's answers and frames, and it blocks only that PR's Ship. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
+| `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped and `revealable` lists the questions `rounds.reveal` can hand one back for (empty otherwise). A round with a merge-bound pick-one is flagged `ship`; any other round with frames is flagged `design`. The detail carries `manifestSha256` (what `rounds.submit` binds to) and, once the factory has answered a Ship or Send back, an optional `answer {status, at, choice?, currentHead?, reason?}` (`choice` is `merge` or `send-back`). A Ship round also carries `lineage`: `{known: true, provenSha, state, merged, mergeSha, headSha, baseRef, baseSha, behind}` read from GitHub's PR and base tip and cached per repo, PR and head for a minute (`behind` is null unless the PR is open and still at the proven head), or `{known: false, reason}`. A sent round carries `notes {general, comments, answers, addressed}`: `answers` holds each question's sent `pick`, `picks`, `value`, `text`, `revisionRequested`, `optionNotes` and `recommendationSeen` by question id, and `addressed` the earlier rounds its `addressed.json` ticked, so a reload shows every question locked with its sent answer, and an optional `frames` holds each frame sent a verdict, comment or pin as `{verdict, comment, annotations}` by variant key (each pin's `id`, `xPct`, `yPct`, `note` and `target`), absent when no frame was. An open or sent Ship round carries `priorFeedback`; an earlier round's entry holds `frames`, one line per frame it left a comment, pin or Rejected verdict on. An earlier round with several PRs gives one entry per PR this round still asks about, each with `pr` (`repo#pr`) and only that PR's answers and frames, and it blocks only that PR's Ship. A round imported with a Storybook build (`storybook/storybook.json`, a `titan-review/storybook@1` sidecar, with its files under `storybook/static/`) carries `live {origin, frames}`: `frames` holds one entry per story variant by key, either `{url, buildSha, dirty?}` (a url relative to the story origin, `/sb/<buildId>/iframe.html?id=…`, with the variant's args and globals and, when the variant sets no theme, its frames.json record's `theme`) or `{reason}` when it shows its captured PNG instead: the build is not at the PR group's head (or `build.mergeSha`, or, with no group, the round's Ship head), the story id is not in the build's `index.json`, its args are not URL-safe, or the stored build is missing or does not match. `origin` is the story origin a page on the listener that answered can frame: `http://127.0.0.1:<story port>` on loopback, `https://<first LAN name>:<story port>` on the LAN, or null when the story origin is off. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
 | `POST /rpc/rounds.frames` | `{ id }` in; `{ indexed, frames: [{ key, theme?, views, indexed, unchanged, viewportWidth?, targets? }] }` out: each frame the round lists, from its image variants and `frames/frames.json`, with the views (`head`, `base`, `after`, `diff`) it has files for. The top `indexed` says the round has a `frames/frames.json`, a frame's `indexed` says that file lists it, and `unchanged` that it gives the frame's head and base one sha256. `viewportWidth` is the record's `viewport.width`, the CSS px a pin on the frame is measured in; a malformed `viewport` is dropped, not refused. An invalid `frames.json` is refused (66). `targets` is true when the record names an element map (`rounds.frameTargets`); a malformed `targets` is dropped, not refused |
 | `POST /rpc/rounds.frameTargets` | `{ id, key }` in; `{ sha256, boxes: [{ x, y, width, height, target: { testId?, role?, text? } }] }` out: the element map a frames record names as `targets: { file, sha256 }`, a `titan-review/frame-targets@1` file whose boxes are in the record's viewport CSS px from the frame's top left. Read as `rounds.frame` reads a PNG (a relative `.json` path inside the round, no symlink at any component, regular, at most 256 KiB), and refused (66) when its sha256 differs from the record's or it is not frame-targets@1. A frame whose record names no `targets` is refused too |
 | `POST /rpc/rounds.frame` | `{ id, key, view? }` in; `{ contentType: "image/png", bytes, sha256, base64 }` out for one listed frame. The client names a key and view, never a path. Refused (66) for an unlisted key or view, a path leaving the round, a symlink at any component, a non-regular file, a non-PNG, a file over 8 MiB or a sha256 the frames index does not match. Also served over `/mcp`, so an agent can read the images as the owner does |
@@ -164,6 +165,41 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/config.hosts` | `{ hosts: [{ host, status, reportedAt, receivedAt, platform, surfaces }], gaps }`: each other host's last report. One older than 25 hours is `not reported`, with no surfaces |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
+
+### The story origin
+
+A review round's Storybook build is PR-head code, so the console never serves it as itself. With
+`TITAN_CONSOLE_STORY_PORT` set (7501 by default) the daemon opens a second, read-only origin on
+that port (`server/story-origin.ts`, on `@titan-design/daemon`'s content origin): `127.0.0.1` and,
+in LAN mode, the LAN address with the same certificate, Host check and session cookie. Story code
+there cannot read a console page, and every console listener refuses its `Origin` on a write. It
+answers only `GET` and `HEAD` (any other method is 405) and only these routes; there is no
+`/rpc`, `/events`, `/mcp`, `/health` or sign-in page on it.
+
+| Route | Answers |
+| --- | --- |
+| `GET /sb/<buildId>/<path>` | A file of a build in the console's store (`$TITAN_CONSOLE_STATE/storybooks/<buildId>/`), contained by `containedFile`: an encoded slash or a symlink out of the build is 400, a dotfile or absent file the fast-fail page. Every file but `iframe.html` is sent byte for byte and cached as immutable, since a build's id is its content hash. The build's top `iframe.html` gets `<script src="/__bridge.js">` injected before `</head>`. A build id that is not a stored build's (malformed, absent, a staging dir or a symlink in the store) gets the fast-fail page |
+| `GET /__bridge.js` | The story bridge (`server/story-bridge.ts`) with the console's own origins baked in |
+
+The fast-fail page is a 404 whose bridge script posts `error` at once, with the reason, so a frame
+falls back to its PNG without waiting out a timeout.
+
+Every story response carries `Referrer-Policy: no-referrer`, `nosniff` and this CSP:
+`default-src 'self'; script-src 'self' <sha256 of each inline script in the document>;
+style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
+connect-src 'self'; form-action 'none'; base-uri 'self'; object-src 'none'; frame-ancestors
+<console origins>`. The console origins are `http://127.0.0.1:<port>`, `http://localhost:<port>`
+and, in LAN mode, `https://<name>:<port>` for each LAN name and the LAN address. Storybook 10's
+`iframe.html` boots from inline scripts, which are allowed by hash rather than
+`'unsafe-inline'`; styles stay `'unsafe-inline'` because Storybook and CSS-in-JS insert them at
+run time. No `'unsafe-eval'` is needed.
+
+The bridge posts `{bridge: "titan-story", type}` messages to `window.parent`: `ready` when
+Storybook renders the story, `error` with Storybook's reason (`storyErrored`, `storyMissing`,
+`storyThrewException`) or the fast-fail page's, and `height`, the bottom of `#storybook-root` in
+CSS px, at most 12 times. Only one of `ready` and `error` is ever sent. The page names its own
+origin as `?parent=`, and the bridge posts nothing unless that is one of the console origins.
+Story code shares the frame's origin and can forge any of these, so none may change an answer.
 
 `work.tasks` derives stages from the local clones that any `artifacts.yml` names. Per clone it
 reads local refs, worktrees and main-line subjects with `git` (it never fetches) and open pull

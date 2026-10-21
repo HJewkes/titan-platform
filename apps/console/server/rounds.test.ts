@@ -409,7 +409,7 @@ describe("rounds.get over the daemon's RPC", () => {
 
   it("returns an unsent after-answer round with no recommendation in the reply body", async () => {
     const closed = String(await closedPort());
-    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
+    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_STORY_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
     handle = await startConsoleDaemon({ config: resolveConfig(env, root), logger: silentLogger });
     const host = `127.0.0.1:${handle.port}`;
 

@@ -1,5 +1,5 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
-import { countRow, ruleRow } from "./lint-text.js";
+import { ruleRow } from "./lint-text.js";
 
 // A port of the script-tells harness (TP-3765: measure.py and derived.py). The regexes, the sentence split and
 // the per-1k rates are copied as written there, so a value here is comparable with the research bands. Python's
@@ -136,8 +136,15 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   lets: { max: 3.21 },
 };
 
-/** A beat may speak one number; the rest belong on screen (TP-3813). */
+/** A beat may speak one number; the rest belong on screen (TP-3813). A beat over this is "crowded". */
 export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
+
+/**
+ * The share of a script's beats that may be crowded. Calibrated on the human creator scripts, whose crowded share is
+ * P25 5.5%, median 8.5%, P75 16% and P90 23.7%; the cap is P90 rounded, so it asks for a human script's worst tenth,
+ * not for zero crowded beats.
+ */
+const MAX_CROWDED_BEAT_SHARE = 0.24;
 const NUMBERS_PER_BEAT_ID = "register:numbers-per-beat";
 
 export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID];
@@ -153,13 +160,17 @@ function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
 }
 
-function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[]): L0Result {
+function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[], s: SpokenText): L0Result {
   const crowded = beats.filter((beat) => count(NUM_RUN, spokenText([beat.spoken]).text) > MAX_SPOKEN_NUMBERS_PER_BEAT);
-  return { ...countRow(NUMBERS_PER_BEAT_ID, crowded.map((beat) => beat.id)), severity: "warning" };
+  const share = beats.length === 0 ? 0 : crowded.length / beats.length;
+  const pass = s.words.length < MIN_REGISTER_WORDS || share <= MAX_CROWDED_BEAT_SHARE;
+  return ruleRow(NUMBERS_PER_BEAT_ID, {
+    value: share, threshold: MAX_CROWDED_BEAT_SHARE, pass, mode: "heuristic", severity: "warning", beats: crowded.map((beat) => beat.id),
+  });
 }
 
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats)];
+  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed)];
 };

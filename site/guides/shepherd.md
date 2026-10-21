@@ -79,6 +79,9 @@ A move into `test-only` meets the diff check [below](#the-test-only-kind).
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
 head's fix-proof result before the review. A vacuous or test-less proof ends the round as
 `NO_REPRO`, unless its mutation check proves it (see [the test-only kind](#the-test-only-kind)). A proof that shows nothing about the head goes to the reviewer marked unverified.
+A `NO_REPRO` wakes the implementer for a reproducing test at most twice per run. The third
+goes to the `sh-sent-back` gate, worded `fix-proof did not reproduce (NO_REPRO)`. A `NO_REPRO`
+is not a reviewer's `FIX_FIRST`, so it never counts toward `fix-first-runaway` (TP-3900).
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
 could not be read although one was due. A read that fails is read once more at the same head
 first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
@@ -404,7 +407,10 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
   task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
   route. Since TP-3734 (D8) this and `no-progress` reach you only when no seat can be told: one
   fresh convergence reviewer judges the `FIX_FIRST` trail first, and its `FIX_FIRST` goes to the
-  planner through a seat notice.
+  planner through a seat notice. D8 starts only when some reviewer said `FIX_FIRST` in the trail
+  and the head's fix-proof did not say `NO_REPRO`. Otherwise the escalation goes to this gate,
+  because a convergence review at such a head would end at the fix-proof before any reviewer
+  started (TP-3900).
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
   Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
