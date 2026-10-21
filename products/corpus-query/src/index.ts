@@ -15,3 +15,4 @@ export type { MatchTerms } from "./match.js";
 export { DEFAULT_WINDOW, passageId, readPassage, retrieve } from "./retrieve.js";
 export type { RetrieveOptions, RetrieveResult } from "./retrieve.js";
 export * from "./judge/index.js";
+export * from "./workflow/index.js";
