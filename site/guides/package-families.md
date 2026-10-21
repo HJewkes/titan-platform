@@ -134,6 +134,8 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
   caller satisfies, and `classifyPr`, which picks a pull request's review class from its
   signals.
+- [`review-workflow`](/reference/review-workflow): PR review as a resumable workflow over
+  ports; its types, step ids, outcome union, failure classes and the retry policy as data.
 - `tool-guard` (private, unpublished): classifies a Claude Code tool call into the guarded
   `authority` actions it would take, such as a merge, a release or a credential read.
 - [`egress-scan`](/reference/egress-scan): refuses home paths, private-workspace paths, and

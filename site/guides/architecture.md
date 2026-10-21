@@ -72,6 +72,7 @@ graph TD
     pm["pm"]
     queueMirror["queue-mirror"]
     reviewPanel["review-panel"]
+    reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
     sessionGraph["session-graph"]
     sessionRead["session-read"]
@@ -139,6 +140,9 @@ graph TD
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
+  reviewWorkflow --> evidence
+  reviewWorkflow --> github
+  reviewWorkflow --> reviewPanel
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
