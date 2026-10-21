@@ -64,6 +64,11 @@ function renderFrames(): { name: string; args: unknown }[] {
 
 /** The box the image is drawn in: its width is the frame's true width at 1:1, unset when fitted. */
 const imageBox = (img: HTMLElement): HTMLElement | null => img.closest("button")?.parentElement ?? null;
+const html = (node: Element | null | undefined): HTMLElement => {
+  if (!(node instanceof HTMLElement)) throw new Error("expected an HTML element");
+  return node;
+};
+const keyOf = (args: unknown): unknown => (typeof args === "object" && args !== null && "key" in args ? args.key : undefined);
 const sizeButton = (label: string, view: string): HTMLElement => within(screen.getByRole("group", { name: `Size of ${label}` })).getByRole("button", { name: view });
 
 describe("a true-size frame (frameReference)", () => {
@@ -98,7 +103,7 @@ describe("a true-size frame (frameReference)", () => {
     const ladder = within(screen.getByTestId("true-size-title-card")).getByTestId("frame-ladder");
     const rungs = within(ladder).getAllByRole("listitem");
     expect(rungs.map((rung) => rung.textContent)).toEqual(["caption 24px", "body 32px", "title 64px", "display 96px"]);
-    expect((rungs[2]?.firstElementChild as HTMLElement).style.height).toBe(`${(64 / 1080) * 100}%`);
+    expect(html(rungs[2]?.firstElementChild).style.height).toBe(`${(64 / 1080) * 100}%`);
   });
 });
 
@@ -112,7 +117,7 @@ describe("a scale question's frame", () => {
     expect(within(screen.getByTestId(`scale-cell-${scaleCandidateKey("caption-size", "size", 48)}`)).getByText("Not captured")).toBeTruthy();
     expect(within(frame).getByTestId("scale-ladder")).toBeTruthy();
     expect(screen.getAllByTestId(/^scale-frame-/)).toHaveLength(1);
-    const fetched = calls.filter((call) => call.name === "rounds.frame").map((call) => (call.args as { key: string }).key);
+    const fetched = calls.filter((call) => call.name === "rounds.frame").map((call) => keyOf(call.args));
     expect(fetched).not.toContain("caption-size");
     expect(fetched).not.toContain(scaleCandidateKey("caption-size", "size", 48));
   });
@@ -120,11 +125,11 @@ describe("a scale question's frame", () => {
   it("sizes the whole frame to 1920×1080 CSS px on 1:1", () => {
     renderFrames();
     const box = screen.getByTestId("scale-box-caption-size");
-    expect((box.firstElementChild as HTMLElement).style.aspectRatio).toBe("1920 / 1080");
+    expect(html(box.firstElementChild).style.aspectRatio).toBe("1920 / 1080");
 
     fireEvent.click(sizeButton("Caption size", "1:1"));
 
-    const canvas = box.firstElementChild as HTMLElement;
+    const canvas = html(box.firstElementChild);
     expect([canvas.style.width, canvas.style.height]).toEqual(["1920px", "1080px"]);
     expect(box.className).toContain("overflow-auto");
   });
