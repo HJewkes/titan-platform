@@ -224,6 +224,15 @@ interface FeedParts {
   passes(): number;
 }
 
+/** What a case may tell GitHub, or ask of it, outside a fact. */
+function githubControls(github: Github): Pick<Feed, "limit" | "reads" | "head"> {
+  return {
+    limit: (answer, reads = 1) => void github.limits.push(...Array.from({ length: reads }, () => answer)),
+    reads: () => github.reads,
+    head: (repo, pr) => github.world.head(repo, pr),
+  };
+}
+
 function feedOver({ mode, intervalMs, db, clock, timers, github, lines, sweep, ingress, passes }: FeedParts): Feed {
   const { world } = github;
   const advance = ticker(clock, timers, sweep);
@@ -245,9 +254,7 @@ function feedOver({ mode, intervalMs, db, clock, timers, github, lines, sweep, i
     fact,
     transient: async (f) => deliveredSteps(await post(f)),
     post,
-    limit: (answer, reads = 1) => void github.limits.push(...Array.from({ length: reads }, () => answer)),
-    reads: () => github.reads,
-    head: (repo, pr) => world.head(repo, pr),
+    ...githubControls(github),
     passes,
     read: (subject, sinceSeq) => readEvents(db, { subject, sinceSeq }),
     headSeq: () => headSeq(db),
