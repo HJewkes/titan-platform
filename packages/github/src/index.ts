@@ -43,6 +43,7 @@ export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.
 export { formatSquashMessage } from "./squash-message.js";
 export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
 export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";
+export { parseGitHubToken } from "./github-token.js";
 export type {
   GithubApiPool,
   GithubApiPoolOptions,
@@ -52,5 +53,8 @@ export type {
   PoolPriority,
   PoolStateStore,
   PoolUnavailable,
+  RateLimitProbeAnswer,
 } from "./api-pool.js";
+export type { ProbeVerdict } from "./api-pool-reopen.js";
+export { PROBE_REARM_MS, probeVerdict, probedBucket } from "./api-pool-reopen.js";
 export { MUTATION_SPACING_MS, POOL_PRIORITY, githubApiPool, isPoolUnavailable, memoryPoolStateStore } from "./api-pool.js";

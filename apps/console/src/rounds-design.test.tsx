@@ -9,6 +9,7 @@ import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
 const STATES = [
@@ -117,6 +118,7 @@ describe("a design round", () => {
 
   it("shows a section's seeAlso frames as labelled thumbnails", async () => {
     await renderDesign();
+    await toSection("fill");
     scrollAll();
 
     for (const [key, label] of [["beacon-idle", "Idle"], ["beacon-error", "Error"]]) {
@@ -129,6 +131,8 @@ describe("a design round", () => {
     const rendered = await renderDesign();
     scrollAll();
     await screen.findAllByRole("img", { name: "Idle" });
+    await toSection("sketch");
+    scrollAll();
 
     expect(within(screen.getByTestId("design-frame-beacon-sketch")).getByText("Not in frames.json")).toBeTruthy();
     expect(frameKeys(rendered)).not.toContain("beacon-sketch");
@@ -136,9 +140,12 @@ describe("a design round", () => {
 
   it("sends the picks and text with the round.json shown, once the required question is answered", async () => {
     const { calls } = await renderDesign();
+    await toSection("sketch");
     expect(sendButton().getAttribute("aria-disabled")).toBe("true");
 
+    await toSection("fill");
     fireEvent.keyDown(window, { key: "2" });
+    await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Answer to Anything from the sketch worth keeping?"), { target: { value: "Keep the halo." } });
     fireEvent.click(sendButton());
 
@@ -155,8 +162,10 @@ describe("a design round", () => {
   it("offers a comment on each question and feedback on the round, and sends them", async () => {
     const { calls } = await renderDesign();
 
+    await toSection("fill");
     fireEvent.keyDown(window, { key: "1" });
     fireEvent.change(screen.getByLabelText("Comment on Should the beacon be filled or a ring?"), { target: { value: "Filled, but thinner." } });
+    await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Comment on Anything from the sketch worth keeping?"), { target: { value: "Nothing yet." } });
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Frames load fast." } });
     fireEvent.click(sendButton());
@@ -172,9 +181,11 @@ describe("a design round", () => {
     const answers = { "beacon-fill-pick": { pick: "Ring" }, "beacon-notes": { text: "Keep the idle glow." } };
     await renderDesign({ detail: { status: "sent", notes: { general: "", comments: {}, answers, addressed: [] } } });
 
+    await toSection("fill");
     const pick = screen.getByTestId("round-entry-beacon-fill-pick");
     expect(pick.hasAttribute("inert")).toBe(true);
     expect(within(pick).getByText(/Ring/).closest('[role="radio"]')?.getAttribute("aria-checked")).toBe("true");
+    await toSection("sketch");
     expect(screen.getByLabelText<HTMLTextAreaElement>(/^Answer to /).value).toBe("Keep the idle glow.");
     expect(screen.getByTestId("round-entry-beacon-notes").hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
@@ -183,7 +194,9 @@ describe("a design round", () => {
   it("shows a sent design round's comments and round feedback read-only", async () => {
     await renderDesign({ detail: { status: "sent", notes: { general: "Frames load fast.", comments: { "beacon-fill-pick": "Filled, but thinner." }, answers: {}, addressed: [] } } });
 
+    await toSection("fill");
     expect(screen.getByTestId("round-comment-sent-beacon-fill-pick").textContent).toContain("Filled, but thinner.");
+    await toSection("sketch");
     expect(screen.getByTestId("round-general-sent").textContent).toContain("Frames load fast.");
     expect(screen.queryByLabelText("Comment on Anything from the sketch worth keeping?")).toBeNull();
   });
@@ -191,7 +204,7 @@ describe("a design round", () => {
   it("keeps an after-answer round's recommendation out until the round is sent", async () => {
     await renderDesign();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
-    expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
+    expect(screen.getByText("Recommendations are hidden until you answer; reveal one first with r.")).toBeTruthy();
     cleanup();
 
     const { manifest } = await designRound();
@@ -199,7 +212,9 @@ describe("a design round", () => {
     const questions = manifest.questions.map((each) => (each.id === "beacon-fill-pick" ? { ...each, recommendation } : each));
     await renderDesign({ detail: { status: "sent", recommendationsWithheld: false, manifest: { ...manifest, questions } } });
 
+    await toSection("fill");
     expect(screen.getByText("Recommended: Filled (80%, fixture-agent)")).toBeTruthy();
+    await toSection("sketch");
     expect(screen.getByText("Answers sent")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
   });

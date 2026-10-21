@@ -60,7 +60,7 @@ rules:
     owner_support: none
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V7
-    rule: 'Banned register: let''s, simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
+    rule: 'Banned register: simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
     fields: [beats.spoken]
     related: ["DF 1.9", "CT R1", K13]
     owner_support: none
@@ -72,7 +72,7 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V8"] }
   - id: Q-V9
-    rule: "Sentences at most 25 words (a TTS guardrail, never a target)"
+    rule: "Sentences at most 25 words; 26 to 32 pass only when speech-vet reports the sentence clean to speak (a TTS guardrail, never a target)"
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
@@ -84,7 +84,7 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"] }
   - id: Q-V11
-    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s"'
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s", and at most one number mention in a beat'
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
@@ -92,7 +92,7 @@ rules:
     l0:
       severity: warning
       status: implemented
-      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets"]
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'

@@ -6,10 +6,12 @@ import { useSubmit } from "../data/submit.js";
 import { open } from "../router.js";
 import { RoundFramesProvider } from "./QuestionFrames.js";
 import { RoundNote } from "./RoundNote.js";
+import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
 import { RoundSend, lockedBy } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
-import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
+import { PagedSections } from "./RoundPager.js";
+import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -31,7 +33,7 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
 
 function RoundBody({ round }: { round: ValidRound }): ReactNode {
   const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
-  return <RoundFramesProvider roundId={round.id} manifest={round.manifest}>{body}</RoundFramesProvider>;
+  return <RoundFramesProvider roundId={round.id} manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></RoundFramesProvider>;
 }
 
 function Framed({ id, children }: { id: string; children: ReactNode }): ReactNode {
@@ -68,9 +70,8 @@ function QuestionRound({ round }: { round: ValidRound }): ReactNode {
   const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
   return (
     <VStack gap={4}>
-      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} textAnswers locked={locked} />
-      <RoundSend round={round} state={state} submitting={submitting} />
+      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
+      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} send={<RoundSend round={round} state={state} submitting={submitting} />} />
     </VStack>
   );
 }
