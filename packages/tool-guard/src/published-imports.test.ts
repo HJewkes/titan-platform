@@ -7,7 +7,13 @@ import { describe, expect, it } from "vitest";
 // The bins run under `npx -p`, where no host supplies a peer and legacy-peer-deps skips peers
 // entirely, so every package the published code imports must be a regular dependency (TP-3897).
 const root = fileURLToPath(new URL("../", import.meta.url));
-const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as { dependencies?: Record<string, string> };
+const dependencies = dependencyNames();
+
+function dependencyNames(): string[] {
+  const manifest: unknown = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+  const deps = typeof manifest === "object" && manifest !== null && "dependencies" in manifest ? manifest.dependencies : {};
+  return typeof deps === "object" && deps !== null ? Object.keys(deps) : [];
+}
 
 const SPECIFIERS = [
   /^(?:import|export)\b[^"]*?\bfrom\s*"([^"]+)"/gm,
@@ -33,7 +39,7 @@ function importedPackages(): string[] {
 
 describe("the published dist", () => {
   it("imports only packages listed under dependencies, so the bins run under legacy-peer-deps", () => {
-    const missing = importedPackages().filter((name) => manifest.dependencies?.[name] === undefined);
+    const missing = importedPackages().filter((name) => !dependencies.includes(name));
     expect(missing).toEqual([]);
   });
 
