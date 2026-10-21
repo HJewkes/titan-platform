@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "@titan-design/daemon";
-import { githubApiPool, memoryPoolStateStore, type BackstopSnapshot } from "@titan-design/github";
+import { githubApiPool, memoryPoolStateStore } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { ciKey, type CiKeyFn } from "../../event-log/ci-keys.js";
 import { headSeq, readEvents } from "../../event-log/event-log.js";
@@ -15,8 +15,8 @@ import { createObserve } from "../../reconciler/observe.js";
 import { startReconcilerSweep, type BackstopAnswer, type BackstopCall, type BotPorts } from "../../reconciler/service.js";
 import type { Sweep } from "../../sweep.js";
 import { fakePoolClock, rateLimitAnswer } from "../pool-clock.js";
-import { checkRunDelivery, rollupContext, statusDelivery, type CiFact } from "./ci-shapes.js";
 import { rekeyedObservation, rekeyedProjection } from "./rekey.js";
+import { githubWorld, kindsOf, subjectOf, type GithubFact, type World } from "./world.js";
 
 export type A17Mode = (typeof SOURCES_MODES)[number];
 
@@ -38,11 +38,11 @@ export interface Feed {
    * A state that holds across a reconciler tick: GitHub shows it and sends its delivery, then one interval passes. Webhook:
    * the ingress stores it and the backstop re-observes it. Polling: the ingress answers 404 and the pass observes it.
    */
-  fact(fact: CiFact, options?: { deliveryId?: string }): Promise<Step[]>;
+  fact(fact: GithubFact, options?: { deliveryId?: string }): Promise<Step[]>;
   /** A state that holds between two ticks only: its delivery is sent and no pass sees it. Polling never observes it. */
-  transient(fact: CiFact): Promise<Step[]>;
+  transient(fact: GithubFact): Promise<Step[]>;
   /** The fact's delivery as GitHub posts it, signed with the feed's webhook secret unless `secret` says otherwise. */
-  post(fact: CiFact, options?: { deliveryId?: string; secret?: string }): Promise<IngressAnswer>;
+  post(fact: GithubFact, options?: { deliveryId?: string; secret?: string }): Promise<IngressAnswer>;
   /** Reconciler passes so far, the start pass included. */
   passes(): number;
   read(subject: string, sinceSeq: number): ReturnType<typeof readEvents>;
@@ -65,8 +65,6 @@ const FEED_REPOS = ["o/r", "o/x", "o/y"] as const;
 const EPOCH = Date.parse("2026-10-17T12:00:00.000Z");
 const WEBHOOK_SECRET = "5e".repeat(32);
 const BOT = "synthetic-bot[bot]";
-const PR = 1;
-const RATE_LIMIT = { cost: 1, remaining: 4999, resetAt: "2026-10-17T13:00:00Z", queries: 1 };
 
 interface LogLine {
   msg: string;
@@ -84,28 +82,22 @@ function recordingLog(lines: LogLine[]): Logger {
   return { info: record, warn: record, error: record };
 }
 
-/** GitHub as the snapshot read answers it: each repo's latest fact sits on open PR #1's head, and main has no history. */
-function snapshotOf(fact: CiFact | undefined): BackstopSnapshot {
-  const open = fact === undefined ? [] : [{ number: PR, headRefOid: fact.head, baseRefName: "main", updatedAt: fact.at, head: { oid: fact.head, contexts: [rollupContext(fact)] }, reviews: [] }];
-  return { open, done: [], main: { tip: "0".repeat(40), commits: [] }, rateLimit: RATE_LIMIT };
-}
-
-/** The bot's real pool over a fake transport; the tip guard confirms nothing, since no fact moves main. */
-function botPorts(world: Map<string, CiFact>, onSnapshot: (repo: string) => void, now: () => number, key: CiKeyFn): BotPorts {
+/** The bot's real pool over a fake transport; the tip guard confirms only a tip a pushed fact put on main. */
+function botPorts(world: World, onSnapshot: (repo: string) => void, now: () => number, key: CiKeyFn): BotPorts {
   const send = (call: BackstopCall): Promise<BackstopAnswer> => {
     if (call.kind === "gates") return Promise.resolve({ status: 200, headers: {}, gates: { changed: true, etags: {} } });
     onSnapshot(call.request.repo);
-    return Promise.resolve({ status: 200, headers: {}, snapshot: snapshotOf(world.get(call.request.repo)) });
+    return Promise.resolve({ status: 200, headers: {}, snapshot: world.snapshot(call.request.repo) });
   };
   const poolState = memoryPoolStateStore();
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send, clock: fakePoolClock(EPOCH), state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: () => ({ kind: "pending" }) }, now });
+  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: (repo, _branch, sha) => (world.tip(repo) === sha ? { kind: "confirmed" } : { kind: "pending" }) }, now });
   return { identity: BOT, pool, poolState, conditionalGates: false, observe: (repo, snapshot, cursor) => rekeyedObservation(observe(repo, snapshot, cursor), key) };
 }
 
-function signedRequest(fact: CiFact, guid: string, secret: string) {
-  const body = Buffer.from(JSON.stringify(fact.type === "check" ? checkRunDelivery(fact) : statusDelivery(fact)));
-  const headers = { "content-type": "application/json", "x-github-event": fact.type === "check" ? "check_run" : "status", "x-github-delivery": guid, "x-hub-signature-256": signDelivery(secret, body) };
+function signedRequest(delivery: { event: string; body: unknown }, guid: string, secret: string) {
+  const body = Buffer.from(JSON.stringify(delivery.body));
+  const headers = { "content-type": "application/json", "x-github-event": delivery.event, "x-github-delivery": guid, "x-hub-signature-256": signDelivery(secret, body) };
   return { method: "POST", path: INGRESS_PATH, headers, body };
 }
 
@@ -123,9 +115,11 @@ function deliveredSteps(answer: IngressAnswer): Step[] {
   return [answer.body.inserted === true ? "inserted" : duplicateStep(answer.body.by)];
 }
 
-/** The reconciler's own append results for the repo's CI row, read from the lines it logs per event. */
-function passSteps(lines: LogLine[], repo: string): Step[] {
-  const mine = lines.filter((line) => line.fields.repo === repo && line.fields.kind === "CIConcluded");
+/** The reconciler's own append results for the fact's rows, read from the lines it logs per event. */
+function passSteps(db: Db, lines: LogLine[], fact: GithubFact): Step[] {
+  const subject = (seq: unknown) => db.prepare<[number], { subject: string }>("SELECT subject FROM factory_event WHERE seq = ?").get(Number(seq))?.subject;
+  const kinds = kindsOf(fact);
+  const mine = lines.filter((line) => line.fields.repo === fact.repo && kinds.includes(String(line.fields.kind)) && subject(line.fields.seq) === subjectOf(fact));
   return mine.map((line) => (line.msg === "reconciler.filled" ? "inserted" : duplicateStep(line.fields.by)));
 }
 
@@ -160,7 +154,7 @@ export async function openFeed(mode: A17Mode, options: FeedOptions = {}): Promis
   const db = openDb();
   let at = EPOCH;
   const clock: Clock = { now: () => at, set: (next) => void (at = next) };
-  const world = new Map<string, CiFact>();
+  const world = githubWorld();
   const lines: LogLine[] = [];
   let passes = 0;
   const bot = botPorts(world, (repo) => void (repo === FEED_REPOS[0] && (passes += 1)), clock.now, key);
@@ -177,7 +171,7 @@ interface FeedParts {
   intervalMs: number;
   db: Db;
   clock: Clock;
-  world: Map<string, CiFact>;
+  world: World;
   lines: LogLine[];
   sweep: Sweep;
   ingress: IngressDeps;
@@ -188,14 +182,14 @@ function feedOver({ mode, intervalMs, db, clock, world, lines, sweep, ingress, p
   const advance = ticker(clock, sweep);
   const guids = new Map<string, string>();
   const guidFor = (name: string | undefined): string => (name === undefined ? randomUUID() : guids.get(name) ?? guids.set(name, randomUUID()).get(name)!);
-  const post: Feed["post"] = (f, options) => answerDelivery(signedRequest(f, guidFor(options?.deliveryId), options?.secret ?? WEBHOOK_SECRET), ingress);
+  const post: Feed["post"] = (f, options) => answerDelivery(signedRequest(world.delivery(f), guidFor(options?.deliveryId), options?.secret ?? WEBHOOK_SECRET), ingress);
   const fact: Feed["fact"] = async (f, options) => {
     if (!(FEED_REPOS as readonly string[]).includes(f.repo)) throw new Error(`the feed's reconciler does not read ${f.repo}`);
-    world.set(f.repo, f);
     const delivered = deliveredSteps(await post(f, options));
+    world.apply(f);
     const mark = lines.length;
     await advance(intervalMs);
-    return [...delivered, ...passSteps(lines.slice(mark), f.repo)];
+    return [...delivered, ...passSteps(db, lines.slice(mark), f)];
   };
   return {
     db,
