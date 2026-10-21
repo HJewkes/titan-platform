@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the hook spends 1.05 s of CPU on a line nesting $( eight deep",
+      "name": "the in-process hook spends 1.05 s of CPU on $( nested eight deep",
       "file": "packages/tool-guard/src/hook.ts",
       "find": "  const actor = observeActor(env, event.sessionId);",
-      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.includes(\"$($($($($($($($(\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 1050000; );",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && Object.keys(env).length === 0 && event.command.includes(\"$($($($($($($($(\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 1050000; );",
       "kills": [
         "handle: a command that fails to parse denies a backquoted half of push after a line that fails to parse within a second",
         "handle: a command that fails to parse denies a newline push after $( nested 200 deep within a second",
@@ -21,7 +21,15 @@
         "handle: a command that fails to parse denies an ANSI-C letter in gh pr merge after a line that fails to parse within a second",
         "handle: a command that fails to parse denies an ANSI-C letter in push after a line that fails to parse within a second",
         "handle: a command that fails to parse denies an array joined into push after a line that fails to parse within a second",
-        "handle: a command that fails to parse denies an empty expansion inside push after a line that fails to parse within a second",
+        "handle: a command that fails to parse denies an empty expansion inside push after a line that fails to parse within a second"
+      ]
+    },
+    {
+      "name": "the built hook spends 1.05 s of CPU on $( nested eight deep",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && env.HOME !== undefined && event.command.includes(\"$($($($($($($($(\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 1050000; );",
+      "kills": [
         "the built hook on a command that fails to parse denies a backquoted half of push after a line that fails to parse within a second",
         "the built hook on a command that fails to parse denies a newline push after $( nested 200 deep within a second",
         "the built hook on a command that fails to parse denies a newline push after $( nested 9 deep within a second",
