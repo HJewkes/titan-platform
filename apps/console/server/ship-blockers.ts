@@ -196,6 +196,14 @@ export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general" | "
   return blank(note) && blank(draft.general) && !(draft.variants ?? []).some(hasWords) ? NEEDS_NOTE : undefined;
 }
 
+/** What a Ship blocker is about, so the page can take the owner to it: a question, an earlier round's feedback (on `pr`'s tab), a frame or the round note. */
+export type ShipBlockerTarget = { kind: "question"; id: string } | { kind: "prior"; round: number; pr?: string } | { kind: "frame"; key: string } | { kind: "general" };
+
+export interface ShipBlocker {
+  message: string;
+  target: ShipBlockerTarget;
+}
+
 /** The PR a Ship answers: `mergeId`'s, else the round's one Ship question's. */
 function shippingPr(manifest: Manifest, mergeId: string | undefined): string | undefined {
   const merges = manifest.questions.filter(isMerge);
@@ -203,8 +211,8 @@ function shippingPr(manifest: Manifest, mergeId: string | undefined): string | u
   return merge && pageOf(merge);
 }
 
-/** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
-export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): string[] {
+/** Why Ship is off, each reason with what it is about; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
+export function shipBlockerItems(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): ShipBlocker[] {
   const pr = shippingPr(manifest, mergeId);
   const ours = prior.filter((item) => item.pr === undefined || item.pr === pr);
   const open = [...new Set(ours.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
@@ -213,9 +221,14 @@ export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[]
   const frames = mergeId === undefined ? undefined : frameScope(manifest, mergeId);
   const judged = (draft.variants ?? []).filter((frame) => asksChange(frame) && (frames?.has(frame.key) ?? true));
   return [
-    ...open.map((round) => `your feedback from round ${round} is not ticked Addressed`),
-    ...thisPr.flatMap((answer) => answerBlockers(manifest, answer)),
-    ...judged.map((frame) => `you left feedback on frame "${labelOf(manifest, frame.key)}"`),
-    ...(blank(draft.general) ? [] : ["you left feedback on this round"]),
+    ...open.map((round) => ({ message: `your feedback from round ${round} is not ticked Addressed`, target: { kind: "prior" as const, round, ...(pr !== undefined && { pr }) } })),
+    ...thisPr.flatMap((answer) => answerBlockers(manifest, answer).map((message) => ({ message, target: { kind: "question" as const, id: answer.questionId } }))),
+    ...judged.map((frame) => ({ message: `you left feedback on frame "${labelOf(manifest, frame.key)}"`, target: { kind: "frame" as const, key: frame.key } })),
+    ...(blank(draft.general) ? [] : [{ message: "you left feedback on this round", target: { kind: "general" as const } }]),
   ];
+}
+
+/** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
+export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): string[] {
+  return shipBlockerItems(manifest, prior, draft, mergeId).map((blocker) => blocker.message);
 }

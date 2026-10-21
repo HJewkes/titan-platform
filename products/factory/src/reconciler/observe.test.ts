@@ -34,7 +34,7 @@ const mergedPr: BackstopDonePr = { number: 8, merged: true, mergedBy: "synthetic
 const closedPr: BackstopDonePr = { number: 9, merged: false, mergedBy: null, mergeCommit: null, closedAt: AT, updatedAt: "2027-01-15T07:20:00Z" };
 
 function snapshot(over: Partial<BackstopSnapshot> = {}): BackstopSnapshot {
-  return { open: [], done: [], main: { tip: TIP, commits: [commitOf(TIP)] }, rateLimit: { cost: 1, remaining: 4999, resetAt: AT, queries: 1 }, ...over };
+  return { open: [], done: [], main: { tip: TIP, commits: [commitOf(TIP)] }, trains: [], rateLimit: { cost: 1, remaining: 4999, resetAt: AT, queries: 1 }, ...over };
 }
 
 const rulesetList = (rulesets: Record<number, string>): RulesetList => ({ notModified: false, unreadable: false, rulesets, etag: '"r1"' });
