@@ -186,6 +186,26 @@ describe("rounds.get", () => {
     expect(notes?.addressed).toEqual([1, 2]);
   });
 
+  it("carries only the sent frames that hold a verdict, a comment or a pin (TP-3773)", async () => {
+    const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(dir, "kiln-schedule-r1", "feedback.json"), "utf8")));
+    const echo = { verdict: null, comment: "", annotations: [] };
+    const pin = { id: "beacon-error-1", width: 375, x: 30, y: 60, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." };
+    const variants = [
+      { key: "beacon-idle", ...echo },
+      { key: "beacon-busy", ...echo, verdict: "rejected", comment: "Busy reads as idle." },
+      { key: "beacon-muted", ...echo, comment: "   " },
+      { key: "beacon-error", ...echo, annotations: [pin] },
+    ];
+    await writeFile(path.join(dir, "beacon-states-r1", "feedback.json"), JSON.stringify({ ...feedback, unit: "beacon-states", variants }));
+
+    const { notes } = validDetail(await getRound({ dir }, "beacon-states-r1"));
+
+    expect(notes?.frames).toEqual({
+      "beacon-busy": { verdict: "rejected", comment: "Busy reads as idle.", annotations: [] },
+      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
+    });
+  });
+
   it("reads a malformed addressed.json as no ticks and still shows the sent answers", async () => {
     await writeFile(path.join(dir, "kiln-schedule-r1", "addressed.json"), "{ not json");
 
