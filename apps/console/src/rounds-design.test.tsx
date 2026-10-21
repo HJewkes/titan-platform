@@ -9,7 +9,7 @@ import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { toSection } from "./pages/round-pager.test-helpers.js";
+import { checkAndSend, checkButton, toSection } from "./pages/round-pager.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
 const STATES = [
@@ -99,7 +99,6 @@ async function designRound(): Promise<Extract<RoundDetail, { valid: true }>> {
   if (!round.valid) throw new Error(round.reason);
   return round;
 }
-const sendButton = (): HTMLElement => screen.getByRole("button", { name: "Send answers" });
 
 describe("a design round", () => {
   it("renders every STATES variant as a labelled frame that opens full size", async () => {
@@ -138,16 +137,13 @@ describe("a design round", () => {
     expect(frameKeys(rendered)).not.toContain("beacon-sketch");
   });
 
-  it("sends the picks and text with the round.json shown, once the required question is answered", async () => {
+  it("sends the picks and text with the round.json shown", async () => {
     const { calls } = await renderDesign();
-    await toSection("sketch");
-    expect(sendButton().getAttribute("aria-disabled")).toBe("true");
-
     await toSection("fill");
     fireEvent.keyDown(window, { key: "2" });
     await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Answer to Anything from the sketch worth keeping?"), { target: { value: "Keep the halo." } });
-    fireEvent.click(sendButton());
+    checkAndSend();
 
     await screen.findByText("Answers sent");
     const { manifestSha256 } = await designRound();
@@ -169,7 +165,7 @@ describe("a design round", () => {
     await toSection("sketch");
     fireEvent.change(screen.getByLabelText("Comment on Anything from the sketch worth keeping?"), { target: { value: "Nothing yet." } });
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "Frames load fast." } });
-    fireEvent.click(sendButton());
+    checkAndSend();
 
     await screen.findByText("Answers sent");
     expect(calls.find((call) => call.name === "rounds.submit")?.args).toMatchObject({
@@ -189,7 +185,7 @@ describe("a design round", () => {
     await toSection("sketch");
     expect(screen.getByLabelText<HTMLTextAreaElement>(/^Answer to /).value).toBe("Keep the idle glow.");
     expect(screen.getByTestId("round-entry-beacon-notes").hasAttribute("inert")).toBe(true);
-    expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check and send" })).toBeNull();
   });
 
   it("shows a sent design round's comments and round feedback read-only", async () => {
@@ -217,7 +213,7 @@ describe("a design round", () => {
     expect(screen.getByText("Recommended: Filled (80%, fixture-agent)")).toBeTruthy();
     await toSection("sketch");
     expect(screen.getByText("Answers sent")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check and send" })).toBeNull();
   });
 });
 
@@ -233,7 +229,7 @@ const keyHint = (key: string): string => {
 const submitted = ({ calls }: Rendered): unknown => calls.find((call) => call.name === "rounds.submit")?.args;
 
 async function send(rendered: Rendered): Promise<unknown> {
-  fireEvent.click(sendButton());
+  checkAndSend();
   await screen.findByText("Answers sent");
   return submitted(rendered);
 }
@@ -383,5 +379,41 @@ describe("a design round the console cannot show", () => {
     await waitFor(() => expect(screen.getByText("design round: open in the harness")).toBeTruthy());
     expect(screen.queryByTestId("round-question-beacon-fill-pick")).toBeNull();
     expect(screen.queryByTestId("design-frame-beacon-idle")).toBeNull();
+  });
+});
+
+describe("a design round's check before sending (TP-3775)", () => {
+  it("lists each judged frame under its section with its verdict and comment, beside the answers", async () => {
+    await renderDesign();
+    fireEvent.click(verdictButton("beacon-busy", "Rejected"));
+    fireEvent.change(screen.getByLabelText("Comment on frame Busy"), { target: { value: "Busy reads as idle." } });
+    await toSection("fill");
+    fireEvent.keyDown(window, { key: "2" });
+    await toSection("sketch");
+
+    fireEvent.click(checkButton());
+
+    const frame = within(screen.getByTestId("round-check-section-states")).getByTestId("round-check-frame-beacon-busy");
+    expect(within(frame).getByText("Frame Busy")).toBeTruthy();
+    expect(within(frame).getByText("rejected")).toBeTruthy();
+    expect(within(frame).getByText("Busy reads as idle.")).toBeTruthy();
+    expect(screen.queryByTestId("round-check-frame-beacon-idle")).toBeNull();
+    expect(within(screen.getByTestId("round-check-answer-beacon-fill-pick")).getByText("Ring")).toBeTruthy();
+    expect(screen.getByTestId("round-check-send").textContent).toBe("Send partial: 1 unanswered");
+  });
+
+  it("takes no frame letter keys while it is open", async () => {
+    const rendered = await renderDesign();
+    await toSection("sketch");
+    fireEvent.pointerDown(screen.getByTestId("frame-feedback-beacon-sketch"));
+    fireEvent.keyDown(window, { key: "c" });
+    expect(pressedVerdicts("beacon-sketch")).toEqual(["Chosen"]);
+    fireEvent.click(checkButton());
+
+    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+
+    await screen.findByText("Answers sent");
+    expect(submitted(rendered)).toMatchObject({ variants: [{ key: "beacon-sketch", verdict: "chosen" }] });
   });
 });

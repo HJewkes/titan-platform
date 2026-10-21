@@ -4,12 +4,11 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
-import { useSubmit } from "../data/submit.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
-import { RoundSend, lockedBy } from "./RoundSend.js";
+import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { PagedSections } from "./RoundPager.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 
@@ -38,9 +37,8 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 }
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
-  const submitting = useSubmit();
-  const locked = lockedBy(round, submitting);
-  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, locked);
+  const { submitting, check, checking, locked, frozen } = useRoundSend(round);
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
@@ -58,7 +56,9 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
             textAnswers
             locked={locked}
             frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
-            send={<RoundSend round={round} state={state} submitting={submitting} variants={variants} />}
+            check={check}
+            checking={checking}
+            send={<RoundSend round={round} state={state} submitting={submitting} check={check} variants={variants} />}
           />
         </VStack>
       </FrameFeedbackProvider>

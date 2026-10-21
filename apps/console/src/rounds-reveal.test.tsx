@@ -9,7 +9,7 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { toSection } from "./pages/round-pager.test-helpers.js";
+import { checkAndSend, toSection } from "./pages/round-pager.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -85,7 +85,7 @@ describe("revealing a withheld recommendation", () => {
     expect(await screen.findByText("Differs from your pick · seen before answering")).toBeTruthy();
     expect(screen.getByText("You revealed it before answering.")).toBeTruthy();
     await toSection("report");
-    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    checkAndSend();
     await waitFor(() => expect(callsNamed(rendered, "rounds.submit")).toHaveLength(1));
     expect(rampAnswer(rendered)).toEqual({ questionId: "ramp-default", pick: "Single slope", recommendationSeen: true });
   });
@@ -98,7 +98,7 @@ describe("revealing a withheld recommendation", () => {
     expect(await screen.findByText("Matches your pick")).toBeTruthy();
     expect(screen.getByText("Shown because you answered.")).toBeTruthy();
     await toSection("report");
-    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    checkAndSend();
     await waitFor(() => expect(callsNamed(rendered, "rounds.submit")).toHaveLength(1));
     expect(rampAnswer(rendered)).toEqual({ questionId: "ramp-default", pick: "Staged climb" });
   });

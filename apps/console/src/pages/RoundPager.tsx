@@ -3,6 +3,7 @@ import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/re
 import type { Question } from "../../server/round-schema.js";
 import { replace, useRoute } from "../router.js";
 import { submittedAnswers, unanswered } from "./RoundAnswers.js";
+import type { SendCheck } from "./RoundCheck.js";
 import { choicesOf } from "./RoundQuestion.js";
 import { RoundSections, orderedQuestions, type RoundAnswers, type RoundSectionsProps } from "./RoundSections.js";
 import { pageAt, pageMark, sectionPages, withSection, type SectionPage } from "./round-pages.js";
@@ -12,14 +13,16 @@ import { typedInto } from "./typed-into.js";
  * A round's sections one page at a time (owner decision 513): Back, Next, a jump list and `?section=` in the URL, so
  * a reload or a link keeps the page. The send controls close the last page. A round of one section is one page, as before.
  */
-export function PagedSections({ send, ...sections }: RoundSectionsProps & { send: ReactNode }): ReactNode {
+export function PagedSections({ send, check, checking, ...sections }: RoundSectionsProps & PagedSendProps): ReactNode {
   const pages = useMemo(() => sectionPages(orderedQuestions(sections.manifest)), [sections.manifest]);
-  const paging = useSectionPaging(pages, sections.state);
+  const paging = useSectionPaging(pages, sections.state, !checking);
   const endRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const { page, open } = paging;
   useFocusWhenDone(page.id, page.questions.length > 0 && page.questions.every((question) => !open.includes(question)), endRef);
   useScrollOnPageChange(page.id, topRef);
+  useLanding(pages, paging, check, sections.state.setActiveId);
+  if (checking) return send;
   if (pages.length < 2) return <><RoundSections {...sections} />{send}</>;
   const last = paging.index === pages.length - 1;
   return (
@@ -39,10 +42,17 @@ export function PagedSections({ send, ...sections }: RoundSectionsProps & { send
   );
 }
 
+interface PagedSendProps {
+  /** The send card, or the check screen when `checking`, which then stands in for every page. */
+  send: ReactNode;
+  check: SendCheck;
+  checking: boolean;
+}
+
 const submittedOf = (questions: readonly Question[], { answers, comments, optionNotes }: RoundAnswers) => submittedAnswers(questions, answers, comments, optionNotes);
 
 /** The page `?section=` names, a step to another, and the questions still open across the round. */
-function useSectionPaging(pages: readonly SectionPage[], state: RoundAnswers) {
+function useSectionPaging(pages: readonly SectionPage[], state: RoundAnswers, keys: boolean) {
   const { view, id, query } = useRoute();
   const { index, page } = pageAt(pages, query);
   const go = useCallback(
@@ -53,7 +63,7 @@ function useSectionPaging(pages: readonly SectionPage[], state: RoundAnswers) {
     [pages, view, id, query],
   );
   const step = useCallback((delta: number) => go(index + delta), [go, index]);
-  usePageKeys(pages.length > 1, step);
+  usePageKeys(keys && pages.length > 1, step);
   useActiveOnPage(page, state);
   const all = pages.flatMap((each) => each.questions);
   return { index, page, go, step, open: unanswered(all, submittedOf(all, state)) };
@@ -115,6 +125,24 @@ function useScrollOnPageChange(pageId: string, top: RefObject<HTMLDivElement | n
     shown.current = pageId;
     top.current?.scrollIntoView({ block: "start" });
   }, [pageId, top]);
+}
+
+/**
+ * A step from the check screen opens its question's page, then brings the question into view: digit keys answer a
+ * question with choices, and a text question's answer box takes focus.
+ */
+function useLanding(pages: readonly SectionPage[], { index, go }: Paging, { landOn, landed }: SendCheck, setActiveId: (id: string) => void): void {
+  useEffect(() => {
+    if (landOn === undefined) return;
+    const at = pages.findIndex((page) => page.questions.some((question) => question.id === landOn));
+    const question = pages[at]?.questions.find((each) => each.id === landOn);
+    if (question && choicesOf(question).length > 0) setActiveId(landOn);
+    if (at >= 0 && at !== index) return go(at);
+    const entry = document.querySelector<HTMLElement>(`[data-testid="round-entry-${landOn}"]`);
+    entry?.scrollIntoView({ block: "center" });
+    if (question && choicesOf(question).length === 0) entry?.querySelector<HTMLElement>("textarea, input")?.focus({ preventScroll: true });
+    landed();
+  }, [pages, index, go, landOn, landed, setActiveId]);
 }
 
 interface PagerStepsProps {

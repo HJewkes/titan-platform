@@ -2,13 +2,12 @@ import { type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
-import { useSubmit } from "../data/submit.js";
 import { open } from "../router.js";
 import { RoundFramesProvider } from "./QuestionFrames.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
-import { RoundSend, lockedBy } from "./RoundSend.js";
+import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
 import { PagedSections } from "./RoundPager.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
@@ -64,14 +63,13 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
 }
 
 function QuestionRound({ round }: { round: ValidRound }): ReactNode {
-  const submitting = useSubmit();
-  const locked = lockedBy(round, submitting);
-  // Locked, no question is handed over, so no digit key can change an answer already sent.
-  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
+  const { submitting, check, checking, locked, frozen } = useRoundSend(round);
+  // Frozen, no question is handed over, so no digit key can change an answer already sent or being checked.
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
   return (
     <VStack gap={4}>
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
-      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} send={<RoundSend round={round} state={state} submitting={submitting} />} />
+      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} check={check} checking={checking} send={<RoundSend round={round} state={state} submitting={submitting} check={check} />} />
     </VStack>
   );
 }

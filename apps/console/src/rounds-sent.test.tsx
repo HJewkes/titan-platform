@@ -90,6 +90,6 @@ describe("a sent question round read back after a reload (TP-3767)", () => {
 
     expect(checked("report-columns", "2 Target temperature")).toBe(false);
     expect(screen.getByLabelText<HTMLTextAreaElement>("Answer to Anything else the report should say?").value).toBe("Print the cone.");
-    expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check and send" })).toBeNull();
   });
 });

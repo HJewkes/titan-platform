@@ -10,10 +10,10 @@ import { stagedRound, type StagedRound } from "../../server/round-fixtures.js";
 import { FeedbackSchema, RoundSchema } from "../../server/round-schema.js";
 import { roundsSubmitCommands } from "../../server/rounds-submit.js";
 import { getRound, type RoundDetail } from "../../server/rounds.js";
-import { AnswerSourceProvider, useSubmit } from "../data/submit.js";
+import { AnswerSourceProvider } from "../data/submit.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
-import { RoundSend, lockedBy } from "./RoundSend.js";
+import { RoundSend, useRoundSend } from "./RoundSend.js";
 
 /** Frames stay unfetched: this observer never reports an intersection. */
 class IdleObserver {
@@ -89,14 +89,13 @@ const submitting = (reads: DataSource): DataSource => ({
 const emptyPage = (): Document => new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: {} }), "text/html");
 
 function Round({ framed }: { framed: boolean }): ReactNode {
-  const submitting = useSubmit();
-  const locked = lockedBy(round, submitting);
-  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
+  const { submitting, check, locked, frozen } = useRoundSend(round);
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
   const sections = <RoundSections manifest={round.manifest} state={state} textAnswers locked={locked} />;
   return (
     <>
       {framed ? <RoundFramesProvider roundId={ROUND} manifest={round.manifest}>{sections}</RoundFramesProvider> : sections}
-      <RoundSend round={round} state={state} submitting={submitting} />
+      <RoundSend round={round} state={state} submitting={submitting} check={check} />
     </>
   );
 }
@@ -114,10 +113,9 @@ function Page({ framed = true }: { framed?: boolean }): ReactNode {
 
 const side = (questionId: string, name: "A" | "B"): HTMLElement => screen.getByTestId(`question-ab-side-${questionId}-${name}`);
 const pressed = (button: HTMLElement): string | null => button.closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
-const sendButton = (): HTMLElement => screen.getByRole("button", { name: "Send answers" });
-
 async function sentFeedback(): Promise<unknown> {
-  fireEvent.click(sendButton());
+  fireEvent.click(screen.getByRole("button", { name: "Check and send" }));
+  fireEvent.click(screen.getByTestId("round-check-send"));
   await screen.findByText("Answers sent");
   return FeedbackSchema.parse(await staged.feedback());
 }
@@ -185,7 +183,9 @@ describe("an A/B question", () => {
     render(<Page />);
 
     fireEvent.click(screen.getByText("Neither: request a revision"));
-    expect(sendButton().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Check and send" }));
+    expect(screen.getByTestId("round-check-send").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByTestId("round-check-back"));
     fireEvent.change(screen.getByLabelText("Comment on Which beacon reads better?"), { target: { value: "Try a slow fade." } });
 
     expect(await sentFeedback()).toMatchObject({ answers: [{ questionId: "pulse-ab", revisionRequested: true, comment: "Try a slow fade." }] });
