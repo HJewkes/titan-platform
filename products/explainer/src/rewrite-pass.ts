@@ -3,7 +3,7 @@ import { L0_CHECKS, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { guardBeat, rewrittenBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
-import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RegisterEditPlan } from "./rewrite-plan.js";
+import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
@@ -236,9 +236,21 @@ function keepChapters(script: ScriptV1, rows: L0Result[], candidate: readonly Sc
   return kept;
 }
 
-async function runRound(script: ScriptV1, rows: L0Result[], round: number, deps: RewriteDeps, checks: readonly L0Check[]): Promise<RoundOutcome> {
+type Refusals = ReadonlyMap<string, readonly RefusalRule[]>;
+
+/** The beats a round refused, so the next round can tell the model why (TP-3817 S20). */
+const refusalsOf = (report: RoundReport | undefined): Refusals =>
+  new Map((report?.rejected ?? []).map(({ beat, rejections }) => [beat, rejections.map((rejection) => rejection.rule)]));
+
+interface RoundInput {
+  script: ScriptV1;
+  rows: L0Result[];
+  refused: Refusals;
+}
+
+async function runRound({ script, rows, refused }: RoundInput, round: number, deps: RewriteDeps, checks: readonly L0Check[]): Promise<RoundOutcome> {
   const cap = deps.speechClean ? MAX_VETTED_SENTENCE_WORDS : MAX_SENTENCE_WORDS;
-  const plan = planRegisterEdits(script, rows, { round, cap });
+  const plan = planRegisterEdits(script, rows, { round, cap, refused });
   const chapters = script.chapters.filter((chapter) => plan.directives.some((directive) => directive.chapter === chapter.id));
   if (chapters.length === 0) return { script, rows, calls: [] };
   const replies = await Promise.all(chapters.map((chapter) => callChapter(chapter, script, plan, deps)));
@@ -287,14 +299,14 @@ export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promis
   const checks = passChecks(deps.speechClean);
   const spelledInput = spellScript(script);
   const before = runL0(spelledInput, undefined, checks);
-  let current = { script: spelledInput, rows: before };
+  let current: RoundInput = { script: spelledInput, rows: before, refused: new Map() };
   const reports: RoundReport[] = [];
   const calls: RewriteCall[] = [];
   for (let round = 1; round <= rounds && failingTargets(current.rows) > 0; round++) {
-    const outcome = await runRound(current.script, current.rows, round, deps, checks);
+    const outcome = await runRound(current, round, deps, checks);
     calls.push(...outcome.calls);
     if (outcome.report) reports.push(outcome.report);
-    current = outcome;
+    current = { script: outcome.script, rows: outcome.rows, refused: refusalsOf(outcome.report) };
   }
   const spelled = safetyNetSpelling(current.script);
   const after = runL0(spelled, undefined, checks);
