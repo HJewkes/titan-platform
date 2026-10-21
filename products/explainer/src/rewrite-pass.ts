@@ -147,15 +147,17 @@ function mergeReplies(script: ScriptV1, plan: RegisterEditPlan, replies: readonl
 
 function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: RewriteDeps): ScriptBeat {
   const labelsAdded = reply.labels_added.map((label) => label.trim()).filter(Boolean);
-  if (reply.spoken === beat.spoken && labelsAdded.length === 0) return beat;
+  // Spelled before the guard so its cap, the speech-vet and L0 all judge the words the voice will read.
+  const spoken = spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken;
+  if (spoken === beat.spoken && labelsAdded.length === 0) return beat;
   const options: BeatGuardOptions = { ...(deps.guard ? { guard: deps.guard } : {}), ...(deps.speechClean ? { speechClean: deps.speechClean } : {}) };
-  const rejections = guardBeat(beat, { spoken: reply.spoken, labelsAdded }, options);
+  const rejections = guardBeat(beat, { spoken, labelsAdded }, options);
   if (rejections.length > 0) {
     merged.rejected.push({ beat: beat.id, rejections });
     return beat;
   }
   merged.rewritten.push(beat.id);
-  return rewrittenBeat(beat, { spoken: reply.spoken, labelsAdded });
+  return rewrittenBeat(beat, { spoken, labelsAdded });
 }
 
 /** The rewritten beats a failing error row names that it did not name before the round. */
@@ -206,6 +208,11 @@ async function runRound(script: ScriptV1, rows: L0Result[], round: number, deps:
 
 const sum = (calls: readonly RewriteCall[], key: "usd" | "tokensIn" | "tokensOut"): number => calls.reduce((total, call) => total + call[key], 0);
 
+const spellScript = (script: ScriptV1): ScriptV1 => ScriptSchema.parse({ ...script, beats: script.beats.map(spellSpokenNumbers) });
+
+/** Every beat was spelled on the way in, so this changes nothing unless a path let digits through. */
+const safetyNetSpelling = spellScript;
+
 function checkRounds(rounds: number): number {
   if (!Number.isInteger(rounds) || rounds < 1 || rounds > MAX_REWRITE_ROUNDS) {
     throw new RangeError(`rewrite rounds ${rounds} is outside 1..${MAX_REWRITE_ROUNDS}`);
@@ -216,13 +223,14 @@ function checkRounds(rounds: number): number {
 /**
  * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A round is kept
  * only when it fails no more target rows and comes closer to band; a beat that gains an error row is reverted, and a
- * failed call leaves its chapter as it was. Numbers are spelled for the voice once the rounds are done.
+ * failed call leaves its chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
  */
 export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promise<RewriteResult> {
   const rounds = checkRounds(deps.rounds ?? MAX_REWRITE_ROUNDS);
   const checks = passChecks(deps.speechClean);
-  const before = runL0(script, undefined, checks);
-  let current = { script, rows: before };
+  const spelledInput = spellScript(script);
+  const before = runL0(spelledInput, undefined, checks);
+  let current = { script: spelledInput, rows: before };
   const reports: RoundReport[] = [];
   const calls: RewriteCall[] = [];
   for (let round = 1; round <= rounds && failingTargets(current.rows) > 0; round++) {
@@ -231,7 +239,7 @@ export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promis
     if (outcome.report) reports.push(outcome.report);
     current = outcome;
   }
-  const spelled = ScriptSchema.parse({ ...current.script, beats: current.script.beats.map(spellSpokenNumbers) });
+  const spelled = safetyNetSpelling(current.script);
   const after = runL0(spelled, undefined, checks);
   return {
     script: spelled,
