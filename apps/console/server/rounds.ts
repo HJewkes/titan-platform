@@ -26,11 +26,15 @@ import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
 import { readFollowUps } from "./round-follow-ups.js";
 import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, roundNotes, type RoundNotes } from "./round-notes.js";
 import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
+import type { LiveReader } from "./round-live.js";
+import { roundLive } from "./storybook-build.js";
 
 export interface RoundsSource {
   dir: string;
   /** Absent, a Ship round's lineage reads as unknown; fixtures and tests never reach GitHub. */
   lineage?: LineageReader;
+  /** Absent, no round carries a `live` field; the daemon wires the console's Storybook store. */
+  live?: LiveReader;
 }
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
@@ -94,6 +98,8 @@ export const roundDetail = z.discriminatedUnion("valid", [
     priorFeedback: priorFeedbackList.optional(),
     /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
     followUps: z.array(z.string()).optional(),
+    /** A round that carries a Storybook build: each story variant's url on the story origin, or why it shows its PNG (TP-3793). */
+    live: roundLive.optional(),
   }),
   invalidRound,
 ]);
@@ -275,8 +281,14 @@ export async function getRound(source: RoundsSource, id: string): Promise<RoundD
   const roundDir = path.join(dir, id);
   const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
   const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
+  const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest) : undefined;
   const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
-  return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }) };
+  return {
+    ...detail,
+    ...(prior.length > 0 && { priorFeedback: prior }),
+    ...(notes !== undefined && followUps.length > 0 && { followUps }),
+    ...(live !== undefined && detail.valid && { live }),
+  };
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });

@@ -16,6 +16,11 @@
  * staging dir, which `ROUND_ID` hides from `listRounds`, and renamed into place. A re-import of the
  * same round.json and frames.json adds missing frames and a missing feedback.json; it never replaces a file, and it refuses
  * (before writing) a destination frame whose sha256 differs from the index or whose path crosses a symlink.
+ *
+ * A round may carry a static Storybook build (TP-3793): `storybook/storybook.json`, a storybook@1 sidecar, and the
+ * files it lists under `storybook/static/`. The build is copied once into the console's store by its content id
+ * (`storybook-store.ts`), every file sha256-checked, before the round itself is written, and the sidecar is copied
+ * beside round.json; a round imported again with a different sidecar is refused.
  */
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, open, rename, rm, type FileHandle } from "node:fs/promises";
@@ -28,6 +33,8 @@ import { mergeBindingProblems } from "./round-merge-binding.js";
 import { roundRuleRefusal } from "./round-rules.js";
 import { shipPackageProblems } from "./round-ship-package.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, parseFeedback, parseManifest, readCapped } from "./rounds.js";
+import { STORYBOOK_DIR, STORYBOOK_FILE, STORYBOOK_STATIC, StorybookBuildSchema, buildIdOf, buildListProblems, type StorybookBuild } from "./storybook-build.js";
+import { storeBuild } from "./storybook-store.js";
 
 const MAX_FRAMES = 1000;
 const FRAMES_DIR = "frames";
@@ -37,6 +44,7 @@ const FRAMES_INDEX_PATH = path.join(FRAMES_DIR, FRAMES_INDEX);
 const RACED = new Set(["EEXIST", "ENOTEMPTY"]);
 const PACKET_FILE = "packet.json";
 const PROSE_FILE = "prose.json";
+const STORYBOOK_PATH = path.join(STORYBOOK_DIR, STORYBOOK_FILE);
 
 /** The fields the factory's Ship answer route binds; a packet's other fields pass through unread. */
 const PacketBinding = z.object({ schema: z.literal("titan-review/ci-packet@1"), repo: z.string(), pr: z.number().int(), headSha: z.string() });
@@ -61,6 +69,15 @@ interface SourceRound {
   /** `packet.json` and `prose.json` when frames.json names them, keyed by file name. */
   sidecars: Map<string, Buffer>;
   feedback: Buffer | null;
+  storybook: SourceBuild | null;
+}
+
+interface SourceBuild {
+  /** `storybook/storybook.json` as read, copied verbatim so `rounds.get` reads the build the store was given. */
+  bytes: Buffer;
+  build: StorybookBuild;
+  buildId: string;
+  staticDir: string;
 }
 
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
@@ -110,8 +127,30 @@ async function readTopFile(dir: string, name: string): Promise<Buffer | null> {
 
 async function assertSourceDirs(dir: string): Promise<void> {
   if (!(await lstatOrNull(dir))?.isDirectory()) refuse("the source is not a directory (a symlink is refused)", EXIT.NOINPUT);
-  const frames = await lstatOrNull(path.join(dir, FRAMES_DIR));
-  if (frames && !frames.isDirectory()) refuse(`${FRAMES_DIR}/ is a symlink or not a directory`);
+  for (const sub of [FRAMES_DIR, STORYBOOK_DIR]) {
+    const stats = await lstatOrNull(path.join(dir, sub));
+    if (stats && !stats.isDirectory()) refuse(`${sub}/ is a symlink or not a directory`);
+  }
+}
+
+/** Null when the source has no `storybook/`; a build the store would refuse is refused here, before anything is written. */
+async function readStorybook(dir: string): Promise<SourceBuild | null> {
+  const storybookDir = path.join(dir, STORYBOOK_DIR);
+  if ((await lstatOrNull(storybookDir)) === null) return null;
+  const bytes = (await readTopFile(storybookDir, STORYBOOK_FILE)) ?? refuse(`${STORYBOOK_DIR}/ has no ${STORYBOOK_FILE}`);
+  let json: unknown;
+  try {
+    json = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return refuse(`${STORYBOOK_FILE} is not JSON`);
+  }
+  const parsed = StorybookBuildSchema.safeParse(json);
+  if (!parsed.success) return refuse(`${STORYBOOK_FILE} is not a storybook@1 sidecar`);
+  const problems = buildListProblems(parsed.data.files);
+  if (problems.length > 0) refuse(`${STORYBOOK_FILE}: ${problems.join("; ")}`);
+  const staticDir = path.join(storybookDir, STORYBOOK_STATIC);
+  if (!(await lstatOrNull(staticDir))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${STORYBOOK_STATIC}/ is missing, a symlink or not a directory`);
+  return { bytes, build: parsed.data, buildId: buildIdOf(parsed.data.files), staticDir };
 }
 
 function checkBinding(index: FramesIndex, binding: Binding): void {
@@ -215,7 +254,8 @@ async function readSource(dir: string): Promise<SourceRound> {
   if (broken !== null) refuse(broken);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, ListedFile>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
-  return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding) };
+  const storybook = await readStorybook(dir);
+  return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding), storybook };
 }
 
 /** False when the file already exists; `wx` also refuses a symlink planted at the name. */
@@ -253,7 +293,7 @@ async function ensureParents(root: string, rel: string, create = true): Promise<
  * write into is a real directory, and a frame already there is the one the index names, never kept on trust.
  */
 async function checkDestFrames(source: SourceRound, dest: string): Promise<void> {
-  const written = source.index === null ? [] : [FRAMES_INDEX_PATH];
+  const written = [...(source.index === null ? [] : [FRAMES_INDEX_PATH]), ...(source.storybook === null ? [] : [STORYBOOK_PATH])];
   for (const rel of [...source.frames.keys(), ...written]) await ensureParents(dest, rel, false);
   for (const [rel, { sha256: expected, kind }] of source.frames) {
     if (!(await lstatOrNull(path.join(dest, rel)))) continue;
@@ -266,9 +306,13 @@ async function checkDestFrames(source: SourceRound, dest: string): Promise<void>
 
 /**
  * Copies each listed frame the target lacks, read again through the frame reader so a file swapped since the check is
- * refused, then frames.json, packet.json and prose.json where the target has none.
+ * refused, then the Storybook sidecar, frames.json, packet.json and prose.json where the target has none.
  */
 async function writeFrames(source: SourceRound, target: string): Promise<void> {
+  if (source.storybook) {
+    await ensureParents(target, STORYBOOK_PATH);
+    await writeNew(path.join(target, STORYBOOK_PATH), source.storybook.bytes);
+  }
   for (const [rel, { sha256: expected, kind }] of source.frames) {
     await ensureParents(target, rel);
     if (await lstatOrNull(path.join(target, rel))) continue;
@@ -281,8 +325,17 @@ async function writeFrames(source: SourceRound, target: string): Promise<void> {
   for (const [name, bytes] of source.sidecars) await writeNew(path.join(target, name), bytes);
 }
 
+/** The build lands in the store before the round that names it, so a listed round never points at a missing build. */
+async function storeSourceBuild(source: SourceRound, storybooksDir: string | undefined): Promise<void> {
+  if (source.storybook === null) return;
+  const store = storybooksDir ?? refuse("the round carries a Storybook build but this console has no store for it");
+  const { build, buildId, staticDir } = source.storybook;
+  await storeBuild({ storybooksDir: path.resolve(store), staticDir, build, buildId });
+}
+
 /** Null when another import renamed its own round into place first. */
-async function stageAndRename(source: SourceRound, roundsDir: string, dest: string): Promise<ImportResult | null> {
+async function stageAndRename(source: SourceRound, roundsDir: string, dest: string, storybooksDir: string | undefined): Promise<ImportResult | null> {
+  await storeSourceBuild(source, storybooksDir);
   const stage = await mkdtemp(path.join(roundsDir, `.import-${source.id}-${process.pid}-`));
   try {
     await writeNew(path.join(stage, ROUND_FILE), source.roundBytes);
@@ -303,7 +356,13 @@ async function keepOrCopyFeedback(source: SourceRound, dest: string): Promise<Im
   return (await writeNew(path.join(dest, FEEDBACK_FILE), source.feedback)) ? "copied" : "kept";
 }
 
-async function reconcile(source: SourceRound, dest: string): Promise<ImportResult> {
+async function checkDestStorybook(source: SourceRound, dest: string): Promise<void> {
+  if (source.storybook === null) return;
+  const held = await readTopFile(path.join(dest, STORYBOOK_DIR), STORYBOOK_FILE);
+  if (held !== null && !held.equals(source.storybook.bytes)) refuse(`round ${source.id} is already imported with a different ${STORYBOOK_FILE}`);
+}
+
+async function reconcile(source: SourceRound, dest: string, storybooksDir: string | undefined): Promise<ImportResult> {
   if (!(await lstatOrNull(dest))?.isDirectory()) refuse(`${source.id} in the rounds dir is a symlink or not a directory`);
   const existing = (await readTopFile(dest, ROUND_FILE)) ?? refuse(`round ${source.id} exists without a ${ROUND_FILE}`);
   if (!existing.equals(source.roundBytes)) {
@@ -312,24 +371,26 @@ async function reconcile(source: SourceRound, dest: string): Promise<ImportResul
   const index = await readTopFile(path.join(dest, FRAMES_DIR), FRAMES_INDEX);
   if (index !== null && !(source.index?.equals(index) ?? false)) refuse(`round ${source.id} is already imported with a different ${FRAMES_INDEX}`);
   await checkDestFrames(source, dest);
+  await checkDestStorybook(source, dest);
+  await storeSourceBuild(source, storybooksDir);
   await writeFrames(source, dest);
   return { id: source.id, created: false, frames: source.frames.size, feedback: await keepOrCopyFeedback(source, dest) };
 }
 
-async function importInto(source: SourceRound, roundsDir: string): Promise<ImportResult> {
+async function importInto(source: SourceRound, roundsDir: string, storybooksDir: string | undefined): Promise<ImportResult> {
   await mkdir(roundsDir, { recursive: true, mode: 0o700 });
   const dest = path.join(roundsDir, source.id);
   if ((await lstatOrNull(dest)) === null) {
-    const created = await stageAndRename(source, roundsDir, dest);
+    const created = await stageAndRename(source, roundsDir, dest, storybooksDir);
     if (created) return created;
   }
-  return reconcile(source, dest);
+  return reconcile(source, dest, storybooksDir);
 }
 
-export async function importRound({ source, roundsDir }: { source: string; roundsDir: string }): Promise<ImportResult> {
+export async function importRound({ source, roundsDir, storybooksDir }: { source: string; roundsDir: string; storybooksDir?: string }): Promise<ImportResult> {
   const round = await readSource(path.resolve(source));
   try {
-    return await importInto(round, path.resolve(roundsDir));
+    return await importInto(round, path.resolve(roundsDir), storybooksDir);
   } catch (error) {
     if (isFailure(error)) throw error;
     throw failure(`import failed: the rounds dir could not be written (${errnoOf(error) ?? "unknown"})`, EXIT.UNAVAILABLE);
