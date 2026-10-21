@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type MouseEvent, type ReactNode } from "react";
 import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
+import { FrameFigure } from "./FrameFeedback.js";
 import { FrameImage } from "./RoundFrame.js";
 
 /** What a question needs to draw the frames it names: the round, each variant's label, and which keys have an image. */
@@ -115,7 +116,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
         {keys.map((key) => {
           const label = frames.labels.get(key) ?? key;
           return (
-            <figure key={key} id={frameAnchor(question.id, key)} className="flex min-w-0 flex-col gap-1">
+            <FrameFigure key={key} frameKey={key} label={label} id={frameAnchor(question.id, key)}>
               <HStack gap={2} align="center" justify="between">
                 <Typography variant="subtitle2">{label}</Typography>
                 <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>
@@ -125,7 +126,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
               ) : (
                 <Typography variant="caption" color="secondary">No image for this frame</Typography>
               )}
-            </figure>
+            </FrameFigure>
           );
         })}
       </div>
