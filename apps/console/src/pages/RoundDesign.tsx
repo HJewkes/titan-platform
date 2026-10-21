@@ -5,6 +5,8 @@ import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { useSubmit } from "../data/submit.js";
+import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
+import { frameDrafts } from "./frame-feedback.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, lockedBy } from "./RoundSend.js";
@@ -38,25 +40,28 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const submitting = useSubmit();
   const locked = lockedBy(round, submitting);
-  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes);
+  const state = useRoundAnswers(locked ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, locked);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
   const anchored = anchoredKeys(round.manifest);
+  const variants = frameDrafts([...labels.keys()], state.frames.drafts);
   return (
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
-      <VStack gap={4}>
-        <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
-        {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
-        <PagedSections
-          manifest={round.manifest}
-          state={state}
-          textAnswers
-          locked={locked}
-          frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
-          send={<RoundSend round={round} state={state} submitting={submitting} />}
-        />
-      </VStack>
+      <FrameFeedbackProvider value={state.frames}>
+        <VStack gap={4}>
+          <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
+          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
+          <PagedSections
+            manifest={round.manifest}
+            state={state}
+            textAnswers
+            locked={locked}
+            frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
+            send={<RoundSend round={round} state={state} submitting={submitting} variants={variants} />}
+          />
+        </VStack>
+      </FrameFeedbackProvider>
     </RoundFramesProvider>
   );
 }
@@ -95,16 +100,19 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
     <div className={STRIP_GRID[size]}>
       {keys.map((key) => {
         const label = labels.get(key) ?? key;
-        return (
-          <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`${size === "strip" ? "design-frame" : "see-also"}-${key}`}>
+        const body = (
+          <>
             <Typography variant={size === "strip" ? "subtitle2" : "caption"}>{label}</Typography>
             {indexed.has(key) ? (
               <FrameImage roundId={roundId} frameKey={key} view="head" alt={label} />
             ) : (
               <Typography variant="caption" color="secondary">Not in frames.json</Typography>
             )}
-          </figure>
+          </>
         );
+        // A see-also thumbnail points at a frame judged where it is drawn full width, so it takes no verdict of its own.
+        if (size === "thumb") return <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`see-also-${key}`}>{body}</figure>;
+        return <FrameFigure key={key} frameKey={key} label={label} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
   );
