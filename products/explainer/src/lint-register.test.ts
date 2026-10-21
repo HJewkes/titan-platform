@@ -165,6 +165,21 @@ describe("Q-V11 register rows", () => {
     expect(emitted.every((row) => row.severity === "warning")).toBe(true);
   });
 
+  it("passes a beat with one number and warns on a beat with two, naming the beat", () => {
+    const row = rows("It took 3 runs.", "It took 3 runs and 12 ms.", FILLER).get("register:numbers-per-beat");
+
+    expect(row).toMatchObject({ severity: "warning", pass: false, value: 1, detail_beats: ["w4"] });
+    expect(rows("It took 3 runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true, value: 0 });
+  });
+
+  it("counts a run of number words in a beat as one mention", () => {
+    expect(rows("It took two hundred and five runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true });
+  });
+
+  it("warns on a beat whose number words are split by other words", () => {
+    expect(rows("It took two runs and five retries.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: false, detail_beats: ["h1"] });
+  });
+
   it("warns on a rate over the band's cap and passes one inside it", () => {
     const capped = rows(...filler(16), "It stops; it starts.").get("register:semicolons");
     const clean = rows(...filler(16)).get("register:semicolons");

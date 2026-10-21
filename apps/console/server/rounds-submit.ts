@@ -31,6 +31,7 @@ import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
+import { refuseUnrevealedSeen } from "./round-reveal.js";
 import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
 import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
@@ -296,6 +297,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const design = manifest.variants.length > 0 && !isShipRound(manifest);
   if (design && !(await hasFramesIndex(roundDir))) refuse("a design round without frames/frames.json is answered in the review harness");
   checkAnswers(manifest, args.answers);
+  await refuseUnrevealedSeen(roundDir, manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
   checkVariants(manifest, args.variants);
   const shipped = shippedHeads(manifest, args);

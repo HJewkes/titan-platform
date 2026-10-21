@@ -9,6 +9,7 @@ import { RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment
 import { InlineMarkdown } from "./RoundMarkdown.js";
 import { RoundNote } from "./RoundNote.js";
 import { QuestionFacts } from "./RoundQuestion.js";
+import { useRecommendation, useWithSeen } from "./RoundReveal.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
 import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
 import { ShipLineageLine } from "./ShipLineage.js";
@@ -56,6 +57,12 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   );
 }
 
+/** Sent, the Ship question's pick from feedback.json, so its recommendation shows the verdict. */
+function sentPick(round: ValidRound, question: MergeQuestion): { pick: string } | undefined {
+  const pick = round.notes?.answers[question.id]?.pick;
+  return pick === undefined ? undefined : { pick };
+}
+
 function ShipHeading({ round, question }: { round: ValidRound; question: MergeQuestion }): ReactNode {
   const section = round.manifest.sections.find((candidate) => candidate.questionIds.includes(question.id));
   return (
@@ -65,9 +72,9 @@ function ShipHeading({ round, question }: { round: ValidRound; question: MergeQu
           <QuestionFrames question={question} />
           <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
           {section?.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
-          <QuestionFacts question={question} />
+          <QuestionFacts question={question} answer={sentPick(round, question)} />
           <ShipLineageLine lineage={round.lineage} />
-          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation shows once the round is answered.</Typography> : null}
+          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">The recommendation is hidden until you answer; reveal it first if you want it.</Typography> : null}
         </VStack>
       </CardContent>
     </Card>
@@ -82,15 +89,25 @@ interface ShipAnswerProps {
   submitting: ReturnType<typeof useSubmit>;
 }
 
+/** How the answers are tagged `recommendationSeen`: the side ones as answered, the Ship pick when its recommendation shows at the press. */
+interface SeenTags {
+  withSeen: (answers: SubmittedAnswers) => SubmittedAnswers;
+  shipSeen: boolean;
+}
+
+type SubmittedAnswers = ReturnType<typeof submittedAnswers>;
+
 /** The two presses' `rounds.submit` args, and why each is off: Ship by its blockers, Send back until the fixer would get a note. */
-function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string) {
+function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProps, "submitting">, note: string, { withSeen, shipSeen }: SeenTags) {
   const sendBack = question.options.find((option) => !question.merge.ship.includes(option));
   const comment = note.trim();
   const sent = { id: round.id, manifestSha256: round.manifestSha256, general: side.general.trim() };
   const sideAnswers = submittedAnswers(sideQuestions, side.answers, side.comments, side.optionNotes);
+  const tagged = withSeen(sideAnswers);
+  const seen = shipSeen ? { recommendationSeen: true as const } : {};
   const { addressed, followUps } = sideMarks(side);
-  const shipArgs = { ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: question.merge.ship[0] }]) };
-  const backArgs = { ...sent, ...followUps, answers: inOrder(round.manifest, [...sideAnswers, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}) }]) };
+  const shipArgs = { ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: question.merge.ship[0], ...seen }]) };
+  const backArgs = { ...sent, ...followUps, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}), ...seen }]) };
   return {
     shipArgs,
     backArgs,
@@ -105,8 +122,10 @@ function ShipAnswer(props: ShipAnswerProps): ReactNode {
   const { round, question, side, submitting } = props;
   const { available, state, submit } = submitting;
   const [note, setNote] = useState("");
+  const withSeen = useWithSeen();
+  const shipSeen = useRecommendation(question, undefined).visible && round.recommendationsWithheld;
   if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
-  const draft = shipDraft(props, note);
+  const draft = shipDraft(props, note, { withSeen, shipSeen });
   const disabled = !available || state.status === "sending";
   return (
     <Card variant="outline">
