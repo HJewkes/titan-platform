@@ -24,7 +24,7 @@ interface Scenario {
 /** Keys polling is declared not to yield, each with the reason. Polling's keys are webhook's minus exactly these. */
 const DECLARED_TRANSIENTS: readonly { key: string; reason: string }[] = [
   { key: `v1|CIConcluded|o/r|status|${A}|ci|failure|2026-10-17T10:01:00Z`, reason: "the failure holds between two ticks, so only its delivery sees it (TP-3095 §2)" },
-  { key: "v1|RulesChanged|o/r|7|2026-10-17T10:05:00Z", reason: "the reconciler hands observe no ruleset read until TP-3428's conditional reads land, so polling has no view of a ruleset" },
+  { key: "v1|RulesChanged|o/r|7|2026-10-17T10:05:00Z", reason: "the reconciler hands observe no ruleset read until TP-3431 wires S2's ruleset read into the pass, so polling has no view of a ruleset" },
 ];
 
 const SCENARIOS: readonly Scenario[] = [
