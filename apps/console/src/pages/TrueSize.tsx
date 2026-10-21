@@ -3,10 +3,12 @@
  * harness's TrueSize.tsx and ScaleFrame.tsx. The harness renders a scale question's candidates as live stories; the
  * console draws the PNG captured for each candidate, keyed as `scaleCandidateKey` names it.
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { frameSizeMismatch } from "../../server/review-schema-0.3/media.js";
 import type { Manifest } from "../../server/round-schema.js";
 import { useQuery } from "../data/rpc.js";
+import { PinLayer, useFramePins } from "./FramePins.js";
 import { FrameImage, useNearViewport } from "./RoundFrame.js";
 
 type Variant = Manifest["variants"][number];
@@ -47,6 +49,31 @@ function scaleColumns({ frame, candidates }: ScaleReference): { ladder: number; 
 
 const share = (px: number, of: number): string => `${(px / of) * 100}%`;
 
+/** A frame takes pins when its PNG loads, or when it is a scale frame, whose pins sit on the composed frame. */
+export const pinnableFrame = (loadable: boolean, media: FrameMedia | undefined): boolean => loadable || media?.scale !== undefined;
+
+/** The share of its declared width a fitted frame is drawn at, never above 1; undefined until its box has been measured. */
+function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
+  const [scale, setScale] = useState<number>();
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setScale(Math.min(1, entry.contentRect.width / width));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, width]);
+  return scale;
+}
+
+/** How the frame is drawn, as the harness captions it: "shown at 47%" when fitted below its declared width, else "1:1". */
+export function shownAt(view: SizeView, fit: number | undefined): string {
+  if (view === "actual") return "1:1";
+  if (fit === undefined) return "fitted";
+  return fit < 1 ? `shown at ${Math.round(fit * 100)}%` : "1:1";
+}
+
 interface VariantFrameProps {
   roundId: string;
   frameKey: string;
@@ -67,10 +94,18 @@ export function VariantFrame({ roundId, frameKey, alt, media, loadable, candidat
   return <FrameImage roundId={roundId} frameKey={frameKey} view="head" alt={alt} />;
 }
 
-function SizeHeader({ label, frame, view, onChange }: { label: string; frame: FrameSize; view: SizeView; onChange: (view: SizeView) => void }): ReactNode {
+interface SizeHeaderProps {
+  label: string;
+  frame: FrameSize;
+  view: SizeView;
+  fit: number | undefined;
+  onChange: (view: SizeView) => void;
+}
+
+function SizeHeader({ label, frame, view, fit, onChange }: SizeHeaderProps): ReactNode {
   return (
     <HStack gap={2} align="center" justify="between" wrap>
-      <Typography variant="caption" color="secondary">{`${frame.width}×${frame.height} · ${view === "fit" ? "fitted" : "1:1"}`}</Typography>
+      <Typography variant="caption" color="secondary">{`${frame.width}×${frame.height} · ${shownAt(view, fit)}`}</Typography>
       <div role="group" aria-label={`Size of ${label}`} className="flex gap-1">
         {SIZE_VIEWS.map(([each, text]) => (
           <Button key={each} size="sm" variant={view === each ? "solid" : "outline"} aria-pressed={view === each} onPress={() => onChange(each)}>
@@ -82,11 +117,33 @@ function SizeHeader({ label, frame, view, onChange }: { label: string; frame: Fr
   );
 }
 
-/** At 1:1 the box scrolls both ways, no taller than the screen, so the frame's controls stay in reach. */
-function SizeBox({ view, testID, children }: { view: SizeView; testID: string; children: ReactNode }): ReactNode {
+interface SizeBoxProps {
+  view: SizeView;
+  frame: FrameSize;
+  boxRef: RefObject<HTMLDivElement | null>;
+  testID: string;
+  children: ReactNode;
+}
+
+/**
+ * Fitted, the box is never wider than the frame's declared width, so Fit never enlarges it, as in the harness. At 1:1 it
+ * scrolls both ways, no taller than the screen, so the frame's controls stay in reach.
+ */
+function SizeBox({ view, frame, boxRef, testID, children }: SizeBoxProps): ReactNode {
+  const actual = view === "actual";
   return (
-    <div data-testid={testID} data-view={view} className={view === "actual" ? "max-h-[80vh] max-w-full overflow-auto" : undefined}>
+    <div ref={boxRef} data-testid={testID} data-view={view} className={actual ? "max-h-[80vh] max-w-full overflow-auto" : undefined} style={actual ? undefined : { maxWidth: frame.width }}>
       {children}
+    </div>
+  );
+}
+
+/** Why a loaded PNG is not the size its frame declares, the harness's wrong-size warning; nothing when it is. */
+function SizeWarning({ testID, text, className }: { testID: string; text: string | null; className?: string }): ReactNode {
+  if (text === null) return null;
+  return (
+    <div role="alert" data-testid={testID} className={className}>
+      <Typography variant="caption" color="error">{text}</Typography>
     </div>
   );
 }
@@ -108,12 +165,17 @@ function LadderOverlay({ frame, ladder }: { frame: FrameSize; ladder: readonly L
 /** A recorded frame of a declared size: Fit or 1:1, with its reference ladder laid over it. */
 function TrueSizeFrame({ roundId, frameKey, alt, reference }: { roundId: string; frameKey: string; alt: string; reference: FrameReference }): ReactNode {
   const [view, setView] = useState<SizeView>("fit");
+  const [wrongSize, setWrongSize] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   const { frame, ladder } = reference;
+  const fit = useFitScale(box, frame.width);
+  const checkSize = (natural: FrameSize): void => setWrongSize(frameSizeMismatch(natural, frame));
   return (
     <VStack gap={1}>
-      <SizeHeader label={alt} frame={frame} view={view} onChange={setView} />
-      <SizeBox view={view} testID={`true-size-${frameKey}`}>
-        <FrameImage roundId={roundId} frameKey={frameKey} view="head" alt={alt} trueWidth={view === "actual" ? frame.width : undefined} overlay={<LadderOverlay frame={frame} ladder={ladder} />} />
+      <SizeHeader label={alt} frame={frame} view={view} fit={fit} onChange={setView} />
+      <SizeWarning testID={`wrong-size-${frameKey}`} text={wrongSize && `Image ${alt} ${wrongSize}`} />
+      <SizeBox view={view} frame={frame} boxRef={box} testID={`true-size-${frameKey}`}>
+        <FrameImage roundId={roundId} frameKey={frameKey} view="head" alt={alt} trueWidth={view === "actual" ? frame.width : undefined} overlay={<LadderOverlay frame={frame} ladder={ladder} />} onNaturalSize={checkSize} />
       </SizeBox>
     </VStack>
   );
@@ -127,26 +189,33 @@ interface ScaleFrameProps {
   loadable: (key: string) => boolean;
 }
 
-/** A scale question's candidates side by side in one full-size frame, beside a ladder of text at known sizes. */
+/**
+ * A scale question's candidates side by side in one full-size frame, beside a ladder of text at known sizes. Its pins sit
+ * on the composed frame, measured in the frame's declared px, as the harness pins its scale frame; they carry no element.
+ */
 function ScaleFrame({ roundId, frameKey, alt, scale, loadable }: ScaleFrameProps): ReactNode {
   const [view, setView] = useState<SizeView>("fit");
+  const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const near = useNearViewport(canvas);
+  const pins = useFramePins();
   const { frame, arg, candidates, ladder } = scale;
+  const fit = useFitScale(box, frame.width);
   const columns = scaleColumns(scale);
   const size: CSSProperties = view === "fit" ? { width: "100%", aspectRatio: `${frame.width} / ${frame.height}` } : { width: frame.width, height: frame.height };
   return (
     <VStack gap={1} testID={`scale-frame-${frameKey}`}>
-      <SizeHeader label={alt} frame={frame} view={view} onChange={setView} />
+      <SizeHeader label={alt} frame={frame} view={view} fit={fit} onChange={setView} />
       <ScaleLegend scale={scale} />
-      <SizeBox view={view} testID={`scale-box-${frameKey}`}>
-        <div ref={canvas} className="flex overflow-hidden rounded border border-hairline-strong bg-surface-raised" style={size}>
+      <SizeBox view={view} frame={frame} boxRef={box} testID={`scale-box-${frameKey}`}>
+        <div ref={canvas} className="relative flex overflow-hidden rounded border border-hairline-strong bg-surface-raised" style={size}>
           <ScaleLadder rungs={ladder} width={columns.ladder} frame={frame} />
           {candidates.map((candidate) => {
             const key = scaleCandidateKey(frameKey, arg, candidate);
             const label = `${alt} at ${arg} ${String(candidate)}`;
-            return <ScaleCell key={key} roundId={roundId} frameKey={key} label={label} tag={`${arg} = ${String(candidate)}`} width={share(columns.cell, frame.width)} near={near} captured={loadable(key)} />;
+            return <ScaleCell key={key} roundId={roundId} frameKey={key} label={label} tag={`${arg} = ${String(candidate)}`} width={share(columns.cell, frame.width)} near={near} captured={loadable(key)} frame={frame} />;
           })}
+          {pins ? <PinLayer pins={pins} size={() => frame} /> : null}
         </div>
       </SizeBox>
     </VStack>
@@ -195,22 +264,41 @@ interface ScaleCellProps {
   width: string;
   near: boolean;
   captured: boolean;
+  frame: FrameSize;
 }
 
 /** One candidate's column: its capture at the frame's full height, cropped to the column from the middle, so its text stays true size. */
-function ScaleCell({ roundId, frameKey, label, tag, width, near, captured }: ScaleCellProps): ReactNode {
+/** Each candidate is a capture of the whole frame, so its PNG is checked against the frame's declared size too. */
+function ScaleCell({ roundId, frameKey, label, tag, width, near, captured, frame }: ScaleCellProps): ReactNode {
+  const [wrongSize, setWrongSize] = useState<string | null>(null);
+  const checkSize = (natural: FrameSize): void => setWrongSize(frameSizeMismatch(natural, frame));
   return (
     <div className="relative h-full shrink-0 overflow-hidden border-l border-hairline-strong" style={{ width }} data-testid={`scale-cell-${frameKey}`}>
-      {near && captured ? <CandidateImage roundId={roundId} frameKey={frameKey} label={label} /> : null}
+      {near && captured ? <CandidateImage roundId={roundId} frameKey={frameKey} label={label} onNaturalSize={checkSize} /> : null}
       {captured ? null : <Typography variant="caption" color="secondary">Not captured</Typography>}
       <span className="absolute left-1 top-1 rounded bg-surface-base px-1 text-xs">{tag}</span>
+      <SizeWarning testID={`wrong-size-${frameKey}`} text={wrongSize && `Capture ${label} ${wrongSize}`} className="absolute inset-x-1 bottom-1 rounded bg-surface-base px-1" />
     </div>
   );
 }
 
-function CandidateImage({ roundId, frameKey, label }: { roundId: string; frameKey: string; label: string }): ReactNode {
+interface CandidateImageProps {
+  roundId: string;
+  frameKey: string;
+  label: string;
+  onNaturalSize: (size: FrameSize) => void;
+}
+
+function CandidateImage({ roundId, frameKey, label, onNaturalSize }: CandidateImageProps): ReactNode {
   const frame = useQuery("rounds.frame", { id: roundId, key: frameKey, view: "head" });
   if (frame.status === "loading") return <Spinner size="sm" label={`Loading ${label}`} />;
   if (frame.data === undefined) return <Typography variant="caption" color="error">{`Could not load ${label}: ${frame.error.message}`}</Typography>;
-  return <img src={`data:${frame.data.contentType};base64,${frame.data.base64}`} alt={label} className="block h-full w-full max-w-none object-cover" />;
+  return (
+    <img
+      src={`data:${frame.data.contentType};base64,${frame.data.base64}`}
+      alt={label}
+      className="block h-full w-full max-w-none object-cover"
+      onLoad={(event) => onNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+    />
+  );
 }

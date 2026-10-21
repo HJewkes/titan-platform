@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { Button, ButtonText, HStack, Spinner, Typography } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
-import { PinLayer, useCoarsePointer, useFramePins, type FramePins } from "./FramePins.js";
+import { PinLayer, naturalSize, useCoarsePointer, useFramePins, type FramePins } from "./FramePins.js";
 
 export type FrameView = ConsoleCommands["rounds.frame"]["args"]["view"];
 
@@ -18,6 +18,8 @@ interface FrameImageProps {
   trueWidth?: number;
   /** Laid over the image, inside its box, such as a true-size frame's ladder. */
   overlay?: ReactNode;
+  /** Told the PNG's natural pixels once it loads, such as to check them against the frame's declared size. */
+  onNaturalSize?: (size: { width: number; height: number }) => void;
 }
 
 /** One PNG of a round, fetched only once it nears the viewport; pressing it opens it at full size. */
@@ -45,7 +47,7 @@ export function useNearViewport(ref: RefObject<HTMLElement | null>): boolean {
   return near;
 }
 
-function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay }: FrameImageProps): ReactNode {
+function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay, onNaturalSize }: FrameImageProps): ReactNode {
   const frame = useQuery("rounds.frame", { id: roundId, key: frameKey, view });
   const [enlarged, setEnlarged] = useState(false);
   const pins = useFramePins();
@@ -64,10 +66,10 @@ function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay }: Frame
     <>
       <div className="relative" style={trueWidth === undefined ? undefined : { width: trueWidth }}>
         <button type="button" className="block w-full cursor-zoom-in" aria-label={`Enlarge ${alt}`} onClick={() => setEnlarged(true)}>
-          <img ref={image} src={src} alt={alt} className="block h-auto w-full rounded border border-hairline-strong" />
+          <img ref={image} src={src} alt={alt} className="block h-auto w-full rounded border border-hairline-strong" onLoad={onNaturalSize && ((event) => onNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }))} />
         </button>
         {overlay}
-        {pins ? <PinLayer pins={{ ...pins, placing: pins.placing && !coarse }} image={image} /> : null}
+        {pins ? <PinLayer pins={{ ...pins, placing: pins.placing && !coarse }} size={naturalSize(image)} /> : null}
       </div>
       {enlarged || pinsFullSize ? <Enlarge src={src} alt={alt} pins={pinsFullSize ? pins : null} onClose={close} /> : null}
     </>
@@ -101,7 +103,7 @@ function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
       <div className="flex-1 overflow-auto">
         <div className="relative w-max min-w-full">
           <img ref={image} src={src} alt={alt} className="block h-auto w-full max-w-none" />
-          {pins ? <PinLayer pins={pins} image={image} /> : null}
+          {pins ? <PinLayer pins={pins} size={naturalSize(image)} /> : null}
         </div>
       </div>
       {pins?.notes}
