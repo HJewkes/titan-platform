@@ -34,7 +34,7 @@ export function eventLogMigration(version = 30): Migration {
 }
 
 /** The GitHub Activity Events API is never a source: its latency runs from 30 s to 6 h. */
-type EventSource = "webhook" | "backstop" | "store" | "broker" | "merge-log";
+export type EventSource = "webhook" | "backstop" | "store" | "broker" | "merge-log";
 
 /** A parsed projection, never a raw body; past this the append refuses rather than store user data wholesale. */
 export const MAX_PAYLOAD_BYTES = 16 * 1024;

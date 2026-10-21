@@ -60,3 +60,41 @@ describe("the root lint config with the 200-character line cap", () => {
     expect(result.status).toBe(0);
   });
 });
+
+describe("the root lint config with the Activity Events API ban", () => {
+  const EVENTS_FIXTURE = join(REPO, "scripts", "fixtures", "events-api");
+
+  function lintEventsFixture(file) {
+    return spawnSync(process.execPath, [ESLINT_BIN, "--config", join(REPO, "eslint.config.js"), "--format", "json", file], {
+      cwd: EVENTS_FIXTURE,
+      encoding: "utf8",
+    });
+  }
+
+  it.each([
+    ["a gh api string", "products/factory/src/gh-api-string.ts"],
+    ["a gh api template", "products/factory/src/gh-api-template.ts"],
+    ["an octokit.request route", "products/factory/src/octokit-request.ts"],
+    ["an absolute api URL", "products/factory/src/fetch-url.ts"],
+    ["an octokit activity.list call", "products/factory/src/octokit-list.ts"],
+  ])("fails %s", (_name, file) => {
+    const result = lintEventsFixture(file);
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-syntax", message: expect.stringContaining("never an event source") })]);
+  });
+
+  it("passes a GraphQL timelineItems query", () => {
+    const result = lintEventsFixture("products/factory/src/timeline-items.ts");
+
+    expect(result.stdout).toContain('"errorCount":0');
+    expect(result.status).toBe(0);
+  });
+
+  it("does not apply outside factory and the github package", () => {
+    const result = lintEventsFixture("packages/other/src/gh-api-string.ts");
+
+    expect(result.status).toBe(0);
+  });
+});
