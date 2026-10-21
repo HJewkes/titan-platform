@@ -258,23 +258,14 @@ export {
 export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
-export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, needsSpeechVet, vettableSentences, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
+export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, needsSpeechVet, overlongSentence, vettableSentences, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
 export { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVerdict, type SentenceVet } from "./speech-vet-gate.js";
+export { localSentenceVet } from "./speech-vet-local.js";
 export { flowCheck } from "./lint-flow.js";
-export {
-  MIN_REGISTER_WORDS,
-  REGISTER_BANDS,
-  REGISTER_CHECK_IDS,
-  REGISTER_MEASURES,
-  REGISTER_METRICS,
-  registerCheck,
-  spokenText,
-  type Band,
-  type RegisterMetric,
-  type SpokenText,
-} from "./lint-register.js";
-export { numberSpans, triadSpans, type TextSpan } from "./lint-register.js";
+export { MIN_REGISTER_WORDS, REGISTER_BANDS, REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type Band, type RegisterMetric, type SpokenText, numberSpans, triadSpans, type TextSpan } from "./lint-register.js";
+export { guardBeat, type BeatGuardOptions, type BeatRewrite, type BeatRejection, type BeatRejectionRule } from "./rewrite-guard.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
+export { hasSpokenDigits, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
   VisualRouterSchema,
