@@ -31,7 +31,9 @@ function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round
     ...(numbers
       ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and return the others as on-screen labels.`]
       : []),
-    ...(triads ? [`- Lists of three: ${quoted(triads)}. Name the one that matters, or say how many and let the screen list them.`] : []),
+    ...(triads
+      ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]
+      : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }
