@@ -41,9 +41,8 @@ Packages sit in tiers, and a package imports only its own tier or a lower one.
 - **Tier 0, primitives.** Domain-free building blocks and wire contracts.
 - **Tier 1, engines.** Reusable machinery over the primitives.
 - **Tier 2, domain.** Modules that know about a subject.
-- **Tier 3, compositions.** Packages that compose tier-2 engines into reusable flows. They depend only on tiers 0-2 and carry no product opinion.
 
-Products and the UI binding sit above all four.
+Products and the UI binding sit above all three.
 
 ## The front end
 

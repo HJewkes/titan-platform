@@ -21,7 +21,7 @@ const baseCheck = JSON.stringify({
     {
       id: "package-layers",
       type: "layered-deps",
-      $tiers: { 0: ["packages/store-sqlite"], 1: ["packages/registry"], 2: [], 3: [], ui: [], product: [] },
+      $tiers: { 0: ["packages/store-sqlite"], 1: ["packages/registry"], 2: [], ui: [], product: [] },
       layers: [["packages/store-sqlite"], ["packages/registry"]],
     },
   ],
@@ -40,10 +40,6 @@ describe("new-package argument parsing", () => {
 
   it("rejects a name that is not kebab-case", () => {
     expect(() => parseArgs(["StoreSqlite", "--tier", "0"])).toThrow(/invalid package name/);
-  });
-
-  it("accepts tier 3", () => {
-    expect(parseArgs(["autoflow", "--tier", "3", "--description", "flows"])).toMatchObject({ tier: "3" });
   });
 
   it("rejects an unknown tier", () => {
@@ -71,26 +67,6 @@ describe("registering a package in the layered-deps rule", () => {
       "packages/store-sqlite",
       "packages/registry",
       "packages/session-read",
-      "products/session-miner",
-    ]);
-  });
-
-  it("registers a tier 3 package under $tiers[3] and in its own layer", () => {
-    const rule = layeredRule(registerLayer(baseCheck, "packages/autoflow", "3"));
-    expect(rule.$tiers[3]).toEqual(["packages/autoflow"]);
-    expect(rule.layers.at(-1)).toEqual(["packages/autoflow"]);
-  });
-
-  it("places the tier 3 layer after tier 2 and before ui and product", () => {
-    const withProduct = registerLayer(registerLayer(baseCheck, "products/session-miner", "product"), "packages/react-app", "ui");
-    const withTier2 = registerLayer(withProduct, "packages/session-read", "2");
-    const rule = layeredRule(registerLayer(withTier2, "packages/autoflow", "3"));
-    expect(rule.layers.map((l) => l[0])).toEqual([
-      "packages/store-sqlite",
-      "packages/registry",
-      "packages/session-read",
-      "packages/autoflow",
-      "packages/react-app",
       "products/session-miner",
     ]);
   });

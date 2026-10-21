@@ -28,19 +28,33 @@ async function layerViolations(root, tiers) {
   return run.result.violations;
 }
 
-const tiers = { 2: ["packages/engine"], 3: ["packages/flow"] };
+const tiers = { 1: ["packages/engine"], 2: ["packages/domain", "packages/other"] };
 
-describe("tier 3 enforcement through the layered-deps rule", () => {
-  it("fails a tier-2 package that imports a tier-3 package", async () => {
-    const root = workspace("packages/engine", "packages/flow");
+describe("tier enforcement through the layered-deps rule", () => {
+  it("fails a tier-1 package that imports a tier-2 package", async () => {
+    const root = workspace("packages/engine", "packages/domain");
 
     const violations = await layerViolations(root, tiers);
 
     expect(violations.map((v) => v.ruleId)).toEqual(["package-layers"]);
   }, 60_000);
 
-  it("allows a tier-3 package to import a tier-2 package", async () => {
-    const root = workspace("packages/flow", "packages/engine");
+  it("allows a tier-2 package to import another tier-2 package", async () => {
+    const root = workspace("packages/domain", "packages/other");
+
+    expect(await layerViolations(root, tiers)).toEqual([]);
+  }, 60_000);
+
+  it("allows a tier-2 package to import a tier-1 package", async () => {
+    const root = workspace("packages/domain", "packages/engine");
+
+    expect(await layerViolations(root, tiers)).toEqual([]);
+  }, 60_000);
+
+  it("does not see a same-tier cycle, which package-cycles.mjs catches instead", async () => {
+    const root = workspace("packages/domain", "packages/other");
+    const back = path.relative("packages/other/src", "packages/domain/src/index");
+    writeFileSync(path.join(root, "packages/other/src/index.ts"), `import { doubled } from "${back}";\nexport const value = doubled;\n`);
 
     expect(await layerViolations(root, tiers)).toEqual([]);
   }, 60_000);
