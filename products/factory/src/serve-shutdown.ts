@@ -9,6 +9,8 @@ interface ClosingParts {
   /** Stopped after the grace, in order, then the main watch, the daemon, the carry binding and the database. */
   watches: readonly { stop(): void }[];
   mainWatch: { close(): void } | undefined;
+  /** Closed before the daemon and the database, so no delivery is mid-append when the database closes. */
+  ingress: { close(): Promise<void> } | undefined;
   daemon: { close(): Promise<void> };
   unbindCarry(): void;
   host: { runtime: { shutdown(): void }; close(): void };
@@ -24,6 +26,7 @@ export async function closeServer(parts: ClosingParts, log: Logger, graceMs: num
   for (const sweep of abandoned) sweep.abort();
   for (const watch of parts.watches) watch.stop();
   parts.mainWatch?.close();
+  await parts.ingress?.close();
   await parts.daemon.close();
   parts.unbindCarry();
   parts.host.close();
