@@ -1,4 +1,5 @@
 import type { ConsoleCommands } from "../../server/commands.js";
+import type { RoundNotes } from "../../server/rounds.js";
 
 /** A port of the review harness's per-frame verdict (titan-design review-harness `page/state.ts`) onto `rounds.submit`'s `variants`. */
 export type PostedVariant = NonNullable<ConsoleCommands["rounds.submit"]["args"]["variants"]>[number];
@@ -41,3 +42,11 @@ export function frameDrafts(keys: readonly string[], drafts: Readonly<Record<str
     return [{ key, ...(verdict === null ? {} : { verdict }), ...(text === "" ? {} : { comment: text }) }];
   });
 }
+
+/** A sent round's frame verdicts and comments as the page holds them, so a reload shows what was sent. */
+export function draftsFromSent(frames: RoundNotes["frames"]): Record<string, FrameDraft> {
+  return Object.fromEntries(Object.entries(frames ?? {}).map(([key, { verdict, comment }]) => [key, { verdict, comment }]));
+}
+
+/** A pin's number, from its `${key}-${n}` id; the server refuses any other id. */
+export const pinNumber = (key: string, id: string): string => id.slice(key.length + 1);

@@ -64,3 +64,10 @@ export async function stagedRound(from: string, id: string, roundJson: unknown):
     remove: () => rm(root, { recursive: true, force: true }),
   };
 }
+
+/** A temp rounds dir holding fixture round `id` sent with `feedback`, so a page test reads it back through rounds.get. */
+export async function sentRound(id: string, feedback: unknown): Promise<StagedRound> {
+  const staged = await stagedRound(id, id, JSON.parse(await readFile(path.join(FIXTURE_ROUNDS.dir, id, "round.json"), "utf8")));
+  await writeFile(path.join(staged.source.dir, id, "feedback.json"), JSON.stringify(feedback));
+  return staged;
+}
