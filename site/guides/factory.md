@@ -305,6 +305,10 @@ nothing that names the mode, so a case cannot skip one by branching.
 - `feed.pick({ webhook, polling })` is the one way a case states an expectation that differs by mode; both answers are
   required.
 - `feed.advance(ms?)` moves the fake clock, by one reconciler interval of the mode when `ms` is omitted.
+- `feed.limit(answer, reads?)` makes GitHub answer the bot's next reads with a limit or failure. The reads go through the
+  bot's `github-api` pool, whose state is the factory's own pool-state table and whose clock is the feed's, so a closed
+  pair reopens when `advance` passes its `resetAt`. `feed.reads()` counts the reads GitHub answered.
+- `feed.head(repo, pr)` is the head GitHub shows for an open PR, for a case that drives the head guard's live reads.
 
 `test-support/a17/structure.test.ts` runs inside `pnpm test` and fails when, anywhere under `products/factory/src`:
 
