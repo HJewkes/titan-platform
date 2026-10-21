@@ -72,6 +72,40 @@ describe("guardBeat", () => {
     });
   });
 
+  describe("device-added", () => {
+    const PLAIN = "The desk server checks each scan. The ledger keeps the rows. Nobody retypes them.";
+    const COLONED = "The desk server checks each scan. The ledger keeps one thing: the rows. Nobody retypes them.";
+
+    it("rejects a Y, not X tail the original lacked", () => {
+      const after = { spoken: "The desk server checks each scan. The ledger keeps the rows, not by hand.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("rejects a semicolon the original lacked", () => {
+      const after = { spoken: "The desk server checks each scan; the ledger keeps the rows. Nobody retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("rejects a colon reveal the original lacked", () => {
+      const after = { spoken: "The desk server checks each scan. The ledger keeps one thing: the rows. Nobody retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("rejects a let's the original lacked", () => {
+      const after = { spoken: "Let's see how the desk server checks each scan. The ledger keeps the rows. Nobody retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, PLAIN), after)).toContain("device-added");
+    });
+
+    it("accepts a rewrite that keeps an existing colon", () => {
+      const after = { spoken: "The desk server checks every scan. The ledger keeps one thing: the rows. Nobody retypes them.", labelsAdded: [] };
+      expect(rules(beatWith({}, COLONED), after)).not.toContain("device-added");
+    });
+
+    it("accepts a rewrite that drops a device", () => {
+      expect(rules(beatWith({}, COLONED), { spoken: PLAIN, labelsAdded: [] })).not.toContain("device-added");
+    });
+  });
+
   it("rejects a rewrite that drops a cue word", () => {
     const before = withCues(["ledger"]);
     const after = { ...joined, spoken: joined.spoken.replace(/ledger/g, "store") };
