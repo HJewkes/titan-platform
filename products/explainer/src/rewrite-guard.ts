@@ -310,12 +310,19 @@ const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] 
     .filter((term) => !hasWord(norm(spoken), norm(term)))
     .map((term) => ({ rule: "new-term", detail: `"${term}" is introduced here and no longer spoken` }));
 
-function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {
+function capRejections(before: string, spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {
   const ceiling = maxVettedSentenceWords ?? MAX_VETTED_SENTENCE_WORDS;
+  const inherited = new Set(sentencesOf(before).map(norm));
   return sentencesOf(spoken)
-    .filter((sentence) => overlongSentence(sentence, speechClean, ceiling))
+    .filter((sentence) => !inherited.has(norm(sentence)) && overlongSentence(sentence, speechClean, ceiling))
     .map((sentence) => ({ rule: "sentence-cap", detail: `a sentence runs past ${MAX_SENTENCE_WORDS} words without a clean speech verdict: "${sentence.slice(0, 40)}"` }));
 }
+
+/** A dropped entity moved to an appended label still reaches the screen, so it is not lost. */
+const entityInLabel = (rule: string, detail: string, after: BeatRewrite): boolean => {
+  const entity = detail.replace(/^dropped /, "");
+  return rule === "entity" && after.labelsAdded.some((label) => hasWord(label, entity));
+};
 
 /**
  * Every reason a rewritten beat may not replace its original; empty when it may. A beat with any rejection keeps its
@@ -324,7 +331,7 @@ function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: 
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
   const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, minLengthSlack: DEFAULT_LENGTH_SLACK, ...opts.guard };
   const generic: BeatRejection[] = guardRewrite(before.spoken, after.spoken, "", guard)
-    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" ? [] : [{ rule, detail }]));
+    .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" || entityInLabel(rule, detail, after) ? [] : [{ rule, detail }]));
   const terms: BeatRejection[] = guardRewrite(withoutCarried(before.spoken, after), after.spoken, "", guard)
     .flatMap(({ rule, detail }) => (rule === "terms" ? [{ rule, detail }] : []));
   const lists = namedLists(before.spoken);
@@ -338,6 +345,6 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
-    ...capRejections(after.spoken, opts),
+    ...capRejections(before.spoken, after.spoken, opts),
   ];
 }

@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent } from "@titan-design/review-panel";
+import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -108,6 +108,7 @@ export interface MemberBase extends ReviewTarget {
   fixProof?: string;
   fixProofUnverified?: FixProofUnverified;
   fixProofWaivedAt?: string;
+  workflowCiProof?: WorkflowCiProof;
 }
 
 interface DispatchedMember {
