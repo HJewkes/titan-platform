@@ -80,7 +80,7 @@ interface Call {
   endedAt?: number;
 }
 
-export type Behave = (call: Call, input: StepRunInput) => Promise<StepRunOutcome> | StepRunOutcome | undefined;
+export type Behave = (call: Call, input: StepRunInput) => Promise<StepRunOutcome | undefined> | StepRunOutcome | undefined;
 
 interface Shown {
   id: string;

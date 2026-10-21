@@ -31,7 +31,7 @@ const batchFor = (canaryIndex = 0) => {
   });
   return batch!;
 };
-const fullVerdict = (batch: ReturnType<typeof batchFor>, items: { id: string; quote: string }[]) => ({
+const fullVerdict = <T extends { id: string; quote: string }>(batch: ReturnType<typeof batchFor>, items: T[]) => ({
   judged: [...batch.passages.map((p) => p.id), batch.canary!.id],
   items,
 });
@@ -160,9 +160,11 @@ describe("verifyVerdict", () => {
 });
 
 describe("canary scoring by claim", () => {
+  type Claim = { id: string; quote: string; event: "won" | "lost" | "preview"; included?: boolean };
+
   const nearMiss = (event: "won" | "lost" | "preview", included?: boolean) => {
     const batch = batchFor(1);
-    const item = { id: batch.canary!.id, quote: "mentioned any silverware", event, ...(included === undefined ? {} : { included }) };
+    const item: Claim = { id: batch.canary!.id, quote: "mentioned any silverware", event, ...(included === undefined ? {} : { included }) };
     return verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch);
   };
 
@@ -180,7 +182,7 @@ describe("canary scoring by claim", () => {
 
   it("still flags a positive canary tagged lost, which is not a claim", () => {
     const batch = batchFor(0);
-    const item = { id: batch.canary!.id, quote: "lifted the Coastal Cup", event: "lost" as const };
+    const item: Claim = { id: batch.canary!.id, quote: "lifted the Coastal Cup", event: "lost" };
     expect(verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch).flagged).toBe(true);
   });
 });

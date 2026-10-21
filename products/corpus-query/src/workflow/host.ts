@@ -111,7 +111,8 @@ function answerHost(db: Db, host: HostOptions, params: Record<string, string>): 
   runtime.register(ANSWER_WORKFLOW, answerWorkflow({
     db: index, root: params.corpus!, dataDir: host.dataDir, spec, prefixes, models,
     ...(params.compileRunId ? { compileRunId: params.compileRunId } : {}),
-    rounds: numeric("rounds"), concurrency: numeric("concurrency"), budgetUsd: numeric("budgetUsd"), confirmShare: params.confirmShare === undefined ? DEFAULT_CONFIRM_SHARE : numeric("confirmShare"), batchTokens: numeric("batchTokens"), window: numeric("window"),
+    rounds: numeric("rounds"), concurrency: numeric("concurrency"), budgetUsd: numeric("budgetUsd"), batchTokens: numeric("batchTokens"), window: numeric("window"),
+    confirmShare: params.confirmShare === undefined ? DEFAULT_CONFIRM_SHARE : numeric("confirmShare"),
   }));
   return { runtime, close: () => index.close() };
 }

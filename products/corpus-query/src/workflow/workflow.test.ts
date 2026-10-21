@@ -254,6 +254,10 @@ describe("cost model", () => {
 });
 
 describe("canaries in a run", () => {
+  it("asks the compiler for neutral canaries that no ruling or book context can contradict", () => {
+    expect(COMPILE_ROLE).toMatch(/Keep both neutral[\s\S]*must not mention the corpus's real people/);
+  });
+
   it("does not count a near-miss canary reported as lost as a screen miss, so no redo is paid for", async () => {
     fx = fixture(WINS);
     const lostCanary: Behave = async (call, input) => {
