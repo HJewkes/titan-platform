@@ -63,4 +63,11 @@ describe("renderRewritePrompt", () => {
     expect(prompt).toMatch(/do not build a new list of three/);
     expect(prompt).toMatch(/with the noun it counts/);
   });
+
+  it("tells a triad beat to label every item without singling one out", () => {
+    const prompt = renderRewritePrompt(chapter, chapterBeats, plan(1));
+
+    expect(prompt).toContain('- Lists of three: "the scan, the row and the label.". Put every item in labels_added, one each');
+    expect(prompt).not.toMatch(/the one that matters/i);
+  });
 });
