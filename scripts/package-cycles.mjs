@@ -53,6 +53,17 @@ export function packageGraph(root) {
   return graph;
 }
 
+function popComponent(stack, onStack, root) {
+  const members = [];
+  let member;
+  do {
+    member = stack.pop();
+    onStack.delete(member);
+    members.push(member);
+  } while (member !== root);
+  return members;
+}
+
 /** Strongly connected components of two or more packages, members sorted. */
 export function findCycles(graph) {
   const index = new Map();
@@ -75,13 +86,7 @@ export function findCycles(graph) {
       }
     }
     if (low.get(node) !== index.get(node)) return;
-    const members = [];
-    let member;
-    do {
-      member = stack.pop();
-      onStack.delete(member);
-      members.push(member);
-    } while (member !== node);
+    const members = popComponent(stack, onStack, node);
     if (members.length > 1) cycles.push(members.sort());
   };
   for (const node of graph.keys()) if (!index.has(node)) visit(node);
