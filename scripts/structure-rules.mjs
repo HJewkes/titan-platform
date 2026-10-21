@@ -97,13 +97,17 @@ export function checkNoTestsDirectories(root) {
   });
 }
 
-/** R47: packages take zod as a peer, never a regular dependency. */
+/**
+ * R47: packages take zod as a peer, never a regular dependency. A package that ships a bin is
+ * exempt: `npx -p` runs the bin with no host to supply the peer, and legacy-peer-deps skips it (TP-3897).
+ */
 export function checkZodIsPeer(root) {
   return workspaceDirs(root, ["packages"])
     .map((dir) => readJson(join(dir, "package.json")))
-    .filter((pkg) => pkg.dependencies?.zod)
+    .filter((pkg) => pkg.dependencies?.zod && !pkg.bin)
     .map(
-      (pkg) => `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies.`,
+      (pkg) =>
+        `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies, unless the package ships a bin.`,
     );
 }
 
