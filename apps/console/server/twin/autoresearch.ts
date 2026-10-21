@@ -1,6 +1,6 @@
-// A synthetic autoresearch run for the twin and the placeholder page: three rounds, one idea kept, one superseded, one
+// A synthetic autoresearch run for the twin's `autoresearch.*` answers: three rounds, one idea kept, one superseded, one
 // stopped at L0 and one still implementing. Every id, sha and metric name is invented.
-import type { ArLadder, ArRunView } from "../autoresearch-view.js";
+import type { ArLadder, ArRunSummary, ArRunView } from "../autoresearch-view.js";
 import { TWIN_NOW } from "./clock.js";
 
 const MINUTE = 60_000;
@@ -100,4 +100,10 @@ export const AR_RUN_FIXTURE: ArRunView = {
     { cell: "config-param:lower-thresh", trials: 1, meanAbsDeltaOverSigma: 1.5, keepRate: 0, flag: "explore" },
     { cell: "planner-ranking:fanout-first", trials: 1, meanAbsDeltaOverSigma: 0, keepRate: 0, flag: "explore" },
   ],
+};
+
+/** The fixture's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
+export const AR_RUN_SUMMARY: ArRunSummary = {
+  runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, status: AR_RUN_FIXTURE.status,
+  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 7.1,
 };

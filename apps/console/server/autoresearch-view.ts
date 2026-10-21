@@ -117,5 +117,26 @@ export const ArRunViewSchema = z.object({
   cells: z.array(cell),
 });
 
+/** One row of `autoresearch.runs`; `best` is null until the baseline has run. */
+export const ArRunSummarySchema = z.object({
+  runId: z.string(),
+  target: z.string(),
+  phase: z.string(),
+  status: z.enum(WORKFLOW_STATUSES),
+  startedAt: z.string(),
+  completedAt: z.string().nullable(),
+  best: z.object({ head: z.string(), primary: z.number() }).nullable(),
+  spend: z.number().nonnegative(),
+});
+
+/** `autoresearch.diff`: the idea branch against the head it forked from, with the patch capped by the factory. */
+export const ArDiffSchema = z.object({
+  stat: z.object({ files: z.number().int().nonnegative(), insertions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative() }),
+  patch: z.string(),
+  truncated: z.boolean(),
+});
+
 export type ArRunView = z.infer<typeof ArRunViewSchema>;
 export type ArLadder = z.infer<typeof ladder>;
+export type ArRunSummary = z.infer<typeof ArRunSummarySchema>;
+export type ArDiff = z.infer<typeof ArDiffSchema>;
