@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { importRound } from "./round-import.js";
 import { storybookLiveReader } from "./round-live.js";
-import { getRound, type RoundDetail } from "./rounds.js";
-import { buildIdOf, type BuildFile, type LiveFrame } from "./storybook-build.js";
+import { getRound, parseManifest, type RoundDetail } from "./rounds.js";
+import { buildIdOf, pinReason, type BuildFile, type LiveFrame } from "./storybook-build.js";
 
 // Synthetic: the lantern-cards fixture round with a three-file static build beside it.
 const FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "rounds", "lantern-cards-r1");
@@ -267,5 +267,17 @@ describe("rounds.get live", () => {
     const detail = await getRound({ dir: roundsDir, live: storybookLiveReader(storybooksDir) }, ID);
 
     expect(detail).not.toHaveProperty("live");
+  });
+});
+
+describe("pinReason", () => {
+  const SHIP_HEAD = "0123456789abcdef0123456789abcdef01234567";
+
+  it("pins a round with no PR group to its merge-bound Ship head", async () => {
+    const parsed = parseManifest(await readFile(path.join(import.meta.dirname, "..", "fixtures", "import", "sample-batch-r2", "round.json")));
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    expect(pinReason(parsed.manifest, "card-light", SHIP_HEAD)).toBeUndefined();
+    expect(pinReason(parsed.manifest, "card-light", BUILD_SHA)).toBe("Live build is for aaaaaaa; this round is at 0123456");
   });
 });
