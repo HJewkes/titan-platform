@@ -5,6 +5,7 @@ import type { Token, WordToken } from "./lexer.js";
 import { pipedShellTexts } from "./piped-nul.js";
 import { resolvePath } from "./path.js";
 import { shellOperands } from "./shell-options.js";
+import { sourcedOperand, SOURCERS } from "./sourced.js";
 import type { SimpleCommand } from "./commands.js";
 import type { ScriptTarget } from "../scripts.js";
 import type { Unwrapped } from "./unwrap.js";
@@ -12,7 +13,6 @@ import { ReadingLimitError, UnreadableScriptError } from "./unsure-readings.js";
 
 /** The descriptor path a real shell passes for a `<( )` operand. Only its being a descriptor the line did not open matters. */
 const PROCSUB_PATH = "/dev/fd/63";
-const SOURCERS = new Set(["source", "."]);
 /** Texts a body may print; the same cap `group-stdin.ts` puts on a group. */
 const MAX_TEXTS = 16;
 
@@ -37,15 +37,6 @@ type Operands = Pick<Unwrapped, "name" | "args" | "program">;
 export function withoutProcsub<T extends Operands>(cmd: T): T {
   if (keepsProcsub(cmd.name) || !cmd.args.some((word) => word.procsub !== undefined)) return cmd;
   return { ...cmd, args: cmd.args.filter((word) => word.procsub === undefined) };
-}
-
-/**
- * The file `source` or `.` reads: its first word, or the one after a `--` that ends its options, as bash and zsh read
- * it. Quote removal comes first, so `'--'` and `\-\-` end the options too.
- */
-export function sourcedOperand(args: WordToken[]): WordToken | undefined {
-  const [first, second] = args;
-  return first?.value === "--" ? second : first;
 }
 
 /**
