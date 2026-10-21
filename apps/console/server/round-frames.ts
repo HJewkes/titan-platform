@@ -238,13 +238,26 @@ export async function frameIndex(roundDir: string): Promise<FrameIndex> {
   return index;
 }
 
-/** The one path rule for a file a round names, shared with `round-import.ts`: a relative .png path that stays inside the round. */
-export async function readFrameBytes(roundDir: string, rel: string, expectedSha256?: string): Promise<{ bytes: Buffer; sha256: string }> {
-  if (!IMAGE_PATH.test(rel)) throw refusal("its path is not a relative .png path");
-  const bytes = await readInside(roundDir, rel, MAX_FRAME_BYTES);
-  if (!bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw refusal("the file is not a PNG");
+/** How each kind of file a frames record names is checked: its path, its size cap and, for a PNG, its first bytes. */
+const LISTED_KINDS = {
+  png: { path: IMAGE_PATH, pathRule: "a relative .png path", cap: MAX_FRAME_BYTES, signature: PNG_SIGNATURE, noun: "the PNG" },
+  targets: { path: TARGETS_PATH, pathRule: "a relative .json path", cap: MAX_TARGETS_BYTES, signature: undefined, noun: "the targets file" },
+} as const;
+export type ListedKind = keyof typeof LISTED_KINDS;
+
+/** The one path rule for a file a round names, shared with `round-import.ts`: a relative path of its kind that stays inside the round. */
+export async function readFrameBytes(
+  roundDir: string,
+  rel: string,
+  expectedSha256?: string,
+  kind: ListedKind = "png",
+): Promise<{ bytes: Buffer; sha256: string }> {
+  const rule = LISTED_KINDS[kind];
+  if (!rule.path.test(rel)) throw refusal(`its path is not ${rule.pathRule}`);
+  const bytes = await readInside(roundDir, rel, rule.cap);
+  if (rule.signature && !bytes.subarray(0, rule.signature.length).equals(rule.signature)) throw refusal("the file is not a PNG");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw refusal("the PNG does not match the frames index sha256");
+  if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw refusal(`${rule.noun} does not match the frames index sha256`);
   return { bytes, sha256 };
 }
 
@@ -279,10 +292,7 @@ export async function getFrameTargets({ dir }: RoundsSource, id: string, key: st
   const { roundDir, index } = await roundFrameIndex(dir, id);
   const listed = index.entries.get(key)?.targets;
   if (listed === undefined) throw refusal(`round ${id} lists no targets for "${key}"`);
-  if (!TARGETS_PATH.test(listed.file)) throw refusal("its path is not a relative .json path");
-  const bytes = await readInside(roundDir, listed.file, MAX_TARGETS_BYTES);
-  const sha256 = createHash("sha256").update(bytes).digest("hex");
-  if (sha256 !== listed.sha256) throw refusal("the targets file does not match the frames index sha256");
+  const { bytes, sha256 } = await readFrameBytes(roundDir, listed.file, listed.sha256, "targets");
   let json: unknown;
   try {
     json = JSON.parse(bytes.toString("utf8"));
