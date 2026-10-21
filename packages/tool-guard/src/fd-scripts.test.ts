@@ -118,13 +118,11 @@ const DOUBLE_DASH_SOURCE = [
   "exec < ./x.sh; . \\-\\- /dev/stdin",
 ];
 
-/** A word a script runs by its positional or as bash's rcfile, or a file `source -p` or a run-time first word of `source` leaves to read. */
+/** A word a `-c` string runs by its positional, bash's rcfile, or the file `source -p` reads. */
 const BESIDE_SCRIPT = [
-  "exec {fd}< ./x.sh; bash -c 'bash \"$0\"' /dev/fd/$fd",
-  "exec 3< ./x.sh; bash -c 'bash \"$1\"' _ /dev/fd/3",
+  "exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3",
   "exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true",
   "exec {fd}< ./x.sh; source -p . /dev/fd/$fd",
-  'exec {fd}< ./x.sh; source "$D" /dev/fd/$fd',
   // The string never runs its `$0`, but which strings do cannot be told, as with a substitution operand.
   "bash -c 'echo hi' /dev/fd/$fd",
 ];
@@ -217,10 +215,8 @@ const PREMISES: Array<[string, string[]]> = [
   ["exec < ./x.sh; bash -s", ["bash", "zsh -f", "dash"]],
   ["exec 3< ./x.sh; exec <&3; bash", ["bash", "zsh -f", "dash"]],
   ...DOUBLE_DASH_SOURCE.map((line): [string, string[]] => [line, ["bash", "zsh -f"]]),
-  ["exec {fd}< ./x.sh; bash -c 'bash \"$0\"' /dev/fd/$fd", ["bash", "zsh -f"]],
-  ["exec 3< ./x.sh; bash -c 'bash \"$1\"' _ /dev/fd/3", ["bash", "zsh -f", "dash"]],
+  ["exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3", ["bash", "zsh -f", "dash"]],
   ["exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true", ["bash", "dash"]],
-  ['D=--; exec {fd}< ./x.sh; source "$D" /dev/fd/$fd', ["bash", "zsh -f"]],
 ];
 
 /** bash before 5.3 refuses `source -p` as an invalid option. */

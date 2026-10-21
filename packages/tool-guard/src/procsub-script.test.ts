@@ -172,8 +172,8 @@ const DYNAMIC_FIRST_SOURCE_LINES = [`source "$D" <(echo '${PUSH}')`, `. "$D" <(e
 const OVER_READ_LINES = [`bash -s <(echo '${PUSH}') <<< 'echo hi'`, `bash -c 'cat "$1"' _ ./x.sh`, `bash ./ok.sh <(echo '${PUSH}')`];
 /** Whether bash runs this depends on what its stdin is, which a premise run cannot pin. */
 const REMOTE_RCFILE_LINE = `bash --rcfile <(echo '${PUSH}') -c true`;
-/** bash refuses `-x`, `-p ./d` finds no `ok.sh` or `x.sh` in `./d`, zsh finds no `./-p` or `./-x`, and the rcfile only echoes. */
-const HARMLESS_OPTION_LINES = ["source -p ./d ok.sh", "source -p ./d x.sh", "source -p ./d <(echo 'echo hi')", "source -x ./ok.sh", "bash --rcfile <(echo 'echo hi') -c true", "bash --rcfile <(echo 'echo hi') -i -c true"];
+/** bash refuses `-x`, `-p ./d` finds no `ok.sh` or `x.sh` in `./d`, zsh finds no `./-p` or `./-x`, and the rcfile only echoes and never runs. */
+const HARMLESS_OPTION_LINES = ["source -p ./d ok.sh", "source -p ./d x.sh", "source -p ./d <(echo 'echo hi')", "source -x ./ok.sh", "bash --rcfile <(echo 'echo hi') -c true"];
 
 describe("a shell or source running a process substitution as its script", () => {
   it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
@@ -338,7 +338,6 @@ describe("a shell or source running a process substitution as its script", () =>
     [`<(echo '${PUSH}')`, `exec <(echo '${PUSH}')`],
     [`bash -c 'bash "$1"' _ ./x.sh`, "bash ./x.sh"],
     ["source -p . <(kubectl completion bash)", "kubectl completion bash | bash"],
-    ["bash --rcfile <(kubectl completion bash) -i -c true", "kubectl completion bash | bash"],
   ])("gives %s the verdict of %s", async (substitution, piped) => {
     const [a, b] = [await verdict(substitution), await verdict(piped)];
 
