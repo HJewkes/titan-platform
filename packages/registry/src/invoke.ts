@@ -1,4 +1,4 @@
-import type { ZodError } from "zod";
+import type { ZodError, core } from "zod";
 import { EXIT, describeError, errorEnvelope, successEnvelope, type ErrorDescription, type JsonEnvelope } from "./envelope.js";
 import type { CommandRegistry } from "./registry.js";
 import type { AnyCommand, BaseContext } from "./types.js";
@@ -6,6 +6,8 @@ import type { AnyCommand, BaseContext } from "./types.js";
 export interface InvokeOptions {
   /** Envelope code for args that fail schema validation. CLIs use EXIT.USAGE, servers EXIT.DATAERR. */
   invalidArgsCode?: number;
+  /** Product-specific validation wording; receives the issues without an added prefix. */
+  formatInvalidArgs?: (issues: readonly core.$ZodIssue[]) => string;
   /** Map a thrown value to a message and code. Defaults to reading a numeric `code` property. */
   formatError?: (err: unknown) => ErrorDescription;
 }
@@ -23,13 +25,9 @@ export async function invokeCommand<Ctx extends BaseContext>(
   options: InvokeOptions = {},
 ): Promise<Invocation> {
   const formatError = options.formatError ?? describeError;
-  const invalidArgsCode = options.invalidArgsCode ?? EXIT.DATAERR;
 
   const parsed = cmd.args.safeParse(rawArgs ?? {});
-  if (!parsed.success) {
-    const message = `Invalid arguments: ${formatZodError(parsed.error)}`;
-    return { envelope: errorEnvelope(message, invalidArgsCode), exitCode: invalidArgsCode };
-  }
+  if (!parsed.success) return invalidArguments(parsed.error, options);
 
   try {
     const result: unknown = await cmd.run(parsed.data, ctx);
@@ -60,4 +58,17 @@ export function inProcessCaller<Ctx extends BaseContext>(
 
 function formatZodError(error: ZodError): string {
   return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+}
+
+function invalidArguments(error: ZodError, options: InvokeOptions): Invocation {
+  const invalidArgsCode = options.invalidArgsCode ?? EXIT.DATAERR;
+  try {
+    const message = options.formatInvalidArgs
+      ? options.formatInvalidArgs(error.issues)
+      : `Invalid arguments: ${formatZodError(error)}`;
+    return { envelope: errorEnvelope(message, invalidArgsCode), exitCode: invalidArgsCode };
+  } catch (err) {
+    const { message, code } = (options.formatError ?? describeError)(err);
+    return { envelope: errorEnvelope(message, code), exitCode: code };
+  }
 }

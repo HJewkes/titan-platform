@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Alert, Button, ButtonText, Card, CardContent, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useSubmit } from "../data/submit.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundCheck, useSendCheck, type SendCheck } from "./RoundCheck.js";
 import { RoundGeneral, SentGeneral } from "./RoundComment.js";
+import type { DraftBinding } from "./RoundDraft.js";
 import type { PostedVariant } from "./frame-feedback.js";
 import { useWithSeen } from "./RoundReveal.js";
 import type { RoundAnswers } from "./RoundSections.js";
@@ -21,15 +22,25 @@ const lockedBy = (round: ValidRound, { state }: Submitting): boolean => round.st
 const sentBy = (round: ValidRound, { state }: Submitting): boolean => round.status === "sent" || state.status === "sent";
 
 /**
- * A round's send: the submit, the check screen, and whether the page is locked (sent or sending) or frozen (also while
- * the check screen is open, so no key changes an answer the screen is showing).
+ * A round's send: the submit, the check screen, whether the page is locked (sent or sending) or frozen (also while
+ * the check screen is open, so no key changes an answer the screen is showing), and the draft it keeps until sent.
  */
 export function useRoundSend(round: ValidRound) {
   const submitting = useSubmit();
   const check = useSendCheck();
   const locked = lockedBy(round, submitting);
-  const checking = check.open && !sentBy(round, submitting);
-  return { submitting, check, checking, locked, frozen: locked || checking };
+  const sent = sentBy(round, submitting);
+  const checking = check.open && !sent;
+  const draft = useDraftBinding(round, sent);
+  // The keys open the check screen only where the "Check and send" button could.
+  const review = submitting.available && round.status === "open" && !locked && !checking ? check.show : undefined;
+  return { submitting, check, checking, locked, frozen: locked || checking, draft, review };
+}
+
+/** The round's draft binding: closed once `sent`, on this visit or an earlier one, or withdrawn. */
+export function useDraftBinding(round: ValidRound, sent: boolean): DraftBinding {
+  const closed = sent || round.status !== "open";
+  return useMemo(() => ({ roundId: round.id, manifestSha256: round.manifestSha256, closed }), [round.id, round.manifestSha256, closed]);
 }
 
 interface RoundSendProps {

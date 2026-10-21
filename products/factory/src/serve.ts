@@ -4,13 +4,14 @@ import { dirname } from "node:path";
 import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
+import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
-import type { SourcesReader } from "./github-sources/mode.js";
+import { createPassStamp, resolveSources, type PassStamp, type SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns } from "./restart-drain.js";
@@ -21,7 +22,8 @@ import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
-import { recordServeStart, type ServeStart } from "./serve-starts.js";
+import { startReconcilerSweep, type ReconcilerServeOptions } from "./reconciler/service.js";
+import { recordStartOrWarn, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
@@ -56,6 +58,8 @@ export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
 const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
+/** With no reader the reconciler runs as a polling deployment at the default interval, as the absent config block means. */
+const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
@@ -74,10 +78,12 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
-  /** Behind health's `sources` field: where GitHub events come from and why; absent means no field. Nothing else reads it yet. */
+  /** Behind health's `sources` field, the ingress kill switch and the reconciler's cadence; absent means no field and the polling defaults. */
   sources?: SourcesReader;
   /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
   githubApi?: () => GithubApiHealth;
+  /** The GitHub backstop and the bot ports it reads through; absent, or `enabled` off, means serve starts no reconciler. */
+  reconciler?: ReconcilerServeOptions;
   /** The webhook ingress listener beside the daemon, gated per request by `sources`; absent means serve binds no ingress port. */
   ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
@@ -102,6 +108,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
   ownerKeys?: () => OwnerKeys;
+  /** Replaces the bot identity read from the code-fixed `BOT_TOKEN_PATH`; tests inject it. No flag or config reaches this. */
+  bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
   /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
@@ -126,14 +134,16 @@ export interface FactoryServer {
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const stateDir = stateDirOf(options);
-  const { host, frames } = openFramedHost(options);
+  const log = options.logger ?? consoleLogger;
+  const bot = openServeBot(options.bot, log, stateDir);
+  const { host, frames } = openFramedHost({ ...options, capabilities: { ...options.capabilities, ...bot.capabilities } });
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
-  const log = options.logger ?? consoleLogger;
   const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
   const ingressRef: { listener?: IngressListener } = {};
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status() }));
+  const passStamp = createPassStamp();
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health }));
   const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
@@ -163,7 +173,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
+  const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
+  sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, reconcilerSweep);
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
@@ -200,21 +212,11 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
     const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
     const recorded: { start?: ServeStart } = {};
     const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, ...extras }));
-    recorded.start = recordStart(stateDir, unclean, options, log);
+    recorded.start = recordStartOrWarn(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) }, log);
     return daemon;
   } catch (err) {
     host.close();
     throw err;
-  }
-}
-
-/** A start record that cannot be written costs /health its start fields, never the start itself. */
-function recordStart(stateDir: string, unclean: boolean, options: FactoryServerOptions, log: Logger): ServeStart | undefined {
-  try {
-    return recordServeStart(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) });
-  } catch (err) {
-    log.warn({ err }, "could not record the serve start");
-    return undefined;
   }
 }
 
@@ -223,7 +225,7 @@ function ownerProofs(options: FactoryServerOptions): OwnerProofs {
   return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
 }
 
-type ServeExtras = Pick<DaemonExtras, "notify" | "ingress">;
+type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot">;
 
 interface DaemonExtras {
   proofs: OwnerProofs;
@@ -231,10 +233,12 @@ interface DaemonExtras {
   notify: GateNotifyWatch | undefined;
   /** Started after the daemon, so a second serve beside a live one never binds the ingress port. */
   ingress: () => IngressStatus | undefined;
+  passStamp: PassStamp;
+  bot: () => BotHealth;
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, extras: DaemonExtras): StartDaemonOptions<FactoryContext> {
-  const { proofs, start, notify, ingress } = extras;
+  const { proofs, start, notify, ingress, passStamp, bot } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
@@ -246,7 +250,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress() }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot() }),
     mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };

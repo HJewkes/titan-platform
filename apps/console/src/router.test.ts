@@ -10,6 +10,7 @@ describe("hash routes", () => {
     expect(parseRoute("")).toEqual({ view: "home" });
     expect(parseRoute("#/nowhere")).toEqual({ view: "home" });
     expect(parseRoute("#/stores")).toEqual({ view: "home" });
+    expect(parseRoute("#/research")).toEqual({ view: "home" });
   });
 
   it("round-trips an initiative detail route, and a slug that needs encoding", () => {
@@ -22,6 +23,7 @@ describe("hash routes", () => {
     ["#/sessions/0b7e2c1a-5d4f-4e8b-9a61-3c2d1e0f9a8b?tab=conversation", { view: "sessions", id: "0b7e2c1a-5d4f-4e8b-9a61-3c2d1e0f9a8b", query: "tab=conversation" }],
     ["#/agents/relay-worker-3?since=2031-03-01", { view: "agents", id: "relay-worker-3", query: "since=2031-03-01" }],
     ["#/shepherd/orbit%2Frelay%2312", { view: "shepherd", id: "orbit/relay#12" }],
+    ["#/autoresearch/ar-7c1e?idea=i-77aa2b4c6d8e", { view: "autoresearch", id: "ar-7c1e", query: "idea=i-77aa2b4c6d8e" }],
     ["#/knowledge/note%3Aorbit-relay%2F2031-03-03-backoff-ceiling.md?tab=graph", { view: "knowledge", id: "note:orbit-relay/2031-03-03-backoff-ceiling.md", query: "tab=graph" }],
   ])("parses %s and writes it back unchanged", (hash, route) => {
     expect(parseRoute(hash)).toEqual(route);

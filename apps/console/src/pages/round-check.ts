@@ -1,8 +1,9 @@
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Manifest, Question } from "../../server/round-schema.js";
-import { unanswered } from "./RoundAnswers.js";
+import { asksRevision, unanswered } from "./RoundAnswers.js";
 import { orderedQuestions } from "./RoundSections.js";
 import type { PostedVariant, VERDICTS } from "./frame-feedback.js";
+import type { Pin } from "./frame-pins.js";
 import { sectionPages } from "./round-pages.js";
 
 type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
@@ -15,7 +16,7 @@ export interface CheckRow {
   open: boolean;
 }
 
-/** A frame the send carries a verdict or comment for, under its variant's label. */
+/** A frame the send carries a verdict, comment or pins for, under its variant's label. */
 export type CheckVerdict = (typeof VERDICTS)[number]["verdict"];
 
 export interface CheckFrame {
@@ -23,6 +24,7 @@ export interface CheckFrame {
   label: string;
   verdict?: CheckVerdict;
   comment?: string;
+  annotations?: readonly Pin[];
 }
 
 /** One section of the check screen, in the pager's order. */
@@ -33,9 +35,6 @@ export interface CheckGroup {
   frames: CheckFrame[];
 }
 
-/** A frame no section shows still has its verdict listed, after every section. */
-const OTHER_FRAMES = "~frames";
-
 /** The round's answers and frame verdicts grouped as the pager pages them, so a row names the page it is answered on. */
 export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAnswer[], variants: readonly PostedVariant[] = []): CheckGroup[] {
   const pages = sectionPages(orderedQuestions(manifest));
@@ -43,14 +42,11 @@ export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAns
   const open = unanswered(all, submitted);
   const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
   const framesOf = (keys: ReadonlySet<string>): CheckFrame[] => variants.filter((variant) => keys.has(variant.key)).map((variant) => ({ ...variant, label: labels.get(variant.key) ?? variant.key }));
-  const groups = pages.map((page): CheckGroup => {
+  return pages.map((page): CheckGroup => {
     const section = manifest.sections.find((each) => each.id === page.id);
     const rows = page.questions.map((question) => ({ question, position: all.indexOf(question) + 1, answer: submitted.find((answer) => answer.questionId === question.id), open: open.includes(question) }));
     return { id: page.id, title: page.title, rows, frames: framesOf(new Set(section?.variantKeys)) };
   });
-  const placed = new Set(manifest.sections.flatMap((section) => section.variantKeys));
-  const loose = framesOf(new Set(variants.map((variant) => variant.key).filter((key) => !placed.has(key))));
-  return loose.length > 0 ? [...groups, { id: OTHER_FRAMES, title: "Other frames", rows: [], frames: loose }] : groups;
 }
 
 /** An option names a frame by its variant key, so it reads as the key and the frame's label, as the harness's did. */
@@ -69,10 +65,6 @@ export function answerText(manifest: Manifest, answer: SubmittedAnswer | undefin
   return answer.text;
 }
 
-/** A revision request, built in or the round's own `revisionOption` picked, whether or not its comment is there yet. */
-const requestsRevision = (question: Question, answer: SubmittedAnswer): boolean =>
-  answer.revisionRequested === true || (question.kind === "pick-one" && question.revisionOption !== undefined && answer.pick === question.revisionOption);
-
 /**
  * What `rounds.submit` would refuse even as a partial send: a revision request with no comment saying what to change.
  * The check screen lists these and holds the send until they are fixed.
@@ -80,7 +72,7 @@ const requestsRevision = (question: Question, answer: SubmittedAnswer): boolean 
 export function sendProblems(questions: readonly Question[], submitted: readonly SubmittedAnswer[]): string[] {
   return questions.flatMap((question) => {
     const answer = submitted.find((each) => each.questionId === question.id);
-    return answer && requestsRevision(question, answer) && !answer.comment ? [`Say what to change in the comment on "${question.prompt}": a revision request needs one.`] : [];
+    return asksRevision(question, answer) && !answer?.comment ? [`Say what to change in the comment on "${question.prompt}": a revision request needs one.`] : [];
   });
 }
 

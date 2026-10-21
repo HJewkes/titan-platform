@@ -11,7 +11,11 @@ import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
 import { checkAndSend, checkButton, shownSection, toSection } from "./pages/round-pager.test-helpers.js";
 
-afterEach(cleanup);
+// An unsent round keeps its draft in localStorage, so each test starts from none.
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const ROUND = "kiln-schedule-r2";
 
@@ -211,14 +215,20 @@ describe("a question round's free text", () => {
     expect(submitCalls(rendered)).toMatchObject([{ general: "Good round, quick to answer." }]);
   });
 
-  it("does not choose an option when a digit is typed into a comment box", async () => {
+  // react-native-web's TextInput stops its keydown short of window, so only a field that lets the key bubble tests the guard.
+  it("does not choose an option when a digit is typed into a field, though the same digit outside one does", async () => {
     await renderRound(submitted);
-    const box = screen.getByLabelText(`Comment on ${RAMP}`);
+    const singleSlope = (): string | null | undefined =>
+      within(screen.getByTestId("round-question-ramp-default")).getByText("2 Single slope").closest<HTMLElement>('[role="radio"]')?.getAttribute("aria-checked");
+    const field = document.body.appendChild(document.createElement("textarea"));
 
-    fireEvent.keyDown(box, { key: "2" });
+    fireEvent.keyDown(field, { key: "2" });
+    const typed = singleSlope();
+    fireEvent.keyDown(document.body, { key: "2" });
 
-    const control = within(screen.getByTestId("round-question-ramp-default")).getByText("2 Single slope").closest<HTMLElement>('[role="radio"]');
-    expect(control?.getAttribute("aria-checked")).toBe("false");
+    field.remove();
+    expect(typed).toBe("false");
+    expect(singleSlope()).toBe("true");
   });
 
   it("shows the sent comments and round feedback read-only once the round is sent", async () => {

@@ -35,6 +35,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   cleanup();
+  localStorage.clear();
   await staged.remove();
 });
 

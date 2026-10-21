@@ -7,7 +7,7 @@ import { errorMessage, isStringArray } from "../guards.js";
 import type { SpeechRuntime } from "../runtime.js";
 import { toSynthesis } from "../synthesis.js";
 import type { Synthesis, SynthesizeOptions, TtsCapabilities, TtsInput, TtsProvider, TtsToken, WordTiming } from "../types.js";
-import { chunkTokens, offsetWords, styleRow } from "./chunk.js";
+import { chunkTokens, enTokenize, MAX_PHONEMES, offsetWords, styleRow } from "./chunk.js";
 import { loadKokoroEngine, type KokoroEngine, type KokoroEngineOptions } from "./engine.js";
 import { assertFramesMatchWaveform, joinTimestamps, roundDurations, type TokenTime } from "./timestamps.js";
 
@@ -151,8 +151,13 @@ function concat(parts: readonly Float32Array[]): Float32Array {
   return samples;
 }
 
+/** True when a chunk's phonemes ran past what Kokoro takes and `chunkTokens` truncated it. */
+function wasCut(tokens: readonly KokoroToken[]): boolean {
+  return enTokenize(tokens).some((chunk) => [...chunk.ps].length > MAX_PHONEMES);
+}
+
 /** Every word gets a timing; one Kokoro left unspoken sits at zero width where the last spoken word ended. */
-function wordTimings(tokens: readonly KokoroToken[], spans: ReadonlyMap<number, TokenTime>, warn: (message: string) => void): WordTiming[] {
+function wordTimings(tokens: readonly KokoroToken[], spans: ReadonlyMap<number, TokenTime>, warn: (message: string) => void, cut: boolean): WordTiming[] {
   const words: WordTiming[] = [];
   const unspoken: string[] = [];
   let boundary = 0;
@@ -167,7 +172,7 @@ function wordTimings(tokens: readonly KokoroToken[], spans: ReadonlyMap<number, 
     boundary = span.end;
   }
   if (unspoken.length > 0) {
-    warn(`kokoro does not speak ${unspoken.length} word(s) (no phonemes, or past the 510-phoneme cut), timed at zero width: ${unspoken.join(", ")}`);
+    warn(`kokoro does not speak ${unspoken.length} word(s) (${cut ? "no phonemes, or past the 510-phoneme cut" : "no phonemes"}), timed at zero width: ${unspoken.join(", ")}`);
   }
   return words;
 }
@@ -199,7 +204,7 @@ export function kokoroProvider(opts: KokoroProviderOptions): TtsProvider {
     const times = offsetWords(spoken.map((p) => ({ samples: p.waveform.length, times: p.times })), capabilities.sampleRate);
     const spans = new Map(chunks.flatMap((c) => c.tokens.map((t) => t.index)).map((index, k) => [index, times[k] ?? { start: null, end: null }]));
     const audio = { samples: concat(spoken.map((p) => p.waveform)), sampleRate: capabilities.sampleRate };
-    return toSynthesis(id, capabilities, audio, { words: wordTimings(tokens, spans, warn), phonemes: chunks.map((c) => c.ps) });
+    return toSynthesis(id, capabilities, audio, { words: wordTimings(tokens, spans, warn, wasCut(tokens)), phonemes: chunks.map((c) => c.ps) });
   };
   return { id, capabilities, synthesize };
 }
