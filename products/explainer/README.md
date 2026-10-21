@@ -121,7 +121,8 @@ Q-V11 rows the planner guide alone does not move (`register:numbers`, `register:
 `register:sentence-mean`, `register:sentence-cv`), one schema-bound call per chapter a round through the judge the
 config names (default 2 rounds). Each beat's rewrite passes `guardBeat` or keeps its original line: facts, cue words
 and their order, new terms and markup survive, and a number that leaves `spoken` must reach `visual.labels` with its
-noun ("5000 rows"), whose words then no longer count as dropped terms. A beat that gains an L0 error row is reverted,
+noun ("5000 rows"), whose words then no longer count as dropped terms. Numbers compare spelled or in digits alike
+("twenty-eight" and "28"), and a cue on a moved number lands on the label's noun when the line still speaks it. A beat that gains an L0 error row is reverted,
 and a round that does not bring the rows closer to band is discarded. Remaining digits are spelled for the voice. It
 writes the script/v1 result to `--out` (a spike input is migrated first) and the full report to `--report`, and
 prints one JSON line: each target row before and after, what each round kept, rejected and reverted, the call count
