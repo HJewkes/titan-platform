@@ -39,7 +39,8 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const { submitting, check, checking, locked, frozen } = useRoundSend(round);
-  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
+  const frameKeys = useMemo(() => round.manifest.variants.map((variant) => variant.key), [round.manifest]);
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
