@@ -5,7 +5,7 @@
  */
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
-import { useMediaQuery } from "./FramePins.js";
+import { useFramePins, useMediaQuery } from "./FramePins.js";
 import { FrameImage, NEAR_VIEWPORT, useEscapeKey } from "./RoundFrame.js";
 import { useFitScale } from "./TrueSize.js";
 import {
@@ -73,9 +73,17 @@ interface StoryProps extends PngProps {
   sizing: LiveSizing;
 }
 
+/** Pins sit on the PNG's pin layer, which a live frame lacks until S5, so a frame in pin mode or holding pins stays its PNG. */
+function usePinnedPng(): boolean {
+  const pins = useFramePins();
+  return pins !== null && (pins.placing || pins.pins.length > 0);
+}
+
 /** A Ship-bound frame starts as the approved PNG, so the default view is what a Ship approves. */
 function LiveStory({ shipBound, ...props }: StoryProps & { shipBound: boolean }): ReactNode {
   const [opened, setOpened] = useState(!shipBound);
+  const pinned = usePinnedPng();
+  if (pinned) return <CapturedFrame {...props} note="Pins are placed on the captured frame" />;
   if (!opened) {
     return (
       <VStack gap={1}>

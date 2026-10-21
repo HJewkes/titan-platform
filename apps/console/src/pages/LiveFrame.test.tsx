@@ -7,6 +7,7 @@ import type { DataSource } from "@titan-design/rpc-client";
 import { RoundSchema, type Manifest, type Question } from "../../server/round-schema.js";
 import { BRIDGE_TAG } from "../../server/story-bridge.js";
 import type { RoundLive } from "../../server/storybook-build.js";
+import { FramePinsProvider, type FramePins } from "./FramePins.js";
 import { QuestionFrames, RoundFramesProvider } from "./QuestionFrames.js";
 import { PHONE_WIDTH, READY_TIMEOUT_MS } from "./live-frame.js";
 
@@ -68,15 +69,22 @@ const pngs: DataSource = {
   call: () => Promise.resolve(successEnvelope({ contentType: "image/png", bytes: 8, sha256: "c".repeat(64), base64: PNG })),
 };
 
-function renderQuestion(id: string, live: RoundLive = allLive): void {
-  render(
-    <RpcProvider source={pngs}>
+const questionTree = (id: string, live: RoundLive, pins: FramePins | null) => (
+  <RpcProvider source={pngs}>
+    <FramePinsProvider value={pins}>
       <RoundFramesProvider roundId={ROUND} manifest={manifest} indexed={new Set(KEYS)} live={live}>
         <QuestionFrames question={question(id)} />
       </RoundFramesProvider>
-    </RpcProvider>,
-  );
+    </FramePinsProvider>
+  </RpcProvider>
+);
+
+function renderQuestion(id: string, live: RoundLive = allLive, pins: FramePins | null = null): (pins: FramePins | null) => void {
+  const { rerender } = render(questionTree(id, live, pins));
+  return (next) => rerender(questionTree(id, live, next));
 }
+
+const framePins = (placing: boolean, pins: FramePins["pins"] = []): FramePins => ({ frameKey: "compact", label: "Card compact", pins, widths: {}, placing, place: () => undefined, leave: () => undefined });
 
 const frameOf = (key: string): HTMLIFrameElement => {
   const frame = screen.getByTitle(`Card ${key}, live at 390px`);
@@ -166,5 +174,21 @@ describe("a live story frame", () => {
     expect(screen.getByText(reason)).toBeTruthy();
     expect(screen.queryByTitle("Card compact, live at 390px")).toBeNull();
     expect(frameOf("roomy")).toBeTruthy();
+  });
+
+  it("goes back to its PNG and pin layer once in pin mode, and a frame holding a pin draws it on the PNG", async () => {
+    const setPins = renderQuestion("density-pick");
+    await screen.findByAltText("Card compact");
+    post(frameOf("compact").contentWindow, ready);
+    expect(placeholder("compact")).toBeNull();
+
+    setPins(framePins(true));
+    await screen.findByAltText("Card compact");
+    expect(screen.getAllByTestId("pin-layer-compact").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("iframe")).toHaveLength(0);
+
+    setPins(framePins(false, [{ id: "p1", xPct: 0.5, yPct: 0.5 }]));
+    expect(screen.getAllByTestId("pin-marker-p1").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("iframe")).toHaveLength(0);
   });
 });

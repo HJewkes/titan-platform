@@ -49,6 +49,13 @@
       "find": "<Typography variant=\"caption\" color=\"secondary\">{note}</Typography>",
       "replace": "",
       "kills": ["with only a reason, shows its PNG and the reason, and mounts no story"]
+    },
+    {
+      "name": "a live frame in pin mode or holding pins drops its PNG and pin layer",
+      "file": "apps/console/src/pages/LiveFrame.tsx",
+      "find": "  if (pinned) return <CapturedFrame {...props} note=\"Pins are placed on the captured frame\" />;\n",
+      "replace": "",
+      "kills": ["goes back to its PNG and pin layer once in pin mode, and a frame holding a pin draws it on the PNG"]
     }
   ]
 }
