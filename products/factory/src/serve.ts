@@ -21,6 +21,7 @@ import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
+import { startReconcilerSweep, type ReconcilerServeOptions } from "./reconciler/service.js";
 import { recordServeStart, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
@@ -78,6 +79,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   sources?: SourcesReader;
   /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
   githubApi?: () => GithubApiHealth;
+  /** The GitHub backstop and the bot ports it reads through; absent, or `enabled` off, means serve starts no reconciler. */
+  reconciler?: ReconcilerServeOptions;
   /** The webhook ingress listener beside the daemon, gated per request by `sources`; absent means serve binds no ingress port. */
   ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
@@ -163,7 +166,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
+  const reconcilerSweep = startReconcilerSweep(options.reconciler, host.db, log, options.now);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
+  sweeps.push(reconcilerSweep);
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }

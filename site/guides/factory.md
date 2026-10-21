@@ -174,6 +174,56 @@ A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
 (`products/factory/src/bad-config.test.ts`).
 
+## Reconciler
+
+The reconciler is the GitHub backstop (`products/factory/src/reconciler/`). Webhooks get
+lost and GitHub does not redeliver them, so on a timer it reads each watched repo and appends
+what it sees to the event log with `source: backstop`. It only appends. It never reads the log
+back, never acts on a row, and never updates or deletes one.
+
+```json
+{ "reconciler": { "enabled": false, "intervalMs": 300000, "fullEvery": 3, "repos": ["acme/widgets"] } }
+```
+
+- `enabled` is off by default. Serve starts no reconciler until it is on and the bot's
+  GitHub port is wired (TP-3431). Turning it off stops every tick and the start pass.
+- `intervalMs` is the tick period. The default is 300000 (5 minutes). Under
+  `github.sources: webhook` it must be between 300000 and 600000 (5 to 10 minutes), or the
+  config load fails. The polling-mode bound belongs to `github.pollingIntervalMs`.
+- `fullEvery` (default 3) caps how many ticks a quiet repo can go without a full GraphQL
+  snapshot. A repo is quiet when its conditional gates all answer 304 and its last snapshot
+  had no check or status still running.
+- `repos` lists the `owner/name` repos to watch.
+
+Every GitHub read is a claim on the bot's `github-api` pool at backstop priority, the lowest.
+While the pool holds any call class closed, the reconciler skips the repo on that tick, and a
+claim the pool answers as unavailable is skipped the same way. A skipped repo writes no row and
+moves no cursor. The next granted tick reads the whole range from the cursor, so nothing is
+lost. When a repo is skipped on more than 2 ticks in a row, serve logs `reconciler.starved`
+once, with the time the first skip happened.
+
+On serve start, the first tick is a forced full pass over every repo. Serve does not wait for
+it. A repo the pool skips during that pass is forced again on the next tick. With no cursor,
+main and closed PRs are read back 24 hours.
+
+The cursor lives in the factory database (migration 36, `factory_reconciler_cursor`), with one
+row per repo and stream (`main`, `done`, `rulesets`). Appends come before the cursor write. A
+crash between the two re-reads the same range on the next tick, and every row it sees again
+comes back as a duplicate.
+
+Each tick writes one serve-log line per outcome:
+
+| Line | Meaning |
+|---|---|
+| `reconciler.filled` | a row no webhook had written was appended |
+| `reconciler.confirmed` | a webhook row already held the occurrence; nothing was written |
+| `reconciler.disagree class=stale-read` | the read was behind the log; nothing was written |
+| `reconciler.disagree class=field-parity` | the same occurrence came with a field that differs |
+| `reconciler.disagree class=main-ancestry-lost` | main lost ancestry between cursor and tip; the cursor resets to the tip |
+| `reconciler.disagree class=unconfirmed` | the head guard was pending or unknown; the next tick reads again |
+| `reconciler.skipped` / `reconciler.starved` | the pool refused the repo's claim |
+| `reconciler.unit-failed` | the read or a step threw; the repo's cursor stays where it was |
+
 ## A17 invariant tests: both event-source modes
 
 A17 says an invariant holds whether GitHub observations arrive as webhook deliveries or are polled. The harness in
