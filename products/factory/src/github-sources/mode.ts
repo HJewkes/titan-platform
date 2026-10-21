@@ -4,7 +4,7 @@ import { GithubConfigSchema, configPath, readConfig } from "../config.js";
 
 export const SOURCES_MODES = ["webhook", "polling"] as const;
 
-type SourcesMode = (typeof SOURCES_MODES)[number];
+export type SourcesMode = (typeof SOURCES_MODES)[number];
 
 /** `kill-switch`: the deployment chose webhook but ingress is off, so it runs as polling. */
 type SourcesReason = "configured" | "kill-switch";

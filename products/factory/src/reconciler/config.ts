@@ -5,9 +5,10 @@ import { isRepoKey } from "../shepherd/seats.js";
 const WEBHOOK_INTERVAL_MS = { min: 300_000, max: 600_000 } as const;
 
 /**
- * The GitHub backstop (TP-3098). `enabled` is off until the bot's port is wired (TP-3431). `intervalMs` is the tick period,
- * 5 minutes by default and bounded to 5-10 minutes under `github.sources: webhook`. `fullEvery` caps how many ticks a quiet
- * repo may go without a GraphQL snapshot. `repos` are the `owner/name` repos it watches.
+ * The GitHub backstop (TP-3098). `enabled` is off until the bot's port is wired (TP-3431). `intervalMs` is still bounded to
+ * 5-10 minutes under `github.sources: webhook`, but no longer sets the cadence: the schedule (TP-3402) runs a pass every
+ * `github.pollingIntervalMs` or `github.backstopIntervalMs` by effective mode; TP-3431 decides which knob stays. `fullEvery`
+ * caps how many passes a quiet repo may go without a GraphQL snapshot. `repos` are the `owner/name` repos it watches.
  */
 export const ReconcilerConfigSchema = z.strictObject({
   enabled: z.boolean().default(false),
