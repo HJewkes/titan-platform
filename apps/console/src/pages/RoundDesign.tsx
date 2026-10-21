@@ -51,9 +51,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
       <FrameFeedbackProvider value={state.frames} widths={widths}>
         <VStack gap={4}>
-          <DraftDiscarded discarded={state.draftDiscarded} />
-          <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
-          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
+          <DesignNotes discarded={state.draftDiscarded} withheld={round.recommendationsWithheld} />
           <PagedSections
             manifest={round.manifest}
             state={state}
@@ -67,6 +65,16 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         </VStack>
       </FrameFeedbackProvider>
     </RoundFramesProvider>
+  );
+}
+
+function DesignNotes({ discarded, withheld }: { discarded: boolean; withheld: boolean }): ReactNode {
+  return (
+    <>
+      <DraftDiscarded discarded={discarded} />
+      <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
+      {withheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
+    </>
   );
 }
 
