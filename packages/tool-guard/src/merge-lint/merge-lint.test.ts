@@ -362,3 +362,24 @@ describe("the lint has no consumer", () => {
     expect(foreign).toEqual([]);
   });
 });
+
+describe("the merge rule's own docs do not flag themselves", () => {
+  const I5 = [
+    "**Agents never call merge; only logged paths merge** (I5). The logged paths are the lander, `seat-merge`, Shepherd's",
+    "land loop and the version-packages write. A merge made any other way reads as the owner's own merge.",
+  ].join("\n");
+  const R27 = [
+    "From the bot account (A21, M1a) until M3's walk over main moves exists, this rule and the merge-lint warning are the",
+    "**only guard on R27**: no count of owner-intent moves can run before the walk (D-M3-11).",
+    "The lint warns until D-M3-03 and errors after; D-M8-07 narrows it. Run `pnpm merge:lint`; allowlist in `.github/merge-lint.json`.",
+  ].join("\n");
+
+  it.each([
+    ["I5", I5],
+    ["R27", R27],
+  ])("the %s sentence produces no finding", (_name, text) => {
+    const result = scan([{ path: "CLAUDE.md", text }], rulesWith(), { scoped: false });
+
+    expect(result.findings).toEqual([]);
+  });
+});
