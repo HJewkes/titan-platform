@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "source and dot with an operand no longer name a script word",
+      "file": "packages/tool-guard/src/fd-scripts.ts",
+      "find": "  if (SOURCERS.has(cmd.name)) return",
+      "replace": "  if (SOURCERS.has(cmd.name) && cmd.args.length === 0) return",
+      "kills": [
+        "a shell runs an fd the line opened for reading (TP-3314) denies bash -c 'exec 3< ./x.sh; . /dev/fd/3' 3<&-",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec 3< ./x.sh; . -- /dev/fd/3, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec 3< ./x.sh; source \"--\" /dev/fd/3, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec < ./x.sh; . \\-\\- /dev/stdin, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec < ./x.sh; source -- /dev/stdin, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec < ./x.sh; source /dev/stdin",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; . '--' /dev/fd/$fd, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; . /dev/fd/$fd",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source -- /dev/fd/$fd, whatever the hook's own descriptor holds",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source /dev/fd/$fd",
+        "a shell runs an fd the line opened for reading (TP-3314) denies exec {fd}< ./x.sh; source \\-\\- /dev/fd/$fd, whatever the hook's own descriptor holds"
+      ]
+    }
+  ]
+}
