@@ -97,6 +97,8 @@ export interface Escalated {
   words?: string;
   /** Set on a failed-rounds escalation whose every counted round failed on infrastructure: throttled, timed out, or no verdict. */
   infraOnly?: true;
+  /** Set beside `infraOnly` when no counted round had an adversary that returned a verdict (TP-3796). */
+  neverVerdict?: true;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }
