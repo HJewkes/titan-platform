@@ -85,7 +85,8 @@ const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passag
 /** Retrieval is deterministic, but recording it pins the passages a resumed run judges even if the index moved. */
 async function retrieveRound(state: RunState, round: number, terms: MatchTerms): Promise<Passage[]> {
   const excludeIds = new Set(state.passages.keys());
-  const step = await state.ctx.seed(round === 0 ? "retrieve:r0" : `grow:r${round}`, async () => ({ data: {}, output: JSON.stringify(retrieve(state.config.db, terms, { window: state.config.window, excludeIds }).passages) }));
+  const found = () => retrieve(state.config.db, terms, { window: state.config.window, excludeIds }).passages;
+  const step = await state.ctx.seed(round === 0 ? "retrieve:r0" : `grow:r${round}`, async () => ({ data: {}, output: JSON.stringify(found()) }));
   const passages = JSON.parse(step.output ?? "[]") as Passage[];
   for (const p of passages) state.passages.set(p.id, p);
   return passages;
