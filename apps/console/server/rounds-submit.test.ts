@@ -547,6 +547,27 @@ describe("a round with two PRs (TP-3329)", () => {
     expect(panelsOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
   });
 
+  it("refuses a Ship whose own frame is Rejected, but not the other PR's (TP-3773 S6b)", async () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+    const variants = [{ key: "panel-wide", verdict: "rejected" }];
+
+    const both = await submitTwo({ answers, variants, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    const tilesOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-panels", pick: "Don't ship" }], variants: [{ ...variants[0], comment: "Too wide." }], heads: { "ship-tiles": TILES_HEAD } });
+
+    expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left feedback on frame "Panel, wider"' });
+    expect(tilesOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: TILES_HEAD } });
+  });
+
+  it("takes a Send back whose only note is a comment on its own frame, never on the other PR's (TP-3773 S6b)", async () => {
+    const answers = [{ questionId: "ship-panels", pick: "Don't ship" }];
+
+    const other = await submitTwo({ answers, variants: [{ key: "tile-dark", comment: "Darker." }] });
+    const own = await submitTwo({ answers, variants: [{ key: "panel-wide", comment: "Too wide." }] });
+
+    expect(other.envelope).toMatchObject({ ok: false, error: expect.stringContaining('Send back refused for question "ship-panels"') });
+    expect(own.envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
   it.each(["ship-tiles", "ship-panels"])("refuses %s sent back with no note, even beside a noted Send back, and writes nothing (decision 513)", async (bare) => {
     const answers = ["ship-tiles", "ship-panels"].map((questionId) => ({ questionId, pick: "Don't ship", ...(questionId === bare ? {} : { comment: "Lower the stripe." }) }));
 
