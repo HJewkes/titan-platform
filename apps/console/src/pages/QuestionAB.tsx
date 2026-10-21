@@ -4,7 +4,7 @@ import type { Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { RoundAudio } from "./AudioPlayer.js";
 import { RoundClip } from "./ClipPlayer.js";
-import { frameAnchor, useFrameMedia, useFrameSource, type ABSide } from "./QuestionFrames.js";
+import { frameAnchor, useFrameMedia, useFrameSource, useLiveFrame, type ABSide } from "./QuestionFrames.js";
 import { OptionNote, OptionTexts, type OptionNoting } from "./OptionCard.js";
 import { FrameImage } from "./RoundFrame.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -81,6 +81,8 @@ function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent 
 function SideFrame({ side }: { side: ABSide }): ReactNode {
   const source = useFrameSource();
   const media = useFrameMedia()(side.key);
+  const live = useLiveFrame(side.key, side.label);
+  if (live !== null) return live;
   if (source !== null && media?.clip !== undefined) return <RoundClip roundId={source.roundId} frameKey={side.key} alt={side.label} motion={media.motion} />;
   if (source !== null && media?.audio !== undefined) return <RoundAudio roundId={source.roundId} frameKey={side.key} alt={side.label} transcript={media.transcript} durationMs={media.durationMs} />;
   if (source === null || !source.loadable(side.key)) return <Typography variant="caption" color="secondary">No image for this frame</Typography>;
