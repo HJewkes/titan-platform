@@ -183,10 +183,12 @@ const LOGIN_METHODS = "GET, HEAD, POST";
  *
  * Not exported from the package: `buildHttpApp`'s `gate` option mounts it right after the
  * Host/Origin guard and before every route. Mounted any later, the routes ahead of it are open.
+ * With `login: false` {@link LOGIN_PATH} is gated like any other path: a content origin
+ * borrows the main listener's session and never mints one.
  */
-export function authGate(auth: DaemonAuth): MiddlewareHandler {
+export function authGate(auth: DaemonAuth, { login = true }: { login?: boolean } = {}): MiddlewareHandler {
   return async (c, next) => {
-    if (c.req.path === LOGIN_PATH) return answerLogin(c, auth);
+    if (login && c.req.path === LOGIN_PATH) return answerLogin(c, auth);
     const secret = currentSecret(auth);
     if (secret === null) return unavailable(c);
     const facts = authenticate(c, secret, Date.now());
