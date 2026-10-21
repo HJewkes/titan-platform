@@ -19,7 +19,8 @@ import { compareStoryOrder } from "../story-order.js";
 import type { ChapterMeta, Passage, QuerySpec } from "../types.js";
 import { judgeBatch, type BatchJob, type StageJudge } from "./judge-batch.js";
 import type { Models } from "./routes.js";
-import { readJson, runPaths, writeJson, type BatchArtifact, type RunPaths } from "./run-dir.js";
+import type { CompileRecord } from "./compile.js";
+import { costEntry, readJson, runPaths, writeJson, type BatchArtifact, type CostEntry, type RunPaths } from "./run-dir.js";
 import { warmThenWave } from "./wave.js";
 
 export interface AnswerConfig {
@@ -35,6 +36,8 @@ export interface AnswerConfig {
   budgetUsd: number;
   batchTokens: number;
   window: number;
+  /** The run that compiled the spec, whose call joins this run's cost report; absent when the spec was given. */
+  compileRunId?: string;
 }
 
 export interface Coverage {
@@ -47,11 +50,14 @@ export interface Coverage {
   canaries: { batches: number; misses: number };
 }
 
+/** A verified row with where it came from: the passage's display ref, its book and its story-order key. */
+export type SourcedRow = ConfirmRow & { ref: string; book: string; order: ChapterMeta["order"] };
+
 export interface Answer {
   runId: string;
   rounds: number;
   candidates: number;
-  rows: ConfirmRow[];
+  rows: SourcedRow[];
   coverage: { screen: Coverage; confirm: Coverage };
 }
 
@@ -153,6 +159,21 @@ async function screenRounds(state: RunState): Promise<{ rounds: number; jobs: Ba
   return { rounds: round, jobs, artifacts };
 }
 
+function sourced(state: RunState, rows: readonly ConfirmRow[]): SourcedRow[] {
+  const chapters = new Map(listChapters(state.config.db).map((meta) => [meta.id, meta]));
+  return rows.map((row) => {
+    const passage = state.passages.get(row.id)!;
+    const meta = chapters.get(passage.chapterId)!;
+    return { ...row, ref: passage.ref, book: bookOf(meta), order: meta.order };
+  });
+}
+
+function costReport(state: RunState, artifacts: readonly BatchArtifact<unknown>[]): CostEntry[] {
+  const { compileRunId, dataDir } = state.config;
+  const compiled = compileRunId === undefined ? undefined : readJson<CompileRecord>(runPaths(dataDir, compileRunId).compile);
+  return [...(compiled?.usage ?? []).map((e) => costEntry("compile", e)), ...artifacts.flatMap((a) => a.usage.map((e) => costEntry(a.stage, e)))];
+}
+
 const bookOf = (meta: ChapterMeta): string => (meta.book === undefined ? meta.series : `${meta.series}/book_${String(meta.book).padStart(2, "0")}`);
 
 /** One confirm call per book, holding all of that book's candidate passages, so cross-passage context is in one window. */
@@ -204,9 +225,10 @@ export function answerWorkflow(config: AnswerConfig): WorkflowFn {
       runId: ctx.runId,
       rounds: screened.rounds,
       candidates: candidates.length,
-      rows: confirmed.flatMap((a) => a.items),
+      rows: sourced(state, confirmed.flatMap((a) => a.items)),
       coverage: { screen: coverage(screened.jobs, screened.artifacts), confirm: coverage(jobs, confirmed) },
     };
     writeJson(state.paths.answer, answer);
+    writeJson(state.paths.cost, costReport(state, [...screened.artifacts, ...confirmed]));
   };
 }

@@ -46,11 +46,33 @@ export function readJson<T>(file: string): T | undefined {
   return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as T) : undefined;
 }
 
+/** One line of `cost.json`: a model call's tokens, flat, for the cost report. */
+export interface CostEntry {
+  stage: Stage;
+  model: string;
+  inputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
+  outputTokens?: number;
+  cliCostUsd: number;
+}
+
+const TOKEN_FIELDS = ["inputTokens", "cacheReadTokens", "cacheWrite5mTokens", "cacheWrite1hTokens", "outputTokens"] as const;
+
+/** Cache fields are copied when the runner reported them; a field it left out stays out rather than reading as zero. */
+export function costEntry(stage: Stage, entry: UsageEntry): CostEntry {
+  const usage = entry.usage as StepUsage & Partial<Record<(typeof TOKEN_FIELDS)[number], number>>;
+  const tokens = Object.fromEntries(TOKEN_FIELDS.filter((f) => usage[f] !== undefined).map((f) => [f, usage[f]]));
+  return { stage, model: entry.model, ...tokens, cliCostUsd: usage.costUsd };
+}
+
 export interface RunPaths {
   runDir: string;
   spec: string;
   compile: string;
   answer: string;
+  cost: string;
   batch: (stage: "screen" | "confirm", key: string, round?: number) => string;
 }
 
@@ -61,6 +83,7 @@ export function runPaths(dataDir: string, runId: string): RunPaths {
     spec: path.join(runDir, "spec.json"),
     compile: path.join(runDir, "compile.json"),
     answer: path.join(runDir, "answer.json"),
+    cost: path.join(runDir, "cost.json"),
     batch: (stage, key, round) => path.join(runDir, stage, round === undefined ? "" : `r${round}`, `${key}.json`),
   };
 }

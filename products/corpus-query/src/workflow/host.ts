@@ -70,8 +70,9 @@ async function compileSpec(db: Db, host: HostOptions, question: string, rulesSha
 }
 
 /** Everything a `cq-answer` run needs is in its params, so `resume` rebuilds the same prefixes and runner. */
-function answerParams(options: AskOptions, specSha: string, rulesSha: string | undefined): Record<string, string> {
+function answerParams(options: AskOptions, specSha: string, rulesSha: string | undefined, compileRunId: string | undefined): Record<string, string> {
   return {
+    ...(compileRunId ? { compileRunId } : {}),
     question: options.question,
     corpus: path.resolve(options.corpus),
     index: path.resolve(options.index),
@@ -103,6 +104,7 @@ function answerHost(db: Db, host: HostOptions, params: Record<string, string>): 
   const numeric = (key: string) => Number(params[key]);
   runtime.register(ANSWER_WORKFLOW, answerWorkflow({
     db: index, root: params.corpus!, dataDir: host.dataDir, spec, prefixes, models,
+    ...(params.compileRunId ? { compileRunId: params.compileRunId } : {}),
     rounds: numeric("rounds"), concurrency: numeric("concurrency"), budgetUsd: numeric("budgetUsd"), batchTokens: numeric("batchTokens"), window: numeric("window"),
   }));
   return { runtime, close: () => index.close() };
@@ -129,7 +131,7 @@ export async function ask(options: AskOptions, host: HostOptions): Promise<AskRe
     const compiled = options.spec ? undefined : await compileSpec(db, host, options.question, rulesSha, options.models?.compile ?? DEFAULT_MODELS.compile);
     const spec = options.spec ?? compiled!.spec;
     const specSha = storeContent(host.dataDir, "specs", `${JSON.stringify(spec, null, 2)}\n`);
-    const params = answerParams(options, specSha, rulesSha);
+    const params = answerParams(options, specSha, rulesSha, compiled?.runId);
     const app = answerHost(db, host, params);
     const runId = app.runtime.start(ANSWER_WORKFLOW, params, { onStart: (id) => writeJson(runPaths(host.dataDir, id).spec, spec) });
     return { ...(compiled ? { compileRunId: compiled.runId } : {}), ...(await settle(app, host, runId)) };

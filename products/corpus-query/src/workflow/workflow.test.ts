@@ -7,7 +7,7 @@ import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
 import { CHAIN, fakeJudges, fixture, SPEC, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
 import { COMPILE_ROLE } from "./compile.js";
 import { ask, resume, type AskOptions, type HostOptions } from "./host.js";
-import { readJson, runPaths, sha256, type BatchArtifact } from "./run-dir.js";
+import { readJson, runPaths, sha256, type BatchArtifact, type CostEntry } from "./run-dir.js";
 
 const QUESTION = "List every trophy the Gull Rovers won";
 
@@ -48,6 +48,17 @@ describe("ask", () => {
     expect(answerRun.params.specSha).toBe(sha256(readFileSync(path.join(fx.dataDir, "specs", `${answerRun.params.specSha}.json`), "utf8")));
     expect(judges.calls[0]).toMatchObject({ stage: "compile", model: "sonnet", systemPrompt: COMPILE_ROLE });
     expect(judges.calls.slice(1).every((c) => c.stage !== "compile")).toBe(true);
+  });
+
+  it("writes one cost line per model call, the compile call included, with no invented token counts", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges();
+
+    const result = await ask(options({ spec: undefined }), host(judges.runnerFor));
+
+    const cost = readJson<CostEntry[]>(runPaths(fx.dataDir, result.runId).cost)!;
+    expect(cost.map((c) => `${c.stage}/${c.model}`).sort()).toEqual(judges.calls.map((c) => `${c.stage}/${c.model}`).sort());
+    expect(cost[0]).toEqual({ stage: "compile", model: "sonnet", cliCostUsd: 0.01 });
   });
 
   it("routes screen calls to haiku and confirm calls to sonnet, each under its own fixed prefix", async () => {
@@ -140,10 +151,11 @@ describe("ask", () => {
     fx = fixture(WINS);
     const judges = fakeJudges();
 
-    await ask(options({ concurrency: 4 }), host(judges.runnerFor));
+    const result = await ask(options({ concurrency: 4 }), host(judges.runnerFor));
 
     const confirms = judges.calls.filter((c) => c.stage === "confirm").map((c) => c.refs);
     expect(confirms).toEqual([["GR 1.1", "GR 1.2", "GR 1.3"], ["GR 2.1", "GR 2.2"]]);
+    expect(result.answer!.rows.map((r) => `${r.ref}|${r.book}`)).toEqual(["GR 1.1|gull-rovers/book_01", "GR 1.2|gull-rovers/book_01", "GR 1.3|gull-rovers/book_01", "GR 2.1|gull-rovers/book_02", "GR 2.2|gull-rovers/book_02"]);
   });
 });
 
