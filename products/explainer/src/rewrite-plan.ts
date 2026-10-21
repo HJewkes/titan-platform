@@ -42,7 +42,8 @@ export interface RegisterEditPlan {
 }
 
 export interface PlanOptions {
-  round?: RewriteRound;
+  /** 1 or 2; a CLI passes its parsed `--rounds` value through, so any other number throws. */
+  round?: number;
   /** The longest sentence the guard accepts; a planned long sentence stays under it. */
   cap?: number;
 }
@@ -159,6 +160,8 @@ function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDir
   };
 }
 
+const isRound = (n: number): n is RewriteRound => n === 1 || n === MAX_REWRITE_ROUNDS;
+
 const shapeFailing = (rows: readonly L0Result[]): boolean =>
   failing(rows, "register:sentence-mean") !== undefined || failing(rows, "register:sentence-cv") !== undefined;
 
@@ -168,7 +171,7 @@ const shapeFailing = (rows: readonly L0Result[]): boolean =>
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS } = options;
-  if (round < 1 || round > MAX_REWRITE_ROUNDS) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
+  if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
   const shape = round === 1 && shapeFailing(rows) ? planShape(script.beats, cap) : undefined;
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];

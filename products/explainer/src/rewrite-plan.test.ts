@@ -106,6 +106,6 @@ describe("planRegisterEdits: round 2", () => {
   it("refuses a round past the last", () => {
     const s = script(choppyLines(20));
 
-    expect(() => planRegisterEdits(s, [], { round: (MAX_REWRITE_ROUNDS + 1) as 2 })).toThrow(RangeError);
+    expect(() => planRegisterEdits(s, [], { round: MAX_REWRITE_ROUNDS + 1 })).toThrow(RangeError);
   });
 });
