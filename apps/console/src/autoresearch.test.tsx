@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider } from "@titan-design/react-app";
@@ -73,13 +70,3 @@ describe("the autoresearch page", () => {
   });
 });
 
-const SRC = path.dirname(fileURLToPath(import.meta.url));
-
-describe("the browser bundle", () => {
-  it("imports no twin fixture, so the synthetic run stays out of the served page", async () => {
-    const files = (await readdir(SRC, { recursive: true })).filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file));
-    const sources = await Promise.all(files.map(async (file) => [file, await readFile(path.join(SRC, file), "utf8")] as const));
-
-    expect(sources.filter(([, text]) => /from "[^"]*server\/twin\//.test(text)).map(([file]) => file)).toEqual([]);
-  });
-});

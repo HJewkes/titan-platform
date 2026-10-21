@@ -63,7 +63,8 @@ describe("autoresearch reader", () => {
   });
 
   it("refuses a run row missing its status as schema drift", async () => {
-    const { status: _status, ...row } = AR_RUN_SUMMARY;
+    const row: Record<string, unknown> = { ...AR_RUN_SUMMARY };
+    delete row.status;
     const port = await serve(() => [row]);
 
     await expect(autoresearchReader(port).runs()).rejects.toMatchObject({ message: "factory autoresearch.runs answered an unexpected shape", code: EXIT.SOFTWARE });
