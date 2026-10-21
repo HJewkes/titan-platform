@@ -742,3 +742,37 @@ describe("a design round's picks and frame verdicts, kept in step (TP-3773 S7)",
     expect(within(screen.getByTestId("question-ab-side-beacon-fill-pick-B")).getByRole("button", { name: "Picked B" })).toBeTruthy();
   });
 });
+
+/** The design round with each section passed through `edit`. */
+async function withSections(edit: (section: Extract<RoundDetail, { valid: true }>["manifest"]["sections"][number]) => object): Promise<Partial<RoundDetail>> {
+  const { manifest } = await designRound();
+  return { manifest: { ...manifest, sections: manifest.sections.map((section) => ({ ...section, ...edit(section) })) } };
+}
+
+describe("a design round's section parts and strip kind (TP-3779)", () => {
+  it("shows a section's part as its current code beside the proposed code", async () => {
+    await renderDesign();
+    await toSection("fill");
+
+    const part = screen.getByTestId("part-beacon-fill");
+    expect(within(part).getByText("beacon-fill")).toBeTruthy();
+    expect(within(within(part).getByTestId("part-pane-current")).getByText('fill: "ring"')).toBeTruthy();
+    expect(within(within(part).getByTestId("part-pane-proposed")).getByText('fill: "solid"')).toBeTruthy();
+  });
+
+  it("shows a section without parts with its notes and no parts", async () => {
+    await renderDesign({ detail: await withSections(() => ({ parts: undefined })) });
+    await toSection("fill");
+
+    expect(screen.queryByTestId("section-parts")).toBeNull();
+    expect(screen.getByText("Whether the beacon is a ring or a filled dot.")).toBeTruthy();
+  });
+
+  it("labels a STATES strip as states with nothing to choose between", async () => {
+    await renderDesign();
+
+    const label = screen.getByTestId("strip-kind-states");
+    expect(within(label).getByText("STATES")).toBeTruthy();
+    expect(within(label).getByText("one design in several states; nothing to choose between")).toBeTruthy();
+  });
+});

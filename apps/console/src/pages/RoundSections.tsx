@@ -12,6 +12,7 @@ import { pickVerdicts, verdictAnswers } from "./frame-link.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
+import { SectionParts } from "./RoundParts.js";
 import { pageIdOf } from "./round-pages.js";
 
 /** Questions in section order, then any no section claims. */
@@ -187,6 +188,7 @@ function SectionNotes({ section }: { section: RoundSection }): ReactNode {
     <VStack gap={3}>
       {section.deciding ? <RoundNote heading="Deciding" text={section.deciding} /> : null}
       {section.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
+      <SectionParts parts={section.parts} />
       {section.context ? <RoundNote heading="Context" text={section.context} /> : null}
     </VStack>
   );

@@ -35,9 +35,6 @@ export interface CheckGroup {
   frames: CheckFrame[];
 }
 
-/** A frame no section shows still has its verdict listed, after every section. */
-const OTHER_FRAMES = "~frames";
-
 /** The round's answers and frame verdicts grouped as the pager pages them, so a row names the page it is answered on. */
 export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAnswer[], variants: readonly PostedVariant[] = []): CheckGroup[] {
   const pages = sectionPages(orderedQuestions(manifest));
@@ -45,14 +42,11 @@ export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAns
   const open = unanswered(all, submitted);
   const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
   const framesOf = (keys: ReadonlySet<string>): CheckFrame[] => variants.filter((variant) => keys.has(variant.key)).map((variant) => ({ ...variant, label: labels.get(variant.key) ?? variant.key }));
-  const groups = pages.map((page): CheckGroup => {
+  return pages.map((page): CheckGroup => {
     const section = manifest.sections.find((each) => each.id === page.id);
     const rows = page.questions.map((question) => ({ question, position: all.indexOf(question) + 1, answer: submitted.find((answer) => answer.questionId === question.id), open: open.includes(question) }));
     return { id: page.id, title: page.title, rows, frames: framesOf(new Set(section?.variantKeys)) };
   });
-  const placed = new Set(manifest.sections.flatMap((section) => section.variantKeys));
-  const loose = framesOf(new Set(variants.map((variant) => variant.key).filter((key) => !placed.has(key))));
-  return loose.length > 0 ? [...groups, { id: OTHER_FRAMES, title: "Other frames", rows: [], frames: loose }] : groups;
 }
 
 /** An option names a frame by its variant key, so it reads as the key and the frame's label, as the harness's did. */
