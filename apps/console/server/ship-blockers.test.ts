@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FIXTURE_ROUNDS, twoPrRound } from "./round-fixtures.js";
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 import { parseManifest } from "./rounds.js";
-import { priorFeedback, sendBackBlocker, shipBlockers, shipScope } from "./ship-blockers.js";
+import { frameScope, priorFeedback, sendBackBlocker, shipBlockers, shipScope } from "./ship-blockers.js";
 
 function fixture(id: string): Manifest {
   const parsed = parseManifest(readFileSync(path.join(FIXTURE_ROUNDS.dir, id, "round.json")));
@@ -15,9 +15,15 @@ function fixture(id: string): Manifest {
 const SHIP_TILE = fixture("ship-tile-r1");
 const atRound = (round: number, manifest = SHIP_TILE): Manifest => ({ ...manifest, round });
 
-function feedback(answers: Feedback["answers"], general = ""): Feedback {
-  return { schema: "titan-review/feedback@1", unit: "ship-tile", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-05T00:00:00.000Z", answers, variants: [], general };
+function feedback(answers: Feedback["answers"], general = "", variants: Feedback["variants"] = []): Feedback {
+  return { schema: "titan-review/feedback@1", unit: "ship-tile", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-05T00:00:00.000Z", answers, variants, general };
 }
+
+type SentVariant = Feedback["variants"][number];
+const PIN = { id: "tile-dark-1", width: 1280, x: 640, y: 40, xPct: 0.5, yPct: 0.1, note: "Stripe overlaps the edge." };
+const sentFrame = (key: string, words: Partial<Pick<SentVariant, "verdict" | "comment" | "annotations">>): SentVariant => ({
+  key, image: `images/${key}.png`, verdict: null, comment: "", annotations: [], ...words,
+});
 
 function withSide(side: Question, recommendations: Manifest["recommendations"] = "after-answer"): Manifest {
   return { ...SHIP_TILE, recommendations, questions: SHIP_TILE.questions.map((question) => (question.id === "badge-follow-up" ? side : question)) };
@@ -58,6 +64,23 @@ describe("priorFeedback", () => {
   });
 });
 
+describe("priorFeedback on frames (TP-3773 S6b)", () => {
+  it("lists an earlier round whose only feedback is on its frames, each frame as one line", () => {
+    const variants = [sentFrame("tile-light", { verdict: "rejected" }), sentFrame("tile-dark", { verdict: "maybe", comment: "Too dark.", annotations: [PIN] }), sentFrame("badge-new", { verdict: "chosen" })];
+    const earlier = [{ manifest: atRound(1), feedback: feedback([{ questionId: "ship-tiles", pick: "Ship" }], "", variants) }];
+
+    expect(priorFeedback(atRound(2), earlier)).toEqual([
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", frames: ["Tile, light (rejected)", "Tile, dark (maybe): Too dark.; pin 1: Stripe overlaps the edge."] },
+    ]);
+  });
+
+  it("skips an earlier round whose frames were only Chosen or Maybe with no words", () => {
+    const variants = [sentFrame("tile-light", { verdict: "chosen" }), sentFrame("tile-dark", { verdict: "maybe" })];
+
+    expect(priorFeedback(atRound(2), [{ manifest: atRound(1), feedback: feedback([{ questionId: "ship-tiles", pick: "Ship" }], "", variants) }])).toEqual([]);
+  });
+});
+
 describe("shipBlockers", () => {
   const prior = [{ round: 1, submittedAt: "2031-03-05T00:00:00.000Z", pick: "Don't ship" }];
 
@@ -77,6 +100,20 @@ describe("shipBlockers", () => {
       'you left a comment on "File the badge colour as a follow-up?"',
       "you left feedback on this round",
     ]);
+  });
+
+  it.each([
+    ["a frame comment", { key: "tile-dark", comment: "Too dark." }],
+    ["a pin", { key: "tile-dark", annotations: [PIN] }],
+    ["a Rejected verdict", { key: "tile-dark", verdict: "rejected" as const }],
+  ])("blocks on %s on this round's frame (TP-3773 S6b)", (_label, variant) => {
+    expect(shipBlockers(SHIP_TILE, [], { ...NO_DRAFT, variants: [variant] })).toEqual(['you left feedback on frame "Tile, dark"']);
+  });
+
+  it("lets a Chosen or Maybe frame with no comment ship", () => {
+    const variants = [{ key: "tile-light", verdict: "chosen" as const }, { key: "tile-dark", verdict: "maybe" as const, comment: "  " }];
+
+    expect(shipBlockers(SHIP_TILE, [], { ...NO_DRAFT, variants })).toEqual([]);
   });
 
   it("ignores blank text", () => {
@@ -129,6 +166,27 @@ describe("shipScope (TP-3329)", () => {
   });
 });
 
+describe("frameScope (TP-3773 S6b)", () => {
+  const twoPr = (() => {
+    const parsed = parseManifest(Buffer.from(JSON.stringify(twoPrRound())));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.manifest;
+  })();
+
+  it("gives each Ship question its own PR's frames, and a round with one PR every frame", () => {
+    expect([...frameScope(twoPr, "ship-tiles")]).toEqual(["tile-light", "tile-dark"]);
+    expect([...frameScope(twoPr, "ship-panels")]).toEqual(["panel-wide", "badge-new"]);
+    expect([...frameScope(SHIP_TILE, "ship-tiles")]).toEqual(["tile-light", "tile-dark", "badge-new", "panel-wide"]);
+  });
+
+  it("lets another PR's frame feedback leave this PR's Ship open", () => {
+    const draft = { ...NO_DRAFT, variants: [{ key: "panel-wide", verdict: "rejected" as const }] };
+
+    expect(shipBlockers(twoPr, [], draft, "ship-tiles")).toEqual([]);
+    expect(shipBlockers(twoPr, [], draft, "ship-panels")).toEqual(['you left feedback on frame "Panel, wider"']);
+  });
+});
+
 describe("sendBackBlocker (decision 513)", () => {
   const backPanels = { questionId: "ship-panels", pick: "Don't ship" };
 
@@ -137,6 +195,17 @@ describe("sendBackBlocker (decision 513)", () => {
     ["a round note", [backPanels], "Both need another pass."],
   ])("lets a PR go back on %s", (_label, answers, general) => {
     expect(sendBackBlocker({ answers, general }, "ship-panels")).toBeUndefined();
+  });
+
+  it.each([
+    ["a frame comment", { key: "panel-wide", comment: "Narrower." }],
+    ["a pin", { key: "panel-wide", annotations: [{ ...PIN, id: "panel-wide-1" }] }],
+  ])("lets a PR go back on %s alone, as the fixer gets it", (_label, variant) => {
+    expect(sendBackBlocker({ answers: [backPanels], general: "", variants: [variant] }, "ship-panels")).toBeUndefined();
+  });
+
+  it("holds Send back on a verdict with no words, which the fixer never gets", () => {
+    expect(sendBackBlocker({ answers: [backPanels], general: "", variants: [{ key: "panel-wide", verdict: "rejected" }] }, "ship-panels")).toBeDefined();
   });
 
   it("holds a PR's Send back when only another PR's Ship question carries a comment", () => {

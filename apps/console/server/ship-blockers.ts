@@ -3,7 +3,8 @@
  * ticked as addressed, and any change request in the answer being sent (owner item 166: free text, or a
  * pick that differs from the implemented choice). The page disables Ship for these reasons and
  * `rounds.submit` refuses a Ship pick for the same ones, so this module imports types only and runs in both.
- * An answer the owner marks follow-up (TP-3346) is filed for later instead, so it never blocks.
+ * An answer the owner marks follow-up (TP-3346) is filed for later instead, so it never blocks. A frame's comment,
+ * pin or Rejected verdict asks for a change as a comment does (TP-3773 S6b); Chosen or Maybe alone does not.
  */
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 
@@ -15,6 +16,8 @@ export interface PriorFeedback {
   revisionRequested?: true;
   comment?: string;
   general?: string;
+  /** One line per frame that round left feedback on. */
+  frames?: string[];
 }
 
 export interface DraftAnswer {
@@ -25,6 +28,14 @@ export interface DraftAnswer {
   comment?: string;
 }
 
+/** A frame's verdict, comment and pins, as drafted or as sent in feedback `variants`. */
+interface DraftFrame {
+  key: string;
+  verdict?: "chosen" | "rejected" | "maybe" | null;
+  comment?: string;
+  annotations?: readonly { note: string }[];
+}
+
 /** The answer about to be sent: every answer with its comment, the round note, the rounds ticked Addressed and the follow-ups. */
 interface ShipDraft {
   answers: readonly DraftAnswer[];
@@ -32,6 +43,8 @@ interface ShipDraft {
   addressed: readonly number[];
   /** The side questions marked follow-up; absent is none. */
   followUps?: readonly string[];
+  /** The frames' feedback; absent is none. */
+  variants?: readonly DraftFrame[];
 }
 
 interface EarlierRound {
@@ -59,10 +72,22 @@ function commentsOf(feedback: Feedback, mergeId: string | undefined, followUps: 
   return ordered.flatMap((answer) => (blank(answer.comment) ? [] : [answer.comment ?? ""]));
 }
 
+/** Words the fixer gets: a frame's comment or a pin. */
+const hasWords = (frame: DraftFrame): boolean => !blank(frame.comment) || (frame.annotations ?? []).length > 0;
+const asksChange = (frame: DraftFrame): boolean => hasWords(frame) || frame.verdict === "rejected";
+const labelOf = (manifest: Manifest, key: string): string => manifest.variants.find((variant) => variant.key === key)?.label ?? key;
+
+function frameLine(manifest: Manifest, frame: DraftFrame): string {
+  const head = frame.verdict ? `${labelOf(manifest, frame.key)} (${frame.verdict})` : labelOf(manifest, frame.key);
+  const words = [...(blank(frame.comment) ? [] : [(frame.comment ?? "").trim()]), ...(frame.annotations ?? []).map((pin, index) => `pin ${index + 1}: ${pin.note.trim()}`)];
+  return words.length === 0 ? head : `${head}: ${words.join("; ")}`;
+}
+
 function feedbackItem({ manifest, feedback, followUps = [] }: EarlierRound & { feedback: Feedback }): PriorFeedback | null {
   const { answer, ship } = mergeAnswer(manifest, feedback);
   const pick = answer?.pick !== undefined && !ship.includes(answer.pick) ? answer.pick : undefined;
   const comment = commentsOf(feedback, answer?.questionId, followUps).join("\n\n");
+  const frames = feedback.variants.filter(asksChange).map((frame) => frameLine(manifest, frame));
   const item: PriorFeedback = {
     round: manifest.round,
     submittedAt: feedback.submittedAt,
@@ -70,6 +95,7 @@ function feedbackItem({ manifest, feedback, followUps = [] }: EarlierRound & { f
     ...(answer?.revisionRequested && { revisionRequested: true as const }),
     ...(comment !== "" && { comment }),
     ...(!blank(feedback.general) && { general: feedback.general }),
+    ...(frames.length > 0 && { frames }),
   };
   return Object.keys(item).length > 2 ? item : null;
 }
@@ -138,17 +164,32 @@ export function shipScope(manifest: Manifest, mergeId: string): ReadonlySet<stri
   return new Set([...all].filter((id) => (claimedBy.get(id) ?? own) === own && (id === mergeId || !merges.some((other) => other.id === id))));
 }
 
+/**
+ * The frames whose feedback bears on shipping one merge question: in a round with several, those its own PR group's sections
+ * show and those no group shows; in a round with one, every frame. A frame belongs to the PR its montage belongs to.
+ */
+export function frameScope(manifest: Manifest, mergeId: string): ReadonlySet<string> {
+  const all = manifest.variants.map((variant) => variant.key);
+  const merge = manifest.questions.filter(isMerge).find((question) => question.id === mergeId);
+  if (manifest.questions.filter(isMerge).length < 2 || merge === undefined || manifest.prGroups === undefined) return new Set(all);
+  const keysOf = (group: NonNullable<Manifest["prGroups"]>[number]) => manifest.sections.filter((section) => group.sectionIds.includes(section.id)).flatMap((section) => section.variantKeys);
+  const own = new Set(manifest.prGroups.filter((group) => group.pr === pageOf(merge)).flatMap(keysOf));
+  const claimed = new Set(manifest.prGroups.flatMap(keysOf));
+  return new Set(all.filter((key) => own.has(key) || !claimed.has(key)));
+}
+
 const NEEDS_NOTE = "Send back needs a note: say what to fix in the Ship comment or the round note.";
 
 /**
  * Why one PR's Send back is off; undefined when it may go. The fixer's note is the round note and the comment
  * on that PR's own Ship question, and the factory refuses an empty one, so Send back waits for one of them
  * (owner decision 513). A note on another PR's Ship question does not count, and unanswered side questions
- * go with it as unanswered.
+ * go with it as unanswered. A frame's comment or pin reaches the fixer too (TP-3799), so it is a note; the
+ * caller passes only the frames `frameScope` gives this PR.
  */
-export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general">, mergeId: string): string | undefined {
+export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general" | "variants">, mergeId: string): string | undefined {
   const note = draft.answers.find((answer) => answer.questionId === mergeId)?.comment;
-  return blank(note) && blank(draft.general) ? NEEDS_NOTE : undefined;
+  return blank(note) && blank(draft.general) && !(draft.variants ?? []).some(hasWords) ? NEEDS_NOTE : undefined;
 }
 
 /** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
@@ -156,9 +197,12 @@ export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[]
   const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
   const scope = mergeId === undefined ? undefined : shipScope(manifest, mergeId);
   const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId) && (scope?.has(answer.questionId) ?? true));
+  const frames = mergeId === undefined ? undefined : frameScope(manifest, mergeId);
+  const judged = (draft.variants ?? []).filter((frame) => asksChange(frame) && (frames?.has(frame.key) ?? true));
   return [
     ...open.map((round) => `your feedback from round ${round} is not ticked Addressed`),
     ...thisPr.flatMap((answer) => answerBlockers(manifest, answer)),
+    ...judged.map((frame) => `you left feedback on frame "${labelOf(manifest, frame.key)}"`),
     ...(blank(draft.general) ? [] : ["you left feedback on this round"]),
   ];
 }

@@ -199,3 +199,30 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     expect(addressed.getAttribute("aria-checked")).toBe("true");
   });
 });
+
+describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", () => {
+  const verdict = (pr: string, key: string, label: string): HTMLElement => within(within(screen.getByTestId(`pr-${pr}`)).getByTestId(`montage-${key}`)).getByRole("button", { name: label });
+
+  it("turns Ship off only for the PR whose own frame is Rejected, and sends the verdict", async () => {
+    const calls = await renderPrs();
+
+    fireEvent.click(verdict("example/panels#2", "panel-wide", "Rejected"));
+
+    expect(disabled("Ship example/panels#2")).toBe(true);
+    expect(pr("example/panels#2").getByTestId("ship-blocked").textContent).toContain('you left feedback on frame "Panel, wider"');
+    expect(disabled("Ship example/tiles#1")).toBe(false);
+    fireEvent.click(button("Ship example/tiles#1"));
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
+    fireEvent.click(button("Send back example/panels#2"));
+    fireEvent.click(button("Send answers"));
+    expect(submits(calls)).toEqual([expect.objectContaining({ variants: [{ key: "panel-wide", verdict: "rejected" }] })]);
+  });
+
+  it("takes a comment on a PR's own frame as its Send back note, never one on the other PR's frame", async () => {
+    await renderPrs();
+
+    fireEvent.change(screen.getByLabelText("Comment on frame Tile, dark"), { target: { value: "Darker stripe." } });
+    expect(disabled("Send back example/panels#2")).toBe(true);
+    expect(disabled("Send back example/tiles#1")).toBe(false);
+  });
+});
