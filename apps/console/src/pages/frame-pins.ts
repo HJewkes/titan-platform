@@ -6,10 +6,10 @@ import type { ConsoleCommands } from "../../server/commands.js";
  */
 type PostedVariant = NonNullable<ConsoleCommands["rounds.submit"]["args"]["variants"]>[number];
 export type Pin = NonNullable<PostedVariant["annotations"]>[number];
-export type PinTarget = Pin["target"];
+type PinTarget = Pin["target"];
 
 /** What a pin is measured against; a live story iframe (TP-3793) supplies its own behind the same interface. */
-export interface PinSurface {
+interface PinSurface {
   /** CSS px the pin's x/y are measured in; written as the pin's `width`. */
   width: number;
   height: number;
@@ -46,7 +46,7 @@ export function pointerPin(point: { clientX: number; clientY: number }, rect: { 
 }
 
 /** A pin's id is its frame's key and its number. */
-export const pinId = (key: string, n: number): string => `${key}-${n}`;
+const pinId = (key: string, n: number): string => `${key}-${n}`;
 
 /** The number a pin is shown by, from its `${key}-${n}` id; the server refuses any other id. */
 export const pinNumber = (key: string, id: string): string => id.slice(key.length + 1);

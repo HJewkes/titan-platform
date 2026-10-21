@@ -3,7 +3,7 @@ import { Button, ButtonText, HStack, Input, VStack } from "@titan-design/react-u
 import { describeTarget, isTap, pinNumber, pngSurface, pointerPin, type Pin, type PngWidths } from "./frame-pins.js";
 
 /** Where a pin is drawn: enough of a draft or a sent pin to number and place it. */
-export type DrawnPin = Pick<Pin, "id" | "xPct" | "yPct">;
+type DrawnPin = Pick<Pin, "id" | "xPct" | "yPct">;
 
 /** One frame's pins as its figure shares them with the image inside it; outside a design round's figure there is none. */
 export interface FramePins {
