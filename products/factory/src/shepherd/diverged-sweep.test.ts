@@ -303,10 +303,23 @@ describe("serve's adoption sweep", () => {
 
     const server = await startFactoryServer({ dbPath, workflows: [build(true)], routes: next.routes, port: 0, logger: silentLogger, gatePollMs: 5, github: { status: () => "ok", refresh: async () => undefined } });
     closers.push(() => server.close());
-    const health = z.object({ recoveryRequired: z.array(z.string()), recoveryPrClosed: z.array(z.string()) }).parse(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json());
+    const health = z.object({ recoveryRequired: z.array(z.string()), recoveryPrClosed: z.array(z.string()), recoveryReplayDiverged: z.array(z.string()) }).parse(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json());
     failingCancel.mockRestore();
 
     expect(health.recoveryRequired).toEqual(oldRunIds);
     expect(health.recoveryPrClosed).toEqual(oldRunIds);
+    expect(health.recoveryReplayDiverged).toEqual(oldRunIds);
+  });
+
+  it("lists each run its sweep restarted with the successor in /health, for the deploy watch to report (TP-3889)", async () => {
+    const { next, dbPath, oldRunIds } = await parkedRuns();
+    next.host.close();
+
+    const server = await startFactoryServer({ dbPath, workflows: [build(true)], routes: next.routes, port: 0, logger: silentLogger, gatePollMs: 5, github: { status: () => "ok", refresh: async () => undefined } });
+    closers.push(() => server.close());
+    const health = z.object({ divergedRestarts: z.array(z.object({ runId: z.string(), newRunId: z.string() })) }).parse(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json());
+
+    const successor = next.routes.shepherd!.store.get().all()[0]!.runId;
+    expect(health.divergedRestarts).toEqual([{ runId: oldRunIds[0], newRunId: successor }]);
   });
 });

@@ -11,7 +11,7 @@ import type { Registration, ShepherdStore } from "./store.js";
 import { SEAT_STEPS } from "./waiting.js";
 
 interface DivergedSweep {
-  restarted: Array<{ runId: string; newRunId: string }>;
+  restarted: DivergedRestart[];
   /** Runs cancelled because their pull request is no longer open. */
   ended: Array<{ runId: string; reason: string }>;
   /** Runs whose pull request the sweep read as no longer open, whether or not their cancel went through. */
@@ -100,11 +100,28 @@ const closedAtLastSweep = new WeakMap<ShepherdServices, ReadonlySet<string>>();
 /** The parked runs serve's last sweep read a closed or merged PR for; a deploy's watch does not count them against the build (TP-3220). */
 export const divergedPrClosed = (services: ShepherdServices | undefined): ReadonlySet<string> => (services && closedAtLastSweep.get(services)) ?? new Set();
 
+export interface DivergedRestart {
+  runId: string;
+  newRunId: string;
+}
+
+/** Bounds the record a long-lived serve keeps; a deploy's watch reads it within minutes of the restart. */
+const RESTARTS_KEPT = 200;
+const restartedSinceStart = new WeakMap<ShepherdServices, readonly DivergedRestart[]>();
+
+/** The diverged runs this serve's sweeps restarted, oldest first; a deploy's watch reports them rather than counting them against the build (TP-3889). */
+export const divergedRestarts = (services: ShepherdServices | undefined): readonly DivergedRestart[] => (services && restartedSinceStart.get(services)) ?? [];
+
+function keepRestarts(services: ShepherdServices, restarted: readonly DivergedRestart[]): void {
+  if (restarted.length > 0) restartedSinceStart.set(services, [...divergedRestarts(services), ...restarted].slice(-RESTARTS_KEPT));
+}
+
 /** Runs at the head of each adoption, so a deploy that changed the call sequence strands none of the runs it parked; a failure here never keeps the adopt step from running. */
 export async function restartDivergedLogged(host: FactoryHost, services: ShepherdServices, log: Logger, closing: () => boolean = () => false): Promise<void> {
   try {
     const { restarted, ended, closed, kept, errors } = await restartDivergedRuns({ host, shepherd: services, warnings: [], format: "json" }, closing);
     closedAtLastSweep.set(services, new Set(closed));
+    keepRestarts(services, restarted);
     for (const run of restarted) log.info({ ...run }, "restarted a replay-diverged run");
     for (const run of ended) log.info({ ...run }, "ended a replay-diverged run whose PR is no longer open");
     for (const run of kept) log.warn({ ...run }, "left a replay-diverged run parked: its owner gate is still pending");

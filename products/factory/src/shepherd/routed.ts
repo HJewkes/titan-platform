@@ -8,6 +8,7 @@ import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_RO
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
+import { countFailedReviewers, type NoVerdictState } from "./no-verdict-round.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -19,7 +20,7 @@ export interface Routed {
 }
 
 /** The run's round counters `countRound` advances; its FIX_FIRST count is the run's recorded `FIX_FIRST_STEP`s. */
-interface RoundCounts extends FixFirstTrail {
+interface RoundCounts extends FixFirstTrail, NoVerdictState {
   ctx: WorkflowContext;
   target: { repo: RepoSlug; pr: number };
   failedRounds: number;
@@ -53,10 +54,16 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
   run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : outcome);
+  countFailedReviewers(run);
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
-  const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
+  return failedRoundsEscalation(run, routed);
+}
+
+function failedRoundsEscalation(run: RoundCounts, { verdict, outcome, headSha }: Routed): Escalated {
+  const ended = (verdict.kind === "none" && verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
   const infra = run.failedOutcomes.every((failed) => INFRA_FAILURES.has(failed));
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }) };
+  const never = infra && !run.adversaryHeard;
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
 }
 
 /** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
