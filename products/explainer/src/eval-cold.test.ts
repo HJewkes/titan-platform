@@ -290,6 +290,17 @@ describe("the streamed cold-viewer probe", () => {
     expect(asked).toMatchObject([{ beat: "d1-1", item: "dock" }]);
   });
 
+  // Mutation: counting viewer-term zeros in undefined_items moves the chapter bars away from runs before TP-3807.
+  it("counts an unexplained viewer-named term in its own column, not in the chapter's undefined items", async () => {
+    const beats = buildPaceBeats([source("v1-1", "ch1", "Each parcel waits at the dock until the sorter takes it.", ["card:parcel"], 6)]);
+
+    const result = await runCold({ ...input(fakeViewer({ notStated: true }).harness), beats, glossary: ["dock"], viewerTerms: ["sorter", "dock"] });
+
+    const [chapter] = result.chapters;
+    expect(chapter!.scores.map((s) => [s.kind, s.item])).toEqual([["what-why", "parcel"], ["spoken-term", "dock"], ["viewer-term", "sorter"]]);
+    expect(chapter).toMatchObject({ undefined_items: 2, undefined_per_minute: 20, undefined_terms: 1, undefined_terms_per_minute: 10 });
+  });
+
   it("poses spoken terms in their chapter and counts an unexplained one as an undefined item", async () => {
     const beats = buildPaceBeats([
       source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6),

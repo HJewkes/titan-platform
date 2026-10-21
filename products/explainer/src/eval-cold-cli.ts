@@ -21,7 +21,7 @@ const COLD_RUNS = 3;
 
 const RUN_KEY = ["config_id", "script_sha", "eval_id", "eval_version", "judge", "run", "chapter"] as const;
 const COLD_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "item", "score", "void_reason"] as const;
-const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "summary"] as const;
+const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "undefined_terms", "undefined_terms_per_minute", "summary"] as const;
 
 interface ColdFlags {
   judge: string;
@@ -73,14 +73,14 @@ function writeRows(p: Prepared, result: ColdResult, run: number): void {
 }
 
 function report(p: Prepared, run: number, r: ColdResult): void {
-  const perMinute = Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(c.undefined_per_minute.toFixed(2))]));
+  const perMinute = (rate: (c: ColdResult["chapters"][number]) => number) => Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(rate(c).toFixed(2))]));
   const failedCanaries = r.chapters.flatMap((c) => c.canaries).filter((k) => !k.pass).map((k) => `${k.canary}=${k.got}`);
   const gaps = p.readerGaps ? { reader_gaps: readerGapScores(p.readerGaps, r) } : {};
-  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
+  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute((c) => c.undefined_per_minute), undefined_terms_per_minute: perMinute((c) => c.undefined_terms_per_minute), failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
 }
 
-/** The viewers' agreed undefined terms join the glossary; a failed call leaves the questions short, so it untrusts. */
+/** The viewers' agreed undefined terms are asked beside the glossary; a failed call leaves the questions short, so it untrusts. */
 async function withViewerTerms(p: Prepared, now: () => Date): Promise<{ input: Prepared["input"]; trusted: boolean }> {
   const started = now();
   const named = await coldTerms({ beats: p.input.beats, rubric: readRubric(COLD_TERMS_RUBRIC), harness: p.input.harness });
@@ -88,7 +88,7 @@ async function withViewerTerms(p: Prepared, now: () => Date): Promise<{ input: P
   const evalVersion = coldEvalVersion(p.input);
   appendRun(p.bench, judgedRun({ ...p.record, evalId: COLD_TERMS_EVAL_ID, evalVersion, judge, run: 1, spend: named.spend, started, finished: now() }));
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, viewer_terms: named.terms, named: named.named, failures: named.failures, usd: named.spend.usd }));
-  return { input: { ...p.input, glossary: [...(p.input.glossary ?? []), ...named.terms] }, trusted: named.failures.length === 0 };
+  return { input: { ...p.input, viewerTerms: named.terms }, trusted: named.failures.length === 0 };
 }
 
 /** Each run is a fresh viewer; every run's rows are kept, and the command is trusted only if all of them are. */

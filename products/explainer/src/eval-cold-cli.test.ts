@@ -137,8 +137,9 @@ describe("explainer eval cold", () => {
 
     expect(viewer.termCalls).toHaveLength(3);
     expect(viewer.termCalls[0]).toContain("## Chapter ch2");
-    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "spoken-term");
+    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "viewer-term");
     expect(asked.map((r) => [r.chapter, r.item, r.score])).toEqual([["ch1", "desk", "0"]]);
+    expect(evalRows("cold-chapters.tsv")[0]).toMatchObject({ chapter: "ch1", undefined_terms: "1" });
     const terms = allRecords().filter((r) => r.eval_id === "L1-cold-terms");
     expect(terms).toMatchObject([{ run: 1, usd: 0.09, tokens_in: 1500, judge: "claude-print:sonnet" }]);
   });

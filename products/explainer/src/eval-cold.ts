@@ -19,7 +19,8 @@ export const COLD_TERMS_RUBRIC = "l1-cold-terms.md";
 /** The rubric for spoken-term questions, asked in a call of their own so their stricter bar cannot reach item labels. */
 export const COLD_SPOKEN_RUBRIC = "l1-cold-spoken.md";
 
-type ScoredKind = "what-why" | "invariant" | "spoken-term";
+type ScoredKind = "what-why" | "invariant" | "spoken-term" | "viewer-term";
+const isTerm = (q: { kind: string }): boolean => q.kind === "spoken-term" || q.kind === "viewer-term";
 
 export type ColdQuestion =
   | { kind: ScoredKind; beat: string; item: string; text: string }
@@ -37,15 +38,15 @@ const oddOneOutText = (items: readonly string[]): string =>
  * Every question comes from the item track, or from a term spoken before any label shows it (see `spokenTerms`), so a
  * script cannot pass on questions written to suit it. `glossary` is the script's own declared term list.
  */
-export function coldQuestions(beats: readonly PaceBeat[], glossary: readonly string[] = []): ColdQuestion[] {
-  const terms = spokenTerms(beats, glossary);
+export function coldQuestions(beats: readonly PaceBeat[], glossary: readonly string[] = [], viewerTerms: readonly string[] = []): ColdQuestion[] {
+  const terms = spokenTerms(beats, glossary, viewerTerms);
   return beats.flatMap((beat): ColdQuestion[] => {
     const listed = listedLabels(beat);
     const heard = terms.filter((t) => t.beat === beat.id);
     return [
       ...beat.newItems.map((i) => ({ kind: "what-why" as const, beat: beat.id, item: i.label, text: whatWhyText(i.label) })),
       ...beat.newItems.filter((i) => i.kind === "inv").map((i) => ({ kind: "invariant" as const, beat: beat.id, item: i.label, text: invariantText(i.label) })),
-      ...heard.map((t) => ({ kind: "spoken-term" as const, beat: beat.id, item: t.term, text: termText(t.term) })),
+      ...heard.map((t) => ({ kind: t.viewer ? ("viewer-term" as const) : ("spoken-term" as const), beat: beat.id, item: t.term, text: termText(t.term) })),
       ...(listed.length >= ODD_ONE_OUT_MIN_ITEMS ? [{ kind: "odd-one-out" as const, beat: beat.id, items: listed, text: oddOneOutText(listed) }] : []),
     ];
   });
@@ -150,10 +151,11 @@ export interface ColdInput {
   harness: JudgeHarness;
   run: number;
   /**
-   * The script's declared terms (`video.glossary` names) and the viewers' agreed undefined terms (`coldTerms`); each
-   * is asked where it is first spoken, if no label shows it.
+   * The script's declared terms (`video.glossary` names); each is asked where it is first spoken, if no label shows it.
    */
   glossary?: readonly string[];
+  /** The viewers' agreed undefined terms (`coldTerms`), asked like the glossary but counted in their own column. */
+  viewerTerms?: readonly string[];
 }
 
 export interface ColdScore extends ColdGrade {
@@ -178,6 +180,9 @@ export interface ColdChapter {
   odd_one_out: OddOneOutPick[];
   undefined_items: number;
   undefined_per_minute: number;
+  /** Viewer-term questions scored 0; kept out of `undefined_items` so its bars compare with runs before TP-3807. */
+  undefined_terms: number;
+  undefined_terms_per_minute: number;
   /** One a call: the item call's, then the spoken-term call's when the chapter speaks a term. */
   canaries: CanaryResult[];
 }
@@ -206,6 +211,7 @@ export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): str
     bare_list_item: BARE.void_reason,
     transcript: "spoken words and beat ends; no screen",
     spoken_terms: "glossary, identifiers and viewer-named terms, at first spoken use, unless a label shows them",
+    viewer_term_zeros: "own column, not in undefined_items",
     spoken_rubric_sha: canonicalSha(readRubric(COLD_SPOKEN_RUBRIC)),
     viewer_terms: { rubric_sha: canonicalSha(readRubric(COLD_TERMS_RUBRIC)), runs: TERM_RUNS, quorum: TERM_QUORUM, fold: "case and plural" },
   });
@@ -254,7 +260,9 @@ function gradeChapter(chapter: ColdChapterBeats, calls: readonly ChapterCall[], 
   const graded = calls.map((call) => gradeCall(chapter, call));
   const scores = graded.flatMap((g) => g.scores);
   const minutes = chapter.beats.reduce((sum, b) => sum + b.durationS, 0) / 60;
-  const undefinedItems = scores.filter((s) => s.kind !== "invariant" && s.score === 0).length;
+  const undefinedItems = scores.filter((s) => s.kind !== "invariant" && s.kind !== "viewer-term" && s.score === 0).length;
+  const undefinedTerms = scores.filter((s) => s.kind === "viewer-term" && s.score === 0).length;
+  const perMinute = (n: number): number => (minutes > 0 ? n / minutes : 0);
   return {
     chapter: chapter.chapter,
     minutes,
@@ -262,7 +270,9 @@ function gradeChapter(chapter: ColdChapterBeats, calls: readonly ChapterCall[], 
     scores,
     odd_one_out: graded.flatMap((g) => g.oddOneOut),
     undefined_items: undefinedItems,
-    undefined_per_minute: minutes > 0 ? undefinedItems / minutes : 0,
+    undefined_per_minute: perMinute(undefinedItems),
+    undefined_terms: undefinedTerms,
+    undefined_terms_per_minute: perMinute(undefinedTerms),
     canaries: graded.map((g) => g.canary),
   };
 }
@@ -285,8 +295,8 @@ async function askCall({ input, chapter, summary, questions }: ChapterAsk, rubri
 async function askChapter(ask: ChapterAsk, spokenRubric: string): Promise<ChapterCall[]> {
   const ids = new Set(ask.chapter.beats.map((b) => b.id));
   const mine = ask.questions.filter((q) => ids.has(q.beat));
-  const terms = mine.filter((q) => q.kind === "spoken-term");
-  const items = await askCall({ ...ask, questions: mine.filter((q) => q.kind !== "spoken-term") }, ask.input.rubric, ask.chapter.chapter, whatWhyText);
+  const terms = mine.filter(isTerm);
+  const items = await askCall({ ...ask, questions: mine.filter((q) => !isTerm(q)) }, ask.input.rubric, ask.chapter.chapter, whatWhyText);
   if (terms.length === 0) return [items];
   return [items, await askCall({ ...ask, questions: terms }, spokenRubric, `${ask.chapter.chapter}:terms`, termText)];
 }
@@ -299,7 +309,7 @@ export async function runCold(input: ColdInput): Promise<ColdResult> {
   const chapters: ColdChapter[] = [];
   const replies: ColdReply[] = [];
   const spokenRubric = readRubric(COLD_SPOKEN_RUBRIC);
-  const questions = coldQuestions(input.beats, input.glossary);
+  const questions = coldQuestions(input.beats, input.glossary, input.viewerTerms);
   let summary = "";
   for (const chapter of chaptersOf(input.beats)) {
     const calls = await askChapter({ input, chapter, summary, questions }, spokenRubric);
