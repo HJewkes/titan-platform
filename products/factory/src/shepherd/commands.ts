@@ -73,7 +73,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
-  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base };
+  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base, registrant: args.registrant };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {

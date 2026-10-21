@@ -4,11 +4,13 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { fixerRegistered, registrantSeat, storedLineage } from "./registrant.js";
 import type { GateRun } from "./gates.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { toPresence } from "./presence.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
+import type { ShepherdStoreRef } from "./store.js";
 
 const EXIT_NOTICE_STEP = "sh-exit-notice";
 export const EXIT_NOTICE_STEPS: readonly StepDeclaration[] = [{ id: EXIT_NOTICE_STEP, kind: "dispatch" }];
@@ -28,6 +30,8 @@ export interface ExitNoticePorts {
   seatFor(repo: string): string | undefined;
   /** The config's shepherd.hubSeat, told about a held run whose policy names no seat; absent when none is set. */
   hubSeat?(): string | undefined;
+  /** The seat the run's lineage names (`lineageSeat`); undefined, or absent, falls back to `seatFor`. */
+  lineageSeat?(target: { repo: string; pr: number }): Promise<string | undefined>;
   lastReport(target: { repo: string; pr: number; head: string }, agent: string, sessionId?: string): Promise<LastReport | undefined>;
   send(seat: string, text: string): Promise<void>;
 }
@@ -107,6 +111,12 @@ async function readReport(ports: ExitNoticePorts, input: ExitNoticeInput): Promi
   return ports.lastReport({ repo: input.repo, pr: input.pr, head: input.headSha }, input.wake.agent, input.wake.sessionId).catch(() => undefined);
 }
 
+/** The run's lineage seat, else the repo's one seat; a lineage that cannot be read must not cost the notice. */
+export async function runSeat(ports: ExitNoticePorts, target: { repo: string; pr: number }): Promise<string | undefined> {
+  const lineage = await ports.lineageSeat?.(target).catch(() => undefined);
+  return lineage ?? ports.seatFor(target.repo);
+}
+
 /** Never throws: no ports, no single seat, or a failed send records `sent: false`, and the run takes the owner gate. */
 export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: ExitNoticeInput): Promise<ExitNoticeResult> {
   const report = ports && input.held === undefined ? await readReport(ports, input) : undefined;
@@ -115,7 +125,7 @@ export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: 
   if (ports === undefined) return { sent: false, ...recorded, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
-    seat = ports.seatFor(input.repo);
+    seat = await runSeat(ports, input);
     if (seat === undefined) return { sent: false, ...recorded, detail: `no single seat owns ${input.repo}` };
     await ports.send(seat, noticeText(input, cause, report));
     return { sent: true, seat, ...recorded, detail: causeText(cause, input.wake, input.held) };
@@ -186,10 +196,22 @@ interface ExitNoticeAgents {
   message(name: string, message: string): Promise<void>;
 }
 
-/** The production ports: the seat book re-read per notice, the hub seat, the agent's transcript, and an agent-chat message to the seat. */
-export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents, hubSeat?: string): ExitNoticePorts {
+/** The roster is read only for a run its own fixer registered, whose spawner hears the notice. */
+function lineagePort(agents: ExitNoticeAgents, store: ShepherdStoreRef): ExitNoticePorts["lineageSeat"] {
+  return async (target) => {
+    const lineage = storedLineage(store, target);
+    return lineage && registrantSeat(lineage, fixerRegistered(lineage) ? await agents.roster() : undefined);
+  };
+}
+
+/**
+ * The production ports: the run's lineage seat, else the seat book re-read per notice, the hub seat, the agent's transcript,
+ * and an agent-chat message to the seat.
+ */
+export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents, hubSeat?: string, store?: ShepherdStoreRef): ExitNoticePorts {
   return {
     seatFor: (repo) => singleSeat(seats(), repo),
+    ...(store && { lineageSeat: lineagePort(agents, store) }),
     hubSeat: () => hubSeat,
     lastReport: transcriptLastReport(() => agents.roster()),
     send: (seat, text) => agents.message(seat, text),
