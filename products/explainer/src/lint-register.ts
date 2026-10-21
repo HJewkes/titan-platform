@@ -1,5 +1,5 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
-import { ruleRow } from "./lint-text.js";
+import { countRow, ruleRow } from "./lint-text.js";
 
 // A port of the script-tells harness (TP-3765: measure.py and derived.py). The regexes, the sentence split and
 // the per-1k rates are copied as written there, so a value here is comparable with the research bands. Python's
@@ -112,7 +112,11 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   lets: { max: 3.21 },
 };
 
-export const REGISTER_CHECK_IDS: readonly string[] = REGISTER_METRICS.map((metric) => `register:${metric}`);
+/** A beat may speak one number; the rest belong on screen (TP-3813). */
+export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
+const NUMBERS_PER_BEAT_ID = "register:numbers-per-beat";
+
+export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID];
 
 const below = (value: number, band: Band): boolean => band.min !== undefined && value < band.min;
 
@@ -125,8 +129,13 @@ function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
 }
 
+function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[]): L0Result {
+  const crowded = beats.filter((beat) => count(NUM_RUN, spokenText([beat.spoken]).text) > MAX_SPOKEN_NUMBERS_PER_BEAT);
+  return { ...countRow(NUMBERS_PER_BEAT_ID, crowded.map((beat) => beat.id)), severity: "warning" };
+}
+
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return REGISTER_METRICS.map((metric) => registerRow(metric, parsed));
+  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats)];
 };

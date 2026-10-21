@@ -13,6 +13,7 @@ import { AnswerSourceProvider } from "./data/submit.js";
 
 const SHIP = "ship-tile-r1";
 const HEAD = "89abcdef0123456789abcdef0123456789abcdef";
+const SHIP_RECOMMENDATION = { answer: "Ship", rationale: "The stripe moved as the change intends and nothing else shifted.", confidence: 0.8, by: "fixture-agent" };
 const FRAMES = [
   { key: "tile-light", theme: "light", views: ["head", "base", "diff"] },
   { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"] },
@@ -79,9 +80,11 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
   const inner = pageDataSource({ doc: page });
   const calls: Rendered["calls"] = [];
   const submitted = successEnvelope({ status: "submitted", path: "feedback.json", sha256: "0".repeat(64), headSha: HEAD });
+  const revealed = successEnvelope({ recommendation: SHIP_RECOMMENDATION, recorded: true });
+  const replies: Record<string, ReturnType<typeof successEnvelope>> = { "rounds.submit": submitted, "rounds.reveal": revealed };
   const counting: DataSource = {
     subscribe: inner.subscribe.bind(inner),
-    call: (name, args, callOptions) => (calls.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, callOptions)),
+    call: (name, args, callOptions) => (calls.push({ name, args }), replies[name] ? Promise.resolve(replies[name]) : inner.call(name, args, callOptions)),
   };
   window.location.hash = `#/rounds/${SHIP}`;
   render(
@@ -224,6 +227,18 @@ describe("answering a Ship round", () => {
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
     expect(submits(rendered)[0]).toEqual({ id: SHIP, manifestSha256, general: "", headSha: HEAD, answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
     expect(await screen.findByText("Waiting for the factory")).toBeTruthy();
+  });
+
+  it("reveals the Ship recommendation on demand and tags the Ship pressed after it seen", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.click(screen.getByTestId("reveal-ship-tiles"));
+    expect(await screen.findByText("Recommended: Ship (80%, fixture-agent)")).toBeTruthy();
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(rendered.calls.filter((call) => call.name === "rounds.reveal").map((call) => call.args)).toEqual([{ id: SHIP, manifestSha256: expect.any(String), questionId: "ship-tiles" }]);
+    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "ship-tiles", pick: "Ship", recommendationSeen: true }] });
   });
 
   it("sends Send back as the other option, with the owner's note as its comment and no head sha", async () => {
