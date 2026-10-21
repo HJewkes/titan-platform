@@ -1,19 +1,22 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { z } from "zod";
 import { EXIT } from "../exit-codes.js";
 import type { PlannerConfig } from "./config.js";
 import { buildDigest, digestPreamble, type DigestPiece } from "./digest.js";
 import { combineParts, hashText, normalizeVolatile } from "./fingerprint.js";
 import { readInput, type PlannerRun } from "./inputs.js";
 
-export interface WakeRecord {
-  at: string;
-  outcome: "spawned" | "skipped";
-  fingerprint: string | null;
-  parts: Record<string, string>;
-}
+const WakeRecordSchema = z.object({
+  at: z.string(),
+  outcome: z.enum(["spawned", "skipped"]),
+  fingerprint: z.string().nullable(),
+  parts: z.record(z.string(), z.string()),
+});
 
-export interface WakePorts {
+type WakeRecord = z.infer<typeof WakeRecordSchema>;
+
+interface WakePorts {
   run: PlannerRun;
   now: () => Date;
   stateDir: string;
@@ -100,7 +103,8 @@ function spawn(config: PlannerConfig, ports: WakePorts, brief: string): ReturnTy
 function readRecord(path: string): WakeRecord | undefined {
   if (!existsSync(path)) return undefined;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as WakeRecord;
+    const parsed = WakeRecordSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }

@@ -5,9 +5,9 @@ import { z } from "zod";
  * Opus-class since the TP-3911 A/B: two Opus replays of a recorded Fable wake proposed the same five slices.
  * opus-coordinator is the only Opus profile that keeps `agent-chat burndown` and `agent ls`, which the review reads.
  */
-export const DEFAULT_PLANNER_PROFILE = "opus-coordinator";
+const DEFAULT_PLANNER_PROFILE = "opus-coordinator";
 /** Owner decision 522 (cost-week-2026-10-21 §10.3): a pre-digested planner input stays at or under 60k tokens. */
-export const DEFAULT_DIGEST_MAX_TOKENS = 60_000;
+const DEFAULT_DIGEST_MAX_TOKENS = 60_000;
 
 const InputSchema = z
   .object({
@@ -27,7 +27,7 @@ const InputSchema = z
     message: "each input names exactly one of file, dir or command",
   });
 
-export const PlannerConfigSchema = z.object({
+const PlannerConfigSchema = z.object({
   name: z.string().min(1).default("factory-planner"),
   profile: z.string().min(1).default(DEFAULT_PLANNER_PROFILE),
   configDir: z.string().optional(),

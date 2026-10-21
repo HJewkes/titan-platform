@@ -4,7 +4,7 @@ import type { PlannerInput } from "./config.js";
  * Measured on the planner's own recorded inputs (TP-3911 A/B): ~219k characters of tool output came to ~222k Opus
  * tokens, so a character is budgeted as a token rather than the usual four-to-one.
  */
-export const CHARS_PER_TOKEN = 1;
+const CHARS_PER_TOKEN = 1;
 
 export interface DigestPiece {
   input: PlannerInput;

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { PlannerInput } from "./config.js";
 import { dropSections } from "./fingerprint.js";
 
-export interface RunResult {
+interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
