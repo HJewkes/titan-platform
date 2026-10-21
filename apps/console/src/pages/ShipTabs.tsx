@@ -51,7 +51,8 @@ interface PrTabsProps {
   bar: ReactNode;
 }
 
-export function PrTabs({ pr, review, diff, context, bar }: PrTabsProps): ReactNode {
+/** The open tab, and a jump that opens the tab holding an element before it focuses it. */
+function useTabJump() {
   const [tab, setTab] = useState(0);
   const [pending, setPending] = useState<string>();
   const root = useRef<HTMLDivElement>(null);
@@ -67,6 +68,11 @@ export function PrTabs({ pr, review, diff, context, bar }: PrTabsProps): ReactNo
     if (index >= 0) setTab(index);
     setPending(id);
   }, []);
+  return { tab, setTab, jump, root };
+}
+
+export function PrTabs({ pr, review, diff, context, bar }: PrTabsProps): ReactNode {
+  const { tab, setTab, jump, root } = useTabJump();
   const bodies = { review, diff, context };
   return (
     <ShipJump.Provider value={jump}>
