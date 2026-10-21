@@ -65,7 +65,7 @@ async function renderRound(id: string, detail: RoundDetail): Promise<void> {
 }
 
 const renderOnePr = async (change?: (manifest: Manifest) => Manifest, extra: Partial<ValidRound> = {}) => renderRound(ONE_PR, { ...(await detailOf(FIXTURE_ROUNDS, ONE_PR, change)), ...extra });
-const renderTwoPr = async (change?: (manifest: Manifest) => Manifest) => renderRound(TWO_PR, await detailOf(twoPr.source, TWO_PR, change));
+const renderTwoPr = async (change?: (manifest: Manifest) => Manifest, extra: Partial<ValidRound> = {}) => renderRound(TWO_PR, { ...(await detailOf(twoPr.source, TWO_PR, change)), ...extra });
 
 const scope = (pr?: string) => (pr === undefined ? screen : within(screen.getByTestId(`pr-${pr}`)));
 const openTab = (label: string, pr?: string): void => void fireEvent.click(scope(pr).getByRole("tab", { name: label }));
@@ -175,10 +175,28 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
     fireEvent.change(screen.getByLabelText("Feedback on this round"), { target: { value: "One more thing." } });
 
     fireEvent.click(blocker("your feedback from round 1 is not ticked Addressed"));
-    expect(document.activeElement?.id).toBe("ship-prior-1");
+    expect(document.activeElement?.id).toBe("ship-prior-example/tiles#1-1");
     fireEvent.click(blocker("you left feedback on this round"));
 
     expect(document.activeElement).toBe(screen.getByLabelText("Feedback on this round"));
+  });
+
+  it("shows each PR of a two-PR round only its own earlier feedback, one Addressed card per tab (TP-3790)", async () => {
+    const at = "2031-03-04T00:00:00.000Z";
+    await renderTwoPr(undefined, {
+      priorFeedback: [
+        { round: 1, submittedAt: at, comment: "Lift the stripe.", pr: "example/tiles#1" },
+        { round: 1, submittedAt: at, comment: "Narrow the panel.", pr: "example/panels#2" },
+      ],
+    });
+    const cards = (pr: string) => within(panel("review", pr)).getAllByRole("checkbox", { name: "Round 1 feedback addressed" });
+
+    expect(cards("example/tiles#1")).toHaveLength(1);
+    expect(cards("example/panels#2")).toHaveLength(1);
+    expect(within(panel("review", "example/tiles#1")).getByText("Lift the stripe.")).toBeTruthy();
+    expect(within(panel("review", "example/tiles#1")).queryByText("Narrow the panel.")).toBeNull();
+    fireEvent.click(within(scope("example/panels#2").getByTestId("ship-bar")).getByText("your feedback from round 1 is not ticked Addressed"));
+    expect(document.activeElement?.id).toBe("ship-prior-example/panels#2-1");
   });
 
   it("never lists an unanswered question, even a required one, so Ship stays on (decision 166)", async () => {
