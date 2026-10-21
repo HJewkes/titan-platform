@@ -7,6 +7,7 @@ import { deviceGateAuthorize } from "./device-gates.js";
 import { eventLogMigration } from "./event-log/event-log.js";
 import { headEpochMigration } from "./head-guard/epoch-store.js";
 import { GateAskStore, gateAskMigration } from "./gate-ask-store.js";
+import { githubApiPoolMigration } from "./github-api/pool-state.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { mergeLogMigration } from "./merge-log.js";
 import { SqliteGateStore, gateBriefMigration, gateDelegateMigration, gateEvidenceMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "@titan-design/hitl/sqlite";
@@ -93,10 +94,10 @@ const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "faile
 
 /** The migrations every factory database runs; the harness opens its own database from this so it cannot drift from serve. */
 export function factoryMigrations(): Migration[] {
-  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34)];
+  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35)];
 }
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, and 34 the head epoch (31-33 are the Shepherd tenant's). */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, and 35 the github-api pool state (31-33 are the Shepherd tenant's). */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);

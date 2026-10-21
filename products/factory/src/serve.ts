@@ -9,6 +9,7 @@ import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
+import type { GithubApiHealth } from "./github-api/status.js";
 import type { SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
@@ -75,6 +76,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   github?: GithubHealth;
   /** Behind health's `sources` field: where GitHub events come from and why; absent means no field. Nothing else reads it yet. */
   sources?: SourcesReader;
+  /** Behind health's `githubApi` field: the bot pool's state per call class; absent means no field until the bot client binds it. */
+  githubApi?: () => GithubApiHealth;
   /** The webhook ingress listener beside the daemon, gated per request by `sources`; absent means serve binds no ingress port. */
   ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
