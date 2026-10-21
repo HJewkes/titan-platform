@@ -105,6 +105,8 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
 
 const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+/** The montages sit under the Diff tab (decision 167). */
+const openDiff = (): void => void fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
 describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
@@ -157,6 +159,7 @@ describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
     const rendered = await renderShip();
     expect(frameCalls(rendered)).toHaveLength(0);
 
+    openDiff();
     scrollAll();
 
     await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(IMAGE_COUNT));
@@ -219,6 +222,7 @@ describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
 
   it("opens an image full size when pressed and closes on Escape", async () => {
     await renderShip();
+    openDiff();
     scrollAll();
 
     fireEvent.click(await screen.findByRole("button", { name: "Enlarge Badge (new), after" }));
@@ -449,7 +453,7 @@ describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }
     const comment = screen.getByLabelText("Comment on File the badge colour as a follow-up?");
 
     fireEvent.change(comment, { target: { value: "Only if design agrees." } });
-    expect(blocked()).toContain('Ship is off: you left a comment on "File the badge colour as a follow-up?". Send back stays open.');
+    expect(blocked()).toBe('⚠Ship is off until you clear these; Send back stays open.you left a comment on "File the badge colour as a follow-up?"');
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
 
     fireEvent.change(comment, { target: { value: "" } });
@@ -647,14 +651,14 @@ describe("a sent Ship round read back after a reload (TP-3767)", { timeout: REND
 
 describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
-  const verdict = (key: string, label: string): HTMLElement => within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label });
+  const verdict = (key: string, label: string): HTMLElement => (openDiff(), within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label }));
   const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
 
   it("turns Ship off for a Rejected frame, and sends its verdict and comment with Send back", async () => {
     const rendered = await renderShip({ answers: true });
 
     fireEvent.click(verdict("tile-dark", "Rejected"));
-    expect(blocked()).toContain('Ship is off: you left feedback on frame "Tile, dark". Send back stays open.');
+    expect(blocked()).toContain('you left feedback on frame "Tile, dark"');
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
     fireEvent.change(screen.getByLabelText("Comment on frame Tile, dark"), { target: { value: " The stripe clips. " } });
     fireEvent.click(button("Send back"));

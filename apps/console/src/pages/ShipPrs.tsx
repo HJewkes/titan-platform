@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import {
-  Alert, Button, ButtonText, Card, CardContent, HStack, Input, MarkdownProse, Pill, Section, SectionContent, SectionHeader, Typography, VStack,
+  Alert, Button, ButtonText, Card, CardContent, HStack, Input, Pill, Section, SectionContent, SectionHeader, Typography, VStack,
 } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
-import { frameScope, sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
+import { frameScope, sendBackBlocker, shipBlockerItems, type ShipBlocker } from "../../server/ship-blockers.js";
 import { useSubmit } from "../data/submit.js";
 import { FrameFeedbackProvider } from "./FrameFeedback.js";
 import { frameDrafts, type PostedVariant } from "./frame-feedback.js";
@@ -15,11 +15,13 @@ import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
 import { QuestionFacts } from "./RoundQuestion.js";
 import { DraftDiscarded } from "./RoundDraft.js";
 import { useWithSeen } from "./RoundReveal.js";
+import { ShipContext } from "./ShipContext.js";
 import { Montages } from "./ShipMontages.js";
-import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipBlockedReason, ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { useRoundAnswers, type RoundAnswers, type ShipVerdict } from "./RoundSections.js";
 import { useDraftBinding } from "./RoundSend.js";
-import { ShipNotices, SideQuestion, sideMarks } from "./ShipSide.js";
+import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
+import { PrTabs, ShipTarget } from "./ShipTabs.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -82,7 +84,7 @@ interface PrsState {
   answers: SubmittedAnswer[];
   /** Every frame's verdict and comment that holds something. */
   variants: PostedVariant[];
-  blockersOf: (unit: PrUnit) => string[];
+  blockersOf: (unit: PrUnit) => ShipBlocker[];
   /** Why this PR's Send back is off: it has no note of its own and the round has none. */
   sendBackBlockerOf: (unit: PrUnit) => string | undefined;
   /** Sent or sending: side answers show as given and take no more edits. */
@@ -111,7 +113,7 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const variants = frameDrafts(round.manifest.variants.map((variant) => variant.key), side.frames.drafts);
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps, variants };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
-  const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
+  const blockersOf = (unit: PrUnit) => shipBlockerItems(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
   const sendBackBlockerOf = (unit: PrUnit) => noteBlocker(round.manifest, unit, verdicts, draft);
   const state: PrsState = { round, units, side, verdicts, answers, variants, blockersOf, sendBackBlockerOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
@@ -123,7 +125,6 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
       </FrameFeedbackProvider>
       {units.map((unit) => <PrSection key={unit.question.id} unit={unit} state={state} />)}
       <SharedQuestions state={state} />
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
       {state.sent ? <SentGeneral text={round.notes?.general} /> : <PrsSend state={state} submitting={submitting} />}
     </VStack>
   );
@@ -155,16 +156,29 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
       <SectionContent>
         <div className="flex flex-col gap-4" data-testid={`pr-${unit.pr}`}>
           <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
-          <FrameFeedbackProvider value={state.side.frames}>
-            <Montages round={state.round} keys={unit.keys} merge={question.merge} />
-          </FrameFeedbackProvider>
-          {unit.sideQuestions.map((each) => (
-            <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />
-          ))}
-          {state.sent ? <PrSent unit={unit} state={state} /> : <PrDecision unit={unit} state={state} />}
+          <PrTabs
+            pr={unit.pr}
+            review={<PrReview unit={unit} state={state} />}
+            diff={<FrameFeedbackProvider value={state.side.frames}><Montages round={state.round} keys={unit.keys} merge={question.merge} /></FrameFeedbackProvider>}
+            context={<ShipContext pr={unit.pr} group={group} />}
+            bar={state.sent ? <PrSent unit={unit} state={state} /> : <PrDecision unit={unit} state={state} />}
+          />
         </div>
       </SectionContent>
     </Section>
+  );
+}
+
+/** The PR's own side questions, then the earlier feedback on it that waits for an Addressed tick. */
+function PrReview({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNode {
+  const { round, side, locked } = state;
+  const prior = priorFor(round.priorFeedback ?? [], unit.pr);
+  if (unit.sideQuestions.length === 0 && prior.length === 0) return <NothingToReview />;
+  return (
+    <>
+      {unit.sideQuestions.map((each) => <SideQuestion key={each.id} round={round} question={each} position={round.manifest.questions.indexOf(each) + 1} side={side} locked={locked} />)}
+      <ShipPriorFeedback items={prior} pr={unit.pr} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
+    </>
   );
 }
 
@@ -181,7 +195,6 @@ function PrProposal({ unit, pick }: { unit: PrUnit; pick: string | undefined }):
             {group?.task ? <Pill variant="subtle" size="xs">{group.task.id}</Pill> : null}
             <Typography variant="subtitle2">{question.prompt}</Typography>
           </HStack>
-          {group?.description ? <MarkdownProse body={group.description} testID={`proposal-${unit.pr}`} /> : null}
           {changed.map((line) => <Typography key={line} variant="caption">{`Changed: ${line}`}</Typography>)}
           <QuestionFrames question={question} />
           <QuestionFacts question={question} answer={pick === undefined ? undefined : { pick }} />
@@ -197,9 +210,10 @@ function PrDecision({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNo
   const blockers = state.blockersOf(unit);
   const noNote = state.sendBackBlockerOf(unit);
   return (
-    <Card variant="outline">
+    <Card variant="outline" testID="ship-bar">
       <CardContent>
         <VStack gap={3}>
+          <ShipsAfterNote manifest={state.round.manifest} question={question} />
           <HStack gap={3} wrap>
             <Button color="success" variant={verdict === "ship" ? "solid" : "outline"} accessibilityLabel={`Ship ${pr}`} accessibilityState={{ selected: verdict === "ship" }} isDisabled={blockers.length > 0} onPress={() => state.verdicts.choose(question.id, "ship")}>
               <ButtonText>Ship</ButtonText>
@@ -283,7 +297,7 @@ function PrsSend({ state, submitting }: { state: PrsState; submitting: ReturnTyp
     <Card variant="outline">
       <CardContent>
         <VStack gap={3}>
-          <RoundGeneral value={state.side.general} onChange={state.side.setGeneral} />
+          <ShipTarget target={{ kind: "general" }}><RoundGeneral value={state.side.general} onChange={state.side.setGeneral} /></ShipTarget>
           <HStack gap={3} wrap>
             <Button isDisabled={disabled} onPress={() => void submit(sendArgs(state))}><ButtonText>Send answers</ButtonText></Button>
           </HStack>
