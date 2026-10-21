@@ -20,7 +20,7 @@ export interface HeadTipGuard {
   confirmTip(repo: string, branch: string, sha: string, cursor: string | null): GuardVerdict;
 }
 
-export interface ObserveDeps {
+interface ObserveDeps {
   guard: HeadTipGuard;
   now: () => number;
 }
