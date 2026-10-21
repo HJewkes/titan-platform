@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import type { ClassifyContext } from "../types.js";
 import { ParseError, type RedirectToken, tokenize } from "./lexer.js";
 
@@ -50,25 +51,19 @@ describe("the cost of finding where an arithmetic command ends", () => {
     depth === 0 ? "1" : `$( (( $(cat <<E${depth}\n${throughHeredocs(depth - 1)}\nE${depth}\n) )) )`;
   const longSubshells = `((((((cd x; ${"echo a; ".repeat(2000)}) ) ) ) ) )`;
 
-  function lexMillis(command: string): number {
-    const start = performance.now();
-    try {
-      tokenize(command);
-    } catch (error) {
-      if (!(error instanceof ParseError)) throw error;
-    }
-    return performance.now() - start;
-  }
-
-  it.each([
+  cpuBudgetIt.each([
     ["20 unclosed levels of (( $(", opened(20)],
     ["20 closed levels of (( $(", nested(20)],
     ["30 unclosed levels of (( $(", opened(30)],
     ["a run of 20000 (", "(".repeat(20000)],
     ["20 levels of (( $( through heredoc bodies", throughHeredocs(20)],
     ["40 levels of (( $( through heredoc bodies", throughHeredocs(40)],
-  ])("stays fast for %s", (_how, command) => {
-    expect(lexMillis(command)).toBeLessThan(500);
+  ])("stays fast for %s", 500, (_how, command) => {
+    try {
+      tokenize(command);
+    } catch (error) {
+      if (!(error instanceof ParseError)) throw error;
+    }
   });
 
   it("refuses to lex deep nesting rather than spend the budget", () => {

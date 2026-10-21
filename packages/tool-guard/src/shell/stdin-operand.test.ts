@@ -7,6 +7,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 
 const PUSH = "git push --no-verify origin HEAD:main";
 const SHELLS = ["bash", "zsh", "dash", "sh"].filter((s) => spawnSync(s, ["-c", "true"]).status === 0);
@@ -168,13 +169,11 @@ describe("stdin text that is data for a literal operand, not a script", () => {
 });
 
 describe("stdin text read for a literal operand is charged to the script budget", () => {
-  it("refuses or reads a 64KB here-string under an operand without timing out", async () => {
-    const started = Date.now();
+  cpuBudgetIt("refuses or reads a 64KB here-string under an operand without timing out", 4000, async () => {
     const big = `${"#".repeat(64 * 1024)}\n${PUSH}`;
 
     const verdict = await decision(`bash real.sh <<< '${big}'`);
 
     expect(verdict).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(4000);
   });
 });

@@ -6,8 +6,9 @@ from `cpu-budget.ts`, and time work only through `cpuStopwatch`, `withinParseBud
 `expectLinearTime`. Never pass a per-test timeout to one, and never read a clock in a test
 yourself: `clock-rule.test.ts` fails on any test module other than `cpu-budget.ts` that calls
 `process.threadCpuUsage`, `process.cpuUsage`, `process.hrtime`, `performance.now` or
-`Date.now`. Its allowlist holds the deadline tests, where wall time is the behavior, and
-the wall-clock cost checks TP-3884 moves onto the helper. It only shrinks.
+`Date.now`. Its allowlist holds only the deadline tests, where wall time is the behavior. It only shrinks.
+A cost paid in a child process is out of this thread's CPU: bound it with the spawn's own
+`timeout`, as `parse-fail-closed.test.ts` does for the built hook.
 
 Pick `cpuMs` from the slowest CI wall time of the test on a green run. That is an upper bound
 on its CPU there, which runs about four times local CPU. Allow about twice it.

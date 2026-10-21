@@ -3,6 +3,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 
 const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
@@ -40,26 +41,18 @@ describe("the hook verdict on a value that arithmetic reads (TP-1624)", () => {
     expect(await verdict(`msg="don't publish"; [[ -n $msg ]]`)).toBe("pass");
   });
 
-  it("denies a push after a value that holds many substitutions read again and again", async () => {
+  cpuBudgetIt("denies a push after a value that holds many substitutions read again and again", 2000, async () => {
     const value = `X='a[${"$(echo 1)".repeat(200)}]'`;
     const command = `${value}${";a[X]=1".repeat(800)}; ${PUSH}`;
-    const started = performance.now();
 
-    const result = await verdict(command);
-
-    expect(result).toBe("deny");
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(await verdict(command)).toBe("deny");
   });
 
-  it("denies a push when a variable the value uses changes before every read", async () => {
+  cpuBudgetIt("denies a push when a variable the value uses changes before every read", 2000, async () => {
     const head = `X='a[${"$(echo $C)".repeat(150)}]'`;
     const reads = Array.from({ length: 450 }, (_, i) => `;C=${i};a[X]=1`).join("");
-    const started = performance.now();
 
-    const result = await verdict(`${head}${reads}; ${PUSH}`);
-
-    expect(result).toBe("deny");
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(await verdict(`${head}${reads}; ${PUSH}`)).toBe("deny");
   });
 
   it("denies a push hidden in a value that also holds an unbalanced quote", async () => {

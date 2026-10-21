@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { ifsChanged, namesIfs, splittingWords } from "./ifs.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
@@ -104,14 +105,10 @@ describe("namesIfs", () => {
     expect(namesIfs(nestedEvals("declare I\\FS=,", levels))).toBe(true);
   });
 
-  it("fails closed fast on a brace list whose expansion would be huge", () => {
+  cpuBudgetIt("fails closed fast on a brace list whose expansion would be huge", 100, () => {
     const items = Array.from({ length: 250 }, (_, i) => `a${i}`).join(",");
-    const started = performance.now();
 
-    const named = namesIfs(`echo {${items}}{\u0001..￿}`);
-
-    expect(named).toBe(true);
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(namesIfs(`echo {${items}}{\u0001..￿}`)).toBe(true);
   });
 
   it.each([
@@ -519,15 +516,11 @@ describe("namesIfs", () => {
     expect(namesIfs(line)).toBe(false);
   });
 
-  it("reads 64KB under 8 nested evals in under 200 ms", () => {
+  cpuBudgetIt("reads 64KB under 8 nested evals in under 200 ms", 200, () => {
     const line = nestedEvals(`echo ${"$a ".repeat(21_000)}; declare $a$b$c=,`, 8);
-    const started = performance.now();
-
-    const named = namesIfs(line);
 
     expect(line.length).toBeGreaterThan(64 * 1024);
-    expect(named).toBe(true);
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(namesIfs(line)).toBe(true);
   });
 
   it("does not match a numeric range", () => {

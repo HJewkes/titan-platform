@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { expandCurlGlob } from "./curl-glob.js";
 
 const API = "https://api.github.com/repos/o/r";
@@ -51,18 +52,16 @@ describe("expandCurlGlob returns null where curl refuses the glob or it is too l
     expect(expandCurlGlob(text)).toBeNull();
   });
 
-  it.each([
+  cpuBudgetIt.each([
     ["wide ranges", "[0-4094]"],
     ["ranges each under the cap", "[1-8]"],
-  ])("refuses a long run of %s without listing them", (_name, range) => {
+  ])("refuses a long run of %s without listing them", 200, (_name, range) => {
     const text = `h/${range.repeat(100_000)}`;
     const heapBefore = process.memoryUsage().heapUsed;
-    const started = performance.now();
 
     const urls = expandCurlGlob(text);
 
     expect(urls).toBeNull();
-    expect(performance.now() - started).toBeLessThan(200);
     expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(16 * 1024 * 1024);
   });
 
