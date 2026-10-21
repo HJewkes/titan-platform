@@ -95,6 +95,13 @@ interface PrsState {
   sent: boolean;
 }
 
+/** Read from the note box, not the draft, so Send back turns on before it is chosen; only this PR's frames count as its note. */
+function noteBlocker(manifest: Manifest, unit: PrUnit, verdicts: Verdicts, draft: { general: string; variants: readonly PostedVariant[] }): string | undefined {
+  const own = frameScope(manifest, unit.question.id);
+  const note = [{ questionId: unit.question.id, comment: verdicts.notes[unit.question.id] ?? "" }];
+  return sendBackBlocker({ answers: note, general: draft.general, variants: draft.variants.filter((variant) => own.has(variant.key)) }, unit.question.id);
+}
+
 /** A round with one Ship question per PR (TP-3329): each PR's proposal, changes, frames and own Ship or Send back, then one send. */
 export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: readonly MergeQuestion[] }): ReactNode {
   const submitting = useSubmit();
@@ -109,12 +116,7 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps, variants };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
   const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
-  // Read from the note box, not the draft, so Send back turns on before it is chosen; only this PR's frames count as its note.
-  const sendBackBlockerOf = (unit: PrUnit) => {
-    const own = frameScope(round.manifest, unit.question.id);
-    const note = [{ questionId: unit.question.id, comment: verdicts.notes[unit.question.id] ?? "" }];
-    return sendBackBlocker({ answers: note, general: draft.general, variants: variants.filter((variant) => own.has(variant.key)) }, unit.question.id);
-  };
+  const sendBackBlockerOf = (unit: PrUnit) => noteBlocker(round.manifest, unit, verdicts, draft);
   const state: PrsState = { round, units, side, verdicts, answers, variants, blockersOf, sendBackBlockerOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
     <VStack gap={6}>

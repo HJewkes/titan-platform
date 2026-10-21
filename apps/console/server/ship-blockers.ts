@@ -29,7 +29,7 @@ export interface DraftAnswer {
 }
 
 /** A frame's verdict, comment and pins, as drafted or as sent in feedback `variants`. */
-export interface DraftFrame {
+interface DraftFrame {
   key: string;
   verdict?: "chosen" | "rejected" | "maybe" | null;
   comment?: string;
