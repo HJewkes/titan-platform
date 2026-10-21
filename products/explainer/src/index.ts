@@ -218,7 +218,6 @@ export {
   coldEvalVersion,
   coldQuestions,
   coldTerms,
-  readerGapScores,
   runCold,
   scoreAnswer,
   spokenTranscript,
@@ -232,8 +231,8 @@ export {
   type ColdTerms,
   type ColdTermsInput,
   type OddOneOutPick,
-  type ReaderGapScore,
 } from "./eval-cold.js";
+export { readerGapScores, type ReaderGapScore } from "./eval-cold-gaps.js";
 export {
   CANARY_NAMES,
   ITEMS_EVAL_ID,

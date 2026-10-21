@@ -3,12 +3,8 @@ import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, readRubric, voidReason } from "./eval-evidence.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
-import type { Labels } from "./eval-calibrate.js";
-import { agreedTerms, bareKey, bareListItems, listedLabels, spokenTerms, termKey } from "./eval-cold-terms.js";
-import { mentions } from "./lexicon.js";
+import { agreedTerms, bareKey, bareListItems, listedLabels, spokenTerms } from "./eval-cold-terms.js";
 import type { PaceBeat } from "./pace-items.js";
-
-type ReaderGapGroup = Labels["items"][number];
 
 export const COLD_EVAL_ID = "L1-cold";
 /** The viewer's whole memory of earlier chapters; anything longer would let the transcript leak forward. */
@@ -332,32 +328,6 @@ export function agreedOddOnes(runs: readonly ColdResult[], quorum = 2): { beat: 
     votes.set(beat, tally.set(picked, (tally.get(picked) ?? 0) + 1));
   }
   return [...votes].flatMap(([beat, tally]) => [...tally].filter(([, n]) => n >= quorum).map(([item]) => ({ beat, item })));
-}
-
-export interface ReaderGapScore {
-  group: string;
-  /** The questions the group is scored on: each item's first, or its first-use beats' when no item is asked. */
-  asked: string[];
-  /** The lowest of those scores, so one unexplained item is a gap found; null when nothing was asked. */
-  score: 0 | 1 | 2 | null;
-}
-
-// The term's own question wins over a longer label that carries it: "I2 verdict at head" asks about the invariant.
-const firstAsking = (scores: readonly ColdScore[], item: string): ColdScore | undefined =>
-  scores.find((s) => termKey(s.item) === termKey(item)) ?? scores.find((s) => mentions(termKey(s.item), termKey(item)));
-
-/**
- * One run's score for each labelled reader-gap group, at the item's first question as `spokenTerms` places it. A
- * group that names a whole list ("the seven jobs") matches no question by its words, so its first-use beats' do.
- */
-export function readerGapScores(groups: readonly ReaderGapGroup[], result: ColdResult): ReaderGapScore[] {
-  const scores = result.chapters.flatMap((c) => c.scores);
-  return groups.map(({ group, items, first_used }) => {
-    const firsts = items.flatMap((item) => firstAsking(scores, item) ?? []);
-    const asked = firsts.length > 0 ? firsts : scores.filter((s) => first_used.includes(s.beat));
-    const lowest = asked.length > 0 ? (Math.min(...asked.map((s) => s.score)) as ColdGrade["score"]) : null;
-    return { group, asked: asked.map((s) => s.item), score: lowest };
-  });
 }
 
 const TermsSchema = z.strictObject({ terms: z.array(z.string()) });

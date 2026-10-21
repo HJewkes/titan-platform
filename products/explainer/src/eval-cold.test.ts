@@ -5,11 +5,11 @@ import {
   coldEvalVersion,
   coldQuestions,
   coldTerms,
-  readerGapScores,
   runCold,
   spokenTranscript,
   type ColdInput,
 } from "./eval-cold.js";
+import { readerGapScores } from "./eval-cold-gaps.js";
 import { agreedTerms, termKey } from "./eval-cold-terms.js";
 import { readRubric } from "./eval-evidence.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
