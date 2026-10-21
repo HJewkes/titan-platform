@@ -112,7 +112,7 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
       <PrsHeading round={round} units={units} />
       {units.map((unit) => <PrSection key={unit.question.id} unit={unit} state={state} />)}
       <SharedQuestions state={state} />
-      {state.sent ? null : <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={side.addressed} onToggle={side.toggleAddressed} />}
+      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
       {state.sent ? <SentGeneral text={round.notes?.general} /> : <PrsSend state={state} submitting={submitting} />}
     </VStack>
   );
