@@ -9,14 +9,14 @@ describe("the autoresearch run fixture", () => {
     expect(ArRunViewSchema.parse(AR_RUN_FIXTURE)).toEqual(AR_RUN_FIXTURE);
   });
 
-  it("holds three rounds with one idea kept, one superseded, one stopped at L0 and one running", () => {
+  it("holds three rounds with one idea kept, one superseded, one stopped at L0 and two running", () => {
     const ended = outcomes(AR_RUN_FIXTURE);
 
     expect(AR_RUN_FIXTURE.rounds.map((round) => round.round)).toEqual([1, 2, 3]);
     expect(ended.filter((outcome) => outcome?.verdict === "kept")).toHaveLength(1);
     expect(ended.filter((outcome) => outcome?.reason === "superseded")).toHaveLength(1);
     expect(ended.filter((outcome) => outcome?.rungReached === "L0")).toHaveLength(1);
-    expect(ended.filter((outcome) => outcome === null)).toHaveLength(1);
+    expect(ended.filter((outcome) => outcome === null)).toHaveLength(2);
   });
 
   it("requeues the superseded winner in a later round's queue", () => {

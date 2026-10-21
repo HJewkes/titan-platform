@@ -66,9 +66,16 @@ const outcome = z.object({
   lesson: z.string().optional(),
 });
 
+/**
+ * Design gap G2: the agent the implement step ran, and its session once the result records one. Null until the factory
+ * records either, so a read model without it still parses.
+ */
+const implementer = z.object({ agent: z.string(), sessionId: z.string().optional(), resumedFrom: z.string().optional() });
+
 /** One picked idea's ladder: `outcome` is null while it runs. */
 const ladder = z.object({
   idea,
+  implementer: implementer.nullable().default(null),
   active: activeStep.nullable(),
   completed: z.array(z.object({ stepId: z.string(), completedAt: z.string() })),
   implementUsd: z.number().nonnegative().nullable(),
@@ -144,6 +151,7 @@ export const ArDiffSchema = z.object({
 
 export type ArRunView = z.infer<typeof ArRunViewSchema>;
 export type ArLadder = z.infer<typeof ladder>;
+export type ArImplementer = z.infer<typeof implementer>;
 export type ArRound = z.infer<typeof round>;
 export type ArIdea = z.infer<typeof idea>;
 export type ArOutcome = z.infer<typeof outcome>;

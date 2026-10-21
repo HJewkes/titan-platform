@@ -1,5 +1,5 @@
 // A synthetic autoresearch run for the twin's `autoresearch.*` answers: three rounds, one idea kept, one superseded, one
-// stopped at L0 and one still implementing. Every id, sha and metric name is invented.
+// stopped at L0, one still implementing and one in its seed eval. Every id, sha and metric name is invented.
 import type { ArLadder, ArRunSummary, ArRunView } from "../autoresearch-view.js";
 import { TWIN_NOW } from "./clock.js";
 
@@ -30,6 +30,7 @@ const KEPT = idea("i-3f9a0c1d2e4b", 1, "accept-gate:stricter-tree", { priority: 
 const SUPERSEDED = idea("i-0d4e8f2a6b1c", 1, "config-param:lower-thresh", { priority: 7, bold: true });
 const L0_STOP = idea("i-5b3c7e9a1d0f", 2, "planner-ranking:fanout-first");
 const RUNNING = idea("i-77aa2b4c6d8e", 3, "accept-gate:per-file-cap", { source: "followup", parent: KEPT.id, lineage: KEPT.id });
+const EVALUATING = idea("i-c22d9e1f3a5b", 3, "config-param:raise-slack", { priority: 6 });
 const REQUEUED = { ...SUPERSEDED, round: 2, source: "requeue" as const };
 
 const ladderSteps = (round: number, id: string, steps: readonly string[], endedAgo: number) =>
@@ -38,27 +39,34 @@ const ladderSteps = (round: number, id: string, steps: readonly string[], endedA
 const SEED_STEPS = ["alloc", "implement", "l0", "l1", "eval", "eval", "eval"] as const;
 
 const keptLadder: ArLadder = {
-  idea: KEPT, active: null, completed: ladderSteps(1, KEPT.id, [...SEED_STEPS, "eval", "eval", "release"], 300), implementUsd: 1.6,
+  idea: KEPT, implementer: { agent: "ar-impl-7c1e-1", sessionId: "00000000-0000-4000-8000-00000000a001" }, active: null, completed: ladderSteps(1, KEPT.id, [...SEED_STEPS, "eval", "eval", "release"], 300), implementUsd: 1.6,
   l0: { ok: true }, micro: { predictedDirectionMet: true },
   evals: [evalRun("r1", 230.9), evalRun("r2", 231.6), evalRun("r3", 231.2), evalRun("c1", 231.0), evalRun("c2", 231.3)],
   outcome: { verdict: "kept", reason: "confirmed", rungReached: "L3", delta: 1.2, sigma: 0.62, head: KEPT_HEAD, branch: `ar/${KEPT.id}`, lesson: "A stricter tree gate holds on every seed" },
 };
 
 const supersededLadder: ArLadder = {
-  idea: SUPERSEDED, active: null, completed: ladderSteps(1, SUPERSEDED.id, [...SEED_STEPS, "release"], 310), implementUsd: 1.1,
+  idea: SUPERSEDED, implementer: { agent: "ar-impl-7c1e-2" }, active: null, completed: ladderSteps(1, SUPERSEDED.id, [...SEED_STEPS, "release"], 310), implementUsd: 1.1,
   l0: { ok: true }, micro: { predictedDirectionMet: true }, evals: [evalRun("r1", 232.0), evalRun("r2", 232.2), evalRun("r3", 231.9)],
   outcome: { verdict: "stopped", reason: "superseded", rungReached: "L3", delta: 0.9, sigma: 0.62, head: SUPERSEDED_HEAD, branch: `ar/${SUPERSEDED.id}` },
 };
 
 const l0Ladder: ArLadder = {
-  idea: L0_STOP, active: null, completed: ladderSteps(2, L0_STOP.id, ["alloc", "implement", "l0", "release"], 150), implementUsd: 0.8,
+  idea: L0_STOP, implementer: null, active: null, completed: ladderSteps(2, L0_STOP.id, ["alloc", "implement", "l0", "release"], 150), implementUsd: 0.8,
   l0: { ok: false, code: "unit" }, micro: null, evals: [],
   outcome: { verdict: "rejected", reason: "rejected:post:unit", rungReached: "L0", sigma: 0.62, lesson: "The unit suite pins the old ranking order" },
 };
 
 const runningLadder: ArLadder = {
-  idea: RUNNING, active: { stepId: `ar-implement:3/${RUNNING.id}`, firstStartedAt: at(11), restarts: 0 },
+  idea: RUNNING, implementer: { agent: "ar-impl-7c1e-3", sessionId: "00000000-0000-4000-8000-00000000a003", resumedFrom: KEPT.id }, active: { stepId: `ar-implement:3/${RUNNING.id}`, firstStartedAt: at(11), restarts: 0 },
   completed: ladderSteps(3, RUNNING.id, ["alloc"], 11), implementUsd: null, l0: null, micro: null, evals: [], outcome: null,
+};
+
+/** Its seed eval restarted once, so the timer runs from the first start, not the restart. */
+const evaluatingLadder: ArLadder = {
+  idea: EVALUATING, implementer: { agent: "ar-impl-7c1e-4" }, active: { stepId: `ar-eval:3/${EVALUATING.id}:r1`, firstStartedAt: at(6), restarts: 1 },
+  completed: ladderSteps(3, EVALUATING.id, ["alloc", "implement", "l0", "l1"], 6), implementUsd: 1.2, l0: { ok: true }, micro: { predictedDirectionMet: true },
+  evals: [], outcome: null,
 };
 
 const noPlannerNotes = { rejected: [], plannerRetried: false, analysis: [], exempt: {} };
@@ -76,10 +84,14 @@ const ROUNDS: ArRunView["rounds"] = [
     ladders: [l0Ladder], ratchet: null,
   },
   {
-    round: 3, queue: [RUNNING, REQUEUED], rejected: [{ code: "duplicate" }, { code: "bounds" }], plannerRetried: false, analysis: [],
+    round: 3, queue: [RUNNING, EVALUATING, REQUEUED], rejected: [{ code: "duplicate" }, { code: "bounds" }], plannerRetried: false, analysis: [],
     exempt: { bold: "The requeued bold idea still stands in the pool" },
-    selection: { picks: [RUNNING.id], draws: [{ id: RUNNING.id, draw: 0.72 }, { id: REQUEUED.id, draw: 0.38 }], plannerTopK: [RUNNING.id, REQUEUED.id] },
-    ladders: [runningLadder], ratchet: null,
+    selection: {
+      picks: [RUNNING.id, EVALUATING.id],
+      draws: [{ id: RUNNING.id, draw: 0.72 }, { id: EVALUATING.id, draw: 0.55 }, { id: REQUEUED.id, draw: 0.38 }],
+      plannerTopK: [RUNNING.id, REQUEUED.id],
+    },
+    ladders: [runningLadder, evaluatingLadder], ratchet: null,
   },
 ];
 
@@ -107,5 +119,5 @@ export const AR_RUN_FIXTURE: ArRunView = {
 /** The fixture's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
 export const AR_RUN_SUMMARY: ArRunSummary = {
   runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, round: 3, rounds: AR_RUN_FIXTURE.settings.rounds, status: AR_RUN_FIXTURE.status,
-  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 7.1,
+  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 8.3,
 };
