@@ -190,6 +190,11 @@ function resolveWorkspaceGlob(root, glob) {
   return dirs.filter((dir) => existsSync(join(dir, "package.json"))).map((dir) => relative(root, dir));
 }
 
+/** Every pnpm workspace member's directory, relative to root, as `pnpm-workspace.yaml` lists them. */
+export function workspaceMemberDirs(root) {
+  return workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+}
+
 /** R55: the root lint command reaches every workspace dir; workspaces carry no lint script of their own. */
 export function checkRootLintCoversWorkspaces(root) {
   const targets = (readJson(join(root, "package.json")).scripts?.lint ?? "")
@@ -230,7 +235,7 @@ function undeclaredImports(root, dir, members) {
 
 /** R58: a workspace member declares every workspace package it imports; test scoping follows only declared edges. */
 export function checkWorkspaceImportsDeclared(root) {
-  const dirs = workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+  const dirs = workspaceMemberDirs(root);
   const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }
