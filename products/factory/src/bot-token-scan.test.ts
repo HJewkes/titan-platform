@@ -1,9 +1,13 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it } from "vitest";
+import { openBotIdentity, openServeBot } from "./bot-identity.js";
 import { publishFingerprint } from "./bot-token-fingerprint.js";
 import { scanForBotToken, type ScanPlace } from "./bot-token-scan.js";
+import type { Feed } from "./test-support/a17/feed.js";
+import { a17Event } from "./test-support/a17/register.js";
 import { cleanFixture, plant, PLANTED, UID, writeIn, type ScanFixture } from "./test-support/bot-token.js";
 
 const FINE_GRAINED = `github_pat_${"SYNTHETICfine".padEnd(82, "x")}`;
@@ -76,5 +80,36 @@ describe("the A17 bot-token leak scan (V6)", () => {
     rmSync(at.sources.briefs[0]!, { recursive: true });
 
     expect(scan(at)).toMatchObject({ hits: [], missing: [{ place: "briefs", root: at.sources.briefs[0] }] });
+  });
+});
+
+const HEAD = "c".repeat(40);
+
+/** The fixture's fingerprint as serve writes it: serve's own bot identity reads a 0600 token file and publishes. */
+function servePublishes(at: ScanFixture): void {
+  publishFingerprint(at.stateDir, undefined);
+  const file = writeIn(join(at.stateDir, "..", "secrets"), "bot.token", `${PLANTED}\n`);
+  chmodSync(file, 0o600);
+  openServeBot(() => openBotIdentity({ path: file }), silentLogger, at.stateDir);
+}
+
+/** The feed's factory database, after the mode's ingress or pass stored a push, as the store place the scan dumps. */
+async function storeFromFeed(feed: Feed, at: ScanFixture): Promise<ScanFixture> {
+  await feed.fact({ type: "pr", repo: "o/r", pr: 7, head: HEAD, base: "main", action: "opened" });
+  expect(feed.read("o/r#7", 0).map((row) => row.kind)).toContain("HeadPushed");
+  const store = join(at.stateDir, "..", "feed.sqlite3");
+  feed.db.prepare("VACUUM INTO ?").run(store);
+  return { ...at, sources: { ...at.sources, store } };
+}
+
+describe("D-M1a-01 through the scan over the feed's store (TP-3403)", () => {
+  a17Event("the bot's token is absent from every agent environment", async (feed) => {
+    const at = await storeFromFeed(feed, fixture());
+    servePublishes(at);
+
+    const report = scan(at);
+
+    expect(report).toMatchObject({ state: "scanned", hits: [], missing: [], scanned: { env: 1, briefs: 1, logs: 1, transcripts: 1 } });
+    expect(report.state === "scanned" && report.scanned.store).toBeGreaterThan(1);
   });
 });
