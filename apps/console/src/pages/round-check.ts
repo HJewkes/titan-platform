@@ -4,7 +4,7 @@ import { asksRevision, unanswered } from "./RoundAnswers.js";
 import { orderedQuestions } from "./RoundSections.js";
 import type { PostedVariant, VERDICTS } from "./frame-feedback.js";
 import type { Pin } from "./frame-pins.js";
-import { sectionPages } from "./round-pages.js";
+import { OTHER_FRAMES_PAGE, sectionPages } from "./round-pages.js";
 
 type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
 
@@ -35,9 +35,6 @@ export interface CheckGroup {
   frames: CheckFrame[];
 }
 
-/** A frame no section shows still has its verdict listed, after every section. */
-const OTHER_FRAMES = "~frames";
-
 /** The round's answers and frame verdicts grouped as the pager pages them, so a row names the page it is answered on. */
 export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAnswer[], variants: readonly PostedVariant[] = []): CheckGroup[] {
   const pages = sectionPages(orderedQuestions(manifest));
@@ -52,7 +49,7 @@ export function checkGroups(manifest: Manifest, submitted: readonly SubmittedAns
   });
   const placed = new Set(manifest.sections.flatMap((section) => section.variantKeys));
   const loose = framesOf(new Set(variants.map((variant) => variant.key).filter((key) => !placed.has(key))));
-  return loose.length > 0 ? [...groups, { id: OTHER_FRAMES, title: "Other frames", rows: [], frames: loose }] : groups;
+  return loose.length > 0 ? [...groups, { id: OTHER_FRAMES_PAGE, title: "Other frames", rows: [], frames: loose }] : groups;
 }
 
 /** An option names a frame by its variant key, so it reads as the key and the frame's label, as the harness's did. */

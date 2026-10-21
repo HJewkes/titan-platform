@@ -11,7 +11,8 @@ import { pickVerdicts, verdictAnswers } from "./frame-link.js";
 import { LockedQuestion, sentComment, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundQuestion, chooseIn, choicesOf, useChoiceKeys, type QuestionAnswer } from "./RoundQuestion.js";
-import { pageIdOf } from "./round-pages.js";
+import { SectionParts } from "./RoundParts.js";
+import { OTHER_FRAMES_PAGE, pageIdOf } from "./round-pages.js";
 
 /** Questions in section order, then any no section claims. */
 export function orderedQuestions(manifest: Manifest): { section: RoundSection | null; questions: Question[] }[] {
@@ -110,6 +111,8 @@ export interface RoundSectionsProps {
   textAnswers?: boolean;
   /** A section's frames, drawn between its notes and its questions. */
   frames?: (section: RoundSection) => ReactNode;
+  /** The frames no section shows, drawn as a last "Other frames" section; absent when every frame has one. */
+  otherFrames?: ReactNode;
   /** Sent or sending: every question shows its answer as given and takes no more edits. */
   locked?: boolean;
   /** A paged round draws only this page's section; without it every section shows. */
@@ -130,7 +133,17 @@ export function abAnswering({ optionNotes, note, revise, setActiveId }: RoundAns
 }
 
 /** Every section of a round with its questions, numbered across the round. */
-export function RoundSections({ manifest, state, textAnswers = false, frames, locked = false, page }: RoundSectionsProps): ReactNode {
+export function RoundSections({ otherFrames, ...props }: RoundSectionsProps): ReactNode {
+  const { page } = props;
+  return (
+    <>
+      <QuestionSections {...props} />
+      {otherFrames !== undefined && (page === undefined || page === OTHER_FRAMES_PAGE) ? <OtherFrames>{otherFrames}</OtherFrames> : null}
+    </>
+  );
+}
+
+function QuestionSections({ manifest, state, textAnswers = false, frames, locked = false, page }: RoundSectionsProps): ReactNode {
   const groups = orderedQuestions(manifest);
   const questions = groups.flatMap((group) => group.questions);
   const { answers, comments, activeId, setActiveId, choose, write, comment } = state;
@@ -171,11 +184,21 @@ function QuestionSection({ section, children }: { section: RoundSection | null; 
   );
 }
 
+function OtherFrames({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <Section testID="other-frames">
+      <SectionHeader title="Other frames" />
+      <SectionContent>{children}</SectionContent>
+    </Section>
+  );
+}
+
 function SectionNotes({ section }: { section: RoundSection }): ReactNode {
   return (
     <VStack gap={3}>
       {section.deciding ? <RoundNote heading="Deciding" text={section.deciding} /> : null}
       {section.changed ? <RoundNote heading="Changed" text={section.changed} /> : null}
+      <SectionParts parts={section.parts} />
       {section.context ? <RoundNote heading="Context" text={section.context} /> : null}
     </VStack>
   );
