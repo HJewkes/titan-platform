@@ -54,23 +54,29 @@ function RunsSection({ runs }: { runs: readonly ArRunView[] }): ReactNode {
           </TableHeader>
           <TableBody>
             {runs.map((run) => (
-              <TableRow key={run.runId} testID={`autoresearch-run-${run.runId}`}>
-                <TableCell>
-                  <Link color="primary" onPress={() => open({ view: "autoresearch", id: run.runId })}>
-                    {run.runId}
-                  </Link>
-                </TableCell>
-                <TableCell>{run.target.name}</TableCell>
-                <TableCell>
-                  <StatusBadge status={run.status} />
-                </TableCell>
-                <TableCell>{roundText(run)}</TableCell>
-              </TableRow>
+              <RunRow key={run.runId} run={run} />
             ))}
           </TableBody>
         </Table>
       </SectionContent>
     </Section>
+  );
+}
+
+function RunRow({ run }: { run: ArRunView }): ReactNode {
+  return (
+    <TableRow testID={`autoresearch-run-${run.runId}`}>
+      <TableCell>
+        <Link color="primary" onPress={() => open({ view: "autoresearch", id: run.runId })}>
+          {run.runId}
+        </Link>
+      </TableCell>
+      <TableCell>{run.target.name}</TableCell>
+      <TableCell>
+        <StatusBadge status={run.status} />
+      </TableCell>
+      <TableCell>{roundText(run)}</TableCell>
+    </TableRow>
   );
 }
 

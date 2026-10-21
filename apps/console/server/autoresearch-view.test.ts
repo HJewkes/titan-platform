@@ -29,14 +29,12 @@ describe("the autoresearch run fixture", () => {
 
 describe("the run view schema", () => {
   it("refuses a run without its pinned target, which labels every metric", () => {
-    const { target: _target, ...untargeted } = AR_RUN_FIXTURE;
-    expect(ArRunViewSchema.safeParse(untargeted).success).toBe(false);
+    expect(ArRunViewSchema.safeParse({ ...AR_RUN_FIXTURE, target: undefined }).success).toBe(false);
   });
 
   it("refuses a ladder that drops its outcome rather than nulling it", () => {
     const [first, ...rest] = AR_RUN_FIXTURE.rounds;
-    const { outcome: _outcome, ...ladder } = first!.ladders[0]!;
-    const broken = { ...AR_RUN_FIXTURE, rounds: [{ ...first!, ladders: [ladder] }, ...rest] };
+    const broken = { ...AR_RUN_FIXTURE, rounds: [{ ...first!, ladders: [{ ...first!.ladders[0]!, outcome: undefined }] }, ...rest] };
     expect(ArRunViewSchema.safeParse(broken).success).toBe(false);
   });
 

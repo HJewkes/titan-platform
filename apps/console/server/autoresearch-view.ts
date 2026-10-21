@@ -8,7 +8,7 @@ import { z } from "zod";
 const WORKFLOW_STATUSES = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"] as const;
 const IDEA_SOURCES = ["planner", "owner", "requeue", "followup"] as const;
 const RUNGS = ["none", "L0", "L1", "L2", "L3"] as const;
-export const AR_VERDICTS = ["kept", "rejected", "stopped"] as const;
+const AR_VERDICTS = ["kept", "rejected", "stopped"] as const;
 
 /** The labels come from the pinned target, so the page names no metric of its own. */
 const metricConfig = z.object({
