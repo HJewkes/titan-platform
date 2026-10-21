@@ -169,7 +169,7 @@ export function FrameFigure({ frameKey, label, pinnable, id, testID, children }:
   return (
     // A frame drawn inside a question's card would hand the press on to the card, which makes the question active again.
     <figure id={id} className={active ? `${FIGURE} ${ACTIVE_FIGURE}` : FIGURE} data-testid={testID} data-active={active || undefined} onPointerDown={activate} onFocus={activate} onClick={(event) => event.stopPropagation()}>
-      <FramePinsProvider value={framePins(feedback, frameKey, label)}>{children}</FramePinsProvider>
+      <FramePinsProvider value={pinnable ? framePins(feedback, frameKey, label) : null}>{children}</FramePinsProvider>
       <FrameControls frameKey={frameKey} label={label} pinnable={pinnable} active={active} feedback={feedback} />
     </figure>
   );
@@ -187,7 +187,7 @@ function FrameControls({ frameKey, label, pinnable, active, feedback }: FrameCon
   const draft = feedback.drafts[frameKey] ?? EMPTY_DRAFT;
   const coarse = useCoarsePointer();
   if (feedback.locked) return <SentFrameFeedback frameKey={frameKey} draft={draft} pins={feedback.sent?.[frameKey]?.annotations ?? draft.pins} />;
-  const pinning = feedback.pinning === frameKey;
+  const pinning = pinnable && feedback.pinning === frameKey;
   return (
     <div className="flex flex-col gap-1" inert={feedback.locked} data-testid={`frame-feedback-${frameKey}`}>
       <div role="group" aria-label={`Verdict on ${label}`} className="flex flex-wrap items-center gap-1">

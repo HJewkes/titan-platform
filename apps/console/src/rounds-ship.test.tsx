@@ -159,6 +159,17 @@ describe("the Ship view", () => {
     expect(frameCalls(rendered)).toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-dark", view: "diff" } });
   });
 
+  it("offers no Pin on a montage, whose BEFORE, AFTER and DIFF would share one frame's pins", async () => {
+    await renderShip({ answers: true });
+    const montage = screen.getByTestId("montage-tile-light");
+    fireEvent.pointerDown(montage);
+
+    fireEvent.keyDown(window, { key: "a" });
+
+    expect(within(montage).queryByRole("button", { name: /^Pin / })).toBeNull();
+    expect(within(montage).queryByText(/place a pin/)).toBeNull();
+  });
+
   it("reads AFTER from a CI packet's after image, not its montage head", async () => {
     const rendered = await renderShip({ listed: PACKET_FRAMES });
 
@@ -621,5 +632,64 @@ describe("a sent Ship round read back after a reload (TP-3767)", () => {
 
     expect(screen.getByRole("radio", { name: "1 Yes" }).getAttribute("aria-checked")).toBe("false");
     expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("frame feedback on a Ship round (TP-3773 S6b)", () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const verdict = (key: string, label: string): HTMLElement => within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label });
+  const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
+
+  it("turns Ship off for a Rejected frame, and sends its verdict and comment with Send back", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.click(verdict("tile-dark", "Rejected"));
+    expect(blocked()).toContain('Ship is off: you left feedback on frame "Tile, dark". Send back stays open.');
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.change(screen.getByLabelText("Comment on frame Tile, dark"), { target: { value: " The stripe clips. " } });
+    fireEvent.click(button("Send back"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ variants: [{ key: "tile-dark", verdict: "rejected", comment: "The stripe clips." }], answers: [{ questionId: "ship-tiles", pick: "Don't ship" }] });
+  });
+
+  it("ships with a Chosen frame that has no comment, and sends the verdict", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.click(verdict("tile-light", "Chosen"));
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ headSha: HEAD, variants: [{ key: "tile-light", verdict: "chosen" }] });
+  });
+
+  it("lets a frame comment alone be the Send back note", async () => {
+    await renderShip({ answers: true });
+    expect(button("Send back").getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.change(screen.getByLabelText("Comment on frame Badge (new)"), { target: { value: "Badge is off-centre." } });
+
+    expect(screen.queryByTestId("send-back-blocked")).toBeNull();
+    expect(button("Send back").getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("lists an earlier round's frame feedback and holds Ship until it is ticked Addressed", async () => {
+    const priorFeedback = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", frames: ["Tile, dark (rejected): The stripe clips."] }];
+    await renderShip({ answers: true, detail: { priorFeedback } });
+
+    expect(within(screen.getByTestId("ship-prior-feedback")).getByText("Tile, dark (rejected): The stripe clips.")).toBeTruthy();
+    expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+  });
+
+  it("shows a sent round's frame verdict and comment read-only", async () => {
+    const frames = { "tile-dark": { verdict: "rejected" as const, comment: "The stripe clips.", annotations: [] } };
+    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {}, answers: {}, addressed: [], frames } } });
+
+    expect(screen.getByTestId("frame-feedback-sent-tile-dark").textContent).toBe("RejectedThe stripe clips.");
+    expect(screen.queryByRole("button", { name: "Rejected" })).toBeNull();
+    expect(screen.queryByLabelText("Comment on frame Tile, dark")).toBeNull();
   });
 });

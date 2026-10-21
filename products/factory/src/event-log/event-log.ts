@@ -69,7 +69,7 @@ export interface TransitionEvent extends EventBase {
   value: string;
 }
 
-type NewEvent = IdentityEvent | TransitionEvent;
+export type NewEvent = IdentityEvent | TransitionEvent;
 
 type AppendResult = { inserted: true; seq: number } | { inserted: false; seq: number; by: "delivery" | "occurrence" | "unchanged" };
 

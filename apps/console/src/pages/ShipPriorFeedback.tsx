@@ -23,6 +23,7 @@ export function ShipPriorFeedback({ items, addressed, onToggle, locked = false }
               <PriorLine label="Your answer" text={item.revisionRequested ? "Request a revision" : item.pick} />
               <PriorLine label="Your comment" text={item.comment} />
               <PriorLine label="Your feedback on that round" text={item.general} />
+              <PriorFrames lines={item.frames} />
               <Checkbox
                 label="Addressed"
                 accessibilityLabel={`Round ${item.round} feedback addressed`}
@@ -45,6 +46,17 @@ function PriorLine({ label, text }: { label: string; text: string | undefined })
     <VStack gap={1}>
       <Typography variant="microLabel" color="secondary">{label.toUpperCase()}</Typography>
       <Typography variant="body2">{text}</Typography>
+    </VStack>
+  );
+}
+
+/** Each frame that round judged, one line apiece: its label, verdict, comment and pins. */
+function PriorFrames({ lines }: { lines: readonly string[] | undefined }): ReactNode {
+  if (lines === undefined) return null;
+  return (
+    <VStack gap={1}>
+      <Typography variant="microLabel" color="secondary">YOUR FRAME FEEDBACK</Typography>
+      {lines.map((line) => <Typography key={line} variant="body2">{line}</Typography>)}
     </VStack>
   );
 }

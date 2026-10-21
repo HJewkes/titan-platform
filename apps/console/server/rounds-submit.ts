@@ -39,7 +39,7 @@ import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, 
 import { readPriorFeedback } from "./prior-feedback.js";
 import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
-import { sendBackBlocker, shipBlockers } from "./ship-blockers.js";
+import { frameScope, sendBackBlocker, shipBlockers } from "./ship-blockers.js";
 
 /**
  * Room for a 24-frame round whose frames all hold the longest comment and pins in one-byte text; the same round in
@@ -229,11 +229,13 @@ const isMergeQuestion = (question: Question): question is MergeQuestion => quest
 const sendsBack = (question: MergeQuestion, answer: SubmittedAnswer): boolean =>
   answer.revisionRequested === true || (answer.pick !== undefined && !question.merge.ship.includes(answer.pick));
 
-/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question or the round note. */
+/** Each PR sent back needs its own note (decision 513): a comment on its own Ship question, the round note or its own frames' words. */
 function refuseSendBackWithoutNote(manifest: Manifest, args: SubmitArgs): void {
   for (const question of manifest.questions.filter(isMergeQuestion)) {
     const answer = args.answers.find((each) => each.questionId === question.id);
-    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(args, question.id) : undefined;
+    const frames = frameScope(manifest, question.id);
+    const own = { ...args, variants: args.variants.filter((variant) => frames.has(variant.key)) };
+    const blocker = answer !== undefined && sendsBack(question, answer) ? sendBackBlocker(own, question.id) : undefined;
     if (blocker !== undefined) refuse(`Send back refused for question "${question.id}": ${blocker}`);
   }
 }
