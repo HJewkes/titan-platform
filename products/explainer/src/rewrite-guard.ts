@@ -1,8 +1,9 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
-import { sentencesOf } from "./lint-text.js";
-import { numberSpans, spokenText } from "./lint-register.js";
+import { contentTerms, sentencesOf } from "./lint-text.js";
+import { numberSpans, spokenText, type TextSpan } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
+import { numberForm, remapCuesInPlace } from "./spoken-numbers.js";
 
 export type BeatRejectionRule =
   | "empty"
@@ -63,44 +64,51 @@ function surplus(left: readonly string[], right: readonly string[]): string[] {
   });
 }
 
-/** The number mentions that left the spoken line, normalized, with repeats. */
-const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(numbersIn(before).map(norm), numbersIn(after.spoken).map(norm));
+/** Each number mention of a line in one form, spelled or in digits: "twenty-eight" and "28" are both "28". */
+const formsIn = (spoken: string): string[] => numbersIn(spoken).map(numberForm);
 
-const inLabel = (labels: readonly string[], span: string): boolean => labels.some((label) => hasWord(norm(label), span));
+/** The number mentions that left the spoken line, in that form, with repeats. */
+const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(formsIn(before), formsIn(after.spoken));
 
-/**
- * The original line, markup reduced, without the number mentions an appended label now carries. The terms rule reads
- * this, so "5000 rows" moved to a label does not count "thousand" as a dropped content term.
- */
-function withoutCarriedNumbers(before: string, after: BeatRewrite): string {
-  const carried = movedNumbers(before, after).filter((span) => inLabel(after.labelsAdded, span));
+const carries = (label: string, form: string): boolean => formsIn(label).includes(form);
+const inLabel = (labels: readonly string[], form: string): boolean => labels.some((label) => carries(label, form));
+
+/** The number mentions of the original line, markup reduced, that an appended label now carries. */
+function carriedSpans(before: string, after: BeatRewrite): { text: string; spans: TextSpan[] } {
+  const carried = movedNumbers(before, after).filter((form) => inLabel(after.labelsAdded, form));
   const text = spokenText([before]).text;
-  const cut = numberSpans(text).filter((span) => {
-    const at = carried.indexOf(norm(span.text));
+  const spans = numberSpans(text).filter((span) => {
+    const at = carried.indexOf(numberForm(span.text));
     if (at === -1) return false;
     carried.splice(at, 1);
     return true;
   });
-  return cut.reduceRight((line, span) => line.slice(0, span.index) + line.slice(span.index + span.text.length), text);
+  return { text, spans };
+}
+
+/**
+ * The original line without the number mentions an appended label now carries. The terms rule reads this, so
+ * "5000 rows" moved to a label does not count "thousand" as a dropped content term.
+ */
+function withoutCarriedNumbers(before: string, after: BeatRewrite): string {
+  const { text, spans } = carriedSpans(before, after);
+  return spans.reduceRight((line, span) => line.slice(0, span.index) + line.slice(span.index + span.text.length), text);
 }
 
 function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
-  const was = numbersIn(before).map(norm);
-  const now = numbersIn(after.spoken).map(norm);
-  const labels = after.labelsAdded.map(norm);
   const moved = movedNumbers(before, after);
-  const lost = moved.filter((span) => !inLabel(labels, span));
+  const lost = moved.filter((form) => !inLabel(after.labelsAdded, form));
   return [
-    ...lost.map((span) => ({ rule: "number-lost" as const, detail: `"${span}" left the line and is not in an appended label` })),
-    ...bareLabelRejections(moved, labels),
-    ...surplus(now, was).map((span) => ({ rule: "number-invented" as const, detail: `"${span}" was not in the original` })),
+    ...lost.map((form) => ({ rule: "number-lost" as const, detail: `"${form}" left the line and is not in an appended label` })),
+    ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
+    ...surplus(formsIn(after.spoken), formsIn(before)).map((form) => ({ rule: "number-invented" as const, detail: `"${form}" was not in the original` })),
   ];
 }
 
 /** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
 function bareLabelRejections(moved: readonly string[], labels: readonly string[]): BeatRejection[] {
   return labels
-    .filter((label) => moved.some((span) => hasWord(label, span)))
+    .filter((label) => moved.some((form) => carries(label, form)))
     .filter((label) => numbersIn(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
     .map((label) => ({ rule: "label-bare", detail: `label "${label}" is only a number; it needs its noun phrase` }));
 }
@@ -130,14 +138,51 @@ function positionIn(beat: Pick<ScriptBeat, "id" | "spoken">, cue: string): numbe
   }
 }
 
-function cueRejections(before: ScriptBeat, spoken: string): BeatRejection[] {
+const cueWord = (word: string): string => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
+
+/** The words of a label other than its number: the noun phrase a moved number's cue can land on. */
+function labelNouns(label: string): string[] {
+  const words = numberSpans(label).reduceRight((text, span) => text.slice(0, span.index) + text.slice(span.index + span.text.length), label);
+  return (words.match(/\S+/g) ?? []).map(cueWord).filter((word) => /\p{L}/u.test(word) && contentTerms(word).size > 0);
+}
+
+/**
+ * Cues that named a word of a number an appended label now carries, each renamed to the first of that label's nouns
+ * the new line still speaks: with "28 slots" appended, a cue on "twenty-eight" in "twenty-eight slots" lands on "slots".
+ */
+export function carriedCueRenames(before: ScriptBeat, after: BeatRewrite): Map<string, string> {
+  const { spans } = carriedSpans(before.spoken, after);
+  const line = { id: before.id, spoken: after.spoken };
+  const spoken = (after.spoken.match(/\S+/g) ?? []).map(cueWord);
+  const renames = new Map<string, string>();
+  for (const cue of beatCues(before.visual).filter((c) => positionIn(line, c) === undefined)) {
+    const word = cueWord(cue.split("#")[0] ?? "");
+    const span = spans.find((s) => s.text.split(/\s+/).map(cueWord).includes(word));
+    const label = span && after.labelsAdded.find((l) => carries(l, numberForm(span.text)));
+    const noun = label && labelNouns(label).find((n) => spoken.includes(n));
+    if (noun) renames.set(cue, noun);
+  }
+  return renames;
+}
+
+function cueRejections(before: ScriptBeat, after: BeatRewrite): BeatRejection[] {
   const cues = beatCues(before.visual);
-  const after = { id: before.id, spoken };
-  const lost = cues.filter((cue) => positionIn(after, cue) === undefined);
+  const renames = carriedCueRenames(before, after);
+  const renamed = cues.map((cue) => renames.get(cue) ?? cue);
+  const line = { id: before.id, spoken: after.spoken };
+  const lost = cues.filter((_, i) => positionIn(line, renamed[i]!) === undefined);
   if (lost.length > 0) return lost.map((cue) => ({ rule: "cue-lost", detail: `cue "${cue}" is no longer spoken` }));
   const was = orderOf(cues.map((cue) => positionIn(before, cue) ?? -1));
-  const now = orderOf(cues.map((cue) => positionIn(after, cue) ?? -1));
+  const now = orderOf(renamed.map((cue) => positionIn(line, cue) ?? -1));
   return was.every((cue, i) => cue === now[i]) ? [] : [{ rule: "cue-order", detail: "cues land in a different order" }];
+}
+
+/** The beat as an accepted rewrite leaves it: the new line, the appended labels, and cues on moved numbers renamed. */
+export function rewrittenBeat(before: ScriptBeat, after: BeatRewrite): ScriptBeat {
+  const renames = carriedCueRenames(before, after);
+  const visual = structuredClone(before.visual);
+  remapCuesInPlace(visual, (cue) => renames.get(cue) ?? cue);
+  return { ...before, spoken: after.spoken, visual: { ...visual, labels: [...visual.labels, ...after.labelsAdded] } };
 }
 
 const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
@@ -154,7 +199,7 @@ function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: 
 
 /**
  * Every reason a rewritten beat may not replace its original; empty when it may. A beat with any rejection keeps its
- * original text. Moved numbers are allowed to leave `spoken` only when an appended label carries them verbatim.
+ * original text. Moved numbers may leave `spoken` only when an appended label carries them, in digits or in words.
  */
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
   const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, ...opts.guard };
@@ -167,7 +212,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...terms,
     ...numberRejections(before.spoken, after),
     ...listRejections(before.spoken, after),
-    ...cueRejections(before, after.spoken),
+    ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
     ...capRejections(after.spoken, opts),
   ];

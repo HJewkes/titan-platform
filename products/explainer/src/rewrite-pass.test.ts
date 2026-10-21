@@ -70,6 +70,15 @@ describe("rewriteScript with compliant rewrites", () => {
 });
 
 describe("rewriteScript guard and revert", () => {
+  it("moves a cue on a number it carries to a label onto that label's noun in the line", async () => {
+    const cue = { visual: { assertion: "The ledger holds rows per dock", job: "map", cues: [{ action: "V6", target: "n1", atCue: "50" }] } };
+
+    const { script: out, report } = await rewrite(choppy({ w4: cue }), fakeRewriter(), { rounds: 1 });
+
+    expect(report.rounds[0]!.rewritten).toContain("w4");
+    expect(out.beats.find((beat) => beat.id === "w4")!.visual.cues.map((c) => c.atCue)).toEqual(["rows"]);
+  });
+
   it("keeps a beat whose rewrite drops a cue word, and reports why", async () => {
     const cue = { visual: { assertion: "The ledger names a dock", job: "map", cues: [{ action: "V6", target: "n1", atCue: "dock" }] } };
     const script = choppy({ w2: cue });

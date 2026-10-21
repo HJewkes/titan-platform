@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { hasSpokenDigits, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
+import { hasSpokenDigits, numberForm, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 import { deriveEvalView } from "./eval-view.js";
 
 const beatOf = (spoken: string, cues: string[] = []) => {
@@ -89,5 +89,28 @@ describe("Q-V12 spoken digits", () => {
   it("passes a spelled beat and one whose only digits sit in markup", () => {
     expect(rowFor("The desk keeps three scans.")[0]).toMatchObject({ pass: true });
     expect(hasSpokenDigits("The [desk 7](=queue) is fine.")).toBe(false);
+  });
+});
+
+describe("numberForm", () => {
+  it("reads back every whole number the speller writes, years read as pairs included", () => {
+    const misread = Array.from({ length: 2101 }, (_, n) => n)
+      .concat([5000, 12_345, 1_400_000])
+      .filter((n) => numberForm(spell(`${n} rows.`).replace(/ rows\.$/, "")) !== String(n));
+    expect(misread).toEqual([]);
+  });
+
+  it("gives a spelled mention and its digits one form", () => {
+    expect(numberForm("twenty-eight")).toBe(numberForm("28"));
+    expect(numberForm("a hundred and ninety")).toBe("190");
+    expect(numberForm("Forty-four")).toBe("44");
+    expect(numberForm("1,200")).toBe("1200");
+    expect(numberForm("forty percent")).toBe(numberForm("40%"));
+    expect(numberForm("four point five")).toBe("4.5");
+  });
+
+  it("keeps text it cannot read as written, lower-cased", () => {
+    expect(numberForm("9 ms")).toBe("9 ms");
+    expect(numberForm("a dozen")).toBe("a dozen");
   });
 });
