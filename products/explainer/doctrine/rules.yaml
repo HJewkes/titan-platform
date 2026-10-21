@@ -94,6 +94,13 @@ rules:
       status: implemented
       checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
 
+  - id: Q-V12
+    rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
+    fields: [beats.spoken]
+    related: [Q-V11]
+    owner_support: none
+    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
     fields: [video.stake, beats.function, beats.spoken]
