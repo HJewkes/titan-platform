@@ -135,12 +135,12 @@ describe("autoresearch on a fixture target at $0", () => {
     const { repo, ports } = await world(["better"], { beforeEval });
     const dir = mkdtempSync(join(tmpdir(), "ar-resume-"));
     dirs.push(dir);
-    const first = openHost(ports, join(dir, "factory.db"));
+    const first = openHost(ports, join(dir, "runs.db"));
     const runId = start(first, repo, { ...CONFIG, lanes: 1 });
     await held.opened;
     first.close();
 
-    const second = openHost(ports, join(dir, "factory.db"));
+    const second = openHost(ports, join(dir, "runs.db"));
     await second.adopt();
     const run = await second.runtime.wait(runId);
 

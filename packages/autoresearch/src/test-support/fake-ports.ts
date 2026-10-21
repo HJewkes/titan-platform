@@ -67,7 +67,7 @@ const NOISE = { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBand: 1.5 
 const PHASES = [{ id: "p1", train: ["t-alpha"], baselineRuns: 6, stop: { ideasEvaluated: 16, roundsWithoutGain: 3 } }];
 
 /** A code-health target: lower is better, every gate must hold, and a micro rung per class. */
-export const FIXTURE_TARGET: Target = {
+const FIXTURE_TARGET: Target = {
   schema: "ar-target/v1",
   ratchetPrefix: "autoresearch/fixture",
   metric: {

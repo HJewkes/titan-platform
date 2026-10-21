@@ -9,7 +9,7 @@ import { z } from "zod";
 import { buildDigest, evidenceRow, type EvidenceRow } from "./digest.js";
 import type { KeepSettings } from "./keep.js";
 import { ideaLadder, type RoundContext } from "./ladder.js";
-import { arStepId, AUTORESEARCH_STEPS } from "./manifest.js";
+import { arStepId } from "./manifest.js";
 import { addPair, band, NO_NOISE, sigmaOf, type NoiseState } from "./noise.js";
 import { HeadSchema, PinnedSchema, type Pinned } from "./ports.js";
 import { applyOps, quotaViolations } from "./queue.js";
