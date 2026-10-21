@@ -5,6 +5,8 @@ import { defineCommand } from "./types.js";
 
 const naming = { prefix: "active__" };
 
+const propertiesOf = (schema: Record<string, unknown>) => z.record(z.string(), z.unknown()).parse(schema.properties);
+
 const taskAdd = defineCommand({
   name: "task.add",
   description: "Add a task",
@@ -34,7 +36,7 @@ describe("commandToTool", () => {
     expect(tool.description).toBe("Add a task");
     expect(tool.inputSchema.type).toBe("object");
     expect(tool.inputSchema.required).toEqual(["slug", "title"]);
-    expect(Object.keys(tool.inputSchema.properties as object)).toEqual(["slug", "title", "priority"]);
+    expect(Object.keys(propertiesOf(tool.inputSchema))).toEqual(["slug", "title", "priority"]);
   });
 
   it("projects an array-typed field as a JSON Schema array, independent of any CLI rendering", () => {
@@ -49,8 +51,7 @@ describe("commandToTool", () => {
       },
     });
     const tool = commandToTool(withTags, naming);
-    const properties = tool.inputSchema.properties as Record<string, { type?: string; items?: { type?: string } }>;
-    expect(properties.tags).toMatchObject({ type: "array", items: { type: "string" } });
+    expect(propertiesOf(tool.inputSchema).tags).toMatchObject({ type: "array", items: { type: "string" } });
   });
 
   it("can describe input objects without closing nested objects, preserving the output default", () => {
@@ -70,7 +71,7 @@ describe("commandToTool", () => {
       declared: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
     });
     expect(output).toHaveProperty("additionalProperties", false);
-    expect((output.properties as Record<string, unknown>).declared).toHaveProperty("additionalProperties", false);
+    expect(propertiesOf(output).declared).toHaveProperty("additionalProperties", false);
     expect(commandToTool(nested, naming, { io: "output" }).inputSchema).toEqual(output);
   });
 
