@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_JSON = join(ROOT, ".codewatch", "check.json");
-export const TIERS = ["0", "1", "2", "ui", "product"];
+export const TIERS = ["0", "1", "2", "3", "ui", "product"];
 
 /** The rule in a parsed check.json that carries `$tiers`, the source of truth for the DAG. */
 export function findTiersRule(config) {

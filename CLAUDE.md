@@ -28,7 +28,7 @@ The design system is separate: `~/projects/titan-design` publishes `@titan-desig
 export. Either wait for the release or build a product-side adapter that is deleted when
 the release lands.
 
-**Tier rule.** Packages depend only on lower tiers (0 primitives, 1 engines, 2 domain).
+**Tier rule.** Packages depend only on lower tiers (0 primitives, 1 engines, 2 domain, 3 compositions).
 Products never depend on another product's source. They talk over a process boundary
 (CLI, loopback HTTP, MCP).
 

@@ -68,6 +68,7 @@
           "packages/dispatch-ledger",
           "packages/speech-vet"
         ],
+        "3": [],
         "ui": [
           "packages/react-app"
         ],

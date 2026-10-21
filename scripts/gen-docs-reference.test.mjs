@@ -101,6 +101,16 @@ describe("architecture page generation", () => {
     expect(page(root, "site/guides/index.md")).toContain("start -->two<!--");
   });
 
+  it("lists a tier 3 package under its own heading, in the index and the graph", () => {
+    const root = siteRoot({ 2: ["packages/alpha"], 3: ["packages/flow"], product: ["products/session-miner"] }, "`alpha` and `flow`");
+    addPackage(root, "packages/alpha");
+    addPackage(root, "packages/flow", { "@titan-design/alpha": "workspace:^" });
+    writeManifest(root, "products/session-miner", JSON.stringify({ name: "@titan-design/session-miner", private: true, dependencies: { "@titan-design/flow": "workspace:^" } }));
+
+    expect(page(root, "site/reference/index.md")).toContain("## Tier 3 — compositions");
+    expect(page(root, "site/guides/architecture.md")).toMatch(/subgraph T3\["Tier 3 · compositions"\]\n {4}flow\["flow"\]\n {2}end/);
+  });
+
   it("reports a package that has no family on the families page", () => {
     const root = workspaceWithNewUnit();
     for (const { path, content } of outputs(root)) writeFileSync(join(root, path), content);

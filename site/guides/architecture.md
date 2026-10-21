@@ -306,6 +306,8 @@ how to answer questions about one code-graph snapshot. The three `style-*` packa
 what a code-style convention is. `queue-mirror` knows what a human-actionable queue item
 is.
 
+**Tier 3, compositions.** Packages that compose tier-2 engines into reusable flows. They depend only on tiers 0-2 and carry no product opinion.
+
 **UI.** `react-app` binds `rpc-client` to React. It carries no components or styling;
 those live in the separate `@titan-design/react-ui` design system.
 

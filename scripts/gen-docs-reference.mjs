@@ -21,6 +21,7 @@ export const TIER_LABELS = {
   0: { title: "Tier 0 — primitives", blurb: "Domain-free building blocks. No titan dependencies." },
   1: { title: "Tier 1 — engines", blurb: "Reusable machinery over the primitives." },
   2: { title: "Tier 2 — domain", blurb: "Modules that know about a subject: transcripts, code, rules." },
+  3: { title: "Tier 3 — compositions", blurb: "Packages that compose tier-2 engines into reusable flows. They depend only on tiers 0-2 and carry no product opinion." },
   ui: { title: "UI", blurb: "React bindings for the daemon wire. The design system, react-ui, is listed here but published from a separate repository." },
   product: { title: "Products", blurb: "Thin compositions of the tiers. A linked product is published; the rest are private." },
 };
@@ -148,6 +149,7 @@ const GRAPH_TITLES = {
   0: ["T0", "Tier 0 · primitives and contracts"],
   1: ["T1", "Tier 1 · engines"],
   2: ["T2", "Tier 2 · domain"],
+  3: ["T3", "Tier 3 · compositions"],
   ui: ["UI", "UI"],
   product: ["P", "Products"],
 };
