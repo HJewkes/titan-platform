@@ -128,6 +128,8 @@ const ACTIVE_FIGURE = "rounded outline outline-2 outline-offset-4 outline-brand-
 interface FrameFigureProps {
   frameKey: string;
   label: string;
+  /** The figure draws the frame's PNG, so pins have somewhere to go. */
+  pinnable: boolean;
   id?: string;
   testID?: string;
   children: ReactNode;
@@ -156,7 +158,7 @@ function DraftPinList({ frameKey, feedback, focus }: { frameKey: string; feedbac
 }
 
 /** A frame's figure; inside a design round it ends in the frame's verdict, comment and pins, and pressing it makes it the frame keys judge. */
-export function FrameFigure({ frameKey, label, id, testID, children }: FrameFigureProps): ReactNode {
+export function FrameFigure({ frameKey, label, pinnable, id, testID, children }: FrameFigureProps): ReactNode {
   const feedback = useContext(FrameFeedbackContext);
   if (feedback === null) return <figure id={id} className={FIGURE} data-testid={testID}>{children}</figure>;
   const active = feedback.activeFrame === frameKey;
@@ -165,7 +167,7 @@ export function FrameFigure({ frameKey, label, id, testID, children }: FrameFigu
     // A frame drawn inside a question's card would hand the press on to the card, which makes the question active again.
     <figure id={id} className={active ? `${FIGURE} ${ACTIVE_FIGURE}` : FIGURE} data-testid={testID} data-active={active || undefined} onPointerDown={activate} onFocus={activate} onClick={(event) => event.stopPropagation()}>
       <FramePinsProvider value={framePins(feedback, frameKey, label)}>{children}</FramePinsProvider>
-      <FrameControls frameKey={frameKey} label={label} active={active} feedback={feedback} />
+      <FrameControls frameKey={frameKey} label={label} pinnable={pinnable} active={active} feedback={feedback} />
     </figure>
   );
 }
@@ -173,11 +175,12 @@ export function FrameFigure({ frameKey, label, id, testID, children }: FrameFigu
 interface FrameControlsProps {
   frameKey: string;
   label: string;
+  pinnable: boolean;
   active: boolean;
   feedback: FrameFeedbackValue;
 }
 
-function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps): ReactNode {
+function FrameControls({ frameKey, label, pinnable, active, feedback }: FrameControlsProps): ReactNode {
   const draft = feedback.drafts[frameKey] ?? EMPTY_DRAFT;
   const coarse = useCoarsePointer();
   if (feedback.locked) return <SentFrameFeedback frameKey={frameKey} draft={draft} pins={feedback.sent?.[frameKey]?.annotations ?? []} />;
@@ -190,13 +193,15 @@ function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps
             <ButtonText>{verdictLabel}</ButtonText>
           </Button>
         ))}
-        <Button size="sm" variant={pinning ? "solid" : "ghost"} aria-pressed={pinning} accessibilityLabel={`Pin ${label}`} onPress={() => feedback.togglePins(frameKey)}>
-          <ButtonText>{pinning ? "Pinning" : "Pin"}</ButtonText>
-        </Button>
+        {pinnable ? (
+          <Button size="sm" variant={pinning ? "solid" : "ghost"} aria-pressed={pinning} accessibilityLabel={`Pin ${label}`} onPress={() => feedback.togglePins(frameKey)}>
+            <ButtonText>{pinning ? "Pinning" : "Pin"}</ButtonText>
+          </Button>
+        ) : null}
       </div>
       {/* The hint keeps its line on every frame: a press that moved the frames below it would land on another control. */}
       <div className={active ? undefined : "invisible"} aria-hidden={!active}>
-        <Typography variant="caption" color="secondary">{pinning ? PINNING_HINT : KEY_HINT}</Typography>
+        <Typography variant="caption" color="secondary">{pinning ? PINNING_HINT : pinnable ? `${VERDICT_HINT} · a pin` : VERDICT_HINT}</Typography>
       </div>
       {/* On a phone pins are placed full size, whose own list takes the new pin's focus. */}
       <DraftPinList frameKey={frameKey} feedback={feedback} focus={!(pinning && coarse)} />
@@ -205,7 +210,7 @@ function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps
   );
 }
 
-const KEY_HINT = "c chosen · x rejected · m maybe · u clear · a pin";
+const VERDICT_HINT = "c chosen · x rejected · m maybe · u clear";
 const PINNING_HINT = "Click the frame to place a pin · a or Esc to stop";
 
 type SentPin = NonNullable<RoundNotes["frames"]>[string]["annotations"][number];

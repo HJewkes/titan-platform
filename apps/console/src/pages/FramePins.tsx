@@ -52,6 +52,8 @@ const PLACING = "cursor-crosshair rounded outline-dashed outline-2 outline-brand
 export function PinLayer({ pins, image }: { pins: FramePins; image: RefObject<HTMLImageElement | null> }): ReactNode {
   const down = useRef<{ clientX: number; clientY: number } | null>(null);
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
+    // After a touch the browser sends a mousedown, which would take focus off the new pin's note before the owner types.
+    event.preventDefault();
     down.current = { clientX: event.clientX, clientY: event.clientY };
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {

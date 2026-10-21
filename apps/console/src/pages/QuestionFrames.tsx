@@ -116,7 +116,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
         {keys.map((key) => {
           const label = frames.labels.get(key) ?? key;
           return (
-            <FrameFigure key={key} frameKey={key} label={label} id={frameAnchor(question.id, key)}>
+            <FrameFigure key={key} frameKey={key} label={label} pinnable={frames.loadable.has(key)} id={frameAnchor(question.id, key)}>
               <HStack gap={2} align="center" justify="between">
                 <Typography variant="subtitle2">{label}</Typography>
                 <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>

@@ -535,13 +535,24 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
 
     fireEvent.click(pinButton("beacon-busy"));
     const dialog = within(screen.getByRole("dialog"));
-    tap(dialog.getByTestId("pin-layer-beacon-busy"), 100, 50);
+    const layer = dialog.getByTestId("pin-layer-beacon-busy");
+    // A touch's pointerdown is cancelled, so the browser's follow-up mousedown cannot take focus off the new pin's note.
+    expect(fireEvent.pointerDown(layer, { clientX: 100, clientY: 50 })).toBe(false);
+    fireEvent.pointerUp(layer, { clientX: 100, clientY: 50 });
 
     expect(screen.getAllByTestId("pin-layer-beacon-busy")).toHaveLength(1);
     expect(document.activeElement).toBe(dialog.getByLabelText("Note for pin 1"));
     fireEvent.click(dialog.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
+  });
+
+  it("offers no Pin on a frame with no image to pin", async () => {
+    await renderDesign();
+    await toSection("sketch");
+
+    expect(within(screen.getByTestId("frame-feedback-beacon-sketch")).queryByRole("button", { name: /^Pin / })).toBeNull();
+    expect(within(screen.getByTestId("frame-feedback-beacon-sketch")).getByText("c chosen · x rejected · m maybe · u clear")).toBeTruthy();
   });
 
   it("draws a sent round's pins on the frame, with no way to place another", async () => {

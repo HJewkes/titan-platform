@@ -126,7 +126,7 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         );
         // A see-also thumbnail points at a frame judged where it is drawn full width, so it takes no verdict of its own.
         if (size === "thumb") return <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`see-also-${key}`}>{body}</figure>;
-        return <FrameFigure key={key} frameKey={key} label={label} testID={`design-frame-${key}`}>{body}</FrameFigure>;
+        return <FrameFigure key={key} frameKey={key} label={label} pinnable={indexed.has(key)} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
   );
