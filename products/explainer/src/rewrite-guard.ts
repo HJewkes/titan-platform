@@ -43,6 +43,12 @@ const DEFAULT_LENGTH_TOLERANCE = 0.35;
 
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
 
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Whole-word containment, so "3" is not found in "30" or "13.5" and "led" is not found in "ledger". */
+const hasWord = (text: string, needle: string): boolean =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?<!\\d[.,])${escapeRegExp(needle)}(?![\\p{L}\\p{N}])(?![.,]\\d)`, "u").test(text);
+
 /** What `left` holds more often than `right`, with repeats. */
 function surplus(left: readonly string[], right: readonly string[]): string[] {
   const remaining = [...right];
@@ -59,7 +65,7 @@ function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const now = numberSpans(after.spoken).map(norm);
   const labels = after.labelsAdded.map(norm);
   const moved = surplus(was, now);
-  const lost = moved.filter((span) => !labels.some((label) => label.includes(span)));
+  const lost = moved.filter((span) => !labels.some((label) => hasWord(label, span)));
   return [
     ...lost.map((span) => ({ rule: "number-lost" as const, detail: `"${span}" left the line and is not in an appended label` })),
     ...bareLabelRejections(moved, labels),
@@ -70,7 +76,7 @@ function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
 /** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
 function bareLabelRejections(moved: readonly string[], labels: readonly string[]): BeatRejection[] {
   return labels
-    .filter((label) => moved.some((span) => label.includes(span)))
+    .filter((label) => moved.some((span) => hasWord(label, span)))
     .filter((label) => numberSpans(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
     .map((label) => ({ rule: "label-bare", detail: `label "${label}" is only a number; it needs its noun phrase` }));
 }
@@ -84,7 +90,7 @@ function listRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const labels = after.labelsAdded.map(norm);
   const items = [...before.matchAll(NAMED_LIST)].flatMap((match) => match.slice(1, 4).map((item) => norm(item).replace(/^(?:the|a|an) /, "")));
   return items
-    .filter((item) => !spoken.includes(item) && !labels.some((label) => label.includes(item)))
+    .filter((item) => !hasWord(spoken, item) && !labels.some((label) => hasWord(label, item)))
     .map((item) => ({ rule: "list-lost" as const, detail: `list item "${item}" left the line and is not in an appended label` }));
 }
 
@@ -112,7 +118,7 @@ function cueRejections(before: ScriptBeat, spoken: string): BeatRejection[] {
 
 const newTermRejections = (before: ScriptBeat, spoken: string): BeatRejection[] =>
   before.new_terms
-    .filter((term) => !norm(spoken).includes(norm(term)))
+    .filter((term) => !hasWord(norm(spoken), norm(term)))
     .map((term) => ({ rule: "new-term", detail: `"${term}" is introduced here and no longer spoken` }));
 
 function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: BeatGuardOptions): BeatRejection[] {

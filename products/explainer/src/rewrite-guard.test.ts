@@ -119,4 +119,20 @@ describe("guardBeat", () => {
     };
     expect(rules(beatWith({}, LISTED), after)).not.toContain("list-lost");
   });
+
+  it("rejects a removed number whose label holds a different number", () => {
+    expect(rules(beatWith(), { ...joined, labelsAdded: ["120 rows written"] })).toContain("number-lost");
+  });
+
+  it("does not count a new term as spoken when only a longer word holds it", () => {
+    const before = beatWith({ new_terms: ["led"] }, "The led shows each scan. It retries 3 times. It stays small.");
+    const after = { spoken: "The ledger shows each scan and retries 3 times. It stays small.", labelsAdded: [] };
+    expect(rules(before, after)).toContain("new-term");
+  });
+
+  it("does not find a lost list item inside a longer word", () => {
+    const before = beatWith({}, "The desk reads the Alder store, the Birch store, and the Cedar store. It writes them all. The ledger keeps them.");
+    const after = { spoken: "The desk reads three stores. Alderman writes them all. The ledger keeps them.", labelsAdded: [] };
+    expect(rules(before, after)).toContain("list-lost");
+  });
 });
