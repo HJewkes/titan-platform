@@ -189,17 +189,22 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   );
 }
 
+/** A NO_REPRO is the fix-proof's send-back, not a reviewer's, and its cap is the fix-proof wakes alone (TP-3900). */
+const NO_REPRO_WORDS = "fix-proof did not reproduce (NO_REPRO)";
+
 /** A send-back no agent took is the seat's fix round; undefined lands the next round. */
 export function unhandledSendBack(run: GateRun, kind: string, headSha: string, ownerNote?: string): Promise<LandOutcome | undefined> {
+  const noRepro = kind === "NO_REPRO";
   return seatOrGate(
-    () => noticeGate(run, "sh-sent-back", headSha, `the review said ${kind}, and no agent took the wake`),
+    () => noticeGate(run, "sh-sent-back", headSha, `${noRepro ? NO_REPRO_WORDS : `the review said ${kind}`}, and no agent took the wake`),
     () => awaitNewHead(run, headSha),
     (unsent) => {
       if (ownerNote !== undefined) {
         const { prompt, situation } = ownerSentBackPrompt(run.target, headSha, ownerNote, unsent);
         return sentBackGate(run, headSha, prompt, "a human abandoned the PR after the owner sent it back", situation);
       }
-      const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake${unsent}. Await a new head or abandon?`;
+      const what = noRepro ? `${NO_REPRO_WORDS} at PR #${run.target.pr} in ${run.target.repo} at head ${headSha}` : `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}`;
+      const prompt = `${what}, and no agent took the wake${unsent}. Await a new head or abandon?`;
       return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, kind === "NO_REPRO");
     },
   );
