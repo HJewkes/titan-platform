@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
-import { frameAnchor, useFrameSource, type ABSide } from "./QuestionFrames.js";
+import { RoundClip } from "./ClipPlayer.js";
+import { frameAnchor, useFrameMedia, useFrameSource, type ABSide } from "./QuestionFrames.js";
 import { OptionNote, OptionTexts, type OptionNoting } from "./OptionCard.js";
 import { FrameImage } from "./RoundFrame.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -57,9 +58,10 @@ interface ABColumnProps extends QuestionABProps {
 /** In a design round a side's frame takes a verdict too, which picking the side marks Chosen. */
 function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent }: ABColumnProps): ReactNode {
   const source = useFrameSource();
+  const media = useFrameMedia();
   const detail = question.kind === "pick-one" ? question.optionDetails?.[side.option] : undefined;
   return (
-    <FrameFigure frameKey={side.key} label={side.label} pinnable={source?.loadable(side.key) ?? false} id={frameAnchor(question.id, side.key)} testID={`question-ab-side-${question.id}-${name}`}>
+    <FrameFigure frameKey={side.key} label={side.label} pinnable={(source?.loadable(side.key) ?? false) && media(side.key)?.clip === undefined} id={frameAnchor(question.id, side.key)} testID={`question-ab-side-${question.id}-${name}`}>
       <HStack gap={2} align="center" justify="between" wrap>
         <Typography variant="subtitle2">{`${name}: `}<InlineMarkdown text={side.option} /></Typography>
         <Typography variant="caption" color="secondary">{`frame: ${side.label}`}</Typography>
@@ -76,6 +78,8 @@ function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent 
 
 function SideFrame({ side }: { side: ABSide }): ReactNode {
   const source = useFrameSource();
+  const media = useFrameMedia()(side.key);
+  if (source !== null && media?.clip !== undefined) return <RoundClip roundId={source.roundId} frameKey={side.key} alt={side.label} motion={media.motion} />;
   if (source === null || !source.loadable(side.key)) return <Typography variant="caption" color="secondary">No image for this frame</Typography>;
   return <FrameImage roundId={source.roundId} frameKey={side.key} view="head" alt={side.label} />;
 }
