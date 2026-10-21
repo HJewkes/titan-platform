@@ -4,6 +4,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RoundFramesProvider } from "./QuestionFrames.js";
+import { DraftDiscarded } from "./RoundDraft.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
@@ -71,11 +72,12 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
 }
 
 function QuestionRound({ round }: { round: ValidRound }): ReactNode {
-  const { submitting, check, checking, locked, frozen } = useRoundSend(round);
+  const { submitting, check, checking, locked, frozen, draft } = useRoundSend(round);
   // Frozen, no question is handed over, so no digit key can change an answer already sent or being checked.
-  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, undefined, draft);
   return (
     <VStack gap={4}>
+      <DraftDiscarded discarded={state.draftDiscarded} />
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
       <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} check={check} checking={checking} send={<RoundSend round={round} state={state} submitting={submitting} check={check} />} />
     </VStack>

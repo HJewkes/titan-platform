@@ -98,11 +98,12 @@ function useVerdicts(drafts: Readonly<Record<string, FrameDraft>>, update: Updat
 /**
  * Each frame's draft verdict, comment and pins, which frame is active and whether it is in pin mode, and the setters its
  * controls and keys call. Locked (sent or sending), every one of them is a no-op and no frame is active, so nothing
- * changes what was sent. A sent round's `frames` seed the drafts and carry the pins, so a reload shows what was sent. `link`
+ * changes what was sent. A sent round's `frames` seed the drafts and carry the pins, so a reload shows what was sent; an
+ * unsent round's `restored` drafts, kept across a reload, seed them instead. `link`
  * names the verdicts that follow from one the owner sets.
  */
-export function useFrameFeedback(active: ActiveTarget | undefined, setActive: SetTarget, locked: boolean, sent?: RoundNotes["frames"], link?: VerdictLink) {
-  const [drafts, setDrafts] = useState<Record<string, FrameDraft>>(() => draftsFromSent(sent));
+export function useFrameFeedback(active: ActiveTarget | undefined, setActive: SetTarget, locked: boolean, sent?: RoundNotes["frames"], link?: VerdictLink, restored?: Readonly<Record<string, FrameDraft>>) {
+  const [drafts, setDrafts] = useState<Record<string, FrameDraft>>(() => (restored ? { ...restored } : draftsFromSent(sent)));
   const update = useCallback<UpdateDraft>(
     (key, change) => {
       if (!locked) setDrafts((current) => ({ ...current, [key]: { ...(current[key] ?? EMPTY_DRAFT), ...change(current[key] ?? EMPTY_DRAFT) } }));

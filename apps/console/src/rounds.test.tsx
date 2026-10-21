@@ -10,7 +10,11 @@ import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
 import { toSection } from "./pages/round-pager.test-helpers.js";
 
-afterEach(cleanup);
+// An unsent round keeps its draft in localStorage, so each test starts from none.
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const ROUND_IDS = ["kiln-schedule-r2", "kiln-schedule-r1", "orbit-retry-r1", "lantern-cards-r1", "legacy-r1"];
 

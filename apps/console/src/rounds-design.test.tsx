@@ -44,6 +44,7 @@ const scrollAll = (): void => act(() => [...observers].forEach((observer) => obs
 beforeEach(() => vi.stubGlobal("IntersectionObserver", StubObserver));
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   observers.clear();
   vi.unstubAllGlobals();
 });
@@ -260,6 +261,18 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
     fireEvent.change(screen.getByLabelText("Comment on frame Busy"), { target: { value: "Busy reads as idle. " } });
 
     expect(await answerAndSend(rendered)).toMatchObject({ variants: [{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle." }] });
+  });
+
+  it("restores an unsent verdict and frame comment after the page is remounted (TP-3778)", async () => {
+    await renderDesign();
+    fireEvent.click(verdictButton("beacon-busy", "Rejected"));
+    fireEvent.change(screen.getByLabelText("Comment on frame Busy"), { target: { value: "Busy reads as idle." } });
+    cleanup();
+
+    await renderDesign();
+
+    expect(pressedVerdicts("beacon-busy")).toEqual(["Rejected"]);
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Comment on frame Busy").value).toBe("Busy reads as idle.");
   });
 
   it("clears a verdict pressed a second time, and sends no variant for it", async () => {

@@ -20,6 +20,8 @@ and only their spoken line.
   the line, and you may say how many there are. Keep what the sentence said about the list; "there are three of them"
   alone says nothing. Example: "We skip the oven timer, glaze notes and crate labels." becomes spoken "We skip three
   things the screen lists." with labels_added ["oven timer", "glaze notes", "crate labels"].
+- A beat whose directive starts "Your last version was not used" was rewritten before and refused. The line says
+  why; fix that in this version, and do not hand back the version it describes.
 
 Return JSON: `{"beats":[{"id":"...","spoken":"...","labels_added":["..."]}]}`, one entry for every beat listed,
 with `labels_added` empty when nothing moved to the screen.
