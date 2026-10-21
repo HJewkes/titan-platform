@@ -129,6 +129,11 @@ function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
 }
 
+/** The number mentions the numbers rows count in one beat's spoken line, in order. */
+export function numberSpans(spoken: string): string[] {
+  return [...spokenText([spoken]).text.matchAll(NUM_RUN)].map((match) => match[0]);
+}
+
 function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[]): L0Result {
   const crowded = beats.filter((beat) => count(NUM_RUN, spokenText([beat.spoken]).text) > MAX_SPOKEN_NUMBERS_PER_BEAT);
   return { ...countRow(NUMBERS_PER_BEAT_ID, crowded.map((beat) => beat.id)), severity: "warning" };

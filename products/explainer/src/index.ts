@@ -258,7 +258,7 @@ export {
 export { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 export { BEAT_SCORE_COLUMNS, CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS, VIEWER_COLUMNS } from "./eval-judge-cli.js";
 export { canonicalSha } from "./eval-store.js";
-export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
+export { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, overlongSentence, voiceCheck, voiceCheckWith, type SpeechVerdict, type VoiceOptions } from "./lint-voice.js";
 export { flowCheck } from "./lint-flow.js";
 export {
   MIN_REGISTER_WORDS,
@@ -267,11 +267,13 @@ export {
   REGISTER_MEASURES,
   REGISTER_METRICS,
   registerCheck,
+  numberSpans,
   spokenText,
   type Band,
   type RegisterMetric,
   type SpokenText,
 } from "./lint-register.js";
+export { guardBeat, type BeatGuardOptions, type BeatRewrite, type BeatRejection, type BeatRejectionRule } from "./rewrite-guard.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
