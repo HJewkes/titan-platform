@@ -39,6 +39,7 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
 titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
+titan-factory bot-token scan [--json]                         # A17: name every place an agent can read the bot's token (never the token)
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -756,6 +757,7 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
 | `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
+| `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
 
 ## GitHub event sources config
@@ -999,6 +1001,31 @@ shows `auth` on every class of health's `githubApi` field; the pool sends no `GE
 probe in that state, because the probe answers 401 under a rejected token too and cannot succeed,
 so only a token change or a restart clears it. At M1a nothing waits on `ApiAvailable` or reads the
 pool-state table (`github-api/no-consumer.test.ts`), and no bot client is bound to the pool yet.
+
+### The bot token's A17 leak scan: `bot-token scan`
+
+A17 says the bot's token is absent from every agent environment. When serve reads the bot token (TP-3094 C3), it
+writes the token's SHA-256 to `bot-token.sha256` in its state dir (the database's dir), mode 0600, through a rename.
+With no token, or a refused one, it writes none and removes a stale one.
+
+`titan-factory bot-token scan`, run as the agents' uid, finds every token-shaped string (`ghp_` classic and
+`github_pat_` fine-grained, including one run straight into more token characters) and compares its SHA-256 with that
+fingerprint. The scan never holds the token, and the report names a place and where in it, never the matched string:
+
+| Place | Read | Default |
+| --- | --- | --- |
+| `env` | `<proc>/<pid>/environ` of this uid's processes only | `/proc` |
+| `briefs` | every file under each dir | `$AGENT_CHAT_HOME/agents` |
+| `logs` | `*.log` and `*.log.<n>` files under each dir | the database's dir (serve's logs) and `$AGENT_CHAT_HOME` |
+| `transcripts` | every file under each dir | `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects` |
+| `store` | every row of every table, through a read-only connection | the `--db` database |
+
+`--fingerprint`, `--proc`, `--briefs`, `--logs`, `--transcripts` and `--store` override each place; tests point all of
+them at fixture dirs. The report prints `HIT <place> <where>` lines (a path, `pid <n>` or `table <name>`), a count of
+what each place scanned, and a `missing <place> <root>` line for a root that is not there, which is not counted clean.
+It exits 0 when clean and 1 on a hit; on a hit, revoke the token and rotate it. With no fingerprint it exits 69 and
+claims nothing: serve holds no bot token, so there is nothing to check. Files are read in 1 MiB chunks, so a large
+transcript is never held whole. The scan does not decode a token that was base64- or URL-encoded.
 
 ## Writing a gate brief
 

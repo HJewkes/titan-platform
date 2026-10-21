@@ -135,7 +135,7 @@ export interface FactoryServer {
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const stateDir = stateDirOf(options);
   const log = options.logger ?? consoleLogger;
-  const bot = openServeBot(options.bot, log);
+  const bot = openServeBot(options.bot, log, stateDir);
   const { host, frames } = openFramedHost({ ...options, capabilities: { ...options.capabilities, ...bot.capabilities } });
   const github = options.github ?? githubHealth();
   void github.refresh();

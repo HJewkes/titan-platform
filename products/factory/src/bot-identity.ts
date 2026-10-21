@@ -1,6 +1,7 @@
 import { TokenFileError, trackSecretFile, type Logger, type TokenFileProblem } from "@titan-design/daemon";
 import { octokitClient, parseGitHubToken, rateBudget, type GitHubClient } from "@titan-design/github";
 import type { WorkflowCapability } from "@titan-design/workflow";
+import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js";
 
 /**
  * The bot's token file. Fixed in code like `OWNER_KEYS_DIR`: no environment variable, flag or config can point serve
@@ -28,6 +29,8 @@ export interface BotHandle {
 export interface BotIdentity {
   /** For `/health.bot`; never holds the token. */
   health(): BotHealth;
+  /** The token's SHA-256, for the A17 scan; set only when the token was read. */
+  readonly fingerprint?: string;
   /** Handed only to the workflow runtime, so a step reaches the bot through `ctx.capability(BOT_CAPABILITY)` alone. */
   readonly capabilities: Readonly<Record<string, WorkflowCapability<BotHandle>>>;
 }
@@ -73,7 +76,7 @@ export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_
   if (read.state !== "ok") return disabled(read);
   const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch: options.fetch, now: options.now });
   const access = (): BotAccess => ({ state: "ok", client });
-  return { health: () => ({ state: "ok" }), capabilities: capabilitiesOf({ access }, [read.token]) };
+  return { health: () => ({ state: "ok" }), fingerprint: tokenFingerprint(read.token), capabilities: capabilitiesOf({ access }, [read.token]) };
 }
 
 function disabled(health: Exclude<BotHealth, { state: "ok" }>): BotIdentity {
@@ -93,9 +96,19 @@ function readToken(path: string | undefined): TokenRead {
 }
 
 /** A refused token file costs only the bot: serve starts, and /health names the problem. */
-export function openServeBot(open: () => BotIdentity = openBotIdentity, log: Logger): BotIdentity {
+export function openServeBot(open: () => BotIdentity = openBotIdentity, log: Logger, stateDir: string): BotIdentity {
   const bot = open();
   const health = bot.health();
   if (health.state === "refused") log.warn({ problem: health.problem }, "bot token file refused; bot steps are blocked");
+  publishOrWarn(stateDir, health.state === "ok" ? bot.fingerprint : undefined, log);
   return bot;
+}
+
+/** A state dir serve cannot write costs only the scan, which then says "no fingerprint" rather than clean. */
+function publishOrWarn(stateDir: string, fingerprint: string | undefined, log: Logger): void {
+  try {
+    publishFingerprint(stateDir, fingerprint);
+  } catch (error) {
+    log.warn({ err: error instanceof Error ? error.message : String(error) }, "bot token fingerprint not written; bot-token scan cannot run");
+  }
 }
