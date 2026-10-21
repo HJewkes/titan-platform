@@ -9,6 +9,7 @@
  * is lstat'd (O_NOFOLLOW guards the last component only), the open is O_NOFOLLOW and O_NONBLOCK, the
  * file is regular and under `MAX_FRAME_BYTES`, its first bytes are the PNG signature, and its sha256
  * matches the index whenever the index names one. Refusals carry fixed text and never a path.
+ * `rounds.frameTargets` reads a record's element map the same way, always sha256-checked.
  */
 import { createHash } from "node:crypto";
 import { lstat, open, type FileHandle } from "node:fs/promises";
@@ -75,7 +76,7 @@ const targetBox = z.object({
   target: z.strictObject({ testId: z.string().optional(), role: z.string().optional(), text: z.string().optional() }),
 });
 
-export const FrameTargetsSchema = z.object({ schema: z.literal("titan-review/frame-targets@1"), boxes: z.array(targetBox) });
+const FrameTargetsSchema = z.object({ schema: z.literal("titan-review/frame-targets@1"), boxes: z.array(targetBox) });
 
 interface FrameEntry {
   files: Partial<Record<FrameView, string>>;
