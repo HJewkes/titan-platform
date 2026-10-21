@@ -3,6 +3,9 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { describe, expect, it, vi } from "vitest";
 import { factoryMigrations } from "../host.js";
 import { POOL_NOW, fakePoolClock, rateLimitAnswer } from "../test-support/pool-clock.js";
+import type { CiFact } from "../test-support/a17/ci-shapes.js";
+import type { Feed } from "../test-support/a17/feed.js";
+import { a17Event } from "../test-support/a17/register.js";
 import { sqlitePoolStateStore } from "./pool-state.js";
 
 const BOT = "example-bot[bot]";
@@ -21,7 +24,7 @@ function rowCounts(db: Db): Record<string, number> {
   return Object.fromEntries(tables.map(({ name }) => [name, db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM "${name}"`).get()?.n ?? 0]));
 }
 
-describe("A17: an Unavailable read writes no marker and counts no re-drive", () => {
+describe("the pool contract under an Unavailable read", () => {
   it("returns Unavailable as a value and changes only its own pool-state row", async () => {
     const db = factoryDb();
     const clock = fakePoolClock();
@@ -52,5 +55,56 @@ describe("A17: an Unavailable read writes no marker and counts no re-drive", () 
     expect(send).toHaveBeenCalledTimes(1);
     expect(rowCounts(db)).toEqual(afterTrip);
     expect(db.prepare("SELECT state, streak FROM factory_github_api_pool").get()).toEqual({ state: "closed", streak: 1 });
+  });
+});
+
+const HEAD = "a".repeat(40);
+const check = (over: Partial<CiFact> = {}): CiFact => ({ type: "check", repo: "o/r", head: HEAD, context: "build", checkRunId: 101, outcome: "success", at: "2026-10-17T10:00:00Z", ...over });
+
+interface PoolRow {
+  call_class: string;
+  state: string;
+  reset_at: number;
+  streak: number;
+  reason: string | null;
+  updated_at: string;
+}
+
+const poolRows = (feed: Feed): PoolRow[] => feed.db.prepare<[], PoolRow>("SELECT call_class, state, reset_at, streak, reason, updated_at FROM factory_github_api_pool ORDER BY call_class").all();
+const backstopRows = (feed: Feed): number => feed.db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM factory_event WHERE source = 'backstop'").get()?.n ?? 0;
+
+/** Every table but the pool's own row and the event log, whose webhook rows the ingress writes without the pool. */
+function markers(db: Db): Record<string, unknown[]> {
+  const tables = Object.keys(rowCounts(db)).filter((name) => name !== "factory_github_api_pool" && name !== "factory_event");
+  return Object.fromEntries(tables.map((name) => [name, db.prepare(`SELECT * FROM "${name}"`).all()]));
+}
+
+describe("D-M1a-03 through the bot's pool on the reconciler (TP-3096)", () => {
+  a17Event("a header-less secondary-limit 403 is Unavailable with a 60 s wait", async (feed) => {
+    feed.limit(SECONDARY_LIMIT);
+
+    const steps = await feed.fact(check());
+    const [tripped] = poolRows(feed);
+    await feed.advance();
+
+    expect(steps).toEqual(feed.pick<string[]>({ webhook: ["inserted"], polling: [] }));
+    expect(tripped).toMatchObject({ call_class: "graphql", state: "closed", streak: 1, reason: "graphql limited (backoff)" });
+    expect(tripped!.reset_at - Date.parse(tripped!.updated_at)).toBe(60_000);
+    expect(poolRows(feed)).toMatchObject([{ call_class: "graphql", state: "open", streak: 0 }]);
+    expect(feed.read(`o/r@${HEAD}`, 0).map((row) => row.kind)).toContain("CIConcluded");
+  });
+
+  a17Event("an Unavailable read writes no marker and counts no re-drive", async (feed) => {
+    await feed.fact(check());
+    const before = { markers: markers(feed.db), backstop: backstopRows(feed), reads: feed.reads() };
+    feed.limit(SECONDARY_LIMIT);
+
+    await feed.fact(check({ checkRunId: 102, context: "lint" }));
+    await feed.advance(30_000);
+
+    expect(markers(feed.db)).toEqual(before.markers);
+    expect(backstopRows(feed)).toBe(before.backstop);
+    expect(feed.reads() - before.reads).toBe(1);
+    expect(poolRows(feed)).toMatchObject([{ call_class: "graphql", state: "closed", streak: 1 }]);
   });
 });

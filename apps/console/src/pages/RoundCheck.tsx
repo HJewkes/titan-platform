@@ -3,6 +3,8 @@ import { Alert, Button, ButtonText, Card, CardContent, HStack, Heading, Pill, Ty
 import type { Manifest } from "../../server/round-schema.js";
 import { InlineMarkdown } from "./RoundMarkdown.js";
 import { answerText, firstOpen, type CheckFrame, type CheckVerdict, type CheckGroup, type CheckRow } from "./round-check.js";
+import { pinNumber, type Pin } from "./frame-pins.js";
+import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
 
 /**
@@ -28,9 +30,8 @@ export type SendCheck = ReturnType<typeof useSendCheck>;
 function useCheckKeys(back: () => void, send: (() => void) | undefined): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (typedInto(event.target) || event.altKey || event.shiftKey) return;
-      const command = event.metaKey || event.ctrlKey;
-      const act = event.key === "Escape" && !command ? back : event.key === "Enter" && command ? send : undefined;
+      if (typedInto(event.target)) return;
+      const act = pressed(ROUND_KEYS.back, event) ? back : pressed(ROUND_KEYS.check, event) ? send : undefined;
       if (act === undefined) return;
       event.preventDefault();
       act();
@@ -105,7 +106,7 @@ function CheckActions({ partial, check, onSend }: { partial: number; check: Send
         </Button>
       </HStack>
       <span className="hidden md:inline">
-        <Typography variant="caption" color="secondary">Esc goes back · ⌘ or Ctrl + Enter sends</Typography>
+        <Typography variant="caption" color="secondary">{`${ROUND_KEYS.back.label} goes back · ${ROUND_KEYS.check.label} sends`}</Typography>
       </span>
     </VStack>
   );
@@ -149,8 +150,18 @@ function FrameRow({ frame }: { frame: CheckFrame }): ReactNode {
           <Pill variant="subtle" size="xs" tone={frame.verdict ? VERDICT_TONE[frame.verdict] : "neutral"}>{frame.verdict ?? "no verdict"}</Pill>
         </HStack>
         {frame.comment ? <Quote label="Your comment" text={frame.comment} /> : null}
+        {frame.annotations?.length ? <FramePins frameKey={frame.key} pins={frame.annotations} /> : null}
       </VStack>
     </div>
+  );
+}
+
+function FramePins({ frameKey, pins }: { frameKey: string; pins: readonly Pin[] }): ReactNode {
+  return (
+    <VStack gap={1} testID={`round-check-pins-${frameKey}`}>
+      <Typography variant="body2">{pins.length === 1 ? "1 pin" : `${pins.length} pins`}</Typography>
+      {pins.map((pin) => <Quote key={pin.id} label={`Pin ${pinNumber(frameKey, pin.id)}`} text={pin.note || "No note"} />)}
+    </VStack>
   );
 }
 

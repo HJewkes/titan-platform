@@ -1,10 +1,14 @@
 import type { Logger } from "@titan-design/daemon";
-import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore } from "@titan-design/github";
+import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
+import { hasBotIntent, markNotFactory } from "../bot-intent.js";
 import { appendEvent, type NewEvent } from "../event-log/event-log.js";
-import { startSweep, type Sweep } from "../sweep.js";
+import { startReconcilerSchedule } from "../github-sources/schedule.js";
+import type { PassStamp, SourcesReader } from "../github-sources/mode.js";
+import type { Sweep } from "../sweep.js";
 import type { ReconcilerConfig } from "./config.js";
 import { sqliteReconcilerCursor, type ReconcilerCursorStore, type RepoCursor } from "./cursor.js";
+import { botActions, unloggedActions } from "./unlogged.js";
 
 /** With no cursor, `main` and `done` are read this far back. */
 const FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -36,16 +40,21 @@ type DisagreeClass = "stale-read" | "field-parity" | "main-ancestry-lost" | "unc
 export interface Observation {
   events: BackstopEvent[];
   disagreements: { class: DisagreeClass; subject: string; detail?: string }[];
-  /** `main`: the sha scanned to, held behind a commit whose checks still run so the next read sees them finish; `done`: the newest closed-PR `updatedAt` read. */
-  cursor: { main: string; done: string };
+  /**
+   * `main`: the sha scanned to, held behind a commit whose checks still run so the next read sees them finish; `done`: the
+   * newest closed-PR `updatedAt` read; `rulesets`: the id to `updated_at` map as JSON. An absent stream keeps its stored value.
+   */
+  cursor: { main?: string; done?: string; rulesets?: string };
 }
 
-/** S3's pure step (TP-3429): a snapshot against the repo's cursor, as appends and the next cursor. */
-export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor) => Observation;
+/** S3's pure step (TP-3429): a snapshot and S2's ruleset read against the repo's cursor, as appends and the next cursor. */
+export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor, rulesets?: RulesetList) => Observation;
 
 /** What the bot side supplies (TP-3431 wires the real ones); no other GitHub handle reaches the service. */
 export interface BotPorts {
   identity: string;
+  /** The bot's GitHub login, so C7 can tell its reviews, statuses and merges from everyone else's. */
+  login: string;
   pool: GithubApiPool<BackstopCall, BackstopAnswer>;
   /** The pool's pair state: a backstop claim waits while any pair is closed, so the service refuses itself instead. */
   poolState: PoolStateStore;
@@ -105,6 +114,7 @@ async function runUnit(repo: string, state: RepoState, fullEvery: number, deps: 
   granted(state);
   const observation = deps.observe(repo, snapshot.value, cursor);
   appendAll(repo, observation, deps);
+  flagUnlogged(repo, snapshot.value, deps);
   deps.cursor.write(repo, observation.cursor);
   Object.assign(state, { forced: false, quietTicks: 0, pending: hasPending(snapshot.value) });
 }
@@ -157,6 +167,19 @@ function appendAll(repo: string, observation: Observation, deps: ReconcilerDeps)
   for (const { class: disagree, subject, detail } of observation.disagreements) deps.log.info({ repo, class: disagree, subject, detail }, "reconciler.disagree");
 }
 
+/**
+ * TP-3094 C7: a bot write with no factory intent row. Intent rows are written before the call, so one that exists at all
+ * exists by the time a pass reads the write. The mark persists, so each action alarms once, not on every pass that re-reads it.
+ */
+function flagUnlogged(repo: string, snapshot: BackstopSnapshot, deps: ReconcilerDeps): void {
+  const observedAt = new Date(deps.now()).toISOString();
+  const missing = unloggedActions(botActions(snapshot, deps.login), (kind, subject) => hasBotIntent(deps.db, repo, kind, subject));
+  for (const action of missing) {
+    if (!markNotFactory(deps.db, { repo, ...action, observedAt })) continue;
+    deps.log.warn({ repo, kind: action.kind, id: action.id, subject: action.subject }, `ops-alarm BotActionUnlogged ${repo} ${action.kind} ${action.id}`);
+  }
+}
+
 const TERMINAL_STATUS = new Set(["SUCCESS", "FAILURE", "ERROR"]);
 
 /** A check not yet completed or a status still pending keeps the repo snapshotting each tick, because no gate sees it finish. */
@@ -170,13 +193,17 @@ export interface ReconcilerServeOptions {
   bot: BotPorts;
 }
 
-/** Off unless `reconciler.enabled`. The first tick is the forced start pass, and it is not awaited: serve never waits on GitHub. */
-export function startReconcilerSweep(options: ReconcilerServeOptions | undefined, db: Db, log: Logger, now: () => number = Date.now): Sweep | undefined {
+/**
+ * Off unless `reconciler.enabled`. Passes run at the effective sources mode's interval (TP-3099), not `reconciler.intervalMs`.
+ * The first tick is the forced start pass, and it is not awaited: serve never waits on GitHub.
+ */
+export function startReconcilerSweep(options: ReconcilerServeOptions | undefined, sources: SourcesReader, db: Db, log: Logger, now: () => number = Date.now, stamp?: PassStamp): Sweep | undefined {
   if (!options?.config.enabled) return undefined;
   const { config, bot } = options;
   const service = createReconciler(config, { ...bot, db, cursor: sqliteReconcilerCursor(db, now), log, now });
-  const sweep = startSweep((signal) => service.tick(signal), config.intervalMs, "reconciler", log);
-  void sweep.tick();
-  log.info({ repos: config.repos, intervalMs: config.intervalMs }, "reconciler.started");
-  return sweep;
+  const schedule = startReconcilerSchedule({ sources, pass: (signal) => service.tick(signal), now, log, stamp });
+  void schedule.tick();
+  const { effective, reason, intervalMs } = sources();
+  log.info({ repos: config.repos, effective, reason, intervalMs }, "reconciler.started");
+  return schedule;
 }

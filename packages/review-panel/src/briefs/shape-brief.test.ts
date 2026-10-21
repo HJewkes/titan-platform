@@ -160,6 +160,13 @@ describe("the tests brief and fix-proof", () => {
     expect(stale).toBe(shapeBrief("tests", vacuous));
   });
 
+  it("the tests member reads a workflow-only diff's CI proof in place of the missing-result reading", () => {
+    const brief = shapeBrief("tests", { ...target, workflowCiProof: { mergeBase: "b".repeat(40), head } });
+
+    expect(brief).toContain("Shepherd's fix-proof for this head is CI");
+    expect(brief).not.toContain("No fix-proof/v1 result was given for this head");
+  });
+
   it("leaves the other shapes' briefs unchanged by a fix-proof result", () => {
     expect(shapeBrief("adversary", { ...target, fixProof: fixProof() })).toBe(shapeBrief("adversary", target));
   });

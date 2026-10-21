@@ -15,6 +15,7 @@ export const priorFeedbackList = z.array(
     comment: z.string().optional(),
     general: z.string().optional(),
     frames: z.array(z.string()).optional(),
+    pr: z.string().optional(),
   }),
 );
 

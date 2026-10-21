@@ -39,6 +39,7 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
 titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
+titan-factory bot-token scan [--json]                         # A17: name every place an agent can read the bot's token (never the token)
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -756,7 +757,28 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/workflows/land.ts` | The land core (see below) |
 | `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
 | `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
+| `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
+| `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+
+## GitHub event sources config
+
+The top-level `github` block in the config file picks where GitHub events come from. Every key is optional. Polling is a
+permanent, supported configuration, not a fallback.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `github.sources` | `"polling"`, `"webhook"` | `"polling"` |
+| `github.ingress` | `"on"`, `"off"` (the kill switch, applied with no restart) | `"off"` |
+| `github.pollingIntervalMs` | 30000 to 600000, not above `backstopIntervalMs` | 60000 |
+| `github.backstopIntervalMs` | 300000 to 600000 | 300000 |
+
+Health's `sources` field shows `configured`, `effective`, `reason`, `intervalMs` and `lastPassAt`. The effective-mode table and
+the rest are in the [factory guide](https://github.com/HJewkes/titan-platform/blob/main/site/guides/factory.md#github-event-sources).
 
 ## Shepherd reviewer config
 
@@ -980,6 +1002,41 @@ shows `auth` on every class of health's `githubApi` field; the pool sends no `GE
 probe in that state, because the probe answers 401 under a rejected token too and cannot succeed,
 so only a token change or a restart clears it. At M1a nothing waits on `ApiAvailable` or reads the
 pool-state table (`github-api/no-consumer.test.ts`), and no bot client is bound to the pool yet.
+
+### The bot token's A17 leak scan: `bot-token scan`
+
+A17 says the bot's token is absent from every agent environment. When serve reads the bot token (TP-3094 C3), it
+writes the token's SHA-256 to `bot-token.sha256` in its state dir (the database's dir), mode 0600, through a rename.
+With no token, or a refused one, it writes none and removes a stale one.
+
+`titan-factory bot-token scan`, run as the agents' uid, finds every token-shaped string (`ghp_` classic and
+`github_pat_` fine-grained, including one run straight into more token characters) and compares its SHA-256 with that
+fingerprint. The scan never holds the token, and the report names a place and where in it, never the matched string:
+
+| Place | Read | Default |
+| --- | --- | --- |
+| `env` | `<proc>/<pid>/environ` of this uid's processes only | `/proc` |
+| `briefs` | every file under each dir | `$AGENT_CHAT_HOME/agents` |
+| `logs` | `*.log` and `*.log.<n>` files under each dir | the database's dir (serve's logs) and `$AGENT_CHAT_HOME` |
+| `transcripts` | every file under each dir | `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects` |
+| `store` | every row of every table, through a read-only connection | the `--db` database |
+
+`--fingerprint`, `--proc`, `--briefs`, `--logs`, `--transcripts` and `--store` override each place; tests point all of
+them at fixture dirs. The report prints `HIT <place> <where>` lines (a path, `pid <n>` or `table <name>`), a count of
+what each place scanned, and a `missing <place> <root>` line for a root that is not there, which is not counted clean.
+It exits 0 when clean and 1 on a hit; on a hit, revoke the token and rotate it. With no fingerprint it exits 69 and
+claims nothing: serve holds no bot token, so there is nothing to check. Files are read in 1 MiB chunks, so a large
+transcript is never held whole. The scan does not decode a token that was base64- or URL-encoded.
+
+### The bot token's expiry alarm
+
+The bot client's fetch reads GitHub's `github-authentication-token-expiration` header on every response,
+error answers included (`src/bot-token-expiry.ts`). `/health.bot.expiresAt` carries the last value as an ISO
+time; it is null before the bot's first response and for a token with no expiry. With 14 days or less left,
+serve logs one `factory: ops-alarm bot-token-expiry fingerprint=<12 hex> expiresAt=<iso> daysLeft=<n>` line per
+token fingerprint (the A17 fingerprint above, never the token). The set of alarmed fingerprints lives in
+memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
+follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
 
 ## Writing a gate brief
 

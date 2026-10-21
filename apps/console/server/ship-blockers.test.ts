@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { FIXTURE_ROUNDS, twoPrRound } from "./round-fixtures.js";
 import type { Feedback, Manifest, Question } from "./round-schema.js";
 import { parseManifest } from "./rounds.js";
-import { frameScope, priorFeedback, sendBackBlocker, shipBlockers, shipScope } from "./ship-blockers.js";
+import { frameScope, priorFeedback, sendBackBlocker, shipBlockerItems, shipBlockers, shipScope } from "./ship-blockers.js";
 
 function fixture(id: string): Manifest {
   const parsed = parseManifest(readFileSync(path.join(FIXTURE_ROUNDS.dir, id, "round.json")));
@@ -163,6 +164,88 @@ describe("shipScope (TP-3329)", () => {
 
     expect(shipBlockers(twoPr, [], draft, "ship-panels")).toEqual([]);
     expect(shipBlockers(twoPr, [], draft, "ship-tiles")).toEqual(['you left a comment on "Ship example/tiles#1 at 89abcdef0123?"']);
+  });
+});
+
+describe("a PR stacked on another PR of the round (TP-3883, schema holder-not-shipped)", () => {
+  /** Panels is stacked on tiles, which is a PR group of the same round. */
+  const stacked = (() => {
+    const round = twoPrRound();
+    const groups = z.array(z.record(z.string(), z.unknown())).parse(round.prGroups);
+    const parsed = parseManifest(Buffer.from(JSON.stringify({ ...round, prGroups: groups.map((group) => (group.pr === "example/panels#2" ? { ...group, stackedOn: { repo: "example/tiles", pr: 1, headSha: "1".repeat(40) } } : group)) })));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.manifest;
+  })();
+  const withTiles = (answer: Record<string, unknown>) => ({ ...NO_DRAFT, answers: [{ questionId: "ship-tiles", ...answer }] });
+
+  it("holds the stacked PR's Ship while its holder is sent back, naming the holder's Ship question", () => {
+    expect(shipBlockerItems(stacked, [], withTiles({ pick: "Don't ship" }), "ship-panels")).toEqual([
+      { message: 'stacked on example/tiles#1, which may not ship: it is answered "Don\'t ship"', target: { kind: "question", id: "ship-tiles" } },
+    ]);
+    expect(shipBlockers(stacked, [], withTiles({ revisionRequested: true }), "ship-panels")).toEqual(["stacked on example/tiles#1, which may not ship: a revision was requested"]);
+  });
+
+  it("leaves the stacked PR's Ship open while its holder is unanswered or shipped (decision 166)", () => {
+    expect(shipBlockers(stacked, [], NO_DRAFT, "ship-panels")).toEqual([]);
+    expect(shipBlockers(stacked, [], withTiles({ pick: "Ship" }), "ship-panels")).toEqual([]);
+  });
+
+  it("never holds the holder on its stacked PR's Send back, nor a PR that is not stacked", () => {
+    const panelsBack = { ...NO_DRAFT, answers: [{ questionId: "ship-panels", pick: "Don't ship" }] };
+
+    expect(shipBlockers(stacked, [], panelsBack, "ship-tiles")).toEqual([]);
+    expect(shipBlockers(fixture("ship-tile-r1"), [], NO_DRAFT)).toEqual([]);
+  });
+});
+
+describe("priorFeedback from an earlier round with two PRs (TP-3790)", () => {
+  const twoPrAt = (round: number): Manifest => {
+    const parsed = parseManifest(Buffer.from(JSON.stringify({ ...twoPrRound(), round })));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.manifest;
+  };
+  const panelsOnly = (round: number): Manifest => {
+    const two = twoPrAt(round);
+    return { ...two, questions: two.questions.filter((question) => question.id === "ship-panels") };
+  };
+  const tilesSentBack = [{ manifest: twoPrAt(1), feedback: { ...feedback([{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }]), unit: "tiles-and-panels" } }];
+
+  it("carries each PR's own Don't ship forward, scoped to that PR", () => {
+    expect(priorFeedback(twoPrAt(2), tilesSentBack)).toEqual([
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", pick: "Don't ship", comment: "Lower the stripe.", pr: "example/tiles#1" },
+    ]);
+  });
+
+  it("reads every PR's merge question, not only the first", () => {
+    const both = [{ ...tilesSentBack[0]!, feedback: { ...tilesSentBack[0]!.feedback, answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Don't ship", comment: "Narrow the panel." }] } }];
+
+    expect(priorFeedback(twoPrAt(2), both)).toEqual([
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", pick: "Don't ship", comment: "Narrow the panel.", pr: "example/panels#2" },
+    ]);
+  });
+
+  it("lets a Don't ship on one PR leave the other PR's Ship open", () => {
+    const prior = priorFeedback(twoPrAt(2), tilesSentBack);
+
+    expect(shipBlockers(twoPrAt(2), prior, NO_DRAFT, "ship-panels")).toEqual([]);
+    expect(shipBlockers(twoPrAt(2), prior, NO_DRAFT, "ship-tiles")).toEqual(["your feedback from round 1 is not ticked Addressed"]);
+    expect(shipBlockers(panelsOnly(2), prior, NO_DRAFT)).toEqual([]);
+  });
+
+  it("counts an Addressed tick only for the PR it names, and a bare round for every PR (TP-3885)", () => {
+    const prior = [
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", comment: "Lift the stripe.", pr: "example/tiles#1" },
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", comment: "Narrow the panel.", pr: "example/panels#2" },
+    ];
+    const ticked = { ...NO_DRAFT, addressed: [{ round: 1, pr: "example/tiles#1" }] };
+
+    expect(shipBlockers(twoPrAt(2), prior, ticked, "ship-tiles")).toEqual([]);
+    expect(shipBlockers(twoPrAt(2), prior, ticked, "ship-panels")).toEqual(["your feedback from round 1 is not ticked Addressed"]);
+    expect(shipBlockers(twoPrAt(2), prior, { ...NO_DRAFT, addressed: [1] }, "ship-panels")).toEqual([]);
+  });
+
+  it("drops another PR's feedback when the later round asks about one PR only", () => {
+    expect(priorFeedback(panelsOnly(2), tilesSentBack)).toEqual([]);
   });
 });
 

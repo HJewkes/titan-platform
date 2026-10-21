@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Alert, Button, ButtonText, Card, CardContent, HStack, Input, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
@@ -11,14 +11,18 @@ import { RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment
 import { InlineMarkdown } from "./RoundMarkdown.js";
 import { RoundNote } from "./RoundNote.js";
 import { QuestionFacts } from "./RoundQuestion.js";
+import { DraftDiscarded } from "./RoundDraft.js";
 import { useRecommendation, useWithSeen } from "./RoundReveal.js";
+import { useDraftBinding } from "./RoundSend.js";
 import { useRoundAnswers, type RoundAnswers } from "./RoundSections.js";
-import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
+import { sendBackBlocker, shipBlockerItems } from "../../server/ship-blockers.js";
+import { ShipContext } from "./ShipContext.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { Montages } from "./ShipMontages.js";
-import { ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { ShipPrsRound } from "./ShipPrs.js";
-import { ShipNotices, SideQuestion, sideMarks } from "./ShipSide.js";
+import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
+import { PrTabs, ShipTarget } from "./ShipTabs.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type PickOne = Extract<Question, { kind: "pick-one" }>;
@@ -43,21 +47,28 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const sideQuestions = round.manifest.questions.filter((each) => each !== question);
   const submitting = useSubmit();
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
+  const draft = useDraftBinding(round, submitting.state.status === "sent");
   // Locked, the side questions are not handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes, locked);
+  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes, locked, undefined, draft);
   if (question === undefined) return null;
+  const pr = `${question.merge.repo}#${question.merge.pr}`;
+  const priorItems = priorFor(round.priorFeedback ?? [], pr);
+  const prior = <ShipPriorFeedback items={priorItems} pr={pr} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />;
+  const review = round.manifest.questions.map((each, index) =>
+    each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
+  );
   return (
     <VStack gap={4}>
+      <DraftDiscarded discarded={side.draftDiscarded} />
       <ShipHeading round={round} question={question} />
-      {/* Only the montages judge frames: a frame the Ship question draws above itself is one of them, shown again. */}
-      <FrameFeedbackProvider value={side.frames}>
-        <Montages round={round} merge={question.merge} />
-      </FrameFeedbackProvider>
-      {round.manifest.questions.map((each, index) =>
-        each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
-      )}
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
-      <ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />
+      <PrTabs
+        pr={pr}
+        review={sideQuestions.length === 0 && priorItems.length === 0 ? <NothingToReview /> : <>{review}{prior}</>}
+        // Only the montages judge frames: a frame the Ship question draws above itself is one of them, shown again.
+        diff={<FrameFeedbackProvider value={side.frames}><Montages round={round} merge={question.merge} /></FrameFeedbackProvider>}
+        context={<ShipContext pr={pr} group={round.manifest.prGroups?.find((group) => group.pr === pr)} />}
+        bar={<ShipAnswer round={round} question={question} sideQuestions={sideQuestions} side={side} submitting={submitting} />}
+      />
     </VStack>
   );
 }
@@ -119,7 +130,7 @@ function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProp
     shipArgs,
     backArgs,
     canSendBack: sendBack !== undefined,
-    blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps, variants }),
+    blockers: shipBlockerItems(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps, variants }),
     noNote: sendBackBlocker(backArgs, question.id),
   };
 }
@@ -128,18 +139,19 @@ function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProp
 function ShipAnswer(props: ShipAnswerProps): ReactNode {
   const { round, question, side, submitting } = props;
   const { available, state, submit } = submitting;
-  const [note, setNote] = useState("");
   const withSeen = useWithSeen();
   const shipSeen = useRecommendation(question, undefined).visible && round.recommendationsWithheld;
   if (round.status === "sent" || state.status === "sent") return <ShipOutcome round={round} question={question} state={state} />;
+  const note = side.backNotes[question.id] ?? "";
   const draft = shipDraft(props, note, { withSeen, shipSeen });
   const disabled = !available || state.status === "sending";
   return (
-    <Card variant="outline">
+    <Card variant="outline" testID="ship-bar">
       <CardContent>
         <VStack gap={3}>
-          <RoundGeneral value={side.general} onChange={side.setGeneral} />
-          <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={setNote} />
+          <ShipTarget target={{ kind: "general" }}><RoundGeneral value={side.general} onChange={side.setGeneral} /></ShipTarget>
+          <Input multiline numberOfLines={3} label="Note for Send back (optional)" accessibilityLabel="Note for Send back" value={note} onChangeText={(text) => side.setBackNote(question.id, text)} />
+          <ShipsAfterNote manifest={round.manifest} question={question} />
           <HStack gap={3} wrap>
             <Button color="success" isDisabled={disabled || draft.blockers.length > 0} onPress={() => void submit(draft.shipArgs)}><ButtonText>Ship</ButtonText></Button>
             <Button variant="outline" color="warning" isDisabled={disabled || draft.noNote !== undefined || !draft.canSendBack} onPress={() => void submit(draft.backArgs)}><ButtonText>Send back</ButtonText></Button>

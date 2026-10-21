@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
 import { calibrateCommand } from "./eval-calibrate-cli.js";
 import { coldCommand } from "./eval-cold-cli.js";
-import { failedChecks, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
+import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { itemsCommand } from "./eval-items-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
@@ -10,10 +10,13 @@ import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
 import { migrateSpike } from "./migrate.js";
 import { SPINE_CHECK_IDS } from "./lint-spine.js";
+import { MAX_SENTENCE_WORDS, vettableSentences } from "./lint-voice.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
-import { ScriptSchema } from "./script-schema.js";
+import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
 import { parseSpine } from "./spine-schema.js";
+import { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVet } from "./speech-vet-gate.js";
+import { localSentenceVet } from "./speech-vet-local.js";
 import { readTiming } from "./timing.js";
 
 const EXIT = { OK: 0, FAILURE: 1, USAGE: 2 } as const;
@@ -29,6 +32,7 @@ interface L0Flags {
   timing?: string;
   spine?: string;
   failOnGhosts?: boolean;
+  speechVet?: boolean;
   format: ScriptFormat;
 }
 
@@ -41,6 +45,8 @@ export interface EvalCliDeps {
   checks?: readonly L0Check[];
   harness?: (config: JudgeConfig) => JudgeHarness;
   codexUnavailable?: (config: JudgeConfig) => string | null | Promise<string | null>;
+  /** Builds the sentence vetter `--speech-vet` uses; by default speech-vet over local Kokoro and Whisper. */
+  speechVet?: () => Promise<SentenceVet>;
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -58,8 +64,35 @@ function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], ski
   );
 }
 
+const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/**
+ * The L0 checks, with Q-V9 reading speech-vet verdicts under `--speech-vet`. Without the flag, or when no vetter
+ * can be built, a sentence over 25 words keeps the 25-word cap, and one stderr line says so.
+ */
+async function l0Checks(script: ScriptV1, flags: L0Flags, deps: EvalCliDeps): Promise<readonly L0Check[]> {
+  const checks = deps.checks ?? L0_CHECKS;
+  const pending = vettableSentences(script.beats).length;
+  if (pending === 0) return checks;
+  const capped = `${pending} sentence(s) of ${VETTED_RANGE} words keep the ${MAX_SENTENCE_WORDS}-word Q-V9 cap`;
+  if (!flags.speechVet) {
+    console.error(`speech-vet: off; ${capped} (pass --speech-vet to vet them)`);
+    return checks;
+  }
+  let vetSentence: SentenceVet;
+  try {
+    vetSentence = await (deps.speechVet ?? localSentenceVet)();
+  } catch (error) {
+    console.error(`speech-vet: unavailable (${errorText(error)}); ${capped}`);
+    return checks;
+  }
+  const verdicts = await vetSentences(script, vetSentence);
+  console.error(verdictSummary(verdicts));
+  return withSpeechVerdict(checks, speechVerdict(verdicts));
+}
+
 /** Scores one script, appends its rows and run record, and returns whether it passed the hard filter. */
-function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
+async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<boolean> {
   const now = deps.now ?? (() => new Date());
   const started = now();
   const raw = readJson(file);
@@ -72,7 +105,7 @@ function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): boolean {
   const timing = flags.timing ? readTiming(readJson(flags.timing)) : undefined;
   const spine = flags.spine ? parseSpine(readFileSync(flags.spine, "utf8")) : undefined;
   const sha = freezeScript(bench, raw, flags.parent ?? null);
-  const results = runL0(script, layout, deps.checks, timing, spine);
+  const results = runL0(script, layout, await l0Checks(script, flags, deps), timing, spine);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
@@ -96,12 +129,13 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
+    .option("--speech-vet", "vet each 26-32 word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 can pass it; off by default, which keeps the 25-word cap")
     .exitOverride()
-    .action((file: string, flags: L0Flags) => {
+    .action(async (file: string, flags: L0Flags) => {
       try {
-        onResult(evalL0(file, flags, deps) ? EXIT.OK : EXIT.FAILURE);
+        onResult((await evalL0(file, flags, deps)) ? EXIT.OK : EXIT.FAILURE);
       } catch (error) {
-        console.error(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`${file}: ${errorText(error)}`);
         onResult(EXIT.USAGE);
       }
     });

@@ -8,6 +8,8 @@ import {
   registerCheck,
   spokenText,
   triadSpans,
+  deviceSpans,
+  type DeviceMetric,
   type RegisterMetric,
 } from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
@@ -245,5 +247,22 @@ describe("numberSpans and triadSpans", () => {
 
     expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
     expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
+  });
+});
+
+describe("deviceSpans", () => {
+  const LINES: readonly (readonly [DeviceMetric, string])[] = [
+    ["colon-reveals", "The desk keeps one thing: the rows. Nothing else stays."],
+    ["not-x-tails", "The ledger keeps the rows, not by hand. It never asks twice."],
+    ["semicolons", "The desk checks a scan; the ledger keeps it. Then it waits."],
+    ["lets", "Let's follow one scan. We let us see the ledger."],
+  ];
+
+  it.each(LINES)("finds as many %s spans as the row counts", (metric, line) => {
+    const text = spokenText([line]);
+    const counted = REGISTER_MEASURES[metric](text) ?? 0;
+    const perScript = metric === "not-x-tails" ? counted : (counted * text.words.length) / 1000;
+    expect(deviceSpans(metric, text.text).length).toBeGreaterThan(0);
+    expect(deviceSpans(metric, text.text)).toHaveLength(Math.round(perScript));
   });
 });

@@ -172,8 +172,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/react-app
       '@titan-design/react-ui':
-        specifier: ^0.20.0
-        version: 0.20.0(t4mr5r4wajwn62q2y7ieoqzz3y)
+        specifier: ^0.21.2
+        version: 0.21.2(t4mr5r4wajwn62q2y7ieoqzz3y)
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
@@ -1144,6 +1144,15 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/speech-g2p':
+        specifier: workspace:^
+        version: link:../../packages/speech-g2p
+      '@titan-design/speech-stt':
+        specifier: workspace:^
+        version: link:../../packages/speech-stt
+      '@titan-design/speech-tts':
+        specifier: workspace:^
+        version: link:../../packages/speech-tts
       '@titan-design/speech-vet':
         specifier: workspace:^
         version: link:../../packages/speech-vet
@@ -3754,29 +3763,6 @@ packages:
       '@types/react':
         optional: true
       '@types/react-dom':
-        optional: true
-
-  '@titan-design/react-ui@0.20.0':
-    resolution: {integrity: sha512-WqQSzqlDFc0evuhvk1+czJP+6OU3ibkplxf2/+N/i4KveyUYf208ZAsK1GOmTMoMMaNjRRZT8jtqJgWnEh6IrA==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      nativewind: ^4.2.1
-      react: ^18.0.0 || ^19.0.0
-      react-dom: ^18.0.0 || ^19.0.0
-      react-native: '>=0.72.0'
-      react-native-body-highlighter: '>=3.0.0'
-      react-native-svg: '>=15.0.0'
-      react-native-web: '>=0.19.0'
-    peerDependenciesMeta:
-      nativewind:
-        optional: true
-      react-native:
-        optional: true
-      react-native-body-highlighter:
-        optional: true
-      react-native-svg:
-        optional: true
-      react-native-web:
         optional: true
 
   '@titan-design/react-ui@0.21.2':
@@ -10230,25 +10216,6 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
-
-  '@titan-design/react-ui@0.20.0(t4mr5r4wajwn62q2y7ieoqzz3y)':
-    dependencies:
-      '@gluestack-style/react': 1.0.57
-      '@gluestack-ui/themed': 1.1.73(2k6mbo6bzuez4dsojj7pd56zmy)
-      clsx: 2.1.1
-      d3-scale: 4.0.2
-      d3-shape: 3.2.0
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-      tailwind-merge: 2.6.1
-    optionalDependencies:
-      nativewind: 4.2.7(react-native-reanimated@4.7.0(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native-svg@15.15.5(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(tailwindcss@3.4.19(tsx@4.23.13)(yaml@2.9.1))
-      react-native: 0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
-      react-native-svg: 15.15.5(react-native@0.87.1(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
-      react-native-web: 0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-    transitivePeerDependencies:
-      - '@react-spectrum/provider'
-      - '@types/react-native'
 
   '@titan-design/react-ui@0.21.2(t4mr5r4wajwn62q2y7ieoqzz3y)':
     dependencies:

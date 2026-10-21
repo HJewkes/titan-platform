@@ -1,12 +1,15 @@
 import type { Logger } from "@titan-design/daemon";
 import { githubApiPool, memoryPoolStateStore, type BackstopCommit, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { botIntentMigration } from "../bot-intent.js";
 import { eventLogMigration } from "../event-log/event-log.js";
+import { mergeLogMigration } from "../merge-log.js";
 import { fakePoolClock, rateLimitAnswer, type FakePoolClock } from "../test-support/pool-clock.js";
 import { reconcilerCursorMigration, sqliteReconcilerCursor, type ReconcilerCursorStore } from "./cursor.js";
 import type { BackstopAnswer, BackstopCall, BotPorts, Observation, Observe, ReconcilerDeps } from "./service.js";
 
 const BOT = "synthetic-bot[bot]";
+export const BOT_LOGIN = "synthetic-bot";
 export const REPO = "example-org/widgets";
 export const OTHER_REPO = "example-org/gadgets";
 
@@ -25,12 +28,15 @@ class FakeGithub {
   readonly calls: BackstopCall[] = [];
   /** Holds every snapshot answer until released; for the non-blocking start pass. */
   hold: Promise<void> | null = null;
+  /** Replaces the main-only answer with a whole repo, as TP-3099's kind scenario reads it. */
+  snapshot: (() => BackstopSnapshot) | null = null;
 
   async send(call: BackstopCall): Promise<BackstopAnswer> {
     this.calls.push(call);
     if (this.hold) await this.hold;
     if (this.limited.has(call.kind)) return { status: 429, headers: {} };
     if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: "\"e1\"" } } };
+    if (this.snapshot) return { status: 200, headers: {}, snapshot: this.snapshot() };
     const stop = this.main.findIndex((c) => c.oid === call.request.mainCursor);
     const commits = stop >= 0 ? this.main.slice(0, stop) : this.main;
     return { status: 200, headers: {}, snapshot: snapshotOf(this.main[0]?.oid ?? "c0", commits) };
@@ -42,7 +48,7 @@ class FakeGithub {
 }
 
 function snapshotOf(tip: string, commits: BackstopCommit[]): BackstopSnapshot {
-  return { open: [], done: [], main: { tip, commits }, rateLimit: { cost: 1, remaining: 4999, resetAt: "2027-01-15T09:00:00Z", queries: 1 } };
+  return { open: [], done: [], main: { tip, commits }, trains: [], rateLimit: { cost: 1, remaining: 4999, resetAt: "2027-01-15T09:00:00Z", queries: 1 } };
 }
 
 /** Stands in for S3: one identity row per main check context, plus whatever disagreements a test plants. */
@@ -104,9 +110,10 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
   const claims: Claim[] = [];
   const poolState = memoryPoolStateStore();
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send: (call) => github.send(call), clock, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const bot: BotPorts = { identity: BOT, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe: options.observe ?? fakeObserve() };
+  const observe = options.observe ?? fakeObserve();
+  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe };
   const db = openDatabase(":memory:");
-  runMigrations(db, [eventLogMigration(), reconcilerCursorMigration()]);
+  runMigrations(db, [mergeLogMigration(), eventLogMigration(), reconcilerCursorMigration(), botIntentMigration()]);
   const cursor = sqliteReconcilerCursor(db, clock.now);
   const lines: Rig["lines"] = [];
   const record = (level: "info" | "warn") => (fields: Record<string, unknown>, msg: string) => void lines.push({ level, msg, fields });

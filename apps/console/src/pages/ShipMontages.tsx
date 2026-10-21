@@ -6,6 +6,8 @@ import { useQuery } from "../data/rpc.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { FrameImage, type FrameView } from "./RoundFrame.js";
 import { UnchangedFrames, WhatShips, splitUnchanged } from "./ShipPairs.js";
+import { ShipTarget } from "./ShipTabs.js";
+import { stackedLabel, stackedPrefixes } from "./ship-stack.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 type ListedFrame = ConsoleCommands["rounds.frames"]["result"]["frames"][number];
@@ -33,11 +35,12 @@ export function Montages({ round, keys, merge }: MontagesProps): ReactNode {
   if (listed.status === "loading") return <Spinner size="sm" label="Loading the round's images" />;
   if (listed.data === undefined) return <Alert status="error" message={`Could not list the round's images: ${listed.error.message}`} />;
   const byKey = new Map(listed.data.frames.map((frame) => [frame.key, frame]));
+  const prefixes = stackedPrefixes(round.manifest);
   const frames = round.manifest.variants.flatMap((variant): ShipFrame[] => {
     if (variant.image === undefined || (keys !== undefined && !keys.has(variant.key))) return [];
     const frame = byKey.get(variant.key);
     const unchanged = variant.change === "unchanged" || (frame?.unchanged ?? false);
-    return [{ key: variant.key, label: variant.label, theme: frame?.theme, views: frame?.views ?? ["head"], unchanged }];
+    return [{ key: variant.key, label: stackedLabel(prefixes, variant.key, variant.label), theme: frame?.theme, views: frame?.views ?? ["head"], unchanged }];
   });
   if (frames.length === 0) return null;
   const { changed, unchanged } = splitUnchanged(frames);
@@ -95,21 +98,23 @@ function panelsOf(views: readonly FrameView[]): { label: string; side: string; v
 function FrameMontage({ roundId, frame }: { roundId: string; frame: ShipFrame }): ReactNode {
   const isNew = !frame.views.includes("base");
   return (
-    <FrameFigure frameKey={frame.key} label={frame.label} testID={`montage-${frame.key}`}>
-      <HStack gap={2} align="center" wrap>
-        <Typography variant="subtitle2">{frame.label}</Typography>
-        {frame.theme ? <Pill variant="subtle" size="xs">{frame.theme}</Pill> : null}
-        {isNew ? <Badge color="info" size="sm">NEW</Badge> : null}
-      </HStack>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {panelsOf(frame.views).map(({ label, side, view }) => (
-          <figure key={label} className="flex flex-col gap-1">
-            <Typography variant="microLabel" color="secondary">{label}</Typography>
-            <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${side}`} />
-          </figure>
-        ))}
-      </div>
-      {!isNew && !frame.views.includes("diff") ? <Typography variant="caption" color="secondary">No diff image: compare before and after side by side.</Typography> : null}
-    </FrameFigure>
+    <ShipTarget target={{ kind: "frame", key: frame.key }}>
+      <FrameFigure frameKey={frame.key} label={frame.label} pinnable={false} testID={`montage-${frame.key}`}>
+        <HStack gap={2} align="center" wrap>
+          <Typography variant="subtitle2">{frame.label}</Typography>
+          {frame.theme ? <Pill variant="subtle" size="xs">{frame.theme}</Pill> : null}
+          {isNew ? <Badge color="info" size="sm">NEW</Badge> : null}
+        </HStack>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {panelsOf(frame.views).map(({ label, side, view }) => (
+            <figure key={label} className="flex flex-col gap-1">
+              <Typography variant="microLabel" color="secondary">{label}</Typography>
+              <FrameImage roundId={roundId} frameKey={frame.key} view={view} alt={`${frame.label}, ${side}`} />
+            </figure>
+          ))}
+        </div>
+        {!isNew && !frame.views.includes("diff") ? <Typography variant="caption" color="secondary">No diff image: compare before and after side by side.</Typography> : null}
+      </FrameFigure>
+    </ShipTarget>
   );
 }

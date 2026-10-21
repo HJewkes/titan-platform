@@ -13,7 +13,7 @@ import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { configPath } from "./config.js";
 import { githubApiStatus } from "./github-api/status.js";
-import { sourcesReader } from "./github-sources/mode.js";
+import { resolveSources, sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { sqliteReconcilerCursor } from "./reconciler/cursor.js";
@@ -171,8 +171,8 @@ describe("titan-factory serve", () => {
     writeFileSync(file, '{ "github": ');
     const after = await healthOf(server);
 
-    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000 });
-    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, configError: expect.stringMatching(/^invalid config /) });
+    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null });
+    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, configError: expect.stringMatching(/^invalid config /) });
   });
 
   it("health has no sources field when serve was given no reader", async () => {
@@ -404,6 +404,23 @@ describe("serve's reconciler (I9)", () => {
     const cursor = sqliteReconcilerCursor(server.host.db);
     await vi.waitFor(() => expect(cursor.read(OTHER_REPO).main?.value).toBe("c1"));
     expect([r.github.count("snapshot", REPO), r.github.count("snapshot", OTHER_REPO)]).toEqual([1, 1]);
+  });
+
+  it("reads serve's sources for its cadence, so a kill-switched webhook deployment runs at the polling interval", async () => {
+    const started: unknown[] = [];
+    const logger = { ...silentLogger, info: (fields: unknown, msg?: unknown) => void (msg === "reconciler.started" && started.push(fields)) };
+    const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
+
+    await serve(dbFile(), landScenario(), { logger, sources, reconciler: { config, bot: rig().bot } });
+
+    expect(started).toEqual([{ repos: [REPO, OTHER_REPO], effective: "polling", reason: "kill-switch", intervalMs: 45_000 }]);
+  });
+
+  it("health shows the start pass in sources.lastPassAt, with the interval the schedule runs at", async () => {
+    const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
+    const server = await serve(dbFile(), landScenario(), { sources, reconciler: { config, bot: rig().bot } });
+
+    await vi.waitFor(async () => expect(await healthOf(server)).toHaveProperty("sources", expect.objectContaining({ intervalMs: 45_000, lastPassAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) })));
   });
 
   it("starts no reconciler while reconciler.enabled is off", async () => {

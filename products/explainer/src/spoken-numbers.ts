@@ -7,6 +7,9 @@ import type { ScriptBeat } from "./script-schema.js";
 const MARKUP = /\[[^\]]+\]\([^)]*\)/g;
 const CUE_KEYS = new Set(["atCue", "untilCue"]);
 
+// A dash between two numbers is read "to", so "30–35%" is spoken "thirty to thirty-five percent", not with a dash.
+const rangeStep: NormalizeStep = { name: "range", apply: (text) => text.replace(/(\d)–(?=[£$€]?\d)/g, "$1 to ") };
+
 const percentStep: NormalizeStep = { name: "percent", apply: (text) => text.replace(/(\d[\d,.]*)\s?%/g, "$1 percent") };
 
 // Product-side stand-in for a speech-vet year step; delete it when that ships. It reads every 1900-2099 number as a
@@ -22,7 +25,7 @@ const yearStep: NormalizeStep = { name: "years", apply: (text) => text.replace(Y
 
 const smallNumberStep: NormalizeStep = { name: "small-numbers", apply: (text) => text.replace(/\b\d{1,2}\b/g, (digits) => numberToWords(Number(digits))) };
 
-const SPOKEN_NUMBER_STEPS: readonly NormalizeStep[] = [percentStep, ageStep, ordinalStep, currencyStep, decimalStep, yearStep, cardinalStep, smallNumberStep];
+const SPOKEN_NUMBER_STEPS: readonly NormalizeStep[] = [rangeStep, percentStep, ageStep, ordinalStep, currencyStep, decimalStep, yearStep, cardinalStep, smallNumberStep];
 
 const spellPiece = (piece: string): string => normalize(piece, SPOKEN_NUMBER_STEPS);
 
@@ -112,7 +115,7 @@ function remapCue(cue: string, oldWords: readonly string[], spelled: Spelled): s
 }
 
 /** Renames, in place, every cue field under `node`; the caller passes a copy it owns. */
-function remapCuesInPlace(node: unknown, remap: (cue: string) => string): void {
+export function remapCuesInPlace(node: unknown, remap: (cue: string) => string): void {
   if (node === null || typeof node !== "object") return;
   for (const [key, item] of Object.entries(node)) {
     if (CUE_KEYS.has(key) && typeof item === "string") Reflect.set(node, key, remap(item));
@@ -133,7 +136,89 @@ export function spellSpokenNumbers<B extends Pick<ScriptBeat, "spoken" | "visual
   return { ...beat, spoken: spelled.text, visual };
 }
 
-export const hasSpokenDigits = (spoken: string): boolean => /\d/.test(spoken.replace(MARKUP, ""));
+// The inverse of the spelling, read from the same table, so every cardinal the speller writes reads back to its value.
+const SMALL_VALUES = new Map(Array.from({ length: 100 }, (_, n) => [numberToWords(n), n]));
+const SCALE_VALUES = new Map([["hundred", 100], ["thousand", 1e3], ["million", 1e6], ["billion", 1e9]]);
+
+interface Reading {
+  total: number;
+  current: number;
+  fraction?: string;
+}
+
+const FRESH: Reading = { total: 0, current: 0 };
+
+/** "a" and "an" read 1 only before a scale ("a hundred"); before anything else ("a five-hour ceiling") they read nothing. */
+function readArticle(r: Reading, next: string | undefined): Reading | undefined {
+  if (next !== undefined && SCALE_VALUES.has(next)) return r.current === 0 ? { ...r, current: 1 } : undefined;
+  return r === FRESH ? r : undefined;
+}
+
+/** Whether `small` follows `current` as the second half of a year read as pairs: "nineteen ninety", "nineteen oh five". */
+const pairs = (current: number, small: number, word: string): boolean => current >= 10 && (small >= 10 || word === "oh");
+
+/** One word of a spelled number folded into the reading so far; undefined when the word does not compose with it. */
+function readWord(r: Reading, word: string, next: string | undefined): Reading | undefined {
+  const small = word === "oh" ? 0 : SMALL_VALUES.get(word);
+  if (r.fraction !== undefined) return small !== undefined && small < 10 ? { ...r, fraction: r.fraction + small } : undefined;
+  if (word === "and") return r;
+  if (word === "point") return { ...r, fraction: "" };
+  if (word === "a" || word === "an") return readArticle(r, next);
+  const scale = SCALE_VALUES.get(word);
+  if (scale === 100) return { ...r, current: (r.current || 1) * 100 };
+  if (scale !== undefined) return { total: r.total + (r.current || 1) * scale, current: 0 };
+  if (small === undefined) return undefined;
+  const tens = r.current % 100;
+  if (tens === 0 || (small < 10 && tens >= 20 && tens % 10 === 0)) return { ...r, current: r.current + small };
+  return pairs(r.current, small, word) ? { ...r, current: r.current * 100 + small } : undefined;
+}
+
+const valueOf = (r: Reading): string => {
+  const whole = String(r.total + r.current);
+  return r.fraction ? `${whole}.${r.fraction}` : whole;
+};
+
+/** The values a spelled run reads as; a word that will not compose starts the next value, so "one two" is 1 and 2. */
+function spelledValues(text: string): string[] | undefined {
+  const words = text.split(/[\s-]+/).filter(Boolean);
+  const values: string[] = [];
+  let reading = FRESH;
+  for (const [i, word] of words.entries()) {
+    const composed = readWord(reading, word, words[i + 1]);
+    const restarted = composed ?? readWord(FRESH, word, words[i + 1]);
+    if (!restarted) return undefined;
+    if (!composed) values.push(valueOf(reading));
+    reading = restarted;
+  }
+  return [...values, valueOf(reading)];
+}
+
+// A unit tag the numbers rows read with its digits ("5 s", "3x"); only "k" changes the value.
+const DIGITS_WITH_UNIT = /^(\d[\d,]*(?:\.\d+)?)(?:\s*(x|ms|s|k|gb|mb))?$/;
+
+function digitValue(core: string): string | undefined {
+  const match = DIGITS_WITH_UNIT.exec(core);
+  if (!match) return undefined;
+  const value = Number(match[1]!.replace(/,/g, ""));
+  return String(match[2] === "k" ? Number((value * 1000).toPrecision(12)) : value);
+}
+
+/**
+ * Each number of one mention in a single form whether it is spoken in words or written in digits: "twenty-eight" and
+ * "28" are both "28", "a hundred and ninety" is "190", "forty percent" is "40%", "5 s" is "5", "one two" is "1" and
+ * "2". Text it cannot read comes back lower-cased as the only form.
+ */
+export function numberForms(mention: string): string[] {
+  const text = mention.toLowerCase().replace(/\s+/g, " ").trim();
+  const percent = /(?:%|\bpercent)$/.test(text) ? "%" : "";
+  const core = text.replace(/\s*(?:%|percent)$/, "");
+  const digits = digitValue(core);
+  const values = digits === undefined ? spelledValues(core) : [digits];
+  if (values === undefined) return [text];
+  return values.map((value, i) => (i === values.length - 1 ? `${value}${percent}` : value));
+}
+
+export const hasSpokenDigits =(spoken: string): boolean => /\d/.test(spoken.replace(MARKUP, ""));
 
 /** Q-V12: a spoken line holds no digit, so the voice is not left to guess how a number is read. */
 export const spokenDigitsCheck: L0Check = ({ script }) => {
