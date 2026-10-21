@@ -8,7 +8,7 @@ import { evaluateSlo, formatSlo, readRegistry, SLO_STORE, type SloBase } from ".
 
 const NOW = Date.parse("2026-10-08T12:00:00Z");
 const EMPTY_COST = { prs: [], weeks: [], totals: { prs: 0, completePrs: 0, usd: 0, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, unreadable: 0, p50Usd: null, p90Usd: null } };
-const BASE: SloBase = { runs: [], gates: [], events: [], now: NOW, cost: async () => EMPTY_COST };
+const BASE: SloBase = { runs: [], gates: [], events: [], heldRunIds: [], now: NOW, cost: async () => EMPTY_COST };
 
 function metric(id: string, queryId: string | undefined, slo?: Partial<NonNullable<MetricSpec["slo"]>>): MetricSpec {
   return {

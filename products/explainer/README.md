@@ -89,12 +89,16 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
-`--fail-on-ghosts` turns them into exit 1. `doctrine/rules.yaml` holds which rules are
+`--fail-on-ghosts` turns them into exit 1. `--speech-vet` runs speech-vet's `vet` on each sentence of 26 to 32
+words before the checks, over local Kokoro and Whisper (no cost, but the first run downloads both models). Q-V9
+passes such a sentence only when the verdict is `accepted`; a vet error counts as not clean. It is off by
+default, and then, or when the models cannot load, those sentences keep the 25-word cap and one stderr line
+says so. `doctrine/rules.yaml` holds which rules are
 implemented or pending. `--rules` defaults to the shipped registry and must parse as
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
@@ -110,6 +114,22 @@ intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rule
 (`doctrine/guides/spine-template.md`: problem, one task's journey, architecture, constraints, item ledger, cut list,
 chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
 the digest gap) reach the planner only as L0 failures. With `--spine` (or `guidePlan`'s `spine` dep) the guide ends with the spine's rows and ledger per act (chapter). It exits 2 on an unknown stage.
+
+`explainer rewrite <script.json> --judge <judge.json> --out <file> [--format spike|v1] [--rounds 1|2]
+[--speech-vet] [--report <file>]` runs `rewriteScript` on a drafted script: it rewrites `spoken` toward the five
+Q-V11 rows the planner guide alone does not move (`register:numbers`, `register:numbers-per-beat`, `register:triads`,
+`register:sentence-mean`, `register:sentence-cv`), one schema-bound call per chapter a round through the judge the
+config names (default 2 rounds). Each beat's rewrite passes `guardBeat` or keeps its original line: facts, cue words
+and their order, new terms and markup survive, and a number that leaves `spoken` must reach `visual.labels` with its
+noun ("5000 rows"), whose words then no longer count as dropped terms. Numbers compare spelled or in digits alike
+("twenty-eight" and "28"), and a cue on a moved number lands on the label's noun when the line still speaks it. A beat that gains an L0 error row is reverted,
+and a round that does not bring the rows closer to band is discarded. Remaining digits are spelled for the voice. It
+writes the script/v1 result to `--out` (a spike input is migrated first) and the full report to `--report`, and
+prints one JSON line: each target row before and after, what each round kept, rejected and reverted, the call count
+and the spend. `--speech-vet` vets each 26-32 word sentence of the input and of every reply with local Kokoro and
+Whisper, so the pass may keep it under Q-V9's vetted cap; it is off by default, which keeps the 25-word cap. Exit 0
+when the result is written and every target row passes, 1 when it is written but a target row is still red, 2 on
+usage or an input or judge config that does not parse. Run `explainer eval smoke --judge <judge.json>` first.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
@@ -134,8 +154,11 @@ the exit code.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
-§8 chapter order. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger. Q-E16 (M6)
-errors on a list beat whose cue entries carry more than one declared kind. Q-E17 errors on a beat
+§8 chapter order and §9 list shapes. `runL0` takes it as its fifth argument and `ledgerCheck` reads its ledger.
+Q-E16 (M6) errors on a list beat whose cue entries, three or more of them (`ODD_ONE_OUT_MIN_ITEMS`), carry more
+than one declared kind. A beat §9 declares `contrast` (a removal card's old/new/why, or a split map's old and new
+pins) is never compared, and neither the kind-honest nor the blind odd-one-out judge question is asked about it;
+an undeclared beat is `parallel`. Q-E17 errors on a beat
 that shows a new item the ledger lacks, or first shows an item whose defining beat comes later in
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
@@ -176,14 +199,20 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   and P is recorded for the process-leak classifier.
 - `explainer eval cold <script.json> --judge <judge.json> [--format spike|v1] [--timing
   <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
-  <n>]` is the cold-viewer probe for Q-E6 (eval id `L1-cold`, rubric `rubrics/l1-cold.md`). It
-  reads a script the way `eval pace` does, then streams it to a fresh viewer one chapter per
-  call: the playback transcript of that chapter (spoken words, each label's exposure second,
-  each beat's end) plus the viewer's own summary of earlier chapters, three lines at most.
+  <n>] [--labels <labels.json>]` is the cold-viewer probe for Q-E6 (eval id `L1-cold`, rubric
+  `rubrics/l1-cold.md`). It reads a script the way `eval pace` does, then streams it to a fresh
+  viewer one chapter at a time: the chapter as heard (spoken words and each beat's end, never the
+  screen) plus the viewer's own summary of earlier chapters, three lines at most.
   Questions come from the item track: what and why for every new item, what keeps every
   invariant, the odd one out for every list of three or more, and one made-up `relay-xxxxxx`
-  item per chapter that the viewer must decline. An answer scores 2 for what and why, 1 for
+  item per call that the viewer must decline. Spoken terms (the glossary, identifiers, and the
+  terms two of three fresh viewers name as undefined) are asked "what does X mean here?" in a
+  second call per chapter under `rubrics/l1-cold-spoken.md`, where a sentence that only uses the
+  word does not define it. An answer scores 2 for what and why, 1 for
   what only, and 0 when not stated or when a quote is not in that chapter's spoken words.
+  `--labels` adds each run's reader-gap group scores (`readerGapScores`) to its line. Zeros on
+  viewer-named terms (kind `viewer-term`) are counted in `undefined_terms` and
+  `undefined_terms_per_minute`, apart from `undefined_items`, so the chapter bars keep their meaning.
   `--runs` defaults to 3. Each run appends `cold-scores.tsv` (one row a question, odd-one-out
   picks included), `cold-chapters.tsv` (undefined items and undefined items a chapter
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
@@ -197,6 +226,10 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   three or more items. A PROMISE beat's items are not asked "explained?": they are paid off in later
   chapters, which a chapter-scoped judge never sees. A CAVEAT beat's items are asked "is it said why
   the picture holds without X?" instead, since a simplification names what it leaves out on purpose.
+  A cast line, where every item's own clause names a person ("a reviewer, a coordinator seat, and
+  you"), is not asked: it introduces people, not things to explain. A beat with open questions and a
+  `default:` answer label after them asks each question only what it puts to the owner, and never
+  asks the answer label.
   The blind odd one out judges from the chapter alone, so it cannot see a kind the chapter never
   states: on v4's r2-1 the beat calls all seven items "jobs" and glosses none, and the judge picks
   none. The spine's declared kinds (`--spine`) are the check for that. One call per chapter that

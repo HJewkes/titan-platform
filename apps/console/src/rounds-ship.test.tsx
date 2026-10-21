@@ -10,9 +10,14 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { draftKey } from "./pages/round-draft.js";
 
 const SHIP = "ship-tile-r1";
+// Each test renders the whole App and presses through it: about 0.5 s alone, and a loaded full-suite CI run stretched
+// one past vitest's 5 s default (TP-3866). The assertions, not the clock, are what fail on a wrong answer.
+const RENDER_TIMEOUT_MS = 30_000;
 const HEAD = "89abcdef0123456789abcdef0123456789abcdef";
+const SHIP_RECOMMENDATION = { answer: "Ship", rationale: "The stripe moved as the change intends and nothing else shifted.", confidence: 0.8, by: "fixture-agent" };
 const FRAMES = [
   { key: "tile-light", theme: "light", views: ["head", "base", "diff"] },
   { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"] },
@@ -47,6 +52,7 @@ afterEach(() => {
   cleanup();
   observers.clear();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 /** A CI packet's tile-light: its head is the montage and `after` the changed image alone. */
@@ -79,9 +85,11 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
   const inner = pageDataSource({ doc: page });
   const calls: Rendered["calls"] = [];
   const submitted = successEnvelope({ status: "submitted", path: "feedback.json", sha256: "0".repeat(64), headSha: HEAD });
+  const revealed = successEnvelope({ recommendation: SHIP_RECOMMENDATION, recorded: true });
+  const replies: Record<string, ReturnType<typeof successEnvelope>> = { "rounds.submit": submitted, "rounds.reveal": revealed };
   const counting: DataSource = {
     subscribe: inner.subscribe.bind(inner),
-    call: (name, args, callOptions) => (calls.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, callOptions)),
+    call: (name, args, callOptions) => (calls.push({ name, args }), replies[name] ? Promise.resolve(replies[name]) : inner.call(name, args, callOptions)),
   };
   window.location.hash = `#/rounds/${SHIP}`;
   render(
@@ -97,9 +105,11 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
 
 const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+/** The montages sit under the Diff tab (decision 167). */
+const openDiff = (): void => void fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
-describe("the Ship view", () => {
+describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
   it("renders a merge-bound round as the Ship view with its PR head, not the design notice", async () => {
     await renderShip();
 
@@ -149,11 +159,23 @@ describe("the Ship view", () => {
     const rendered = await renderShip();
     expect(frameCalls(rendered)).toHaveLength(0);
 
+    openDiff();
     scrollAll();
 
     await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(IMAGE_COUNT));
     expect(frameCalls(rendered)).toHaveLength(IMAGE_COUNT);
     expect(frameCalls(rendered)).toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-dark", view: "diff" } });
+  });
+
+  it("offers no Pin on a montage, whose BEFORE, AFTER and DIFF would share one frame's pins", async () => {
+    await renderShip({ answers: true });
+    const montage = screen.getByTestId("montage-tile-light");
+    fireEvent.pointerDown(montage);
+
+    fireEvent.keyDown(window, { key: "a" });
+
+    expect(within(montage).queryByRole("button", { name: /^Pin / })).toBeNull();
+    expect(within(montage).queryByText(/place a pin/)).toBeNull();
   });
 
   it("reads AFTER from a CI packet's after image, not its montage head", async () => {
@@ -200,6 +222,7 @@ describe("the Ship view", () => {
 
   it("opens an image full size when pressed and closes on Escape", async () => {
     await renderShip();
+    openDiff();
     scrollAll();
 
     fireEvent.click(await screen.findByRole("button", { name: "Enlarge Badge (new), after" }));
@@ -210,7 +233,7 @@ describe("the Ship view", () => {
   });
 });
 
-describe("answering a Ship round", () => {
+describe("answering a Ship round", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
   it("sends Ship bound to the question's head sha and the round.json shown", async () => {
@@ -224,6 +247,23 @@ describe("answering a Ship round", () => {
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
     expect(submits(rendered)[0]).toEqual({ id: SHIP, manifestSha256, general: "", headSha: HEAD, answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
     expect(await screen.findByText("Waiting for the factory")).toBeTruthy();
+  });
+
+  it("reveals the Ship recommendation on demand and tags the Ship pressed after it seen", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    // react-native-web hands a Pressable its new onPress in a passive effect, so the reveal must settle inside act
+    // or a loaded runner presses Ship while it still holds the pre-reveal draft.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("reveal-ship-tiles"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText("Recommended: Ship (80%, fixture-agent)")).toBeTruthy();
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(rendered.calls.filter((call) => call.name === "rounds.reveal").map((call) => call.args)).toEqual([{ id: SHIP, manifestSha256: expect.any(String), questionId: "ship-tiles" }]);
+    expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "ship-tiles", pick: "Ship", recommendationSeen: true }] });
   });
 
   it("sends Send back as the other option, with the owner's note as its comment and no head sha", async () => {
@@ -252,7 +292,7 @@ describe("answering a Ship round", () => {
   });
 
   it("shows a sent Ship round's comments and round feedback read-only", async () => {
-    const notes = { general: "The diffs made this easy.", comments: { "badge-follow-up": "Only if design agrees.", "ship-tiles": "Stripe is low." } };
+    const notes = { general: "The diffs made this easy.", comments: { "badge-follow-up": "Only if design agrees.", "ship-tiles": "Stripe is low." }, answers: {}, addressed: [] };
     await renderShip({ answers: true, detail: { status: "sent", notes } });
 
     expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Only if design agrees.");
@@ -295,7 +335,7 @@ describe("answering a Ship round", () => {
   });
 });
 
-describe("answering a Ship round with side questions", () => {
+describe("answering a Ship round with side questions", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
   /** The td850 shape: three side questions, then the Ship decision last. */
@@ -381,7 +421,7 @@ describe("answering a Ship round with side questions", () => {
   });
 });
 
-describe("Ship while feedback is open (TP-3741)", () => {
+describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
   const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
@@ -413,7 +453,7 @@ describe("Ship while feedback is open (TP-3741)", () => {
     const comment = screen.getByLabelText("Comment on File the badge colour as a follow-up?");
 
     fireEvent.change(comment, { target: { value: "Only if design agrees." } });
-    expect(blocked()).toContain('Ship is off: you left a comment on "File the badge colour as a follow-up?". Send back stays open.');
+    expect(blocked()).toBe('⚠Ship is off until you clear these; Send back stays open.you left a comment on "File the badge colour as a follow-up?"');
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
 
     fireEvent.change(comment, { target: { value: "" } });
@@ -433,7 +473,7 @@ describe("Ship while feedback is open (TP-3741)", () => {
   });
 });
 
-describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
+describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const stake = (): HTMLElement => screen.getByTestId("ship-stake-badge-follow-up");
   const PROMPT = "File the badge colour as a follow-up?";
@@ -499,14 +539,14 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
   });
 
   it("shows a sent answer that went as a follow-up, without the choice", async () => {
-    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {} }, followUps: ["badge-follow-up"] } });
+    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {}, answers: {}, addressed: [] }, followUps: ["badge-follow-up"] } });
 
     expect(screen.getByTestId("ship-follow-up-sent-badge-follow-up").textContent).toContain("Marked follow-up, so it did not block Ship.");
     expect(screen.queryByTestId("ship-stake-badge-follow-up")).toBeNull();
   });
 });
 
-describe("a Ship round that shares the round answer state (TP-3766)", () => {
+describe("a Ship round that shares the round answer state (TP-3766)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const follows = (earlier: HTMLElement, later: HTMLElement): boolean => (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
@@ -574,5 +614,166 @@ describe("a Ship round that shares the round answer state (TP-3766)", () => {
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
     expect(submits(rendered)[0]).toMatchObject({ answers: [{ questionId: "ship-tiles" }, { questionId: "plane", pick: "Light", optionNotes: [{ option: "Dark", note: "Too heavy." }] }] });
+  });
+});
+
+describe("a sent Ship round read back after a reload (TP-3767)", { timeout: RENDER_TIMEOUT_MS }, () => {
+  const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
+  const sent = {
+    status: "sent" as const,
+    priorFeedback: PRIOR,
+    notes: { general: "", comments: { "badge-follow-up": "Ask design." }, answers: { "badge-follow-up": { pick: "No" }, "ship-tiles": { pick: "Ship" } }, addressed: [1] },
+  };
+
+  it("shows the side answer picked and locked, the Ship pick and the Addressed tick as sent", async () => {
+    await renderShip({ answers: true, detail: sent });
+
+    const side = screen.getByTestId("ship-side-badge-follow-up");
+    expect(side.hasAttribute("inert")).toBe(true);
+    expect(within(side).getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Ask design.");
+    expect(screen.getByTestId("round-pick-sent-ship-tiles").textContent).toContain("Ship");
+    const addressed = within(screen.getByTestId("ship-prior-feedback")).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    expect(addressed.getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Ship" })).toBeNull();
+  });
+
+  it("takes no digit key or press on a side answer once sent", async () => {
+    await renderShip({ answers: true, detail: sent });
+
+    fireEvent.keyDown(window, { key: "1" });
+    fireEvent.click(within(screen.getByTestId("ship-side-badge-follow-up")).getByRole("radio", { name: "1 Yes" }));
+
+    expect(screen.getByRole("radio", { name: "1 Yes" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const verdict = (key: string, label: string): HTMLElement => (openDiff(), within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label }));
+  const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
+
+  it("turns Ship off for a Rejected frame, and sends its verdict and comment with Send back", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.click(verdict("tile-dark", "Rejected"));
+    expect(blocked()).toContain('you left feedback on frame "Tile, dark"');
+    expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.change(screen.getByLabelText("Comment on frame Tile, dark"), { target: { value: " The stripe clips. " } });
+    fireEvent.click(button("Send back"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ variants: [{ key: "tile-dark", verdict: "rejected", comment: "The stripe clips." }], answers: [{ questionId: "ship-tiles", pick: "Don't ship" }] });
+  });
+
+  it("ships with a Chosen frame that has no comment, and sends the verdict", async () => {
+    const rendered = await renderShip({ answers: true });
+
+    fireEvent.click(verdict("tile-light", "Chosen"));
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+    fireEvent.click(button("Ship"));
+
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+    expect(submits(rendered)[0]).toMatchObject({ headSha: HEAD, variants: [{ key: "tile-light", verdict: "chosen" }] });
+  });
+
+  it("lets a frame comment alone be the Send back note", async () => {
+    await renderShip({ answers: true });
+    expect(button("Send back").getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.change(screen.getByLabelText("Comment on frame Badge (new)"), { target: { value: "Badge is off-centre." } });
+
+    expect(screen.queryByTestId("send-back-blocked")).toBeNull();
+    expect(button("Send back").getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("lists an earlier round's frame feedback and holds Ship until it is ticked Addressed", async () => {
+    const priorFeedback = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", frames: ["Tile, dark (rejected): The stripe clips."] }];
+    await renderShip({ answers: true, detail: { priorFeedback } });
+
+    expect(within(screen.getByTestId("ship-prior-feedback")).getByText("Tile, dark (rejected): The stripe clips.")).toBeTruthy();
+    expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    expect(screen.queryByTestId("ship-blocked")).toBeNull();
+  });
+
+  it("shows a sent round's frame verdict and comment read-only", async () => {
+    const frames = { "tile-dark": { verdict: "rejected" as const, comment: "The stripe clips.", annotations: [] } };
+    await renderShip({ answers: true, detail: { status: "sent", notes: { general: "", comments: {}, answers: {}, addressed: [], frames } } });
+
+    expect(screen.getByTestId("frame-feedback-sent-tile-dark").textContent).toBe("RejectedThe stripe clips.");
+    expect(screen.queryByRole("button", { name: "Rejected" })).toBeNull();
+    expect(screen.queryByLabelText("Comment on frame Tile, dark")).toBeNull();
+  });
+});
+
+describe("an unsent Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS }, () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
+  const SIDE_COMMENT = "Comment on File the badge colour as a follow-up?";
+  const stored = (): string | null => localStorage.getItem(draftKey(SHIP));
+  const addressedTick = (): HTMLElement => screen.getByRole("checkbox", { name: "Round 1 feedback addressed" });
+  const value = (label: string): string => screen.getByLabelText<HTMLTextAreaElement>(label).value;
+
+  /** Answers and comments on the side question, ticks round 1 Addressed and writes the Send back note, then waits for the write. */
+  async function typeDraft(): Promise<void> {
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.change(screen.getByLabelText(SIDE_COMMENT), { target: { value: "Ask design first." } });
+    fireEvent.click(addressedTick());
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "Lift the stripe." } });
+    await waitFor(() => expect(stored()).toContain("Lift the stripe."));
+  }
+
+  it("restores the side answer and comment, the Addressed tick and the Send back note after a remount", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+
+    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(value(SIDE_COMMENT)).toBe("Ask design first.");
+    expect(addressedTick().getAttribute("aria-checked")).toBe("true");
+    expect(value("Note for Send back")).toBe("Lift the stripe.");
+    expect(screen.queryByText("Draft from an older version discarded")).toBeNull();
+  });
+
+  it("is discarded, with a note, when the round's manifest sha has changed", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR, manifestSha256: "a".repeat(64) } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+
+    expect(screen.getByText("Draft from an older version discarded")).toBeTruthy();
+    expect(addressedTick().getAttribute("aria-checked")).toBe("false");
+    expect(value("Note for Send back")).toBe("");
+    expect(stored()).toBeNull();
+  });
+
+  it("is cleared by Send back, and nothing is restored after it", async () => {
+    const rendered = await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+
+    fireEvent.click(button("Send back"));
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+
+    await waitFor(() => expect(stored()).toBeNull());
+    cleanup();
+    expect(stored()).toBeNull();
+  });
+
+  it("is never restored into a round already sent, and is dropped", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { status: "sent", priorFeedback: PRIOR, notes: { general: "", comments: {}, answers: { "ship-tiles": { pick: "Ship" } }, addressed: [] } } });
+
+    expect(screen.queryByLabelText("Note for Send back")).toBeNull();
+    expect(screen.queryByText("Ask design first.")).toBeNull();
+    expect(addressedTick().getAttribute("aria-checked")).toBe("false");
+    await waitFor(() => expect(stored()).toBeNull());
   });
 });

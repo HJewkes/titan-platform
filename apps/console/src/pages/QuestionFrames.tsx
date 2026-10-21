@@ -1,13 +1,20 @@
 import { createContext, useContext, useMemo, type MouseEvent, type ReactNode } from "react";
 import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
-import { FrameImage } from "./RoundFrame.js";
+import { FrameFigure } from "./FrameFeedback.js";
+import { optionKey } from "./frame-link.js";
+import { SequenceFigure } from "./FrameSequence.js";
+import { groupProgressStills, type FrameItem } from "./progress-stills-heuristic.js";
+import { VariantFrame, pinnableFrame, type FrameMedia } from "./TrueSize.js";
 
-/** What a question needs to draw the frames it names: the round, each variant's label, and which keys have an image. */
+/** What a question needs to draw the frames it names: the round, each variant's label and sizing, and which keys have an image. */
 interface RoundFrames {
   roundId: string;
   labels: ReadonlyMap<string, string>;
+  media: ReadonlyMap<string, FrameMedia>;
   loadable: ReadonlySet<string>;
+  /** Image variants' keys, the only ones a motion's stills are guessed from. */
+  images: ReadonlySet<string>;
 }
 
 const RoundFramesContext = createContext<RoundFrames | null>(null);
@@ -24,8 +31,9 @@ interface RoundFramesProviderProps {
 export function RoundFramesProvider({ roundId, manifest, indexed, children }: RoundFramesProviderProps): ReactNode {
   const value = useMemo(() => {
     const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
+    const media = new Map(manifest.variants.map(({ key, frameReference, scale, clip, motion, audio, transcript, durationMs }) => [key, { frameReference, scale, clip, motion, audio, transcript, durationMs }]));
     const images = manifest.variants.filter((variant) => variant.image !== undefined).map((variant) => variant.key);
-    return { roundId, labels, loadable: new Set([...images, ...(indexed ?? [])]) };
+    return { roundId, labels, media, images: new Set(images), loadable: new Set([...images, ...(indexed ?? [])]) };
   }, [roundId, manifest, indexed]);
   return <RoundFramesContext.Provider value={value}>{children}</RoundFramesContext.Provider>;
 }
@@ -39,13 +47,6 @@ export interface ABSide {
   index: number;
   key: string;
   label: string;
-}
-
-/** The variant key picking `option` picks: its `optionVariants` entry, or the option itself when it is a frame key. */
-function optionKey(question: Question, option: string, labels: ReadonlyMap<string, string>): string | undefined {
-  if (question.kind !== "pick-one" && question.kind !== "pick-many") return undefined;
-  const key = question.optionVariants?.[option] ?? option;
-  return labels.has(key) ? key : undefined;
 }
 
 /**
@@ -81,6 +82,27 @@ export function useFrameSource(): { roundId: string; loadable: (key: string) => 
   return frames && { roundId: frames.roundId, loadable: (key) => frames.loadable.has(key) };
 }
 
+/** How the round's variant `key` asks to be sized; undefined outside a provider. */
+export function useFrameMedia(): (key: string) => FrameMedia | undefined {
+  const frames = useContext(RoundFramesContext);
+  return (key) => frames?.media.get(key);
+}
+
+interface RoundVariantFrameProps {
+  frameKey: string;
+  alt: string;
+  /** Whether the frame's own PNG may be fetched; a scale frame asks the round for each candidate's instead. */
+  loadable: boolean;
+  missing: string;
+}
+
+/** A round's frame drawn as its variant asks: true size, a scale question's candidates, or a plain PNG. Nothing outside a provider. */
+export function RoundVariantFrame(props: RoundVariantFrameProps): ReactNode {
+  const frames = useContext(RoundFramesContext);
+  if (frames === null) return null;
+  return <VariantFrame {...props} roundId={frames.roundId} media={frames.media.get(props.frameKey)} candidateLoadable={(key) => frames.loadable.has(key)} />;
+}
+
 function optionFrame(question: Question, option: string, labels: ReadonlyMap<string, string>): string | undefined {
   const key = optionKey(question, option, labels);
   return key === undefined ? undefined : labels.get(key);
@@ -104,7 +126,7 @@ function InPageLink({ target, children }: { target: string; children: ReactNode 
   return <a href={`#${target}`} onClick={jump} className="underline">{children}</a>;
 }
 
-/** The frames a question names, drawn above it; each links back to the question, which starts right below them. `omit` leaves out frames drawn elsewhere in the card. */
+/** The frames a question names, drawn above it, a motion's stills as one viewer; each links back to the question, which starts right below them. `omit` leaves out frames drawn elsewhere in the card. */
 export function QuestionFrames({ question, omit = [] }: { question: Question; omit?: readonly string[] }): ReactNode {
   const frames = useContext(RoundFramesContext);
   const keys = (question.frames ?? []).filter((key) => !omit.includes(key));
@@ -112,32 +134,52 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
   return (
     <VStack gap={2}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid={`question-frames-${question.id}`}>
-        {keys.map((key) => {
-          const label = frames.labels.get(key) ?? key;
-          return (
-            <figure key={key} id={frameAnchor(question.id, key)} className="flex min-w-0 flex-col gap-1">
-              <HStack gap={2} align="center" justify="between">
-                <Typography variant="subtitle2">{label}</Typography>
-                <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>
-              </HStack>
-              {frames.loadable.has(key) ? (
-                <FrameImage roundId={frames.roundId} frameKey={key} view="head" alt={label} />
-              ) : (
-                <Typography variant="caption" color="secondary">No image for this frame</Typography>
-              )}
-            </figure>
-          );
-        })}
+        {groupProgressStills(keys, (key) => frames.images.has(key)).map((item) => (
+          <QuestionFrame key={item.kind === "frame" ? item.key : item.sequence.base} item={item} questionId={question.id} frames={frames} />
+        ))}
       </div>
       <span id={questionAnchor(question.id)} />
     </VStack>
   );
 }
 
+function QuestionFrame({ item, questionId, frames }: { item: FrameItem; questionId: string; frames: RoundFrames }): ReactNode {
+  const pinnable = (key: string): boolean => pinnableFrame(frames.loadable.has(key), frames.media.get(key));
+  const header = (label: string): ReactNode => (
+    <HStack gap={2} align="center" justify="between">
+      <Typography variant="subtitle2">{label}</Typography>
+      <InPageLink target={questionAnchor(questionId)}><Typography variant="caption">To its question</Typography></InPageLink>
+    </HStack>
+  );
+  const draw = (key: string, label: string): ReactNode => <RoundVariantFrame frameKey={key} alt={label} loadable={frames.loadable.has(key)} missing="No image for this frame" />;
+  if (item.kind === "sequence") {
+    const { sequence } = item;
+    return <SequenceFigure sequence={sequence} labels={frames.labels} pinnable={pinnable} header={header} renderStep={draw} id={frameAnchor(questionId, sequence.steps[0]?.key ?? sequence.base)} />;
+  }
+  const label = frames.labels.get(item.key) ?? item.key;
+  return (
+    <FrameFigure frameKey={item.key} label={label} pinnable={pinnable(item.key)} id={frameAnchor(questionId, item.key)}>
+      {header(label)}
+      {draw(item.key, label)}
+    </FrameFigure>
+  );
+}
+
+/** Where a link to frame `key` lands: its own figure, or the viewer of the motion its still belongs to. */
+function anchorKeys(keys: readonly string[], images: ReadonlySet<string>): Map<string, string> {
+  const anchors = new Map<string, string>();
+  for (const item of groupProgressStills(keys, (key) => images.has(key))) {
+    if (item.kind === "frame") anchors.set(item.key, item.key);
+    else item.sequence.steps.forEach((step) => anchors.set(step.key, item.sequence.steps[0]?.key ?? step.key));
+  }
+  return anchors;
+}
+
 /** A line linking to the question's frames and, on a Ship question, naming the frames a Ship approves. */
 export function QuestionFrameLinks({ question }: { question: Question }): ReactNode {
   const frames = useContext(RoundFramesContext);
   if (frames === null || !question.frames) return null;
+  const anchors = anchorKeys(question.frames, frames.images);
   const labelled = question.frames.map((key) => ({ key, label: frames.labels.get(key) ?? key }));
   return (
     <VStack gap={1}>
@@ -145,7 +187,7 @@ export function QuestionFrameLinks({ question }: { question: Question }): ReactN
       <HStack gap={2} align="center" wrap>
         <Typography variant="caption" color="secondary">Frames:</Typography>
         {labelled.map(({ key, label }) => (
-          <InPageLink key={key} target={frameAnchor(question.id, key)}><Typography variant="caption">{label}</Typography></InPageLink>
+          <InPageLink key={key} target={frameAnchor(question.id, anchors.get(key) ?? key)}><Typography variant="caption">{label}</Typography></InPageLink>
         ))}
       </HStack>
     </VStack>

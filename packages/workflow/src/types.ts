@@ -18,6 +18,12 @@ export interface StepUsage {
   costUsd: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Absent when the runner did not report it; never a defaulted zero. */
+  cacheReadTokens?: number;
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
+  /** The one model the step ran on; absent when several did or none was reported. */
+  model?: string;
   /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
   costUnknown?: true;
 }
@@ -147,6 +153,8 @@ export interface WorkflowContext {
   readonly runId: string;
   readonly workflowName: string;
   param(key: string): string | undefined;
+  /** The runtime's handle for `name`, for use inside a step body; throws when none is configured. Its secrets are refused or redacted wherever the run records them. */
+  capability(name: string): unknown;
   /** Render the template, run it through the step runner, parse signals. Retried once on a retryable failure. */
   dispatch<T extends Record<string, unknown> = Record<string, unknown>>(stepId: string, template: string, options?: DispatchOptions<T>): Promise<StepResult<T>>;
   /** Deterministic step without a runner; its data merges into params. */

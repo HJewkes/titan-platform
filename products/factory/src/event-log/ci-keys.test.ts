@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { ciEvent, ciKey, fromBackstopContext, fromCheckRunDelivery, fromStatusDelivery, utcSeconds, type CiObservation } from "./ci-keys.js";
-import { backstopNode, checkRunDelivery, statusDelivery, type CiFact } from "./ci-shapes.test-helpers.js";
+import { backstopNode, checkRunDelivery, statusDelivery, type CiFact } from "../test-support/a17/ci-shapes.js";
 import { appendEvent, eventLogMigration, readEvents } from "./event-log.js";
 
 const SHA = "a".repeat(40);

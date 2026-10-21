@@ -282,6 +282,13 @@ thaws only the episode the gate opened for. If the repo has thawed and frozen ag
 the answer changes nothing. Each run opens its own gate, so one episode can leave several
 open; answer any one with `unfreeze` and the rest go stale.
 
+## Merges and the guard on R27 {#merge-guard}
+
+From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents
+never call merge and the merge-lint warning are the **only guard on R27**: no count of
+owner-intent moves can run before the walk (D-M3-11). The lint warns until D-M3-03 and is an
+error after; D-M8-07 narrows it. Run it with `pnpm merge:lint`.
+
 ## Routing a reviewed head {#routing}
 
 After the review of a green head, the `sh-observe` step reads the pull request again, and one

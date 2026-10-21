@@ -36,7 +36,7 @@ export function registerServe(program: Command, { io, deps, dbPath }: Verbs): vo
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action(async (opts: { port: number }) => {
-      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger) }, deps.stop);
+      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env) }, deps.stop);
       deps.exitAfterServe?.();
     });
 }

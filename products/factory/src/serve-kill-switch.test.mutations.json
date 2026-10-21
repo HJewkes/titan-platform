@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the ingress route drops its effective-mode check",
+      "file": "products/factory/src/ingress/answer.ts",
+      "find": "if (deps.sources().effective !== \"webhook\") return refuse(404, \"ingress off\");",
+      "replace": "",
+      "kills": [
+        "serve's ingress kill switch end to end (TP-3099 I5) flips off and back on through the config file, with no restart: the route answers 404 then 2xx and the reconciler changes cadence"
+      ]
+    },
+    {
+      "name": "the reconciler schedule never sees a mode change, so no catch-up pass",
+      "file": "products/factory/src/github-sources/schedule.ts",
+      "find": "const changed = lastEffective !== undefined && effective !== lastEffective;",
+      "replace": "const changed = false;",
+      "kills": [
+        "serve's ingress kill switch end to end (TP-3099 I5) flips off and back on through the config file, with no restart: the route answers 404 then 2xx and the reconciler changes cadence"
+      ]
+    }
+  ]
+}
