@@ -5,7 +5,7 @@ import { ideaId, type Idea, type Proposal, type QueueOps } from "./schemas.js";
 interface QueueContext {
   round: number;
   bounds: Bounds;
-  seedNames: readonly string[];
+  caseNames: readonly string[];
   deadEnds: readonly DeadEnd[];
   /** Every idea id already queued or evaluated, so an exact repeat is refused. */
   seen: ReadonlySet<string>;
@@ -47,7 +47,7 @@ export function quotaViolations(ops: QueueOps, quota: QuotaContext): string[] {
 function admit(proposal: Proposal, context: QueueContext, queued: ReadonlySet<string>): Idea | string {
   const idea = toIdea(proposal, context);
   if (queued.has(idea.id) || context.seen.has(idea.id)) return "duplicate";
-  const bound = preCheck(proposal, context.bounds, context.seedNames);
+  const bound = preCheck(proposal, context.bounds, context.caseNames);
   if (bound) return bound;
   if (inDeadEnd(idea, context.deadEnds) && !proposal.differsFrom) return "dead-end";
   return idea;

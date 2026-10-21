@@ -33,5 +33,17 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/rpc-client": "workspace:^",
+    "@titan-design/workflow": "workspace:^"
+  },
+  "devDependencies": {
+    "@titan-design/hitl": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
   }
 }

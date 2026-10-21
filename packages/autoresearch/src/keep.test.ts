@@ -2,20 +2,31 @@ import { describe, expect, it } from "vitest";
 import { confirmRule, keepRule, median, type KeepSettings } from "./keep.js";
 import type { ArResult } from "./schemas.js";
 
-const SETTINGS: KeepSettings = { direction: "min", singleCallerSlack: 1 };
+const SETTINGS: KeepSettings = {
+  primary: { name: "cc_total_delta_pct", direction: "min" },
+  guards: { single_caller_delta: 1 },
+  zeroTolerance: ["hidden_regressions"],
+  allGate: true,
+  noOp: "accepted_tasks",
+};
 const BAND = { width: 1, sigma: 0.5 };
 
-const result = (cc: number, extra: Partial<ArResult> = {}): ArResult => ({
-  schema: "ar-result/v1",
-  seed: "t-alpha",
+interface Extra {
+  all_gate?: boolean;
+  hidden_regressions?: number;
+  single_caller_delta?: number;
+  accepted_tasks?: number;
+}
+
+const result = (cc: number, extra: Extra = {}): ArResult => ({
+  schema: "ar-result/v2",
+  case: "t-alpha",
   repeat: "r1",
-  all_gate: true,
-  hidden_regressions: 0,
-  cc_total_delta_pct: cc,
-  single_caller_delta: 0,
-  accepted_tasks: 5,
+  metrics: { cc_total_delta_pct: cc, single_caller_delta: extra.single_caller_delta ?? 0, accepted_tasks: extra.accepted_tasks ?? 5 },
+  gates: { all_gate: extra.all_gate ?? true },
+  violations: { hidden_regressions: extra.hidden_regressions ?? 0 },
   usd: 0,
-  ...extra,
+  wall_s: 0,
 });
 
 const runs = (...values: number[]) => values.map((cc) => result(cc));
@@ -34,7 +45,7 @@ describe("keep rule", () => {
   it("rejects an idea with a hidden regression in any one run however large its gain", () => {
     const idea = [result(-5), result(-5), result(-5, { hidden_regressions: 1 })];
 
-    expect(keepRule(BEST, idea, BAND, SETTINGS)).toMatchObject({ decision: "reject", reason: "hidden-regression" });
+    expect(keepRule(BEST, idea, BAND, SETTINGS)).toMatchObject({ decision: "reject", reason: "violation:hidden_regressions" });
   });
 
   it("never keeps an eval that accepted no runner task", () => {
@@ -42,9 +53,9 @@ describe("keep rule", () => {
   });
 
   it("rejects a gain whose single-caller delta rises past the guard", () => {
-    const idea = runs(-5, -5, -5).map((run) => ({ ...run, single_caller_delta: 2 }));
+    const idea = [-5, -5, -5].map((cc) => result(cc, { single_caller_delta: 2 }));
 
-    expect(keepRule(BEST, idea, BAND, SETTINGS).reason).toBe("single-caller");
+    expect(keepRule(BEST, idea, BAND, SETTINGS).reason).toBe("guard:single_caller_delta");
   });
 
   it("accepts a strict all-gate gain within one σ of the best", () => {

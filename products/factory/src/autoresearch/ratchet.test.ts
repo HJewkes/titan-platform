@@ -1,16 +1,33 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit, ratchetFastForward } from "./ratchet.js";
-import { fixtureRepo, git, removeFixture, type FixtureRepo } from "./test-support/fake-ports.js";
 
-const repos: FixtureRepo[] = [];
-afterEach(() => repos.splice(0).forEach(removeFixture));
+const IDENTITY = ["-c", "user.name=ratchet fixture", "-c", "user.email=fixture@example.invalid"];
+const git = (cwd: string, ...args: string[]) => execGit([...IDENTITY, ...args], cwd);
 
-const POLICY = { sigma: 0, base_cc: 0, accepted_tasks: 1, mechanisms: {} };
+const roots: string[] = [];
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+
+/** A bare `origin` and one checkout of it, the shape of an integration tree. */
+async function fixtureRepo() {
+  const root = mkdtempSync(join(tmpdir(), "ar-ratchet-"));
+  roots.push(root);
+  const bare = join(root, "origin.git");
+  const work = join(root, "work");
+  mkdirSync(work);
+  await git(work, "init", "--quiet", "-b", "main");
+  await git(work, "commit", "--quiet", "--allow-empty", "-m", "fixture");
+  await git(root, "clone", "--quiet", "--bare", work, bare);
+  await git(work, "remote", "add", "origin", bare);
+  return { bare, work, pin: await git(work, "rev-parse", "HEAD") };
+}
+
 const REF = "refs/heads/autoresearch/fixture/run-1";
 
 async function withRatchet() {
-  const repo = await fixtureRepo(POLICY);
-  repos.push(repo);
+  const repo = await fixtureRepo();
   await git(repo.work, "push", "--quiet", "origin", `${repo.pin}:${REF}`);
   await git(repo.work, "commit", "--quiet", "--allow-empty", "-m", "winner");
   const winner = await git(repo.work, "rev-parse", "HEAD");

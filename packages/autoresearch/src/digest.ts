@@ -1,5 +1,5 @@
 import { registryTails, type Registries } from "./registry.js";
-import type { Idea, Outcome } from "./schemas.js";
+import type { DiffSize, Idea, Outcome } from "./schemas.js";
 
 /** One row of the typed append-only evidence log. Validator rows exist for the owner's report only. */
 export interface EvidenceRow {
@@ -12,6 +12,7 @@ export interface EvidenceRow {
   delta?: number;
   deltaOverSigma?: number;
   usd: number;
+  diff?: DiffSize;
   lesson?: string;
   source: "training" | "validator";
 }
@@ -38,8 +39,8 @@ export function evidenceRow(round: number, outcome: Outcome): EvidenceRow {
   const verdict = outcome.verdict === "kept" ? "positive" : (outcome.delta ?? 0) < 0 ? "negative" : "neutral";
   const deltaOverSigma = outcome.delta !== undefined && outcome.sigma ? outcome.delta / outcome.sigma : undefined;
   const usd = outcome.runs.reduce((sum, run) => sum + run.usd, 0);
-  const { ideaId, cell, rungReached: rung, reason, delta, lesson } = outcome;
-  return { round, ideaId, cell, rung, verdict, reason, delta, deltaOverSigma, usd, lesson, source: "training" };
+  const { ideaId, cell, rungReached: rung, reason, delta, diff, lesson } = outcome;
+  return { round, ideaId, cell, rung, verdict, reason, delta, deltaOverSigma, usd, diff, lesson, source: "training" };
 }
 
 function cellRow(cell: string, rows: readonly EvidenceRow[]): CellRow {

@@ -54,13 +54,13 @@ function paramCode(ranges: Record<string, [number, number]> | undefined, params:
 }
 
 /** `ar-bounds-pre`, run on every planner add before any spawn: a failure costs nothing but the planner's words. */
-export function preCheck(proposal: Proposal, bounds: Bounds, seedNames: readonly string[]): string | undefined {
+export function preCheck(proposal: Proposal, bounds: Bounds, caseNames: readonly string[]): string | undefined {
   const spec = bounds.classes[proposal.class];
   if (!spec) return "unknown-class";
   if (proposal.targets.length === 0 || !proposal.targets.every((target) => matchesAny(target, spec.paths))) return "target-outside-class";
   const params = paramCode(spec.params, proposal.params ?? {});
   if (params) return params;
   const text = JSON.stringify(proposal);
-  if (seedNames.some((name) => text.includes(name))) return "seed-name";
+  if (caseNames.some((name) => text.includes(name))) return "case-name";
   return undefined;
 }

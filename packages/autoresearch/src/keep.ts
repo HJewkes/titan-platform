@@ -1,10 +1,7 @@
-import type { ArResult } from "./schemas.js";
+import type { ArResult, MetricSpec } from "./schemas.js";
 
-export interface KeepSettings {
-  direction: "min" | "max";
-  /** Largest allowed rise of the median single-caller delta over the best's. */
-  singleCallerSlack: number;
-}
+/** The target's metric spec; noise settings are read by the band, not by the rule. */
+export type KeepSettings = Omit<MetricSpec, "noise">;
 
 export interface Band {
   /** Already `bandSigmas`·σ, in primary-metric units. */
@@ -20,33 +17,46 @@ export function median(values: readonly number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-const primary = (runs: readonly ArResult[]) => runs.map((run) => run.cc_total_delta_pct);
-const passRate = (runs: readonly ArResult[]) => runs.filter((run) => run.all_gate).length / runs.length;
+const metricOf = (runs: readonly ArResult[], name: string) => runs.map((run) => run.metrics[name]!);
+const passes = (run: ArResult) => Object.values(run.gates).every(Boolean);
+const passRate = (runs: readonly ArResult[]) => runs.filter(passes).length / runs.length;
 
 /** Positive is better, whichever way the metric points. */
 export function improvement(best: readonly ArResult[], idea: readonly ArResult[], settings: KeepSettings): number {
-  const delta = median(primary(best)) - median(primary(idea));
-  return settings.direction === "min" ? delta : -delta;
+  const { name, direction } = settings.primary;
+  const delta = median(metricOf(best, name)) - median(metricOf(idea, name));
+  return direction === "min" ? delta : -delta;
 }
 
-/** Rules 1, 4 and 5 of the keep rule: any one of them rejects whatever the band says. */
+/** The first zero-tolerance violation any one of `runs` carries. */
+export function zeroToleranceHit(runs: readonly ArResult[], settings: KeepSettings): string | undefined {
+  const name = settings.zeroTolerance.find((violation) => runs.some((run) => (run.violations[violation] ?? 0) > 0));
+  return name === undefined ? undefined : `violation:${name}`;
+}
+
+function guardHit(best: readonly ArResult[], idea: readonly ArResult[], settings: KeepSettings): string | undefined {
+  const rose = Object.entries(settings.guards).find(([name, slack]) => median(metricOf(idea, name)) > median(metricOf(best, name)) + slack);
+  return rose ? `guard:${rose[0]}` : undefined;
+}
+
+/** Any one of these rejects whatever the band says. */
 function hardReject(best: readonly ArResult[], idea: readonly ArResult[], settings: KeepSettings): string | undefined {
-  if (idea.some((run) => run.hidden_regressions > 0)) return "hidden-regression";
-  if (idea.some((run) => run.accepted_tasks === 0)) return "no-op";
-  const callers = (runs: readonly ArResult[]) => median(runs.map((run) => run.single_caller_delta));
-  if (callers(idea) > callers(best) + settings.singleCallerSlack) return "single-caller";
-  return undefined;
+  const violation = zeroToleranceHit(idea, settings);
+  if (violation) return violation;
+  const { noOp } = settings;
+  if (noOp && idea.some((run) => run.metrics[noOp] === 0)) return "no-op";
+  return guardHit(best, idea, settings);
 }
 
-/** The keep rule (plan 5.1) on one training seed: accept, ask for confirm runs, or reject. */
+/** The keep rule (plan 5.1) on one training case: accept, ask for confirm runs, or reject. */
 export function keepRule(best: readonly ArResult[], idea: readonly ArResult[], band: Band, settings: KeepSettings): KeepDecision {
   const delta = improvement(best, idea, settings);
   const hard = hardReject(best, idea, settings);
   if (hard) return { decision: "reject", reason: hard, delta };
-  const bestPasses = passRate(best);
-  if (passRate(idea) < bestPasses) return { decision: "reject", reason: "fewer-all-gate", delta };
+  const gateGain = settings.allGate ? passRate(idea) - passRate(best) : 0;
+  if (gateGain < 0) return { decision: "reject", reason: "fewer-all-gate", delta };
   if (delta > band.width) return { decision: "accept", reason: "beyond-band", delta };
-  if (passRate(idea) > bestPasses && delta >= -band.sigma) return { decision: "accept", reason: "more-all-gate", delta };
+  if (gateGain > 0 && delta >= -band.sigma) return { decision: "accept", reason: "more-all-gate", delta };
   if (delta > 0) return { decision: "confirm", reason: "in-band", delta };
   return { decision: "reject", reason: "not-better", delta };
 }

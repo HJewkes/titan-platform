@@ -4,10 +4,10 @@ export interface NoiseSettings {
   lockAfterPairs: number;
   /** Below this many pairs σ is not trusted and the band is the default. */
   minPairs: number;
-  defaultBandPp: number;
+  defaultBand: number;
 }
 
-/** Two runs of the same code on the same seed. */
+/** Two runs of the same code on the same case. */
 interface Pair {
   a: number;
   b: number;
@@ -41,5 +41,5 @@ export function sigmaOf(state: NoiseState): number | undefined {
 export function band(state: NoiseState, settings: NoiseSettings): number {
   if (state.locked !== undefined) return settings.bandSigmas * state.locked;
   const sigma = state.pairs.length >= settings.minPairs ? sigmaOf(state) : undefined;
-  return Math.max(settings.bandSigmas * (sigma ?? 0), settings.defaultBandPp);
+  return Math.max(settings.bandSigmas * (sigma ?? 0), settings.defaultBand);
 }
