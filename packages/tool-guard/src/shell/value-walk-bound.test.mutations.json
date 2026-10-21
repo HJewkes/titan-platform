@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "classifying a line that evaluates a stored value with let costs 1.1 s of CPU",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const result = classifyEvent(event, port.context);",
+      "replace": "  if (event.kind === \"bash\" && event.command.includes(\"let a\\n\")) for (const start = process.threadCpuUsage(); process.threadCpuUsage(start).user < 1.1e6; );\n  const result = classifyEvent(event, port.context);",
+      "kills": [
+        "a nested subscript value is walked in bounded time (TP-2243) denies 30 nested substitutions inside brackets in under a second",
+        "a nested subscript value is walked in bounded time (TP-2243) denies 40 nested substitutions inside brackets in under a second",
+        "a nested subscript value is walked in bounded time (TP-2243) denies 60 nested substitutions inside brackets in under a second",
+        "a nested subscript value is walked in bounded time (TP-2243) denies 200 nested substitutions inside brackets in under a second"
+      ]
+    }
+  ]
+}

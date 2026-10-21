@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "refusing an oversize command costs 600 ms of CPU",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  if (event.kind === \"bash\" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);",
+      "replace": "  if (event.kind === \"bash\" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) {\n    for (const start = process.threadCpuUsage(); process.threadCpuUsage(start).user < 6e5; );\n    return oversized(event, actor, OVERSIZE_REASON, port);\n  }",
+      "kills": [
+        "handle: failure policy denies a credential read padded past the size cap without classifying it"
+      ]
+    }
+  ]
+}
