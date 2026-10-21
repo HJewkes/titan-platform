@@ -31,15 +31,15 @@ export function sourcedFiles(args: readonly WordToken[]): SourcedFile[] {
 function bashFiles(args: readonly WordToken[]): SourcedFile[] {
   let path: WordToken | null = null;
   let i = 0;
-  for (; i < args.length; i++) {
-    const v = (args[i] as WordToken).value;
+  for (let word = args[i]; word !== undefined; word = args[++i]) {
+    const v = word.value;
     if (v === "--") {
       i++;
       break;
     }
     if (!v.startsWith("-") || v === "-") break;
     if (!v.startsWith("-p")) return [];
-    path = v === "-p" ? (args[++i] ?? null) : { ...(args[i] as WordToken), value: v.slice(2) };
+    path = v === "-p" ? (args[++i] ?? null) : { ...word, value: v.slice(2) };
     if (path === null) return [];
   }
   const file = args[i];
