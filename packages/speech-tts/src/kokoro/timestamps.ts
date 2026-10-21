@@ -55,8 +55,10 @@ export function joinTimestamps(tokens: readonly TimedToken[], frames: readonly n
   for (const [k, token] of tokens.entries()) {
     if (i >= frames.length - 1) break;
     if (!token.phonemes) {
+      // Deliberately not Python's double advance: the previous word already stepped past its own
+      // space, so a null token owns only its one space id. Python's extra `i += 1` skips the next
+      // word's first id, and the drift grows per null word until the last word's timing is dropped.
       if (token.whitespace) {
-        i += 1;
         left = right + frame(i);
         right = left + frame(i);
         i += 1;
