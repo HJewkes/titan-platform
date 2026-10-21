@@ -75,6 +75,13 @@ describe("the console's twin", { timeout: BROWSER_TIMEOUT_MS }, () => {
     expect(manifest.frames.map((frame) => `${frame.route}@${frame.viewport}`)).toEqual(["home@phone", "home@desktop", "inbox@phone", "inbox@desktop"]);
   });
 
+  it("renders the autoresearch run header the same twice at both widths", async () => {
+    const autoresearch = [{ name: "autoresearch-run", hash: "#/autoresearch/ar-7c1e" }];
+    const manifest = await captureTwin({ html: await consolePage(), routes: autoresearch, viewports: TWIN_VIEWPORTS, outDir });
+
+    expect(manifest.frames.map((frame) => `${frame.route}@${frame.viewport}`)).toEqual(["autoresearch-run@phone", "autoresearch-run@desktop"]);
+  });
+
   it("fails once Date.now reaches the page", async () => {
     const html = (await consolePage()).replace("</body>", `${CLOCK_SCRIPT}</body>`);
 
