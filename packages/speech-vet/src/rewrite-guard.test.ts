@@ -94,7 +94,7 @@ describe("contentTerms", () => {
   // Golden values recorded from explainer's lint-text contentTerms on these lines.
   // Catches: the moved copy drifting from the original.
   it.each([
-    ["The readers kept reading every flomber chapter twice.", ["read", "kept", "flomb", "twice"]],
+    ["The readers kept reading every flomber chapter twice.", ["read", "kept", "flomb", "twic"]],
     [
       "Quellan writes 147 zorptrix modules, and the builder fixes them.",
       ["quellan", "writ", "147", "zorptrix", "modul", "build", "fix"],
@@ -102,5 +102,23 @@ describe("contentTerms", () => {
     ["It is just here now, but the shows are streaming tonight.", ["show", "stream", "tonight"]],
   ])("matches explainer on %j", (line, expected) => {
     expect([...contentTerms(line)]).toEqual(expected);
+  });
+
+  // Catches: an inflected form and its base reading as a dropped term.
+  it.each([
+    ["raises", "raise"],
+    ["carries", "carry"],
+    ["sets", "set"],
+    ["frees", "free"],
+    ["reader", "reads"],
+    ["reading", "reads"],
+  ])("folds %s and %s to one term", (a, b) => {
+    expect([...contentTerms(a)]).toEqual([...contentTerms(b)]);
+  });
+
+  // Catches: the fold swallowing real paraphrase drops.
+  it("still counts a paraphrase as two dropped terms", () => {
+    const rejection = guardRewrite("the flomber never bend.", "the flomber hold the line.", "bend").find((r) => r.rule === "terms");
+    expect(rejection?.detail).toContain("dropped 2 content terms (nev, bend)");
   });
 });
