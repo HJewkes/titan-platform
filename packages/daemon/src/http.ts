@@ -70,7 +70,7 @@ export const DEFAULT_RPC_BODY_LIMIT = 1024 * 1024;
 export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ctx>): Hono {
   const app = new Hono();
   const startedAt = options.startedAt ?? Date.now();
-  registerGuards(app, options);
+  app.use("*", guardMiddleware(options.guards, options.port));
   if (options.gate) {
     app.use("*", authGate(options.gate));
     mountLogoutRoute(app);
@@ -94,9 +94,10 @@ export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ct
   return app;
 }
 
-function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
-  const guard = createRequestGuard(options.guards, options.port);
-  app.use("*", async (c, next) => {
+/** The Host/Origin guard as middleware; every app the daemon serves mounts it first. */
+export function guardMiddleware(guards: RequestGuardOptions | undefined, port: () => number): MiddlewareHandler {
+  const guard = createRequestGuard(guards, port);
+  return async (c, next) => {
     const refusal = guard({
       method: c.req.method,
       // No Host header means HTTP/1.0 or a synthetic Request; the URL's host is then the
@@ -108,7 +109,7 @@ function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
     });
     if (refusal) return c.json(errorEnvelope(refusal.message, EXIT.USAGE), refusal.status);
     await next();
-  });
+  };
 }
 
 export interface EventLimits {
