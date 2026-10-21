@@ -5,8 +5,10 @@ import {
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
-import { sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
+import { frameScope, sendBackBlocker, shipBlockers } from "../../server/ship-blockers.js";
 import { useSubmit } from "../data/submit.js";
+import { FrameFeedbackProvider } from "./FrameFeedback.js";
+import { frameDrafts, type PostedVariant } from "./frame-feedback.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral } from "./RoundComment.js";
@@ -83,6 +85,8 @@ interface PrsState {
   side: RoundAnswers;
   verdicts: Verdicts;
   answers: SubmittedAnswer[];
+  /** Every frame's verdict and comment that holds something. */
+  variants: PostedVariant[];
   blockersOf: (unit: PrUnit) => string[];
   /** Why this PR's Send back is off: it has no note of its own and the round has none. */
   sendBackBlockerOf: (unit: PrUnit) => string | undefined;
@@ -97,19 +101,27 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   const units = prUnits(round.manifest, merges);
   // Locked, no question is handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)), round.notes);
+  const side = useRoundAnswers(locked ? [] : round.manifest.questions.filter((question) => !units.some((unit) => unit.question === question)), round.notes, locked);
   const verdicts = useVerdicts();
   const withSeen = useWithSeen();
   const answers = withSeen(draftAnswers(round, units, side, verdicts));
-  const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps };
+  const variants = frameDrafts(round.manifest.variants.map((variant) => variant.key), side.frames.drafts);
+  const draft = { answers, general: side.general.trim(), addressed: side.addressed, followUps: side.followUps, variants };
   // A PR's own Send back note is dropped when it switches to Ship, so it never blocks that Ship.
   const blockersOf = (unit: PrUnit) => shipBlockers(round.manifest, round.priorFeedback ?? [], { ...draft, answers: answers.filter((answer) => answer.questionId !== unit.question.id) }, unit.question.id);
-  // Read from the note box, not the draft, so Send back turns on before it is chosen.
-  const sendBackBlockerOf = (unit: PrUnit) => sendBackBlocker({ answers: [{ questionId: unit.question.id, comment: verdicts.notes[unit.question.id] ?? "" }], general: draft.general }, unit.question.id);
-  const state: PrsState = { round, units, side, verdicts, answers, blockersOf, sendBackBlockerOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
+  // Read from the note box, not the draft, so Send back turns on before it is chosen; only this PR's frames count as its note.
+  const sendBackBlockerOf = (unit: PrUnit) => {
+    const own = frameScope(round.manifest, unit.question.id);
+    const note = [{ questionId: unit.question.id, comment: verdicts.notes[unit.question.id] ?? "" }];
+    return sendBackBlocker({ answers: note, general: draft.general, variants: variants.filter((variant) => own.has(variant.key)) }, unit.question.id);
+  };
+  const state: PrsState = { round, units, side, verdicts, answers, variants, blockersOf, sendBackBlockerOf, locked, sent: round.status === "sent" || submitting.state.status === "sent" };
   return (
     <VStack gap={6}>
-      <PrsHeading round={round} units={units} />
+      {/* Only the montages judge frames, as on a one-PR round; each frame is judged under the PR it belongs to. */}
+      <FrameFeedbackProvider value={side.frames}>
+        <PrsHeading round={round} units={units} />
+      </FrameFeedbackProvider>
       {units.map((unit) => <PrSection key={unit.question.id} unit={unit} state={state} />)}
       <SharedQuestions state={state} />
       <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
@@ -144,7 +156,9 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
       <SectionContent>
         <div className="flex flex-col gap-4" data-testid={`pr-${unit.pr}`}>
           <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
-          <Montages round={state.round} keys={unit.keys} merge={question.merge} />
+          <FrameFeedbackProvider value={state.side.frames}>
+            <Montages round={state.round} keys={unit.keys} merge={question.merge} />
+          </FrameFeedbackProvider>
           {unit.sideQuestions.map((each) => (
             <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />
           ))}
@@ -243,6 +257,7 @@ function sendArgs(state: PrsState) {
   const { addressed, followUps } = sideMarks(state.side);
   return {
     id: state.round.id, manifestSha256: state.round.manifestSha256, general: state.side.general.trim(), answers: state.answers, ...followUps,
+    ...(state.variants.length > 0 && { variants: state.variants }),
     ...(shipped.length > 0 && { ...addressed, heads: Object.fromEntries(shipped.map((unit) => [unit.question.id, unit.question.merge.headSha])) }),
   };
 }
