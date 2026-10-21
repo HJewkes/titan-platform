@@ -10,6 +10,8 @@ You have no tools and cannot read the corpus.
 
 - "entity": what one answer row is.
 - "termGroups": an AND of ORs over single words; a paragraph matches when it holds one term from every group.
+  Put the group naming who or what a row is about first; the groups after it say what happened. Names found later
+  stand in for the first group, so the later groups must be enough to recognise the event.
   Keep groups few and broad: recall matters more than precision here, a later judge filters. A trailing "*" is a prefix.
 - "phrases": exact multi-word phrases that match on their own. "seedLexicon": names that match on their own.
 - "mode": "phrase" only when the answer is always stated in a fixed wording; otherwise "broad".

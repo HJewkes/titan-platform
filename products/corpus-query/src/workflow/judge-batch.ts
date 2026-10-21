@@ -30,7 +30,9 @@ function dispatchBatch<V, T extends QuotedItem>(ctx: WorkflowContext, stepId: st
   return ctx.dispatch(stepId, BATCH_TEMPLATE, { schema: judge.schema as ZodType<V & Record<string, unknown>>, ...(modelOverride ? { model: modelOverride } : {}), vars: { BATCH: job.batch.message } });
 }
 
-async function attempt<V, T extends QuotedItem>(ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[]): Promise<Attempt<T>> {
+async function attempt<V, T extends QuotedItem>(
+  ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[],
+): Promise<Attempt<T>> {
   const model = modelOverride ?? judge.model;
   try {
     const result = await dispatchBatch(ctx, stepId, job, judge, modelOverride);

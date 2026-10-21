@@ -47,7 +47,8 @@ export interface AskResult {
   answer?: Answer;
 }
 
-const DEFAULT_LEASE_MS = 15_000;
+/** Long enough that a slow synchronous batch build never loses the run; Ctrl-C releases it at once anyway. */
+const DEFAULT_LEASE_MS = 120_000;
 
 function openState(dataDir: string): Db {
   mkdirSync(dataDir, { recursive: true });

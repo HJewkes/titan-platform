@@ -108,9 +108,20 @@ describe("ask", () => {
     const result = await ask(options({ rounds: 2, spec: { ...SPEC, seedLexicon: ["Pebble Cup"] } }), host(judges.runnerFor));
 
     expect(result.answer!.rounds).toBe(2);
-    expect(recordedSteps(result.runId).filter((id) => id.startsWith("retrieve:"))).toEqual(["retrieve:r0", "retrieve:r1"]);
+    expect(recordedSteps(result.runId).filter((id) => /^(retrieve|grow):/.test(id))).toEqual(["retrieve:r0", "grow:r1"]);
     expect(screenCalls(judges.calls).filter((c) => c.stepId.startsWith("screen:r1")).flatMap((c) => c.refs)).toEqual(["GR 3.1"]);
     expect(judges.calls.some((c) => c.stepId.startsWith("screen:r2"))).toBe(false);
+  });
+
+  it("retrieves a grown name only beside the spec's event words", async () => {
+    fx = fixture([...WINS, ...CHAIN]);
+    const judges = fakeJudges({ names: { "Pebble Cup": ["Kestrel Shield"] } });
+
+    await ask(options(), host(judges.runnerFor));
+
+    const shown = judges.calls.flatMap((c) => c.refs);
+    expect(shown).toContain("GR 3.1");
+    expect(shown).not.toContain("GR 4.1");
   });
 
   it("stops growing at the round cap while judges keep reporting new names", async () => {
@@ -133,6 +144,18 @@ describe("ask", () => {
 
     const confirms = judges.calls.filter((c) => c.stage === "confirm").map((c) => c.refs);
     expect(confirms).toEqual([["GR 1.1", "GR 1.2", "GR 1.3"], ["GR 2.1", "GR 2.2"]]);
+  });
+});
+
+describe("confirm input", () => {
+  it("sends wins and recaps to confirm but never a preview", async () => {
+    fx = fixture([...WINS, { ...WINS[4]!, relPath: "gull-rovers/book_02/chapter_03.txt", title: "2.3 - Matchday", body: "The Gull Rovers won the semi. The Tide Cup final is next week." }]);
+    const judges = fakeJudges();
+
+    await ask(options(), host(judges.runnerFor));
+
+    expect(screenCalls(judges.calls).flatMap((c) => c.refs)).toContain("GR 2.3");
+    expect(judges.calls.filter((c) => c.stage === "confirm").flatMap((c) => c.refs)).not.toContain("GR 2.3");
   });
 });
 

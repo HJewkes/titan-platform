@@ -30,7 +30,8 @@ function summary(answer: Answer): string {
   const { screen, confirm } = answer.coverage;
   return [
     `rounds ${answer.rounds}, candidates ${answer.candidates}, rows ${answer.rows.length}`,
-    `screen: passages ${screen.retrieved}, judged ${screen.judged}, voided ${screen.voided}, unjudged ${screen.unjudged.length}, skipped ${screen.skipped.length}, canary misses ${screen.canaries.misses}/${screen.canaries.batches}`,
+    `screen: passages ${screen.retrieved}, judged ${screen.judged}, voided ${screen.voided}, unjudged ${screen.unjudged.length}, skipped ${screen.skipped.length}`
+      + `, canary misses ${screen.canaries.misses}/${screen.canaries.batches}`,
     `confirm: passages ${confirm.retrieved}, judged ${confirm.judged}, voided ${confirm.voided}, unjudged ${confirm.unjudged.length}, skipped ${confirm.skipped.length}`,
   ].join("\n");
 }

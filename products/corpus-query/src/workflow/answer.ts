@@ -63,6 +63,9 @@ interface RunState {
   passages: Map<string, Passage>;
 }
 
+/** Merge keeps wins and marks recaps "referenced earlier"; previews, losses and asides need no confirm call. */
+const CONFIRMED_EVENTS: ReadonlySet<Candidate["event"]> = new Set(["won", "referenced"]);
+
 const screenJudge = (models: Models): StageJudge<ScreenVerdict, Candidate> => ({
   stage: "screen", schema: ScreenVerdictSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, redoModel: models.redo,
 });
@@ -76,7 +79,7 @@ const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passag
 /** Retrieval is deterministic, but recording it pins the passages a resumed run judges even if the index moved. */
 async function retrieveRound(state: RunState, round: number, terms: MatchTerms): Promise<Passage[]> {
   const excludeIds = new Set(state.passages.keys());
-  const step = await state.ctx.seed(`retrieve:r${round}`, async () => ({ data: {}, output: JSON.stringify(retrieve(state.config.db, terms, { window: state.config.window, excludeIds }).passages) }));
+  const step = await state.ctx.seed(round === 0 ? "retrieve:r0" : `grow:r${round}`, async () => ({ data: {}, output: JSON.stringify(retrieve(state.config.db, terms, { window: state.config.window, excludeIds }).passages) }));
   const passages = JSON.parse(step.output ?? "[]") as Passage[];
   for (const p of passages) state.passages.set(p.id, p);
   return passages;
@@ -95,9 +98,14 @@ async function runWave<V, T extends { id: string; quote: string }>(state: RunSta
   return jobs.filter((job) => !missing.has(job.batch.key)).map((job) => readJson<BatchArtifact<T>>(job.file)!);
 }
 
+/**
+ * Names on `won` candidates only: a run's previews, recaps and asides name every team and person in the corpus, and
+ * growing from them retrieved more passages than the first round.
+ */
 function newNames(artifacts: readonly BatchArtifact<Candidate>[], lexicon: Set<string>): string[] {
   const fresh = new Map<string, string>();
-  for (const name of artifacts.flatMap((a) => a.items.flatMap((c) => c.names))) {
+  const won = artifacts.flatMap((a) => a.items.filter((c) => c.event === "won"));
+  for (const name of won.flatMap((c) => [c.entity, ...c.names])) {
     const folded = name.trim().toLocaleLowerCase();
     if (folded.length > 0 && !lexicon.has(folded) && !fresh.has(folded)) fresh.set(folded, name.trim());
   }
@@ -113,6 +121,11 @@ function screenJobs(state: RunState, round: number, passages: Passage[], known: 
     ...(known.length > 0 ? { preamble: `Names already known from earlier passages: ${known.join(", ")}` } : {}),
   });
   return batches.map((batch) => ({ batch, round, file: state.paths.batch("screen", batch.key, round) }));
+}
+
+/** A grown name stands in for the spec's first term group; the groups after it, what happened, still apply. */
+function growTerms(spec: QuerySpec, grown: string[]): MatchTerms {
+  return spec.termGroups.length > 1 ? { termGroups: [grown, ...spec.termGroups.slice(1)] } : { seedLexicon: grown };
 }
 
 /** Screen, then grow the lexicon from the names judges reported, until no name is new or the round cap is hit. */
@@ -135,7 +148,7 @@ async function screenRounds(state: RunState): Promise<{ rounds: number; jobs: Ba
       round++;
       break;
     }
-    terms = { seedLexicon: grown };
+    terms = growTerms(spec, grown);
   }
   return { rounds: round, jobs, artifacts };
 }
@@ -155,7 +168,12 @@ function confirmJobs(state: RunState, candidates: readonly Candidate[]): BatchJo
   const firstOrder = (ps: Passage[]) => chapters.get(ps[0]!.chapterId)!.order;
   const books = [...byBook].sort(([, a], [, b]) => compareStoryOrder(firstOrder(a), firstOrder(b)));
   return books.map(([book, passages]) => {
-    const [batch] = buildBatches(passages.map((p) => shown(state, p)), { tokenBudget: Number.POSITIVE_INFINITY, prefixSha: prefixSha(state.config.prefixes.confirm), canaries: state.config.spec.canaries, preamble: `Book: ${book}` });
+    const [batch] = buildBatches(passages.map((p) => shown(state, p)), {
+      tokenBudget: Number.POSITIVE_INFINITY,
+      prefixSha: prefixSha(state.config.prefixes.confirm),
+      canaries: state.config.spec.canaries,
+      preamble: `Book: ${book}`,
+    });
     return { batch: batch as Batch, book, file: state.paths.batch("confirm", batch!.key) };
   });
 }
@@ -179,7 +197,7 @@ export function answerWorkflow(config: AnswerConfig): WorkflowFn {
   return async (ctx) => {
     const state: RunState = { ctx, config, paths: runPaths(config.dataDir, ctx.runId), spentUsd: 0, passages: new Map() };
     const screened = await screenRounds(state);
-    const candidates = screened.artifacts.flatMap((a) => a.items);
+    const candidates = screened.artifacts.flatMap((a) => a.items.filter((c) => CONFIRMED_EVENTS.has(c.event)));
     const jobs = confirmJobs(state, candidates);
     const confirmed = await runWave(state, "confirm:books", jobs, confirmJudge(config.models));
     const answer: Answer = {

@@ -13,7 +13,7 @@ import type { RunnerFor } from "./routes.js";
 export const SPEC: QuerySpec = {
   entity: "trophy won by the Gull Rovers",
   rowFields: ["entity", "subject", "period", "detail"],
-  termGroups: [["cup"], ["won"]],
+  termGroups: [["cup"], ["won", "lifted"]],
   phrases: [],
   seedLexicon: [],
   mode: "broad",
@@ -46,6 +46,7 @@ export const CHAIN: SyntheticFile[] = [
   chapter(3, 1, "The Gull Rovers lifted the Kestrel Shield."),
   chapter(3, 2, "The Gull Rovers lifted the Osprey Plate."),
   chapter(3, 3, "The Gull Rovers lifted the Heron Bowl."),
+  chapter(4, 1, "The Kestrel Shield sat in a dusty cabinet."),
 ];
 
 export interface Fixture {
@@ -65,7 +66,7 @@ export function fixture(files: SyntheticFile[]): Fixture {
   return { root: corpus.root, index, dataDir: path.join(work, "data"), cleanup: () => (corpus.cleanup(), rmSync(work, { recursive: true, force: true })) };
 }
 
-export interface Call {
+interface Call {
   stage: string;
   stepId: string;
   model: string;
@@ -104,9 +105,13 @@ function verdict(stage: string, prompt: string, names: Record<string, string[]>)
   });
   const judged = passages.map((p) => p.id);
   if (stage === "screen") {
-    return ok({ judged, candidates: wins.map(({ p, quote, trophy }) => ({ id: p.id, quote, entity: trophy, subject: "Gull Rovers", event: "won", names: names[trophy] ?? [] })) });
+    const event = (text: string) => (/next week/.test(text) ? "preview" : "won");
+    return ok({ judged, candidates: wins.map(({ p, quote, trophy }) => ({ id: p.id, quote, entity: trophy, subject: "Gull Rovers", event: event(p.text), names: names[trophy] ?? [] })) });
   }
-  return ok({ judged, rows: wins.map(({ p, quote, trophy }) => ({ id: p.id, entity: trophy, subject: "Gull Rovers", period: p.ref, detail: "final", role: "manager", quote, event: "won", confidence: "sure", reason: "won on the page" })) });
+  const row = ({ p, quote, trophy }: (typeof wins)[number]) => ({
+    id: p.id, entity: trophy, subject: "Gull Rovers", period: p.ref, detail: "final", role: "manager", quote, event: "won", confidence: "sure", reason: "won on the page",
+  });
+  return ok({ judged, rows: wins.map(row) });
 }
 
 /**
