@@ -80,10 +80,10 @@ export function collectCliArgs(
   const raw: Record<string, unknown> = {};
   (meta.positional ?? []).forEach((name, i) => {
     const value = positionals[i];
-    if (value !== undefined) {
-      const schema = fieldSchema(cmd.args, name);
-      raw[name] = coerceCliValue(value, schemaKind(schema), arrayElementKind(schema));
-    }
+    // Commander yields [] for an omitted variadic; absent keeps zod defaults and matches MCP/HTTP.
+    if (value === undefined || (Array.isArray(value) && value.length === 0)) return;
+    const schema = fieldSchema(cmd.args, name);
+    raw[name] = coerceCliValue(value, schemaKind(schema), arrayElementKind(schema));
   });
   for (const [key, opt] of Object.entries(meta.options ?? {})) {
     const value = readCommanderOption(opts, opt.long);

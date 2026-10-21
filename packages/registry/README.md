@@ -132,12 +132,16 @@ controls the envelope code. Omitting the formatter preserves the existing
 
 `CliOption.valueName` controls a value flag's placeholder (`<path>`, `<n>`);
 omitting it keeps `<value>`. Booleans and exact `z.literal(true)` fields (including
-optional wrappers) stay bare. String, false, mixed, nullable and default-wrapped
-literals retain value-taking placeholders. Array-typed positional
-arguments render `<text...>` or `[brief...]` when optional; their values are
-coerced element by element. Repeatable option flags still do not use variadic
-syntax, so they cannot swallow trailing positionals.
+optional wrappers) stay bare. String, false and mixed literals take a value.
+Nullable and default-wrapped true literals are not supported as switches yet.
+Array-typed positional arguments render `<text...>` or `[brief...]` when optional
+and swallow every remaining argument, so an array positional must be the last one.
+Their values are coerced element by element. An omitted variadic is left out of the
+args (Commander's `[]` is dropped), so zod defaults apply and the CLI matches MCP and
+HTTP. Repeatable option flags still do not use variadic syntax, so they cannot
+swallow trailing positionals.
 
 `optionDefault(command, key)` reads a field's explicit zod default for the product
 to pass into Commander. Missing/non-default fields return undefined; zero and
-false remain valid defaults. It does not parse args or run schema transforms.
+false remain valid defaults. It does not parse args or run schema transforms, but a
+function default (`.default(() => ...)`) is evaluated on each call.

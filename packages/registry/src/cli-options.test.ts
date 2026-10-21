@@ -12,7 +12,10 @@ import {
   positionalSpec,
   readCommanderOption,
 } from "./cli-options.js";
-import { defineCommand } from "./types.js";
+import { invokeCommand } from "./invoke.js";
+import { defineCommand, type BaseContext } from "./types.js";
+
+const cliContext = (): BaseContext => ({ warnings: [], format: "json" });
 
 const wrap = defineCommand({
   name: "wrap",
@@ -225,6 +228,29 @@ describe("CLI consumer metadata", () => {
     expect(collectCliArgs(send, ["peer", ["hello", "world"], ["1", "2"]], {})).toEqual({
       to: "peer", text: ["hello", "world"], numbers: [1, 2],
     });
+  });
+  it("leaves an omitted optional variadic positional absent, as Commander passes []", () => {
+    expect(collectCliArgs(send, ["peer", [], []], {})).toEqual({ to: "peer" });
+  });
+  it("applies a defaulted variadic positional's default through invokeCommand when omitted", async () => {
+    const tag = defineCommand({
+      name: "tag", description: "tag a peer",
+      args: z.object({ to: z.string(), labels: z.array(z.string()).default(["untriaged"]) }),
+      result: z.array(z.string()), cli: { positional: ["to", "labels"] },
+      async run({ labels }) { return labels; },
+    });
+    const { envelope } = await invokeCommand(tag, collectCliArgs(tag, ["peer", []], {}), cliContext());
+    expect(envelope).toMatchObject({ ok: true, data: ["untriaged"] });
+  });
+  it("accepts omission of an optional non-empty variadic positional", async () => {
+    const note = defineCommand({
+      name: "note", description: "note a peer",
+      args: z.object({ to: z.string(), words: z.array(z.string()).min(1).optional() }),
+      result: z.boolean(), cli: { positional: ["to", "words"] },
+      async run({ words }) { return words === undefined; },
+    });
+    const { envelope } = await invokeCommand(note, collectCliArgs(note, ["peer", []], {}), cliContext());
+    expect(envelope).toMatchObject({ ok: true, data: true });
   });
   it("reads only explicit defaults, including false, zero and optional wrappers", () => {
     expect(optionDefault(send, "since")).toBe("now");

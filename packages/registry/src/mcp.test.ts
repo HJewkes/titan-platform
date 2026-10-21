@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  commandNameToToolName,
-  commandToTool,
-  toolNameToCommandName,
-} from "./mcp.js";
+import { commandNameToToolName, commandToTool, toolNameToCommandName } from "./mcp.js";
 import { defineCommand } from "./types.js";
 
 const naming = { prefix: "active__" };
@@ -12,11 +8,7 @@ const naming = { prefix: "active__" };
 const taskAdd = defineCommand({
   name: "task.add",
   description: "Add a task",
-  args: z.object({
-    slug: z.string(),
-    title: z.string(),
-    priority: z.number().optional(),
-  }),
+  args: z.object({ slug: z.string(), title: z.string(), priority: z.number().optional() }),
   result: z.object({ id: z.string() }),
   async run() {
     return { id: "T-1" };
@@ -42,11 +34,7 @@ describe("commandToTool", () => {
     expect(tool.description).toBe("Add a task");
     expect(tool.inputSchema.type).toBe("object");
     expect(tool.inputSchema.required).toEqual(["slug", "title"]);
-    expect(
-      Object.keys(
-        z.record(z.string(), z.unknown()).parse(tool.inputSchema.properties)
-      )
-    ).toEqual(["slug", "title", "priority"]);
+    expect(Object.keys(tool.inputSchema.properties as object)).toEqual(["slug", "title", "priority"]);
   });
 
   it("projects an array-typed field as a JSON Schema array, independent of any CLI rendering", () => {
@@ -55,23 +43,14 @@ describe("commandToTool", () => {
       description: "Tag a task",
       args: z.object({ slug: z.string(), tags: z.array(z.string()) }),
       result: z.object({ ok: z.literal(true) }),
-      cli: {
-        positional: ["slug"],
-        options: { tags: { long: "--tag", description: "tag" } },
-      },
+      cli: { positional: ["slug"], options: { tags: { long: "--tag", description: "tag" } } },
       async run() {
         return { ok: true as const };
       },
     });
     const tool = commandToTool(withTags, naming);
-    const properties = tool.inputSchema.properties as Record<
-      string,
-      { type?: string; items?: { type?: string } }
-    >;
-    expect(properties.tags).toMatchObject({
-      type: "array",
-      items: { type: "string" },
-    });
+    const properties = tool.inputSchema.properties as Record<string, { type?: string; items?: { type?: string } }>;
+    expect(properties.tags).toMatchObject({ type: "array", items: { type: "string" } });
   });
 
   it("can describe input objects without closing nested objects, preserving the output default", () => {
@@ -88,19 +67,11 @@ describe("commandToTool", () => {
     const output = commandToTool(nested, naming).inputSchema;
     expect(input).not.toHaveProperty("additionalProperties");
     expect(input.properties).toEqual({
-      declared: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
-      },
+      declared: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
     });
     expect(output).toHaveProperty("additionalProperties", false);
-    expect(
-      (output.properties as Record<string, unknown>).declared
-    ).toHaveProperty("additionalProperties", false);
-    expect(commandToTool(nested, naming, { io: "output" }).inputSchema).toEqual(
-      output
-    );
+    expect((output.properties as Record<string, unknown>).declared).toHaveProperty("additionalProperties", false);
+    expect(commandToTool(nested, naming, { io: "output" }).inputSchema).toEqual(output);
   });
 
   it("passes a schema override through for free-form declared maps", () => {

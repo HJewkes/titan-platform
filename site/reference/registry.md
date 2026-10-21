@@ -89,9 +89,10 @@ kind. An array-typed field's flag repeats (`--tag a --tag b` yields `["a", "b"]`
 the array's element kind.
 
 Use `CliOption.valueName` for a value flag placeholder. Booleans and exact
-`z.literal(true)` fields (including optional wrappers) remain bare. String, false,
-mixed, nullable and default-wrapped literals retain value-taking placeholders.
-Array positionals render `<text...>` / `[brief...]` and coerce each element.
+`z.literal(true)` fields (including optional wrappers) remain bare. String, false
+and mixed literals take a value; nullable and default-wrapped true literals are not
+supported as switches yet. Array positionals render `<text...>` / `[brief...]`, must be
+last, coerce each element, and are left out of the args when omitted.
 `optionDefault(command, key)` returns an explicit field default (including zero
 or false) for Commander, without parsing args or running schema transforms.
 

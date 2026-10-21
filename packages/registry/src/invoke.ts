@@ -1,12 +1,5 @@
 import type { ZodError, core } from "zod";
-import {
-  EXIT,
-  describeError,
-  errorEnvelope,
-  successEnvelope,
-  type ErrorDescription,
-  type JsonEnvelope,
-} from "./envelope.js";
+import { EXIT, describeError, errorEnvelope, successEnvelope, type ErrorDescription, type JsonEnvelope } from "./envelope.js";
 import type { CommandRegistry } from "./registry.js";
 import type { AnyCommand, BaseContext } from "./types.js";
 
@@ -29,7 +22,7 @@ export async function invokeCommand<Ctx extends BaseContext>(
   cmd: AnyCommand<Ctx>,
   rawArgs: unknown,
   ctx: Ctx,
-  options: InvokeOptions = {}
+  options: InvokeOptions = {},
 ): Promise<Invocation> {
   const formatError = options.formatError ?? describeError;
 
@@ -38,20 +31,14 @@ export async function invokeCommand<Ctx extends BaseContext>(
 
   try {
     const result: unknown = await cmd.run(parsed.data, ctx);
-    return {
-      envelope: successEnvelope(result, ctx.warnings),
-      exitCode: EXIT.OK,
-    };
+    return { envelope: successEnvelope(result, ctx.warnings), exitCode: EXIT.OK };
   } catch (err) {
     const { message, code } = formatError(err);
     return { envelope: errorEnvelope(message, code), exitCode: code };
   }
 }
 
-export type InProcessCall = (
-  name: string,
-  args: unknown
-) => Promise<JsonEnvelope<unknown>>;
+export type InProcessCall = (name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
 
 /**
  * Call registry commands by name in process. An unknown name yields a USAGE envelope, never a throw.
@@ -60,7 +47,7 @@ export type InProcessCall = (
 export function inProcessCaller<Ctx extends BaseContext>(
   registry: CommandRegistry<Ctx>,
   context: () => Ctx,
-  options?: InvokeOptions
+  options?: InvokeOptions,
 ): InProcessCall {
   return async (name, args) => {
     const cmd = registry.get(name);
@@ -70,9 +57,7 @@ export function inProcessCaller<Ctx extends BaseContext>(
 }
 
 function formatZodError(error: ZodError): string {
-  return error.issues
-    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-    .join("; ");
+  return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
 }
 
 function invalidArguments(error: ZodError, options: InvokeOptions): Invocation {
