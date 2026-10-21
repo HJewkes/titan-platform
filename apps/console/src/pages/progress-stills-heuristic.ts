@@ -24,7 +24,7 @@ export type FrameItem = { kind: "frame"; key: string } | { kind: "sequence"; seq
 const PROGRESS_KEY = /^(.+)-p(\d+(?:_\d+)?)$/;
 
 /** The base and progress a `-p<n>` key names, or undefined for any other key. */
-export function progressStill(key: string): { base: string; still: ProgressStill } | undefined {
+function progressStill(key: string): { base: string; still: ProgressStill } | undefined {
   const match = PROGRESS_KEY.exec(key);
   if (match === null) return undefined;
   const [, base = "", written = ""] = match;

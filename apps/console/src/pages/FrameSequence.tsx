@@ -53,7 +53,7 @@ function useFlipBook(count: number, step: number, onStep: (step: number) => void
   return { playing, toggle: () => setPlaying(!playing), stepTo };
 }
 
-export function FrameSequence({ sequence, label, step, onStep, renderStep }: FrameSequenceProps): ReactNode {
+function FrameSequence({ sequence, label, step, onStep, renderStep }: FrameSequenceProps): ReactNode {
   const { steps } = sequence;
   const flip = useFlipBook(steps.length, step, onStep);
   const shown = steps[step];
