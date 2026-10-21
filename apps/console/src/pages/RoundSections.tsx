@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Section, SectionContent, SectionHeader, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question, Section as RoundSection } from "../../server/round-schema.js";
 import type { RoundNotes } from "../../server/rounds.js";
@@ -49,18 +49,9 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const link = useVerdictLink(questions, keys, answers, setAnswers);
   const frames = useFrameFeedback(target, setTarget, locked, notes?.frames, link);
   const active = questions.find((question) => question.id === activeId);
-  const { applyVerdicts, drafts } = frames;
-  const answerWith = useCallback(
-    (question: Question, choice: string | null, answer: QuestionAnswer) => {
-      setAnswers((current) => ({ ...current, [question.id]: answer }));
-      applyVerdicts(pickVerdicts(question, keys, choice, answer, (key) => drafts[key]?.verdict ?? null));
-    },
-    [keys, applyVerdicts, drafts],
-  );
-  const choose = useCallback((question: Question, choice: string) => answerWith(question, choice, chooseIn(question, answers[question.id], choice)), [answerWith, answers]);
+  const { choose, revise } = useLinkedChoices(keys, frames, answers, setAnswers);
   const write = useCallback((question: Question, text: string) => setAnswers((current) => ({ ...current, [question.id]: { text } })), []);
   const comment = useCallback((question: Question, text: string) => setComments((current) => ({ ...current, [question.id]: text })), []);
-  const revise = useCallback((question: Question) => answerWith(question, null, { revisionRequested: true }), [answerWith]);
   const note = useCallback(
     (question: Question, option: string, text: string) => setOptionNotes((current) => ({ ...current, [question.id]: { ...current[question.id], [option]: text } })),
     [],
@@ -72,8 +63,25 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
 
 const NO_FRAMES: readonly string[] = [];
 
+type FrameVerdicts = Pick<ReturnType<typeof useFrameFeedback>, "applyVerdicts" | "drafts">;
+type SetAnswers = Dispatch<SetStateAction<Record<string, QuestionAnswer>>>;
+
+/** Choosing an option or asking for a revision, each followed by the frame verdicts the new answer sets. */
+function useLinkedChoices(keys: ReadonlySet<string>, { applyVerdicts, drafts }: FrameVerdicts, answers: Record<string, QuestionAnswer>, setAnswers: SetAnswers) {
+  const answerWith = useCallback(
+    (question: Question, choice: string | null, answer: QuestionAnswer) => {
+      setAnswers((current) => ({ ...current, [question.id]: answer }));
+      applyVerdicts(pickVerdicts(question, keys, choice, answer, (key) => drafts[key]?.verdict ?? null));
+    },
+    [keys, applyVerdicts, drafts, setAnswers],
+  );
+  const choose = useCallback((question: Question, choice: string) => answerWith(question, choice, chooseIn(question, answers[question.id], choice)), [answerWith, answers]);
+  const revise = useCallback((question: Question) => answerWith(question, null, { revisionRequested: true }), [answerWith]);
+  return { choose, revise };
+}
+
 /** A frame's verdict answers each question with an option picking it; on a pick-one that pick un-chooses the other frames. */
-function useVerdictLink(questions: readonly Question[], keys: ReadonlySet<string>, answers: Record<string, QuestionAnswer>, setAnswers: (answers: Record<string, QuestionAnswer>) => void): VerdictLink {
+function useVerdictLink(questions: readonly Question[], keys: ReadonlySet<string>, answers: Record<string, QuestionAnswer>, setAnswers: SetAnswers): VerdictLink {
   return useCallback(
     (key, verdict, verdictOf) => {
       const next = verdictAnswers(questions, keys, answers, key, verdict);

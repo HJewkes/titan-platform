@@ -591,8 +591,8 @@ async function withLinkedPick(kind: "pick-one" | "pick-many" = "pick-one"): Prom
   const { manifest } = await designRound();
   const linked = { options: ["Filled", "Ring", "Halo"], optionVariants: { Filled: "beacon-idle", Ring: "beacon-busy", Halo: "beacon-error" } };
   const relink = (each: Question): Question => {
-    if (each.id !== "beacon-fill-pick") return each;
-    return kind === "pick-one" ? { ...each, ...linked, kind } : { id: each.id, prompt: each.prompt, kind, ...linked };
+    if (each.id !== "beacon-fill-pick" || each.kind !== "pick-one") return each;
+    return kind === "pick-one" ? { ...each, ...linked } : { id: each.id, prompt: each.prompt, kind, ...linked };
   };
   return { manifest: { ...manifest, questions: manifest.questions.map(relink) } };
 }

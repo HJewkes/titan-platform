@@ -25,7 +25,7 @@ export function optionKey(question: Question, option: string, keys: FrameKeys): 
 function optionFrames(question: Question, keys: FrameKeys): [string, string][] {
   if (question.kind !== "pick-one" && question.kind !== "pick-many") return [];
   return question.options.flatMap((option): [string, string][] => {
-    const key = option === question.revisionOption ? undefined : optionKey(question, option, keys);
+    const key = question.kind === "pick-one" && option === question.revisionOption ? undefined : optionKey(question, option, keys);
     return key === undefined ? [] : [[option, key]];
   });
 }
