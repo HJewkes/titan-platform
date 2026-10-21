@@ -43,7 +43,7 @@ function botProbe(seen: BotAccess[]) {
   });
 }
 
-async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scratch(), "state")): Promise<FactoryServer> {
+async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scratch(), "state"), open = () => openBotIdentity({ path })): Promise<FactoryServer> {
   const server = await startFactoryServer({
     dbPath: join(stateDir, "factory.sqlite3"),
     workflows: [botProbe(seen)],
@@ -51,7 +51,7 @@ async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scr
     port: 0,
     logger: silentLogger,
     github: { status: () => "ok", refresh: async () => undefined },
-    bot: () => openBotIdentity({ path }),
+    bot: open,
   });
   servers.push(server);
   return server;
@@ -89,9 +89,24 @@ describe("serve's bot identity (V5)", () => {
     const seen: BotAccess[] = [];
     const server = await serveWithBot(tokenFile(0o600), seen);
 
-    expect(await botHealth(server)).toEqual({ state: "ok" });
+    expect(await botHealth(server)).toEqual({ state: "ok", expiresAt: null });
     expect((await runProbe(server, seen))?.state).toBe("ok");
     expect(JSON.stringify(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json())).not.toContain(SENTINEL);
+  });
+});
+
+describe("serve's bot token expiry (V7)", () => {
+  it("shows the expiry a bot response carried as /health.bot.expiresAt", async () => {
+    const path = tokenFile(0o600);
+    const expiring: typeof fetch = async () => new Response("{}", { status: 200, headers: { "content-type": "application/json", "github-authentication-token-expiration": "2099-01-02 03:04:05 UTC" } });
+    const bot = openBotIdentity({ path, fetch: expiring, alarmed: new Set() });
+    const server = await serveWithBot(path, [], join(scratch(), "state"), () => bot);
+
+    const access = botAccess({ capability: () => bot.capabilities["github-bot"]!.handle });
+    if (access.state !== "ok") throw new Error(`bot is ${access.state}`);
+    await access.client.request("GET /rate_limit");
+
+    expect(await botHealth(server)).toEqual({ state: "ok", expiresAt: "2099-01-02T03:04:05.000Z" });
   });
 });
 

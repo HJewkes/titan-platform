@@ -183,7 +183,7 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("merge_op consumers", () => {
-  it("nothing reads or writes merge_op yet", () => {
+  it("only C7's intent check reads merge_op, and nothing writes it yet", () => {
     const mentions = ["packages", "products"].flatMap((top) => sourceFiles(join(ROOT, top))).flatMap((path) =>
       readFileSync(path, "utf8")
         .split("\n")
@@ -194,8 +194,11 @@ describe("merge_op consumers", () => {
     const outside = mentions.filter((mention) => mention.file !== "products/factory/src/merge-log.ts");
 
     expect(outside).toEqual([
+      { file: "products/factory/src/bot-intent.ts", line: expect.stringMatching(/^\? db\.prepare\("SELECT 1 FROM merge_op WHERE kind = 'intent'/) },
       { file: "products/factory/src/host.ts", line: 'import { mergeLogMigration } from "./merge-log.js";' },
       { file: "products/factory/src/host.ts", line: expect.stringMatching(/^return \[.*mergeLogMigration\(29\)/) },
+      { file: "products/factory/src/reconciler/fakes.test-helpers.ts", line: 'import { mergeLogMigration } from "../merge-log.js";' },
+      { file: "products/factory/src/reconciler/fakes.test-helpers.ts", line: expect.stringMatching(/^runMigrations\(db, \[mergeLogMigration\(\)/) },
     ]);
   });
 });

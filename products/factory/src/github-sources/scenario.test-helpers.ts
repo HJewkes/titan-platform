@@ -55,13 +55,14 @@ export function scenarioSnapshot(): BackstopSnapshot {
       { number: 9, merged: false, mergedBy: null, mergeCommit: null, closedAt: AT, updatedAt: "2027-01-15T07:20:00Z" },
     ],
     main: { tip: TIP, commits: [{ oid: TIP, contexts: [checkOf(mainCheck)] }] },
+    trains: [],
     rateLimit,
   };
 }
 
 /** The repo before the scenario: an older main and nothing else. */
 export function priorSnapshot(): BackstopSnapshot {
-  return { open: [], done: [], main: { tip: OLD, commits: [{ oid: OLD, contexts: [checkOf({ ...mainCheck, head: OLD, checkRunId: 301 })] }] }, rateLimit };
+  return { open: [], done: [], main: { tip: OLD, commits: [{ oid: OLD, contexts: [checkOf({ ...mainCheck, head: OLD, checkRunId: 301 })] }] }, trains: [], rateLimit };
 }
 
 const rulesetList = (rulesets: Record<number, string>): RulesetList => ({ notModified: false, unreadable: false, rulesets, etag: '"r1"' });

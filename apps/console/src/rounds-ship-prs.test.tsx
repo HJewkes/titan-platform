@@ -90,7 +90,7 @@ describe("a Ship round with two PRs (TP-3329)", () => {
   it("shows each PR's proposal, changes and only its own frames", async () => {
     await renderPrs();
 
-    expect(pr("example/tiles#1").getByTestId("proposal-example/tiles#1").textContent).toContain("Moves the stripe up six pixels");
+    expect(pr("example/tiles#1").getByTestId("description-example/tiles#1").textContent).toContain("Moves the stripe up six pixels");
     expect(pr("example/tiles#1").getByText("Changed: The tile stripe moved up six pixels.")).toBeTruthy();
     expect(pr("example/tiles#1").getByTestId("montage-tile-dark")).toBeTruthy();
     expect(pr("example/tiles#1").queryByTestId("montage-panel-wide")).toBeNull();
@@ -193,7 +193,9 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     const priorFeedback = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
     await renderPrs({ status: "sent", priorFeedback, notes: { general: "", comments: {}, answers: { "ship-tiles": { pick: "Ship" }, "ship-panels": { pick: "Ship" } }, addressed: [1] } });
 
-    const prior = screen.getByTestId("ship-prior-feedback");
+    // An entry with no `pr` bears on every PR, so each PR's Review tab shows it (TP-3790).
+    expect(pr("example/panels#2").getByTestId("ship-prior-feedback").textContent).toContain("The stripe is two pixels low.");
+    const prior = pr("example/tiles#1").getByTestId("ship-prior-feedback");
     expect(prior.textContent).toContain("The stripe is two pixels low.");
     const addressed = within(prior).getByRole("checkbox", { name: "Round 1 feedback addressed" });
     expect(addressed.getAttribute("aria-checked")).toBe("true");
@@ -203,7 +205,10 @@ describe("a Ship round with two PRs (TP-3329)", () => {
 });
 
 describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", () => {
-  const verdict = (pr: string, key: string, label: string): HTMLElement => within(within(screen.getByTestId(`pr-${pr}`)).getByTestId(`montage-${key}`)).getByRole("button", { name: label });
+  const verdict = (key: string, frame: string, label: string): HTMLElement => {
+    fireEvent.click(pr(key).getByRole("tab", { name: "Diff" }));
+    return within(pr(key).getByTestId(`montage-${frame}`)).getByRole("button", { name: label });
+  };
 
   it("turns Ship off only for the PR whose own frame is Rejected, and sends the verdict", async () => {
     const calls = await renderPrs();

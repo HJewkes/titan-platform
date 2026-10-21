@@ -130,7 +130,7 @@ const errnoOf = (error: unknown): string | undefined =>
 const canonical = (roundDir: string, rel: string): string => path.relative(roundDir, path.resolve(roundDir, rel));
 
 /** Each directory between the round dir and the file must be a real directory, not a symlink. */
-async function assertRealDirs(roundDir: string, parts: readonly string[]): Promise<void> {
+export async function assertRealDirs(roundDir: string, parts: readonly string[]): Promise<void> {
   let at = roundDir;
   for (const part of parts.slice(0, -1)) {
     at = path.join(at, part);

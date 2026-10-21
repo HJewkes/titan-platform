@@ -140,6 +140,17 @@ export function FrameFeedbackProvider({ value, widths = NO_WIDTHS, children }: F
 
 const NO_WIDTHS: ReadonlyMap<string, PngWidths> = new Map();
 
+/** Which frame the keys judge, a press that hands them another, and whether a frame holds feedback; null outside a design round. */
+export function useFrameJudging(): { activeFrame: string | undefined; activateFrame: (key: string) => void; judged: (key: string) => boolean } | null {
+  const feedback = useContext(FrameFeedbackContext);
+  if (feedback === null) return null;
+  const judged = (key: string): boolean => {
+    const { verdict, comment, pins } = feedback.drafts[key] ?? EMPTY_DRAFT;
+    return verdict !== null || comment.trim() !== "" || pins.length > 0 || (lockedPins(feedback, key)?.length ?? 0) > 0;
+  };
+  return { activeFrame: feedback.activeFrame, activateFrame: feedback.activateFrame, judged };
+}
+
 const FIGURE = "flex min-w-0 flex-col gap-1";
 const ACTIVE_FIGURE = "rounded outline outline-2 outline-offset-4 outline-brand-primary";
 
