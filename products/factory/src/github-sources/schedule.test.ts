@@ -110,13 +110,13 @@ describe("reconciler schedule cadence (I4)", () => {
 describe("reconciler schedule mode change (I5)", () => {
   it("logs one line and runs a catch-up pass within one tick when the kill switch flips", async () => {
     const h = await started(harness(WEBHOOK));
-    await vi.advanceTimersByTimeAsync(MINUTE);
+    await vi.advanceTimersByTimeAsync(DUE_CHECK_TICK_MS);
     expect(h.passes).toEqual([0]);
 
     h.set(KILL_SWITCH);
     await vi.advanceTimersByTimeAsync(DUE_CHECK_TICK_MS);
 
-    expect(h.passes).toEqual([0, MINUTE + DUE_CHECK_TICK_MS]);
+    expect(h.passes).toEqual([0, 2 * DUE_CHECK_TICK_MS]);
     expect(sourceLines(h)).toEqual([{ msg: "github sources: webhook → polling (kill-switch)", fields: { from: "webhook", to: "polling", reason: "kill-switch" } }]);
   });
 
