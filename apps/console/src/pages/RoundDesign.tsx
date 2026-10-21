@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { Alert, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
@@ -42,9 +42,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
   const { submitting, check, checking, locked, frozen, draft } = useRoundSend(round);
   const state = useDesignAnswers(round, frozen, draft);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
-  const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
-  const strip = { roundId: round.id, indexed, labels };
-  const anchored = anchoredKeys(round.manifest);
+  const { labels, ...strips } = useStrips(round, indexed);
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
   const widths = useMemo(() => declaredWidths(round, listed), [round, listed]);
   return (
@@ -57,7 +55,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
             state={state}
             textAnswers
             locked={locked}
-            frames={(section) => <SectionFrames section={section} anchored={anchored} {...strip} />}
+            {...strips}
             check={check}
             checking={checking}
             send={<RoundSend round={round} state={state} submitting={submitting} check={check} variants={variants} />}
@@ -96,6 +94,17 @@ function declaredWidths({ id, manifest }: ValidRound, listed: FramesList): Map<s
   );
 }
 
+/** Each section's strip. */
+function useStrips(round: ValidRound, indexed: ReadonlySet<string>) {
+  const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
+  const strip = { roundId: round.id, indexed, labels };
+  const anchored = useMemo(() => anchoredKeys(round.manifest), [round.manifest]);
+  return {
+    labels,
+    frames: (section: Section) => <SectionFrames section={section} anchored={anchored} {...strip} />,
+  };
+}
+
 interface StripProps {
   roundId: string;
   indexed: ReadonlySet<string>;
@@ -108,6 +117,7 @@ function SectionFrames({ section, anchored, ...strip }: StripProps & { section: 
   if (keys.length === 0 && section.seeAlso.length === 0) return null;
   return (
     <VStack gap={3}>
+      {keys.length > 0 && section.kind ? <StripKind section={section.id} kind={section.kind} /> : null}
       {keys.length > 0 ? <FrameStrip keys={keys} size="strip" {...strip} /> : null}
       {section.seeAlso.length > 0 ? (
         <VStack gap={1}>
@@ -116,6 +126,23 @@ function SectionFrames({ section, anchored, ...strip }: StripProps & { section: 
         </VStack>
       ) : null}
     </VStack>
+  );
+}
+
+type StripKindName = NonNullable<Section["kind"]>;
+
+/** The harness's words for what a strip's frames are, so a set of states never reads as a choice. */
+const STRIP_KIND_LABEL: Record<StripKindName, string> = {
+  CHOICE: "these frames differ only in what is being decided",
+  STATES: "one design in several states; nothing to choose between",
+};
+
+function StripKind({ section, kind }: { section: string; kind: StripKindName }): ReactNode {
+  return (
+    <HStack gap={2} align="center" wrap testID={`strip-kind-${section}`}>
+      <Typography variant="microLabel" color="secondary">{kind}</Typography>
+      <Typography variant="caption" color="secondary">{STRIP_KIND_LABEL[kind]}</Typography>
+    </HStack>
   );
 }
 
