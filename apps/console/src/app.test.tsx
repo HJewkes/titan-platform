@@ -23,6 +23,10 @@ function snapshotOf(calls: Snapshot["calls"]): Snapshot {
 
 const healthy = (): Snapshot => snapshotOf({ [snapshotKey("upstreams.health", {})]: { ok: true, data: HEALTH } });
 
+const railItems = (): HTMLElement[] => within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("button");
+
+const railItem = (label: string): HTMLElement => within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: label });
+
 /** Renders the app at a route from a page that carries its snapshot, the way an exported console does. */
 function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
@@ -37,15 +41,13 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 describe("the shell", () => {
   it("shows the rail and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd", "Research", "Config"]);
-    // react-ui's NavItem sets no aria-selected on the web, so its accent bar is the only mark of the active item.
-    expect(within(screen.getByRole("tab", { name: "Sessions" })).getByTestId("nav-item-accent")).toBeTruthy();
-    expect(screen.getAllByTestId("nav-item-accent")).toHaveLength(1);
+    expect(railItems().map((item) => item.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd", "Research", "Config"]);
+    expect(railItems().filter((item) => item.getAttribute("aria-current") === "page").map((item) => item.getAttribute("aria-label"))).toEqual(["Sessions"]);
   });
 
   it("moves to a view when its nav item is pressed", async () => {
     renderConsole("#/", healthy());
-    fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
+    fireEvent.click(railItem("Agents"));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
     expect(await screen.findByRole("tab", { name: "Roster" })).toBeTruthy();
   });
@@ -98,6 +100,6 @@ describe.skipIf(planned.length === 0)("a planned view", () => {
   it.each(planned)("shows the same placeholder on a $key detail route and keeps its rail entry active", (view) => {
     renderConsole(`#/${view.key}/some-record?tab=graph`, healthy());
     expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();
-    expect(within(screen.getByRole("tab", { name: view.label })).getByTestId("nav-item-accent")).toBeTruthy();
+    expect(railItem(view.label).getAttribute("aria-current")).toBe("page");
   });
 });
