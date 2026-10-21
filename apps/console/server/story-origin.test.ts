@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
@@ -56,6 +57,8 @@ const storyPort = (): number => handle!.contentPort!;
 const consoleOrigin = (): string => `http://127.0.0.1:${handle!.port}`;
 const story = (route: string, method = "GET") => send("127.0.0.1", storyPort(), method, route, { host: `127.0.0.1:${storyPort()}` });
 const sb = (rest: string, id = buildId) => story(`/sb/${id}/${rest}`);
+
+const LiveReply = z.object({ data: z.object({ live: z.object({ origin: z.string(), frames: z.record(z.string(), z.object({ url: z.string() })) }) }) });
 
 /** The `frame-ancestors` sources of a response's CSP. */
 function frameAncestors(csp: string | string[] | undefined): string[] {
@@ -162,7 +165,7 @@ describe("the console with the story origin off", () => {
 describe("rounds.get on loopback", () => {
   it("names the loopback story origin, where the round's live urls resolve to the build", async () => {
     const reply = await send("127.0.0.1", handle!.port, "POST", "/rpc/rounds.get", { host: `127.0.0.1:${handle!.port}`, "content-type": "application/json", "x-titan-client": "test" }, JSON.stringify({ id: "lantern-cards-r1" }));
-    const { live } = (JSON.parse(reply.body) as { data: { live: { origin: string; frames: Record<string, { url: string }> } } }).data;
+    const { live } = LiveReply.parse(JSON.parse(reply.body)).data;
 
     expect(live.origin).toBe(`http://127.0.0.1:${storyPort()}`);
     const url = new URL(live.frames.compact!.url, live.origin);
@@ -255,7 +258,7 @@ function runBridge({ parent = consoleOrigin(), failure, framed = true }: BridgeS
   let bottom = 0;
   const root = { getBoundingClientRect: () => ({ bottom }) };
   const self: Record<string, unknown> = { scrollY: 0, __STORYBOOK_ADDONS_CHANNEL__: { on: (event: string, handler: () => void) => handlers.set(event, handler) } };
-  self.parent = framed ? { postMessage: (message: BridgeMessage, target: string) => posted.push({ message: JSON.parse(JSON.stringify(message)) as BridgeMessage, target }) } : self;
+  self.parent = framed ? { postMessage: (message: BridgeMessage, target: string) => posted.push({ message, target }) } : self;
   const context = {
     window: self,
     location: { search: parent === null ? "" : `?id=x&parent=${encodeURIComponent(parent)}` },

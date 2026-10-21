@@ -8,6 +8,7 @@ import { isIP, type AddressInfo } from "node:net";
 import path from "node:path";
 import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
+import { z } from "zod";
 import { importRound } from "./round-import.js";
 import { buildIdOf } from "./storybook-build.js";
 
@@ -240,7 +241,7 @@ export async function importStoryRound({ scratch, roundsDir, storybooksDir }: { 
   const source = path.join(scratch, "story-round");
   await cp(STORY_FIXTURE, source, { recursive: true });
   const roundFile = path.join(source, "round.json");
-  const round = JSON.parse(await readFile(roundFile, "utf8")) as { questions: Record<string, unknown>[] };
+  const round = z.looseObject({ questions: z.array(z.record(z.string(), z.unknown())) }).parse(JSON.parse(await readFile(roundFile, "utf8")));
   // The fixture's pick names no frames, which the import's builder rules refuse.
   round.questions = round.questions.map((question) => ({ ...question, frames: ["compact", "roomy"] }));
   await writeFile(roundFile, JSON.stringify(round));
