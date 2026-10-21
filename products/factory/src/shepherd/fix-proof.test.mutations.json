@@ -21,7 +21,7 @@
     },
     {
       "name": "a test-only head that proceeds never reads the owner's waiver",
-      "file": "products/factory/src/shepherd/review.ts",
+      "file": "products/factory/src/shepherd/proof-waiver.ts",
       "find": "const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));",
       "replace": "const waived = noRepro !== undefined && !testOnlyProceed && (await proofWaivedAt(ctx, head));",
       "kills": [

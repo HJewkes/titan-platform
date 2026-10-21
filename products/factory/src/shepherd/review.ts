@@ -18,7 +18,7 @@ import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from ".
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
@@ -30,15 +30,15 @@ import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
 import { convergenceFields } from "./fix-first-trail.js";
-import { FIX_PROOF_STEPS, fixProofStanding, fixProofVerdict, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
-import { PROOF_WAIVER_STEPS, fixProofRoutes, proofWaivedAt } from "./proof-waiver.js";
+import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
+import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
 import { CI_UNREAD_STEPS, ciUnreadRoute } from "./ci-unread.js";
-import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { notReviewed } from "./not-reviewed.js";
 import { ciChecksAt } from "./green-checks.js";
@@ -333,21 +333,6 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS, startedAt };
   const exited = async () => (await dispatch.roster()).every((agent) => agent.agentId !== input.reviewerAgentId || agent.presence === "exited");
   return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
-}
-
-type FixProofRead = Awaited<ReturnType<typeof readFixProofAt>>;
-
-/**
- * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A test-only head that proceeds can
- * still come back as the panel's NO_REPRO, so its waiver is read too.
- */
-async function proofStandingAt(ctx: Parameters<typeof readFixProofAt>[0], head: string, proof: FixProofRead): Promise<{ ended: Verdict } | { standing: ProofStanding }> {
-  const noRepro = fixProofVerdict(proof, head);
-  const unverified = fixProofStanding(proof, head);
-  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
-  const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
-  if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
-  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
 }
 
 /**
