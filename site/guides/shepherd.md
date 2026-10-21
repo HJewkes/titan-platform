@@ -999,9 +999,13 @@ changed lines or a store migration takes `g10-review`. A file list Shepherd cann
 takes `g10-adversary`.
 
 The policy paths include Shepherd's sign-off, reviewer-pick, fix-proof and merge-standing code,
-`packages/fix-proof/src/**` and the panel's own `classify.ts`, since editing any of them can lift a
-hold. A test (`hold-table-coverage.test.ts`) fails when a Shepherd source file that imports
-`g10-release`, `signoffs` or `registration-hold` is not held; test files stay exempt.
+`packages/fix-proof/src/**` and `packages/review-panel/src/**`, since editing any of them can lift a
+hold. A test (`hold-table-coverage.test.ts`) follows the relative value imports of
+`registration-hold.ts`, `g10-release.ts` and `signoffs.ts` through the Shepherd directory and fails
+when a file it reaches is not held; test files stay exempt. The list of exceptions in that test
+(`store.ts` and `events.ts`) and the modules outside the Shepherd directory that the walk does not
+enter, such as the shared workflow and config modules and `@titan-design/github`'s file reader, are
+accepted residual.
 
 **Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
 edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
