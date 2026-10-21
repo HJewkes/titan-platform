@@ -61,7 +61,7 @@ const runningLadder: ArLadder = {
   completed: ladderSteps(3, RUNNING.id, ["alloc"], 11), implementUsd: null, l0: null, micro: null, evals: [], outcome: null,
 };
 
-const noPlannerNotes = { rejected: [], plannerRetried: false, analysis: [] };
+const noPlannerNotes = { rejected: [], plannerRetried: false, analysis: [], exempt: {} };
 
 const ROUNDS: ArRunView["rounds"] = [
   {
@@ -71,12 +71,14 @@ const ROUNDS: ArRunView["rounds"] = [
   },
   {
     round: 2, queue: [L0_STOP, REQUEUED], rejected: [{ code: "dead-end" }], plannerRetried: true, analysis: ["The ranking tests assume a fixed order"],
+    exempt: { followup: "The kept gate has no sibling cell left to try" },
     selection: { picks: [L0_STOP.id], draws: [{ id: L0_STOP.id, draw: 0.63 }, { id: REQUEUED.id, draw: 0.21 }], plannerTopK: [L0_STOP.id] },
     ladders: [l0Ladder], ratchet: null,
   },
   {
-    round: 3, queue: [RUNNING, REQUEUED], ...noPlannerNotes,
-    selection: { picks: [RUNNING.id], draws: [{ id: RUNNING.id, draw: 0.72 }], plannerTopK: [RUNNING.id, REQUEUED.id] },
+    round: 3, queue: [RUNNING, REQUEUED], rejected: [{ code: "duplicate" }, { code: "bounds" }], plannerRetried: false, analysis: [],
+    exempt: { bold: "The requeued bold idea still stands in the pool" },
+    selection: { picks: [RUNNING.id], draws: [{ id: RUNNING.id, draw: 0.72 }, { id: REQUEUED.id, draw: 0.38 }], plannerTopK: [RUNNING.id, REQUEUED.id] },
     ladders: [runningLadder], ratchet: null,
   },
 ];
@@ -104,6 +106,6 @@ export const AR_RUN_FIXTURE: ArRunView = {
 
 /** The fixture's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
 export const AR_RUN_SUMMARY: ArRunSummary = {
-  runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, status: AR_RUN_FIXTURE.status,
+  runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, round: 3, rounds: AR_RUN_FIXTURE.settings.rounds, status: AR_RUN_FIXTURE.status,
   startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 7.1,
 };

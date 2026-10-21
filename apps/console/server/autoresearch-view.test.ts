@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ArRunViewSchema, type ArRunView } from "./autoresearch-view.js";
-import { AR_RUN_FIXTURE } from "./twin/autoresearch.js";
+import { ArRunSummarySchema, ArRunViewSchema, type ArRunView } from "./autoresearch-view.js";
+import { AR_RUN_FIXTURE, AR_RUN_SUMMARY } from "./twin/autoresearch.js";
 
 const outcomes = (run: ArRunView) => run.rounds.flatMap((round) => round.ladders.map((ladder) => ladder.outcome));
 
@@ -36,6 +36,20 @@ describe("the run view schema", () => {
     const [first, ...rest] = AR_RUN_FIXTURE.rounds;
     const broken = { ...AR_RUN_FIXTURE, rounds: [{ ...first!, ladders: [{ ...first!.ladders[0]!, outcome: undefined }] }, ...rest] };
     expect(ArRunViewSchema.safeParse(broken).success).toBe(false);
+  });
+
+  it("reads a round whose planner gave no quota exemption as exempting nothing", () => {
+    const [first, ...rest] = AR_RUN_FIXTURE.rounds;
+    const { exempt: _omitted, ...withoutExempt } = first!;
+
+    const parsed = ArRunViewSchema.parse({ ...AR_RUN_FIXTURE, rounds: [withoutExempt, ...rest] });
+
+    expect(parsed.rounds[0]!.exempt).toEqual({});
+  });
+
+  it("refuses a runs row without its current round, which the Round column shows", () => {
+    const { round: _omitted, ...row } = AR_RUN_SUMMARY;
+    expect(ArRunSummarySchema.safeParse(row).success).toBe(false);
   });
 
   it("strips a field the page does not show", () => {
