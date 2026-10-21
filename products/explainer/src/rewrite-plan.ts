@@ -1,0 +1,182 @@
+import type { L0Result } from "./eval-l0.js";
+import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, spokenText, triadSpans } from "./lint-register.js";
+import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
+import type { ScriptBeat } from "./script-schema.js";
+
+/** The Q-V11 rows the rewrite pass works on; every other register row is left to the writer. */
+export const REWRITE_TARGET_ROWS = [
+  "register:numbers",
+  "register:numbers-per-beat",
+  "register:triads",
+  "register:sentence-mean",
+  "register:sentence-cv",
+] as const;
+
+/** Round 1 reshapes the script; round 2 only fixes the numbers and triads round 1 left or made (TP-3817 S0). */
+export const MAX_REWRITE_ROUNDS = 2;
+export type RewriteRound = 1 | 2;
+
+/** What one beat's rewrite must do, in the beat's own terms: spans and counts, never a band value. */
+export interface BeatDirective {
+  beat: string;
+  chapter: string;
+  /** The number mentions a crowded beat speaks, in order. */
+  numbers?: string[];
+  /** The lists of three the beat speaks, in order. */
+  triads?: string[];
+  /** Planned sentence lengths in words, shortest first. */
+  shape?: number[];
+}
+
+/** The script-level sentence shape the planned lengths add up to. */
+export interface ShapeProjection {
+  mean: number;
+  cv: number;
+}
+
+export interface RegisterEditPlan {
+  round: RewriteRound;
+  directives: BeatDirective[];
+  /** Present when the plan reshapes sentences. */
+  projected?: ShapeProjection;
+}
+
+export interface PlanOptions {
+  /** 1 or 2; a CLI passes its parsed `--rounds` value through, so any other number throws. */
+  round?: number;
+  /** The longest sentence the guard accepts; a planned long sentence stays under it. */
+  cap?: number;
+}
+
+type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken">;
+
+const SHORT_WORDS = 5;
+// The model overshoots a planned length, so a long sentence is planned this far under the cap.
+const LONG_HEADROOM = 4;
+// A beat whose sorted sentence lengths each sit this close to the plan is left alone.
+const SHAPE_TOLERANCE = 3;
+// The plan aims inside the band, not at its edge, so a rewrite that drifts still lands in it.
+const MEAN_MARGINS = [1.5, 2.5, 3.5];
+const MEAN_SLACK = 0.5;
+const CV_MARGIN = 0.04;
+const SHORT_SHARES = [0.4, 0.5];
+
+const failing = (rows: readonly L0Result[], id: string): L0Result | undefined => rows.find((row) => row.check_id === id && !row.pass);
+
+const beatText = (beat: PlanBeat): string => spokenText([beat.spoken]).text;
+const beatWords = (beat: PlanBeat): number => spokenText([beat.spoken]).words.length;
+const sentenceLengths = (beat: PlanBeat): number[] => {
+  const parsed = spokenText([beat.spoken]);
+  return parsed.sentences.map((sentence) => spokenText([sentence]).words.length);
+};
+
+const mean = (xs: readonly number[]): number => xs.reduce((sum, x) => sum + x, 0) / xs.length;
+
+function project(lengths: readonly number[]): ShapeProjection {
+  const m = mean(lengths);
+  return { mean: m, cv: Math.sqrt(mean(lengths.map((n) => (n - m) ** 2))) / m };
+}
+
+/** Splits a beat's words into `n` sentences: a share of short ones, the rest long and even. */
+function splitWords(words: number, n: number, shortShare: number): number[] {
+  if (n === 1) return [words];
+  const shorts = Math.min(n - 1, Math.max(1, Math.round(n * shortShare)));
+  const longs = n - shorts;
+  const rest = words - SHORT_WORDS * shorts;
+  const long = Array.from({ length: longs }, (_, i) => Math.floor(rest / longs) + (i < rest % longs ? 1 : 0));
+  return [...Array<number>(shorts).fill(SHORT_WORDS), ...long].sort((a, b) => a - b);
+}
+
+function beatShape(words: number, n: number, shortShare: number, cap: number): number[] {
+  for (let count = n; ; count++) {
+    const lengths = splitWords(words, count, shortShare);
+    if (Math.max(...lengths) <= cap - LONG_HEADROOM || count * SHORT_WORDS >= words) return lengths;
+  }
+}
+
+/** Sentence counts per beat that bring the script's mean to `targetMean`, splitting the wordiest sentences first. */
+function sentenceCounts(words: readonly number[], targetMean: number): number[] {
+  const counts = words.map(() => 1);
+  const total = Math.max(words.length, Math.round(words.reduce((sum, w) => sum + w, 0) / targetMean));
+  for (let n = words.length; n < total; n++) {
+    const widest = words.reduce((best, w, i) => (w / counts[i]! > words[best]! / counts[best]! ? i : best), 0);
+    counts[widest]! += 1;
+  }
+  return counts;
+}
+
+const fitsShape = (current: readonly number[], planned: readonly number[]): boolean => {
+  const sorted = [...current].sort((a, b) => a - b);
+  return sorted.length === planned.length && sorted.every((n, i) => Math.abs(n - planned[i]!) <= SHAPE_TOLERANCE);
+};
+
+interface ShapeCandidate {
+  shapes: (number[] | undefined)[];
+  projected: ShapeProjection;
+}
+
+/** One candidate plan: a shape for each beat that does not already fit, projected over the whole script. */
+function shapeCandidate(beats: readonly PlanBeat[], targetMean: number, shortShare: number, cap: number): ShapeCandidate {
+  const words = beats.map(beatWords);
+  const counts = sentenceCounts(words, targetMean);
+  const current = beats.map(sentenceLengths);
+  const planned = words.map((w, i) => beatShape(w, counts[i]!, shortShare, cap));
+  const shapes = planned.map((shape, i) => (fitsShape(current[i]!, shape) ? undefined : shape));
+  const projected = project(shapes.flatMap((shape, i) => shape ?? current[i]!));
+  return { shapes, projected };
+}
+
+const meanBand = REGISTER_BANDS["sentence-mean"];
+const cvBand = REGISTER_BANDS["sentence-cv"];
+
+function marginShortfall({ mean: m, cv }: ShapeProjection, margin: number): number {
+  const meanGap = Math.max(0, meanBand.min! + margin - MEAN_SLACK - m, m - meanBand.max);
+  const cvGap = Math.max(0, cvBand.min! + CV_MARGIN - cv, cv - cvBand.max);
+  return meanGap / meanBand.min! + cvGap / cvBand.min!;
+}
+
+/** The first candidate that lands inside both shape bands with margin, else the one that comes closest. */
+function planShape(beats: readonly PlanBeat[], cap: number): ShapeCandidate {
+  const tried = MEAN_MARGINS.flatMap((margin) =>
+    SHORT_SHARES.map((share) => ({ margin, plan: shapeCandidate(beats, meanBand.min! + margin, share, cap) })),
+  );
+  const scored = tried.map(({ margin, plan }) => ({ plan, shortfall: marginShortfall(plan.projected, margin) }));
+  return (scored.find((s) => s.shortfall === 0) ?? scored.reduce((best, s) => (s.shortfall < best.shortfall ? s : best))).plan;
+}
+
+/** Too many numbers, not too few: a rewrite cannot add a fact to raise the rate. */
+const numbersCrowded = (rows: readonly L0Result[]): boolean => {
+  const rate = failing(rows, "register:numbers");
+  return failing(rows, "register:numbers-per-beat") !== undefined || (rate !== undefined && rate.value > rate.threshold);
+};
+
+function spanDirectives(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDirective, "numbers" | "triads"> {
+  const text = beatText(beat);
+  const numbers = numberSpans(text).map((span) => span.text);
+  const triads = triadSpans(text).map((span) => span.text);
+  return {
+    ...(numbersCrowded(rows) && numbers.length > MAX_SPOKEN_NUMBERS_PER_BEAT ? { numbers } : {}),
+    ...(failing(rows, "register:triads") && triads.length > 0 ? { triads } : {}),
+  };
+}
+
+const isRound = (n: number): n is RewriteRound => n === 1 || n === MAX_REWRITE_ROUNDS;
+
+const shapeFailing = (rows: readonly L0Result[]): boolean =>
+  failing(rows, "register:sentence-mean") !== undefined || failing(rows, "register:sentence-cv") !== undefined;
+
+/**
+ * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
+ * called on round 1's text with fresh rows and plans only the numbers and triads still there.
+ */
+export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
+  const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS } = options;
+  if (!isRound(round)) throw new RangeError(`rewrite round ${round} is outside 1..${MAX_REWRITE_ROUNDS}`);
+  const shape = round === 1 && shapeFailing(rows) ? planShape(script.beats, cap) : undefined;
+  const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
+    const planned = shape?.shapes[i];
+    const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };
+    return Object.keys(directive).length > 0 ? [{ beat: beat.id, chapter: beat.chapter, ...directive }] : [];
+  });
+  return { round, directives, ...(shape ? { projected: shape.projected } : {}) };
+}
