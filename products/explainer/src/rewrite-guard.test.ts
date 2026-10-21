@@ -184,6 +184,11 @@ describe("guardBeat", () => {
       expect(beat.visual.labels).toEqual(["28 slots"]);
     });
 
+    it("lands that cue on a later noun of the label when the line does not speak the first", () => {
+      const after = { spoken: MOVED, labelsAdded: ["28 open slots"] };
+      expect(rewrittenBeat(withCues(["twenty-eight"], SPELLED), after).visual.cues.map((cue) => cue.atCue)).toEqual(["slots"]);
+    });
+
     it("rejects that cue when the line no longer speaks the label's noun", () => {
       const after = { spoken: MOVED.replace("implementer slots", "implementer seats"), labelsAdded: ["28 slots"] };
       expect(rules(withCues(["twenty-eight"], SPELLED), after)).toContain("cue-lost");
