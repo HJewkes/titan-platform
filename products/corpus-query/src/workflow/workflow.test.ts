@@ -3,11 +3,13 @@ import path from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
 import { CHAIN, fakeJudges, fixture, SPEC, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
 import { COMPILE_ROLE } from "./compile.js";
 import { ask, resume, type AskOptions, type HostOptions } from "./host.js";
-import { readJson, runPaths, sha256, type BatchArtifact, type CostEntry } from "./run-dir.js";
+import { batchArtifactSchema, CostEntrySchema } from "./records.js";
+import { readJson, runPaths, sha256 } from "./run-dir.js";
 
 const QUESTION = "List every trophy the Gull Rovers won";
 
@@ -56,7 +58,7 @@ describe("ask", () => {
 
     const result = await ask(options({ spec: undefined }), host(judges.runnerFor));
 
-    const cost = readJson<CostEntry[]>(runPaths(fx.dataDir, result.runId).cost)!;
+    const cost = readJson(runPaths(fx.dataDir, result.runId).cost, z.array(CostEntrySchema))!;
     expect(cost.map((c) => `${c.stage}/${c.model}`).sort()).toEqual(judges.calls.map((c) => `${c.stage}/${c.model}`).sort());
     expect(cost[0]).toEqual({ stage: "compile", model: "sonnet", cliCostUsd: 0.01 });
   });
@@ -189,7 +191,7 @@ describe("resume", () => {
     expect(resumed.status).toBe("completed");
     expect(screenCalls(second.calls).flatMap((c) => c.refs)).toEqual(["GR 2.1", "GR 2.2"]);
     const round = path.dirname(runPaths(fx.dataDir, first.runId).batch("screen", "k", 0));
-    const artifacts = readdirSync(round).map((f) => readJson<BatchArtifact<unknown>>(path.join(round, f))!);
+    const artifacts = readdirSync(round).map((f) => readJson(path.join(round, f), batchArtifactSchema(z.unknown()))!);
     expect(artifacts.filter((a) => a.via === "unjudged").map((a) => a.passageIds)).toEqual([[expect.stringMatching(/^gull-rovers\/1\/2#/)]]);
     expect(resumed.answer!.coverage.screen).toMatchObject({ judged: 4, skipped: [] });
   });

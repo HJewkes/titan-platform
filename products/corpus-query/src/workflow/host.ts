@@ -6,8 +6,9 @@ import { WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnership
 import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
 import { QuerySpecSchema, type QuerySpec } from "../types.js";
 import { answerWorkflow, type Answer } from "./answer.js";
-import { COMPILE_ROLE, compileWorkflow, type CompileRecord } from "./compile.js";
+import { COMPILE_ROLE, compileWorkflow } from "./compile.js";
 import { DEFAULT_MODELS, stageRoutes, type Models, type RunnerFor } from "./routes.js";
+import { AnswerSchema, CompileRecordSchema, ModelsSchema } from "./records.js";
 import { readContent, readJson, runPaths, storeContent, writeJson } from "./run-dir.js";
 
 export const COMPILE_WORKFLOW = "cq-compile";
@@ -66,7 +67,9 @@ async function compileSpec(db: Db, host: HostOptions, question: string, rulesSha
   runtime.register(COMPILE_WORKFLOW, compileWorkflow({ dataDir: host.dataDir, model }));
   const run = await runtime.wait(runtime.start(COMPILE_WORKFLOW, { question, ...(rulesSha ? { rulesSha } : {}) }));
   if (run.status !== "completed") throw new Error(`compile run ${run.id} ${run.status}: ${run.error ?? "no error recorded"}`);
-  return { runId: run.id, spec: readJson<CompileRecord>(runPaths(host.dataDir, run.id).compile)!.spec };
+  const record = readJson(runPaths(host.dataDir, run.id).compile, CompileRecordSchema);
+  if (!record) throw new Error(`compile run ${run.id} completed without its record`);
+  return { runId: run.id, spec: record.spec };
 }
 
 /** Everything a `cq-answer` run needs is in its params, so `resume` rebuilds the same prefixes and runner. */
@@ -95,7 +98,7 @@ interface AnswerHost {
 function answerHost(db: Db, host: HostOptions, params: Record<string, string>): AnswerHost {
   const spec = QuerySpecSchema.parse(JSON.parse(readContent(host.dataDir, "specs", params.specSha!)));
   const rules = params.rulesSha === undefined ? undefined : readContent(host.dataDir, "rules", params.rulesSha);
-  const models = JSON.parse(params.models!) as Models;
+  const models = ModelsSchema.parse(JSON.parse(params.models ?? ""));
   const prefix = (role: string) => buildJudgePrefix({ role, question: params.question!, spec, ...(rules === undefined ? {} : { rules }) });
   const prefixes = { screen: prefix(SCREEN_ROLE), confirm: prefix(CONFIRM_ROLE) };
   const routes = stageRoutes([{ stage: "screen", model: models.screen, systemPrompt: prefixes.screen }, { stage: "confirm", model: models.confirm, systemPrompt: prefixes.confirm }], host.runnerFor);
@@ -116,7 +119,8 @@ async function settle(app: AnswerHost, host: HostOptions, runId: string): Promis
   try {
     if (host.signal?.aborted) stop();
     const run = await app.runtime.wait(runId);
-    return { runId, status: run.status, ...(run.status === "completed" ? { answer: readJson<Answer>(runPaths(host.dataDir, runId).answer)! } : {}) };
+    const answer = run.status === "completed" ? readJson(runPaths(host.dataDir, runId).answer, AnswerSchema) : undefined;
+    return { runId, status: run.status, ...(answer ? { answer } : {}) };
   } finally {
     host.signal?.removeEventListener("abort", stop);
     app.close();

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { Db } from "@titan-design/store-sqlite";
 import type { WorkflowContext, WorkflowFn } from "@titan-design/workflow";
 import {
@@ -5,7 +6,8 @@ import {
   ConfirmVerdictSchema,
   prefixSha,
   ScreenVerdictSchema,
-  type Batch,
+  CandidateSchema,
+  ConfirmRowSchema,
   type Candidate,
   type ConfirmRow,
   type ConfirmVerdict,
@@ -17,9 +19,9 @@ import type { MatchTerms } from "../match.js";
 import { readPassage, retrieve } from "../retrieve.js";
 import { compareStoryOrder } from "../story-order.js";
 import type { ChapterMeta, Passage, QuerySpec } from "../types.js";
-import { judgeBatch, type BatchJob, type StageJudge } from "./judge-batch.js";
+import { judgeBatch, type BatchJob, type StageJudge, type Verdict } from "./judge-batch.js";
 import type { Models } from "./routes.js";
-import type { CompileRecord } from "./compile.js";
+import { batchArtifactSchema, CollectSchema, CompileRecordSchema, PassagesSchema } from "./records.js";
 import { costEntry, readJson, runPaths, writeJson, type BatchArtifact, type CostEntry, type RunPaths } from "./run-dir.js";
 import { warmThenWave } from "./wave.js";
 
@@ -73,11 +75,11 @@ interface RunState {
 const CONFIRMED_EVENTS: ReadonlySet<Candidate["event"]> = new Set(["won", "referenced"]);
 
 const screenJudge = (models: Models): StageJudge<ScreenVerdict, Candidate> => ({
-  stage: "screen", schema: ScreenVerdictSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, redoModel: models.redo,
+  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, redoModel: models.redo,
 });
 
 const confirmJudge = (models: Models): StageJudge<ConfirmVerdict, ConfirmRow> => ({
-  stage: "confirm", schema: ConfirmVerdictSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, redoModel: models.redo,
+  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, redoModel: models.redo,
 });
 
 const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passage.id, ref: passage.ref, text: readPassage(state.config.db, state.config.root, passage).join("\n\n") });
@@ -87,22 +89,23 @@ async function retrieveRound(state: RunState, round: number, terms: MatchTerms):
   const excludeIds = new Set(state.passages.keys());
   const found = () => retrieve(state.config.db, terms, { window: state.config.window, excludeIds }).passages;
   const step = await state.ctx.seed(round === 0 ? "retrieve:r0" : `grow:r${round}`, async () => ({ data: {}, output: JSON.stringify(found()) }));
-  const passages = JSON.parse(step.output ?? "[]") as Passage[];
+  const passages = PassagesSchema.parse(JSON.parse(step.output ?? "[]"));
   for (const p of passages) state.passages.set(p.id, p);
   return passages;
 }
 
-async function runWave<V, T extends { id: string; quote: string }>(state: RunState, stepId: string, jobs: BatchJob[], judge: StageJudge<V, T>): Promise<BatchArtifact<T>[]> {
+async function runWave<V extends Verdict, T extends { id: string; quote: string }>(state: RunState, stepId: string, jobs: BatchJob[], judge: StageJudge<V, T>): Promise<BatchArtifact<T>[]> {
   const wave = await warmThenWave(state.ctx, stepId, jobs, (job, itemStepId, ctx) => judgeBatch(ctx, itemStepId, job, judge), {
     key: (job) => job.batch.key, concurrency: state.config.concurrency, budgetUsd: state.config.budgetUsd - state.spentUsd,
   });
   state.spentUsd += wave.spentUsd;
   const collected = await state.ctx.seed(`${stepId}/collect`, async () => {
-    const missing = jobs.filter((job) => readJson(job.file) === undefined).map((job) => job.batch.key);
+    const missing = jobs.filter((job) => !existsSync(job.file)).map((job) => job.batch.key);
     return { data: {}, output: JSON.stringify({ expected: jobs.length, missing, stoppedBy: wave.stoppedBy }) };
   });
-  const missing = new Set((JSON.parse(collected.output ?? "{}") as { missing?: string[] }).missing ?? []);
-  return jobs.filter((job) => !missing.has(job.batch.key)).map((job) => readJson<BatchArtifact<T>>(job.file)!);
+  const missing = new Set(CollectSchema.parse(JSON.parse(collected.output ?? "")).missing);
+  const artifact = batchArtifactSchema(judge.item);
+  return jobs.filter((job) => !missing.has(job.batch.key)).flatMap((job) => readJson(job.file, artifact) ?? []);
 }
 
 /**
@@ -171,7 +174,7 @@ function sourced(state: RunState, rows: readonly ConfirmRow[]): SourcedRow[] {
 
 function costReport(state: RunState, artifacts: readonly BatchArtifact<unknown>[]): CostEntry[] {
   const { compileRunId, dataDir } = state.config;
-  const compiled = compileRunId === undefined ? undefined : readJson<CompileRecord>(runPaths(dataDir, compileRunId).compile);
+  const compiled = compileRunId === undefined ? undefined : readJson(runPaths(dataDir, compileRunId).compile, CompileRecordSchema);
   return [...(compiled?.usage ?? []).map((e) => costEntry("compile", e)), ...artifacts.flatMap((a) => a.usage.map((e) => costEntry(a.stage, e)))];
 }
 
@@ -189,14 +192,14 @@ function confirmJobs(state: RunState, candidates: readonly Candidate[]): BatchJo
   }
   const firstOrder = (ps: Passage[]) => chapters.get(ps[0]!.chapterId)!.order;
   const books = [...byBook].sort(([, a], [, b]) => compareStoryOrder(firstOrder(a), firstOrder(b)));
-  return books.map(([book, passages]) => {
+  return books.flatMap(([book, passages]) => {
     const [batch] = buildBatches(passages.map((p) => shown(state, p)), {
       tokenBudget: Number.POSITIVE_INFINITY,
       prefixSha: prefixSha(state.config.prefixes.confirm),
       canaries: state.config.spec.canaries,
       preamble: `Book: ${book}`,
     });
-    return { batch: batch as Batch, book, file: state.paths.batch("confirm", batch!.key) };
+    return batch ? [{ batch, book, file: state.paths.batch("confirm", batch.key) }] : [];
   });
 }
 

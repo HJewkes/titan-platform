@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { StepUsage } from "@titan-design/workflow";
+import type { ZodType } from "zod";
 import type { Voided } from "../judge/index.js";
 
 export type Stage = "compile" | "screen" | "confirm";
@@ -42,8 +43,8 @@ export function writeJson(file: string, value: unknown): void {
   renameSync(tmp, file);
 }
 
-export function readJson<T>(file: string): T | undefined {
-  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as T) : undefined;
+export function readJson<T>(file: string, schema: ZodType<T>): T | undefined {
+  return existsSync(file) ? schema.parse(JSON.parse(readFileSync(file, "utf8"))) : undefined;
 }
 
 /** One line of `cost.json`: a model call's tokens, flat, for the cost report. */
