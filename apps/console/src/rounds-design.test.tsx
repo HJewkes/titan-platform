@@ -561,6 +561,25 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     expect(screen.queryByTestId("pin-layer-beacon-busy")).toBeNull();
   });
 
+  it("lists each pinned frame's pin count and notes on the check before sending, and no pin line for a frame without pins", async () => {
+    await renderDesign();
+    fireEvent.click(verdictButton("beacon-idle", "Chosen"));
+    const layer = await pinMode("beacon-busy");
+    tap(layer, 10, 10);
+    fireEvent.change(screen.getByLabelText("Note for pin 1"), { target: { value: "Spinner sits off centre." } });
+    tap(layer, 20, 20);
+    fireEvent.change(screen.getByLabelText("Note for pin 2"), { target: { value: "Label is clipped." } });
+    await toSection("sketch");
+
+    fireEvent.click(checkButton());
+
+    const pins = within(screen.getByTestId("round-check-frame-beacon-busy")).getByTestId("round-check-pins-beacon-busy");
+    expect(within(pins).getByText("2 pins")).toBeTruthy();
+    expect(within(pins).getByText("Spinner sits off centre.")).toBeTruthy();
+    expect(within(pins).getByText("Label is clipped.")).toBeTruthy();
+    expect(within(screen.getByTestId("round-check-frame-beacon-idle")).queryByText(/pins?$/)).toBeNull();
+  });
+
   it("offers no Pin on a frame with no image to pin", async () => {
     await renderDesign();
     await toSection("sketch");
