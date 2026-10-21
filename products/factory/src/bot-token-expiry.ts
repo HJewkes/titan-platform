@@ -1,5 +1,5 @@
 /** GitHub sends it on every answer to a token that expires; a token with no expiry gets none. */
-export const TOKEN_EXPIRATION_HEADER = "github-authentication-token-expiration";
+const TOKEN_EXPIRATION_HEADER = "github-authentication-token-expiration";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ALARM_DAYS = 14;
@@ -23,7 +23,7 @@ export function parseTokenExpiration(header: string): number | undefined {
  */
 const ALARMED = new Set<string>();
 
-export interface BotTokenExpiryWatch {
+interface BotTokenExpiryWatch {
   /** Fed every bot response's headers, error answers included. */
   observe(headers: Headers): void;
   /** ISO time from the last header seen; null before any, or for a token with no expiry. */
