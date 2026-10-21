@@ -20,4 +20,9 @@ export const NOT_EVENT: readonly NotEvent[] = [
     title: "watchServe when reads are unavailable (A17: a rate-limited probe never rolls back)",
     reason: "M0 deploy probe: asserts the serve watch window on an unavailable read, with no GitHub event input",
   },
+  {
+    file: "github-api/unavailable.test.ts",
+    title: "A17: an Unavailable read writes no marker and counts no re-drive",
+    reason: "M1a pool contract: asserts what a rate-limited read writes to the factory database, with no GitHub event input",
+  },
 ];

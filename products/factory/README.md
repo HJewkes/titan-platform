@@ -967,6 +967,19 @@ The land core talks to GitHub through `@titan-design/github` (`githubPort` over 
 and `fakeGitHub` in tests). Its README documents the check-then-act writes and the argument
 validation.
 
+### The bot's github-api pool state: `src/github-api/`
+
+The bot identity's `githubApiPool` (from `@titan-design/github`) keeps its state in the factory
+database: `sqlitePoolStateStore` holds one row per (identity, call class) in migration 35
+(`factory:github_api_pool`), so a restart keeps a closed pair closed until its probe and canary
+reopen it. Each reopen appends one `ApiAvailable` to the event log (`source: store`, occurrence key
+`v1|ApiAvailable|<identity>|<class>|<resetAt epoch s>`), so a repeated `onAvailable` inserts
+nothing. A 401 logs one `factory: ops-alarm github-auth identity=<login>` line per transition and
+shows `auth` on every class of health's `githubApi` field; the pool sends no `GET /rate_limit`
+probe in that state, because the probe answers 401 under a rejected token too and cannot succeed,
+so only a token change or a restart clears it. At M1a nothing waits on `ApiAvailable` or reads the
+pool-state table (`github-api/no-consumer.test.ts`), and no bot client is bound to the pool yet.
+
 ## Writing a gate brief
 
 Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one there, never inline.

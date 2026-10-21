@@ -4,6 +4,7 @@ import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AnswersPage, AskRequest } from "@titan-design/agent-dispatch";
+import { memoryPoolStateStore } from "@titan-design/github";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ import { toJSONSchema, z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
 import { configPath } from "./config.js";
+import { githubApiStatus } from "./github-api/status.js";
 import { sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
@@ -175,6 +177,16 @@ describe("titan-factory serve", () => {
     const server = await serve(dbFile(), landScenario());
 
     expect(await healthOf(server)).not.toHaveProperty("sources");
+  });
+
+  it("health shows the github-api pool's state per call class once the bot pool binds it, and no field before", async () => {
+    const store = memoryPoolStateStore();
+    store.set("example-bot[bot]", "mutation", { state: "closed", resetAt: T0 + 60_000, streak: 1 });
+    const bound = await serve(dbFile(), landScenario(), { githubApi: githubApiStatus({ identity: "example-bot[bot]", store, log: () => undefined }).health });
+    const unbound = await serve(dbFile(), landScenario());
+
+    expect(await healthOf(bound)).toHaveProperty("githubApi.mutation", { state: "closed", resetAt: new Date(T0 + 60_000).toISOString() });
+    expect(await healthOf(unbound)).not.toHaveProperty("githubApi");
   });
 
   describe("webhook ingress", () => {

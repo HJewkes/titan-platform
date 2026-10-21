@@ -5,6 +5,7 @@ import { deployPendingHealth } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import type { GateNotifyWatch } from "./gate-notify-sweep.js";
+import type { GithubApiHealth } from "./github-api/status.js";
 import type { GithubHealth } from "./github-health.js";
 import type { SourcesReader } from "./github-sources/mode.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
@@ -23,6 +24,7 @@ const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", 
 interface HealthOptions {
   routes: FactoryRoutes;
   sources?: SourcesReader;
+  githubApi?: () => GithubApiHealth;
   deployStateDir?: string;
   deployWatch?: DeployWatch;
   deployPacer?: DeployPacerOptions;
@@ -45,6 +47,7 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, { github,
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
     github: github.status(),
     ...(options.sources && { sources: options.sources() }),
+    ...(options.githubApi && { githubApi: options.githubApi() }),
     ...(ingress && { ingress }),
     ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
     build: { sha: build.sha, behindMain: build.status() },
