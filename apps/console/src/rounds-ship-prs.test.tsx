@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
@@ -9,6 +9,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { draftKey } from "./pages/round-draft.js";
 
 const ROUND = "tiles-and-panels-r1";
 const FRAMES = [
@@ -32,6 +33,7 @@ beforeEach(() => vi.stubGlobal("IntersectionObserver", SilentObserver));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 async function recorded(detail: Partial<RoundDetail>): Promise<Snapshot> {
@@ -224,5 +226,29 @@ describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", () => {
     fireEvent.change(screen.getByLabelText("Comment on frame Tile, dark"), { target: { value: "Darker stripe." } });
     expect(disabled("Send back example/panels#2")).toBe(true);
     expect(disabled("Send back example/tiles#1")).toBe(false);
+  });
+});
+
+describe("an unsent two-PR Ship round's draft (TP-3870)", () => {
+  const noteOn = (key: string): string => screen.getByLabelText<HTMLTextAreaElement>(`Note for Send back on ${key}`).value;
+
+  it("restores each PR's own Ship or Send back and note after a remount, and sends them as held", async () => {
+    await renderPrs();
+    fireEvent.click(button("Ship example/tiles#1"));
+    fireEvent.change(screen.getByLabelText("Note for Send back on example/panels#2"), { target: { value: "Narrow it again." } });
+    fireEvent.click(button("Send back example/panels#2"));
+    await waitFor(() => expect(localStorage.getItem(draftKey(ROUND))).toContain("Narrow it again."));
+    cleanup();
+
+    const calls = await renderPrs();
+
+    // A PR held at Ship shows no note box; with both PRs decided the one send is on before any press.
+    expect(screen.queryByLabelText("Note for Send back on example/tiles#1")).toBeNull();
+    expect(noteOn("example/panels#2")).toBe("Narrow it again.");
+    expect(disabled("Send answers")).toBe(false);
+    fireEvent.click(button("Send answers"));
+    expect(submits(calls)).toEqual([
+      expect.objectContaining({ answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Don't ship", comment: "Narrow it again." }], heads: { "ship-tiles": TILES_HEAD } }),
+    ]);
   });
 });

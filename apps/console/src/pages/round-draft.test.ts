@@ -77,10 +77,33 @@ describe("a stored round draft", () => {
     expect(loadDraft(failing, ROUND, SHA)).toEqual({ discarded: false });
   });
 
+  it("round-trips a Ship round's Addressed ticks, follow-ups, verdicts and Send back notes", () => {
+    const ship = { addressed: [1], followUps: ["badge-colour"], verdicts: { "ship-tiles": "back" as const }, backNotes: { "ship-tiles": "Lift the stripe." } };
+    saveDraft(localStorage, ROUND, SHA, { ...draft, ship });
+
+    expect(loadDraft(localStorage, ROUND, SHA)).toEqual({ draft: { ...draft, ship }, discarded: false });
+  });
+
+  it("restores a draft saved before Ship rounds kept one, which has no ship part", () => {
+    localStorage.setItem(draftKey(ROUND), JSON.stringify({ manifestSha256: SHA, draft }));
+
+    expect(loadDraft(localStorage, ROUND, SHA)).toEqual({ draft, discarded: false });
+  });
+
+  it("ignores a Ship verdict that is neither Ship nor Send back", () => {
+    const ship = { addressed: [], followUps: [], verdicts: { "ship-tiles": "maybe" }, backNotes: {} };
+    localStorage.setItem(draftKey(ROUND), JSON.stringify({ manifestSha256: SHA, draft: { ...draft, ship } }));
+
+    expect(loadDraft(localStorage, ROUND, SHA)).toEqual({ discarded: false });
+  });
+
   it("counts blank comments and cleared verdicts as nothing typed", () => {
     const blank: DraftAnswers = { answers: {}, comments: { finish: "  " }, optionNotes: { swatches: { Celadon: "" } }, general: " ", frames: { a: { verdict: null, comment: "", pins: [], pinsIssued: 1 } } };
 
     expect(emptyDraft(blank)).toBe(true);
     expect(emptyDraft({ ...blank, general: "Ship it." })).toBe(false);
+    expect(emptyDraft({ ...blank, ship: { addressed: [], followUps: [], verdicts: {}, backNotes: { "ship-tiles": " " } } })).toBe(true);
+    expect(emptyDraft({ ...blank, ship: { addressed: [1], followUps: [], verdicts: {}, backNotes: {} } })).toBe(false);
+    expect(emptyDraft({ ...blank, ship: { addressed: [], followUps: [], verdicts: { "ship-tiles": "ship" }, backNotes: {} } })).toBe(false);
   });
 });

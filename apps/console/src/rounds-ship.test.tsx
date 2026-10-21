@@ -10,6 +10,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { draftKey } from "./pages/round-draft.js";
 
 const SHIP = "ship-tile-r1";
 // Each test renders the whole App and presses through it: about 0.5 s alone, and a loaded full-suite CI run stretched
@@ -51,6 +52,7 @@ afterEach(() => {
   cleanup();
   observers.clear();
   vi.unstubAllGlobals();
+  localStorage.clear();
 });
 
 /** A CI packet's tile-light: its head is the montage and `after` the changed image alone. */
@@ -699,5 +701,75 @@ describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEO
     expect(screen.getByTestId("frame-feedback-sent-tile-dark").textContent).toBe("RejectedThe stripe clips.");
     expect(screen.queryByRole("button", { name: "Rejected" })).toBeNull();
     expect(screen.queryByLabelText("Comment on frame Tile, dark")).toBeNull();
+  });
+});
+
+describe("an unsent Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS }, () => {
+  const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
+  const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
+  const SIDE_COMMENT = "Comment on File the badge colour as a follow-up?";
+  const stored = (): string | null => localStorage.getItem(draftKey(SHIP));
+  const addressedTick = (): HTMLElement => screen.getByRole("checkbox", { name: "Round 1 feedback addressed" });
+  const value = (label: string): string => screen.getByLabelText<HTMLTextAreaElement>(label).value;
+
+  /** Answers and comments on the side question, ticks round 1 Addressed and writes the Send back note, then waits for the write. */
+  async function typeDraft(): Promise<void> {
+    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.change(screen.getByLabelText(SIDE_COMMENT), { target: { value: "Ask design first." } });
+    fireEvent.click(addressedTick());
+    fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "Lift the stripe." } });
+    await waitFor(() => expect(stored()).toContain("Lift the stripe."));
+  }
+
+  it("restores the side answer and comment, the Addressed tick and the Send back note after a remount", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+
+    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(value(SIDE_COMMENT)).toBe("Ask design first.");
+    expect(addressedTick().getAttribute("aria-checked")).toBe("true");
+    expect(value("Note for Send back")).toBe("Lift the stripe.");
+    expect(screen.queryByText("Draft from an older version discarded")).toBeNull();
+  });
+
+  it("is discarded, with a note, when the round's manifest sha has changed", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR, manifestSha256: "a".repeat(64) } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+
+    expect(screen.getByText("Draft from an older version discarded")).toBeTruthy();
+    expect(addressedTick().getAttribute("aria-checked")).toBe("false");
+    expect(value("Note for Send back")).toBe("");
+    expect(stored()).toBeNull();
+  });
+
+  it("is cleared by Send back, and nothing is restored after it", async () => {
+    const rendered = await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+
+    fireEvent.click(button("Send back"));
+    await waitFor(() => expect(submits(rendered)).toHaveLength(1));
+
+    await waitFor(() => expect(stored()).toBeNull());
+    cleanup();
+    expect(stored()).toBeNull();
+  });
+
+  it("is never restored into a round already sent, and is dropped", async () => {
+    await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
+    await typeDraft();
+    cleanup();
+
+    await renderShip({ answers: true, detail: { status: "sent", priorFeedback: PRIOR, notes: { general: "", comments: {}, answers: { "ship-tiles": { pick: "Ship" } }, addressed: [] } } });
+
+    expect(screen.queryByLabelText("Note for Send back")).toBeNull();
+    expect(screen.queryByText("Ask design first.")).toBeNull();
+    expect(addressedTick().getAttribute("aria-checked")).toBe("false");
+    await waitFor(() => expect(stored()).toBeNull());
   });
 });
