@@ -65,6 +65,31 @@ describe("ask", () => {
     expect(cost[0]).toEqual({ stage: "compile", model: "sonnet", cliCostUsd: 0.01 });
   });
 
+  it("keeps the failed attempts' spend in cost.json beside the redo's and the fallback's", async () => {
+    fx = fixture(WINS);
+    const garbled: Behave = (call) => (call.stage === "screen" && call.model === "haiku" && call.refs.includes("GR 2.1") ? { ok: true, output: "not json", usage: { costUsd: 0.01 } } : undefined);
+    const judges = fakeJudges({ behave: garbled });
+
+    const result = await ask(options(), host(judges.runnerFor));
+
+    const cost = readJson(runPaths(fx.dataDir, result.runId).cost, z.array(CostEntrySchema))!;
+    expect(cost.map((c) => `${c.stage}/${c.model}`).sort()).toEqual(judges.calls.map((c) => `${c.stage}/${c.model}`).sort());
+    expect(cost.reduce((sum, c) => sum + c.cliCostUsd, 0)).toBeCloseTo(judges.calls.length * 0.01);
+  });
+
+  it("keeps the spend of refused calls that report usage, even when the batch ends unjudged", async () => {
+    fx = fixture(WINS);
+    const refused: Behave = (call) => (call.stage === "screen" && call.refs.includes("GR 1.2") ? { ok: false, error: "refusal: declined", retryable: false, usage: { costUsd: 0.02 } } : undefined);
+    const judges = fakeJudges({ behave: refused });
+
+    const result = await ask(options(), host(judges.runnerFor));
+
+    const cost = readJson(runPaths(fx.dataDir, result.runId).cost, z.array(CostEntrySchema))!;
+    const refusedCost = cost.filter((c) => c.cliCostUsd === 0.02);
+    expect(refusedCost.map((c) => c.model)).toEqual(["haiku", "haiku", "sonnet"]);
+    expect(cost).toHaveLength(judges.calls.length);
+  });
+
   it("routes screen calls to haiku and confirm calls to sonnet, each under its own fixed prefix", async () => {
     fx = fixture(WINS);
     const judges = fakeJudges();
@@ -226,6 +251,27 @@ describe("resume", () => {
     const artifacts = readdirSync(round).map((f) => readJson(path.join(round, f), batchArtifactSchema(z.unknown()))!);
     expect(artifacts.filter((a) => a.via === "unjudged").map((a) => a.passageIds)).toEqual([[expect.stringMatching(/^gull-rovers\/1\/2#/)]]);
     expect(resumed.answer!.coverage.screen).toMatchObject({ judged: 4, skipped: [] });
+  });
+
+  it("keeps the spend of a failed attempt that a crash left out of the journal", async () => {
+    fx = fixture(WINS);
+    const crash = new AbortController();
+    const garbledPrimary: Behave = (call) => (call.stage === "screen" && call.refs.includes("GR 2.1") && !call.stepId.endsWith("/redo") ? { ok: true, output: "not json", usage: { costUsd: 0.01 } } : undefined);
+    const hangOnRedo: Behave = (call, input) => {
+      if (!(call.stage === "screen" && call.refs.includes("GR 2.1") && call.stepId.endsWith("/redo"))) return garbledPrimary(call, input);
+      setTimeout(() => crash.abort(), 0);
+      return new Promise((resolve) => input.signal.addEventListener("abort", () => resolve({ ok: false, error: "aborted", retryable: false })));
+    };
+    const firstJudges = fakeJudges({ behave: hangOnRedo });
+    const first = await ask(options(), host(firstJudges.runnerFor, { signal: crash.signal }));
+
+    const second = fakeJudges({ behave: garbledPrimary });
+    const resumed = await resume(first.runId, host(second.runnerFor));
+
+    expect(resumed.status).toBe("completed");
+    const cost = readJson(runPaths(fx.dataDir, first.runId).cost, z.array(CostEntrySchema))!;
+    const abortedCalls = 1;
+    expect(cost).toHaveLength(firstJudges.calls.length - abortedCalls + second.calls.length);
   });
 
   it("replays a batch the sonnet fallback judged without calling any model for it again", async () => {

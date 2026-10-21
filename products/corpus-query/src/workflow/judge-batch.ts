@@ -1,7 +1,7 @@
 import { StepFailedError, type StepResult, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { resolveLabels, verifyVerdict, type Batch, type QuotedItem, type VerifiedBatch } from "../judge/index.js";
-import { batchArtifactSchema } from "./records.js";
+import { batchArtifactSchema, UsageEntrySchema } from "./records.js";
 import { readJson, writeJson, type BatchArtifact, type UsageEntry } from "./run-dir.js";
 
 /** A verdict payload; the workflow stores dispatch data as a JSON object. */
@@ -24,6 +24,8 @@ export interface StageJudge<V extends Verdict, T extends QuotedItem> {
 export interface BatchJob {
   batch: Batch;
   file: string;
+  /** A failed attempt is not in the run journal, so its spend is parked here; a resume loads it back into the batch. */
+  attemptsFile: string;
   round?: number;
   book?: string;
 }
@@ -40,7 +42,7 @@ function dispatchBatch<V extends Verdict, T extends QuotedItem>(
 }
 
 async function attempt<V extends Verdict, T extends QuotedItem>(
-  ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[],
+  ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[], parked: UsageEntry[],
 ): Promise<Attempt<T>> {
   const model = modelOverride ?? judge.model;
   try {
@@ -51,7 +53,12 @@ async function attempt<V extends Verdict, T extends QuotedItem>(
     return { ok: true, result, verified: verifyVerdict(job.batch, resolveLabels(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) })) };
   } catch (error) {
     if (!(error instanceof StepFailedError) || ctx.signal.aborted) throw error;
-    if (error.usage) usage.push({ stepId, model, usage: error.usage });
+    if (error.usage) {
+      const spent = { stepId, model, usage: error.usage };
+      usage.push(spent);
+      parked.push(spent);
+      writeJson(job.attemptsFile, parked);
+    }
     return { ok: false, reason: error.reason };
   }
 }
@@ -126,10 +133,11 @@ function replayFinished<V extends Verdict, T extends QuotedItem>(ctx: WorkflowCo
 export async function judgeBatch<V extends Verdict, T extends QuotedItem>(ctx: WorkflowContext, itemStepId: string, job: BatchJob, judge: StageJudge<V, T>): Promise<StepResult> {
   const done = readJson(job.file, batchArtifactSchema(judge.item));
   if (done) return replayFinished(ctx, itemStepId, job, judge, done);
-  const usage: UsageEntry[] = [];
+  const parked = readJson(job.attemptsFile, z.array(UsageEntrySchema)) ?? [];
+  const usage: UsageEntry[] = [...parked];
   const failed: Attempt<T>[] = [];
   for (const t of tries(judge)) {
-    const outcome = await attempt(ctx, itemStepId + t.suffix, job, judge, t.model, usage);
+    const outcome = await attempt(ctx, itemStepId + t.suffix, job, judge, t.model, usage, parked);
     if (trusted(outcome)) {
       const result = failed.length === 0 ? outcome.result : { ...outcome.result, usage: summedUsage(usage) };
       return saved(job, artifactOf(job, judge, { via: t.via, usage, misses: canaryMisses(...failed), verified: outcome.verified }), result);

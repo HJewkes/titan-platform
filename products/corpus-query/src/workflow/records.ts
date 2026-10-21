@@ -18,7 +18,7 @@ const StepUsageSchema = z.object({
   costUnknown: z.literal(true).optional(),
 });
 
-const UsageEntrySchema: ZodType<UsageEntry> = z.object({ stepId: z.string(), model: z.string(), usage: StepUsageSchema });
+export const UsageEntrySchema: ZodType<UsageEntry> = z.object({ stepId: z.string(), model: z.string(), usage: StepUsageSchema });
 
 const VoidedSchema = z.object({ id: z.string(), reason: z.enum(["unknown-id", "quote-too-long", "quote-not-in-passage", "quote-unverifiable"]) });
 

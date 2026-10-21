@@ -75,6 +75,8 @@ export interface RunPaths {
   answer: string;
   cost: string;
   batch: (stage: "screen" | "confirm", key: string, round?: number) => string;
+  /** Where a batch parks the spend of attempts that left no journal entry, outside the artifact dirs a resume lists. */
+  attempts: (stage: "screen" | "confirm", key: string, round?: number) => string;
 }
 
 export function runPaths(dataDir: string, runId: string): RunPaths {
@@ -86,6 +88,7 @@ export function runPaths(dataDir: string, runId: string): RunPaths {
     answer: path.join(runDir, "answer.json"),
     cost: path.join(runDir, "cost.json"),
     batch: (stage, key, round) => path.join(runDir, stage, round === undefined ? "" : `r${round}`, `${key}.json`),
+    attempts: (stage, key, round) => path.join(runDir, "attempts", stage, round === undefined ? "" : `r${round}`, `${key}.json`),
   };
 }
 
