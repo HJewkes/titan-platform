@@ -146,7 +146,20 @@ async function planDeploy(deploy: Deploy): Promise<Plan> {
   if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
   if (typeof target !== "object") return refuse(target);
-  return planFor(deploy, target.sha, !serviceRunsFromCheckout(ports, deploy.options.checkout));
+  const prepareOnly = !serviceRunsFromCheckout(ports, deploy.options.checkout);
+  const plan = await planFor(deploy, target.sha, prepareOnly);
+  return prepareOnly ? plan : widenSkip(deploy, plan);
+}
+
+/** A skip records the asked sha as answered, so factory commits main already holds past it would wait for a merge that may never come. */
+async function widenSkip(deploy: Deploy, plan: Plan): Promise<Plan> {
+  if (plan.kind !== "go" || plan.go.touched.length > 0 || cleanSha(plan.go.running) === undefined) return plan;
+  const main = (await deploy.ports.git(["rev-parse", "--verify", "--quiet", `${ORIGIN_MAIN}^{commit}`])).stdout.trim();
+  if (main === "" || main === plan.go.target) return plan;
+  const wider = await planFor(deploy, main, false);
+  if (wider.kind !== "go" || wider.go.touched.length === 0) return plan;
+  deploy.io.stdout(`${plan.go.target} reaches no factory path, but ${ORIGIN_MAIN} at ${main} does; deploying ${main} instead\n`);
+  return wider;
 }
 
 async function ensureCheckout({ ports, options }: Deploy): Promise<Stop | undefined> {

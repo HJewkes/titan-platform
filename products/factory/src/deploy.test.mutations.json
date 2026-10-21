@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a skip is never widened to origin/main",
+      "file": "products/factory/src/deploy.ts",
+      "find": "return prepareOnly ? plan : widenSkip(deploy, plan);",
+      "replace": "return plan;",
+      "kills": [
+        "titan-factory service deploy deploys origin/main when the asked sha reaches no factory path but a later main commit does"
+      ]
+    },
+    {
+      "name": "origin/main is deployed even when nothing past the asked sha reaches the factory build",
+      "file": "products/factory/src/deploy.ts",
+      "find": "if (wider.kind !== \"go\" || wider.go.touched.length === 0) return plan;",
+      "replace": "if (wider.kind !== \"go\") return plan;",
+      "kills": [
+        "titan-factory service deploy fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build"
+      ]
+    }
+  ]
+}
