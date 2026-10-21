@@ -3,7 +3,7 @@ import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 import { lineageSeat } from "./wake-roster.js";
 
 /** The run's first registrant, and, when that was its own fixer, the successors the store records after it. */
-export interface RunLineage {
+interface RunLineage {
   registrant: Registration["registrant"];
   successors: readonly string[];
 }

@@ -28,7 +28,7 @@ export interface SeatDigestPorts {
 }
 
 /** The seat a run's digest lines go to. */
-export type SeatOf = (run: { repo: string; runId: string }) => string | undefined;
+type SeatOf = (run: { repo: string; runId: string }) => string | undefined;
 
 const repoSeats = (seatFor: (repo: string) => string | undefined): SeatOf => (run) => seatFor(run.repo);
 
@@ -175,7 +175,7 @@ export async function sendSeatDigests(
  * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat. The seat book is read once,
  * and the roster once, only when some run's own fixer registered it.
  */
-export async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
+async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
   const roster = ports.roster && lineages.some(({ lineage }) => fixerRegistered(lineage)) ? await ports.roster().catch(() => undefined) : undefined;
