@@ -6,7 +6,8 @@ import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
-import { afterWrites, scriptReadings } from "./line-writes.js";
+import { statSync } from "node:fs";
+import { afterWrites, mayBeWritten, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { hasOpaqueShebang, isSwappableShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -108,13 +109,14 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
   refuseFdScripts(commands);
   const out: ClassifiedAction[] = [];
   let line = ctx;
-  for (const cmd of commands) {
+  for (const [at, cmd] of commands.entries()) {
+    const earlier = () => commands.slice(0, at);
     if (cmd.added) {
-      out.push(...addedActions(cmd, line, scripts));
+      out.push(...addedActions(cmd, line, scripts, earlier));
       continue;
     }
     out.push(...classifySimple(cmd, line));
-    if (scripts) out.push(...scriptActions(cmd, line, scripts));
+    if (scripts) out.push(...scriptActions(cmd, line, scripts, earlier));
     line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
   if (scripts) refuseSwappedShells(scripts.path, line);
@@ -122,9 +124,9 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
 }
 
 /** A command only an added xargs reading runs adds its actions, but an error other than the reading limit drops it, and it never moves the line's state. */
-function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
+function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: ScriptMemo | null, earlier: () => SimpleCommand[]): ClassifiedAction[] {
   try {
-    return [...classifySimple(cmd, line), ...(scripts ? scriptActions(cmd, line, scripts) : [])];
+    return [...classifySimple(cmd, line), ...(scripts ? scriptActions(cmd, line, scripts, earlier) : [])];
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];
@@ -173,12 +175,12 @@ function handles(family: Family, cmd: SimpleCommand): boolean {
  * A shell script is classified as a command string, any other script's text gets the mention rule. Inside a script every script it runs is
  * followed, down to `MAX_SCRIPT_DEPTH`; one more refuses the line.
  */
-function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo): ClassifiedAction[] {
+function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: ScriptMemo, earlier: () => SimpleCommand[]): ClassifiedAction[] {
   const named = scriptTargets(cmd, ctx.home);
   const sources = cmd.name !== null && SOURCERS.has(cmd.name);
   if (sources && named.length === 0) scripts.path.unsafe = true;
   noteLaunchedByPath(cmd, ctx, scripts.path);
-  const targets = named.filter((target) => !runsNatively(target, ctx));
+  const targets = named.filter((target) => cwdLookup(target, ctx, scripts.depth, earlier) && !runsNatively(target, ctx));
   if (scripts.depth >= MAX_SCRIPT_DEPTH && targets.length > 0) throw new ScriptDepthError();
   const ownPath = cmd.pathChanged === true;
   return targets.flatMap((target) => {
@@ -205,6 +207,34 @@ function noteLaunchedByPath(cmd: SimpleCommand, ctx: ClassifyContext, state: Pat
 function launchesViaEnv(ctx: ClassifyContext, path: string): boolean {
   try {
     return scriptReadings(ctx, path).some(isSwappableShebang);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The one boundary for a name a changed PATH may find in the working directory: `./name` is read only when it is there to run
+ * and its own text can be followed. A missing, directory, non-executable, unreadable, cut or opaque-`#!` file is skipped,
+ * never refused, as a PATH lookup may find the command elsewhere. A file the line writes is the one it runs, so one with
+ * text the guard cannot place, or with an opaque `#!`, still refuses, as it does when run as `./name`.
+ */
+function cwdLookup(target: ScriptTarget, ctx: ClassifyContext, depth: number, earlier: () => SimpleCommand[]): boolean {
+  if (target.searched !== true) return true;
+  if (depth >= MAX_SCRIPT_DEPTH || !runnable(target, ctx, earlier)) return false;
+  try {
+    return !scriptReadings(ctx, target.path).some(hasOpaqueShebang) || mayBeWritten(ctx, target.path);
+  } catch (error) {
+    if (error instanceof UnreadableScriptError) return false;
+    throw error;
+  }
+}
+
+/** A file the line writes, or an executable regular file on disk; a `chmod` earlier on the line may set the execute bit. */
+function runnable(target: ScriptTarget, ctx: ClassifyContext, earlier: () => SimpleCommand[]): boolean {
+  if (mayBeWritten(ctx, target.path)) return true;
+  try {
+    const stat = statSync(target.path);
+    return stat.isFile() && ((stat.mode & 0o111) !== 0 || earlier().some((c) => c.name === "chmod"));
   } catch {
     return false;
   }

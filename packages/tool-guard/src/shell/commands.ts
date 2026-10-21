@@ -10,7 +10,7 @@ import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-han
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, type Vars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
 import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
@@ -24,12 +24,10 @@ import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-o
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
-import type { Vars } from "./vars.js";
-import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
+import { newMarks, noteRedirect, recordValue, settle, type ValueMarks } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
-import type { ValueMarks } from "./value-marks.js";
-import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
-import type { UnsureBudget } from "./unsure-readings.js";
+import { adoptPath, assignStandalone, guessesPath, guessPath, searchPathOf, trackCommand, withPrefixPath } from "./search-path.js";
+import { ReadingLimitError, unsureReadings, type UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
 import type { Chain, ExtractOptions, SimpleCommand, Wrapping } from "./command-types.js";
 
@@ -258,7 +256,7 @@ function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string |
   if (rebindsCommand(raw)) throw new CommandRebindingError();
   if (!pattern && definesAlias(raw)) throw new AliasDefinitionError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
-    for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
+    assignStandalone(raw.assigned, w.scope.vars);
     if (redirects.length === 0) return;
   }
   if (raw.name === "cd" || raw.name === "pushd") {
@@ -299,7 +297,7 @@ function besideWalk(w: Walk): Walk {
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
-  trackVars(cmd, w.scope.vars);
+  trackCommand(cmd, w.scope.vars);
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
@@ -314,13 +312,15 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   // Emission order is not run order, so a prefix that may reach later commands changes the whole line's PATH, as a store does.
   if (prefixOutlives(name) && (ownPath || prefixHomeUnsafe(cmd.assigned))) w.marks.pathChanged = true;
   const pathSet = w.marks.pathChanged || w.pathPrefix || ownPath ? { pathChanged: true as const } : {};
-  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
+  w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet, ...searchPathOf(w.scope.vars, cmd) });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const script = inlineScript(cmd, redirects, piped, w.unsure, inherited);
-  if (script !== null) walkScript(script, w, wrapping, held, ownPath);
+  const inner = withPrefixPath(w, cmd);
+  if (guessesPath(cmd, script?.wrap === "eval")) guessPath(w.scope.vars);
+  if (script !== null) walkScript(script, inner, wrapping, held, ownPath);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(w, [...wrapping, "find-exec"], held), ownPath), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(inner, [...wrapping, "find-exec"], held), ownPath), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
@@ -334,6 +334,9 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     // A nested shell's text keeps the nested-subshell reading and never joins a `[[`: which shell reads it is not known (it may be dash, or the runner's name may be rebound).
-    walk(tokenizeLine(text, false), { ...underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath), arithmetic: false });
+    const nested = { ...underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath), arithmetic: false };
+    walk(tokenizeLine(text, false), nested);
+    // `eval` runs in the current shell, so a PATH it stores is the line's.
+    if (script.wrap === "eval") adoptPath(nested.scope.vars, w.scope.vars);
   }
 }

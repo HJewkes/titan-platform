@@ -124,6 +124,11 @@ interface Feeds {
 /** What each descriptor holds before a command's own redirects open: the shell's, or the command's that runs it. */
 type Descriptors = (fd: number) => Feeds;
 
+/** A `PATH` the line changed that may list the working directory, and the wrappers that look their command up on it. */
+interface SearchPath {
+    wrappers?: string[];
+}
+
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
  * script option, `eval`, `xargs`, a heredoc or here-string fed to a shell, text piped into one, `find -exec`.
@@ -161,6 +166,8 @@ interface SimpleCommand {
     added?: true;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
     inherited?: Descriptors;
+    /** Set when the `PATH` the line set before this command may list the working directory, where a bare name may then be found. */
+    searchPath?: SearchPath;
 }
 interface ExtractOptions {
     cwd?: string | null;

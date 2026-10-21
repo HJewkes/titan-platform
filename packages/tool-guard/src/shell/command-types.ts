@@ -1,6 +1,7 @@
 import type { AliasTable } from "./alias-words.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Descriptors } from "./shell-options.js";
+import type { SearchPath } from "./search-path.js";
 
 /**
  * How a command was reached: a `( )` subshell or a substitution, a shell's `-c` string or a wrapper's
@@ -41,6 +42,8 @@ export interface SimpleCommand {
   added?: true;
   /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
   inherited?: Descriptors;
+  /** Set when the `PATH` the line set before this command may list the working directory, where a bare name may then be found. */
+  searchPath?: SearchPath;
 }
 
 export interface ExtractOptions {

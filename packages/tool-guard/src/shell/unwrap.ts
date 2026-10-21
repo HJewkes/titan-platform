@@ -144,6 +144,8 @@ export interface Unwrapped {
    * Such a word may expand to nothing, an option or a wrapper, so `timeout $O 5 git push` may run git.
    */
   unsure?: WordToken[];
+  /** Wrapper words (`nohup`, `env`, `timeout`) that looked the command up, as typed. */
+  wrappers?: string[];
   /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
   argv0?: Array<string | null>;
 }
@@ -165,6 +167,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   let xargs: Unwrapped["xargs"];
   let negated = false;
   const argv0: Array<string | null> = [];
+  const wrappers: string[] = [];
   let wrapped = false;
   let i = 0;
   while (i < words.length) {
@@ -178,6 +181,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && commandName(w.value) === "env") {
+      wrappers.push(w.value);
       const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
       if (walked === null) throw new EnvSplitError();
       if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt) };
@@ -186,6 +190,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       argv0.push(...walked.argv0);
       negated ||= walked.negated;
     } else if (!w.dynamic && (wrapperSpec(w.value) || runnerEnd(words, i) > i)) {
+      wrappers.push(w.value);
       const spelled = spellXargs(words, i, assigned);
       if (!Array.isArray(spelled)) return spelled;
       words = spelled;
@@ -211,7 +216,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   const bare = cmd.name === null && !wrapped && cmd.args.length > 0 ? { runtimeHead: true as const } : {};
-  return { ...cmd, ...named, ...bare, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  return { ...cmd, ...named, ...bare, ...(wrappers.length > 0 ? { wrappers } : {}), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

@@ -2,6 +2,8 @@ import { closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { INTERPRETERS, SHELLS } from "./mentions.js";
 import type { SimpleCommand } from "./shell/commands.js";
 import type { WordToken } from "./shell/lexer.js";
+import { isPathSearched } from "./path-changes.js";
+import { commandName } from "./shell/unwrap.js";
 import { mayBeWritten } from "./line-writes.js";
 import { isNativeProgram, parseShebang, resolvesShellViaPath } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
@@ -17,6 +19,8 @@ export interface ScriptTarget {
   relayed?: true;
   /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
   byPath?: true;
+  /** `./name` for a bare name a `PATH` the line changed may find in the working directory, so the file may not be there to run. */
+  searched?: true;
 }
 
 /** A script run by path whose `#!` line carries options or operands the guard does not follow; the hook denies it unchecked. */
@@ -85,10 +89,24 @@ const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
 /** The scripts a command runs by path; a shell runs every file on the descriptor it reads, as zsh's MULTIOS joins them. */
 export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
+  return [...ownTargets(cmd, home), ...foundOnPath(cmd, home)];
+}
+
+function ownTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const name = cmd.name;
   if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
   const one = name === null ? null : scriptTarget(cmd, name, home);
   return one === null ? [] : [one];
+}
+
+/**
+ * Each bare name the command looks up (its own, and a wrapper's such as `nohup` or `env`) under a `PATH` the line changed that may
+ * list the working directory may run `./name`; the classifier reads only one that is there to run.
+ */
+function foundOnPath(cmd: SimpleCommand, home: string): ScriptTarget[] {
+  if (cmd.searchPath === undefined) return [];
+  const names = [cmd.path, ...(cmd.searchPath.wrappers ?? [])].filter((n): n is string => isPathSearched(n === null ? null : commandName(n), n));
+  return names.flatMap((bare) => typedTarget(cmd, `./${bare}`, home) ?? []).map((t) => ({ ...t, searched: true as const }));
 }
 
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {

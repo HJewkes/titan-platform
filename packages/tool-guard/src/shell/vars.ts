@@ -1,4 +1,5 @@
 import type { OpToken, Token, WordToken } from "./lexer.js";
+import { recordSource, SEARCH_KEY } from "./assignment-source.js";
 import { caseChecked, clearCased, isCased, isCaseUnsure, isCaseUnsureLookup, markCase, markCased, markWord } from "./case-attrs.js";
 import type { CaseUnsure } from "./case-attrs.js";
 import { rawValue, safePathDirs } from "./path-entries.js";
@@ -196,7 +197,9 @@ function runsDeclarer(words: WordToken[]): boolean {
 /** `NAME=value` or `NAME+=value` split into its name and value, the value null when it is only known at run time. */
 export function parseAssignment(w: WordToken): Assignment | null {
   const parsed = splitAssignment(w);
-  return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true, parsed[4]] : parsed;
+  const assignment: Assignment | null = parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true, parsed[4]] : parsed;
+  if (assignment) recordSource(assignment, w);
+  return assignment;
 }
 
 function splitAssignment(w: WordToken): Assignment | null {
@@ -254,6 +257,7 @@ function write(vars: Vars, name: string, value: string | null, heard = true, pat
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
   clearCased(vars, name);
+  if (name === "PATH" || name === "path") vars.set(SEARCH_KEY, null);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
   notePathWrite(vars, name, vars.get(name), pathDirs);
   if (heard) observers.get(vars)?.(value);
@@ -322,6 +326,7 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
  */
 function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
+  vars.set(SEARCH_KEY, null);
   vars.set("HOME", null);
   vars.set("IFS", null);
   vars.set("PATH", null);
@@ -359,7 +364,7 @@ function markReadonly(name: string, arg: WordToken, sure: boolean, vars: Vars): 
   if (sure || vars.get(key) !== "") vars.set(key, sure ? "" : null);
 }
 
-interface TrackedCommand {
+export interface TrackedCommand {
   name: string | null;
   args: WordToken[];
   assigned: Assignment[];
