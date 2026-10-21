@@ -3,6 +3,7 @@ import type { Manifest, Question } from "../../server/round-schema.js";
 import { unanswered } from "./RoundAnswers.js";
 import { orderedQuestions } from "./RoundSections.js";
 import type { PostedVariant, VERDICTS } from "./frame-feedback.js";
+import type { Pin } from "./frame-pins.js";
 import { sectionPages } from "./round-pages.js";
 
 type SubmittedAnswer = ConsoleCommands["rounds.submit"]["args"]["answers"][number];
@@ -15,7 +16,7 @@ export interface CheckRow {
   open: boolean;
 }
 
-/** A frame the send carries a verdict or comment for, under its variant's label. */
+/** A frame the send carries a verdict, comment or pins for, under its variant's label. */
 export type CheckVerdict = (typeof VERDICTS)[number]["verdict"];
 
 export interface CheckFrame {
@@ -23,6 +24,7 @@ export interface CheckFrame {
   label: string;
   verdict?: CheckVerdict;
   comment?: string;
+  annotations?: readonly Pin[];
 }
 
 /** One section of the check screen, in the pager's order. */
