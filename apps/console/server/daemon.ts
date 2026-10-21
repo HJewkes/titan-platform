@@ -49,7 +49,6 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const sources = withStoryOrigin(createSources(config, logger), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
-  const contentOrigin = storyContentOrigin(config, ports);
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
@@ -57,15 +56,14 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     port: config.port,
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
-    ...(contentOrigin && { contentOrigin }),
+    ...storyContentOrigin(config, ports),
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
     mountRoutes: (app) => mountRoutes(app, sources, staticRoot),
     logger,
   });
-  ports.console = handle.port;
-  ports.story = handle.contentPort ?? null;
+  Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
   const close = async (): Promise<void> => {
@@ -91,11 +89,11 @@ interface BoundPorts {
  * The story origin (TP-3793): stored Storybook builds on a port of their own, so story code never
  * runs as the console. It has the LAN listener's TLS pair and auth gate, and nothing but the story routes.
  */
-function storyContentOrigin(config: ConsoleConfig, ports: BoundPorts): ContentOriginOptions | null {
+function storyContentOrigin(config: ConsoleConfig, ports: BoundPorts): { contentOrigin?: ContentOriginOptions } {
   const { storybooksDir } = config;
-  if (ports.story === null || storybooksDir === undefined) return null;
+  if (ports.story === null || storybooksDir === undefined) return {};
   const consoleOrigins = () => consolePageOrigins(config, ports.console);
-  return { port: ports.story, mountRoutes: (app) => mountStoryRoutes(app, { storybooksDir, consoleOrigins }) };
+  return { contentOrigin: { port: ports.story, mountRoutes: (app) => mountStoryRoutes(app, { storybooksDir, consoleOrigins }) } };
 }
 
 /** `rounds.get` names the story origin a page on that listener can frame: the LAN page gets the LAN one. */
