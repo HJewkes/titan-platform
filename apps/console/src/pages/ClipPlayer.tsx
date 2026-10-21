@@ -10,7 +10,7 @@ import type { Manifest } from "../../server/round-schema.js";
 import { useNearViewport } from "./RoundFrame.js";
 
 type Motion = NonNullable<Manifest["variants"][number]["motion"]>;
-export type ClipMotion = Extract<Motion, { mechanism: "clip" }>;
+type ClipMotion = Extract<Motion, { mechanism: "clip" }>;
 type Keyframe = NonNullable<ClipMotion["keyframes"]>[number];
 
 /** The URL `rounds.clip` serves a variant's clip at, with byte ranges. */
