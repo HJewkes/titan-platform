@@ -1,5 +1,6 @@
 import type { RoutedRunner, WorkflowStatus } from "@titan-design/workflow";
 import type { BehindMain } from "./behind-main.js";
+import type { BotHealth } from "./bot-identity.js";
 import { factoryStateDir } from "./config.js";
 import { deployPendingHealth } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
@@ -41,9 +42,10 @@ interface HealthInputs {
   notify: GateNotifyWatch | undefined;
   ingress: IngressStatus | undefined;
   passStamp: PassStamp;
+  bot: BotHealth;
 }
 
-export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp }: HealthInputs): Record<string, unknown> {
+export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot }: HealthInputs): Record<string, unknown> {
   return {
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd)),
     github: github.status(),
@@ -58,6 +60,7 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, { github,
     ...deployPendingHealth(options.deployPacer),
     ...(notify && { gateNotify: notify.status() }),
     ...visualDeliveryHealth(options.routes.shepherd),
+    bot,
     ownerKeys: ownerKeys.ok ? { count: ownerKeys.ids.length, ids: ownerKeys.ids } : { count: 0, refusal: ownerKeys.refusal },
     ...(start && serveStartsHealth(start, new Date((options.now ?? Date.now)()))),
   };

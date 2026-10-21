@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
+import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
@@ -22,7 +23,7 @@ import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import { startReconcilerSweep, type ReconcilerServeOptions } from "./reconciler/service.js";
-import { recordServeStart, type ServeStart } from "./serve-starts.js";
+import { recordStartOrWarn, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
@@ -107,6 +108,8 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
   ownerKeys?: () => OwnerKeys;
+  /** Replaces the bot identity read from the code-fixed `BOT_TOKEN_PATH`; tests inject it. No flag or config reaches this. */
+  bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
   /** Replaces the /health probe that tells a live factory from a refused start; tests inject it. */
@@ -131,15 +134,16 @@ export interface FactoryServer {
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const stateDir = stateDirOf(options);
-  const { host, frames } = openFramedHost(options);
+  const log = options.logger ?? consoleLogger;
+  const bot = openServeBot(options.bot, log);
+  const { host, frames } = openFramedHost({ ...options, capabilities: { ...options.capabilities, ...bot.capabilities } });
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
-  const log = options.logger ?? consoleLogger;
   const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
   const ingressRef: { listener?: IngressListener } = {};
   const passStamp = createPassStamp();
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp }));
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health }));
   const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
@@ -208,21 +212,11 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
     const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
     const recorded: { start?: ServeStart } = {};
     const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, ...extras }));
-    recorded.start = recordStart(stateDir, unclean, options, log);
+    recorded.start = recordStartOrWarn(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) }, log);
     return daemon;
   } catch (err) {
     host.close();
     throw err;
-  }
-}
-
-/** A start record that cannot be written costs /health its start fields, never the start itself. */
-function recordStart(stateDir: string, unclean: boolean, options: FactoryServerOptions, log: Logger): ServeStart | undefined {
-  try {
-    return recordServeStart(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) });
-  } catch (err) {
-    log.warn({ err }, "could not record the serve start");
-    return undefined;
   }
 }
 
@@ -231,7 +225,7 @@ function ownerProofs(options: FactoryServerOptions): OwnerProofs {
   return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
 }
 
-type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp">;
+type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot">;
 
 interface DaemonExtras {
   proofs: OwnerProofs;
@@ -240,10 +234,11 @@ interface DaemonExtras {
   /** Started after the daemon, so a second serve beside a live one never binds the ingress port. */
   ingress: () => IngressStatus | undefined;
   passStamp: PassStamp;
+  bot: () => BotHealth;
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, extras: DaemonExtras): StartDaemonOptions<FactoryContext> {
-  const { proofs, start, notify, ingress, passStamp } = extras;
+  const { proofs, start, notify, ingress, passStamp, bot } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
@@ -255,7 +250,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot() }),
     mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };

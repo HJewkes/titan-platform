@@ -16,6 +16,7 @@ import { openDatabase, runMigrations, type Db, type Migration } from "@titan-des
 import {
   routedRunner,
   type StepRoute,
+  type WorkflowCapability,
   type WorkflowEvent,
   workflowMigration,
   workflowOwnershipMigration,
@@ -50,6 +51,8 @@ export interface FactoryHostOptions {
   gatePollMs?: number;
   runtimeId?: string;
   onEvent?: (event: WorkflowEvent) => void;
+  /** Reached only through `ctx.capability`; serve passes the bot identity's here and nowhere else. */
+  capabilities?: Record<string, WorkflowCapability>;
 }
 
 export interface PendingGate {
@@ -137,6 +140,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     gatePollMs: options.gatePollMs,
     runtimeId: options.runtimeId,
     onEvent: options.onEvent,
+    capabilities: options.capabilities,
   });
   for (const definition of options.workflows) {
     assertDistinctStepIds(definition);

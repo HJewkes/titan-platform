@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli, type RewriteCliDeps } from "./rewrite-cli.js";
-import { choppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
+import { BEATS, choppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { RewriteReport } from "./rewrite-pass.js";
 import { ScriptSchema } from "./script-schema.js";
 import { pipelineScript } from "./spike-fixtures.test-helpers.js";
@@ -46,7 +46,22 @@ function fakeVet(status: string) {
   return { speechVet, vetted };
 }
 
+// Every beat in its compliant form but h1, which stays choppy: triads starts green and h1 is the one directed beat.
+const triadFree = (): unknown => choppy(Object.fromEntries(Object.entries(BEATS).filter(([id]) => id !== "h1").map(([id, [, rewrite]]) =>
+  [id, { spoken: rewrite.after, visual: { assertion: "The desk refuses unknown parcels", job: "numbers", labels: rewrite.labels ?? [] } }])));
+
+// Keeps h1 choppy but adds a list of three, which turns the triads row red.
+const triadH1: Rewriter = (id) =>
+  id === "h1" ? { id, spoken: "The desk refuses ghost labels. A courier asks for a label. The desk looks for the parcel row, the ledger and the scan. Then it prints.", labels_added: [] } : undefined;
+
 describe("explainer rewrite", () => {
+  it("names each chapter verdict, its reason and the row that turned red in the summary line", async () => {
+    const { out } = await run(write("in.json", triadFree()), ["--rounds", "1"], { harness: () => fakeRewriter(triadH1).harness });
+
+    const chapters = JSON.parse(out).rounds[0].chapters;
+    expect(chapters).toContainEqual(expect.objectContaining({ kept: false, why: "more target rows fail", rows: ["register:triads"] }));
+  });
+
   it("writes the rewritten script and its report, prints the row deltas and exits 0 when every target row passes", async () => {
     const { code, out } = await run(write("in.json", choppy()), ["--report", join(dir, "report.json")]);
 
