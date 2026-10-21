@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button, ButtonText, HStack, Input, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { FrameFigure } from "./FrameFeedback.js";
 import { frameAnchor, useFrameSource, type ABSide } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -56,9 +57,11 @@ interface ABColumnProps extends QuestionABProps {
   picked: boolean;
 }
 
+/** In a design round a side's frame takes a verdict too, which picking the side marks Chosen. */
 function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent }: ABColumnProps): ReactNode {
+  const source = useFrameSource();
   return (
-    <figure id={frameAnchor(question.id, side.key)} className="flex min-w-0 flex-col gap-2" data-testid={`question-ab-side-${question.id}-${name}`}>
+    <FrameFigure frameKey={side.key} label={side.label} pinnable={source?.loadable(side.key) ?? false} id={frameAnchor(question.id, side.key)} testID={`question-ab-side-${question.id}-${name}`}>
       <HStack gap={2} align="center" justify="between" wrap>
         <Typography variant="subtitle2">{`${name}: `}<InlineMarkdown text={side.option} /></Typography>
         <Typography variant="caption" color="secondary">{`frame: ${side.label}`}</Typography>
@@ -72,7 +75,7 @@ function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent 
       ) : (
         <Input multiline numberOfLines={2} label={`Note on ${name} (optional)`} accessibilityLabel={`Note on ${side.option}`} value={notes[side.option] ?? ""} onChangeText={(text) => onNote(side.option, text)} />
       )}
-    </figure>
+    </FrameFigure>
   );
 }
 
