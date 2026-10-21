@@ -1,24 +1,18 @@
 #!/usr/bin/env node
 // Part of `pnpm dag:check`: the workspace package graph must have no cycle. layered-deps lets a package import
 // its own tier, so two same-tier packages could import each other and nothing else would object.
+// Members come from the pnpm-workspace.yaml globs, so no workspace member is left out of the graph.
 // Edges come from package.json dependency fields and from source imports of a workspace package name.
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { workspaceMemberDirs } from "./structure-rules.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const DEP_FIELDS = ["dependencies", "peerDependencies", "optionalDependencies", "devDependencies"];
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 const IMPORT_SPECIFIER = /(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)["']([^"']+)["']/g;
-
-function packageDirs(root) {
-  return ["packages", "products"]
-    .map((group) => path.join(root, group))
-    .filter((dir) => existsSync(dir))
-    .flatMap((dir) => readdirSync(dir).map((name) => path.join(dir, name)))
-    .filter((dir) => existsSync(path.join(dir, "package.json")));
-}
 
 function sourceFiles(dir) {
   const src = path.join(dir, "src");
@@ -41,7 +35,7 @@ function importedPackages(dir, names) {
 
 /** Map of workspace package name to the workspace package names it depends on or imports. */
 export function packageGraph(root) {
-  const manifests = packageDirs(root).map((dir) => ({ dir, manifest: JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) }));
+  const manifests = workspaceMemberDirs(root).map((rel) => path.join(root, rel)).map((dir) => ({ dir, manifest: JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) }));
   const names = new Set(manifests.map((m) => m.manifest.name));
   const graph = new Map();
   for (const { dir, manifest } of manifests) {

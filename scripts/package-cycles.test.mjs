@@ -7,11 +7,13 @@ import { findCycles, packageGraph } from "./package-cycles.mjs";
 const dirs = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
-function workspace(packages) {
+function workspace(packages, globs = ["packages/*"]) {
   const root = mkdtempSync(path.join(tmpdir(), "package-cycles-"));
   dirs.push(root);
-  for (const [name, { deps = [], imports = [] }] of Object.entries(packages)) {
-    const dir = path.join(root, "packages", name);
+  writeFileSync(path.join(root, "pnpm-workspace.yaml"), `packages:\n${globs.map((g) => `  - "${g}"\n`).join("")}`);
+  for (const [member, { deps = [], imports = [] }] of Object.entries(packages)) {
+    const dir = path.join(root, member.includes("/") ? member : path.join("packages", member));
+    const name = path.basename(member);
     mkdirSync(path.join(dir, "src"), { recursive: true });
     const dependencies = Object.fromEntries(deps.map((d) => [`@scope/${d}`, "workspace:*"]));
     writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: `@scope/${name}`, dependencies }));
@@ -38,6 +40,12 @@ describe("workspace package cycles", () => {
     const root = workspace({ a: { deps: ["b"] }, b: { deps: ["c"] }, c: { deps: ["a"] }, d: { deps: ["a"] } });
 
     expect(findCycles(packageGraph(root))).toEqual([["@scope/a", "@scope/b", "@scope/c"]]);
+  });
+
+  it("reports a cycle through a workspace member outside packages and products", () => {
+    const root = workspace({ "matrix-bus": { deps: ["hub"] }, "deploy/hub": { deps: ["matrix-bus"] } }, ["packages/*", "deploy/hub"]);
+
+    expect(findCycles(packageGraph(root))).toEqual([["@scope/hub", "@scope/matrix-bus"]]);
   });
 
   it("passes once the cycle is broken", () => {
