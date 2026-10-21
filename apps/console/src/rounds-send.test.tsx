@@ -11,7 +11,11 @@ import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
 import { checkAndSend, checkButton, shownSection, toSection } from "./pages/round-pager.test-helpers.js";
 
-afterEach(cleanup);
+// An unsent round keeps its draft in localStorage, so each test starts from none.
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const ROUND = "kiln-schedule-r2";
 
