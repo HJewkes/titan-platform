@@ -3,7 +3,7 @@ import type { JudgeHarness } from "./eval-harness.js";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { registerCheck } from "./lint-register.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
-import { bandDistance, rewriteScript, roundRefusal } from "./rewrite-pass.js";
+import { bandDistance, chapterRefusal, rewriteScript } from "./rewrite-pass.js";
 import { REWRITE_TARGET_ROWS } from "./rewrite-plan.js";
 import { hasSpokenDigits, spellSpokenNumbers } from "./spoken-numbers.js";
 import type { ScriptV1 } from "./script-schema.js";
@@ -160,7 +160,8 @@ describe("rewriteScript rounds", () => {
     const { script: out, report } = await rewrite(choppy(), fakeRewriter(clipped));
 
     expect(report.rounds.map((round) => [round.round, round.kept])).toEqual([[1, false], [2, false]]);
-    expect(report.rounds[0]!.why).toBe("the distance to band did not fall");
+    expect(report.rounds[0]!.why).toBe("every chapter was reverted");
+    expect(report.rounds[0]!.chapters.map((verdict) => verdict.why)).toEqual(report.rounds[0]!.chapters.map(() => "the distance to band did not fall"));
     expect(spokenOf(out, "h1")).toBe(BEATS.h1![1].before);
   });
 
@@ -214,27 +215,121 @@ const row = (check_id: string, value: number, threshold: number, pass: boolean, 
   check_id, mode: "heuristic", severity, value, threshold, pass, detail_beats: [],
 });
 
-describe("roundRefusal", () => {
-  const before = [row("register:sentence-mean", 6, 12.51, false), row("register:numbers", 18, 25.62, true), row("Q-V7", 0, 0, true, "error")];
+describe("chapterRefusal", () => {
+  const before = [
+    row("register:sentence-mean", 6, 12.51, false), row("register:numbers", 18, 25.62, true), row("register:contractions", 12, 40.18, true), row("Q-V7", 0, 0, true, "error"),
+  ];
+  const after = (changes: L0Result[]): L0Result[] => before.map((r) => changes.find((c) => c.check_id === r.check_id) ?? r);
+  const closer = row("register:sentence-mean", 10, 12.51, false);
 
-  it("keeps a round that comes closer to band without failing more rows", () => {
-    const after = [row("register:sentence-mean", 10, 12.51, false), row("register:numbers", 18, 25.62, true), row("Q-V7", 0, 0, true, "error")];
-    expect(roundRefusal(before, after)).toBeUndefined();
+  it("keeps a chapter that comes closer to band without turning a row red", () => {
+    expect(chapterRefusal(before, after([closer]))).toBeUndefined();
   });
 
-  it("refuses a round that fails more target rows, even when the distance falls", () => {
-    const after = [row("register:sentence-mean", 12, 12.51, false), row("register:numbers", 26, 25.62, false), row("Q-V7", 0, 0, true, "error")];
-    expect(bandDistance(after)).toBeLessThan(bandDistance(before));
-    expect(roundRefusal(before, after)).toBe("more target rows fail");
+  it("names the target row a chapter turns red, even when the distance falls", () => {
+    const flipped = after([row("register:sentence-mean", 12, 12.51, false), row("register:numbers", 26, 25.62, false)]);
+    expect(bandDistance(flipped)).toBeLessThan(bandDistance(before));
+    expect(chapterRefusal(before, flipped)).toEqual({ why: "more target rows fail", rows: ["register:numbers"] });
   });
 
-  it("refuses a round whose distance to band does not fall", () => {
-    expect(roundRefusal(before, before)).toBe("the distance to band did not fall");
+  it("refuses a chapter whose distance to band does not fall", () => {
+    expect(chapterRefusal(before, before)).toEqual({ why: "the distance to band did not fall" });
   });
 
-  it("refuses a round that fails more error rows", () => {
-    const after = [row("register:sentence-mean", 10, 12.51, false), row("register:numbers", 18, 25.62, true), row("Q-V7", 1, 0, false, "error")];
-    expect(roundRefusal(before, after)).toBe("more error rows fail");
+  it("names the error row a chapter turns red", () => {
+    expect(chapterRefusal(before, after([closer, row("Q-V7", 1, 0, false, "error")]))).toEqual({ why: "more error rows fail", rows: ["Q-V7"] });
+  });
+
+  it("names a protected row that was green and turns red", () => {
+    expect(chapterRefusal(before, after([closer, row("register:contractions", 9, 10.79, false)]))).toEqual({ why: "a protected row turned red", rows: ["register:contractions"] });
+  });
+
+  it("lets a protected row that was already red stay red", () => {
+    const red = row("register:contractions", 4, 10.79, false);
+    const redBefore = before.map((r) => (r.check_id === red.check_id ? red : r));
+    expect(chapterRefusal(redBefore, redBefore.map((r) => (r.check_id === closer.check_id ? closer : r)))).toBeUndefined();
+  });
+});
+
+// Every beat is in its compliant form except two that hold a triad (k1 in ch3, c2 in ch4): only triads fails, and sentence-mean sits just over its floor.
+const NEAR_BAND: Record<string, string> = {
+  k1: "It holds the rest. A row can be fresh, stale or missing, and the desk reads that state and prints only when it is fresh.",
+  c2: "That order matters. It reads the scan, checks the row and prints the label, so the courier and the dock can trust it.",
+};
+const nearBand = (spoken: Record<string, string> = {}): ScriptV1 =>
+  choppy(Object.fromEntries(Object.entries(BEATS).map(([id, [, rewrite]]) => [id, {
+    spoken: spoken[id] ?? NEAR_BAND[id] ?? rewrite.after,
+    visual: { assertion: "The desk refuses unknown parcels", job: "numbers", labels: NEAR_BAND[id] ? [] : rewrite.labels ?? [] },
+  }])));
+const answering = (replies: Record<string, string>): Rewriter => (id) => (replies[id] ? { id, spoken: replies[id], labels_added: [] } : undefined);
+
+describe("rewriteScript keeps or reverts each chapter", () => {
+  // Keeps k1's triad but chops its one long sentence into short ones, which pulls sentence-mean under its floor.
+  const CHOPPED_K1 = "It holds the rest. A row can be fresh, stale or missing. The desk reads that state. It prints only when it is fresh.";
+  const flipsMean = answering({ k1: CHOPPED_K1, c2: BEATS.c2![1].after });
+
+  it("keeps the chapter that comes closer to band and reverts the sibling that turns a green row red, naming it", async () => {
+    const script = nearBand();
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(flipsMean), { rounds: 1 });
+
+    expect(report.rounds[0]!.chapters).toEqual([
+      { chapter: "ch4", kept: true },
+      { chapter: "ch3", kept: false, why: "more target rows fail", rows: ["register:sentence-mean"] },
+    ]);
+    expect(spokenOf(out, "c2")).toBe(BEATS.c2![1].after);
+    expect(spokenOf(out, "k1")).toBe(NEAR_BAND.k1);
+    expect(report.rounds[0]).toMatchObject({ kept: true, rewritten: ["c2"], failing: { before: 1, after: 1 } });
+    expect(report.rounds[0]!.distance.after).toBeLessThan(report.rounds[0]!.distance.before);
+  });
+
+  it("keeps the good chapter of a round the whole-round rule would have thrown away", async () => {
+    const script = nearBand();
+    const together = runL0(nearBand({ k1: CHOPPED_K1, c2: BEATS.c2![1].after }));
+
+    const { script: out } = await rewrite(script, fakeRewriter(flipsMean), { rounds: 1 });
+
+    expect(chapterRefusal(runL0(script), together)?.why).toBe("more target rows fail");
+    expect(spokenOf(out, "c2")).toBe(BEATS.c2![1].after);
+  });
+
+  it("runs round 2 on the chapters round 1 kept", async () => {
+    const fake = fakeRewriter((id, prompt) => (isRoundTwo(prompt) ? compliant(id, prompt) : flipsMean(id, prompt)));
+
+    const { script: out, report } = await rewrite(nearBand(), fake);
+
+    const roundTwo = fake.prompts.filter(isRoundTwo);
+    expect(roundTwo.map(promptBeatIds)).toEqual([["k1"]]);
+    expect(roundTwo[0]).toContain(NEAR_BAND.k1);
+    expect(report.rounds[1]!.chapters).toEqual([{ chapter: "ch3", kept: true }]);
+    expect(spokenOf(out, "k1")).toBe(BEATS.k1![1].after);
+  });
+
+  it("reverts a chapter that turns an error row red without naming its beat", async () => {
+    // An identifier in w2 sits just past the plain-opening floor; a longer c2 pushes it under, and Q-F16 names w2, not c2.
+    const w2 = "The desk reads both. The ledger keeps a row per parcel, and that row names the dock and the courier in parcelRows that will carry it.";
+    const longerC2 = "That order matters to the desk. It reads the scan and checks the row in the ledger before it prints the label, so the courier and the dock can trust it.";
+
+    const { script: out, report } = await rewrite(nearBand({ w2 }), fakeRewriter(answering({ c2: longerC2 })), { rounds: 1 });
+
+    expect(report.rounds[0]!.reverted).toEqual([]);
+    expect(report.rounds[0]!.chapters).toEqual([{ chapter: "ch4", kept: false, why: "more error rows fail", rows: ["Q-F16"] }]);
+    expect(spokenOf(out, "c2")).toBe(NEAR_BAND.c2);
+  });
+
+  it("reverts a chapter that drops the script's contractions under their floor", async () => {
+    const contracted = { h1: "The desk won't print ghost labels. When a courier asks for a label, the desk looks for the parcel row and waits for the ledger before it prints.",
+      h3: "It checks the scan and the row before the label, so nothing's skipped and the courier never sees a guess. The check is fast.",
+      k3: "The desk can wait. A refusal isn't an error, because the parcel may be late and its scan may still come later in the day.",
+      k1: "It holds the rest. A row can be fresh, stale or missing, and the desk reads that state and prints only when it's fresh." };
+    const script = nearBand(contracted);
+    const spelledOut = answering({ k1: "It holds the rest. A row can be fresh or stale or missing, and the desk reads that state and prints only when it is fresh." });
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(spelledOut), { rounds: 1 });
+
+    expect(runL0(script).find((r) => r.check_id === "register:contractions")!.pass).toBe(true);
+    expect(report.rounds[0]!.chapters).toEqual([{ chapter: "ch3", kept: false, why: "a protected row turned red", rows: ["register:contractions"] }]);
+    expect(spokenOf(out, "k1")).toBe(contracted.k1);
   });
 });
 
