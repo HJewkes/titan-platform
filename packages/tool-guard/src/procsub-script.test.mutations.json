@@ -20,9 +20,12 @@
         "a shell or source running a process substitution as its script denies source with cat",
         "a shell or source running a process substitution as its script gives source -- <(kubectl completion bash) the verdict of kubectl completion bash | bash",
         "a shell or source running a process substitution as its script gives source <(kubectl completion bash) the verdict of kubectl completion bash | bash",
+        "a shell or source running a process substitution as its script reads the substitution as a script: . \"--\" <(cat ./x.sh)",
         "a shell or source running a process substitution as its script reads the substitution as a script: . -- <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source '--' <(echo 'git push origin HEAD:main')",
         "a shell or source running a process substitution as its script reads the substitution as a script: source -- <(cat ./x.sh)",
-        "a shell or source running a process substitution as its script reads the substitution as a script: source -- <(echo 'git push origin HEAD:main')"
+        "a shell or source running a process substitution as its script reads the substitution as a script: source -- <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source \\-\\- <(echo 'git push origin HEAD:main')"
       ]
     },
     {
