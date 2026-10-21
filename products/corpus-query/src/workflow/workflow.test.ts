@@ -5,7 +5,7 @@ import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
-import { CHAIN, fakeJudges, fixture, SPEC, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
+import { CHAIN, fakeJudges, fixture, SPEC, verdictData, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
 import { COMPILE_ROLE } from "./compile.js";
 import { ask, resume, type AskOptions, type HostOptions } from "./host.js";
 import { batchArtifactSchema, CostEntrySchema } from "./records.js";
@@ -223,13 +223,11 @@ const costOf = (runId: string) => readJson(runPaths(fx.dataDir, runId).cost, z.a
 describe("exclusion", () => {
   it("drops a confirm row the judge marks excluded, though its event is won", async () => {
     fx = fixture(WINS);
-    const exclude: Behave = async (call, input) => {
+    const exclude: Behave = (call, input) => {
       if (call.stage !== "confirm") return undefined;
-      const base = fakeJudges().runnerFor({ defaults: { model: "sonnet", systemPrompt: "" } } as never);
-      const out = (await base.run(input)) as { output: string };
-      const parsed = JSON.parse(out.output) as { judged: string[]; rows: Record<string, unknown>[] };
-      const rows = parsed.rows.map((row) => (row.period === "GR 1.2" ? { ...row, included: false, reason: "excluded" } : row));
-      return { ok: true, output: JSON.stringify({ ...parsed, rows }), usage: { costUsd: 0.01 } };
+      const { judged, rows } = verdictData("confirm", input.prompt);
+      const marked = rows.map((row) => (row.period === "GR 1.2" ? { ...row, included: false, reason: "excluded" } : row));
+      return { ok: true, output: JSON.stringify({ judged, rows: marked }), usage: { costUsd: 0.01 } };
     };
 
     const result = await ask(options(), host(fakeJudges({ behave: exclude }).runnerFor));
@@ -241,15 +239,15 @@ describe("exclusion", () => {
 describe("cost model", () => {
   it("records the model id the call ran on, not the route alias", async () => {
     fx = fixture(WINS);
-    const resolved: Behave = async (call, input) => {
-      const base = fakeJudges().runnerFor({ defaults: { model: call.model, systemPrompt: "" } } as never);
-      const out = (await base.run(input)) as { output: string };
-      return { ok: true, output: out.output, usage: { costUsd: 0.01, model: `resolved-${call.model}` } as never };
+    const resolved: Behave = (call, input) => {
+      const { judged, candidates, rows } = verdictData(call.stage, input.prompt);
+      const output = call.stage === "screen" ? { judged, candidates } : { judged, rows };
+      return { ok: true, output: JSON.stringify(output), usage: { costUsd: 0.01, model: `resolved-${call.model}` } };
     };
 
-    const result = await ask(options({ spec: undefined }), host(fakeJudges({ behave: resolved }).runnerFor));
+    const result = await ask(options({ spec: undefined }), host(fakeJudges({ behave: (call, input) => (call.stage === "compile" ? undefined : resolved(call, input)) }).runnerFor));
 
-    expect(new Set(costOf(result.runId).map((c) => c.model))).toEqual(new Set(["resolved-sonnet", "resolved-haiku"]));
+    expect(new Set(costOf(result.runId).filter((c) => c.stage !== "compile").map((c) => c.model))).toEqual(new Set(["resolved-sonnet", "resolved-haiku"]));
   });
 });
 
@@ -260,15 +258,13 @@ describe("canaries in a run", () => {
 
   it("does not count a near-miss canary reported as lost as a screen miss, so no redo is paid for", async () => {
     fx = fixture(WINS);
-    const lostCanary: Behave = async (call, input) => {
+    const lostCanary: Behave = (call, input) => {
       if (call.stage !== "screen") return undefined;
-      const base = fakeJudges().runnerFor({ defaults: { model: call.model, systemPrompt: "" } } as never);
-      const out = (await base.run(input)) as { output: string };
-      const parsed = JSON.parse(out.output) as { judged: string[]; candidates: unknown[] };
-      const id = /=== PASSAGE (\S+) \(CANARY\) ===/.exec(input.prompt)![1]!;
-      const quote = /lost the Reed Cup final/.test(input.prompt) ? "lost the Reed Cup final" : undefined;
-      const extra = quote ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
-      return { ok: true, output: JSON.stringify({ ...parsed, candidates: [...parsed.candidates, ...extra] }), usage: { costUsd: 0.01 } };
+      const { judged, candidates } = verdictData("screen", input.prompt);
+      const id = /=== PASSAGE (\S+) \(CANARY\) ===/.exec(input.prompt)?.[1];
+      const quote = "lost the Reed Cup final";
+      const extra = id && input.prompt.includes(quote) ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
+      return { ok: true, output: JSON.stringify({ judged, candidates: [...candidates, ...extra] }), usage: { costUsd: 0.01 } };
     };
 
     const judges = fakeJudges({ behave: lostCanary });

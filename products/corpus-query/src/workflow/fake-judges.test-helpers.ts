@@ -99,21 +99,27 @@ const winningLine = (text: string): string | undefined => text.split("\n\n").fin
 
 const ok = (output: unknown): StepRunOutcome => ({ ok: true, output: JSON.stringify(output), usage: { costUsd: 0.01 } });
 
-function verdict(stage: string, prompt: string, names: Record<string, string[]>): StepRunOutcome {
+type Entry = Record<string, unknown>;
+
+/** What the default fake judge would answer, as data a test can edit before wrapping it in an outcome. */
+export function verdictData(stage: string, prompt: string, names: Record<string, string[]> = {}): { judged: string[]; candidates: Entry[]; rows: Entry[] } {
   const passages = shownPassages(prompt);
   const wins = passages.flatMap((p) => {
     const quote = winningLine(p.text);
     return quote ? [{ p, quote, trophy: /the (\w+ \w+)\./.exec(quote)?.[1] ?? "" }] : [];
   });
   const judged = passages.map((p) => p.id);
-  if (stage === "screen") {
-    const event = (text: string) => (/next week/.test(text) ? "preview" : "won");
-    return ok({ judged, candidates: wins.map(({ p, quote, trophy }) => ({ id: p.id, quote, entity: trophy, subject: "Gull Rovers", event: event(p.text), names: names[trophy] ?? [] })) });
-  }
-  const row = ({ p, quote, trophy }: (typeof wins)[number]) => ({
+  const event = (text: string) => (/next week/.test(text) ? "preview" : "won");
+  const candidates = wins.map(({ p, quote, trophy }) => ({ id: p.id, quote, entity: trophy, subject: "Gull Rovers", event: event(p.text), names: names[trophy] ?? [] }));
+  const rows = wins.map(({ p, quote, trophy }) => ({
     id: p.id, entity: trophy, subject: "Gull Rovers", period: p.ref, detail: "final", role: "manager", quote, event: "won", confidence: "sure", reason: "won on the page",
-  });
-  return ok({ judged, rows: wins.map(row) });
+  }));
+  return { judged, candidates, rows };
+}
+
+function verdict(stage: string, prompt: string, names: Record<string, string[]>): StepRunOutcome {
+  const { judged, candidates, rows } = verdictData(stage, prompt, names);
+  return ok(stage === "screen" ? { judged, candidates } : { judged, rows });
 }
 
 /**
