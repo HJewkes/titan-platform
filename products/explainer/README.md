@@ -190,7 +190,9 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   second call per chapter under `rubrics/l1-cold-spoken.md`, where a sentence that only uses the
   word does not define it. An answer scores 2 for what and why, 1 for
   what only, and 0 when not stated or when a quote is not in that chapter's spoken words.
-  `--labels` adds each run's reader-gap group scores (`readerGapScores`) to its line.
+  `--labels` adds each run's reader-gap group scores (`readerGapScores`) to its line. Zeros on
+  viewer-named terms (kind `viewer-term`) are counted in `undefined_terms` and
+  `undefined_terms_per_minute`, apart from `undefined_items`, so the chapter bars keep their meaning.
   `--runs` defaults to 3. Each run appends `cold-scores.tsv` (one row a question, odd-one-out
   picks included), `cold-chapters.tsv` (undefined items and undefined items a chapter
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
