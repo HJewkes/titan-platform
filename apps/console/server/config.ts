@@ -65,6 +65,11 @@ export interface ConsoleConfig {
    */
   reviewsDir?: string;
   /**
+   * The Storybook builds rounds ship, one `<buildId>/` each, under the state dir (TP-3793).
+   * Optional so a config built by hand imports no build and gives no round a `live` field; `resolveConfig` always sets it.
+   */
+  storybooksDir?: string;
+  /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
    */
@@ -159,8 +164,9 @@ function lanOptionsFrom(
 }
 
 /** The dirs other processes write and the console reads from or files into. */
-function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir"> {
   return {
+    storybooksDir: path.join(stateDir, "storybooks"),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
