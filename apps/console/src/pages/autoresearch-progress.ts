@@ -14,7 +14,7 @@ export interface ProgressPoint {
   usd: number;
 }
 
-/** The σ band's half-width; `locked` once the noise estimate has the pairs the target asks for. */
+/** The σ band's half-width; `locked` while the band uses the locked σ. */
 interface Band {
   halfWidth: number;
   locked: boolean;
@@ -31,7 +31,7 @@ export interface ProgressSample {
 export interface RunProgress {
   points: ProgressPoint[];
   samples: ProgressSample[];
-  /** The first sample whose band uses the locked σ; undefined while σ is unlocked. */
+  /** Where the current lock began; undefined while the newest sample is unlocked, including after a lock re-opened. */
   lockedAt: ProgressSample | undefined;
 }
 
@@ -39,15 +39,18 @@ export interface RunProgress {
 interface NoiseReading {
   sigma?: number;
   pairs?: number;
+  locked?: boolean;
 }
 
 /**
- * Design §1.5: ±bandSigmas·σ once σ is locked, and the wider max(bandSigmas·σ_est, defaultBandPp) until the pairs exist.
- * With no σ at all the band is the default.
+ * Design §1.5: ±bandSigmas·σ once σ is locked, and the wider max(bandSigmas·σ_est, defaultBandPp) until then. The engine's
+ * explicit `locked` wins, since it can re-open a lock; only a record without one falls back to counting pairs. With no σ at
+ * all the band is the default.
  */
 export function bandFor(noise: NoiseConfig, reading: NoiseReading): Band {
   const { sigma, pairs } = reading;
-  if (sigma !== undefined && pairs !== undefined && pairs >= noise.lockAfterPairs) return { halfWidth: noise.bandSigmas * sigma, locked: true };
+  const locked = reading.locked ?? (pairs !== undefined && pairs >= noise.lockAfterPairs);
+  if (sigma !== undefined && locked) return { halfWidth: noise.bandSigmas * sigma, locked: true };
   return { halfWidth: Math.max(noise.bandSigmas * (sigma ?? 0), noise.defaultBandPp), locked: false };
 }
 
@@ -80,7 +83,7 @@ function toPoint(primary: string, ladder: Decided, index: number): ProgressPoint
 /**
  * The chart's data. Every decided idea is a point, but only a kept one with a primary moves best-so-far: a rejected or stopped
  * point is drawn where it landed and leaves the line alone. The band follows the newest G7 record, carried past an outcome
- * that has none because pairs only accumulate; before any record it reads the stamped σ, unlocked.
+ * that has none because that outcome says nothing new about noise; before any record it reads the stamped σ, unlocked.
  */
 export function runProgress(run: ArRunView): RunProgress {
   const { primary, noise } = run.target.metric;
@@ -95,5 +98,11 @@ export function runProgress(run: ArRunView): RunProgress {
     against = outcome.against ?? against;
     samples.push({ order: point.order, at: point.at, best, band: bandFor(noise, against ?? { sigma: outcome.sigma }) });
   });
-  return { points, samples, lockedAt: samples.find((sample) => sample.band.locked) };
+  return { points, samples, lockedAt: currentLockStart(samples) };
+}
+
+function currentLockStart(samples: readonly ProgressSample[]): ProgressSample | undefined {
+  let start: ProgressSample | undefined;
+  for (const sample of samples) start = sample.band.locked ? (start ?? sample) : undefined;
+  return start;
 }

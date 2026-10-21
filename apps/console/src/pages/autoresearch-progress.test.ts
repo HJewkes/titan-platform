@@ -87,6 +87,24 @@ describe("autoresearch σ band", () => {
     expect(lockedAt?.order).toBe(2);
   });
 
+  it("stays unlocked when the engine says unlocked, even past the lock pair count", () => {
+    expect(bandFor(NOISE, { sigma: 0.5, pairs: 7, locked: false })).toEqual({ halfWidth: 1.5, locked: false });
+  });
+
+  it("locks when the engine says locked, even below the lock pair count", () => {
+    expect(bandFor(NOISE, { sigma: 0.5, pairs: 3, locked: true })).toEqual({ halfWidth: 1, locked: true });
+  });
+
+  it("drops the lock mark when the engine re-opens σ, and marks the new lock where it begins", () => {
+    const lock = (sigma: number, locked: boolean) => ({ ...rejected, against: { sigma, pairs: 6, locked } });
+    const reopened = runWith(decided("i-a", 1, lock(0.5, true), [235]), decided("i-b", 2, lock(0.9, false), [235]));
+    const relocked = runWith(decided("i-a", 1, lock(0.5, true), [235]), decided("i-b", 2, lock(0.9, false), [235]), decided("i-c", 3, lock(0.4, true), [235]));
+
+    expect(runProgress(reopened).lockedAt).toBeUndefined();
+    expect(runProgress(reopened).samples.at(-1)?.band).toEqual({ halfWidth: 1.8, locked: false });
+    expect(runProgress(relocked).lockedAt?.order).toBe(3);
+  });
+
   it("stays locked when a later outcome carries no noise record", () => {
     const five = { ...kept(0.5), against: { sigma: 0.5, pairs: 5 } };
 
