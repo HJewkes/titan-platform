@@ -104,7 +104,7 @@ const parseSidecar = (bytes: Buffer): StorybookBuild => {
   return parsed.success ? parsed.data : refuse(`${STORYBOOK_FILE} is not a storybook@1 sidecar`);
 };
 
-/** Null when a round dir has no `storybook/`; a build `storeBuild` would refuse is refused here, before anything is written. */
+/** Null when a round dir has no `storybook/`; `storeBuild` checks the file list, before the import writes anything. */
 export async function readSourceBuild(roundDir: string): Promise<SourceBuild | null> {
   const storybookDir = path.join(roundDir, STORYBOOK_DIR);
   const held = await lstat(storybookDir).catch(() => null);
@@ -112,8 +112,6 @@ export async function readSourceBuild(roundDir: string): Promise<SourceBuild | n
   if (!held.isDirectory()) refuse(`${STORYBOOK_DIR}/ is a symlink or not a directory`);
   const bytes = await readSidecarBytes(storybookDir);
   const build = parseSidecar(bytes);
-  const problems = buildListProblems(build.files);
-  if (problems.length > 0) refuse(problems.join("; "));
   const staticDir = path.join(storybookDir, STORYBOOK_STATIC);
   if (!(await lstat(staticDir).catch(() => null))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${STORYBOOK_STATIC}/ is missing, a symlink or not a directory`);
   return { bytes, build, buildId: buildIdOf(build.files), staticDir };
