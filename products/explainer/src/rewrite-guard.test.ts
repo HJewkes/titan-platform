@@ -60,6 +60,11 @@ describe("guardBeat", () => {
       expect(rules(beatWith({}, REAL), after)).not.toContain("number-vague");
     });
 
+    it("allows a vague word when no number left the line", () => {
+      const after = { spoken: "The desk server flags some of the scans. About 60 were real. The ledger keeps them.", labelsAdded: [] };
+      expect(rules(beatWith({}, REAL), after)).not.toContain("number-vague");
+    });
+
     it("does not count a vague word the original already had", () => {
       const before = beatWith({}, "The desk server flags some scans. About 60 were real. The ledger keeps them.");
       const after = { spoken: "The desk server flags some scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
