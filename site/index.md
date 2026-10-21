@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: titan-platform
-  text: Shared parts for agentic tools
-  tagline: <!-- generated:package-count start -->58<!-- generated:package-count end --> packages in a strict acyclic DAG, and the products composed thinly on top of them.
+  text: A multi-agent software factory, and the shared packages it is built from.
+  tagline: <!-- generated:package-count start -->58<!-- generated:package-count end --> packages and <!-- generated:test-file-count start -->1874<!-- generated:test-file-count end --> test files, with the products composed from them.
   actions:
     - theme: brand
       text: Get started
@@ -17,17 +17,17 @@ hero:
       link: /guides/binding-pattern
 
 features:
-  - title: Storage without a shared database
-    details: A kit of SQLite table factories — bi-temporal edges, contentless FTS5, watermarks, content-addressed caches — that each product installs into its own file.
+  - title: Each tool keeps its own data
+    details: Small building blocks for storing data in SQLite, with history and search included. Each product installs them into its own file.
     link: /reference/store-sqlite
-  - title: One command, every surface
-    details: Define a command once with zod and project it onto a CLI, an MCP tool list, and an HTTP route. No parallel schemas.
+  - title: Write a command once
+    details: Define a command a single time and get a command line, an MCP tool list, and an HTTP route from it.
     link: /reference/registry
-  - title: Retrieval that degrades
-    details: Full-text, vector, and graph retrievers fused with RRF. A retriever that throws lowers recall and reports itself; it never breaks search.
+  - title: Search that keeps working
+    details: Keyword, meaning-based, and link-based search are combined. If one of them fails, results get thinner and the failure is reported, but search still answers.
     link: /reference/retrieval
-  - title: Transcripts as a graph
-    details: Turn Claude Code's JSONL transcripts into sessions, turns, tokens, files, branches, and PRs, kept current from byte watermarks.
+  - title: Past sessions you can search
+    details: Claude Code transcripts become sessions, turns, tokens, files, branches, and PRs, kept current as the transcripts grow.
     link: /reference/session-graph
 ---
 
@@ -74,3 +74,24 @@ rules, the scaffold, the changeset requirement, and the release flow.
 | To see the whole DAG working end to end | [Case study: the session miner](/guides/session-miner) |
 | To run the factory, Shepherd, or another product | [Running the products](/guides/#running-the-products) |
 | To add a package or cut a release | [Working in the repo](/guides/contributing) |
+
+## Under the hood
+
+The terms the rest of the site uses, and where they come from.
+
+- **Strict acyclic DAG.** Packages sit in tiers, and a package may import only its own tier or
+  a lower one, so the dependency graph has no cycles. See [Architecture](/guides/architecture).
+- **Bi-temporal edges.** The storage kit records each link between two things with both the
+  time it was true and the time it was recorded, so history can be queried as it was known.
+  See [store-sqlite](/reference/store-sqlite).
+- **Contentless FTS5.** Full-text indexes are SQLite FTS5 tables that hold the search index
+  but not a second copy of the text. Watermarks and content-addressed caches round out the
+  kit.
+- **RRF.** Reciprocal rank fusion merges the ranked lists from the full-text, vector, and
+  graph retrievers into one list. A retriever that throws lowers recall and reports itself;
+  it never breaks search. See [retrieval](/reference/retrieval).
+- **Zod to every surface.** A command is one zod definition that the registry projects onto a
+  CLI, an MCP tool list, and an HTTP route, with no parallel schemas. See
+  [registry](/reference/registry).
+- **Byte watermarks.** The session graph tracks how far into each JSONL transcript it has
+  read, so it only reads what was appended. See [session-graph](/reference/session-graph).

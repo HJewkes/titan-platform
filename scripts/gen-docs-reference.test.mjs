@@ -39,7 +39,7 @@ describe("collect", () => {
 
 const MARKERS = {
   "README.md": "<!-- generated:package-count start -->99<!-- generated:package-count end --> reusable packages.\n",
-  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages.\n",
+  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages in <!-- generated:test-file-count start -->999<!-- generated:test-file-count end --> test files.\n",
   "site/guides/architecture.md": "<!-- generated:arch-graph start --><!-- generated:arch-graph end -->\n\n<!-- generated:arch-leaves start --><!-- generated:arch-leaves end -->\n\n<!-- generated:arch-products start --><!-- generated:arch-products end -->\n\nComposes <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
   "site/guides/index.md": "Case study: <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
 };
@@ -113,6 +113,25 @@ describe("architecture page generation", () => {
     const counts = ["README.md", "site/index.md"].map((path) => page(root, path).match(/start -->(\w+)<!--/)[1]);
 
     expect(counts).toEqual(["2", "2"]);
+  });
+
+  it("counts test files under the workspace globs and skips build output and installed dependencies", () => {
+    const root = workspaceWithNewUnit();
+    const touch = (path) => {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), "");
+    };
+    touch("packages/alpha/src/a.test.ts");
+    touch("packages/alpha/src/nested/b.test.tsx");
+    touch("products/session-miner/test/c.test.mjs");
+    touch("packages/alpha/src/not-a-test.ts");
+    touch("packages/alpha/dist/d.test.js");
+    touch("packages/alpha/node_modules/dep/e.test.js");
+    touch("scripts/outside.test.mjs");
+
+    const text = page(root, "site/index.md");
+
+    expect(text).toContain("<!-- generated:test-file-count start -->3<!-- generated:test-file-count end -->");
   });
 
   it("reports a package that has no family on the families page", () => {
