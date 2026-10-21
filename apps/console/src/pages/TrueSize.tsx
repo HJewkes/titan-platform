@@ -35,7 +35,7 @@ export function scaleCandidateKey(variantKey: string, arg: string, candidate: Ca
 }
 
 /** "64px · 5.9% of 1080": a size and the share of the frame's height it takes. */
-export function sizeLabel(px: number, frameHeight: number): string {
+function sizeLabel(px: number, frameHeight: number): string {
   return `${Number(px.toFixed(1))}px · ${((px / frameHeight) * 100).toFixed(1)}% of ${frameHeight}`;
 }
 
