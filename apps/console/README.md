@@ -401,8 +401,11 @@ writes nothing. The verb is local only: no `/rpc` command imports a round.
 
 - **Validated as the console reads it.** `round.json` and `feedback.json` must pass the parsers
   `rounds.list` and the owner queue use. `frames/frames.json` must carry the sha256 of that
-  `round.json` and its unit and round. Only the files it lists (`file`, `base`, `diff`, `after`)
-  are copied, each sha256-checked through the `rounds.frame` reader.
+  `round.json` and its unit and round. Only the files it lists (`file`, `base`, `diff`, `after`,
+  and a record's optional `targets` element map) are copied, each sha256-checked through the
+  `rounds.frame` reader: a PNG as a relative `.png` path of at most 8 MiB, a `targets` file as a
+  relative `.json` path of at most 256 KiB, neither through a symlink nor out of the round dir. A
+  record that names no `targets` imports as before.
 - **Every merge offer is bound.** A pick-one with an option matching `^Merge #N` or `Ship`, or a
   signsOff naming `#N at <sha>`, must carry `merge: {repo, pr, headSha, ship}`. `repo` is the full
   `owner/repo`; `headSha` is the 40-character head from `gh pr view <N> --repo <owner/repo> --json
