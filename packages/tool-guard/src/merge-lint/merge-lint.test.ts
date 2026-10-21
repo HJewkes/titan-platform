@@ -383,3 +383,28 @@ describe("the merge rule's own docs do not flag themselves", () => {
     expect(result.findings).toEqual([]);
   });
 });
+
+describe("the repo docs carry the merge rule and stay lint-clean", () => {
+  const repoRoot = join(here, "..", "..", "..", "..");
+  const claudeMd = readFileSync(join(repoRoot, "CLAUDE.md"), "utf-8");
+  const shepherdGuide = readFileSync(join(repoRoot, "site", "guides", "shepherd.md"), "utf-8");
+
+  it("CLAUDE.md states the I5 rule and names the lint and its allowlist", () => {
+    expect(claudeMd).toContain("Agents never call merge; only logged paths merge");
+    expect(claudeMd).toContain("pnpm merge:lint");
+    expect(claudeMd).toContain(".github/merge-lint.json");
+  });
+
+  it("the shepherd guide states the R27 guard", () => {
+    expect(shepherdGuide).toContain("only guard on R27");
+  });
+
+  it("neither doc produces a merge-lint finding", () => {
+    const files = [
+      { path: "CLAUDE.md", text: claudeMd },
+      { path: "site/guides/shepherd.md", text: shepherdGuide },
+    ];
+
+    expect(scan(files, rulesWith(), { scoped: false }).findings).toEqual([]);
+  });
+});
