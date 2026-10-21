@@ -65,7 +65,7 @@ describe("review wake brief: the PR's review comments", () => {
   });
 
   it.each([
-    ["no comments", []],
+    ["no comments"],
     ["only resolved comments", [comment("alice", "src/a.ts", 1, "Done.", true)]],
   ])("leaves the first and the structural brief byte for byte as before with %s", async (_label, comments) => {
     const { wake } = scene(comments);
@@ -373,6 +373,31 @@ describe("wake brief: who merges the base branch", () => {
 
     expect(reason).toContain("Merge the base branch from origin");
     expect(reason).not.toContain(NO_BASE_MERGE);
+  });
+});
+
+describe("conflict wake brief: how the fixer brings in the base", () => {
+  const RECIPE = "`git fetch origin`, `git merge origin/<base>`";
+  const CAP = Array.from({ length: 1000 }, (_, i) => `gen/file-${i}.ts`);
+  const shapes: Array<[string, string[], string[]]> = [
+    ["generated-only", ["CAPABILITIES.md"], ["CAPABILITIES.md"]],
+    ["mixed with registries", ["CAPABILITIES.md", "src/a.ts"], ["CAPABILITIES.md", "src/a.ts"]],
+    ["ordinary files", ["src/a.ts"], ["src/a.ts"]],
+    ["no shared files", ["src/a.ts"], ["src/b.ts"]],
+    ["truncated comparison", ["src/a.ts"], CAP],
+  ];
+
+  it.each(shapes)("gives the merge recipe and never names a rebase for %s", async (_name, prPaths, basePaths) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    fake.prFiles.set(pr.number, prPaths.map((path) => ({ path, status: "modified" as const })));
+    fake.compares.set(`${H1}...${pr.baseRef}`, { mergeBaseSha: fakeSha("base"), files: basePaths });
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), { kind: "conflict", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(reason).toContain(RECIPE);
+    expect(reason).toContain("plain `git push`");
+    expect(`${reason}\n${payload}`.toLowerCase()).not.toContain("rebase");
   });
 });
 
