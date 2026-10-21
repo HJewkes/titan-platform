@@ -46,10 +46,18 @@ export function useCoarsePointer(): boolean {
 const LAYER = "absolute inset-0";
 const PLACING = "cursor-crosshair rounded outline-dashed outline-2 outline-brand-primary";
 
+/** The size of what the pins sit on, in its own px: a PNG's natural pixels, or a composed frame's declared size. */
+type SurfaceSize = { width: number; height: number };
+
 interface PinLayerProps {
   pins: FramePins;
-  image: RefObject<HTMLImageElement | null>;
+  /** Read at each tap; undefined until the surface has a size. */
+  size: () => SurfaceSize | undefined;
 }
+
+/** An image's natural pixels, once it has loaded. */
+export const naturalSize = (image: RefObject<HTMLImageElement | null>) => (): SurfaceSize | undefined =>
+  image.current ? { width: image.current.naturalWidth, height: image.current.naturalHeight } : undefined;
 
 /**
  * The frame's pins drawn over its image, each at its share of the width and height so any scale shows it in place. In
@@ -68,7 +76,7 @@ function TargetedPlacingLayer({ roundId, ...props }: PinLayerProps & { roundId: 
   return <PlacingLayer {...props} boxes={read.data?.boxes} />;
 }
 
-function PlacingLayer({ pins, image, boxes }: PinLayerProps & { boxes?: readonly TargetBox[] }): ReactNode {
+function PlacingLayer({ pins, size, boxes }: PinLayerProps & { boxes?: readonly TargetBox[] }): ReactNode {
   const down = useRef<{ clientX: number; clientY: number } | null>(null);
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     // After a touch the browser sends a mousedown, which would take focus off the new pin's note before the owner types.
@@ -78,9 +86,9 @@ function PlacingLayer({ pins, image, boxes }: PinLayerProps & { boxes?: readonly
   const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
     const start = down.current;
     down.current = null;
-    const img = image.current;
-    if (start === null || img === null || !isTap(start, event)) return;
-    const surface = pngSurface(pins.widths, { width: img.naturalWidth, height: img.naturalHeight }, boxes);
+    const natural = size();
+    if (start === null || natural === undefined || !isTap(start, event)) return;
+    const surface = pngSurface(pins.widths, natural, boxes);
     if (surface) pins.place(pointerPin(event, event.currentTarget.getBoundingClientRect(), surface));
   };
   return (
