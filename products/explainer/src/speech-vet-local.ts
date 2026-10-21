@@ -1,6 +1,6 @@
 import type { SentenceVet } from "./speech-vet-gate.js";
 
-export const DEFAULT_VET_VOICE = "af_heart";
+const DEFAULT_VET_VOICE = "af_heart";
 
 /**
  * speech-vet's `vet` over in-process Kokoro and Whisper on the host's speech runtime. Nothing costs money, but the
