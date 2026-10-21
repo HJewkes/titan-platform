@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS } from "./eval-l0.js";
-import { REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type RegisterMetric } from "./lint-register.js";
+import {
+  REGISTER_CHECK_IDS,
+  REGISTER_MEASURES,
+  REGISTER_METRICS,
+  numberSpans,
+  registerCheck,
+  spokenText,
+  triadSpans,
+  deviceSpans,
+  type DeviceMetric,
+  type RegisterMetric,
+} from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const measure = (metric: RegisterMetric, ...spoken: string[]): number | undefined => REGISTER_MEASURES[metric](spokenText(spoken));
@@ -209,5 +220,49 @@ describe("Q-V11 register rows", () => {
     const unpunctuated = Array.from({ length: 54 }, () => "word").join(" ");
 
     expect(rows(unpunctuated, unpunctuated, unpunctuated).get("register:sentence-cv")).toMatchObject({ value: 0, pass: true });
+  });
+});
+
+describe("numberSpans and triadSpans", () => {
+  const LINES = [
+    "It took two hundred and five runs and 3 retries.",
+    "We saw 12 ms of lag, then one more stall.",
+    "The desk, the ledger and the scanner all agree.",
+    "Pick red, green or blue, then the queue, the worker and the log.",
+    "Nothing here counts.",
+  ];
+
+  it("finds as many spans as the rows count, on every line", () => {
+    for (const line of LINES) {
+      const words = spokenText([line]).words.length;
+
+      expect(numberSpans(line).length).toBeCloseTo(((measure("numbers", line) ?? 0) * words) / 1000);
+      expect(triadSpans(line).length).toBeCloseTo(((measure("triads", line) ?? 0) * words) / 1000);
+    }
+  });
+
+  it("returns each span's text at its index", () => {
+    const line = LINES[3]!;
+    const spans = triadSpans(line);
+
+    expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
+    expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
+  });
+});
+
+describe("deviceSpans", () => {
+  const LINES: readonly (readonly [DeviceMetric, string])[] = [
+    ["colon-reveals", "The desk keeps one thing: the rows. Nothing else stays."],
+    ["not-x-tails", "The ledger keeps the rows, not by hand. It never asks twice."],
+    ["semicolons", "The desk checks a scan; the ledger keeps it. Then it waits."],
+    ["lets", "Let's follow one scan. We let us see the ledger."],
+  ];
+
+  it.each(LINES)("finds as many %s spans as the row counts", (metric, line) => {
+    const text = spokenText([line]);
+    const counted = REGISTER_MEASURES[metric](text) ?? 0;
+    const perScript = metric === "not-x-tails" ? counted : (counted * text.words.length) / 1000;
+    expect(deviceSpans(metric, text.text).length).toBeGreaterThan(0);
+    expect(deviceSpans(metric, text.text)).toHaveLength(Math.round(perScript));
   });
 });
