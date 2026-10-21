@@ -220,7 +220,7 @@ function packageCount(entries) {
 const WORKSPACE_ROOTS = ["packages", "products", "apps", "deploy/hub"];
 const UNTRACKED_DIRS = new Set(["node_modules", "dist", "coverage"]);
 
-function countTestFiles(dir) {
+export function countTestFiles(dir) {
   if (!existsSync(dir)) return 0;
   let count = 0;
   for (const name of readdirSync(dir)) {
@@ -232,9 +232,14 @@ function countTestFiles(dir) {
   return count;
 }
 
+/** Floored to the hundred so the landing page changes only when the count crosses one, not on every PR that adds a test. */
+export function roundedTestCount(count) {
+  return `${(Math.floor(count / 100) * 100).toLocaleString("en-US")}+`;
+}
+
 /** Test files under the workspace globs; build output and installed dependencies are not source. */
 function testFileCount(base) {
-  return String(WORKSPACE_ROOTS.reduce((sum, dir) => sum + countTestFiles(join(base, dir)), 0));
+  return roundedTestCount(WORKSPACE_ROOTS.reduce((sum, dir) => sum + countTestFiles(join(base, dir)), 0));
 }
 
 /** Paragraph-level blocks sit on their own lines; `miner-count`, `package-count` and `test-file-count` sit inside a sentence. */

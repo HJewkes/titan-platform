@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKED_PAGES, collect, outputs, problems } from "./gen-docs-reference.mjs";
+import { MARKED_PAGES, collect, outputs, problems, roundedTestCount, countTestFiles } from "./gen-docs-reference.mjs";
 
 function fixtureRoot() {
   const root = mkdtempSync(join(tmpdir(), "gen-docs-reference-"));
@@ -129,9 +129,12 @@ describe("architecture page generation", () => {
     touch("packages/alpha/node_modules/dep/e.test.js");
     touch("scripts/outside.test.mjs");
 
-    const text = page(root, "site/index.md");
+    expect(["packages", "products"].reduce((sum, dir) => sum + countTestFiles(join(root, dir)), 0)).toBe(3);
+    expect(page(root, "site/index.md")).toContain("<!-- generated:test-file-count start -->0+<!-- generated:test-file-count end -->");
+  });
 
-    expect(text).toContain("<!-- generated:test-file-count start -->3<!-- generated:test-file-count end -->");
+  it("floors the test-file count to the hundred with a thousands separator and a plus sign", () => {
+    expect([1874, 1899, 1900].map(roundedTestCount)).toEqual(["1,800+", "1,800+", "1,900+"]);
   });
 
   it("reports a package that has no family on the families page", () => {
