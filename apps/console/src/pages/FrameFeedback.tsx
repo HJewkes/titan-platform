@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { Button, ButtonText, Input, Typography } from "@titan-design/react-ui";
-import { EMPTY_DRAFT, VERDICTS, toggledVerdict, verdictForKey, type FrameDraft, type Verdict } from "./frame-feedback.js";
+import { Button, ButtonText, Input, Pill, Typography, VStack } from "@titan-design/react-ui";
+import type { RoundNotes } from "../../server/rounds.js";
+import { EMPTY_DRAFT, VERDICTS, draftsFromSent, pinNumber, toggledVerdict, verdictForKey, type FrameDraft, type Verdict } from "./frame-feedback.js";
 import { typedInto } from "./typed-into.js";
 
 /** What the round's keys act on: digits answer a question, letters judge a frame, never the other way round. */
@@ -24,10 +25,11 @@ function useFrameKeys(active: ActiveTarget | undefined, onVerdict: (key: string,
 
 /**
  * Each frame's draft verdict and comment, which frame is active, and the setters its controls and keys call. Locked
- * (sent or sending), every one of them is a no-op and no frame is active, so nothing changes what was sent.
+ * (sent or sending), every one of them is a no-op and no frame is active, so nothing changes what was sent. A sent
+ * round's `frames` seed the drafts and carry the pins, so a reload shows what was sent.
  */
-export function useFrameFeedback(active: ActiveTarget | undefined, setActive: (target: ActiveTarget) => void, locked: boolean) {
-  const [drafts, setDrafts] = useState<Record<string, FrameDraft>>({});
+export function useFrameFeedback(active: ActiveTarget | undefined, setActive: (target: ActiveTarget) => void, locked: boolean, sent?: RoundNotes["frames"]) {
+  const [drafts, setDrafts] = useState<Record<string, FrameDraft>>(() => draftsFromSent(sent));
   const update = useCallback(
     (key: string, change: (draft: FrameDraft) => Partial<FrameDraft>) => {
       if (!locked) setDrafts((current) => ({ ...current, [key]: { ...(current[key] ?? EMPTY_DRAFT), ...change(current[key] ?? EMPTY_DRAFT) } }));
@@ -39,7 +41,7 @@ export function useFrameFeedback(active: ActiveTarget | undefined, setActive: (t
   const setComment = useCallback((key: string, comment: string) => update(key, () => ({ comment })), [update]);
   const activateFrame = useCallback((key: string) => (locked ? undefined : setActive({ kind: "frame", key })), [locked, setActive]);
   useFrameKeys(locked ? undefined : active, setVerdict);
-  return { drafts, activeFrame: !locked && active?.kind === "frame" ? active.key : undefined, activateFrame, pressVerdict, setComment, locked };
+  return { drafts, sent, activeFrame: !locked && active?.kind === "frame" ? active.key : undefined, activateFrame, pressVerdict, setComment, locked };
 }
 
 type FrameFeedbackState = ReturnType<typeof useFrameFeedback>;
@@ -86,6 +88,7 @@ interface FrameControlsProps {
 
 function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps): ReactNode {
   const draft = feedback.drafts[frameKey] ?? EMPTY_DRAFT;
+  if (feedback.locked) return <SentFrameFeedback frameKey={frameKey} draft={draft} pins={feedback.sent?.[frameKey]?.annotations ?? []} />;
   return (
     <div className="flex flex-col gap-1" inert={feedback.locked} data-testid={`frame-feedback-${frameKey}`}>
       <div role="group" aria-label={`Verdict on ${label}`} className="flex flex-wrap items-center gap-1">
@@ -102,6 +105,35 @@ function FrameControls({ frameKey, label, active, feedback }: FrameControlsProps
       <Input multiline numberOfLines={2} label="Frame comment (optional)" accessibilityLabel={`Comment on frame ${label}`} value={draft.comment} onChangeText={(text: string) => feedback.setComment(frameKey, text)} />
     </div>
   );
+}
+
+type SentPin = NonNullable<RoundNotes["frames"]>[string]["annotations"][number];
+
+/** A locked frame's feedback as sent: the verdict a pill, the comment as typed, each pin a numbered line. Nothing to edit. */
+function SentFrameFeedback({ frameKey, draft, pins }: { frameKey: string; draft: FrameDraft; pins: readonly SentPin[] }): ReactNode {
+  const comment = draft.comment.trim();
+  if (draft.verdict === null && comment === "" && pins.length === 0) return null;
+  const verdict = VERDICTS.find((each) => each.verdict === draft.verdict);
+  return (
+    <VStack gap={1} testID={`frame-feedback-sent-${frameKey}`}>
+      {verdict ? (
+        <div className="self-start">
+          <Pill variant="subtle" size="xs" tone={VERDICT_COLOR[verdict.verdict]}>{verdict.label}</Pill>
+        </div>
+      ) : null}
+      {comment ? <Typography variant="body2">{comment}</Typography> : null}
+      {pins.map((pin) => (
+        <Typography key={pin.id} variant="caption" color="secondary">{pinLine(frameKey, pin)}</Typography>
+      ))}
+    </VStack>
+  );
+}
+
+/** Pins are drawn on the frame once pin placement lands (TP-3773 S4); until then each reads as its number, place and note. */
+function pinLine(frameKey: string, { id, xPct, yPct, note, target }: SentPin): string {
+  const place = `${Math.round(xPct * 100)}%, ${Math.round(yPct * 100)}%`;
+  const on = target?.testId ? ` on #${target.testId}` : "";
+  return `Pin ${pinNumber(frameKey, id)} at ${place}${on}: ${note}`;
 }
 
 const VERDICT_COLOR = { chosen: "success", rejected: "error", maybe: "warning" } as const satisfies Record<Verdict, string>;
