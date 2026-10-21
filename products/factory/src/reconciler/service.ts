@@ -1,5 +1,5 @@
 import type { Logger } from "@titan-design/daemon";
-import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore } from "@titan-design/github";
+import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { appendEvent, type NewEvent } from "../event-log/event-log.js";
 import { startSweep, type Sweep } from "../sweep.js";
@@ -36,12 +36,15 @@ type DisagreeClass = "stale-read" | "field-parity" | "main-ancestry-lost" | "unc
 export interface Observation {
   events: BackstopEvent[];
   disagreements: { class: DisagreeClass; subject: string; detail?: string }[];
-  /** `main`: the sha scanned to, held behind a commit whose checks still run so the next read sees them finish; `done`: the newest closed-PR `updatedAt` read. */
-  cursor: { main: string; done: string };
+  /**
+   * `main`: the sha scanned to, held behind a commit whose checks still run so the next read sees them finish; `done`: the
+   * newest closed-PR `updatedAt` read; `rulesets`: the id to `updated_at` map as JSON. An absent stream keeps its stored value.
+   */
+  cursor: { main?: string; done?: string; rulesets?: string };
 }
 
-/** S3's pure step (TP-3429): a snapshot against the repo's cursor, as appends and the next cursor. */
-export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor) => Observation;
+/** S3's pure step (TP-3429): a snapshot and S2's ruleset read against the repo's cursor, as appends and the next cursor. */
+export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor, rulesets?: RulesetList) => Observation;
 
 /** What the bot side supplies (TP-3431 wires the real ones); no other GitHub handle reaches the service. */
 export interface BotPorts {

@@ -187,7 +187,7 @@ describe("observe done and ruleset cursors", () => {
   });
 
   it("emits RulesChanged only for a ruleset whose stamp moved since the cursor", () => {
-    const cursor: RepoCursor = { rulesets: { value: JSON.stringify({ 9: AT, 10: AT }), at: AT } };
+    const cursor: RepoCursor = { main: { value: CURSOR, at: AT }, rulesets: { value: JSON.stringify({ 9: AT, 10: AT }), at: AT } };
 
     const observation = observeWith(guardAnswering(CONFIRMED), snapshot({ main: { tip: CURSOR, commits: [] } }), cursor, rulesetList({ 9: AT, 10: "2027-01-15T07:30:00Z" }));
 
@@ -196,7 +196,7 @@ describe("observe done and ruleset cursors", () => {
   });
 
   it.each([{ notModified: true }, { notModified: false, unreadable: true }, undefined] as const)("emits no RulesChanged and keeps the ruleset cursor for %o", (list) => {
-    const observation = observeWith(guardAnswering(CONFIRMED), snapshot({ main: { tip: CURSOR, commits: [] } }), {}, list);
+    const observation = observeWith(guardAnswering(CONFIRMED), snapshot({ main: { tip: CURSOR, commits: [] } }), { main: { value: CURSOR, at: AT } }, list);
 
     expect(observation.events).toEqual([]);
     expect(observation.cursor).not.toHaveProperty("rulesets");
