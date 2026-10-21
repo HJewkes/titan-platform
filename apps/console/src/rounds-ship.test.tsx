@@ -12,6 +12,9 @@ import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
 
 const SHIP = "ship-tile-r1";
+// Each test renders the whole App and presses through it: about 0.5 s alone, and a loaded full-suite CI run stretched
+// one past vitest's 5 s default (TP-3866). The assertions, not the clock, are what fail on a wrong answer.
+const RENDER_TIMEOUT_MS = 30_000;
 const HEAD = "89abcdef0123456789abcdef0123456789abcdef";
 const SHIP_RECOMMENDATION = { answer: "Ship", rationale: "The stripe moved as the change intends and nothing else shifted.", confidence: 0.8, by: "fixture-agent" };
 const FRAMES = [
@@ -102,7 +105,7 @@ const panelLabels = (key: string): string[] => within(screen.getByTestId(`montag
 const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
-describe("the Ship view", () => {
+describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
   it("renders a merge-bound round as the Ship view with its PR head, not the design notice", async () => {
     await renderShip();
 
@@ -224,7 +227,7 @@ describe("the Ship view", () => {
   });
 });
 
-describe("answering a Ship round", () => {
+describe("answering a Ship round", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
   it("sends Ship bound to the question's head sha and the round.json shown", async () => {
@@ -326,7 +329,7 @@ describe("answering a Ship round", () => {
   });
 });
 
-describe("answering a Ship round with side questions", () => {
+describe("answering a Ship round with side questions", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
   /** The td850 shape: three side questions, then the Ship decision last. */
@@ -412,7 +415,7 @@ describe("answering a Ship round with side questions", () => {
   });
 });
 
-describe("Ship while feedback is open (TP-3741)", () => {
+describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
   const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
@@ -464,7 +467,7 @@ describe("Ship while feedback is open (TP-3741)", () => {
   });
 });
 
-describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
+describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const stake = (): HTMLElement => screen.getByTestId("ship-stake-badge-follow-up");
   const PROMPT = "File the badge colour as a follow-up?";
@@ -537,7 +540,7 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", () => {
   });
 });
 
-describe("a Ship round that shares the round answer state (TP-3766)", () => {
+describe("a Ship round that shares the round answer state (TP-3766)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const follows = (earlier: HTMLElement, later: HTMLElement): boolean => (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
@@ -608,7 +611,7 @@ describe("a Ship round that shares the round answer state (TP-3766)", () => {
   });
 });
 
-describe("a sent Ship round read back after a reload (TP-3767)", () => {
+describe("a sent Ship round read back after a reload (TP-3767)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
   const sent = {
     status: "sent" as const,
@@ -640,7 +643,7 @@ describe("a sent Ship round read back after a reload (TP-3767)", () => {
   });
 });
 
-describe("frame feedback on a Ship round (TP-3773 S6b)", () => {
+describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
   const verdict = (key: string, label: string): HTMLElement => within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label });
   const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
