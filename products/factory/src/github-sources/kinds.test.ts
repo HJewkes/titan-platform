@@ -41,7 +41,7 @@ describe("declared kind sets (TP-3099 I3)", () => {
 
 describe("logged kind sets after one synthetic scenario (TP-3099 I3)", () => {
   it("are the same under each mode", async () => {
-    const [webhook, polling] = await Promise.all(SOURCES_MODES.map(runScenario));
+    const [webhook = new Set(), polling] = await Promise.all(SOURCES_MODES.map(runScenario));
 
     expect(webhook.size).toBeGreaterThan(0);
     expect(polling).toEqual(webhook);
