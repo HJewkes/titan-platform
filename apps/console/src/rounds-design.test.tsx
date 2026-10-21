@@ -4,9 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { FIXTURE_ROUNDS as source, stagedRound } from "../server/round-fixtures.js";
+import { FIXTURE_ROUNDS as source, sentRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
 import { App } from "./App.js";
@@ -362,7 +360,6 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
   });
 
   it("shows a sent round's frame verdict, comment and pin read-only after a reload", async () => {
-    const staged = await stagedRound(DESIGN, DESIGN, JSON.parse(await readFile(path.join(source.dir, DESIGN, "round.json"), "utf8")));
     const echo = { verdict: null, comment: "", annotations: [] };
     const pin = { id: "beacon-error-1", width: 375, x: 90, y: 30, xPct: 0.25, yPct: 0.5, target: { testId: "beacon-dot" }, note: "Too red." };
     const variants = [
@@ -371,7 +368,7 @@ describe("a design round's frame verdicts and comments (TP-3773)", () => {
       { key: "beacon-idle", ...echo },
     ];
     const feedback = { schema: "titan-review/feedback@1", unit: "beacon-states", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-02T10:00:00.000Z", answers: [], variants, general: "" };
-    await writeFile(path.join(staged.source.dir, DESIGN, "feedback.json"), JSON.stringify(feedback));
+    const staged = await sentRound(DESIGN, feedback);
     onTestFinished(staged.remove);
     await renderDesign({ rounds: staged.source });
 

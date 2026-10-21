@@ -52,7 +52,7 @@ export const roundNotes = z.object({
 
 export type RoundNotes = z.infer<typeof roundNotes>;
 export type SentAnswer = z.infer<typeof sentAnswer>;
-export type SentFrame = z.infer<typeof sentFrame>;
+type SentFrame = z.infer<typeof sentFrame>;
 
 const sentAnswerOf = ({ pick, picks, value, text, revisionRequested, optionNotes, recommendationSeen }: Feedback["answers"][number]): SentAnswer => ({
   ...(pick !== undefined && { pick }),
