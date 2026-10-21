@@ -182,6 +182,9 @@ describe("backquote spans in a subscript bash may join", () => {
  */
 const BUDGET_MS = 2500;
 
+/** The budget is thread CPU, which a loaded runner stretches in wall time past vitest's 5 s default; the CPU check is what fails. */
+const WALL_TIMEOUT_MS = 12 * BUDGET_MS;
+
 /** Far above the characters a linear scan reads per opener, far below the source length a quadratic one reads. */
 const WORK_PER_OPENER = 200;
 
@@ -237,7 +240,7 @@ describe("a subscript holding many span openers", () => {
 
     expect(decision).toBe("deny");
     expect(cpuMs).toBeLessThan(BUDGET_MS);
-  });
+  }, WALL_TIMEOUT_MS);
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {
     // A count of characters read measures work without a clock a loaded runner skews.

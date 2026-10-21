@@ -3,7 +3,7 @@ import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { optionKey } from "./frame-link.js";
-import { VariantFrame, type FrameMedia } from "./TrueSize.js";
+import { VariantFrame, pinnableFrame, type FrameMedia } from "./TrueSize.js";
 
 /** What a question needs to draw the frames it names: the round, each variant's label and sizing, and which keys have an image. */
 interface RoundFrames {
@@ -78,6 +78,12 @@ export function useFrameSource(): { roundId: string; loadable: (key: string) => 
   return frames && { roundId: frames.roundId, loadable: (key) => frames.loadable.has(key) };
 }
 
+/** How the round's variant `key` asks to be sized; undefined outside a provider. */
+export function useFrameMedia(): (key: string) => FrameMedia | undefined {
+  const frames = useContext(RoundFramesContext);
+  return (key) => frames?.media.get(key);
+}
+
 interface RoundVariantFrameProps {
   frameKey: string;
   alt: string;
@@ -127,7 +133,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
         {keys.map((key) => {
           const label = frames.labels.get(key) ?? key;
           return (
-            <FrameFigure key={key} frameKey={key} label={label} pinnable={frames.loadable.has(key)} id={frameAnchor(question.id, key)}>
+            <FrameFigure key={key} frameKey={key} label={label} pinnable={pinnableFrame(frames.loadable.has(key), frames.media.get(key))} id={frameAnchor(question.id, key)}>
               <HStack gap={2} align="center" justify="between">
                 <Typography variant="subtitle2">{label}</Typography>
                 <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>
