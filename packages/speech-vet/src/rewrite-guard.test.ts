@@ -91,8 +91,8 @@ describe("guardRewrite empty", () => {
 });
 
 describe("contentTerms", () => {
-  // Golden values recorded from explainer's lint-text contentTerms on these lines.
-  // Catches: the moved copy drifting from the original.
+  // Golden values for the inflection fold; "twice" differs from explainer's original because of the final-e strip.
+  // Catches: the stemmer changing without a deliberate update here.
   it.each([
     ["The readers kept reading every flomber chapter twice.", ["read", "kept", "flomb", "twic"]],
     [
@@ -112,6 +112,10 @@ describe("contentTerms", () => {
     ["frees", "free"],
     ["reader", "reads"],
     ["reading", "reads"],
+    ["need", "needs"],
+    ["feed", "feeds"],
+    ["king", "kings"],
+    ["ring", "rings"],
   ])("folds %s and %s to one term", (a, b) => {
     expect([...contentTerms(a)]).toEqual([...contentTerms(b)]);
   });

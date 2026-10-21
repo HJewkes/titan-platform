@@ -159,8 +159,9 @@ const STOPWORDS = new Set(
 const SUFFIX = /(ing|ers|er|ed|es|s)$/;
 function stem(word: string): string {
   const cut = word.replace(SUFFIX, "");
-  const base = cut === word ? word.replace(/e$/, "") : cut;
-  return (base || word).replace(/y$/, "i");
+  // A root that ends like a suffix ("need", "king") keeps its letters, so it still meets its plural.
+  const base = cut.length >= 3 && cut !== word ? cut : word.replace(/e$/, "");
+  return base.replace(/y$/, "i");
 }
 
 /** Lower-cased, stemmed content words, so "the reader" and "reads it" share a term. */
