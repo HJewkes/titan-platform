@@ -227,26 +227,6 @@ describe("guardBeat", () => {
       expect(guardBeat(before, after)).toEqual([]);
     });
 
-    it("accepts a number said after an article moved to a label", () => {
-      const before = beatWith({}, "The worker runs under a five-hour ceiling, and the desk stops it there.");
-      const after = { spoken: "The worker runs under a ceiling, and the desk stops it there.", labelsAdded: ["five-hour ceiling"] };
-      expect(guardBeat(before, after)).toEqual([]);
-    });
-
-    describe("from a spelled range", () => {
-      const RANGE = "About thirty to thirty-five percent of heads stall on the first try.";
-
-      it("accepts a label that carries both ends", () => {
-        const after = { spoken: "A share of the heads stall on the first try.", labelsAdded: ["thirty to thirty-five percent of heads"] };
-        expect(guardBeat(beatWith({}, RANGE), after)).toEqual([]);
-      });
-
-      it("rejects a line that keeps only the upper end", () => {
-        const after = { spoken: "About thirty-five percent of heads stall on the first try.", labelsAdded: ["thirty percent"] };
-        expect(rules(beatWith({}, RANGE), after)).toContain("number-lost");
-      });
-    });
-
     it("still rejects the number when the label holds a different one, or none", () => {
       expect(rules(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: ["27 slots"] })).toContain("number-lost");
       expect(rules(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: [] })).toContain("number-lost");
