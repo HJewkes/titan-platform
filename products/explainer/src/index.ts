@@ -274,6 +274,7 @@ export {
 } from "./lint-register.js";
 export { numberSpans, triadSpans, type TextSpan } from "./lint-register.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
+export { hasSpokenDigits, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
   VisualRouterSchema,
