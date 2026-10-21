@@ -3,7 +3,7 @@ import { contentTerms, sentencesOf } from "./lint-text.js";
 import { DEVICE_METRICS, deviceSpans, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
-import { numberForm, remapCuesInPlace } from "./spoken-numbers.js";
+import { numberForms, remapCuesInPlace } from "./spoken-numbers.js";
 
 
 export type BeatRejectionRule =
@@ -85,8 +85,8 @@ function surplus(left: readonly string[], right: readonly string[]): string[] {
   });
 }
 
-/** Each number mention of a line in one form, spelled or in digits: "twenty-eight" and "28" are both "28". */
-const formsIn = (spoken: string): string[] => numbersIn(spoken).map(numberForm);
+/** Each number of a line in one form, spelled or in digits: "twenty-eight" and "28" are both "28". */
+const formsIn = (spoken: string): string[] => numbersIn(spoken).flatMap(numberForms);
 
 /** The number mentions that left the spoken line, in that form, with repeats. */
 const movedNumbers = (before: string, after: BeatRewrite): string[] => surplus(formsIn(before), formsIn(after.spoken));
@@ -96,12 +96,13 @@ const inLabel = (labels: readonly string[], form: string): boolean => labels.som
 
 /** The number mentions of the original line, markup reduced, that an appended label now carries. */
 function carriedSpans(before: string, after: BeatRewrite): { text: string; spans: TextSpan[] } {
-  const carried = movedNumbers(before, after).filter((form) => inLabel(after.labelsAdded, form));
+  let carried = movedNumbers(before, after).filter((form) => inLabel(after.labelsAdded, form));
   const text = spokenText([before]).text;
   const spans = countSpans(text).filter((span) => {
-    const at = carried.indexOf(numberForm(span.text));
-    if (at === -1) return false;
-    carried.splice(at, 1);
+    const forms = numberForms(span.text);
+    const rest = surplus(carried, forms);
+    if (rest.length !== carried.length - forms.length) return false;
+    carried = rest;
     return true;
   });
   return { text, spans };
@@ -226,7 +227,7 @@ function partialCounts(spoken: string): string[] {
   const text = spokenText([spoken]).text;
   return countSpans(text)
     .filter((span) => MORE_AFTER.test(text.slice(span.index + span.text.length)) || OTHER_BEFORE.test(text.slice(0, span.index)))
-    .map((span) => numberForm(span.text));
+    .flatMap((span) => numberForms(span.text));
 }
 
 const sum = (counts: readonly number[]): number => counts.reduce((total, n) => total + n, 0);
@@ -292,7 +293,7 @@ export function carriedCueRenames(before: ScriptBeat, after: BeatRewrite): Map<s
   for (const cue of beatCues(before.visual).filter((c) => positionIn(line, c) === undefined)) {
     const word = cueWord(cue.split("#")[0] ?? "");
     const span = spans.find((s) => s.text.split(/\s+/).map(cueWord).includes(word));
-    const label = span && after.labelsAdded.find((l) => carries(l, numberForm(span.text)));
+    const label = span && after.labelsAdded.find((l) => numberForms(span.text).every((form) => carries(l, form)));
     const noun = label && labelNouns(label).find((n) => spoken.includes(n));
     if (noun) renames.set(cue, noun);
   }
