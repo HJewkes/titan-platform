@@ -944,10 +944,10 @@ Tier 2, `@titan-design/review-panel@0.8.1`. Review-panel types and the reviewer 
 Key exports:
 
 - `classify`: `changedLineCount`, `classifyPr`, `pathTouches`, `securitySliceFlag`, `touchesDependency`
-- `plan`: `planPanel`
+- `plan`: `planPanel`, `UninstalledProfileError`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`, `validOwnerPicks`
-- `accept-verdict`: `acceptVerdict`, `isUsageLimit`
-- +115 more in the [reference page](/reference/review-panel)
+- `accept-verdict`: `acceptVerdict`
+- +116 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

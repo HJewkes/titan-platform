@@ -36,7 +36,7 @@ import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
-import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan } from "./review-panel-step.js";
+import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
 import { CI_UNREAD_STEPS, ciUnreadRoute } from "./ci-unread.js";
 import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
@@ -163,7 +163,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring {
+export interface ReviewWiring extends ProfileCheck {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;

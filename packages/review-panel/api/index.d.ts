@@ -233,6 +233,8 @@ interface ShapeRule {
     blocking: boolean;
     /** The host requires the shape whatever the files touch, as a hold that asks for an adversary does. */
     always?: boolean;
+    /** The member keeps its premium profile beside the capped seat and takes none of it, as a hold's adversary does; headroom still lowers it. */
+    uncapped?: boolean;
 }
 /** Whether opus may be spawned now; the caller asks its spawn gate. */
 interface Headroom {
@@ -247,19 +249,22 @@ interface PanelPolicy {
     panel?: readonly ShapeRule[];
     /** Brief id per shape; a shape left out uses its own name. */
     briefIds?: Partial<Record<ReviewShape, string>>;
-    /** Each opus profile and the sonnet profile it falls back to; a profile not listed is sonnet. */
+    /** Each premium (opus- or fable-priced) profile and the sonnet profile it falls back to; a profile not listed is sonnet. */
     sonnetFor?: Record<string, string>;
-    /** Points one member costs per round, by model; an estimate, never a cap. */
+    /** Points one member costs per round, by price class (`opus` is every premium profile); an estimate, never a cap. */
     points?: {
         opus: number;
         sonnet: number;
     };
+    /** Whether a profile is installed; when given, a premium profile lowered to one that is not throws `UninstalledProfileError`. */
+    installed?: (profile: string) => boolean;
 }
 declare const DEFAULT_CLASS_ROLES: ClassRoles;
 /** Sonnet everywhere: the one opus seat per head is the g10 correctness member's. */
 declare const DEFAULT_SHAPE_ROLES: Record<ExtraShape, ClassRoles>;
 /** The plan's class table. `tests` stays advisory here; a bad fix-proof result makes it block at aggregation, and missing when unplanned. */
 declare const DEFAULT_PANEL_TABLE: readonly ShapeRule[];
+/** Fable is priced above opus, so it takes the premium seat too (TP-3907). */
 declare const DEFAULT_SONNET_FOR: Record<string, string>;
 /** Placeholder weights until the scorecard reports measured spend per member. */
 declare const DEFAULT_MEMBER_POINTS: {
@@ -268,7 +273,14 @@ declare const DEFAULT_MEMBER_POINTS: {
 };
 /** No panel table: correctness alone, exactly as TP-1428 routes the single reviewer today. */
 declare const DEFAULT_PANEL_POLICY: PanelPolicy;
-/** The panel for one head: at most 3 members and 1 opus member. Spend is estimated, never capped. Pure. */
+/** A premium member would be lowered to a profile that is not installed, so its dispatch could only be refused. */
+declare class UninstalledProfileError extends Error {
+    readonly shape: ReviewShape;
+    readonly from: string;
+    readonly profile: string;
+    constructor(shape: ReviewShape, from: string, profile: string);
+}
+/** The panel for one head: at most 3 members and 1 premium member beside any uncapped one. Spend is estimated, never capped. Pure. */
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
@@ -661,4 +673,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CONVERGENCE_HEADING, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CI_CHECK_ROWS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };
+export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CONVERGENCE_HEADING, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CI_CHECK_ROWS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };

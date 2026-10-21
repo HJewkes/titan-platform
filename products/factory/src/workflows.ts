@@ -20,7 +20,7 @@ import { freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMig
 import { carry } from "./shepherd/tree-carry.js";
 import { adversaryGuard } from "./shepherd/adversary-guard.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
-import { agentChatAgents } from "./shepherd/agents.js";
+import { agentChatAgents, installedHeadless } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
 import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
 import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
@@ -246,7 +246,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...holdAdversary(shepherd, under) };
+  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile) => installedHeadless(profile), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...holdAdversary(shepherd, under) };
 }
 
 /** Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or absent. */

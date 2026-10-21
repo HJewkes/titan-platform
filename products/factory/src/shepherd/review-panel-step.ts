@@ -68,7 +68,12 @@ export function panelReviewerNames({ repo, pr, reviewer, mode }: MemberNaming, p
 /** Under `on` the intent also names each member but correctness, so a repeat spawns the same names. */
 export type PanelOnPlan = IntentPlan & { panel: "on"; panelReviewers: Record<string, string> };
 
-interface PanelWiring {
+export interface ProfileCheck {
+  /** Whether an agent-chat profile is installed headless; absent means a member lowered to a missing profile is refused only at dispatch. */
+  profileInstalled?: (profile: string) => boolean;
+}
+
+interface PanelWiring extends ProfileCheck {
   panel?: PanelMode;
   panelPolicy?: PanelPolicy;
   roles?: ReviewerRoles;
@@ -91,13 +96,14 @@ function holdMemberOf(deps: Pick<ShepherdDeps, "store">, runId: string, holdMemb
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
  * Under `on`, or for a g10-adversary hold whatever the panel says, it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember, profileInstalled }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
   const held = holdMemberOf(deps, input.runId, holdMember);
   if ((panel === undefined || panel === "off") && held === undefined) return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
   const options = held === undefined ? {} : { holdMember: held, fullPanel: panel === "on" };
-  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules, options);
+  const policy = { ...(panelPolicy ?? panelPolicyFor(roles)), ...(profileInstalled && { installed: profileInstalled }) };
+  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), policy, undefined, rules, options);
   return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
 }
 
