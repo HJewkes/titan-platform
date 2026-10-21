@@ -4,7 +4,8 @@ import type { ArLadder, ArRound, ArRunView } from "../../server/autoresearch-vie
 import { useQuery } from "../data/rpc.js";
 import { href, open } from "../router.js";
 import { AutoresearchStageStepper } from "./AutoresearchStageStepper.js";
-import { reasonLabel, shortSha } from "./autoresearch-format.js";
+import { RatchetMove } from "./AutoresearchRatchet.js";
+import { keptMove, reasonLabel } from "./autoresearch-format.js";
 import { implementerRoute, stageSpans } from "./autoresearch-lanes.js";
 
 /** Design §2.2 and §2.4: the card's detail, opened by `?idea=` so a reload or a shared link reopens it. */
@@ -56,13 +57,14 @@ function IdeaFacts({ ladder }: { ladder: ArLadder }): ReactNode {
 /** Each link the read model can name; one it cannot yet says which record it waits on rather than vanish. */
 function IdeaLinks({ run, round, ladder }: { run: ArRunView; round: ArRound; ladder: ArLadder }): ReactNode {
   const agent = ladder.implementer;
+  const move = keptMove(round, ladder.outcome);
   return (
     <VStack gap={1} testID="autoresearch-drawer-links">
       <DataRow label="Implementer" value={<ImplementerLink ladder={ladder} />} />
       <DataRow label="Agent" value={agent === null ? "not recorded yet" : <AgentLink agent={agent.agent} />} />
       {agent?.resumedFrom === undefined ? null : <DataRow label="Resumed from" value={agent.resumedFrom} />}
       <DataRow label="Evals" value={evalsText(run, ladder)} />
-      <DataRow label="Ratchet" value={ratchetText(round, ladder)} />
+      <DataRow label="Ratchet" value={move === null ? "did not move it" : <RatchetMove repo={run.target.repo} move={move} />} />
       <DataRow label="Snapshot PR" value="not recorded yet" />
       <IdeaDiff runId={run.runId} ladder={ladder} />
     </VStack>
@@ -82,13 +84,6 @@ function AgentLink({ agent }: { agent: string }): ReactNode {
 function evalsText(run: ArRunView, ladder: ArLadder): string {
   const { primary } = run.target.metric;
   return ladder.evals.map((entry) => `${entry.repeat} ${entry.metrics[primary] ?? "—"}`).join(" · ") || "no eval run yet";
-}
-
-/** The read model names no repository for the target, so the move shows as text rather than a commit link. */
-function ratchetText(round: ArRound, ladder: ArLadder): string {
-  const { ratchet } = round;
-  if (ladder.outcome?.verdict !== "kept" || ratchet === null || ratchet.to !== ladder.outcome.head) return "did not move it";
-  return `${shortSha(ratchet.from)} → ${shortSha(ratchet.to)}`;
 }
 
 /** Fetched only on request: the patch can be large, and a running idea has none until its implement step returns. */

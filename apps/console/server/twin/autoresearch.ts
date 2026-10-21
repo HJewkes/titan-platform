@@ -105,7 +105,7 @@ const ROUNDS: ArRunView["rounds"] = [
 export const AR_RUN_FIXTURE: ArRunView = {
   runId: "ar-7c1e", status: "running", startedAt: at(420), completedAt: null, error: null,
   target: {
-    name: "fixture-target", pin: PIN, ratchetRef: "refs/heads/ar/ratchet/ar-7c1e", phases: ["p1"],
+    name: "fixture-target", pin: PIN, ratchetRef: "refs/heads/ar/ratchet/ar-7c1e", phases: ["p1"], repo: "example-org/example-target", ratchetPrefix: "ar/ratchet",
     metric: {
       primary: "score", direction: "min", guards: ["guard_delta"], zeroTolerance: ["hidden_regressions"], allGate: ["all_gate"], noOp: ["changed_tasks"],
       noise: { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBandPp: 1.5 },
@@ -115,7 +115,13 @@ export const AR_RUN_FIXTURE: ArRunView = {
   baseline: { runs: [evalRun("b1", 234.1), evalRun("b2", 234.6), evalRun("b3", 234.3), evalRun("b4", 234.8)], b0: 234.5 },
   best: { head: KEPT_HEAD, primary: 231.2 },
   rounds: ROUNDS,
-  registries: { deadEnds: [], bugs: [{ symptom: "rejected:post:unit", fix: "The unit suite pins the old ranking order", source: "L0" }, { symptom: "The ranking tests assume a fixed order", fix: "", source: "planner" }] },
+  registries: {
+    deadEnds: [
+      { cell: SUPERSEDED.cell, targets: ["src/thresholds.ts"], rungFailed: "L3", deltaOverSigma: 0.9 / 0.62 },
+      { cell: L2_REJECT.cell, targets: ["src/slack.ts"], rungFailed: "L2", deltaOverSigma: -1.6 / 0.62, lesson: "A looser slack lets the hidden cases through" },
+    ],
+    bugs: [{ symptom: "rejected:post:unit", fix: "The unit suite pins the old ranking order", source: "L0" }, { symptom: "The ranking tests assume a fixed order", fix: "", source: "planner" }],
+  },
   cells: [
     { cell: "accept-gate:stricter-tree", trials: 1, meanAbsDeltaOverSigma: 1.9, keepRate: 1, flag: "explore" },
     { cell: "config-param:lower-thresh", trials: 1, meanAbsDeltaOverSigma: 1.5, keepRate: 0, flag: "explore" },

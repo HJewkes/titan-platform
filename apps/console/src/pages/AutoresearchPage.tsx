@@ -23,6 +23,8 @@ import { AutoresearchDecisions } from "./AutoresearchDecisions.js";
 import { AutoresearchHeader, RunStatusBadge } from "./AutoresearchHeader.js";
 import { AutoresearchLanes } from "./AutoresearchLanes.js";
 import { AutoresearchProgress } from "./AutoresearchProgress.js";
+import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
+import { AutoresearchValidator } from "./AutoresearchValidator.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
   return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
@@ -99,6 +101,8 @@ function RunSection({ runId }: { runId: string }): ReactNode {
       <AutoresearchLanes run={run.data} />
       <AutoresearchDecisions run={run.data} />
       <AutoresearchProgress run={run.data} />
+      <AutoresearchRegistries run={run.data} />
+      <AutoresearchValidator run={run.data} />
     </VStack>
   );
 }

@@ -18,7 +18,8 @@ import {
   TableRow,
 } from "@titan-design/react-ui";
 import type { ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
-import { reasonLabel, shortId, shortSha, signed } from "./autoresearch-format.js";
+import { RatchetMove } from "./AutoresearchRatchet.js";
+import { keptMove, reasonLabel, shortId, signed } from "./autoresearch-format.js";
 import { formatCost } from "./SessionFormat.js";
 
 type Decided = ArLadder & { outcome: ArOutcome };
@@ -80,15 +81,17 @@ function RoundDecisions({ run, round }: { run: ArRunView; round: ArRound }): Rea
       </TableHeader>
       <TableBody>
         {rows.map((ladder) => (
-          <DecisionRow key={ladder.idea.id} primary={run.target.metric.primary} round={round} ladder={ladder} />
+          <DecisionRow key={ladder.idea.id} target={run.target} round={round} ladder={ladder} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function DecisionRow({ primary, round, ladder }: { primary: string; round: ArRound; ladder: Decided }): ReactNode {
+function DecisionRow({ target, round, ladder }: { target: ArRunView["target"]; round: ArRound; ladder: Decided }): ReactNode {
   const { idea, outcome } = ladder;
+  const { primary } = target.metric;
+  const move = keptMove(round, outcome);
   return (
     <TableRow testID={`autoresearch-decision-${idea.id}`}>
       <TableCell>{shortId(idea.id)}</TableCell>
@@ -104,7 +107,7 @@ function DecisionRow({ primary, round, ladder }: { primary: string; round: ArRou
       <TableCell>{ladder.evals.map((entry) => `${entry.repeat} ${entry.metrics[primary] ?? "—"}`).join(" · ") || "—"}</TableCell>
       <TableCell>{formatCost(ladder.evals.reduce((sum, entry) => sum + entry.usd, ladder.implementUsd ?? 0))}</TableCell>
       <TableCell>{wallText(ladder)}</TableCell>
-      <TableCell>{ratchetText(round, outcome)}</TableCell>
+      <TableCell>{move === null ? "—" : <RatchetMove repo={target.repo} move={move} />}</TableCell>
     </TableRow>
   );
 }
@@ -125,10 +128,4 @@ function wallText(ladder: ArLadder): string {
   if (ladder.evals.length === 0 || ladder.evals.some((entry) => entry.wallS === undefined)) return "—";
   const seconds = ladder.evals.reduce((sum, entry) => sum + (entry.wallS ?? 0), 0);
   return `${Math.round(seconds / SECONDS_PER_MINUTE)}m`;
-}
-
-function ratchetText(round: ArRound, outcome: ArOutcome): string {
-  const { ratchet } = round;
-  if (outcome.verdict !== "kept" || ratchet === null || ratchet.to !== outcome.head) return "—";
-  return `${shortSha(ratchet.from)} → ${shortSha(ratchet.to)}`;
 }

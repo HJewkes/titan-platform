@@ -21,7 +21,19 @@ const metricConfig = z.object({
   noise: z.object({ bandSigmas: z.number(), lockAfterPairs: z.number().int(), minPairs: z.number().int(), defaultBandPp: z.number() }),
 });
 
-const target = z.object({ name: z.string(), pin: z.string(), ratchetRef: z.string(), metric: metricConfig, phases: z.array(z.string()).min(1) });
+/**
+ * `repo` (`owner/name`) and `ratchetPrefix` come from the target adapter; ratchet records keep only their shas. Without
+ * `repo` the page shows a ratchet move as text, since it cannot name where the commits live.
+ */
+const target = z.object({
+  name: z.string(),
+  pin: z.string(),
+  ratchetRef: z.string(),
+  metric: metricConfig,
+  phases: z.array(z.string()).min(1),
+  repo: z.string().optional(),
+  ratchetPrefix: z.string().optional(),
+});
 
 const settings = z.object({ lanes: z.number().int().positive(), rounds: z.number().int().positive(), minPool: z.number().int().nonnegative() });
 
@@ -110,6 +122,23 @@ const registries = z.object({
   bugs: z.array(z.object({ symptom: z.string(), fix: z.string(), source: z.enum(["L0", "planner"]) })),
 });
 
+/**
+ * Design G17 (§1.7): the held-out validator's looks, aggregate only and report only. Absent until the engine records them.
+ * Only the validator panel reads it, so a validator number can never steer what another section shows.
+ */
+const validator = z.object({
+  maxLooks: z.number().int().positive(),
+  looks: z.array(
+    z.object({
+      look: z.number().int().positive(),
+      at: z.string(),
+      sha: z.string(),
+      aggregate: z.object({ metrics: z.record(z.string(), z.number()), gates: z.record(z.string(), z.number()) }),
+      provenance: z.string(),
+    }),
+  ),
+});
+
 const cell = z.object({
   cell: z.string(),
   trials: z.number().int().nonnegative(),
@@ -131,6 +160,7 @@ export const ArRunViewSchema = z.object({
   rounds: z.array(round),
   registries,
   cells: z.array(cell),
+  validator: validator.optional(),
 });
 
 /** One row of `autoresearch.runs`; `best` is null until the baseline has run, and `round` is 0 until the first round starts. */
@@ -161,4 +191,6 @@ export type ArRound = z.infer<typeof round>;
 export type ArIdea = z.infer<typeof idea>;
 export type ArOutcome = z.infer<typeof outcome>;
 export type ArRunSummary = z.infer<typeof ArRunSummarySchema>;
+export type ArRegistries = z.infer<typeof registries>;
+export type ArValidator = z.infer<typeof validator>;
 export type ArDiff = z.infer<typeof ArDiffSchema>;
