@@ -13,6 +13,7 @@ import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
+import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader } from "./shepherd.js";
@@ -139,7 +140,11 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir, lineage: shipLineageReader() },
+    rounds: {
+      dir: config.roundsDir,
+      lineage: shipLineageReader(),
+      ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
+    },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
