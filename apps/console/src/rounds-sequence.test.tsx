@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
-import { stagedRound, type StagedRound } from "../server/round-fixtures.js";
+import { stagedIndexedRound, type StagedRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
@@ -39,12 +36,6 @@ const manifest = {
   questions: [{ id: "motion-notes", kind: "text", prompt: "Anything off in either motion?" }],
 };
 
-async function framesIndex(dir: string): Promise<unknown> {
-  const sha = async (shot: string): Promise<string> => createHash("sha256").update(await readFile(path.join(dir, "shots", `${shot}.png`))).digest("hex");
-  const frames = await Promise.all(STILLS.map(async ([key, shot]) => ({ key, variant: key, viewport: { width: 320, height: 180 }, file: `shots/${shot}.png`, sha256: await sha(shot) })));
-  return { schema: "titan-review/frames@1", unit: "tally-motion", round: 1, frames };
-}
-
 /** jsdom has no IntersectionObserver: every frame nears the viewport as soon as it is observed. */
 class NearObserver {
   constructor(private readonly callback: (entries: { isIntersecting: boolean }[]) => void) {}
@@ -64,17 +55,8 @@ afterEach(async () => {
   staged = undefined;
 });
 
-/** A temp rounds dir holding `round` over the beacon fixture's PNGs, with a frames.json listing every still. */
-async function stage(round: unknown): Promise<StagedRound> {
-  const made = await stagedRound("beacon-states-r1", ROUND, round);
-  const dir = path.join(made.source.dir, ROUND);
-  await mkdir(path.join(dir, "frames"), { recursive: true });
-  await writeFile(path.join(dir, "frames", "frames.json"), JSON.stringify(await framesIndex(dir)));
-  return made;
-}
-
 async function renderRound(round: unknown = manifest): Promise<{ name: string; args: unknown }[]> {
-  staged = await stage(round);
+  staged = await stagedIndexedRound("beacon-states-r1", ROUND, round, STILLS.map(([key, shot]) => ({ key, file: `shots/${shot}.png` })));
   const { source } = staged;
   const frames = await Promise.all(STILLS.map(async ([key]) => [snapshotKey("rounds.frame", { id: ROUND, key, view: "head" }), successEnvelope(await getFrame(source, ROUND, key, "head"))] as const));
   const calls = {
