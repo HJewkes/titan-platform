@@ -10,7 +10,7 @@ function beatOf(spoken: string): ScriptBeat {
   return beat;
 }
 
-const rewrite = (spoken: string, labelsAdded: string[]): BeatRewrite => ({ spoken, labelsAdded });
+const rewrite = (spoken: string, labelsAdded: readonly string[]): BeatRewrite => ({ spoken, labelsAdded });
 
 interface TriadCase {
   name: string;
@@ -152,6 +152,11 @@ describe("guardBeat on triad collapses", () => {
   it("finds a list item whose capture runs into the sentence's verb", () => {
     const planting = CASES.find((c) => c.name === "planting")!;
     expect(rulesFor(planting.original, planting.keepOne)).toEqual([]);
+  });
+
+  it("finds a list item whose capture starts with the sentence's verb, leaving only the long sentence", () => {
+    const review = CASES.find((c) => c.name === "review")!;
+    expect(rulesFor(review.original, review.keepOne)).toEqual(["sentence-cap"]);
   });
 
   describe("the count a collapse may say", () => {

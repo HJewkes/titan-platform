@@ -150,8 +150,11 @@ function bareLabelRejections(moved: readonly string[], labels: readonly string[]
 // A named list is three items joined by commas and a final and/or; the items are one to three words each.
 const NAMED_LIST = /\b([\w'’-]+(?: [\w'’-]+){0,2}), ([\w'’-]+(?: [\w'’-]+){0,2}),? (?:and|or) ([\w'’-]+(?: [\w'’-]+){0,2})[.,;:!?]/g;
 
-// The match takes up to three words an item, so the sentence's own verb can trail the last one ("and runner come first").
-const ITEM_TAIL = /(?:\s+(?:come|comes|came|follow|follows|first|last|next|too))+$/i;
+// The match takes up to three words an item, so the sentence's own verb can lead the first item ("those come receipts")
+// or trail the last one ("orchard come first").
+const ITEM_FILLER = "(?:come|comes|came|follow|follows|first|last|next|too)";
+const ITEM_LEAD = new RegExp(`^(?:[\\w'’-]+\\s+)?(?:${ITEM_FILLER}\\s+)+`, "i");
+const ITEM_TAIL = new RegExp(`(?:\\s+${ITEM_FILLER})+$`, "i");
 
 interface ListItem {
   raw: string;
@@ -164,12 +167,15 @@ interface NamedList {
   rest: readonly string[];
 }
 
-const itemOf = (raw: string): ListItem => ({ raw, terms: [...contentTerms(raw.replace(ITEM_TAIL, ""))] });
+const itemOf = (raw: string, at: number): ListItem => {
+  const trimmed = at === 0 ? raw.replace(ITEM_LEAD, "") : at === 2 ? raw.replace(ITEM_TAIL, "") : raw;
+  return { raw, terms: [...contentTerms(trimmed)] };
+};
 
 function namedLists(before: string): NamedList[] {
   return sentencesOf(spokenText([before]).text).flatMap((sentence) =>
     [...sentence.matchAll(NAMED_LIST)].map((match) => ({
-      items: match.slice(1, 4).map((raw) => itemOf(raw!)),
+      items: match.slice(1, 4).map((raw, at) => itemOf(raw!, at)),
       rest: [...contentTerms(sentence.replace(match[0], " "))],
     })),
   );
