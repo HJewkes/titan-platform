@@ -32,7 +32,9 @@ export function useRoundSend(round: ValidRound) {
   const sent = sentBy(round, submitting);
   const checking = check.open && !sent;
   const draft = useDraftBinding(round, sent);
-  return { submitting, check, checking, locked, frozen: locked || checking, draft };
+  // The keys open the check screen only where the "Check and send" button could.
+  const review = submitting.available && round.status === "open" && !locked && !checking ? check.show : undefined;
+  return { submitting, check, checking, locked, frozen: locked || checking, draft, review };
 }
 
 /** The round's draft binding: closed once `sent`, on this visit or an earlier one, or withdrawn. */
