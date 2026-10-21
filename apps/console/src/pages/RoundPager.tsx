@@ -61,12 +61,21 @@ function useSectionPaging(pages: readonly SectionPage[], state: RoundAnswers) {
 
 type Paging = ReturnType<typeof useSectionPaging>;
 
-/** Digit keys answer the active question, so a page that opens without it hands them to its own first choice, or to none. */
-function useActiveOnPage(page: SectionPage, { activeId, setActiveId }: RoundAnswers): void {
+/**
+ * Digit keys answer the active question, so a page that opens without it hands them to its own first choice, or to none.
+ * A frame pressed on this page keeps the keys until the page turns.
+ */
+function useActiveOnPage(page: SectionPage, { activeId, setActiveId, frames }: RoundAnswers): void {
+  const shown = useRef(page.id);
   useEffect(() => {
+    const turned = shown.current !== page.id;
+    shown.current = page.id;
     if (page.questions.some((question) => question.id === activeId)) return;
-    setActiveId(page.questions.find((question) => choicesOf(question).length > 0)?.id);
-  }, [page, activeId, setActiveId]);
+    if (!turned && frames.activeFrame !== undefined) return;
+    const first = page.questions.find((question) => choicesOf(question).length > 0)?.id;
+    // Setting what is already set would still land after a frame press queued in the same tick, and undo it.
+    if (first !== activeId || frames.activeFrame !== undefined) setActiveId(first);
+  }, [page, activeId, setActiveId, frames.activeFrame]);
 }
 
 /** `n` and `p` step through the sections; `[` and `]` already step through the set, digits answer. */
