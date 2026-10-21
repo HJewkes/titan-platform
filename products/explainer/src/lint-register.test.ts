@@ -8,8 +8,9 @@ import {
   registerCheck,
   spokenText,
   triadSpans,
-  type RegisterMetric,
   deviceSpans,
+  type DeviceMetric,
+  type RegisterMetric,
 } from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
@@ -250,19 +251,18 @@ describe("numberSpans and triadSpans", () => {
 });
 
 describe("deviceSpans", () => {
-  const LINES = {
-    "colon-reveals": "The desk keeps one thing: the rows. Nothing else stays.",
-    "not-x-tails": "The ledger keeps the rows, not by hand. It never asks twice.",
-    semicolons: "The desk checks a scan; the ledger keeps it. Then it waits.",
-    lets: "Let's follow one scan. We let us see the ledger.",
-  } as const;
+  const LINES: readonly (readonly [DeviceMetric, string])[] = [
+    ["colon-reveals", "The desk keeps one thing: the rows. Nothing else stays."],
+    ["not-x-tails", "The ledger keeps the rows, not by hand. It never asks twice."],
+    ["semicolons", "The desk checks a scan; the ledger keeps it. Then it waits."],
+    ["lets", "Let's follow one scan. We let us see the ledger."],
+  ];
 
-  it.each(Object.entries(LINES))("finds as many %s spans as the row counts", (metric, line) => {
+  it.each(LINES)("finds as many %s spans as the row counts", (metric, line) => {
     const text = spokenText([line]);
-    const spans = deviceSpans(metric as keyof typeof LINES, text.text);
-    expect(spans.length).toBeGreaterThan(0);
-    const counted = REGISTER_MEASURES[metric as keyof typeof LINES](text);
-    const perScript = metric === "not-x-tails" ? counted : ((counted ?? 0) * text.words.length) / 1000;
-    expect(spans.length).toBeCloseTo(perScript ?? 0, 5);
+    const counted = REGISTER_MEASURES[metric](text) ?? 0;
+    const perScript = metric === "not-x-tails" ? counted : (counted * text.words.length) / 1000;
+    expect(deviceSpans(metric, text.text).length).toBeGreaterThan(0);
+    expect(deviceSpans(metric, text.text)).toHaveLength(Math.round(perScript));
   });
 });

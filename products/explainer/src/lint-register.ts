@@ -67,7 +67,7 @@ const DEVICE_PATTERNS = { "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TA
 /** The style devices a rewrite must not add, each a register row that caps near zero. */
 export type DeviceMetric = keyof typeof DEVICE_PATTERNS;
 
-export const DEVICE_METRICS = Object.keys(DEVICE_PATTERNS) as readonly DeviceMetric[];
+export const DEVICE_METRICS: readonly DeviceMetric[] = ["colon-reveals", "not-x-tails", "semicolons", "lets"];
 
 /** The matches of one device row, in order; their count is the row's count for the same text. */
 export const deviceSpans = (metric: DeviceMetric, text: string): TextSpan[] => spans(DEVICE_PATTERNS[metric], text);
