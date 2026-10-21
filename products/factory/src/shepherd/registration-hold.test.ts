@@ -163,6 +163,8 @@ describe("the G10 hold Shepherd places at registration", () => {
     "packages/fix-proof/src/judge.ts",
     "packages/fix-proof/src/deep/new-verdict.ts",
     "packages/review-panel/src/classify.ts",
+    "packages/review-panel/src/glob.ts",
+    "products/factory/src/shepherd/git-pr-files.ts",
     "scripts/fix-proof-run.sh",
   ])("holds sign-off and fix-proof policy in %s g10-adversary", async (path) => {
     const r = rig([file(path, 10)]);

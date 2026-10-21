@@ -19,8 +19,9 @@ const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "rele
 const SIGNOFF_POLICY_FILES = [
   ...["signoffs.ts", "reviewer-lineage.ts", "reviewer-roles.ts", "spawn-facts.ts", "auto-pass.ts", "failed-rounds-demotion.ts", "routed.ts", "stale-gates.ts", "fix-proof.ts"],
   ...["merge-standing.ts", "review.ts", "review-panel-plan.ts", "review-panel-step.ts", "await-pr.ts", "coverage.ts", "external-review.ts", "held-repair.ts", "pr.ts", "shepherd-steps.ts"],
+  "git-pr-files.ts",
 ].map((name) => `products/factory/src/shepherd/${name}`);
-const FIX_PROOF_POLICY_FILES = ["packages/fix-proof/src/**", "packages/review-panel/src/classify.ts", "scripts/fix-proof-run.sh"];
+const FIX_PROOF_POLICY_FILES = ["packages/fix-proof/src/**", "packages/review-panel/src/classify.ts", "packages/review-panel/src/glob.ts", "scripts/fix-proof-run.sh"];
 /**
  * The owner's own levers: the console's tap and inbox actions, gate resolution and owner release (titan-coord's E1
  * amendment to 458). Globbed by name stem, so a helper split out of one of these files stays held.
