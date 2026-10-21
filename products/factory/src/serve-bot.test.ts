@@ -1,10 +1,11 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { botAccess, openBotIdentity, type BotAccess } from "./bot-identity.js";
+import { BOT_FINGERPRINT_FILE, tokenFingerprint } from "./bot-token-fingerprint.js";
 import { defineWorkflow } from "./definition.js";
 import type { FactoryRoutes } from "./host.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
@@ -42,9 +43,9 @@ function botProbe(seen: BotAccess[]) {
   });
 }
 
-async function serveWithBot(path: string, seen: BotAccess[]): Promise<FactoryServer> {
+async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scratch(), "state")): Promise<FactoryServer> {
   const server = await startFactoryServer({
-    dbPath: join(scratch(), "state", "factory.sqlite3"),
+    dbPath: join(stateDir, "factory.sqlite3"),
     workflows: [botProbe(seen)],
     routes: NO_ROUTES,
     port: 0,
@@ -91,5 +92,25 @@ describe("serve's bot identity (V5)", () => {
     expect(await botHealth(server)).toEqual({ state: "ok" });
     expect((await runProbe(server, seen))?.state).toBe("ok");
     expect(JSON.stringify(await (await fetch(`http://127.0.0.1:${server.port}/health`)).json())).not.toContain(SENTINEL);
+  });
+});
+
+describe("serve's bot-token fingerprint for the A17 scan (V6)", () => {
+  it("writes the SHA-256 of a readable token to its state dir, mode 0600", async () => {
+    const stateDir = join(scratch(), "state");
+    await serveWithBot(tokenFile(0o600), [], stateDir);
+
+    const file = join(stateDir, BOT_FINGERPRINT_FILE);
+    expect(readFileSync(file, "utf8")).toBe(`${tokenFingerprint(SENTINEL)}\n`);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it.each([["absent", () => join(scratch(), "missing.token")], ["refused", () => tokenFile(0o644)]])("writes no fingerprint for an %s token and removes a stale one", async (_state, path) => {
+    const stateDir = join(scratch(), "state");
+    await serveWithBot(tokenFile(0o600), [], stateDir).then((server) => server.close());
+
+    await serveWithBot(path(), [], stateDir);
+
+    expect(existsSync(join(stateDir, BOT_FINGERPRINT_FILE))).toBe(false);
   });
 });
