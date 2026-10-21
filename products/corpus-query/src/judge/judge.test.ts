@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBatches, buildJudgePrefix, prefixSha, resolveLabels, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
+import { assertsMatch, buildBatches, buildJudgePrefix, CONFIRM_ROLE, prefixSha, resolveLabels, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
 import type { QuerySpec } from "../types.js";
 
 const spec: QuerySpec = {
@@ -156,5 +156,43 @@ describe("verifyVerdict", () => {
     const batch = batchFor(0);
     const result = verifyVerdict(batch, fullVerdict(batch, [{ id: batch.canary!.id, quote: "lifted the Coastal Cup" }]));
     expect([result.flagged, result.items]).toEqual([false, []]);
+  });
+});
+
+describe("canary scoring by claim", () => {
+  const nearMiss = (event: "won" | "lost" | "preview", included?: boolean) => {
+    const batch = batchFor(1);
+    const item = { id: batch.canary!.id, quote: "mentioned any silverware", event, ...(included === undefined ? {} : { included }) };
+    return verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch);
+  };
+
+  it("reads a near-miss canary tagged lost as seen, not a miss", () => {
+    expect(nearMiss("lost").flagged).toBe(false);
+  });
+
+  it("reads a near-miss canary tagged won as a miss", () => {
+    expect(nearMiss("won").flagged).toBe(true);
+  });
+
+  it("reads a near-miss canary on an excluded row as seen, even when the row says won", () => {
+    expect(nearMiss("won", false).flagged).toBe(false);
+  });
+
+  it("still flags a positive canary tagged lost, which is not a claim", () => {
+    const batch = batchFor(0);
+    const item = { id: batch.canary!.id, quote: "lifted the Coastal Cup", event: "lost" as const };
+    expect(verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch).flagged).toBe(true);
+  });
+});
+
+describe("confirm role", () => {
+  it("tells the judge to row the earliest passage of a win and refer later recaps", () => {
+    expect(CONFIRM_ROLE).toMatch(/EARLIEST passage where the win happens/);
+    expect(CONFIRM_ROLE).toMatch(/"referenced"/);
+  });
+
+  it("gives the judge a way to exclude a passage and to judge a canary on its own text", () => {
+    expect(CONFIRM_ROLE).toMatch(/"included": false/);
+    expect(CONFIRM_ROLE).toMatch(/ref is CANARY[\s\S]*text alone/);
   });
 });

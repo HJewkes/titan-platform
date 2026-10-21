@@ -6,6 +6,7 @@ import {
   ConfirmVerdictSchema,
   prefixSha,
   ScreenVerdictSchema,
+  assertsMatch,
   CandidateSchema,
   ConfirmRowSchema,
   type Candidate,
@@ -25,6 +26,9 @@ import { batchArtifactSchema, CollectSchema, CompileRecordSchema, PassagesSchema
 import { costEntry, readJson, runPaths, writeJson, type BatchArtifact, type CostEntry, type RunPaths } from "./run-dir.js";
 import { warmThenWave } from "./wave.js";
 
+/** In the measured run confirm took about a third of the spend while its books were still being skipped. */
+export const DEFAULT_CONFIRM_SHARE = 0.4;
+
 export interface AnswerConfig {
   db: Db;
   root: string;
@@ -36,6 +40,8 @@ export interface AnswerConfig {
   rounds: number;
   concurrency: number;
   budgetUsd: number;
+  /** Fraction of `budgetUsd` screening may not spend, so confirm, the stage that yields rows, is never starved. */
+  confirmShare: number;
   batchTokens: number;
   window: number;
   /** The run that compiled the spec, whose call joins this run's cost report; absent when the spec was given. */
@@ -68,6 +74,7 @@ interface RunState {
   config: AnswerConfig;
   paths: RunPaths;
   spentUsd: number;
+  calls: number;
   passages: Map<string, Passage>;
 }
 
@@ -75,11 +82,11 @@ interface RunState {
 const CONFIRMED_EVENTS: ReadonlySet<Candidate["event"]> = new Set(["won", "referenced"]);
 
 const screenJudge = (models: Models): StageJudge<ScreenVerdict, Candidate> => ({
-  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, fallbackModel: models.redo,
+  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, asserts: assertsMatch, model: models.screen, fallbackModel: models.redo,
 });
 
 const confirmJudge = (models: Models): StageJudge<ConfirmVerdict, ConfirmRow> => ({
-  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, fallbackModel: models.redo,
+  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, asserts: assertsMatch, model: models.confirm, fallbackModel: models.redo,
 });
 
 const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passage.id, ref: passage.ref, text: readPassage(state.config.db, state.config.root, passage).join("\n\n") });
@@ -94,11 +101,17 @@ async function retrieveRound(state: RunState, round: number, terms: MatchTerms):
   return passages;
 }
 
+/** What a stage may still spend: screening stops short of confirm's reserved share; confirm gets whatever is left. */
+const stageLimitUsd = (config: AnswerConfig, stage: "screen" | "confirm"): number =>
+  stage === "screen" ? config.budgetUsd * (1 - config.confirmShare) : config.budgetUsd;
+
 async function runWave<V extends Verdict, T extends { id: string; quote: string }>(state: RunState, stepId: string, jobs: BatchJob[], judge: StageJudge<V, T>): Promise<BatchArtifact<T>[]> {
   const wave = await warmThenWave(state.ctx, stepId, jobs, (job, itemStepId, ctx) => judgeBatch(ctx, itemStepId, job, judge), {
-    key: (job) => job.batch.key, concurrency: state.config.concurrency, budgetUsd: state.config.budgetUsd - state.spentUsd,
+    key: (job) => job.batch.key, concurrency: state.config.concurrency, budgetUsd: stageLimitUsd(state.config, judge.stage) - state.spentUsd,
+    priorCallUsd: state.calls === 0 ? 0 : state.spentUsd / state.calls,
   });
   state.spentUsd += wave.spentUsd;
+  state.calls += wave.calls;
   const collected = await state.ctx.seed(`${stepId}/collect`, async () => {
     const missing = jobs.filter((job) => !existsSync(job.file)).map((job) => job.batch.key);
     return { data: {}, output: JSON.stringify({ expected: jobs.length, missing, stoppedBy: wave.stoppedBy }) };
@@ -220,7 +233,7 @@ function coverage<T>(jobs: readonly BatchJob[], artifacts: readonly BatchArtifac
 /** The `cq-answer` run: screen and grow, confirm by book, then write the verified rows and their coverage. */
 export function answerWorkflow(config: AnswerConfig): WorkflowFn {
   return async (ctx) => {
-    const state: RunState = { ctx, config, paths: runPaths(config.dataDir, ctx.runId), spentUsd: 0, passages: new Map() };
+    const state: RunState = { ctx, config, paths: runPaths(config.dataDir, ctx.runId), spentUsd: 0, calls: 0, passages: new Map() };
     const screened = await screenRounds(state);
     const candidates = screened.artifacts.flatMap((a) => a.items.filter((c) => CONFIRMED_EVENTS.has(c.event)));
     const jobs = confirmJobs(state, candidates);
@@ -229,7 +242,7 @@ export function answerWorkflow(config: AnswerConfig): WorkflowFn {
       runId: ctx.runId,
       rounds: screened.rounds,
       candidates: candidates.length,
-      rows: sourced(state, confirmed.flatMap((a) => a.items)),
+      rows: sourced(state, confirmed.flatMap((a) => a.items).filter((row) => row.included !== false)),
       coverage: { screen: coverage(screened.jobs, screened.artifacts), confirm: coverage(jobs, confirmed) },
     };
     writeJson(state.paths.answer, answer);

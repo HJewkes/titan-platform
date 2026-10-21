@@ -17,7 +17,8 @@ You have no tools and cannot read the corpus.
 - "mode": "phrase" only when the answer is always stated in a fixed wording; otherwise "broad".
 - "inclusion" and "exclusion": the criteria a judge applies, one short sentence each.
 - "canaries": two invented passages of one or two sentences in the corpus's register, about invented people and
-  places: one that clearly matches ("expect": "match") and one near miss ("expect": "no-match").
+  places: one that clearly matches ("expect": "match") and one near miss ("expect": "no-match"). Keep both neutral: they
+  must not mention the corpus's real people, clubs or settings, so that no owner ruling or book context can contradict them.
 - If owner rulings are given, fold them into "inclusion" and "exclusion".
 
 Reply with the JSON object the schema asks for and nothing else.`;

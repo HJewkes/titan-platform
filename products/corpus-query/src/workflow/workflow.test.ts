@@ -218,6 +218,86 @@ describe("ask", () => {
   });
 });
 
+const costOf = (runId: string) => readJson(runPaths(fx.dataDir, runId).cost, z.array(CostEntrySchema))!;
+
+describe("exclusion", () => {
+  it("drops a confirm row the judge marks excluded, though its event is won", async () => {
+    fx = fixture(WINS);
+    const exclude: Behave = async (call, input) => {
+      if (call.stage !== "confirm") return undefined;
+      const base = fakeJudges().runnerFor({ defaults: { model: "sonnet", systemPrompt: "" } } as never);
+      const out = (await base.run(input)) as { output: string };
+      const parsed = JSON.parse(out.output) as { judged: string[]; rows: Record<string, unknown>[] };
+      const rows = parsed.rows.map((row) => (row.period === "GR 1.2" ? { ...row, included: false, reason: "excluded" } : row));
+      return { ok: true, output: JSON.stringify({ ...parsed, rows }), usage: { costUsd: 0.01 } };
+    };
+
+    const result = await ask(options(), host(fakeJudges({ behave: exclude }).runnerFor));
+
+    expect(result.answer!.rows.map((r) => r.ref).sort()).toEqual(["GR 1.1", "GR 1.3", "GR 2.1", "GR 2.2"]);
+  });
+});
+
+describe("cost model", () => {
+  it("records the model id the call ran on, not the route alias", async () => {
+    fx = fixture(WINS);
+    const resolved: Behave = async (call, input) => {
+      const base = fakeJudges().runnerFor({ defaults: { model: call.model, systemPrompt: "" } } as never);
+      const out = (await base.run(input)) as { output: string };
+      return { ok: true, output: out.output, usage: { costUsd: 0.01, model: `resolved-${call.model}` } as never };
+    };
+
+    const result = await ask(options({ spec: undefined }), host(fakeJudges({ behave: resolved }).runnerFor));
+
+    expect(new Set(costOf(result.runId).map((c) => c.model))).toEqual(new Set(["resolved-sonnet", "resolved-haiku"]));
+  });
+});
+
+describe("canaries in a run", () => {
+  it("does not count a near-miss canary reported as lost as a screen miss, so no redo is paid for", async () => {
+    fx = fixture(WINS);
+    const lostCanary: Behave = async (call, input) => {
+      if (call.stage !== "screen") return undefined;
+      const base = fakeJudges().runnerFor({ defaults: { model: call.model, systemPrompt: "" } } as never);
+      const out = (await base.run(input)) as { output: string };
+      const parsed = JSON.parse(out.output) as { judged: string[]; candidates: unknown[] };
+      const id = /=== PASSAGE (\S+) \(CANARY\) ===/.exec(input.prompt)![1]!;
+      const quote = /lost the Reed Cup final/.test(input.prompt) ? "lost the Reed Cup final" : undefined;
+      const extra = quote ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
+      return { ok: true, output: JSON.stringify({ ...parsed, candidates: [...parsed.candidates, ...extra] }), usage: { costUsd: 0.01 } };
+    };
+
+    const judges = fakeJudges({ behave: lostCanary });
+    const result = await ask(options({ concurrency: 1 }), host(judges.runnerFor));
+
+    expect(result.answer!.coverage.screen.canaries.misses).toBe(0);
+    expect(screenCalls(judges.calls).every((c) => c.model === "haiku")).toBe(true);
+  });
+});
+
+describe("budget guard", () => {
+  const spendOf = (runId: string) => costOf(runId).reduce((sum, c) => sum + c.cliCostUsd, 0);
+
+  it("counts calls in flight, so the cap is not overshot by the concurrency", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges({ delayMs: 10 });
+
+    const result = await ask(options({ concurrency: 4, budgetUsd: 0.035, confirmShare: 0 }), host(judges.runnerFor));
+
+    expect(spendOf(result.runId)).toBeLessThanOrEqual(0.035 + 1e-9);
+  });
+
+  it("keeps confirm's share out of screen's reach, so confirm still runs when screening would spend everything", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges();
+
+    const result = await ask(options({ concurrency: 1, budgetUsd: 0.05, confirmShare: 0.4 }), host(judges.runnerFor));
+
+    expect([screenCalls(judges.calls).length, judges.calls.some((c) => c.stage === "confirm")]).toEqual([3, true]);
+    expect(result.answer!.rows.length).toBeGreaterThan(0);
+  });
+});
+
 describe("confirm input", () => {
   it("sends wins and recaps to confirm but never a preview", async () => {
     fx = fixture([...WINS, { ...WINS[4]!, relPath: "gull-rovers/book_02/chapter_03.txt", title: "2.3 - Matchday", body: "The Gull Rovers won the semi. The Tide Cup final is next week." }]);
