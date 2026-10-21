@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { RpcProvider } from "@titan-design/react-app";
 import { errorEnvelope, invokeCommand, successEnvelope } from "@titan-design/registry";
@@ -18,6 +19,8 @@ const RAMP_DETAILS = {
   "Staged climb": { detail: "Three holds on the way up.", weakPoint: "Adds forty minutes to a firing.", after: "Make the staged climb the default ramp." },
   "Single slope": { detail: "One slope to peak." },
 };
+
+const Written = z.object({ answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), optionNotes: z.unknown().optional() })) });
 
 let staged: StagedRound;
 
@@ -89,7 +92,7 @@ describe("a round with option cards (G16)", () => {
     checkAndSend();
     await screen.findByText("Answers sent");
 
-    const feedback = (await staged.feedback()) as { answers: { questionId: string; pick?: string; optionNotes?: unknown }[] };
+    const feedback = Written.parse(await staged.feedback());
     const ramp = feedback.answers.find((answer) => answer.questionId === "ramp-default");
     expect(ramp?.pick).toBe("Single slope");
     expect(ramp?.optionNotes).toEqual([
