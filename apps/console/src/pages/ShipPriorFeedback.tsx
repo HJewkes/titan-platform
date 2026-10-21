@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Alert, Card, CardContent, Checkbox, Typography, VStack } from "@titan-design/react-ui";
-import type { PriorFeedback } from "../../server/ship-blockers.js";
+import { Alert, Card, CardContent, Checkbox, Link, Typography, VStack } from "@titan-design/react-ui";
+import type { PriorFeedback, ShipBlocker } from "../../server/ship-blockers.js";
+import { ShipTarget, shipTargetId, useShipJump } from "./ShipTabs.js";
 
 interface ShipPriorFeedbackProps {
   items: readonly PriorFeedback[];
@@ -16,25 +17,27 @@ export function ShipPriorFeedback({ items, addressed, onToggle, locked = false }
   return (
     <VStack gap={3} testID="ship-prior-feedback">
       {items.map((item) => (
-        <Card key={`${item.round}-${item.submittedAt}`} variant="outline">
-          <CardContent>
-            <VStack gap={2}>
-              <Typography variant="subtitle2">{`Your feedback from round ${item.round}`}</Typography>
-              <PriorLine label="Your answer" text={item.revisionRequested ? "Request a revision" : item.pick} />
-              <PriorLine label="Your comment" text={item.comment} />
-              <PriorLine label="Your feedback on that round" text={item.general} />
-              <PriorFrames lines={item.frames} />
-              <Checkbox
-                label="Addressed"
-                accessibilityLabel={`Round ${item.round} feedback addressed`}
-                isChecked={addressed.includes(item.round)}
-                aria-checked={addressed.includes(item.round)}
-                isDisabled={locked}
-                onCheckedChange={(checked) => (locked ? undefined : onToggle(item.round, checked))}
-              />
-            </VStack>
-          </CardContent>
-        </Card>
+        <ShipTarget key={`${item.round}-${item.submittedAt}`} target={{ kind: "prior", round: item.round }}>
+          <Card variant="outline">
+            <CardContent>
+              <VStack gap={2}>
+                <Typography variant="subtitle2">{`Your feedback from round ${item.round}`}</Typography>
+                <PriorLine label="Your answer" text={item.revisionRequested ? "Request a revision" : item.pick} />
+                <PriorLine label="Your comment" text={item.comment} />
+                <PriorLine label="Your feedback on that round" text={item.general} />
+                <PriorFrames lines={item.frames} />
+                <Checkbox
+                  label="Addressed"
+                  accessibilityLabel={`Round ${item.round} feedback addressed`}
+                  isChecked={addressed.includes(item.round)}
+                  aria-checked={addressed.includes(item.round)}
+                  isDisabled={locked}
+                  onCheckedChange={(checked) => (locked ? undefined : onToggle(item.round, checked))}
+                />
+              </VStack>
+            </CardContent>
+          </Card>
+        </ShipTarget>
       ))}
     </VStack>
   );
@@ -61,9 +64,20 @@ function PriorFrames({ lines }: { lines: readonly string[] | undefined }): React
   );
 }
 
-/** Why Ship is off, spelled out beside it; Send back stays open. */
-export function ShipBlockedReason({ reasons }: { reasons: readonly string[] }): ReactNode {
+/** Why Ship is off, one link per reason that scrolls to what it names and focuses it; Send back stays open. */
+export function ShipBlockedReason({ reasons }: { reasons: readonly ShipBlocker[] }): ReactNode {
+  const jump = useShipJump();
   if (reasons.length === 0) return null;
-  const message = `Ship is off: ${reasons.join("; ")}. Send back stays open.`;
-  return <Alert status="warning" size="compact" message={message} testID="ship-blocked" />;
+  return (
+    <VStack gap={1} testID="ship-blocked">
+      <Alert status="warning" size="compact" message="Ship is off until you clear these; Send back stays open." />
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        {reasons.map((reason) => (
+          <li key={`${shipTargetId(reason.target)}-${reason.message}`}>
+            <Link color="primary" onPress={() => jump(shipTargetId(reason.target))}>{reason.message}</Link>
+          </li>
+        ))}
+      </ul>
+    </VStack>
+  );
 }
