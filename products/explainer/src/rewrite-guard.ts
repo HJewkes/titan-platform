@@ -12,6 +12,8 @@ export type BeatRejectionRule =
   | "length"
   | "number-lost"
   | "number-invented"
+  | "label-bare"
+  | "list-lost"
   | "cue-lost"
   | "cue-order"
   | "new-term"
@@ -56,11 +58,34 @@ function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
   const was = numberSpans(before).map(norm);
   const now = numberSpans(after.spoken).map(norm);
   const labels = after.labelsAdded.map(norm);
-  const lost = surplus(was, now).filter((span) => !labels.some((label) => label.includes(span)));
+  const moved = surplus(was, now);
+  const lost = moved.filter((span) => !labels.some((label) => label.includes(span)));
   return [
     ...lost.map((span) => ({ rule: "number-lost" as const, detail: `"${span}" left the line and is not in an appended label` })),
+    ...bareLabelRejections(moved, labels),
     ...surplus(now, was).map((span) => ({ rule: "number-invented" as const, detail: `"${span}" was not in the original` })),
   ];
+}
+
+/** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
+function bareLabelRejections(moved: readonly string[], labels: readonly string[]): BeatRejection[] {
+  return labels
+    .filter((label) => moved.some((span) => label.includes(span)))
+    .filter((label) => numberSpans(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
+    .map((label) => ({ rule: "label-bare", detail: `label "${label}" is only a number; it needs its noun phrase` }));
+}
+
+// A named list is three items joined by commas and a final and/or; the items are one to three words each.
+const NAMED_LIST = /\b([\w'’-]+(?: [\w'’-]+){0,2}), ([\w'’-]+(?: [\w'’-]+){0,2}),? (?:and|or) ([\w'’-]+(?: [\w'’-]+){0,2})[.,;:!?]/g;
+
+/** An item of a list in the original that left the spoken line must be on screen in an appended label. */
+function listRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  const spoken = norm(after.spoken);
+  const labels = after.labelsAdded.map(norm);
+  const items = [...before.matchAll(NAMED_LIST)].flatMap((match) => match.slice(1, 4).map((item) => norm(item).replace(/^(?:the|a|an) /, "")));
+  return items
+    .filter((item) => !spoken.includes(item) && !labels.some((label) => label.includes(item)))
+    .map((item) => ({ rule: "list-lost" as const, detail: `list item "${item}" left the line and is not in an appended label` }));
 }
 
 const orderOf = (positions: readonly number[]): number[] =>
@@ -108,6 +133,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
   return [
     ...generic,
     ...numberRejections(before.spoken, after),
+    ...listRejections(before.spoken, after),
     ...cueRejections(before, after.spoken),
     ...newTermRejections(before, after.spoken),
     ...capRejections(after.spoken, opts),

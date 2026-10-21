@@ -90,4 +90,33 @@ describe("guardBeat", () => {
   it("rejects an empty rewrite", () => {
     expect(rules(beatWith(), { spoken: "  ", labelsAdded: [] })).toContain("empty");
   });
+
+  it("rejects a moved-number label that is a bare number", () => {
+    expect(rules(beatWith(), { ...joined, labelsAdded: ["12"] })).toContain("label-bare");
+  });
+
+  it("rejects a moved-number label that is a bare number word", () => {
+    const before = beatWith({}, "The desk server checks each scan. It retries four times. The ledger keeps them all.");
+    const after = { spoken: "The desk server checks each scan and retries a few times. The ledger keeps them all.", labelsAdded: ["Four"] };
+    expect(rules(before, after)).toContain("label-bare");
+  });
+
+  it("accepts a label that carries its noun phrase", () => {
+    expect(rules(beatWith(), joined)).not.toContain("label-bare");
+  });
+
+  const LISTED = "The desk reads the Alder store, the Birch store, and the Cedar store. It writes them all to the ledger. The ledger keeps them.";
+
+  it("rejects a named list removed from spoken and absent from the labels", () => {
+    const after = { spoken: "The desk reads three stores and writes them all to the ledger. The ledger keeps them.", labelsAdded: [] };
+    expect(rules(beatWith({}, LISTED), after)).toContain("list-lost");
+  });
+
+  it("accepts a named list moved into the labels", () => {
+    const after = {
+      spoken: "The desk reads three stores and writes them all to the ledger. The ledger keeps them.",
+      labelsAdded: ["Alder store", "Birch store", "Cedar store"],
+    };
+    expect(rules(beatWith({}, LISTED), after)).not.toContain("list-lost");
+  });
 });
