@@ -34,6 +34,7 @@ describe("the autoresearch page", () => {
 
     fireEvent.click(within(await screen.findByTestId("autoresearch-run-ar-7c1e")).getByText("ar-7c1e"));
 
+    expect(within(screen.getByTestId("autoresearch-run-ar-7c1e")).getByText("3 / 50")).toBeTruthy();
     await waitFor(() => expect(window.location.hash).toBe("#/autoresearch/ar-7c1e"));
     expect(await screen.findByTestId("autoresearch-header")).toBeTruthy();
   });
@@ -44,9 +45,50 @@ describe("the autoresearch page", () => {
 
     expect(within(header).getByText("fixture-target · ar-7c1e")).toBeTruthy();
     expect(rowValue(header, "Round")).toContain("3 / 50");
-    expect(rowValue(header, "Best score")).toContain("231.2 (+3.3 vs B₀ 234.5)");
+    expect(rowValue(header, "Best score")).toContain("231.2 (+3.3 vs B₀ 234.5, +5.3σ)");
+    expect(rowValue(header, "Noise")).toContain("σ 0.62 · band ±1.24");
     expect(rowValue(header, "Decisions")).toContain("kept 1 · rejected 1 · stopped 0 · superseded 1");
     expect(rowValue(header, "Lanes in use")).toContain("1 / 3");
+  });
+
+  it("shows the backlog left after the picks, marking a top-K idea the draw passed over", async () => {
+    renderConsole("#/autoresearch/ar-7c1e");
+    const backlog = await screen.findByTestId("autoresearch-backlog");
+
+    expect(within(backlog).queryByTestId("autoresearch-backlog-i-77aa2b4c6d8e")).toBeNull();
+    const requeued = within(backlog).getByTestId("autoresearch-backlog-i-0d4e8f2a6b1c");
+    expect(requeued.textContent).toContain("requeue");
+    expect(requeued.textContent).toContain("bold");
+    expect(requeued.textContent).toContain("0.38 · top K, not picked");
+  });
+
+  it("shows the planner's bold quota exemption reason when it added no bold idea", async () => {
+    renderConsole("#/autoresearch/ar-7c1e");
+
+    const quota = await screen.findByTestId("autoresearch-quota-bold");
+
+    expect(within(quota).getByText("[EXEMPT] The requeued bold idea still stands in the pool")).toBeTruthy();
+  });
+
+  it("labels a superseded winner as requeued in its round's decisions", async () => {
+    renderConsole("#/autoresearch/ar-7c1e");
+    const decisions = await screen.findByTestId("autoresearch-decisions");
+
+    fireEvent.click(within(decisions).getByText("Round 1 · 2 decided"));
+
+    const superseded = await within(decisions).findByTestId("autoresearch-decision-i-0d4e8f2a6b1c");
+    expect(superseded.textContent).toContain("superseded: another winner moved the ratchet first; requeued");
+    const kept = within(decisions).getByTestId("autoresearch-decision-i-3f9a0c1d2e4b");
+    expect(kept.textContent).toContain("+1.2pp · +1.9σ");
+    expect(kept.textContent).toContain("9e1d4b7 → 4a7c0e3");
+  });
+
+  it("opens the newest round and keeps earlier ones collapsed", async () => {
+    renderConsole("#/autoresearch/ar-7c1e");
+    const decisions = await screen.findByTestId("autoresearch-decisions");
+
+    expect(within(decisions).getByText("No idea has reached a decision this round")).toBeTruthy();
+    expect(within(decisions).queryByTestId("autoresearch-decision-i-3f9a0c1d2e4b")).toBeNull();
   });
 
   it("shows the factory's error instead of an empty list when the runs read fails", async () => {
