@@ -1,6 +1,8 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "@titan-design/github";
+import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 import { reviewCheck } from "./review-check.js";
 import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carryRoutes, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
 import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
@@ -544,11 +546,11 @@ describe("the carry scope step", () => {
   async function scopeOf(held: boolean): Promise<Record<string, unknown>> {
     const github = fakeGitHub();
     github.addPr({ headSha: NEW_HEAD });
-    const run = { kind: undefined, reviewRequest: undefined, holdReason: held ? "g10-review: authority touch" : null };
-    const store = { get: () => ({ byRun: () => run, eventsOf: () => [] }) } as unknown as Parameters<typeof carryRoutes>[0]["store"];
+    const run = partialFake<Registration>({ holdReason: held ? "g10-review: authority touch" : null });
+    const store = partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: () => run, eventsOf: () => [] }) });
     const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
     const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
-    const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+    const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
     return (JSON.parse(outcome.output) as { result: Record<string, unknown> }).result;
   }
