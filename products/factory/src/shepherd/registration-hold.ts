@@ -20,7 +20,7 @@ const SIGNOFF_POLICY_FILES = [
   ...["signoffs.ts", "reviewer-lineage.ts", "reviewer-roles.ts", "spawn-facts.ts", "auto-pass.ts", "failed-rounds-demotion.ts", "routed.ts", "stale-gates.ts", "fix-proof.ts"],
   ...["merge-standing.ts", "review.ts", "review-panel-plan.ts", "review-panel-step.ts", "await-pr.ts", "coverage.ts", "external-review.ts", "held-repair.ts", "pr.ts", "shepherd-steps.ts"],
   ...["git-pr-files.ts", "tree-carry.ts", "await-verdict.ts", "changed-paths.ts", "pr-changed-paths.ts", "error-class.ts", "evidence-comment.ts", "grant-withheld.ts"],
-  ...["merge-settle.ts", "owner-hold-rows.ts", "publish-review.ts", "remerge-carry.ts", "review-check.ts", "review-schemas.ts", "skill-paths.ts", "visual-gate.ts"],
+  ...["store.ts", "events.ts", "take-verdict.ts", "merge-settle.ts", "owner-hold-rows.ts", "publish-review.ts", "remerge-carry.ts", "review-check.ts", "review-schemas.ts", "skill-paths.ts", "visual-gate.ts"],
 ].map((name) => `products/factory/src/shepherd/${name}`);
 const FIX_PROOF_POLICY_FILES = ["packages/fix-proof/src/**", "packages/review-panel/src/**", "scripts/fix-proof-run.sh"];
 /**

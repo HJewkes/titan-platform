@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the table stops holding events.ts, which exports the event readers",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "\"events.ts\", ",
+      "replace": "",
+      "kills": ["the G10 hold Shepherd places at registration holds sign-off and fix-proof policy in products/factory/src/shepherd/events.ts g10-adversary"]
+    },
+    {
+      "name": "the table stops holding git-pr-files.ts, the file-list reader",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "\"git-pr-files.ts\", ",
+      "replace": "",
+      "kills": ["the G10 hold Shepherd places at registration holds sign-off and fix-proof policy in products/factory/src/shepherd/git-pr-files.ts g10-adversary"]
+    },
+    {
+      "name": "the table stops holding the panel's glob matcher",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "\"packages/review-panel/src/**\", ",
+      "replace": "",
+      "kills": ["the G10 hold Shepherd places at registration holds sign-off and fix-proof policy in packages/review-panel/src/glob.ts g10-adversary"]
+    }
+  ]
+}

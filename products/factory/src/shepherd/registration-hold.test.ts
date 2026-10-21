@@ -111,7 +111,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBeUndefined();
   });
 
-  it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("leaves a factory store migration in %s unheld", async (name) => {
+  it.each(["store-migrations.ts", "train.ts", "account-store.ts"])("leaves a factory store migration in %s unheld", async (name) => {
     const r = rig([file(`products/factory/src/shepherd/${name}`, 30)]);
 
     expect(await holdOf(r)).toBeUndefined();
@@ -164,6 +164,9 @@ describe("the G10 hold Shepherd places at registration", () => {
     "packages/fix-proof/src/deep/new-verdict.ts",
     "packages/review-panel/src/classify.ts",
     "packages/review-panel/src/glob.ts",
+    "products/factory/src/shepherd/store.ts",
+    "products/factory/src/shepherd/events.ts",
+    "products/factory/src/shepherd/take-verdict.ts",
     "products/factory/src/shepherd/git-pr-files.ts",
     "scripts/fix-proof-run.sh",
   ])("holds sign-off and fix-proof policy in %s g10-adversary", async (path) => {
