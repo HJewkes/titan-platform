@@ -127,6 +127,19 @@ describe("planRegisterEdits: round 2", () => {
 
       expect(plan(inBand, 2)).toEqual({ round: 2, directives: [] });
     });
+
+    it("carries a previous round's refusal only on a beat it directs, each rule once", () => {
+      const refused = new Map([
+        ["b17", ["sentence-cap", "number-lost", "sentence-cap"] as const],
+        ["h1", ["list-emptied"] as const],
+      ]);
+
+      const { directives } = planRegisterEdits(mixed, runL0(mixed, undefined, [registerCheck]), { round: 2, refused });
+
+      expect(directiveFor(directives, "b17")?.refused).toEqual(["sentence-cap", "number-lost"]);
+      expect(directiveFor(directives, "h1")).toBeUndefined();
+      expect(directives.filter((d) => d.refused).map((d) => d.beat)).toEqual(["b17"]);
+    });
   });
 
   it("refuses a round past the last", () => {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { BeatDirective, RegisterEditPlan } from "./rewrite-plan.js";
+import type { BeatDirective, RefusalRule, RegisterEditPlan } from "./rewrite-plan.js";
 import { beatCues, spokenWordIndex, type ScriptBeat, type ScriptChapter } from "./script-schema.js";
 
 export interface RewritePromptDeps {
@@ -24,9 +24,37 @@ function shapeLine(lengths: readonly number[]): string {
   return `- Shape: ${lengths.length} sentences of about ${countWords(lengths)} words, in any order.`;
 }
 
+// Plain words only: a note names what went wrong in the beat, never a rule id, a threshold or a band (TP-3817 S20).
+const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    empty: "the line came back empty; say the beat in full",
+    entity: "a name from the original went missing; keep every name and id in the line",
+    markup: "a linked word was dropped or changed; keep each one exactly as written",
+    terms: "too many of the original's own words went missing; keep its wording and change less",
+    length: "the line grew or shrank too far; keep it close to the original's length",
+    "number-lost": "the number left the line without its noun in a label; label it with the noun it counts",
+    "number-invented": "a count appeared that the original never says; add no number of your own",
+    "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
+    "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
+    "label-bare": "a label held only a number; give it the noun it counts",
+    "list-lost": "an item of the list left the line without a label of its own; label every item",
+    "list-emptied": "keep one item of the list in the line",
+    "cue-lost": "a cue word was no longer spoken; say every cue word",
+    "cue-order": "the cue words came in a different order; keep the original order",
+    "new-term": "a term this beat introduces was no longer spoken; keep saying it",
+    "sentence-cap": "a sentence was too long to say in one breath; split it",
+    missing: "the reply left this beat out; return an entry for it",
+  } satisfies Record<RefusalRule, string>),
+);
+const FALLBACK_NOTE = "it changed what the beat says; stay closer to the original";
+
+const refusalLines = (refused: readonly string[]): string[] =>
+  [...new Set(refused.map((rule) => REFUSAL_NOTES.get(rule) ?? FALLBACK_NOTE))].map((note) => `- Your last version was not used: ${note}.`);
+
 function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, shape } = directive;
+  const { numbers, triads, shape, refused } = directive;
   return [
+    ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
     ...(numbers
       ? [`- Numbers: this beat speaks ${quoted(numbers)}. Keep the one its claim turns on and return the others as on-screen labels.`]
