@@ -9,3 +9,5 @@ listed; a draft that breaks one fails with the lint's own message.
 
 The narrator may address the viewer as "you" and speak as "we" for narrator and viewer together,
 as in "we can see" or "let us follow". Keep "we" off the makers.
+
+When you plan what a beat says aloud, speak the one number that matters and show the rest on screen.

@@ -23,6 +23,8 @@ const BANNED = [/\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this
 const POINTING = /\b(on|at) the (left|right|top|bottom)\b|\bas you can see\b|\blook at\b|\bnotice the\b|\bthis (box|arrow|line|node|panel)\b|\b(up|down|over) (here|there)\b/i;
 const POINTING_CUES = new Set(["V6", "V9"]);
 export const MAX_SENTENCE_WORDS = 25;
+/** Owner decision 517: a sentence of 26 to this many words passes Q-V9 only when speech-vet says it speaks clean. */
+export const MAX_VETTED_SENTENCE_WORDS = 32;
 export const MIN_PROJECT_SHARE = 0.8;
 
 const isProcess = (sentence: string, entities: readonly string[]): boolean => {
@@ -75,11 +77,24 @@ function spokenSignposts({ script }: L0Input): string[] {
   return [...script.beats.filter((beat) => CHAPTER_NUMBER.test(beat.spoken)).map((beat) => beat.id), ...chapterLabels];
 }
 
+/** Whether speech-vet found a sentence clean to speak: no breath or pace failure. Absent means vet did not run. */
+export type SpeechVerdict = (sentence: string) => boolean;
+
+export interface VoiceOptions {
+  speechClean?: SpeechVerdict;
+}
+
+function overlongSentence(text: string, speechClean: SpeechVerdict | undefined): boolean {
+  const words = wordsOf(text).length;
+  if (words <= MAX_SENTENCE_WORDS) return false;
+  return words > MAX_VETTED_SENTENCE_WORDS || !speechClean?.(text);
+}
+
 /**
  * Q-V voice lints. Process words are matched after blanking repo entities, so "the review server" is
  * a part, not our review. `entities` adds names the script does not carry, such as a review's repo names.
  */
-export function voiceCheckWith(entities: readonly string[] = []): L0Check {
+export function voiceCheckWith(entities: readonly string[] = [], { speechClean }: VoiceOptions = {}): L0Check {
   return (input) => {
     const { script, layout } = input;
     const known = repoEntities(script, layout, entities);
@@ -92,7 +107,7 @@ export function voiceCheckWith(entities: readonly string[] = []): L0Check {
       projectShare(script.beats, known),
       sentenceRule("Q-V7", all.filter(({ text }) => BANNED.some((pattern) => pattern.test(text)))),
       countRow("Q-V8", unanchoredPointing(script.beats)),
-      sentenceRule("Q-V9", all.filter(({ text }) => wordsOf(text).length > MAX_SENTENCE_WORDS)),
+      sentenceRule("Q-V9", all.filter(({ text }) => overlongSentence(text, speechClean))),
     ];
   };
 }

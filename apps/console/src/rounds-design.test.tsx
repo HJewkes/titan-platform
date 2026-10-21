@@ -205,7 +205,7 @@ describe("a design round", () => {
   it("keeps an after-answer round's recommendation out until the round is sent", async () => {
     await renderDesign();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
-    expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
+    expect(screen.getByText("Recommendations are hidden until you answer; reveal one first with r.")).toBeTruthy();
     cleanup();
 
     const { manifest } = await designRound();

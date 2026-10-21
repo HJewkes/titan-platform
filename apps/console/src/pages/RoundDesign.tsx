@@ -51,7 +51,7 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
       <FrameFeedbackProvider value={state.frames}>
         <VStack gap={4}>
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
-          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
+          {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
           <PagedSections
             manifest={round.manifest}
             state={state}
