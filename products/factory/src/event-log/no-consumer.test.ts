@@ -43,14 +43,15 @@ describe("event log reads", () => {
     expect(importers).toEqual([]);
   });
 
-  it("scans a tree the log's own module is in", () => {
+  it("scans a tree the log's own module and the reconciler are in", () => {
     const paths = sourceFiles(SRC).map((path) => relative(SRC, path).split(sep).join("/"));
 
     expect(paths).toContain("event-log/event-log.ts");
+    expect(paths).toContain("reconciler/service.ts");
   });
 
   it("counts a service file as a reader and exempts the log and tests", () => {
-    expect(["serve.ts", "shepherd/x.ts", "event-logs.ts"].filter(mayRead)).toEqual([]);
+    expect(["serve.ts", "shepherd/x.ts", "reconciler/service.ts", "event-logs.ts"].filter(mayRead)).toEqual([]);
     expect(["event-log/event-log.ts", "serve.test.ts", "test-support/a17/feed.ts"].every(mayRead)).toBe(true);
     expect(["test-support/leak.ts"].filter(mayRead)).toEqual([]);
   });

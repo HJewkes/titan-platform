@@ -16,6 +16,8 @@ import { githubApiStatus } from "./github-api/status.js";
 import { sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
+import { sqliteReconcilerCursor } from "./reconciler/cursor.js";
+import { OTHER_REPO, REPO, rig } from "./reconciler/fakes.test-helpers.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
@@ -384,6 +386,33 @@ describe("serve's start-up warnings", () => {
     await serve(dbFile(), landScenario(), { logger, deployWatch: { tick: async () => undefined, status: () => null, startupWarning } });
 
     expect(warnings).toContain(startupWarning);
+  });
+});
+
+describe("serve's reconciler (I9)", () => {
+  const config = { enabled: true, intervalMs: 300_000, fullEvery: 3, repos: [REPO, OTHER_REPO] };
+
+  it("returns from start before the forced start pass's first read answers, then snapshots every repo once", async () => {
+    const r = rig();
+    let release = (): void => undefined;
+    r.github.hold = new Promise<void>((resolve) => (release = resolve));
+
+    const server = await serve(dbFile(), landScenario(), { reconciler: { config, bot: r.bot } });
+    expect(r.github.calls.length).toBe(1);
+
+    release();
+    const cursor = sqliteReconcilerCursor(server.host.db);
+    await vi.waitFor(() => expect(cursor.read(OTHER_REPO).main?.value).toBe("c1"));
+    expect([r.github.count("snapshot", REPO), r.github.count("snapshot", OTHER_REPO)]).toEqual([1, 1]);
+  });
+
+  it("starts no reconciler while reconciler.enabled is off", async () => {
+    const r = rig();
+
+    await serve(dbFile(), landScenario(), { reconciler: { config: { ...config, enabled: false }, bot: r.bot } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(r.github.calls).toEqual([]);
   });
 });
 
