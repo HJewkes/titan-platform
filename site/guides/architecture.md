@@ -87,6 +87,7 @@ graph TD
   end
   subgraph P["Products"]
     activeWork["active-work"]
+    corpusQuery["corpus-query"]
     evals["evals"]
     explainer["explainer"]
     factory["factory"]
@@ -313,7 +314,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds nine units: `active-work`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds ten units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

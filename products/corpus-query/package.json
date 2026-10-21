@@ -1,0 +1,44 @@
+{
+  "name": "@titan-design/corpus-query",
+  "version": "0.0.0",
+  "description": "Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/corpus-query"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true,
+  "bin": {
+    "corpus-query": "./dist/bin.js"
+  },
+  "dependencies": {
+    "@titan-design/app-paths": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "commander": "^14.0.3",
+    "zod": "^4.4.3"
+  }
+}

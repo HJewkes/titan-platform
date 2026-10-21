@@ -1,0 +1,11 @@
+export { runCli, defaultIndexPath, formatStats } from "./cli.js";
+export { parseHeader, splitTitle } from "./header.js";
+export { SPAN_FIELD, chapterOwnerRef, indexCorpus, listChapters, migrateIndex, openSpans, readSpanText } from "./index-corpus.js";
+export type { IndexStats } from "./index-corpus.js";
+export { LAYOUTS, archiveLayout, plainLayout } from "./layout.js";
+export type { CorpusLayout } from "./layout.js";
+export { splitParagraphs } from "./paragraphs.js";
+export type { ParagraphSpan } from "./paragraphs.js";
+export { compareStoryOrder } from "./story-order.js";
+export { QuerySpecSchema } from "./types.js";
+export type { ChapterMeta, Passage, QuerySpec, StoryOrderKey } from "./types.js";

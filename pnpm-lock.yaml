@@ -1066,6 +1066,21 @@ importers:
         specifier: ^2.3.3
         version: 2.3.3(rollup@4.63.1)(vite@8.3.0(@types/node@22.20.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
 
+  products/corpus-query:
+    dependencies:
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   products/evals:
     dependencies:
       '@titan-design/agent':
