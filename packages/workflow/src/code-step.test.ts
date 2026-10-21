@@ -6,7 +6,7 @@ import { codeRecordRoute, codeRoute, codeStep } from "./code-step.js";
 import { routedRunner, type StepRoute } from "./routed-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import type { WorkflowFn } from "./types.js";
+import type { WorkflowFn, WorkflowRun } from "./types.js";
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");
@@ -18,6 +18,10 @@ function runtime(db: Db, routes: StepRoute[]): WorkflowRuntime {
   const rt = new WorkflowRuntime({ db, gates: new SqliteGateStore(db, { migrate: false }), runner: routedRunner(routes), gatePollMs: 10 });
   rt.register("count", countThenEcho);
   return rt;
+}
+
+function recorded(run: WorkflowRun, key: string): unknown {
+  return JSON.parse(run.stepResults[key]?.output ?? "null");
 }
 
 const Count = z.object({ count: z.number() });
@@ -38,7 +42,7 @@ describe("code steps", () => {
     const run = await rt.wait(rt.start("count"));
 
     expect(run.status).toBe("completed");
-    expect(JSON.parse(run.stepResults["echo:0"].output!)).toEqual({ result: { count: 2 } });
+    expect(recorded(run, "echo:0")).toEqual({ result: { count: 2 } });
   });
 
   it("stores the record the envelope hook builds around the body's answer", async () => {
@@ -47,7 +51,7 @@ describe("code steps", () => {
 
     const run = await rt.wait(rt.start("count"));
 
-    expect(JSON.parse(run.stepResults["read:0"].output!)).toEqual({ result: { count: 1 }, kind: "test.read" });
+    expect(recorded(run, "read:0")).toEqual({ result: { count: 1 }, kind: "test.read" });
   });
 
   it("records a throw once as a non-retryable failure with its text rewritten", async () => {
@@ -76,7 +80,7 @@ describe("code steps", () => {
     const run = await second.wait(runId);
 
     expect(run.status).toBe("completed");
-    expect(JSON.parse(run.stepResults["echo:0"].output!)).toEqual({ result: { count: 2 } });
+    expect(recorded(run, "echo:0")).toEqual({ result: { count: 2 } });
     expect([firstCalls, secondCalls]).toEqual([["read"], []]);
   });
 
@@ -85,7 +89,7 @@ describe("code steps", () => {
 
     const run = await rt.wait(rt.start("count"));
 
-    expect(JSON.parse(run.stepResults["read:0"].output!)).toEqual({ result: { count: 3 }, trace: ["t"] });
-    expect(JSON.parse(run.stepResults["echo:0"].output!)).toEqual({ result: { count: 3 } });
+    expect(recorded(run, "read:0")).toEqual({ result: { count: 3 }, trace: ["t"] });
+    expect(recorded(run, "echo:0")).toEqual({ result: { count: 3 } });
   });
 });
