@@ -51,9 +51,18 @@ export interface RevertedBeat {
   rows: string[];
 }
 
+/** Whether one chapter's accepted beats were kept on top of the chapters kept before it, and if not, why. */
+export interface ChapterVerdict {
+  chapter: string;
+  kept: boolean;
+  why?: ChapterRefusal["why"];
+  /** The rows that turned red, when a row did. */
+  rows?: string[];
+}
+
 export interface RoundReport {
   round: number;
-  /** False when the round made the target rows worse; the script before it was kept. */
+  /** False when every chapter was reverted; the script before the round was kept. */
   kept: boolean;
   why?: string;
   failing: { before: number; after: number };
@@ -61,6 +70,8 @@ export interface RoundReport {
   rewritten: string[];
   rejected: RejectedBeat[];
   reverted: RevertedBeat[];
+  /** Each chapter with an accepted beat, in the order it was tried. */
+  chapters: ChapterVerdict[];
 }
 
 export type TargetRow = Pick<L0Result, "check_id" | "value" | "threshold" | "pass">;
@@ -95,12 +106,28 @@ const rowDistance = ({ pass, value, threshold }: TargetRow): number =>
 /** The target rows' summed distance to band: zero only when all of them pass. */
 export const bandDistance = (rows: readonly L0Result[]): number => targetRows(rows).reduce((sum, row) => sum + rowDistance(row), 0);
 
-/** Why a round's result must be discarded, or undefined to keep it. */
-export function roundRefusal(before: readonly L0Result[], after: readonly L0Result[]): string | undefined {
-  if (failingTargets(after) > failingTargets(before)) return "more target rows fail";
-  if (bandDistance(after) >= bandDistance(before)) return "the distance to band did not fall";
-  if (failingErrors(after) > failingErrors(before)) return "more error rows fail";
-  return undefined;
+/** Floor and cap rows outside the targets that a chapter must not turn red (TP-3817 D5); contractions is a rate floor no beat guard can hold. */
+export const PROTECTED_ROWS = ["register:contractions", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets"] as const;
+
+export interface ChapterRefusal {
+  why: "more target rows fail" | "the distance to band did not fall" | "more error rows fail" | "a protected row turned red";
+  rows?: string[];
+}
+
+const turnedRed = (before: readonly L0Result[], after: readonly L0Result[], ids: (row: L0Result) => boolean): string[] => {
+  const passedBefore = new Set(before.filter((row) => row.pass && ids(row)).map((row) => row.check_id));
+  return after.filter((row) => !row.pass && passedBefore.has(row.check_id)).map((row) => row.check_id);
+};
+
+const PROTECTED: ReadonlySet<string> = new Set(PROTECTED_ROWS);
+
+/** Why a chapter's rewrite must be reverted, judged against the script it lands on; undefined to keep it. */
+export function chapterRefusal(before: readonly L0Result[], after: readonly L0Result[]): ChapterRefusal | undefined {
+  if (failingTargets(after) > failingTargets(before)) return { why: "more target rows fail", rows: turnedRed(before, after, (row) => TARGETS.has(row.check_id)) };
+  if (bandDistance(after) >= bandDistance(before)) return { why: "the distance to band did not fall" };
+  if (failingErrors(after) > failingErrors(before)) return { why: "more error rows fail", rows: turnedRed(before, after, (row) => row.severity === "error") };
+  const flipped = turnedRed(before, after, (row) => PROTECTED.has(row.check_id));
+  return flipped.length > 0 ? { why: "a protected row turned red", rows: flipped } : undefined;
 }
 
 /** L0 as the pass sees it: with a verdict, a vetted long sentence is no Q-V9 error. */
@@ -181,6 +208,34 @@ interface RoundOutcome {
   report?: RoundReport;
 }
 
+interface Greedy {
+  script: ScriptV1;
+  rows: L0Result[];
+  chapters: ChapterVerdict[];
+}
+
+const withChapter = (onto: ScriptV1, from: readonly ScriptBeat[], chapter: string): ScriptV1 =>
+  ({ ...onto, beats: onto.beats.map((beat, i) => (beat.chapter === chapter ? from[i]! : beat)) });
+
+/**
+ * Tries each changed chapter on top of the chapters already kept, the one that alone comes closest to band first, so
+ * one chapter that flips a row costs only its own gain (TP-3817 D2).
+ */
+function keepChapters(script: ScriptV1, rows: L0Result[], candidate: readonly ScriptBeat[], checks: readonly L0Check[]): Greedy {
+  const changed = script.chapters.map((chapter) => chapter.id).filter((id) => script.beats.some((beat, i) => beat.chapter === id && candidate[i] !== beat));
+  const solo = new Map(changed.map((id) => [id, bandDistance(runL0(withChapter(script, candidate, id), undefined, checks))]));
+  const order = [...changed].sort((a, b) => solo.get(a)! - solo.get(b)!);
+  let kept: Greedy = { script, rows, chapters: [] };
+  for (const chapter of order) {
+    const next = withChapter(kept.script, candidate, chapter);
+    const nextRows = runL0(next, undefined, checks);
+    const refusal = chapterRefusal(kept.rows, nextRows);
+    const verdict: ChapterVerdict = refusal ? { chapter, kept: false, ...refusal } : { chapter, kept: true };
+    kept = refusal ? { ...kept, chapters: [...kept.chapters, verdict] } : { script: next, rows: nextRows, chapters: [...kept.chapters, verdict] };
+  }
+  return kept;
+}
+
 async function runRound(script: ScriptV1, rows: L0Result[], round: number, deps: RewriteDeps, checks: readonly L0Check[]): Promise<RoundOutcome> {
   const cap = deps.speechClean ? MAX_VETTED_SENTENCE_WORDS : MAX_SENTENCE_WORDS;
   const plan = planRegisterEdits(script, rows, { round, cap });
@@ -188,24 +243,23 @@ async function runRound(script: ScriptV1, rows: L0Result[], round: number, deps:
   if (chapters.length === 0) return { script, rows, calls: [] };
   const replies = await Promise.all(chapters.map((chapter) => callChapter(chapter, script, plan, deps)));
   const merged = mergeReplies(script, plan, replies, deps);
-  const mergedRows = runL0({ ...script, beats: merged.beats }, undefined, checks);
-  const reverted = gainedErrors(rows, mergedRows, merged.rewritten);
+  const reverted = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
   const back = new Set(reverted.map((r) => r.beat));
-  const next = { ...script, beats: merged.beats.map((beat, i) => (back.has(beat.id) ? script.beats[i]! : beat)) };
-  const nextRows = back.size > 0 ? runL0(next, undefined, checks) : mergedRows;
-  const why = roundRefusal(rows, nextRows);
+  const candidate = merged.beats.map((beat, i) => (back.has(beat.id) ? script.beats[i]! : beat));
+  const greedy = keepChapters(script, rows, candidate, checks);
+  const keptChapters = new Set(greedy.chapters.filter((verdict) => verdict.kept).map((verdict) => verdict.chapter));
   const report: RoundReport = {
     round,
-    kept: why === undefined,
-    ...(why ? { why } : {}),
-    failing: { before: failingTargets(rows), after: failingTargets(nextRows) },
-    distance: { before: bandDistance(rows), after: bandDistance(nextRows) },
-    rewritten: merged.rewritten.filter((beat) => !back.has(beat)),
+    kept: keptChapters.size > 0,
+    ...(keptChapters.size === 0 ? { why: "every chapter was reverted" } : {}),
+    failing: { before: failingTargets(rows), after: failingTargets(greedy.rows) },
+    distance: { before: bandDistance(rows), after: bandDistance(greedy.rows) },
+    rewritten: merged.rewritten.filter((id) => !back.has(id) && keptChapters.has(script.beats.find((beat) => beat.id === id)!.chapter)),
     rejected: merged.rejected,
     reverted,
+    chapters: greedy.chapters,
   };
-  const calls = replies.map((reply) => reply.call);
-  return why ? { script, rows, calls, report } : { script: next, rows: nextRows, calls, report };
+  return { script: greedy.script, rows: greedy.rows, calls: replies.map((reply) => reply.call), report };
 }
 
 const sum = (calls: readonly RewriteCall[], key: "usd" | "tokensIn" | "tokensOut"): number => calls.reduce((total, call) => total + call[key], 0);
@@ -223,9 +277,10 @@ function checkRounds(rounds: number): number {
 }
 
 /**
- * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A round is kept
- * only when it fails no more target rows and comes closer to band; a beat that gains an error row is reverted, and a
- * failed call leaves its chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
+ * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A chapter is kept
+ * only when, on top of the chapters kept before it, it fails no more target rows, comes closer to band, fails no more
+ * error rows and turns no protected row red; a beat that gains an error row is reverted, and a failed call leaves its
+ * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
  */
 export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promise<RewriteResult> {
   const rounds = checkRounds(deps.rounds ?? MAX_REWRITE_ROUNDS);
