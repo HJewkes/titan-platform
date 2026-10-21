@@ -17,3 +17,4 @@ Every spoken line is heard once, at speaking pace, so write it the way a narrato
 - Talk to the viewer as "you": say what they'd see, try or expect.
 - The narrator speaks as "we" for narrator and viewer together, as in "we can see" or "let's
   follow one task", and never as "I". Keep "we" off the makers.
+- When you plan what a beat says aloud, speak the one number that matters and show the rest on screen.
