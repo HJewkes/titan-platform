@@ -223,7 +223,7 @@ const pressedVerdicts = (key: string): string[] => ["Chosen", "Rejected", "Maybe
 const pickOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest('[role="radio"]')?.getAttribute("aria-checked");
 /** An inactive frame keeps its key hint's line, hidden, so activating another frame moves nothing under the pointer. */
 const keyHint = (key: string): string => {
-  const hint = within(screen.getByTestId(`frame-feedback-${key}`)).getByText("c chosen · x rejected · m maybe · u clear").closest("[aria-hidden]");
+  const hint = within(screen.getByTestId(`frame-feedback-${key}`)).getByText("c chosen · x rejected · m maybe · u clear · a pin").closest("[aria-hidden]");
   return hint?.getAttribute("aria-hidden") === "false" ? "shown" : hint?.classList.contains("invisible") ? "hidden in place" : "missing";
 };
 const submitted = ({ calls }: Rendered): unknown => calls.find((call) => call.name === "rounds.submit")?.args;
@@ -440,5 +440,125 @@ describe("a design round's check before sending (TP-3775)", () => {
 
     await screen.findByText("Answers sent");
     expect(submitted(rendered)).toMatchObject({ variants: [{ key: "beacon-sketch", verdict: "chosen" }] });
+  });
+});
+
+/** jsdom lays nothing out: every image is a 750x1334 PNG drawn 187.5 px wide at the page's top left. */
+function layOut(): void {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(750);
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(1334);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 187.5, height: 333.5, right: 187.5, bottom: 333.5, x: 0, y: 0, toJSON: () => ({}) });
+}
+
+/** A phone: `(pointer: coarse)` matches. */
+function onPhone(): void {
+  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
+}
+
+const pinButton = (key: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: /^Pin / });
+
+/** A press on a frame's pin layer that lifts `moved` px from where it went down. */
+function tap(layer: HTMLElement, clientX: number, clientY: number, moved = 0): void {
+  fireEvent.pointerDown(layer, { clientX, clientY });
+  fireEvent.pointerUp(layer, { clientX: clientX + moved, clientY });
+}
+
+async function pinMode(key: string): Promise<HTMLElement> {
+  scrollAll();
+  await within(screen.getByTestId(`design-frame-${key}`)).findByRole("img");
+  fireEvent.pointerDown(screen.getByTestId(`design-frame-${key}`));
+  fireEvent.click(pinButton(key));
+  return screen.getByTestId(`pin-layer-${key}`);
+}
+
+describe("a design round's frame pins (TP-3773 S4)", () => {
+  beforeEach(layOut);
+  afterEach(() => vi.restoreAllMocks());
+
+  it("places a numbered pin where a click lands in pin mode, measured in frames.json's viewport width, focuses its note and sends it", async () => {
+    const rendered = await renderDesign();
+    const layer = await pinMode("beacon-busy");
+
+    tap(layer, 100, 50);
+
+    expect(within(screen.getByTestId("design-frame-beacon-busy")).getByTestId("pin-marker-beacon-busy-1").textContent).toBe("1");
+    const note = screen.getByLabelText("Note for pin 1");
+    expect(document.activeElement).toBe(note);
+    fireEvent.change(note, { target: { value: "Spinner sits off centre." } });
+    expect(await answerAndSend(rendered)).toMatchObject({
+      variants: [{ key: "beacon-busy", annotations: [{ id: "beacon-busy-1", width: 320, x: 171, y: 85, xPct: 0.5344, yPct: 0.1493, note: "Spinner sits off centre." }] }],
+    });
+  });
+
+  it("places nothing for a press that moved 20 px, which was a scroll", async () => {
+    await renderDesign();
+    const layer = await pinMode("beacon-busy");
+
+    tap(layer, 100, 50, 20);
+
+    expect(screen.queryByTestId("pin-marker-beacon-busy-1")).toBeNull();
+  });
+
+  it("toggles pin mode with a on the active frame, leaves it with Escape, and enlarges on a tap outside it", async () => {
+    await renderDesign();
+    scrollAll();
+    await within(screen.getByTestId("design-frame-beacon-idle")).findByRole("img");
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-idle"));
+
+    fireEvent.keyDown(window, { key: "a" });
+    expect(screen.getByTestId("pin-layer-beacon-idle")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("pin-layer-beacon-idle")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Enlarge Idle" }));
+    expect(screen.getByRole("dialog", { name: "Idle" })).toBeTruthy();
+  });
+
+  it("numbers a pin placed after a removal past every number handed out", async () => {
+    await renderDesign();
+    const layer = await pinMode("beacon-busy");
+    tap(layer, 10, 10);
+    tap(layer, 20, 20);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove pin 2" }));
+    tap(layer, 30, 30);
+
+    expect(screen.queryByLabelText("Note for pin 2")).toBeNull();
+    expect(screen.getByLabelText("Note for pin 3")).toBeTruthy();
+  });
+
+  it("opens the full-size view on a phone instead of pinning the small strip frame, and pins there", async () => {
+    onPhone();
+    await renderDesign();
+    scrollAll();
+    await within(screen.getByTestId("design-frame-beacon-busy")).findByRole("img");
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-busy"));
+
+    fireEvent.click(pinButton("beacon-busy"));
+    const dialog = within(screen.getByRole("dialog"));
+    tap(dialog.getByTestId("pin-layer-beacon-busy"), 100, 50);
+
+    expect(screen.getAllByTestId("pin-layer-beacon-busy")).toHaveLength(1);
+    expect(document.activeElement).toBe(dialog.getByLabelText("Note for pin 1"));
+    fireEvent.click(dialog.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
+  });
+
+  it("draws a sent round's pins on the frame, with no way to place another", async () => {
+    const echo = { verdict: null, comment: "", annotations: [] };
+    const pin = { id: "beacon-error-1", width: 375, x: 90, y: 30, xPct: 0.25, yPct: 0.5, note: "Too red." };
+    const variants = [{ key: "beacon-error", ...echo, annotations: [pin] }];
+    const feedback = { schema: "titan-review/feedback@1", unit: "beacon-states", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-02T10:00:00.000Z", answers: [], variants, general: "" };
+    const staged = await sentRound(DESIGN, feedback);
+    onTestFinished(staged.remove);
+    await renderDesign({ rounds: staged.source });
+    scrollAll();
+
+    const marker = await within(screen.getByTestId("design-frame-beacon-error")).findByTestId("pin-marker-beacon-error-1");
+    expect(marker.style.left).toBe("25%");
+    expect(screen.queryByRole("button", { name: /^Pin / })).toBeNull();
+    fireEvent.pointerDown(screen.getByTestId("design-frame-beacon-error"));
+    fireEvent.keyDown(window, { key: "a" });
+    expect(screen.queryByTestId("pin-layer-beacon-error")).toBeNull();
   });
 });
