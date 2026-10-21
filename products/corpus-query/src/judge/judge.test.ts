@@ -70,6 +70,18 @@ describe("batching", () => {
     expect(batch.canary!.ref).toMatch(/^PM \d+\.\d+$/);
   });
 
+  it.each([
+    ["a ref without digits", { id: "story/intro.txt", ref: "Interlude" }],
+    ["an id and ref with no letters or digits", { id: "---", ref: "--" }],
+    ["an id with a letter-only shift that is already taken", { id: "a", ref: "a" }],
+  ])("gives the canary a distinct id and ref for %s", (_name, shape) => {
+    const real = [{ ...shape, text: "The squad trained indoors until the rain stopped." }];
+    const [batch] = buildBatches(real, { tokenBudget: 10_000, prefixSha: "x", canaries: spec.canaries });
+    expect([batch!.canary!.id, batch!.canary!.ref]).not.toContain(shape.id);
+    expect(batch!.canary!.ref).not.toBe(shape.ref);
+    expect(batch!.message).not.toMatch(/canary/i);
+  });
+
   it("splits on the token budget without splitting a passage and keeps order", () => {
     const batches = buildBatches(passages, { tokenBudget: 40, prefixSha: "x", canaries: spec.canaries });
     expect(batches.map((b) => b.passages.map((p) => p.id))).toEqual([[passages[0]!.id], [passages[1]!.id]]);

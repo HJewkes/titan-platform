@@ -32,14 +32,27 @@ export function batchKey(passageIds: readonly string[], prefixSha: string): stri
 }
 
 /**
- * A shown id or ref for the canary: the last real one with each number shifted by a seeded amount,
- * so the canary has the shape of its neighbours and the judge cannot tell it is a control.
+ * A shown id or ref for the canary, shaped like `template` (a real one from the batch) but never
+ * equal to anything in `taken`, so the judge cannot tell it is a control. Numbers are shifted by a
+ * seeded amount; a template without numbers has its letters shifted instead. Always returns: the
+ * last resort appends a counter, and `taken` is finite.
  */
 function lookalike(template: string, seed: string, taken: ReadonlySet<string>): string {
-  for (let salt = 0; ; salt++) {
-    const digest = createHash("sha256").update(`${seed}:${salt}`).digest();
-    let at = 0;
-    const candidate = template.replace(/\d+/g, (n) => String(Number(n) + 1 + (digest[at++ % digest.length]! % 7)));
+  const digest = createHash("sha256").update(seed).digest();
+  const shift = (i: number) => 1 + (digest[i % digest.length]! % 7);
+  let at = 0;
+  const renumbered = template.replace(/\d+/g, (n) => String(Number(n) + shift(at++)));
+  if (!taken.has(renumbered)) return renumbered;
+  const reletter = (base: string) =>
+    base.replace(/[a-z]/gi, (ch) => {
+      const lower = ch >= "a";
+      const origin = (lower ? "a" : "A").charCodeAt(0);
+      return String.fromCharCode(origin + ((ch.charCodeAt(0) - origin + shift(at++)) % 26));
+    });
+  const relettered = reletter(renumbered);
+  if (!taken.has(relettered)) return relettered;
+  for (let n = 2; ; n++) {
+    const candidate = `${renumbered}-${n}`;
     if (!taken.has(candidate)) return candidate;
   }
 }
