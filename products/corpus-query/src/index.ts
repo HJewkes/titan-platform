@@ -9,3 +9,4 @@ export type { ParagraphSpan } from "./paragraphs.js";
 export { compareStoryOrder } from "./story-order.js";
 export { QuerySpecSchema } from "./types.js";
 export type { ChapterMeta, Passage, QuerySpec, StoryOrderKey } from "./types.js";
+export * from "./judge/index.js";
