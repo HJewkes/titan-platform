@@ -21,7 +21,7 @@ import { inlineScript, SHELLS } from "./inline-script.js";
 import type { Inline } from "./inline-script.js";
 import { addRedirect } from "./group-stdin.js";
 import { procsubScript, withProcsub, withoutProcsub } from "./procsub-operand.js";
-import { descriptorsAfter, emptied, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
+import { descriptorsAfter, emptied, feedsStdin, stdinText, TOP_DESCRIPTORS } from "./shell-options.js";
 import type { Descriptors } from "./shell-options.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
@@ -323,7 +323,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.out.push({ name, path, ...(program ? { program } : {}), args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links, ...set, ...pathSet });
   const piped = stdin === null ? [] : [stdin, ...(stdin === w.stdin ? w.shellStdin : [])];
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
-  const script = procsubScript(cmd, (plain) => inlineScript(plain, redirects, piped, w.unsure, inherited)) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
+  const fed = feedsStdin(redirects, piped.length > 0 || w.prev === "|" || w.prev === "|&", inherited);
+  const script = procsubScript(cmd, fed, (plain) => inlineScript(plain, redirects, piped, w.unsure, inherited)) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
   if (script !== null) walkScript(script, w, wrapping, held, ownPath);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(w, [...wrapping, "find-exec"], held), ownPath), null);

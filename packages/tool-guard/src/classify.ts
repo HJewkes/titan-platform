@@ -233,6 +233,8 @@ function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
   try {
     return scriptReadings(ctx, target.path);
   } catch (error) {
+    // An optional file the shell finds no regular file at runs nothing; one cut at the cap still runs past it.
+    if (target.optional && error instanceof UnreadableScriptError && error.head === null) return [];
     if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
     return error.head === null ? [] : [error.head];
   }
