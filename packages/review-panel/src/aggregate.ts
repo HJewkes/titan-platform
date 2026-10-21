@@ -1,5 +1,5 @@
 import { verifyCitation, type LineSource } from "@titan-design/evidence";
-import { parseResultLine, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
+import { parseResultLine, provedByMutants, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
 import type { AwaitVerdictResult } from "./accept-verdict.js";
 import { FINDINGS_SEPARATOR, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings } from "./fix-first-findings.js";
 import { DEFAULT_SONNET_FOR } from "./plan.js";
@@ -64,9 +64,10 @@ function fixFirstsOf(results: readonly MemberResult[], head: string): Seat["fixF
   });
 }
 
+/** A vacuous line its mutants prove is the one Shepherd lets the review run on, so it must not block here either (tp#2145). */
 function badResultLine(line: string, head: string): boolean {
   const parsed = parseResultLine(line);
-  return !parsed.ok || parsed.result.head !== head || BAD_FIX_PROOF.has(parsed.result.verdict);
+  return !parsed.ok || parsed.result.head !== head || (BAD_FIX_PROOF.has(parsed.result.verdict) && !provedByMutants(parsed.result));
 }
 
 /** A fix-proof this cannot read is treated as bad, so an unexpected form can only make the verdict stricter. */
