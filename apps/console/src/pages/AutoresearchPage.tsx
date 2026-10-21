@@ -10,60 +10,67 @@ import {
   Section,
   SectionContent,
   SectionHeader,
+  Spinner,
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableHeaderCell,
   TableRow,
-  VStack,
 } from "@titan-design/react-ui";
-import type { ArRunView } from "../../server/autoresearch-view.js";
-import { AR_RUN_FIXTURE } from "../../server/twin/autoresearch.js";
+import type { ArRunSummary, ArRunView } from "../../server/autoresearch-view.js";
+import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
 import { formatCost } from "./SessionFormat.js";
 
 const SHORT_SHA = 7;
 
-/** Until the daemon reader lands (TP-3843) the page shows one synthetic run, and says so. */
-const RUNS: readonly ArRunView[] = [AR_RUN_FIXTURE];
-
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
-  const run = route.id === undefined ? undefined : RUNS.find((candidate) => candidate.runId === route.id);
-  return (
-    <VStack gap={6}>
-      <Alert status="info" message="Preview: a synthetic run. Live runs arrive with the console's autoresearch reader (TP-3843)." />
-      {route.id === undefined ? <RunsSection runs={RUNS} /> : run ? <RunHeader run={run} /> : <EmptyState title={`No autoresearch run ${route.id}`} />}
-    </VStack>
-  );
+  return route.id === undefined ? <RunsSection /> : <RunSection runId={route.id} />;
 }
 
-function RunsSection({ runs }: { runs: readonly ArRunView[] }): ReactNode {
+/** A factory that is down or refuses shows its error, never an empty list that would read as "no runs". */
+function RunsSection(): ReactNode {
+  const runs = useQuery("autoresearch.runs", {});
   return (
     <Section>
       <SectionHeader title="Runs" subtitle="The live run first, then finished ones" />
       <SectionContent>
-        <Table density="dense">
-          <TableHeader>
-            <TableRow>
-              <TableHeaderCell>Run</TableHeaderCell>
-              <TableHeaderCell>Target</TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
-              <TableHeaderCell>Round</TableHeaderCell>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {runs.map((run) => (
-              <RunRow key={run.runId} run={run} />
-            ))}
-          </TableBody>
-        </Table>
+        {runs.status === "loading" ? (
+          <Spinner size="sm" label="Loading the runs" />
+        ) : runs.data === undefined ? (
+          <Alert status="error" message={`Could not load the autoresearch runs: ${runs.error.message}`} />
+        ) : runs.data.length === 0 ? (
+          <EmptyState title="The factory holds no autoresearch run" />
+        ) : (
+          <RunsTable runs={runs.data} />
+        )}
       </SectionContent>
     </Section>
   );
 }
 
-function RunRow({ run }: { run: ArRunView }): ReactNode {
+function RunsTable({ runs }: { runs: readonly ArRunSummary[] }): ReactNode {
+  return (
+    <Table density="dense">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Run</TableHeaderCell>
+          <TableHeaderCell>Target</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell>Phase</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {runs.map((run) => (
+          <RunRow key={run.runId} run={run} />
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function RunRow({ run }: { run: ArRunSummary }): ReactNode {
   return (
     <TableRow testID={`autoresearch-run-${run.runId}`}>
       <TableCell>
@@ -71,13 +78,20 @@ function RunRow({ run }: { run: ArRunView }): ReactNode {
           {run.runId}
         </Link>
       </TableCell>
-      <TableCell>{run.target.name}</TableCell>
+      <TableCell>{run.target}</TableCell>
       <TableCell>
         <StatusBadge status={run.status} />
       </TableCell>
-      <TableCell>{roundText(run)}</TableCell>
+      <TableCell>{run.phase}</TableCell>
     </TableRow>
   );
+}
+
+function RunSection({ runId }: { runId: string }): ReactNode {
+  const run = useQuery("autoresearch.run", { runId });
+  if (run.status === "loading") return <Spinner size="sm" label={`Loading ${runId}`} />;
+  if (run.data === undefined) return <Alert status="error" message={`Could not load autoresearch run ${runId}: ${run.error.message}`} />;
+  return <RunHeader run={run.data} />;
 }
 
 /** §1.1 of the design: identity, status, progress and spend. Noise, caps and load wait wait on engine fields (G4, G7, G9). */
@@ -101,7 +115,7 @@ function RunHeader({ run }: { run: ArRunView }): ReactNode {
   );
 }
 
-function StatusBadge({ status }: { status: ArRunView["status"] }): ReactNode {
+function StatusBadge({ status }: { status: ArRunSummary["status"] }): ReactNode {
   const color = status === "running" ? "info" : status === "completed" ? "success" : status === "failed" ? "error" : "warning";
   return (
     <Badge color={color} variant="subtle" size="sm">
