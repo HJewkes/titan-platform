@@ -10,7 +10,7 @@
  * `docs:build` runs, it writes nothing and fails when a committed file differs from what it
  * would write or a package has no family in `site/guides/package-families.md`.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TIERS, findTiersRule } from "./new-package.mjs";
@@ -217,20 +217,46 @@ function packageCount(entries) {
   return String(entries.filter((e) => e.group === "packages" && !e.private).length);
 }
 
-/** Paragraph-level blocks sit on their own lines; `miner-count` and `package-count` sit inside a sentence. */
-function blocks(entries) {
+const WORKSPACE_ROOTS = ["packages", "products", "apps", "deploy/hub"];
+const UNTRACKED_DIRS = new Set(["node_modules", "dist", "coverage"]);
+
+export function countTestFiles(dir) {
+  if (!existsSync(dir)) return 0;
+  let count = 0;
+  for (const name of readdirSync(dir)) {
+    if (name.startsWith(".") || UNTRACKED_DIRS.has(name)) continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) count += countTestFiles(path);
+    else if (/\.test\.[^.]+$/.test(name)) count += 1;
+  }
+  return count;
+}
+
+/** Floored to the hundred so the landing page changes only when the count crosses one, not on every PR that adds a test. */
+export function roundedTestCount(count) {
+  return `${(Math.floor(count / 100) * 100).toLocaleString("en-US")}+`;
+}
+
+/** Test files under the workspace globs; build output and installed dependencies are not source. */
+function testFileCount(base) {
+  return roundedTestCount(WORKSPACE_ROOTS.reduce((sum, dir) => sum + countTestFiles(join(base, dir)), 0));
+}
+
+/** Paragraph-level blocks sit on their own lines; `miner-count`, `package-count` and `test-file-count` sit inside a sentence. */
+function blocks(entries, base) {
   return {
     "arch-graph": `\n${archGraph(entries)}\n`,
     "arch-leaves": `\n${leavesProse(entries)}\n`,
     "arch-products": `\n${productsProse(entries)}\n`,
     "miner-count": minerCount(entries),
     "package-count": packageCount(entries),
+    "test-file-count": testFileCount(base),
   };
 }
 
 export const MARKED_PAGES = {
   "README.md": ["package-count"],
-  "site/index.md": ["package-count"],
+  "site/index.md": ["package-count", "test-file-count"],
   "site/guides/architecture.md": ["arch-graph", "arch-leaves", "arch-products", "miner-count"],
   "site/guides/index.md": ["miner-count"],
 };
@@ -249,7 +275,7 @@ function fillMarkers(text, page, generated) {
 export function outputs(base = root) {
   const entries = collect(base);
   assertPagesExist(base, entries);
-  const generated = blocks(entries);
+  const generated = blocks(entries, base);
   const marked = Object.keys(MARKED_PAGES).map((page) => ({
     path: page,
     content: fillMarkers(readFileSync(join(base, page), "utf8"), page, generated),

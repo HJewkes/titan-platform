@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKED_PAGES, collect, outputs, problems } from "./gen-docs-reference.mjs";
+import { MARKED_PAGES, collect, outputs, problems, roundedTestCount, countTestFiles } from "./gen-docs-reference.mjs";
 
 function fixtureRoot() {
   const root = mkdtempSync(join(tmpdir(), "gen-docs-reference-"));
@@ -39,7 +39,7 @@ describe("collect", () => {
 
 const MARKERS = {
   "README.md": "<!-- generated:package-count start -->99<!-- generated:package-count end --> reusable packages.\n",
-  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages.\n",
+  "site/index.md": "tagline: <!-- generated:package-count start -->99<!-- generated:package-count end --> packages in <!-- generated:test-file-count start -->999<!-- generated:test-file-count end --> test files.\n",
   "site/guides/architecture.md": "<!-- generated:arch-graph start --><!-- generated:arch-graph end -->\n\n<!-- generated:arch-leaves start --><!-- generated:arch-leaves end -->\n\n<!-- generated:arch-products start --><!-- generated:arch-products end -->\n\nComposes <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
   "site/guides/index.md": "Case study: <!-- generated:miner-count start -->ten<!-- generated:miner-count end --> packages.\n",
 };
@@ -113,6 +113,28 @@ describe("architecture page generation", () => {
     const counts = ["README.md", "site/index.md"].map((path) => page(root, path).match(/start -->(\w+)<!--/)[1]);
 
     expect(counts).toEqual(["2", "2"]);
+  });
+
+  it("counts test files under the workspace globs and skips build output and installed dependencies", () => {
+    const root = workspaceWithNewUnit();
+    const touch = (path) => {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), "");
+    };
+    touch("packages/alpha/src/a.test.ts");
+    touch("packages/alpha/src/nested/b.test.tsx");
+    touch("products/session-miner/test/c.test.mjs");
+    touch("packages/alpha/src/not-a-test.ts");
+    touch("packages/alpha/dist/d.test.js");
+    touch("packages/alpha/node_modules/dep/e.test.js");
+    touch("scripts/outside.test.mjs");
+
+    expect(["packages", "products"].reduce((sum, dir) => sum + countTestFiles(join(root, dir)), 0)).toBe(3);
+    expect(page(root, "site/index.md")).toContain("<!-- generated:test-file-count start -->0+<!-- generated:test-file-count end -->");
+  });
+
+  it("floors the test-file count to the hundred with a thousands separator and a plus sign", () => {
+    expect([1874, 1899, 1900].map(roundedTestCount)).toEqual(["1,800+", "1,800+", "1,900+"]);
   });
 
   it("reports a package that has no family on the families page", () => {
