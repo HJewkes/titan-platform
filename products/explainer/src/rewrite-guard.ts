@@ -175,7 +175,7 @@ const itemOf = (raw: string, at: number): ListItem => {
 function namedLists(before: string): NamedList[] {
   return sentencesOf(spokenText([before]).text).flatMap((sentence) =>
     [...sentence.matchAll(NAMED_LIST)].map((match) => ({
-      items: match.slice(1, 4).map((raw, at) => itemOf(raw!, at)),
+      items: match.slice(1, 4).map((raw, at) => itemOf(raw, at)),
       rest: [...contentTerms(sentence.replace(match[0], " "))],
     })),
   );
