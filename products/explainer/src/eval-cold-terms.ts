@@ -37,15 +37,19 @@ export const bareKey = (beat: string, label: string): string => `${beat}\0${labe
 // so; only the script's glossary, or cold viewers who name them (`agreedTerms`), can.
 const IDENTIFIER = /\b[A-Z]{1,2}\d+\b/g;
 
-/** One term the viewer hears before any label shows it: the beat that first speaks it, and the term as written. */
+/**
+ * One term the viewer hears before any label shows it: the beat that first speaks it, the term as written, and
+ * whether only the cold viewers named it, with neither the glossary nor an identifier's shape behind it.
+ */
 interface SpokenTerm {
   beat: string;
   term: string;
+  viewer: boolean;
 }
 
-// Only a new item's label counts: the item track asks about those, while an attribute ("after the F7 eval") is shown
-// but never asked, so a term it carries would go unasked.
-const askedBy = (beat: PaceBeat, term: string): boolean => beat.newItems.some((i) => mentions(i.label, term));
+// Only a new item's label that is the term itself counts. An attribute ("after the F7 eval") is shown but never asked,
+// and a longer label ("I2 verdict at head") is asked about as a whole, so a term inside either would go unasked.
+const askedBy = (beat: PaceBeat, term: string): boolean => beat.newItems.some((i) => termKey(i.label) === termKey(term));
 
 // Only the last word is folded: "carry modules" and "carry module" are one term, "class" and "status" stay whole.
 function singular(word: string): string {
@@ -95,12 +99,14 @@ export function agreedTerms(runs: readonly (readonly string[])[], beats: readonl
  * unless a new item's label at or before that beat names it, since the item track asks that one. Video-wide, so a
  * term first spoken in an earlier chapter is not asked again.
  */
-export function spokenTerms(beats: readonly PaceBeat[], glossary: readonly string[] = []): SpokenTerm[] {
+export function spokenTerms(beats: readonly PaceBeat[], glossary: readonly string[] = [], viewerTerms: readonly string[] = []): SpokenTerm[] {
   const spokenIds = beats.flatMap((b) => [...b.spoken.matchAll(IDENTIFIER)].map((m) => m[0]));
-  const candidates = [...new Map([...glossary, ...spokenIds].map((t) => [t.trim().toLowerCase(), t.trim()])).values()];
-  return candidates.flatMap((term) => {
+  const candidates = new Map<string, { term: string; viewer: boolean }>();
+  for (const term of [...glossary, ...spokenIds]) candidates.set(term.trim().toLowerCase(), { term: term.trim(), viewer: false });
+  for (const term of viewerTerms) if (!candidates.has(term.trim().toLowerCase())) candidates.set(term.trim().toLowerCase(), { term: term.trim(), viewer: true });
+  return [...candidates.values()].flatMap(({ term, viewer }) => {
     const first = beats.findIndex((b) => mentions(b.spoken, term));
     const asked = beats.slice(0, first + 1).some((b) => askedBy(b, term));
-    return first < 0 || asked ? [] : [{ beat: beats[first]!.id, term }];
+    return first < 0 || asked ? [] : [{ beat: beats[first]!.id, term, viewer }];
   });
 }

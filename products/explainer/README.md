@@ -179,14 +179,20 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   and P is recorded for the process-leak classifier.
 - `explainer eval cold <script.json> --judge <judge.json> [--format spike|v1] [--timing
   <words.json>] [--config <id>] [--rules <registry>] [--bench <dir>] [--parent <sha>] [--runs
-  <n>]` is the cold-viewer probe for Q-E6 (eval id `L1-cold`, rubric `rubrics/l1-cold.md`). It
-  reads a script the way `eval pace` does, then streams it to a fresh viewer one chapter per
-  call: the playback transcript of that chapter (spoken words, each label's exposure second,
-  each beat's end) plus the viewer's own summary of earlier chapters, three lines at most.
+  <n>] [--labels <labels.json>]` is the cold-viewer probe for Q-E6 (eval id `L1-cold`, rubric
+  `rubrics/l1-cold.md`). It reads a script the way `eval pace` does, then streams it to a fresh
+  viewer one chapter at a time: the chapter as heard (spoken words and each beat's end, never the
+  screen) plus the viewer's own summary of earlier chapters, three lines at most.
   Questions come from the item track: what and why for every new item, what keeps every
   invariant, the odd one out for every list of three or more, and one made-up `relay-xxxxxx`
-  item per chapter that the viewer must decline. An answer scores 2 for what and why, 1 for
+  item per call that the viewer must decline. Spoken terms (the glossary, identifiers, and the
+  terms two of three fresh viewers name as undefined) are asked "what does X mean here?" in a
+  second call per chapter under `rubrics/l1-cold-spoken.md`, where a sentence that only uses the
+  word does not define it. An answer scores 2 for what and why, 1 for
   what only, and 0 when not stated or when a quote is not in that chapter's spoken words.
+  `--labels` adds each run's reader-gap group scores (`readerGapScores`) to its line. Zeros on
+  viewer-named terms (kind `viewer-term`) are counted in `undefined_terms` and
+  `undefined_terms_per_minute`, apart from `undefined_items`, so the chapter bars keep their meaning.
   `--runs` defaults to 3. Each run appends `cold-scores.tsv` (one row a question, odd-one-out
   picks included), `cold-chapters.tsv` (undefined items and undefined items a chapter
   minute), `canaries.tsv` and a run record, and prints one line with its eval_version and
