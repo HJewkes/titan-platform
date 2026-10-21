@@ -5,7 +5,7 @@ import { FIXTURE_BOUNDS, proposal } from "./test-support/fake-ports.js";
 
 const ops = (input: Partial<QueueOps>): QueueOps => QueueOpsSchema.parse(input);
 const QUOTA = { keptLastRound: [] as string[], minPool: 0, queuedBefore: 0 };
-const CONTEXT = { round: 2, bounds: FIXTURE_BOUNDS, seedNames: ["t-alpha"], deadEnds: [], seen: new Set<string>(), lineageOf: new Map<string, string>() };
+const CONTEXT = { round: 2, bounds: FIXTURE_BOUNDS, caseNames: ["t-alpha"], deadEnds: [], seen: new Set<string>(), lineageOf: new Map<string, string>() };
 
 describe("planner quotas", () => {
   it("refuses a round with no bold idea unless the planner states an exemption", () => {
@@ -27,11 +27,11 @@ describe("planner quotas", () => {
 });
 
 describe("applying queue ops", () => {
-  it("rejects an exact repeat, an out-of-bounds target and a seed name before any spawn", () => {
+  it("rejects an exact repeat, an out-of-bounds target and a case name before any spawn", () => {
     const seen = toIdea(proposal("seen"), CONTEXT);
     const applied = applyOps([], ops({ add: [proposal("seen"), proposal("far", { targets: ["src/other.py"] }), proposal("names t-alpha"), proposal("fine")] }), { ...CONTEXT, seen: new Set([seen.id]) });
 
-    expect(applied.rejected.map((entry) => entry.code)).toEqual(["rejected:pre:duplicate", "rejected:pre:target-outside-class", "rejected:pre:seed-name"]);
+    expect(applied.rejected.map((entry) => entry.code)).toEqual(["rejected:pre:duplicate", "rejected:pre:target-outside-class", "rejected:pre:case-name"]);
     expect(applied.queue.map((idea) => idea.mechanism)).toEqual(["fine"]);
   });
 

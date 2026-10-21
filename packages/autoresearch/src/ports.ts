@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BoundsSchema } from "./bounds.js";
 import type { Digest } from "./digest.js";
-import { TargetSchema, type ArMicro, type ArResult, type Idea } from "./schemas.js";
+import { DiffSizeSchema, TargetSchema, type ArMicro, type ArResult, type Idea } from "./schemas.js";
 
 export const PinnedSchema = z.object({
   pin: z.string(),
@@ -15,7 +15,7 @@ export const PinnedSchema = z.object({
 export type Pinned = z.infer<typeof PinnedSchema>;
 
 export const TreeSchema = z.object({ tree: z.string(), branch: z.string() });
-export const ImplementedSchema = z.object({ head: z.string(), usd: z.number().nonnegative(), lesson: z.string().optional() });
+export const ImplementedSchema = z.object({ head: z.string(), usd: z.number().nonnegative(), lesson: z.string().optional(), diff: DiffSizeSchema.optional() });
 export const StaticCheckSchema = z.object({ ok: z.boolean(), code: z.string().optional() });
 export const HeadSchema = z.object({ head: z.string() });
 export const ReleasedSchema = z.object({ released: z.string() });
@@ -39,7 +39,7 @@ export interface ArPorts {
   /** L0: bounds post-check, unit suite and test proof; never a model call. */
   staticCheck(input: { idea: Idea; tree: string; base: string; head: string }, signal: AbortSignal): Promise<z.infer<typeof StaticCheckSchema>>;
   micro(input: { idea: Idea; tree: string; rung: string }, signal: AbortSignal): Promise<ArMicro>;
-  evalSeed(input: { tree: string; seed: string; key: string }, signal: AbortSignal): Promise<ArResult>;
+  evalCase(input: { tree: string; case: string; key: string }, signal: AbortSignal): Promise<ArResult>;
   ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{ head: string }>;
   /** Parks the tree: checkout removed, branch kept. */
   releaseTree(input: { tree: string }, signal: AbortSignal): Promise<void>;

@@ -61,6 +61,7 @@ graph TD
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
+    autoresearch["autoresearch"]
     codeGraph["code-graph"]
     codeRead["code-read"]
     coordinator["coordinator"]
@@ -101,6 +102,8 @@ graph TD
   agent --> agentProtocol
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  autoresearch --> rpcClient
+  autoresearch --> workflow
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
@@ -203,6 +206,7 @@ graph TD
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
+  factory --> autoresearch
   factory --> coordinator
   factory --> daemon
   factory --> fixProof

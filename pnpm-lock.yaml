@@ -326,6 +326,25 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/autoresearch:
+    dependencies:
+      '@titan-design/rpc-client':
+        specifier: workspace:^
+        version: link:../rpc-client
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../workflow
+    devDependencies:
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../hitl
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/chat-protocol:
     devDependencies:
       ai:
@@ -1164,6 +1183,9 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
+      '@titan-design/autoresearch':
+        specifier: workspace:^
+        version: link:../../packages/autoresearch
       '@titan-design/coordinator':
         specifier: workspace:^
         version: link:../../packages/coordinator

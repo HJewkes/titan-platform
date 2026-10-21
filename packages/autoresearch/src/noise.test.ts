@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addPair, band, NO_NOISE, pooledSigma, sigmaOf, type NoiseSettings } from "./noise.js";
 
-const SETTINGS: NoiseSettings = { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBandPp: 1.5 };
+const SETTINGS: NoiseSettings = { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBand: 1.5 };
 
 describe("noise", () => {
   it("pools σ within pairs, so pairs from very different code versions do not inflate it", () => {

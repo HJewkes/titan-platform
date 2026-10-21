@@ -3,27 +3,39 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
-import { openFactoryHost, type FactoryHost } from "../host.js";
-import { arRoutes } from "./routes.js";
 import { ideaId, OutcomeSchema, type Outcome } from "./schemas.js";
-import { fakeArPorts, fixtureRepo, git, proposal, removeFixture, scriptedPlanner, type FakeArPorts, type FakeOptions, type FixtureRepo, type Policy } from "./test-support/fake-ports.js";
-import { AUTORESEARCH_WORKFLOW, autoresearchWorkflow } from "./workflow.js";
+import {
+  FIXTURE_POLICY,
+  THROUGHPUT_POLICY,
+  THROUGHPUT_TARGET,
+  fakeArPorts,
+  fixtureRepo,
+  git,
+  proposal,
+  removeFixture,
+  scriptedPlanner,
+  type FakeArPorts,
+  type FakeOptions,
+  type FixtureRepo,
+  type Policy,
+} from "./test-support/fake-ports.js";
+import { openTestHost, type TestHost } from "./test-support/host.js";
+import { AUTORESEARCH_WORKFLOW } from "./workflow.js";
 
 /** σ is 0.2 and the default band 1.5 pp, so a 3 pp gain clears the band and a 0.8 pp gain sits inside it whatever the noise. */
+const CC = "cc_total_delta_pct";
 const POLICY: Policy = {
-  sigma: 0.2,
-  base_cc: 0,
-  accepted_tasks: 5,
+  ...FIXTURE_POLICY,
   mechanisms: {
-    better: { cc: -3 },
-    "in-band-loses": { cc: -0.8, cc_by_key: { c2: 1 } },
-    flat: { cc: 0, micro: false },
-    "hidden-once": { cc: -3, hidden_by_key: { r3: 1 } },
+    better: { metrics: { [CC]: -3 } },
+    "in-band-loses": { metrics: { [CC]: -0.8 }, by_key: { c2: { metrics: { [CC]: 1 } } } },
+    flat: { micro: false },
+    "hidden-once": { metrics: { [CC]: -3 }, by_key: { r3: { violations: { hidden_regressions: 1 } } } },
     "no-test": { l0: "no-test" },
   },
 };
 
-const hosts: FactoryHost[] = [];
+const hosts: TestHost[] = [];
 const repos: FixtureRepo[] = [];
 const dirs: string[] = [];
 afterEach(() => {
@@ -40,14 +52,14 @@ async function world(mechanisms: string[], options: Partial<FakeOptions> = {}, p
   return { repo, ports: fakeArPorts(repo, policy, { planner: scriptedPlanner(mechanisms), ...options }) };
 }
 
-function openHost(ports: FakeArPorts, dbPath = ":memory:"): FactoryHost {
-  const host = openFactoryHost({ dbPath, workflows: [autoresearchWorkflow()], routes: arRoutes(ports), gatePollMs: 5 });
+function openHost(ports: FakeArPorts, dbPath = ":memory:"): TestHost {
+  const host = openTestHost(ports, dbPath);
   hosts.push(host);
   return host;
 }
 
 const CONFIG = { lanes: 3, rounds: 1, minPool: 0 };
-const start = (host: FactoryHost, repo: FixtureRepo, config: object = CONFIG) => host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify(config) });
+const start = (host: TestHost, repo: FixtureRepo, config: object = CONFIG) => host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify(config) });
 
 function outcomes(run: WorkflowRun | undefined): Map<string, Outcome> {
   const stops = Object.entries(run?.stepResults ?? {}).filter(([key]) => key.startsWith("ar-stop:"));
@@ -56,8 +68,8 @@ function outcomes(run: WorkflowRun | undefined): Map<string, Outcome> {
 
 const evalKeys = (ports: FakeArPorts, mechanism: string) => ports.calls.evals.filter((call) => call.ideaId === id(mechanism)).map((call) => call.key);
 
-async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, config: object = CONFIG) {
-  const { repo, ports } = await world(mechanisms, options);
+async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, config: object = CONFIG, policy: Policy = POLICY) {
+  const { repo, ports } = await world(mechanisms, options, policy);
   const host = openHost(ports);
   const run = await host.runtime.wait(start(host, repo, config));
   return { repo, ports, run, outcomes: outcomes(run) };
@@ -97,7 +109,7 @@ describe("autoresearch on a fixture target at $0", () => {
     expect(ports.calls.ratchet).toEqual([]);
   });
 
-  it("stops an idea with no micro signal at L1 without a seed eval", async () => {
+  it("stops an idea with no micro signal at L1 without a case eval", async () => {
     const { ports, outcomes } = await loop(["flat"]);
 
     expect(outcomes.get(id("flat"))).toMatchObject({ verdict: "stopped", rungReached: "L1", reason: "no-micro-signal" });
@@ -107,7 +119,7 @@ describe("autoresearch on a fixture target at $0", () => {
   it("discards an idea with one hidden regression in its three runs", async () => {
     const { outcomes, ports } = await loop(["hidden-once"]);
 
-    expect(outcomes.get(id("hidden-once"))).toMatchObject({ verdict: "rejected", reason: "hidden-regression", rungReached: "L3" });
+    expect(outcomes.get(id("hidden-once"))).toMatchObject({ verdict: "rejected", reason: "violation:hidden_regressions", rungReached: "L3" });
     expect(ports.calls.ratchet).toEqual([]);
   });
 
@@ -123,12 +135,12 @@ describe("autoresearch on a fixture target at $0", () => {
     const { repo, ports } = await world(["better"], { beforeEval });
     const dir = mkdtempSync(join(tmpdir(), "ar-resume-"));
     dirs.push(dir);
-    const first = openHost(ports, join(dir, "factory.db"));
+    const first = openHost(ports, join(dir, "runs.db"));
     const runId = start(first, repo, { ...CONFIG, lanes: 1 });
     await held.opened;
     first.close();
 
-    const second = openHost(ports, join(dir, "factory.db"));
+    const second = openHost(ports, join(dir, "runs.db"));
     await second.adopt();
     const run = await second.runtime.wait(runId);
 
@@ -172,5 +184,30 @@ describe("autoresearch on a fixture target at $0", () => {
 
     expect(run.status).toBe("completed");
     expect(ports.calls.plans.map((call) => call.violations)).toEqual([[], ["no bold idea and no [EXEMPT] reason"]]);
+  });
+});
+
+const RPS = "throughput_rps";
+const THROUGHPUT: Policy = {
+  ...THROUGHPUT_POLICY,
+  mechanisms: {
+    faster: { metrics: { [RPS]: 10 } },
+    "faster-slow-tail": { metrics: { [RPS]: 10, p99_ms: 20 } },
+    crashy: { metrics: { [RPS]: 10 }, violations: { crashes: 1 } },
+    slower: { metrics: { [RPS]: -10 } },
+  },
+};
+
+describe("autoresearch on a second target with its own metric names", () => {
+  it("keeps the idea that raises the max-direction metric and rejects by that target's guard and violation, with no micro rung", async () => {
+    const { repo, ports, run, outcomes } = await loop(["faster", "faster-slow-tail", "crashy", "slower"], { target: THROUGHPUT_TARGET }, { ...CONFIG, lanes: 2 }, THROUGHPUT);
+
+    expect(run.status).toBe("completed");
+    expect(outcomes.get(id("faster"))).toMatchObject({ verdict: "kept", reason: "beyond-band", rungReached: "L3", delta: 10 });
+    expect(outcomes.get(id("faster-slow-tail"))).toMatchObject({ verdict: "rejected", reason: "guard:p99_ms" });
+    expect(outcomes.get(id("crashy"))).toMatchObject({ verdict: "rejected", reason: "violation:crashes", rungReached: "L2" });
+    expect(outcomes.get(id("slower"))).toMatchObject({ verdict: "rejected", reason: "clearly-worse", rungReached: "L2" });
+    expect(ports.calls.micro).toEqual([]);
+    expect(await git(repo.bare, "rev-parse", ports.calls.ratchet[0]!.ratchetRef)).toBe(outcomes.get(id("faster"))!.head);
   });
 });

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: titan-platform
   text: A multi-agent software factory, and the shared packages it is built from.
-  tagline: <!-- generated:package-count start -->58<!-- generated:package-count end --> packages and <!-- generated:test-file-count start -->1,900+<!-- generated:test-file-count end --> test files, with the products composed from them.
+  tagline: <!-- generated:package-count start -->59<!-- generated:package-count end --> packages and <!-- generated:test-file-count start -->1,900+<!-- generated:test-file-count end --> test files, with the products composed from them.
   actions:
     - theme: brand
       text: Get started
