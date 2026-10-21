@@ -34,7 +34,7 @@ import { watchRow } from "./view.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 import { OWNER } from "../test-support/resolver.js";
 import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
-import { withDemotionOff } from "../test-support/gate-demotions.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -547,6 +547,7 @@ describe("the route table in a run", () => {
   });
 
   it("three CI-unread-only FIX_FIRSTs at one head and a fallback reviewer's open the failed-rounds gate, never a wake", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const wakes: WakeRequest[] = [];
     const w = autoWorld(
@@ -564,6 +565,7 @@ describe("the route table in a run", () => {
   });
 
   it("opens approve-merge naming the failed rounds after three reviews and the fresh fallback reviewer give no verdict", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "timeout" }));
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
@@ -592,6 +594,7 @@ describe("the route table in a run", () => {
   });
 
   it(`counts throttled reviews past ${MAX_THROTTLED_ROUNDS}, so a machine stop that never settles opens approve-merge`, async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "throttled" }));
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
@@ -670,6 +673,7 @@ describe("the route table in a run", () => {
   });
 
   it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => ({ kind: "none", cause: causes[asked.push(request) - 1] ?? "no-verdict" }));
