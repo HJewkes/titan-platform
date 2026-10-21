@@ -1174,7 +1174,7 @@ Key exports:
 - `header`: `parseHeader`, `splitTitle`
 - `index-corpus`: `chapterOwnerRef`, `indexCorpus`, `listChapters`, `migrateIndex`, `openSpans`, `readSpanText`
 - `layout`: `archiveLayout`
-- +40 more in `products/corpus-query/src/index.ts`
+- +60 more in `products/corpus-query/src/index.ts`
 
 <a id="cap-evals"></a>
 
