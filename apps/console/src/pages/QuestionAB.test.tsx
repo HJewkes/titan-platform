@@ -206,7 +206,7 @@ describe("an A/B question", () => {
 
     expect(screen.getByTestId("round-entry-pulse-ab").hasAttribute("inert")).toBe(true);
     expect(pressed(screen.getByText("Neither: request a revision"))).toBe("true");
-    expect(screen.getByTestId("question-ab-note-sent-Calm").textContent).toContain("Calm but dim.");
+    expect(screen.getByTestId("option-note-sent-Calm").textContent).toContain("Calm but dim.");
     expect(screen.queryByLabelText("Note on Calm")).toBeNull();
     expect(screen.getByTestId("round-comment-sent-pulse-ab").textContent).toContain("Try a slow fade.");
   });

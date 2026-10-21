@@ -1,19 +1,16 @@
 import type { ReactNode } from "react";
-import { Button, ButtonText, HStack, Input, Typography, VStack } from "@titan-design/react-ui";
+import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { frameAnchor, useFrameSource, type ABSide } from "./QuestionFrames.js";
+import { OptionNote, OptionTexts, type OptionNoting } from "./OptionCard.js";
 import { FrameImage } from "./RoundFrame.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import type { QuestionAnswer } from "./RoundQuestion.js";
 
 /** What a page that answers A/B questions holds for one: a note per option, and the "Neither" request. */
-export interface ABAnswering {
-  notes: Readonly<Record<string, string>>;
-  onNote: (option: string, text: string) => void;
+export interface ABAnswering extends OptionNoting {
   onNeither: () => void;
-  /** The round is sent: each note box gives way to the note as sent. */
-  sent?: boolean;
 }
 
 interface QuestionABProps extends ABAnswering {
@@ -60,6 +57,7 @@ interface ABColumnProps extends QuestionABProps {
 /** In a design round a side's frame takes a verdict too, which picking the side marks Chosen. */
 function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent }: ABColumnProps): ReactNode {
   const source = useFrameSource();
+  const detail = question.kind === "pick-one" ? question.optionDetails?.[side.option] : undefined;
   return (
     <FrameFigure frameKey={side.key} label={side.label} pinnable={source?.loadable(side.key) ?? false} id={frameAnchor(question.id, side.key)} testID={`question-ab-side-${question.id}-${name}`}>
       <HStack gap={2} align="center" justify="between" wrap>
@@ -70,23 +68,9 @@ function ABColumn({ question, side, name, picked, notes, onNote, onChoose, sent 
       <Button variant={picked ? "solid" : "outline"} color="primary" aria-pressed={picked} onPress={() => onChoose(side.option)}>
         <ButtonText>{picked ? `Picked ${name}` : keyed(side.index, `Pick ${name}`)}</ButtonText>
       </Button>
-      {sent ? (
-        <SentNote option={side.option} note={notes[side.option]} />
-      ) : (
-        <Input multiline numberOfLines={2} label={`Note on ${name} (optional)`} accessibilityLabel={`Note on ${side.option}`} value={notes[side.option] ?? ""} onChangeText={(text) => onNote(side.option, text)} />
-      )}
+      {detail ? <OptionTexts option={side.option} detail={detail} /> : null}
+      <OptionNote option={side.option} label={`Note on ${name} (optional)`} notes={notes} onNote={onNote} sent={sent} />
     </FrameFigure>
-  );
-}
-
-/** An option note as sent, read-only. */
-function SentNote({ option, note }: { option: string; note: string | undefined }): ReactNode {
-  if (!note?.trim()) return null;
-  return (
-    <VStack gap={1} testID={`question-ab-note-sent-${option}`}>
-      <Typography variant="microLabel" color="secondary">YOUR NOTE</Typography>
-      <Typography variant="body2">{note}</Typography>
-    </VStack>
   );
 }
 
