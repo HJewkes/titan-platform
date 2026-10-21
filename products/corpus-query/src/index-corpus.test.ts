@@ -28,9 +28,14 @@ afterEach(() => {
   cleanup();
 });
 
-function paragraphsOf(chapterId: string): { byteOffset: number; byteLength: number; relPath: string }[] {
-  const rows = db.prepare("SELECT s.byte_offset AS byteOffset, s.byte_length AS byteLength, c.rel_path AS relPath FROM search_span s JOIN chapter c ON c.source_id = s.source_id WHERE s.owner_ref = ? AND s.field = ? ORDER BY s.byte_offset").all(chapterOwnerRef(chapterId), SPAN_FIELD);
-  return rows as { byteOffset: number; byteLength: number; relPath: string }[];
+interface SpanRow {
+  byteOffset: number;
+  byteLength: number;
+  relPath: string;
+}
+
+function paragraphsOf(chapterId: string): SpanRow[] {
+  return db.prepare<[string, string], SpanRow>("SELECT s.byte_offset AS byteOffset, s.byte_length AS byteLength, c.rel_path AS relPath FROM search_span s JOIN chapter c ON c.source_id = s.source_id WHERE s.owner_ref = ? AND s.field = ? ORDER BY s.byte_offset").all(chapterOwnerRef(chapterId), SPAN_FIELD);
 }
 
 describe("indexCorpus", () => {

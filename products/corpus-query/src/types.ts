@@ -3,22 +3,24 @@ import { z } from "zod";
 /** Position of a document in reading order; compared element by element. */
 export type StoryOrderKey = readonly (number | string)[];
 
-export interface ChapterMeta {
+export const ChapterMetaSchema = z.object({
   /** Stable owner id for the document's spans, unique within a corpus. */
-  id: string;
+  id: z.string(),
   /** Path relative to the corpus root, always with forward slashes. */
-  relPath: string;
+  relPath: z.string(),
   /** What a reader cites: the header's title code, or the id when the file has none. */
-  ref: string;
-  title: string;
-  series: string;
-  book?: number;
-  chapter?: number;
-  preseason?: number;
-  published?: string;
-  postId?: string;
-  order: StoryOrderKey;
-}
+  ref: z.string(),
+  title: z.string(),
+  series: z.string(),
+  book: z.number().optional(),
+  chapter: z.number().optional(),
+  preseason: z.number().optional(),
+  published: z.string().optional(),
+  postId: z.string().optional(),
+  order: z.array(z.union([z.number(), z.string()])),
+});
+
+export type ChapterMeta = z.infer<typeof ChapterMetaSchema>;
 
 /** A run of consecutive paragraphs of one document. Holds locators only, never text. */
 export interface Passage {

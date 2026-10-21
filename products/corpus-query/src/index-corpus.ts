@@ -4,7 +4,7 @@ import path from "node:path";
 import { SpanFtsTables, runMigrations, spanFtsTablesDdl, type Db } from "@titan-design/store-sqlite";
 import type { CorpusLayout } from "./layout.js";
 import { splitParagraphs } from "./paragraphs.js";
-import type { ChapterMeta } from "./types.js";
+import { ChapterMetaSchema, type ChapterMeta } from "./types.js";
 
 export const SPAN_FIELD = "para";
 export const chapterOwnerRef = (chapterId: string): string => `chap:${chapterId}`;
@@ -68,7 +68,7 @@ export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexSt
   migrateIndex(db);
   const spans = openSpans(db);
   const stats: IndexStats = { documents: 0, indexed: 0, unchanged: 0, removed: 0, skipped: 0, headerless: 0, paragraphs: 0 };
-  const known = new Map((db.prepare("SELECT source_id, id, rel_path, sha256 FROM chapter").all() as ChapterRow[]).map((r) => [r.rel_path, r]));
+  const known = new Map(db.prepare<[], ChapterRow>("SELECT source_id, id, rel_path, sha256 FROM chapter").all().map((r) => [r.rel_path, r]));
   const seen = new Set<string>();
 
   for (const relPath of listFiles(root)) {
@@ -129,7 +129,10 @@ function upsertChapter(db: Db, meta: ChapterMeta, sha256: string, count: number,
 }
 
 export function listChapters(db: Db): ChapterMeta[] {
-  return (db.prepare("SELECT meta_json FROM chapter").all() as { meta_json: string }[]).map((r) => JSON.parse(r.meta_json) as ChapterMeta);
+  return db
+    .prepare<[], { meta_json: string }>("SELECT meta_json FROM chapter")
+    .all()
+    .map((r) => ChapterMetaSchema.parse(JSON.parse(r.meta_json)));
 }
 
 /** Re-read one paragraph from its file by byte range. */
