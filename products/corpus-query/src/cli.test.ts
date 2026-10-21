@@ -79,10 +79,10 @@ describe("corpus-query ask flags", () => {
     ["--concurrency", "0"], ["--concurrency", "2.5"], ["--concurrency", "33"], ["--concurrency", "NaN"],
     ["--budget-usd", "0"], ["--budget-usd", "-3"], ["--budget-usd", "Infinity"], ["--budget-usd", "1001"], ["--budget-usd", "three"],
   ])("rejects %s %s before any run starts, naming the flag", async (flag, value) => {
-    const { code, out } = await ask(flag!, value!);
+    const { code, out } = await ask(flag, value);
 
     expect(code).not.toBe(0);
-    expect(out).toContain(flag!);
+    expect(out).toContain(flag);
   });
 
   it("accepts a fractional budget and zero rounds", () => {
