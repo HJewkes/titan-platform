@@ -118,8 +118,17 @@ const DOUBLE_DASH_SOURCE = [
   "exec < ./x.sh; . \\-\\- /dev/stdin",
 ];
 
+/** A word a `-c` string runs by its positional, bash's rcfile, or the file `source -p` reads. */
+const BESIDE_SCRIPT = [
+  "exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3",
+  "exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true",
+  "exec {fd}< ./x.sh; source -p . /dev/fd/$fd",
+  // The string never runs its `$0`, but which strings do cannot be told, as with a substitution operand.
+  "bash -c 'echo hi' /dev/fd/$fd",
+];
+
 describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
-  it.each([...RUN_TIME_OPERAND, ...NAMED_ON_COMMAND, ...INNER_EXEC, ...INDIRECT, ...SWAPPED_STDIN, ...ALREADY_DENIED])("denies %s", async (line) => {
+  it.each([...RUN_TIME_OPERAND, ...NAMED_ON_COMMAND, ...INNER_EXEC, ...INDIRECT, ...SWAPPED_STDIN, ...ALREADY_DENIED, ...BESIDE_SCRIPT])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
   });
 
@@ -162,7 +171,6 @@ describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
     "bash \"$S\"",
     "exec 3>&1; bash \"$S\"",
     "exec >log; sh \"$S\"",
-    "bash -c 'echo hi' /dev/fd/$fd",
     "cat /dev/fd/$fd",
     "exec {fd}< f; cat /dev/fd/$fd",
     "exec {fd}< f; python3 ./ok.py",
@@ -207,11 +215,20 @@ const PREMISES: Array<[string, string[]]> = [
   ["exec < ./x.sh; bash -s", ["bash", "zsh -f", "dash"]],
   ["exec 3< ./x.sh; exec <&3; bash", ["bash", "zsh -f", "dash"]],
   ...DOUBLE_DASH_SOURCE.map((line): [string, string[]] => [line, ["bash", "zsh -f"]]),
+  ["exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3", ["bash", "zsh -f", "dash"]],
+  ["exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true", ["bash", "dash"]],
 ];
+
+/** bash before 5.3 refuses `source -p` as an invalid option. */
+const sourcesWithPath = has("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash and zsh run the push the denied lines hide (TP-3314)", () => {
   it.each(PREMISES.flatMap(([line, runners]) => runners.map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
     expect(runsGit(line, runner)).toBe(true);
+  });
+
+  it.skipIf(!sourcesWithPath)("exec {fd}< ./x.sh; source -p . /dev/fd/$fd runs the push under bash 5.3", () => {
+    expect(runsGit("exec {fd}< ./x.sh; source -p . /dev/fd/$fd", "bash")).toBe(true);
   });
 
   it("keeps no fd open for an assignment-only {name} redirect, so that clause adds nothing to hide", () => {
