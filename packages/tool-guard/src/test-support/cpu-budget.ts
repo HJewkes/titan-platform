@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
  * stretch of at least 1.7 times. Since a healthy test spends well under its budget, twelve leaves room for several times
  * that (TP-3877).
  */
-export const WALL_PER_CPU_MS = 12;
+const WALL_PER_CPU_MS = 12;
 
 /** The wall-clock timeout of a test whose thread may spend `cpuMs` of CPU. */
 export const wallTimeoutMs = (cpuMs: number): number => WALL_PER_CPU_MS * cpuMs;
@@ -71,7 +71,7 @@ export function cpuBudgetIt(name: string, cpuMs: number, body: () => unknown): v
  * each row as a tuple, as vitest's own it.each does.
  */
 cpuBudgetIt.each = <T extends readonly unknown[] | [unknown]>(rows: readonly T[]) => {
-  const each = it.each(rows as T[]);
+  const each = it.each(rows);
   // The body vitest's each would take: its last overload is (name, options, fn).
   type Body = Parameters<typeof each>[2];
   return (name: string, cpuMs: number, body: Body): void => {

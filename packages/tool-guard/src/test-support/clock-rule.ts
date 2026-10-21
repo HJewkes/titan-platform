@@ -4,7 +4,7 @@ export const CLOCK_HOME = "test-support/cpu-budget.ts";
 const CLOCK_READ = /\b(?:process\.(?:threadCpuUsage|cpuUsage|hrtime(?:\.bigint)?)|performance\.now|Date\.now)\(/;
 
 /** Test files and test-support modules, by path relative to the package's src. */
-export const isTestModule = (file: string): boolean => file.endsWith(".test.ts") || file.startsWith("test-support/");
+const isTestModule = (file: string): boolean => file.endsWith(".test.ts") || file.startsWith("test-support/");
 
 /**
  * The rule's violations among `files` ([path relative to src, text]): a test module other than CLOCK_HOME that reads a
