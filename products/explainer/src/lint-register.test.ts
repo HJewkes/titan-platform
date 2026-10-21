@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS } from "./eval-l0.js";
-import { REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type RegisterMetric } from "./lint-register.js";
+import {
+  REGISTER_CHECK_IDS,
+  REGISTER_MEASURES,
+  REGISTER_METRICS,
+  numberSpans,
+  registerCheck,
+  spokenText,
+  triadSpans,
+  type RegisterMetric,
+} from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const measure = (metric: RegisterMetric, ...spoken: string[]): number | undefined => REGISTER_MEASURES[metric](spokenText(spoken));
@@ -209,5 +218,32 @@ describe("Q-V11 register rows", () => {
     const unpunctuated = Array.from({ length: 54 }, () => "word").join(" ");
 
     expect(rows(unpunctuated, unpunctuated, unpunctuated).get("register:sentence-cv")).toMatchObject({ value: 0, pass: true });
+  });
+});
+
+describe("numberSpans and triadSpans", () => {
+  const LINES = [
+    "It took two hundred and five runs and 3 retries.",
+    "We saw 12 ms of lag, then one more stall.",
+    "The desk, the ledger and the scanner all agree.",
+    "Pick red, green or blue, then the queue, the worker and the log.",
+    "Nothing here counts.",
+  ];
+
+  it("finds as many spans as the rows count, on every line", () => {
+    for (const line of LINES) {
+      const words = spokenText([line]).words.length;
+
+      expect(numberSpans(line).length).toBeCloseTo(((measure("numbers", line) ?? 0) * words) / 1000);
+      expect(triadSpans(line).length).toBeCloseTo(((measure("triads", line) ?? 0) * words) / 1000);
+    }
+  });
+
+  it("returns each span's text at its index", () => {
+    const line = LINES[3]!;
+    const spans = triadSpans(line);
+
+    expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
+    expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
   });
 });

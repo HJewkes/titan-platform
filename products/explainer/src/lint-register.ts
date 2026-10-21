@@ -47,6 +47,20 @@ export function spokenText(spoken: readonly string[]): SpokenText {
 }
 
 const count = (pattern: RegExp, text: string): number => [...text.matchAll(pattern)].length;
+
+/** One detector match: where it starts in the text and what it matched. */
+export interface TextSpan {
+  index: number;
+  text: string;
+}
+
+const spans = (pattern: RegExp, text: string): TextSpan[] => [...text.matchAll(pattern)].map((m) => ({ index: m.index, text: m[0] }));
+
+/** The number mentions the `numbers` rows count, in order. */
+export const numberSpans = (text: string): TextSpan[] => spans(NUM_RUN, text);
+
+/** The lists of three the `triads` row counts, in order. */
+export const triadSpans = (text: string): TextSpan[] => spans(TRIAD, text);
 const per1k = (pattern: RegExp) => (s: SpokenText): number => (1000 * count(pattern, s.text)) / Math.max(s.words.length, 1);
 const punctuatedOnly = (measure: (s: SpokenText) => number | undefined) => (s: SpokenText): number | undefined =>
   s.punctuated ? measure(s) : undefined;
@@ -127,11 +141,6 @@ function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   const pass = !judged || (!below(value, band) && value <= band.max);
   const threshold = value !== undefined && below(value, band) ? (band.min ?? band.max) : band.max;
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
-}
-
-/** The number mentions the numbers rows count in one beat's spoken line, in order. */
-export function numberSpans(spoken: string): string[] {
-  return [...spokenText([spoken]).text.matchAll(NUM_RUN)].map((match) => match[0]);
 }
 
 function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[]): L0Result {

@@ -1,6 +1,6 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { sentencesOf } from "./lint-text.js";
-import { numberSpans } from "./lint-register.js";
+import { numberSpans, spokenText } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 
@@ -41,6 +41,9 @@ export interface BeatGuardOptions {
 
 const DEFAULT_LENGTH_TOLERANCE = 0.35;
 
+/** The number mentions the numbers rows count in a spoken line, after markup is reduced to its words. */
+const numbersIn = (spoken: string): string[] => numberSpans(spokenText([spoken]).text).map((span) => span.text);
+
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -61,8 +64,8 @@ function surplus(left: readonly string[], right: readonly string[]): string[] {
 }
 
 function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
-  const was = numberSpans(before).map(norm);
-  const now = numberSpans(after.spoken).map(norm);
+  const was = numbersIn(before).map(norm);
+  const now = numbersIn(after.spoken).map(norm);
   const labels = after.labelsAdded.map(norm);
   const moved = surplus(was, now);
   const lost = moved.filter((span) => !labels.some((label) => hasWord(label, span)));
@@ -77,7 +80,7 @@ function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
 function bareLabelRejections(moved: readonly string[], labels: readonly string[]): BeatRejection[] {
   return labels
     .filter((label) => moved.some((span) => hasWord(label, span)))
-    .filter((label) => numberSpans(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
+    .filter((label) => numbersIn(label).map(norm).join(" ") === label.replace(/[^\p{L}\p{N}%.,\s-]/gu, "").trim())
     .map((label) => ({ rule: "label-bare", detail: `label "${label}" is only a number; it needs its noun phrase` }));
 }
 
