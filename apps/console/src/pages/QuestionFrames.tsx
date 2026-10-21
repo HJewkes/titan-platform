@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type MouseEvent, type ReactNode } f
 import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
 import { FrameFigure } from "./FrameFeedback.js";
+import { optionKey } from "./frame-link.js";
 import { FrameImage } from "./RoundFrame.js";
 
 /** What a question needs to draw the frames it names: the round, each variant's label, and which keys have an image. */
@@ -40,13 +41,6 @@ export interface ABSide {
   index: number;
   key: string;
   label: string;
-}
-
-/** The variant key picking `option` picks: its `optionVariants` entry, or the option itself when it is a frame key. */
-function optionKey(question: Question, option: string, labels: ReadonlyMap<string, string>): string | undefined {
-  if (question.kind !== "pick-one" && question.kind !== "pick-many") return undefined;
-  const key = question.optionVariants?.[option] ?? option;
-  return labels.has(key) ? key : undefined;
 }
 
 /**
@@ -116,7 +110,7 @@ export function QuestionFrames({ question, omit = [] }: { question: Question; om
         {keys.map((key) => {
           const label = frames.labels.get(key) ?? key;
           return (
-            <FrameFigure key={key} frameKey={key} label={label} id={frameAnchor(question.id, key)}>
+            <FrameFigure key={key} frameKey={key} label={label} pinnable={frames.loadable.has(key)} id={frameAnchor(question.id, key)}>
               <HStack gap={2} align="center" justify="between">
                 <Typography variant="subtitle2">{label}</Typography>
                 <InPageLink target={questionAnchor(question.id)}><Typography variant="caption">To its question</Typography></InPageLink>

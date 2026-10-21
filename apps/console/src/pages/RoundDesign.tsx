@@ -6,6 +6,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
+import type { PngWidths } from "./frame-pins.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
@@ -38,15 +39,16 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const { submitting, check, checking, locked, frozen } = useRoundSend(round);
-  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
+  const state = useDesignAnswers(round, frozen);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
   const anchored = anchoredKeys(round.manifest);
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
+  const widths = useMemo(() => declaredWidths(round, listed), [round, listed]);
   return (
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
-      <FrameFeedbackProvider value={state.frames}>
+      <FrameFeedbackProvider value={state.frames} widths={widths}>
         <VStack gap={4}>
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
@@ -63,6 +65,24 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         </VStack>
       </FrameFeedbackProvider>
     </RoundFramesProvider>
+  );
+}
+
+/** The round's answers; an option picking one of its frames stays in step with that frame's Chosen verdict. */
+function useDesignAnswers(round: ValidRound, frozen: boolean) {
+  const frameKeys = useMemo(() => round.manifest.variants.map((variant) => variant.key), [round.manifest]);
+  return useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys);
+}
+
+/** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in, and whether it has an element map. */
+function declaredWidths({ id, manifest }: ValidRound, listed: FramesList): Map<string, PngWidths> {
+  const records = new Map(listed.frames.map((frame) => [frame.key, frame]));
+  return new Map(
+    manifest.variants.map((variant) => {
+      const referenceWidth = variant.frameReference?.frame.width;
+      const { viewportWidth, targets } = records.get(variant.key) ?? {};
+      return [variant.key, { ...(viewportWidth !== undefined && { viewportWidth }), ...(referenceWidth !== undefined && { referenceWidth }), ...(targets && { targetsRoundId: id }) }];
+    }),
   );
 }
 
@@ -112,7 +132,7 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         );
         // A see-also thumbnail points at a frame judged where it is drawn full width, so it takes no verdict of its own.
         if (size === "thumb") return <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`see-also-${key}`}>{body}</figure>;
-        return <FrameFigure key={key} frameKey={key} label={label} testID={`design-frame-${key}`}>{body}</FrameFigure>;
+        return <FrameFigure key={key} frameKey={key} label={label} pinnable={indexed.has(key)} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
   );

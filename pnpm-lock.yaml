@@ -1125,6 +1125,15 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/speech-g2p':
+        specifier: workspace:^
+        version: link:../../packages/speech-g2p
+      '@titan-design/speech-stt':
+        specifier: workspace:^
+        version: link:../../packages/speech-stt
+      '@titan-design/speech-tts':
+        specifier: workspace:^
+        version: link:../../packages/speech-tts
       '@titan-design/speech-vet':
         specifier: workspace:^
         version: link:../../packages/speech-vet
