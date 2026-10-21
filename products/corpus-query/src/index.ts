@@ -1,4 +1,4 @@
-export { runCli, defaultIndexPath, formatStats } from "./cli.js";
+export { runCli, defaultIndexPath, formatHit, formatStats } from "./cli.js";
 export { parseHeader, splitTitle } from "./header.js";
 export { SPAN_FIELD, chapterOwnerRef, indexCorpus, listChapters, migrateIndex, openSpans, readSpanText } from "./index-corpus.js";
 export type { IndexStats } from "./index-corpus.js";
@@ -9,3 +9,8 @@ export type { ParagraphSpan } from "./paragraphs.js";
 export { compareStoryOrder } from "./story-order.js";
 export { QuerySpecSchema } from "./types.js";
 export type { ChapterMeta, Passage, QuerySpec, StoryOrderKey } from "./types.js";
+export { displayRef, seriesPrefix } from "./display-ref.js";
+export { buildMatch } from "./match.js";
+export type { MatchTerms } from "./match.js";
+export { DEFAULT_WINDOW, passageId, readPassage, retrieve } from "./retrieve.js";
+export type { RetrieveOptions, RetrieveResult } from "./retrieve.js";
