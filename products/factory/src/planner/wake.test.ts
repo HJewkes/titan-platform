@@ -113,6 +113,7 @@ describe("titan-factory planner wake", () => {
     await wake(config);
     fixture("decisions.md", "2. Owner: a new decision.\n");
     await wake(config, "--profile", "planner-b");
+    expect(spawns()).toHaveLength(2);
     const [first, second] = spawns();
     expect(first!.args).toEqual(["agent", "spawn", "factory-planner", "planner-a", "--config-dir", join(dir, "account"), "--role", "planner", "--surface", "headless", "--brief-stdin"]);
     expect(first!.options).toEqual({ input: "You are the planner.\n", cwd: dir });
@@ -123,6 +124,7 @@ describe("titan-factory planner wake", () => {
     fixture("log.md", `${"old line\n".repeat(50)}${"x".repeat(400)}\n`);
     const config = writeConfig({ digestMaxTokens: 200 }, [{ name: "log", file: join(dir, "log.md"), digest: true, tailLines: 1 }]);
     await wake(config);
+    expect(spawns()).toHaveLength(1);
     const digest = readFileSync(join(dir, "state", "titan-factory", "planner-wake", "factory-planner-digest.md"), "utf8");
     expect(digest.length).toBeLessThanOrEqual(200);
     expect(digest).not.toContain("old line");
