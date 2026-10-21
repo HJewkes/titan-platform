@@ -33,6 +33,12 @@ describe("spellSpokenNumbers", () => {
     );
   });
 
+  it("spells an amount with its magnitude word or spaced symbol as one number", () => {
+    // Catches: spelling word by word, which reads "$1.4 million" as "one point four dollars million".
+    expect(spell("It cost $1.4 million, then $ 5 and $2 billion.")).toBe("It cost one point four million dollars, then five dollars and two billion dollars.");
+    expect(spell("About 40 % of scans failed.")).toBe("About forty percent of scans failed.");
+  });
+
   it("leaves markup alone", () => {
     expect(spell("The [desk 7](=queue) holds 4 scans.")).toBe("The [desk 7](=queue) holds four scans.");
   });
@@ -48,6 +54,12 @@ describe("spellSpokenNumbers", () => {
 
   it("leaves a cue on an unchanged word alone when spelling adds words before it", () => {
     expect(cuesOf("It took 21 and 21 scans.", ["scans"])).toEqual(["scans"]);
+  });
+
+  it("moves a cue on a grouped number or its magnitude word to the amount's first word", () => {
+    expect(cuesOf("It cost $1.4 million to run.", ["$1.4"])).toEqual(["one"]);
+    expect(cuesOf("It cost $1.4 million to run.", ["million"])).toEqual(["one"]);
+    expect(cuesOf("About 40 % of scans failed.", ["scans"])).toEqual(["scans"]);
   });
 
   it("leaves a beat with no digits as the same object", () => {

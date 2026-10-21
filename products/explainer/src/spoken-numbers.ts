@@ -9,7 +9,8 @@ const CUE_KEYS = new Set(["atCue", "untilCue"]);
 
 const percentStep: NormalizeStep = { name: "percent", apply: (text) => text.replace(/(\d[\d,.]*)\s?%/g, "$1 percent") };
 
-// Product-side stand-in for a speech-vet year step; delete it when that ships.
+// Product-side stand-in for a speech-vet year step; delete it when that ships. It reads every 1900-2099 number as a
+// year, so a count such as "2048 requests" is misread until the real step can use context.
 const YEAR = /\b(19|20)(\d{2})\b/g;
 const readYear = (head: string, tail: string): string => {
   const pair = Number(tail);
@@ -47,24 +48,54 @@ interface Spelled {
   tokens: string[];
 }
 
+const MAGNITUDE_WORD = /^(?:k|m|bn|thousand|million|billion)\b/i;
+const hasMarkup = (token: string): boolean => /[[\]()]/.test(token);
+
+/** Whether `next` belongs to the same spoken number as the text before it, as in "$1.4 million", "$ 5" or "40 %". */
+function continuesNumber(group: string, next: string): boolean {
+  if (hasMarkup(group) || hasMarkup(next)) return false;
+  if (/[£$€]$/.test(group)) return /^\d/.test(next);
+  if (/[£$€]\s?\d[\d,.]*$/.test(group)) return MAGNITUDE_WORD.test(next);
+  return /\d$/.test(group) && next.startsWith("%");
+}
+
+/** Whitespace tokens, with those that speech-vet reads together ("$1.4 million") joined into one group. */
+function tokenGroups(text: string): Array<{ start: number; end: number; size: number }> {
+  const groups: Array<{ start: number; end: number; size: number }> = [];
+  for (const { 0: token, index } of text.matchAll(/\S+/g)) {
+    const last = groups.at(-1);
+    if (last && continuesNumber(text.slice(last.start, last.end), token)) {
+      last.end = index + token.length;
+      last.size += 1;
+    } else groups.push({ start: index, end: index + token.length, size: 1 });
+  }
+  return groups;
+}
+
 function spellText(text: string): Spelled {
   const links = linkRanges(text);
   const firstWord: number[] = [];
   const tokens: string[] = [];
   let words = 0;
-  const spelled = text.replace(/\S+/g, (token, offset: number) => {
-    const out = spellToken(token, offset, links);
-    firstWord.push(words);
-    tokens.push(out);
+  let spelled = "";
+  let at = 0;
+  for (const group of tokenGroups(text)) {
+    const out = spellToken(text.slice(group.start, group.end), group.start, links);
+    spelled += text.slice(at, group.start) + out;
+    at = group.end;
+    // Every token of a group points at the group's first word; a cue on "million" in "$1.4 million" lands on "one".
+    for (let i = 0; i < group.size; i += 1) {
+      firstWord.push(words);
+      tokens.push(group.size === 1 ? out : `${out} `);
+    }
     words += out.split(/\s+/).length;
-    return out;
-  });
-  return { text: spelled, firstWord, tokens };
+  }
+  return { text: spelled + text.slice(at), firstWord, tokens };
 }
 
 // The same word normalisation the cue resolver applies, so a cue and a token compare as the renderer will.
 const cueForm = (word: string): string => word.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
-const wordsOfText = (text: string): string[] => text.split(/\s+/);
+const wordsOfText = (text: string): string[] => text.match(/\S+/g) ?? [];
 
 /** The cue renamed for the spelled text, or the cue itself when it names no word of the old text. */
 function remapCue(cue: string, oldWords: readonly string[], spelled: Spelled): string {
