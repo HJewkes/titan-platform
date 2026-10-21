@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isRepoKey } from "../shepherd/seats.js";
 
 /** H-L29: under webhook the backstop runs every 5 to 10 minutes; TP-3099 owns the polling-mode bound. */
-export const WEBHOOK_INTERVAL_MS = { min: 300_000, max: 600_000 } as const;
+const WEBHOOK_INTERVAL_MS = { min: 300_000, max: 600_000 } as const;
 
 /**
  * The GitHub backstop (TP-3098). `enabled` is off until the bot's port is wired (TP-3431). `intervalMs` is the tick period,

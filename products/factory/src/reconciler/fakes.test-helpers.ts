@@ -6,7 +6,7 @@ import { fakePoolClock, rateLimitAnswer, type FakePoolClock } from "../test-supp
 import { reconcilerCursorMigration, sqliteReconcilerCursor, type ReconcilerCursorStore } from "./cursor.js";
 import type { BackstopAnswer, BackstopCall, BotPorts, Observation, Observe, ReconcilerDeps } from "./service.js";
 
-export const BOT = "synthetic-bot[bot]";
+const BOT = "synthetic-bot[bot]";
 export const REPO = "example-org/widgets";
 export const OTHER_REPO = "example-org/gadgets";
 
@@ -17,7 +17,7 @@ export function commit(oid: string, conclusion: string | null = "SUCCESS"): Back
 }
 
 /** A synthetic GitHub: main's history newest first, read back to the request's cursor as the real snapshot read does. */
-export class FakeGithub {
+class FakeGithub {
   main: BackstopCommit[] = [commit("c1")];
   /** Kinds answered 429 until cleared. */
   readonly limited = new Set<BackstopCall["kind"]>();
@@ -51,7 +51,18 @@ export function fakeObserve(disagreements: Observation["disagreements"] = []): O
     events: snapshot.main.commits.flatMap((c) =>
       c.contexts.flatMap((context) =>
         context.kind === "check" && context.conclusion !== null
-          ? [{ rule: "identity" as const, kind: "CIConcluded", repo, subject: `${repo}@${c.oid}`, keys: { checkRunId: context.databaseId }, occurrenceKey: `v1|CIConcluded|${repo}|check|${context.databaseId}`, observedAt: "2027-01-15T08:00:00Z", payload: { conclusion: context.conclusion } }]
+          ? [
+              {
+                rule: "identity" as const,
+                kind: "CIConcluded",
+                repo,
+                subject: `${repo}@${c.oid}`,
+                keys: { checkRunId: context.databaseId },
+                occurrenceKey: `v1|CIConcluded|${repo}|check|${context.databaseId}`,
+                observedAt: "2027-01-15T08:00:00Z",
+                payload: { conclusion: context.conclusion },
+              },
+            ]
           : [],
       ),
     ),
@@ -60,7 +71,7 @@ export function fakeObserve(disagreements: Observation["disagreements"] = []): O
   });
 }
 
-export interface Claim {
+interface Claim {
   priority: PoolPriority;
   callClass: CallClass;
   kind: BackstopCall["kind"];
@@ -74,7 +85,7 @@ function recordingPool(pool: GithubApiPool<BackstopCall, BackstopAnswer>, claims
   };
 }
 
-export interface Rig {
+interface Rig {
   github: FakeGithub;
   clock: FakePoolClock;
   claims: Claim[];

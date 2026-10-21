@@ -14,7 +14,7 @@ export function reconcilerCursorMigration(version = 36): Migration {
   return { version, name: "factory:reconciler_cursor", up: (db) => db.exec(RECONCILER_CURSOR_DDL) };
 }
 
-export type CursorStream = "main" | "done" | "rulesets";
+type CursorStream = "main" | "done" | "rulesets";
 
 /** `main`: the last scanned tip sha. `done`: the newest closed-PR `updatedAt` fully paged. `rulesets`: S2's map and list ETag. */
 export type RepoCursor = Partial<Record<CursorStream, { value: string; at: string }>>;
@@ -32,7 +32,7 @@ export function sqliteReconcilerCursor(db: Db, now: () => number = Date.now): Re
      ON CONFLICT (repo, stream) DO UPDATE SET value = excluded.value, at = excluded.at`,
   );
   const writeAll = db.transaction((repo: string, next: Partial<Record<CursorStream, string>>, at: string) => {
-    for (const [stream, value] of Object.entries(next)) if (value !== undefined) upsert.run(repo, stream, value, at);
+    for (const [stream, value] of Object.entries(next)) upsert.run(repo, stream, value, at);
   });
   return {
     read: (repo) => Object.fromEntries(read.all(repo).map(({ stream, value, at }) => [stream, { value, at }])),

@@ -71,7 +71,7 @@ export interface TransitionEvent extends EventBase {
 
 export type NewEvent = IdentityEvent | TransitionEvent;
 
-export type AppendResult = { inserted: true; seq: number } | { inserted: false; seq: number; by: "delivery" | "occurrence" | "unchanged" };
+type AppendResult = { inserted: true; seq: number } | { inserted: false; seq: number; by: "delivery" | "occurrence" | "unchanged" };
 
 interface EventRow {
   seq: number;

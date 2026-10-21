@@ -7,7 +7,7 @@ import { createReconciler, hasPending, type Observe } from "./service.js";
 const ONE_REPO = { repos: [REPO], fullEvery: 3 };
 const RESET_MS = 61_000;
 
-const messages = (lines: { msg: string }[], msg: string) => lines.filter((line) => line.msg === msg);
+const messages = (lines: ReturnType<typeof rig>["lines"], msg: string) => lines.filter((line) => line.msg === msg);
 
 describe("reconciler pool claims (I1)", () => {
   it("sends every GitHub read as a backstop-priority claim of its own call class", async () => {

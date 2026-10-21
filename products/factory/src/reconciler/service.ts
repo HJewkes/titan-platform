@@ -7,11 +7,11 @@ import type { ReconcilerConfig } from "./config.js";
 import { sqliteReconcilerCursor, type ReconcilerCursorStore, type RepoCursor } from "./cursor.js";
 
 /** With no cursor, `main` and `done` are read this far back. */
-export const FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
+const FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
 const BRANCH = "main";
 
 /** S2's conditional gates (TP-3428): whether the open list, the branch ref or the rulesets changed since `etags`. */
-export interface GateRead {
+interface GateRead {
   changed: boolean;
   etags: Record<string, string | null>;
 }
@@ -28,10 +28,10 @@ export interface BackstopAnswer extends PoolAnswer {
 type WithoutSource<E> = E extends NewEvent ? Omit<E, "source" | "deliveryId"> : never;
 
 /** The service stamps `source: backstop` and no delivery id, so an observation cannot pass for a webhook row. */
-export type BackstopEvent = WithoutSource<NewEvent>;
+type BackstopEvent = WithoutSource<NewEvent>;
 
 /** Plan §3 D3, D5, D7 and D8: the disagreements that append nothing of their own. */
-export type DisagreeClass = "stale-read" | "field-parity" | "main-ancestry-lost" | "unconfirmed";
+type DisagreeClass = "stale-read" | "field-parity" | "main-ancestry-lost" | "unconfirmed";
 
 export interface Observation {
   events: BackstopEvent[];
@@ -70,7 +70,7 @@ interface RepoState {
   refused: { count: number; since: number; starvedLogged: boolean } | null;
 }
 
-export interface Reconciler {
+interface Reconciler {
   tick(signal?: AbortSignal): Promise<void>;
 }
 
