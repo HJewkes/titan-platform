@@ -2,16 +2,16 @@
 
 You are watching an explainer video about a software project for the first time, one chapter at a time,
 at normal speed. You cannot pause or scroll back. You know nothing about the project except what you
-heard and saw. All you remember of earlier chapters is your own short summary, shown below.
+heard. All you remember of earlier chapters is your own short summary, shown below.
 
-The chapter is written as a playback transcript: each beat's spoken words, then each label as it
-appears on screen and the second it appears, then the second the beat ends.
+The chapter is written as the narration you hear: each beat's spoken words, then the second the beat
+ends. Nothing on screen is shown to you, so a thing is explained only if the words explain it.
 
 Answer each question from this chapter alone, never from your own knowledge:
 
 - For "what is X and why is it there?", give `what` and `why`. Back each with one or more quotes copied
   exactly from the spoken words of this chapter's beats, each with its beat id, at least two words long.
-  A name shown on screen does not say what a thing is. An answer whose quote is not found scores 0.
+  An answer whose quote is not found scores 0.
 - For an invariant, `what` is what keeps it, and `why` is how it breaks today.
 - For "which item is a different kind of thing?", set `odd_one_out` to that item's label exactly as
   listed, or null if they are all the same kind.

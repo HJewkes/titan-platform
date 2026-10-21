@@ -89,7 +89,14 @@ export function usageFromResult(result: SDKResultMessage | undefined, durationMs
   const modelUsage = result?.modelUsage ?? {};
   const reported = result?.total_cost_usd;
   const totalCostUsd = typeof reported === "number" && reported > 0 ? reported : sumModelCost(modelUsage);
-  return { totalCostUsd, modelUsage, turns: result?.num_turns ?? 0, durationMs };
+  const cacheCreation = cacheCreationFrom(result);
+  return { totalCostUsd, modelUsage, ...(cacheCreation ? { cacheCreation } : {}), turns: result?.num_turns ?? 0, durationMs };
+}
+
+function cacheCreationFrom(result: SDKResultMessage | undefined): AgentUsage["cacheCreation"] {
+  const split = (result?.usage as { cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number } | null } | undefined)?.cache_creation;
+  if (!split || typeof split.ephemeral_5m_input_tokens !== "number" || typeof split.ephemeral_1h_input_tokens !== "number") return undefined;
+  return { ephemeral5m: split.ephemeral_5m_input_tokens, ephemeral1h: split.ephemeral_1h_input_tokens };
 }
 
 export function sumModelCost(modelUsage: Record<string, ModelUsage>): number {
