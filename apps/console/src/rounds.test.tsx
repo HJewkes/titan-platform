@@ -185,6 +185,32 @@ describe("a question round", () => {
   });
 });
 
+describe("a contrast override", () => {
+  /** kiln-schedule-r2 as served, with `contrastOverride` set on its manifest when given. */
+  async function withOverride(contrastOverride?: { reason: string; problem: string }): Promise<Snapshot> {
+    const snapshot = await recorded();
+    const detail = await getRound(source, "kiln-schedule-r2");
+    if (!detail.valid) throw new Error(detail.reason);
+    const manifest = contrastOverride ? { ...detail.manifest, contrastOverride } : detail.manifest;
+    return { ...snapshot, calls: { ...snapshot.calls, [snapshotKey("rounds.get", { id: "kiln-schedule-r2" })]: successEnvelope({ ...detail, manifest }) } };
+  }
+
+  it("shows its reason in a banner above the round", async () => {
+    await renderConsole("#/rounds/kiln-schedule-r2", await withOverride({ reason: "The glaze swatch is a photo; its contrast is the kiln's.", problem: "2 frames under 4.5:1" }));
+
+    const banner = await screen.findByTestId("round-contrast-override");
+    expect(banner.textContent).toContain("Contrast gate overridden: The glaze swatch is a photo; its contrast is the kiln's.");
+    expect(banner.compareDocumentPosition(question("ramp-default")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no banner on a round without one", async () => {
+    await renderConsole("#/rounds/kiln-schedule-r2", await withOverride());
+
+    await screen.findByTestId("round-question-ramp-default");
+    expect(screen.queryByTestId("round-contrast-override")).toBeNull();
+  });
+});
+
 describe("other rounds", () => {
   it("sends a design round without frames.json to the harness instead of rendering its questions", async () => {
     await renderConsole("#/rounds/lantern-cards-r1");

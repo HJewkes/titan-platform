@@ -24,6 +24,7 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
   if (!round.valid) return <Framed id={id}><Alert status="error" message={`This round does not pass the round schema: ${round.reason}`} /></Framed>;
   return (
     <Framed id={id}>
+      <ContrastOverrideBanner round={round} />
       <RoundHeading round={round} />
       <RoundBody round={round} />
     </Framed>
@@ -46,6 +47,13 @@ function Framed({ id, children }: { id: string; children: ReactNode }): ReactNod
       {children}
     </VStack>
   );
+}
+
+/** A round served past a failing contrast gate says why above everything else, as the harness did (G18). */
+function ContrastOverrideBanner({ round }: { round: ValidRound }): ReactNode {
+  const override = round.manifest.contrastOverride;
+  if (override === undefined) return null;
+  return <Alert status="warning" message={`Contrast gate overridden: ${override.reason}`} testID="round-contrast-override" />;
 }
 
 function RoundHeading({ round }: { round: ValidRound }): ReactNode {
