@@ -17,7 +17,18 @@ import { containedFile } from "@titan-design/daemon";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { OPEN_FLAGS, readCapped } from "./rounds.js";
-import { BUILD_ID, buildListProblems, type BuildFile, type StorybookBuild } from "./storybook-build.js";
+import {
+  BUILD_ID,
+  MAX_SIDECAR_BYTES,
+  STORYBOOK_DIR,
+  STORYBOOK_FILE,
+  STORYBOOK_STATIC,
+  StorybookBuildSchema,
+  buildIdOf,
+  buildListProblems,
+  type BuildFile,
+  type StorybookBuild,
+} from "./storybook-build.js";
 
 /** What `rename` raises when another import put the same build in place first. */
 const RACED = new Set(["EEXIST", "ENOTEMPTY"]);
@@ -64,6 +75,50 @@ async function readListed(staticDir: string, file: BuildFile): Promise<Buffer> {
   }
 }
 
+export interface SourceBuild {
+  /** `storybook/storybook.json` as read, copied verbatim so `rounds.get` reads the build the store was given. */
+  bytes: Buffer;
+  build: StorybookBuild;
+  buildId: string;
+  staticDir: string;
+}
+
+async function readSidecarBytes(storybookDir: string): Promise<Buffer> {
+  const handle = await openSource(path.join(storybookDir, STORYBOOK_FILE), STORYBOOK_FILE);
+  try {
+    if (!(await handle.stat()).isFile()) refuse(`${STORYBOOK_FILE} is not a regular file`);
+    return (await readCapped(handle, MAX_SIDECAR_BYTES)) ?? refuse(`${STORYBOOK_FILE} is over ${MAX_SIDECAR_BYTES} bytes`);
+  } finally {
+    await handle.close();
+  }
+}
+
+const parseSidecar = (bytes: Buffer): StorybookBuild => {
+  let json: unknown;
+  try {
+    json = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return refuse(`${STORYBOOK_FILE} is not JSON`);
+  }
+  const parsed = StorybookBuildSchema.safeParse(json);
+  return parsed.success ? parsed.data : refuse(`${STORYBOOK_FILE} is not a storybook@1 sidecar`);
+};
+
+/** Null when a round dir has no `storybook/`; a build `storeBuild` would refuse is refused here, before anything is written. */
+export async function readSourceBuild(roundDir: string): Promise<SourceBuild | null> {
+  const storybookDir = path.join(roundDir, STORYBOOK_DIR);
+  const held = await lstat(storybookDir).catch(() => null);
+  if (held === null) return null;
+  if (!held.isDirectory()) refuse(`${STORYBOOK_DIR}/ is a symlink or not a directory`);
+  const bytes = await readSidecarBytes(storybookDir);
+  const build = parseSidecar(bytes);
+  const problems = buildListProblems(build.files);
+  if (problems.length > 0) refuse(problems.join("; "));
+  const staticDir = path.join(storybookDir, STORYBOOK_STATIC);
+  if (!(await lstat(staticDir).catch(() => null))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${STORYBOOK_STATIC}/ is missing, a symlink or not a directory`);
+  return { bytes, build, buildId: buildIdOf(build.files), staticDir };
+}
+
 async function copyInto(stage: string, staticDir: string, files: readonly BuildFile[]): Promise<void> {
   for (const file of files) {
     const bytes = await readListed(staticDir, file);
@@ -94,7 +149,7 @@ export async function storeBuild({ storybooksDir, staticDir, build, buildId }: {
   return true;
 }
 
-export type StoredRead = { ok: true; bytes: Buffer } | { ok: false; reason: string };
+type StoredRead = { ok: true; bytes: Buffer } | { ok: false; reason: string };
 
 /** One file of a stored build, checked against the sha256 its round's storybook.json lists for it. */
 export async function readStoredFile(storybooksDir: string, buildId: string, file: BuildFile): Promise<StoredRead> {

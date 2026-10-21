@@ -283,12 +283,7 @@ export async function getRound(source: RoundsSource, id: string): Promise<RoundD
   const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
   const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest) : undefined;
   const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
-  return {
-    ...detail,
-    ...(prior.length > 0 && { priorFeedback: prior }),
-    ...(notes !== undefined && followUps.length > 0 && { followUps }),
-    ...(live !== undefined && detail.valid && { live }),
-  };
+  return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }), ...(live && { live }) };
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });

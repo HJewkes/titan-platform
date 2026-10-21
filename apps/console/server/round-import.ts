@@ -33,8 +33,8 @@ import { mergeBindingProblems } from "./round-merge-binding.js";
 import { roundRuleRefusal } from "./round-rules.js";
 import { shipPackageProblems } from "./round-ship-package.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, parseFeedback, parseManifest, readCapped } from "./rounds.js";
-import { STORYBOOK_DIR, STORYBOOK_FILE, STORYBOOK_STATIC, StorybookBuildSchema, buildIdOf, buildListProblems, type StorybookBuild } from "./storybook-build.js";
-import { storeBuild } from "./storybook-store.js";
+import { STORYBOOK_DIR, STORYBOOK_FILE } from "./storybook-build.js";
+import { readSourceBuild, storeBuild, type SourceBuild } from "./storybook-store.js";
 
 const MAX_FRAMES = 1000;
 const FRAMES_DIR = "frames";
@@ -70,14 +70,6 @@ interface SourceRound {
   sidecars: Map<string, Buffer>;
   feedback: Buffer | null;
   storybook: SourceBuild | null;
-}
-
-interface SourceBuild {
-  /** `storybook/storybook.json` as read, copied verbatim so `rounds.get` reads the build the store was given. */
-  bytes: Buffer;
-  build: StorybookBuild;
-  buildId: string;
-  staticDir: string;
 }
 
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
@@ -127,30 +119,8 @@ async function readTopFile(dir: string, name: string): Promise<Buffer | null> {
 
 async function assertSourceDirs(dir: string): Promise<void> {
   if (!(await lstatOrNull(dir))?.isDirectory()) refuse("the source is not a directory (a symlink is refused)", EXIT.NOINPUT);
-  for (const sub of [FRAMES_DIR, STORYBOOK_DIR]) {
-    const stats = await lstatOrNull(path.join(dir, sub));
-    if (stats && !stats.isDirectory()) refuse(`${sub}/ is a symlink or not a directory`);
-  }
-}
-
-/** Null when the source has no `storybook/`; a build the store would refuse is refused here, before anything is written. */
-async function readStorybook(dir: string): Promise<SourceBuild | null> {
-  const storybookDir = path.join(dir, STORYBOOK_DIR);
-  if ((await lstatOrNull(storybookDir)) === null) return null;
-  const bytes = (await readTopFile(storybookDir, STORYBOOK_FILE)) ?? refuse(`${STORYBOOK_DIR}/ has no ${STORYBOOK_FILE}`);
-  let json: unknown;
-  try {
-    json = JSON.parse(bytes.toString("utf8"));
-  } catch {
-    return refuse(`${STORYBOOK_FILE} is not JSON`);
-  }
-  const parsed = StorybookBuildSchema.safeParse(json);
-  if (!parsed.success) return refuse(`${STORYBOOK_FILE} is not a storybook@1 sidecar`);
-  const problems = buildListProblems(parsed.data.files);
-  if (problems.length > 0) refuse(`${STORYBOOK_FILE}: ${problems.join("; ")}`);
-  const staticDir = path.join(storybookDir, STORYBOOK_STATIC);
-  if (!(await lstatOrNull(staticDir))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${STORYBOOK_STATIC}/ is missing, a symlink or not a directory`);
-  return { bytes, build: parsed.data, buildId: buildIdOf(parsed.data.files), staticDir };
+  const frames = await lstatOrNull(path.join(dir, FRAMES_DIR));
+  if (frames && !frames.isDirectory()) refuse(`${FRAMES_DIR}/ is a symlink or not a directory`);
 }
 
 function checkBinding(index: FramesIndex, binding: Binding): void {
@@ -254,7 +224,7 @@ async function readSource(dir: string): Promise<SourceRound> {
   if (broken !== null) refuse(broken);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, ListedFile>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
-  const storybook = await readStorybook(dir);
+  const storybook = await readSourceBuild(dir);
   return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding), storybook };
 }
 

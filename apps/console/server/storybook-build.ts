@@ -17,13 +17,13 @@ export const STORYBOOK_DIR = "storybook";
 export const STORYBOOK_FILE = "storybook.json";
 /** The build's files, relative to the round dir; `files[].path` is relative to this. */
 export const STORYBOOK_STATIC = "static";
-export const MAX_BUILD_FILES = 5000;
-export const MAX_BUILD_BYTES = 100 * 1024 * 1024;
+const MAX_BUILD_FILES = 5000;
+const MAX_BUILD_BYTES = 100 * 1024 * 1024;
 export const MAX_SIDECAR_BYTES = 2 * 1024 * 1024;
 export const BUILD_ID = /^[0-9a-f]{64}$/;
 const MAX_PATH = 512;
 /** The files the live frame needs: the story host page and the index the story-id check reads. */
-export const IFRAME_FILE = "iframe.html";
+const IFRAME_FILE = "iframe.html";
 export const INDEX_FILE = "index.json";
 /** No dot first (so no `.`, `..` or dotfile, which the story origin never serves), no slash, backslash, colon or control character. */
 const PATH_SEGMENT = /^[^./\\:\p{Cc}][^/\\:\p{Cc}]*$/u;
@@ -50,7 +50,7 @@ export type BuildFile = z.infer<typeof BuildFileSchema>;
 /** Storybook's static `index.json`: only the entry ids and types are read. */
 const StoryIndexSchema = z.object({ entries: z.record(z.string(), z.object({ type: z.string() })) });
 
-export const liveFrame = z.union([
+const liveFrame = z.union([
   z.object({ url: z.string(), buildSha: z.string(), dirty: z.literal(true).optional() }),
   z.object({ reason: z.string() }),
 ]);
@@ -142,9 +142,9 @@ interface StoryVariant {
 }
 
 /** Args Storybook would silently strip from the URL; such a variant shows its PNG. */
-export const urlParamProblems = (variant: StoryVariant): string[] => [...argMapProblems("args", variant.args), ...argMapProblems("globals", variant.globals)];
+const urlParamProblems = (variant: StoryVariant): string[] => [...argMapProblems("args", variant.args), ...argMapProblems("globals", variant.globals)];
 
-export function storyUrl(base: string, variant: StoryVariant): string {
+function storyUrl(base: string, variant: StoryVariant): string {
   const params = new URLSearchParams({ id: variant.storyId, viewMode: "story", shortcuts: "false", singleStory: "true" });
   if (variant.args) params.set("args", encodeArgMap(variant.args));
   if (variant.globals) params.set("globals", encodeArgMap(variant.globals));
@@ -155,7 +155,7 @@ export function storyUrl(base: string, variant: StoryVariant): string {
 const withTheme = (globals: ArgMap | undefined, theme: Theme | undefined): ArgMap | undefined =>
   theme === undefined || globals?.theme !== undefined ? globals : { ...globals, theme };
 
-export interface LiveInput {
+interface LiveInput {
   manifest: Manifest;
   build: StorybookBuild;
   buildId: string;
