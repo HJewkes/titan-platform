@@ -232,6 +232,18 @@ describe("priorFeedback from an earlier round with two PRs (TP-3790)", () => {
     expect(shipBlockers(panelsOnly(2), prior, NO_DRAFT)).toEqual([]);
   });
 
+  it("counts an Addressed tick only for the PR it names, and a bare round for every PR (TP-3885)", () => {
+    const prior = [
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", comment: "Lift the stripe.", pr: "example/tiles#1" },
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", comment: "Narrow the panel.", pr: "example/panels#2" },
+    ];
+    const ticked = { ...NO_DRAFT, addressed: [{ round: 1, pr: "example/tiles#1" }] };
+
+    expect(shipBlockers(twoPrAt(2), prior, ticked, "ship-tiles")).toEqual([]);
+    expect(shipBlockers(twoPrAt(2), prior, ticked, "ship-panels")).toEqual(["your feedback from round 1 is not ticked Addressed"]);
+    expect(shipBlockers(twoPrAt(2), prior, { ...NO_DRAFT, addressed: [1] }, "ship-panels")).toEqual([]);
+  });
+
   it("drops another PR's feedback when the later round asks about one PR only", () => {
     expect(priorFeedback(panelsOnly(2), tilesSentBack)).toEqual([]);
   });

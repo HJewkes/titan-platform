@@ -214,6 +214,25 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
     expect(document.activeElement?.id).toBe("ship-prior-example/panels#2-1");
   });
 
+  it("ticks an earlier round Addressed on one PR's card only, and a reload keeps it there (TP-3885)", async () => {
+    const at = "2031-03-04T00:00:00.000Z";
+    const priorFeedback = [
+      { round: 1, submittedAt: at, comment: "Lift the stripe.", pr: "example/tiles#1" },
+      { round: 1, submittedAt: at, comment: "Narrow the panel.", pr: "example/panels#2" },
+    ];
+    const card = (pr: string) => within(panel("review", pr)).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const shipOff = (pr: string) => scope(pr).getByRole("button", { name: `Ship ${pr}` }).getAttribute("aria-disabled") === "true";
+    await renderTwoPr(undefined, { priorFeedback });
+
+    fireEvent.click(card("example/tiles#1"));
+
+    expect([card("example/tiles#1"), card("example/panels#2")].map((each) => each.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    expect([shipOff("example/tiles#1"), shipOff("example/panels#2")]).toEqual([false, true]);
+    cleanup();
+    await renderTwoPr(undefined, { priorFeedback });
+    expect([card("example/tiles#1"), card("example/panels#2")].map((each) => each.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+  });
+
   it("never lists an unanswered question, even a required one, so Ship stays on (decision 166)", async () => {
     await renderOnePr((manifest) => ({ ...manifest, questions: manifest.questions.map((each) => ({ ...each, required: true })) }));
 
