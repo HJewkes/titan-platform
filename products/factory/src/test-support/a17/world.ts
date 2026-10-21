@@ -93,7 +93,7 @@ function snapshotOf(state: RepoState | undefined): BackstopSnapshot {
     head: { oid: pr.head, contexts: pr.ci === undefined ? [] : [rollupContext(pr.ci)] },
     reviews: pr.reviews,
   }));
-  return { open, done: state?.done ?? [], main: { tip: state?.tip ?? "0".repeat(40), commits: [] }, rateLimit: RATE_LIMIT };
+  return { open, done: state?.done ?? [], main: { tip: state?.tip ?? "0".repeat(40), commits: [] }, trains: [], rateLimit: RATE_LIMIT };
 }
 
 export function githubWorld(): World {

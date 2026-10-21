@@ -201,7 +201,7 @@ describe("reconciler disagreement log (plan §3)", () => {
 
 describe("hasPending", () => {
   it("counts a running check or a pending status, never a finished one", () => {
-    const snapshot = (contexts: Parameters<typeof hasPending>[0]["main"]["commits"][number]["contexts"]) => ({ open: [], done: [], main: { tip: "c1", commits: [{ oid: "c1", contexts }] }, rateLimit: { cost: 1, remaining: 1, resetAt: "", queries: 1 } });
+    const snapshot = (contexts: Parameters<typeof hasPending>[0]["main"]["commits"][number]["contexts"]) => ({ open: [], done: [], main: { tip: "c1", commits: [{ oid: "c1", contexts }] }, trains: [], rateLimit: { cost: 1, remaining: 1, resetAt: "", queries: 1 } });
 
     expect(hasPending(snapshot(commit("c1", null).contexts))).toBe(true);
     expect(hasPending(snapshot([{ kind: "status", context: "deploy", state: "PENDING", createdAt: "2027-01-15T07:00:00Z" }]))).toBe(true);
