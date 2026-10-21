@@ -6,7 +6,7 @@ import { InlineMarkdown } from "./RoundMarkdown.js";
 type Part = NonNullable<Section["parts"]>[number];
 
 /** What the Current pane shows for a part that adds something, as the harness's did. */
-export const NO_CURRENT = "none (new)";
+const NO_CURRENT = "none (new)";
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
   return (
