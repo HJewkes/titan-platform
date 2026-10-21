@@ -193,7 +193,9 @@ describe("a Ship round with two PRs (TP-3329)", () => {
     const priorFeedback = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
     await renderPrs({ status: "sent", priorFeedback, notes: { general: "", comments: {}, answers: { "ship-tiles": { pick: "Ship" }, "ship-panels": { pick: "Ship" } }, addressed: [1] } });
 
-    const prior = screen.getByTestId("ship-prior-feedback");
+    // An entry with no `pr` bears on every PR, so each PR's Review tab shows it (TP-3790).
+    expect(pr("example/panels#2").getByTestId("ship-prior-feedback").textContent).toContain("The stripe is two pixels low.");
+    const prior = pr("example/tiles#1").getByTestId("ship-prior-feedback");
     expect(prior.textContent).toContain("The stripe is two pixels low.");
     const addressed = within(prior).getByRole("checkbox", { name: "Round 1 feedback addressed" });
     expect(addressed.getAttribute("aria-checked")).toBe("true");
