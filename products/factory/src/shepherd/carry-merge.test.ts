@@ -2,6 +2,7 @@ import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 import { reviewCheck } from "./review-check.js";
 import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carryRoutes, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
@@ -552,7 +553,7 @@ describe("the carry scope step", () => {
     const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
     const outcome = await route.runner.run(partialFake<RoutedStepInput>({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" }));
     if (!outcome.ok) throw new Error(outcome.error);
-    return (JSON.parse(outcome.output) as { result: Record<string, unknown> }).result;
+    return z.object({ result: z.record(z.string(), z.unknown()) }).parse(JSON.parse(outcome.output)).result;
   }
 
   it.each([[true], [false]])("records whether the run was ever G10-held (%s)", async (held) => {
