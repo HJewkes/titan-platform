@@ -21,6 +21,7 @@ export const DOCTRINE_SOURCES = [
   "explainer-motion-craft",
   "skills-and-taste",
   "owner-feedback",
+  "script-register",
 ] as const;
 
 export const DOCTRINE_GRADES = ["A", "B", "C", "D"] as const;
