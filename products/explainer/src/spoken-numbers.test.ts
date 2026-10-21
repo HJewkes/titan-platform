@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { hasSpokenDigits, numberForm, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
+import { hasSpokenDigits, numberForms, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 import { deriveEvalView } from "./eval-view.js";
 
 const beatOf = (spoken: string, cues: string[] = []) => {
@@ -31,6 +31,17 @@ describe("spellSpokenNumbers", () => {
     expect(spell("Half of the 2nd batch, 3.5 percent or 40% of it.")).toBe(
       "Half of the second batch, three point five percent or forty percent of it.",
     );
+  });
+
+  it("reads a range as from one number to the other", () => {
+    // Catches: spelling each side and keeping the dash, which the voice reads as "thirty thirty-five percent".
+    expect(spell("About 30–35% of heads stall.")).toBe("About thirty to thirty-five percent of heads stall.");
+    expect(spell("It ran 2020–2026 for $5–$10 each.")).toBe("It ran twenty twenty to twenty twenty-six for five dollars to ten dollars each.");
+  });
+
+  it("moves a cue on a range to its first word", () => {
+    expect(cuesOf("About 30–35% of heads stall.", ["30–35%"])).toEqual(["thirty"]);
+    expect(cuesOf("About 30–35% of heads stall.", ["heads"])).toEqual(["heads"]);
   });
 
   it("spells an amount with its magnitude word or spaced symbol as one number", () => {
@@ -92,25 +103,49 @@ describe("Q-V12 spoken digits", () => {
   });
 });
 
-describe("numberForm", () => {
+describe("numberForms", () => {
   it("reads back every whole number the speller writes, years read as pairs included", () => {
     const misread = Array.from({ length: 2101 }, (_, n) => n)
       .concat([5000, 12_345, 1_400_000])
-      .filter((n) => numberForm(spell(`${n} rows.`).replace(/ rows\.$/, "")) !== String(n));
+      .filter((n) => numberForms(spell(`${n} rows.`).replace(/ rows\.$/, "")).join() !== String(n));
     expect(misread).toEqual([]);
   });
 
   it("gives a spelled mention and its digits one form", () => {
-    expect(numberForm("twenty-eight")).toBe(numberForm("28"));
-    expect(numberForm("a hundred and ninety")).toBe("190");
-    expect(numberForm("Forty-four")).toBe("44");
-    expect(numberForm("1,200")).toBe("1200");
-    expect(numberForm("forty percent")).toBe(numberForm("40%"));
-    expect(numberForm("four point five")).toBe("4.5");
+    expect(numberForms("twenty-eight")).toEqual(numberForms("28"));
+    expect(numberForms("a hundred and ninety")).toEqual(["190"]);
+    expect(numberForms("Forty-four")).toEqual(["44"]);
+    expect(numberForms("1,200")).toEqual(["1200"]);
+    expect(numberForms("forty percent")).toEqual(numberForms("40%"));
+    expect(numberForms("four point five")).toEqual(["4.5"]);
+    expect(numberForms("fifty-one point five")).toEqual(["51.5"]);
+  });
+
+  it("reads a and an as one only before a scale word", () => {
+    // Catches: "a five" read as the pair 1 and 5, which made "a five-hour ceiling" 105.
+    expect(numberForms("a five")).toEqual(["5"]);
+    expect(numberForms("an eight")).toEqual(["8"]);
+    expect(numberForms("a thousand")).toEqual(["1000"]);
+    expect(numberForms("a million")).toEqual(["1000000"]);
+  });
+
+  it("reads two numbers side by side as a year only when both are ten or more", () => {
+    expect(numberForms("nineteen ninety")).toEqual(["1990"]);
+    expect(numberForms("twenty twenty-six")).toEqual(["2026"]);
+    expect(numberForms("nineteen oh five")).toEqual(["1905"]);
+    expect(numberForms("one two")).toEqual(["1", "2"]);
+    expect(numberForms("five and ten percent")).toEqual(["5", "10%"]);
+  });
+
+  it("reads digits with a unit tag as the number", () => {
+    expect(numberForms("5 s")).toEqual(["5"]);
+    expect(numberForms("9 ms")).toEqual(["9"]);
+    expect(numberForms("3x")).toEqual(["3"]);
+    expect(numberForms("5k")).toEqual(["5000"]);
   });
 
   it("keeps text it cannot read as written, lower-cased", () => {
-    expect(numberForm("9 ms")).toBe("9 ms");
-    expect(numberForm("a dozen")).toBe("a dozen");
+    expect(numberForms("a dozen")).toEqual(["a dozen"]);
+    expect(numberForms("Twelve trillion")).toEqual(["twelve trillion"]);
   });
 });
