@@ -21,6 +21,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const RUN_ROUTE = "#/autoresearch/ar-7c1e";
@@ -126,11 +127,33 @@ describe("the autoresearch lanes board", () => {
     const source = renderConsole(`${RUN_ROUTE}?idea=${KEPT}`, withDiff);
     const links = within(await screen.findByTestId("autoresearch-drawer-links"));
 
-    expect(links.getByText("9e1d4b7 → 4a7c0e3")).toBeTruthy();
+    expect(links.getByTestId("autoresearch-ratchet-links").textContent).toMatch(/^9e1d4b7.*→4a7c0e3/);
     expect(source.reads).not.toContain("autoresearch.diff");
     fireEvent.click(links.getByTestId("autoresearch-drawer-diff"));
 
     expect((await links.findByTestId("autoresearch-drawer-diff-body")).textContent).toContain("1 files · +2 −1");
+  });
+
+  it("links each end of a kept idea's ratchet move to its commit when the target names its repository", async () => {
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    renderConsole(`${RUN_ROUTE}?idea=${KEPT}`);
+    const move = within(await screen.findByTestId("autoresearch-ratchet-links"));
+
+    fireEvent.click(move.getByText(/^9e1d4b7/));
+    fireEvent.click(move.getByText(/^4a7c0e3/));
+
+    expect(opened.mock.calls.map(([url]) => url)).toEqual([
+      `https://github.com/example-org/example-target/commit/${AR_RUN_FIXTURE.target.pin}`,
+      `https://github.com/example-org/example-target/commit/${AR_RUN_FIXTURE.best.head}`,
+    ]);
+  });
+
+  it("shows a ratchet move as plain text when the target names no repository", async () => {
+    renderConsole(`${RUN_ROUTE}?idea=${KEPT}`, withRun({ ...AR_RUN_FIXTURE, target: { ...AR_RUN_FIXTURE.target, repo: undefined } }));
+    const links = within(await screen.findByTestId("autoresearch-drawer-links"));
+
+    expect(links.getByText("9e1d4b7 → 4a7c0e3")).toBeTruthy();
+    expect(links.queryByTestId("autoresearch-ratchet-links")).toBeNull();
   });
 });
 

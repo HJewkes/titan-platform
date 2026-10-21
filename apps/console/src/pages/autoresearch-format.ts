@@ -1,9 +1,23 @@
-import type { ArLadder, ArRunView } from "../../server/autoresearch-view.js";
+import type { ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 
 const SHORT_SHA = 7;
 const SHORT_ID = 6;
 
 export const shortSha = (sha: string): string => sha.slice(0, SHORT_SHA);
+
+const REPO = /^[\w.-]+\/[\w.-]+$/;
+const SHA = /^[0-9a-f]{7,64}$/i;
+
+/** Only a plain `owner/name` and a hex sha become a GitHub URL; anything else stays text rather than a malformed link. */
+export function commitUrl(repo: string | undefined, sha: string): string | undefined {
+  return repo !== undefined && REPO.test(repo) && SHA.test(sha) ? `https://github.com/${repo}/commit/${sha}` : undefined;
+}
+
+/** The round's ratchet move, when this outcome is the winner that made it. */
+export function keptMove(round: ArRound, outcome: ArOutcome | null): ArRound["ratchet"] {
+  const { ratchet } = round;
+  return outcome?.verdict === "kept" && ratchet !== null && ratchet.to === outcome.head ? ratchet : null;
+}
 
 /** Idea ids share the `i-` prefix, so the short form keeps it and the first hex digits. */
 export const shortId = (id: string): string => id.slice(0, SHORT_ID);

@@ -105,7 +105,7 @@ const ROUNDS: ArRunView["rounds"] = [
 export const AR_RUN_FIXTURE: ArRunView = {
   runId: "ar-7c1e", status: "running", startedAt: at(420), completedAt: null, error: null,
   target: {
-    name: "fixture-target", pin: PIN, ratchetRef: "refs/heads/ar/ratchet/ar-7c1e", phases: ["p1"],
+    name: "fixture-target", pin: PIN, ratchetRef: "refs/heads/ar/ratchet/ar-7c1e", phases: ["p1"], repo: "example-org/example-target", ratchetPrefix: "ar/ratchet",
     metric: {
       primary: "score", direction: "min", guards: ["guard_delta"], zeroTolerance: ["hidden_regressions"], allGate: ["all_gate"], noOp: ["changed_tasks"],
       noise: { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBandPp: 1.5 },

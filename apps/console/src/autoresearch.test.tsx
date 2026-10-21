@@ -80,7 +80,7 @@ describe("the autoresearch page", () => {
     expect(superseded.textContent).toContain("superseded: another winner moved the ratchet first; requeued");
     const kept = within(decisions).getByTestId("autoresearch-decision-i-3f9a0c1d2e4b");
     expect(kept.textContent).toContain("+1.2pp · +1.9σ");
-    expect(kept.textContent).toContain("9e1d4b7 → 4a7c0e3");
+    expect(within(kept).getByTestId("autoresearch-ratchet-links").textContent).toMatch(/^9e1d4b7.*→4a7c0e3/);
   });
 
   it("opens the newest round and keeps earlier ones collapsed", async () => {

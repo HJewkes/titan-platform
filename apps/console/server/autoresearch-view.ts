@@ -21,7 +21,19 @@ const metricConfig = z.object({
   noise: z.object({ bandSigmas: z.number(), lockAfterPairs: z.number().int(), minPairs: z.number().int(), defaultBandPp: z.number() }),
 });
 
-const target = z.object({ name: z.string(), pin: z.string(), ratchetRef: z.string(), metric: metricConfig, phases: z.array(z.string()).min(1) });
+/**
+ * `repo` (`owner/name`) and `ratchetPrefix` come from the target adapter; ratchet records keep only their shas. Without
+ * `repo` the page shows a ratchet move as text, since it cannot name where the commits live.
+ */
+const target = z.object({
+  name: z.string(),
+  pin: z.string(),
+  ratchetRef: z.string(),
+  metric: metricConfig,
+  phases: z.array(z.string()).min(1),
+  repo: z.string().optional(),
+  ratchetPrefix: z.string().optional(),
+});
 
 const settings = z.object({ lanes: z.number().int().positive(), rounds: z.number().int().positive(), minPool: z.number().int().nonnegative() });
 
