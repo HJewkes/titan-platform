@@ -2,7 +2,7 @@ import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type ForcePush } from "
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { reviewCheck } from "./review-check.js";
-import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
+import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carryRoutes, carrySeatRoute, pushedAwaySince } from "./carry-merge.js";
 import type { ReviewerAgent, ReviewerMessage } from "@titan-design/review-panel";
 import type { ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
@@ -31,7 +31,7 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
+function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null; g10Held?: boolean }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
   const asked: Rig["asked"] = [];
   const answer = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
@@ -477,6 +477,83 @@ describe("carrying a MERGE across a clean merge-up of the base", () => {
     const r = rig(SCOPE, { ...EQUAL, firstParent: second });
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [second, mergeAt(second, REVIEWED)]))).resolves.toBeUndefined();
+  });
+});
+
+describe("carrying a MERGE across a merge-up whose PR diff is unchanged (TP-3725)", () => {
+  const UNREVIEWED = fakeSha("unreviewed-merge-up");
+  const SAME_DIFF: CarryResult = { ...EQUAL, firstParent: UNREVIEWED, patchEqual: true };
+  const UNHELD = { kind: "correctness", baseRef: "main", g10Held: false };
+  const ids = (r: Rig) => r.asked.map((step) => step.stepId);
+
+  it("a clean merge-up with an identical PR diff carries MERGE and dispatches no reviewer", async () => {
+    const r = rig(UNHELD, SAME_DIFF);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: SAME_DIFF, rule: "tree-equal" });
+    expect(ids(r).filter((id) => id.startsWith("sh-review") || id.startsWith("sh-remerge"))).toEqual([]);
+  });
+
+  it("records no merge-up and marks no mergeUpFrom, so no G10 hold follows the carry", async () => {
+    const r = rig(UNHELD, SAME_DIFF);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).not.toHaveProperty("mergeUpFrom");
+    expect(ids(r).some((id) => id.startsWith("sh-merge-up:"))).toBe(false);
+  });
+
+  it("a merge-up that changes the PR diff re-reviews", async () => {
+    const r = rig(UNHELD, { ...SAME_DIFF, patchEqual: false });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(carryOf(r)).toBeUndefined();
+  });
+
+  it("a security-kind run with an identical diff still re-reviews, as today, and probes nothing", async () => {
+    const r = rig({ ...UNHELD, kind: "security" }, SAME_DIFF);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(ids(r)).toEqual(["sh-carry-scope:0"]);
+  });
+
+  it.each([
+    ["a run that holds or held a G10 hold", { ...UNHELD, g10Held: true }],
+    ["a scope recorded before the G10 read", { kind: "correctness", baseRef: "main" }],
+  ])("%s with an identical diff still re-reviews, as today", async (_name, scope) => {
+    const r = rig(scope, SAME_DIFF);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(carryOf(r)).toBeUndefined();
+  });
+
+  it("does not carry an identical diff whose trees differ", async () => {
+    const r = rig(UNHELD, { ...SAME_DIFF, mergeTree: "tree-b" });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+  });
+});
+
+describe("the carry scope step", () => {
+  async function scopeOf(held: boolean): Promise<Record<string, unknown>> {
+    const github = fakeGitHub();
+    github.addPr({ headSha: NEW_HEAD });
+    const run = { kind: undefined, reviewRequest: undefined, holdReason: held ? "g10-review: authority touch" : null };
+    const store = { get: () => ({ byRun: () => run, eventsOf: () => [] }) } as unknown as Parameters<typeof carryRoutes>[0]["store"];
+    const route = carryRoutes({ now: () => 0, port: githubPort(github.wire), store }, undefined)[0]!;
+    const prompt = JSON.stringify({ ...TARGET, runId: "run-1" });
+    const outcome = await route.runner.run({ prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" } as unknown as RoutedStepInput);
+    if (!outcome.ok) throw new Error(outcome.error);
+    return (JSON.parse(outcome.output) as { result: Record<string, unknown> }).result;
+  }
+
+  it.each([[true], [false]])("records whether the run was ever G10-held (%s)", async (held) => {
+    await expect(scopeOf(held)).resolves.toMatchObject({ g10Held: held });
   });
 });
 

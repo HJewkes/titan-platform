@@ -47,11 +47,14 @@ function recordedElsewhere(ctx: WorkflowContext, stepId: string): boolean {
 
 /**
  * The tree-equal rule: equal trees, and the head a clean merge-up of the reviewed line. A probe recorded before the probe read
- * the first parent carries as it did then, so a replay keeps its history.
+ * the first parent carries as it did then, so a replay keeps its history. With `patchCarries`, a first parent off the line
+ * (a merge-up over one that never reached a review) carries too when the PR's own diff hashes the same; that carry is no
+ * merge-up, so `recordMergeUp` marks nothing and no G10 hold follows it.
  */
-export function treeCarries(result: CarryResult, fromHead: string, reviews: ReadonlyMap<string, Verdict>): boolean {
+export function treeCarries(result: CarryResult, fromHead: string, reviews: ReadonlyMap<string, Verdict>, patchCarries = false): boolean {
   const treeEqual = result.equal && !!result.headTree && result.headTree === result.mergeTree;
-  return treeEqual && (result.firstParent === undefined || isCleanMergeUp(result, fromHead, reviews));
+  if (!treeEqual) return false;
+  return result.firstParent === undefined || isCleanMergeUp(result, fromHead, reviews) || (patchCarries && result.patchEqual === true);
 }
 
 /** True once the run log records a carry as a clean merge-up; any other carry, or a replay recorded without the step, is false. */
