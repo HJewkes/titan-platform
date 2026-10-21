@@ -4,6 +4,7 @@ import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { href, open, type Route } from "../router.js";
 import { setPositionOf, setQuery, type SetPosition } from "./round-set.js";
+import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
 
 const roundRoute = (round: RoundSummary): Route => ({ view: "rounds", id: round.id });
@@ -51,7 +52,7 @@ function StepLink({ step, round }: { step: "prev" | "next"; round: RoundSummary 
 function KeyHint(): ReactNode {
   return (
     <span className="hidden md:inline">
-      <Typography variant="caption" color="secondary">[ and ] step through the set</Typography>
+      <Typography variant="caption" color="secondary">{`${ROUND_KEYS.prevRound.label} and ${ROUND_KEYS.nextRound.label} step through the set`}</Typography>
     </span>
   );
 }
@@ -62,8 +63,8 @@ function useSetKeys(position: SetPosition | null): void {
   const next = position?.next ?? null;
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey || typedInto(event.target)) return;
-      const target = event.key === "[" ? prev : event.key === "]" ? next : null;
+      if (typedInto(event.target)) return;
+      const target = pressed(ROUND_KEYS.prevRound, event) ? prev : pressed(ROUND_KEYS.nextRound, event) ? next : null;
       if (target === null) return;
       event.preventDefault();
       open(roundRoute(target));

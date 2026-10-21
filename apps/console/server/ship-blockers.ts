@@ -18,6 +18,8 @@ export interface PriorFeedback {
   general?: string;
   /** One line per frame that round left feedback on. */
   frames?: string[];
+  /** In a round with several Ship questions (TP-3329), the `repo#pr` this entry's feedback was on; it blocks only that PR. */
+  pr?: string;
 }
 
 export interface DraftAnswer {
@@ -59,16 +61,11 @@ type MergeQuestion = PickOne & { merge: NonNullable<PickOne["merge"]> };
 
 const isMerge = (question: Question): question is MergeQuestion => question.kind === "pick-one" && question.merge !== undefined;
 const blank = (text: string | undefined): boolean => (text ?? "").trim() === "";
-
-function mergeAnswer(manifest: Manifest, feedback: Feedback) {
-  const question = manifest.questions.find(isMerge);
-  const answer = question && feedback.answers.find((each) => each.questionId === question.id);
-  return { answer, ship: question?.merge.ship ?? [] };
-}
+const pageOf = (question: MergeQuestion): string => `${question.merge.repo}#${question.merge.pr}`;
 
 /** The merge question's comment first, as it is the one a Send back carries. */
-function commentsOf(feedback: Feedback, mergeId: string | undefined, followUps: readonly string[]): string[] {
-  const ordered = feedback.answers.filter((answer) => !followUps.includes(answer.questionId)).sort((left, right) => Number(right.questionId === mergeId) - Number(left.questionId === mergeId));
+function commentsOf(answers: readonly Feedback["answers"][number][], mergeId: string | undefined): string[] {
+  const ordered = [...answers].sort((left, right) => Number(right.questionId === mergeId) - Number(left.questionId === mergeId));
   return ordered.flatMap((answer) => (blank(answer.comment) ? [] : [answer.comment ?? ""]));
 }
 
@@ -83,28 +80,37 @@ function frameLine(manifest: Manifest, frame: DraftFrame): string {
   return words.length === 0 ? head : `${head}: ${words.join("; ")}`;
 }
 
-function feedbackItem({ manifest, feedback, followUps = [] }: EarlierRound & { feedback: Feedback }): PriorFeedback | null {
-  const { answer, ship } = mergeAnswer(manifest, feedback);
-  const pick = answer?.pick !== undefined && !ship.includes(answer.pick) ? answer.pick : undefined;
-  const comment = commentsOf(feedback, answer?.questionId, followUps).join("\n\n");
-  const frames = feedback.variants.filter(asksChange).map((frame) => frameLine(manifest, frame));
-  const item: PriorFeedback = {
-    round: manifest.round,
-    submittedAt: feedback.submittedAt,
+/** One earlier round's feedback as one PR saw it: that PR's merge answer, and the answers and frames in its scope. */
+function feedbackItem({ manifest, feedback, followUps = [] }: EarlierRound & { feedback: Feedback }, merge: MergeQuestion | undefined, pr?: string): PriorFeedback | null {
+  const answer = merge && feedback.answers.find((each) => each.questionId === merge.id);
+  const pick = answer?.pick !== undefined && !(merge?.merge.ship ?? []).includes(answer.pick) ? answer.pick : undefined;
+  const scope = pr === undefined || merge === undefined ? undefined : { answers: shipScope(manifest, merge.id), frames: frameScope(manifest, merge.id) };
+  const answers = feedback.answers.filter((each) => !followUps.includes(each.questionId) && (scope?.answers.has(each.questionId) ?? true));
+  const comment = commentsOf(answers, answer?.questionId).join("\n\n");
+  const frames = feedback.variants.filter((frame) => asksChange(frame) && (scope?.frames.has(frame.key) ?? true)).map((frame) => frameLine(manifest, frame));
+  const words: Omit<PriorFeedback, "round" | "submittedAt" | "pr"> = {
     ...(pick !== undefined && { pick }),
     ...(answer?.revisionRequested && { revisionRequested: true as const }),
     ...(comment !== "" && { comment }),
     ...(!blank(feedback.general) && { general: feedback.general }),
     ...(frames.length > 0 && { frames }),
   };
-  return Object.keys(item).length > 2 ? item : null;
+  return Object.keys(words).length > 0 ? { round: manifest.round, submittedAt: feedback.submittedAt, ...words, ...(pr !== undefined && { pr }) } : null;
+}
+
+/** A round with several Ship questions gives one entry per PR the current round still asks about; any other round one entry. */
+function feedbackItems(earlier: EarlierRound & { feedback: Feedback }, asked: ReadonlySet<string>): (PriorFeedback | null)[] {
+  const merges = earlier.manifest.questions.filter(isMerge);
+  if (merges.length < 2) return [feedbackItem(earlier, merges[0])];
+  return merges.filter((merge) => asked.has(pageOf(merge))).map((merge) => feedbackItem(earlier, merge, pageOf(merge)));
 }
 
 /** Earlier sent rounds of the same unit that asked for anything but a plain Ship, oldest first. */
 export function priorFeedback(manifest: Manifest, rounds: readonly EarlierRound[]): PriorFeedback[] {
+  const asked = new Set(manifest.questions.filter(isMerge).map(pageOf));
   return rounds
     .flatMap(({ manifest: earlier, feedback, followUps }) =>
-      earlier.unit === manifest.unit && earlier.round < manifest.round && feedback !== null ? [feedbackItem({ manifest: earlier, feedback, followUps })] : [],
+      earlier.unit === manifest.unit && earlier.round < manifest.round && feedback !== null ? feedbackItems({ manifest: earlier, feedback, followUps }, asked) : [],
     )
     .filter((item): item is PriorFeedback => item !== null)
     .sort((left, right) => left.round - right.round || left.submittedAt.localeCompare(right.submittedAt));
@@ -146,8 +152,6 @@ export function shipStake(manifest: Manifest, question: Question): ShipStake {
   const options = question.kind === "pick-one" ? question.options : [];
   return { kind: "picks", blocking: options.filter((option) => !expected.includes(option)) };
 }
-
-const pageOf = (question: MergeQuestion): string => `${question.merge.repo}#${question.merge.pr}`;
 
 /**
  * The questions whose answers bear on shipping one merge question: in a round with several (TP-3329), its own PR group's and
@@ -192,9 +196,18 @@ export function sendBackBlocker(draft: Pick<ShipDraft, "answers" | "general" | "
   return blank(note) && blank(draft.general) && !(draft.variants ?? []).some(hasWords) ? NEEDS_NOTE : undefined;
 }
 
+/** The PR a Ship answers: `mergeId`'s, else the round's one Ship question's. */
+function shippingPr(manifest: Manifest, mergeId: string | undefined): string | undefined {
+  const merges = manifest.questions.filter(isMerge);
+  const merge = mergeId === undefined ? (merges.length === 1 ? merges[0] : undefined) : merges.find((question) => question.id === mergeId);
+  return merge && pageOf(merge);
+}
+
 /** Why Ship is off, in plain words; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
 export function shipBlockers(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): string[] {
-  const open = [...new Set(prior.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
+  const pr = shippingPr(manifest, mergeId);
+  const ours = prior.filter((item) => item.pr === undefined || item.pr === pr);
+  const open = [...new Set(ours.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
   const scope = mergeId === undefined ? undefined : shipScope(manifest, mergeId);
   const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId) && (scope?.has(answer.questionId) ?? true));
   const frames = mergeId === undefined ? undefined : frameScope(manifest, mergeId);

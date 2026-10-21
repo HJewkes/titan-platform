@@ -166,6 +166,45 @@ describe("shipScope (TP-3329)", () => {
   });
 });
 
+describe("priorFeedback from an earlier round with two PRs (TP-3790)", () => {
+  const twoPrAt = (round: number): Manifest => {
+    const parsed = parseManifest(Buffer.from(JSON.stringify({ ...twoPrRound(), round })));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.manifest;
+  };
+  const panelsOnly = (round: number): Manifest => {
+    const two = twoPrAt(round);
+    return { ...two, questions: two.questions.filter((question) => question.id === "ship-panels") };
+  };
+  const tilesSentBack = [{ manifest: twoPrAt(1), feedback: { ...feedback([{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }]), unit: "tiles-and-panels" } }];
+
+  it("carries each PR's own Don't ship forward, scoped to that PR", () => {
+    expect(priorFeedback(twoPrAt(2), tilesSentBack)).toEqual([
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", pick: "Don't ship", comment: "Lower the stripe.", pr: "example/tiles#1" },
+    ]);
+  });
+
+  it("reads every PR's merge question, not only the first", () => {
+    const both = [{ ...tilesSentBack[0]!, feedback: { ...tilesSentBack[0]!.feedback, answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Don't ship", comment: "Narrow the panel." }] } }];
+
+    expect(priorFeedback(twoPrAt(2), both)).toEqual([
+      { round: 1, submittedAt: "2031-03-05T00:00:00.000Z", pick: "Don't ship", comment: "Narrow the panel.", pr: "example/panels#2" },
+    ]);
+  });
+
+  it("lets a Don't ship on one PR leave the other PR's Ship open", () => {
+    const prior = priorFeedback(twoPrAt(2), tilesSentBack);
+
+    expect(shipBlockers(twoPrAt(2), prior, NO_DRAFT, "ship-panels")).toEqual([]);
+    expect(shipBlockers(twoPrAt(2), prior, NO_DRAFT, "ship-tiles")).toEqual(["your feedback from round 1 is not ticked Addressed"]);
+    expect(shipBlockers(panelsOnly(2), prior, NO_DRAFT)).toEqual([]);
+  });
+
+  it("drops another PR's feedback when the later round asks about one PR only", () => {
+    expect(priorFeedback(panelsOnly(2), tilesSentBack)).toEqual([]);
+  });
+});
+
 describe("frameScope (TP-3773 S6b)", () => {
   const twoPr = (() => {
     const parsed = parseManifest(Buffer.from(JSON.stringify(twoPrRound())));
