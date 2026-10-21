@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
 import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
@@ -102,7 +103,7 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
           {ab && sides ? (
             <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
           ) : (
-            <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} recommended={recommendedChoices(shown)} />
+            <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} noting={ab} recommended={recommendedChoices(shown)} />
           )}
           <QuestionFacts question={question} answer={answer} />
         </VStack>
@@ -149,9 +150,21 @@ interface ChoicesProps {
   onRevise?: () => void;
   /** The options a shown recommendation picks, badged. */
   recommended: readonly string[];
+  /** Present where the page takes option notes; a decision packet's cards each carry one. */
+  noting?: OptionNoting;
 }
 
-function Choices({ question, answer, onChoose, onText, onRevise, recommended }: ChoicesProps): ReactNode {
+/** A packet question wraps each option's control in its card; any other question draws the control alone. */
+function inCard(question: Question, noting: OptionNoting | undefined, choice: string, picked: boolean, control: ReactNode): ReactNode {
+  if (!hasOptionCards(question)) return control;
+  return (
+    <OptionCard key={choice} option={choice} detail={question.optionDetails?.[choice]} picked={picked} noting={noting}>
+      {control}
+    </OptionCard>
+  );
+}
+
+function Choices({ question, answer, onChoose, onText, onRevise, recommended, noting }: ChoicesProps): ReactNode {
   const choices = choicesOf(question);
   const frameOf = useOptionFrame(question);
   if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
@@ -163,13 +176,13 @@ function Choices({ question, answer, onChoose, onText, onRevise, recommended }: 
     const picks = answer && "picks" in answer ? answer.picks : [];
     return (
       <CheckboxGroup label="Pick any">
-        {choices.map((choice, index) => (
-          <Checkbox key={choice} value={choice} label={`${choiceLabel(index, plainText(choice), frameOf(choice))}${recommended.includes(choice) ? "  · Recommended" : ""}`} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
-        ))}
+        {choices.map((choice, index) =>
+          inCard(question, noting, choice, picks.includes(choice), <Checkbox key={choice} value={choice} label={`${choiceLabel(index, plainText(choice), frameOf(choice))}${recommended.includes(choice) ? "  · Recommended" : ""}`} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />),
+        )}
       </CheckboxGroup>
     );
   }
-  return <PickOne question={question} answer={answer} onChoose={onChoose} onRevise={onRevise} choices={choices} frameOf={frameOf} recommended={recommended} />;
+  return <PickOne question={question} answer={answer} onChoose={onChoose} onRevise={onRevise} noting={noting} choices={choices} frameOf={frameOf} recommended={recommended} />;
 }
 
 interface PickOneProps extends Omit<ChoicesProps, "onText"> {
@@ -192,7 +205,7 @@ function selectedValue(answer: QuestionAnswer | undefined): string | null {
 }
 
 /** A pick-one or scale as radios, with the built-in revision request last where the question offers it (G10). */
-function PickOne({ question, answer, onChoose, onRevise, choices, frameOf, recommended }: PickOneProps): ReactNode {
+function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameOf, recommended }: PickOneProps): ReactNode {
   const value = selectedValue(answer);
   const revisable = onRevise !== undefined && offersBuiltInRevision(question);
   const change = (next: string): void => (next === REVISION ? onRevise?.() : onChoose(next));
@@ -200,11 +213,17 @@ function PickOne({ question, answer, onChoose, onRevise, choices, frameOf, recom
     <VStack gap={1}>
       {answer && "revisionRequested" in answer && !revisable ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
       <RadioGroup value={value} onChange={change} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
-        {choices.map((choice, index) => (
-          <Radio key={choice} value={choice} aria-checked={value === choice}>
-            <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
-          </Radio>
-        ))}
+        {choices.map((choice, index) =>
+          inCard(
+            question,
+            noting,
+            choice,
+            value === choice,
+            <Radio key={choice} value={choice} aria-checked={value === choice}>
+              <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
+            </Radio>,
+          ),
+        )}
         {revisable ? (
           <Radio value={REVISION} aria-checked={value === REVISION}>
             {REVISION_LABEL}
