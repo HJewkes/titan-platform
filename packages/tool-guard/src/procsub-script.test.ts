@@ -24,6 +24,7 @@ writeFileSync(join(home, "ok.sh"), "echo ok\n");
 writeFileSync(join(home, "evil.sh"), `${PUSH}\n`);
 writeFileSync(join(home, "big.sh"), `${"#".repeat(CAP + 400)}\n${PUSH}\n`);
 writeFileSync(join(home, "unreadable.sh"), `${PUSH}\n`);
+writeFileSync(join(home, "--"), "echo ok\n");
 chmodSync(join(home, "unreadable.sh"), 0);
 
 const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
@@ -123,8 +124,20 @@ const C_POSITIONAL_LINES = [
   `bash -c 'bash "$0"' <(echo '${PUSH}')`,
   `bash -c 'bash "$1"' _ <(cat ./x.sh)`,
 ];
-/** `--` ends the options of `source` and `.`, so the substitution after it is still the file read. */
-const DOUBLE_DASH_SOURCE_LINES = [`source -- <(echo '${PUSH}')`, `. -- <(echo '${PUSH}')`, "source -- <(cat ./x.sh)"];
+/**
+ * `--` ends the options of `source`, `.` and `cat`, so the substitution or file after it is still the one read. Quote
+ * removal comes first, so a quoted or escaped `--` does too, even with a harmless file named `--` in the directory.
+ */
+const DOUBLE_DASH_SOURCE_LINES = [
+  `source -- <(echo '${PUSH}')`,
+  `. -- <(echo '${PUSH}')`,
+  "source -- <(cat ./x.sh)",
+  `source '--' <(echo '${PUSH}')`,
+  `source \\-\\- <(echo '${PUSH}')`,
+  `. "--" <(cat ./x.sh)`,
+  "bash <(cat '--' ./x.sh)",
+  "bash <(cat \\-\\- ./x.sh)",
+];
 /**
  * A substitution as the program itself. No real shell runs it, as the kernel refuses to execute a pipe, but the guard
  * reads it as it reads the file `exec ./x.sh` names, so the verdict never rests on that refusal.
@@ -300,6 +313,7 @@ chmodSync(join(bin, "git"), 0o755);
 writeFileSync(join(scratch, "x.sh"), `${PUSH}\n`);
 writeFileSync(join(scratch, "evil.sh"), `${PUSH}\n`);
 writeFileSync(join(scratch, "ok.sh"), "echo ok\n");
+writeFileSync(join(scratch, "--"), "echo ok\n");
 afterAll(() => {
   rmSync(bin, { recursive: true, force: true });
   rmSync(scratch, { recursive: true, force: true });

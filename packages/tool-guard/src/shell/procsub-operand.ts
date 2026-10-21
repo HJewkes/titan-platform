@@ -39,10 +39,13 @@ export function withoutProcsub<T extends Operands>(cmd: T): T {
   return { ...cmd, args: cmd.args.filter((word) => word.procsub === undefined) };
 }
 
-/** The file `source` or `.` reads: its first word, or the one after a `--` that ends its options, as bash and zsh read it. */
+/**
+ * The file `source` or `.` reads: its first word, or the one after a `--` that ends its options, as bash and zsh read
+ * it. Quote removal comes first, so `'--'` and `\-\-` end the options too.
+ */
 export function sourcedOperand(args: WordToken[]): WordToken | undefined {
   const [first, second] = args;
-  return first?.value === "--" && !first.quoted ? second : first;
+  return first?.value === "--" ? second : first;
 }
 
 /**
@@ -142,7 +145,8 @@ function procsubFile(body: Token[]): WordToken | null {
   const words = body.every((token) => token.type === "word") ? body : [];
   const [name, ...rest] = words;
   if (name?.value !== "cat" || name.quoted || name.dynamic) return null;
-  const operands = rest[0]?.value === "--" && !rest[0].quoted ? rest.slice(1) : rest;
+  // cat sees the word after quote removal, so a quoted `--` still ends its options.
+  const operands = rest[0]?.value === "--" ? rest.slice(1) : rest;
   const [file] = operands;
   if (operands.length !== 1 || file === undefined) return null;
   const literal = !file.dynamic && !file.computed && file.subs.length === 0;
