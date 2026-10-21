@@ -745,6 +745,16 @@ describe("a design round's per-frame verdicts, comments and pins (TP-3773)", () 
     expect(await exists(feedbackOf(id))).toBe(false);
   });
 
+  it("writes a round whose every frame holds the longest comment and the most pins, past the old 64 KiB cap", async () => {
+    const long = (chars: number) => "é".repeat(chars);
+    const maxed = (key: string) => ({ key, verdict: "maybe", comment: long(2000), annotations: Array.from({ length: 12 }, (_, n) => ({ ...pin(n + 1, long(500)), id: `${key}-${n + 1}`, xPct: 0.05 })) });
+
+    const { envelope } = await send(["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map(maxed));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await stat(feedbackOf(id))).size).toBeGreaterThan(64 * 1024);
+  });
+
   it("echoes every frame undecided when no variants are sent", async () => {
     const { envelope } = await send();
 
