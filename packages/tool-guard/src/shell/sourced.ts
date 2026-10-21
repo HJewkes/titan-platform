@@ -4,7 +4,7 @@ import type { WordToken } from "./lexer.js";
 export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 
 /** A file a sourcer may read; `optional` when every reading that names it may find none there, so an absent one runs nothing. */
-export interface SourcedFile {
+interface SourcedFile {
   word: WordToken;
   optional?: true;
 }
