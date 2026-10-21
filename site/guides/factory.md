@@ -212,6 +212,116 @@ A case with no GitHub input, such as the M0 deploy probe cases, stays single-mod
 file no longer carries its title. CI reruns the whole factory package when anything in it changes, so the guard runs on
 every factory change.
 
+## Webhook ingress {#webhook-ingress}
+
+`serve` owns a second loopback listener that takes GitHub webhook deliveries. It is a separate listener so the daemon's Host and
+Origin guards on 7410 stay as they are, and a Funnel typo cannot expose `/rpc` or `/mcp`.
+
+| What | Value |
+| --- | --- |
+| Path | `/ingress/github` (POST only) |
+| Local listener | `127.0.0.1:7411` |
+| Public route | `https://<host>.<tailnet>.ts.net/ingress/github`, forwarded to `http://127.0.0.1:7411/ingress/github` |
+| Secret file | `$XDG_CONFIG_HOME/titan-factory/secrets/github-webhook.token`; on the serve host `~/.config/titan-factory/secrets/github-webhook.token` (directory 0700, file 0600) |
+| Kill switch | `github.ingress` (`"on"` or `"off"`, default `"off"`) in `~/.config/titan-factory/config.json` |
+
+`<host>.<tailnet>.ts.net` stands for the serve host's Funnel name, shown by `tailscale status --json | jq -r .Self.DNSName`.
+
+The route is live only when `github.sources` is `"webhook"` **and** `github.ingress` is `"on"`. Otherwise every request gets
+`404 {"error":"ingress off"}` before the body or the secret is read. The listener binds even when the switch is off, so a flip
+takes effect on the next request with no restart.
+
+**The switch stays off until the polling-only 48 h (F11) has passed.** Register the webhooks and flip the switch only after that.
+
+**Parse-only (R28).** The ingress verifies the signature, stores a capped projection of the delivery as one `source='webhook'`
+event, and acts on nothing. No recipe or service reads what it writes at M1a.
+
+### Owner steps
+
+D1 and D2 (the tailnet ACL `funnel` nodeAttr, scoped to the serve host and never `"*"`) are separate and can run now. D6 needs no code
+and can run now. D3 to D5 wait until the ingress listener is deployed on the serve host: before that, 7411 has no listener and Funnel
+answers 502.
+
+**D3. Check that serve's ingress listener is up** (on the serve host):
+
+```sh
+ss -ltn 'sport = :7411'
+curl -sS -X POST http://127.0.0.1:7411/ingress/github
+```
+
+The first line must list `127.0.0.1:7411`. The curl must print `{"error":"ingress off"}`.
+
+**D4. Add the one Funnel route** (on the serve host):
+
+```sh
+sudo tailscale funnel --bg --set-path /ingress/github http://127.0.0.1:7411/ingress/github
+```
+
+Never run `tailscale funnel 7410`, and never run `tailscale funnel` without `--set-path`.
+
+**D5. Check that only that route is public:**
+
+```sh
+tailscale funnel status
+curl -sS -X POST https://<host>.<tailnet>.ts.net/ingress/github
+curl -sS -o /dev/null -w '%{http_code}\n' https://<host>.<tailnet>.ts.net/health
+```
+
+- `funnel status` must list exactly one entry: `https://<host>.<tailnet>.ts.net/ingress/github`, proxying to
+  `http://127.0.0.1:7411/ingress/github`.
+- The first curl must print `{"error":"ingress off"}`.
+- The second curl must print `404`. That 404 comes from Tailscale and shows serve's `/health` is not public.
+- If the first curl prints `{"error":"not found"}` instead, Tailscale appended the mount path twice. Run
+  `sudo tailscale funnel --set-path /ingress/github off`, then re-run D4 with the target `http://127.0.0.1:7411`, then re-run D5.
+
+**D6. Make the webhook secret straight into its file** (on the serve host, as the serve user):
+
+```sh
+umask 077
+mkdir -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+openssl rand -hex 32 > ~/.config/titan-factory/secrets/github-webhook.token
+chmod 600 ~/.config/titan-factory/secrets/github-webhook.token
+ls -l ~/.config/titan-factory/secrets/github-webhook.token
+```
+
+The last line must start with `-rw-------`. The secret is never printed, pasted or sent in chat. Serve picks it up on the next
+delivery, with no restart.
+
+### Go-live
+
+After the polling-only 48 h has passed:
+
+**G1. Register the webhook on each of the four repos** (titan-platform, titan-design, agent-chat, voltras-mcp). This needs repo
+admin, so it runs as HJewkes. The secret goes from the file through stdin, never through argv:
+
+```sh
+for repo in titan-platform titan-design agent-chat voltras-mcp; do
+  jq -n --rawfile s ~/.config/titan-factory/secrets/github-webhook.token '{name:"web",active:true,
+    events:["check_run","status","pull_request","pull_request_review","push","repository_ruleset"],
+    config:{url:"https://<host>.<tailnet>.ts.net/ingress/github",content_type:"json",insecure_ssl:"0",secret:($s|rtrimstr("\n"))}}' \
+  | gh api -X POST "repos/HJewkes/$repo/hooks" --input - --jq '.id'
+done
+```
+
+Each repo's ping delivery reaches a switch that is still off, so it gets 404. That is expected.
+
+**G2. Flip the kill switch.** In `~/.config/titan-factory/config.json`, set `"github": {"sources": "webhook", "ingress": "on"}`.
+No restart is needed. Check with `curl -s http://127.0.0.1:7410/health | jq '.sources, .ingress'`: it must show
+`effective: "webhook"` and `listening: true`.
+
+**G3. Redeliver one ping per repo** from Settings, Webhooks, Recent Deliveries, Redeliver. Each must show 200, and
+`health.ingress.lastDelivery.event` must be `ping`.
+
+### Rollback
+
+- **Operational, with no deploy:** set `"ingress": "off"` (or remove the `github` block). The next delivery gets 404 and polling
+  takes over. To close the public route: `sudo tailscale funnel --set-path /ingress/github off`.
+- **Code:** each slice is one revertable commit. Reverting the listener removes it; the projections and the core are then dead
+  code, so revert them too. There is no migration and no stored state outside the event log, and rows already written stay valid.
+- **Secret leak:** rotate with D6 (overwrite the file), then `gh api -X PATCH repos/HJewkes/<repo>/hooks/<id>/config` with the
+  same jq-from-file form. Serve re-reads the file on change.
+
 ## `serve`
 
 ```sh
