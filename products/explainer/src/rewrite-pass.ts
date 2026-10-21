@@ -41,6 +41,8 @@ export interface RejectedBeat {
   beat: string;
   /** The guard's reasons, or `missing` when the reply skipped a beat it was asked to rewrite. */
   rejections: (BeatRejection | { rule: "missing"; detail: string })[];
+  /** What the model proposed, spelled for the voice; absent when the reply had no entry for the beat. */
+  candidate?: { spoken: string; labels_added: string[] };
 }
 
 export interface RevertedBeat {
@@ -153,7 +155,7 @@ function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: Re
   const options: BeatGuardOptions = { ...(deps.guard ? { guard: deps.guard } : {}), ...(deps.speechClean ? { speechClean: deps.speechClean } : {}) };
   const rejections = guardBeat(beat, { spoken, labelsAdded }, options);
   if (rejections.length > 0) {
-    merged.rejected.push({ beat: beat.id, rejections });
+    merged.rejected.push({ beat: beat.id, rejections, candidate: { spoken, labels_added: labelsAdded } });
     return beat;
   }
   merged.rewritten.push(beat.id);

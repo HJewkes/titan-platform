@@ -93,6 +93,10 @@ describe("rewriteScript guard and revert", () => {
     expect(spokenOf(out, "w2")).toBe(BEATS.w2![1].before);
     expect(report.rounds[0]!.rejected.map((r) => r.beat)).toEqual(["w2"]);
     expect(report.rounds[0]!.rejected[0]!.rejections).toContainEqual({ rule: "cue-lost", detail: 'cue "dock" is no longer spoken' });
+    expect(report.rounds[0]!.rejected[0]!.candidate).toEqual({
+      spoken: BEATS.w2![1].after.replace("dock", "bay"),
+      labels_added: [],
+    });
     expect(report.rounds[0]!.rewritten).not.toContain("w2");
   });
 
@@ -117,6 +121,7 @@ describe("rewriteScript guard and revert", () => {
 
     expect(spokenOf(out, "h1")).toBe(BEATS.h1![1].before);
     expect(report.rounds[0]!.rejected).toEqual([{ beat: "h1", rejections: [expect.objectContaining({ rule: "missing" })] }]);
+    expect(report.rounds[0]!.rejected[0]).not.toHaveProperty("candidate");
   });
 });
 
@@ -257,6 +262,16 @@ describe("rewriteScript spells before it vets", () => {
 
     expect(hasSpokenDigits(result.script.beats[1]!.spoken)).toBe(false);
     expect(result.report.before).toEqual(targets(spellAll(digits)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass })));
+  });
+
+  it("sends round 1 the spelled input, not its digits", async () => {
+    const fake = fakeRewriter();
+
+    await rewrite(choppy(), fake, { rounds: 1 });
+
+    const prompt = fake.prompts.find((p) => p.includes("# Chapter ch1"))!;
+    expect(prompt).toContain("twelve parcels");
+    expect(prompt).not.toContain("12 parcels");
   });
 
   it("leaves a spelled beat as it is when spelled again", () => {
