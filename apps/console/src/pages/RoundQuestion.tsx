@@ -181,7 +181,7 @@ interface PickOneProps extends Omit<ChoicesProps, "onText"> {
 const REVISION = "titan-review:revision-request";
 
 /** The harness's wording for the built-in revision request (QuestionBlock). */
-export const REVISION_LABEL = "None of these, request a revision";
+const REVISION_LABEL = "None of these, request a revision";
 
 /** The radio the answer selects: its pick, its scale step, or the built-in revision request. */
 function selectedValue(answer: QuestionAnswer | undefined): string | null {
