@@ -26,7 +26,7 @@ export function readerGapScores(groups: readonly ReaderGapGroup[], result: ColdR
   return groups.map(({ group, items, first_used }) => {
     const firsts = items.flatMap((item) => firstAsking(scores, item) ?? []);
     const asked = firsts.length > 0 ? firsts : scores.filter((s) => first_used.includes(s.beat));
-    const lowest = asked.length > 0 ? (Math.min(...asked.map((s) => s.score)) as ColdGrade["score"]) : null;
+    const lowest = asked.length > 0 ? asked.reduce<ColdGrade["score"]>((low, s) => (s.score < low ? s.score : low), 2) : null;
     return { group, asked: asked.map((s) => s.item), score: lowest };
   });
 }
