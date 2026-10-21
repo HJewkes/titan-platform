@@ -155,7 +155,10 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
       <SectionHeader title={group?.title ?? unit.pr} subtitle={`${unit.pr} at ${sha7(question.merge.headSha)}`} />
       <SectionContent>
         <div className="flex flex-col gap-4" data-testid={`pr-${unit.pr}`}>
-          <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
+          {/* A PR stacked on this one names its Ship question as a blocker while it is sent back, so the link lands here. */}
+          <ShipTarget target={{ kind: "question", id: question.id }}>
+            <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
+          </ShipTarget>
           <PrTabs
             pr={unit.pr}
             review={<PrReview unit={unit} state={state} />}

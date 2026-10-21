@@ -141,6 +141,21 @@ describe("stacked rounds (decision 95(3))", { timeout: RENDER_TIMEOUT_MS }, () =
     expect(scope("example/panels#2").getByTestId("ships-after-ship-panels").textContent).toBe("ships after example/tiles#1");
     expect(scope("example/tiles#1").queryByTestId("ships-after-ship-tiles")).toBeNull();
   });
+
+  it("turns the stacked PR's Ship off while its holder is sent back, linking to the holder's Ship question (TP-3883)", async () => {
+    await renderTwoPr(stacked);
+    const panelsShip = () => scope("example/panels#2").getByRole("button", { name: "Ship example/panels#2" });
+    expect(panelsShip().getAttribute("aria-disabled")).not.toBe("true");
+
+    fireEvent.change(scope("example/tiles#1").getByLabelText("Note for Send back on example/tiles#1"), { target: { value: "Lower the stripe." } });
+    fireEvent.click(scope("example/tiles#1").getByRole("button", { name: "Send back example/tiles#1" }));
+
+    expect(panelsShip().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(within(scope("example/panels#2").getByTestId("ship-blocked")).getByText('stacked on example/tiles#1, which may not ship: it is answered "Don\'t ship"'));
+    expect(document.activeElement?.id).toBe("ship-question-ship-tiles");
+    fireEvent.click(scope("example/tiles#1").getByRole("button", { name: "Ship example/tiles#1" }));
+    expect(panelsShip().getAttribute("aria-disabled")).not.toBe("true");
+  });
 });
 
 describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { timeout: RENDER_TIMEOUT_MS }, () => {
