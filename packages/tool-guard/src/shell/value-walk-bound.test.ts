@@ -30,7 +30,7 @@ async function hookStdout(command: string): Promise<string> {
 }
 
 describe("a nested subscript value is walked in bounded time (TP-2243)", () => {
-  cpuBudgetIt.each([30, 40, 60, 200, 2000])("denies %i nested substitutions inside brackets in under a second", 1000, async (repeats) => {
+  cpuBudgetIt.each([[30], [40], [60], [200], [2000]])("denies %i nested substitutions inside brackets in under a second", 1000, async (repeats) => {
     expect(await hookStdout(nestedValue(repeats))).toContain('"permissionDecision":"deny"');
   });
 
