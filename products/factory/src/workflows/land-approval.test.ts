@@ -72,7 +72,7 @@ describe("land with an askApproval hook", () => {
   });
 });
 
-/** A non-strict repo whose base keeps moving, so every approved head is refreshed once before its merge. */
+/** A non-strict repo whose base keeps moving, so every green head reads behind a base that moved after it went green. */
 function movingBaseScenario() {
   const scenario = landScenario();
   scenario.fake.rules.strict = false;
@@ -81,26 +81,15 @@ function movingBaseScenario() {
   return scenario;
 }
 
-describe("land's pre-merge refresh within one round", () => {
-  it("merges the refreshed head of a human approval without asking again", async () => {
-    const world = hookedRun(["merge"], undefined, movingBaseScenario());
+describe.each(["merge", "merge-by-set"] as const)("a %s answer at a head whose non-strict base keeps moving", (answer) => {
+  it("merges the approved head as it stands, with no update and no second question", async () => {
+    const world = hookedRun([answer, "abandon"], undefined, movingBaseScenario());
 
     await world.host.runtime.wait(world.runId);
 
     expect(world.asked.map((question) => question.headSha)).toEqual([H1]);
-    expect(world.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
-  });
-
-  it("asks again at the refreshed head of an approved-set answer instead of inheriting it", async () => {
-    const world = hookedRun(["merge-by-set", "abandon"], undefined, movingBaseScenario());
-
-    await world.host.runtime.wait(world.runId);
-
-    const refreshed = world.fake.pr(1).headSha;
-    expect(refreshed).not.toBe(H1);
-    expect(world.asked.map((question) => question.headSha)).toEqual([H1, refreshed]);
-    expect(world.fake.effects).toMatchObject({ updateBranch: 1, merge: 0 });
-    expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "abandoned", headSha: refreshed });
+    expect(world.fake.effects).toMatchObject({ updateBranch: 0, merge: 1 });
+    expect(world.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
   });
 });
 
