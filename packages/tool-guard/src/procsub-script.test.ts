@@ -25,6 +25,10 @@ writeFileSync(join(home, "evil.sh"), `${PUSH}\n`);
 writeFileSync(join(home, "big.sh"), `${"#".repeat(CAP + 400)}\n${PUSH}\n`);
 writeFileSync(join(home, "unreadable.sh"), `${PUSH}\n`);
 writeFileSync(join(home, "--"), "echo ok\n");
+writeFileSync(join(home, "run.sh"), 'bash "$1"\n');
+writeFileSync(join(home, "src.sh"), '. "$1"\n');
+mkdirSync(join(home, "d"));
+writeFileSync(join(home, "d", "evil.sh"), `${PUSH}\n`);
 chmodSync(join(home, "unreadable.sh"), 0);
 
 const port: HookPort = { context: nodeContext(home), now: () => new Date("2026-01-02T03:04:05.000Z"), loadDecide: async () => decide };
@@ -143,6 +147,33 @@ const DOUBLE_DASH_SOURCE_LINES = [
  * reads it as it reads the file `exec ./x.sh` names, so the verdict never rests on that refusal.
  */
 const PROGRAM_LINES = [`exec <(echo '${PUSH}')`, `env <(echo '${PUSH}')`, `env VAR=x <(echo '${PUSH}')`, `sudo -n <(echo '${PUSH}')`, "exec <(cat ./x.sh)"];
+/** A bare substitution as the whole command is a program too, which no wrapper word names. */
+const BARE_PROGRAM_LINES = [`<(echo '${PUSH}')`, "<(cat ./x.sh)", `2>/dev/null <(echo '${PUSH}')`, `true && <(echo '${PUSH}')`];
+/** Under `-s` stdin is the script, and once something feeds it, it may run any operand by its positional. */
+const STDIN_POSITIONAL_LINES = [
+  `bash -s <(echo '${PUSH}') <<< 'bash "$1"'`,
+  `echo 'bash "$1"' | bash -s <(echo '${PUSH}')`,
+  `bash -s <(echo '${PUSH}') < ./run.sh`,
+  `cat ./run.sh | bash -s <(echo '${PUSH}')`,
+  `zsh -s <(echo '${PUSH}') <<< 'zsh "$1"'`,
+  `bash -s x <(echo '${PUSH}') <<< 'bash "$2"'`,
+  `bash -s ./x.sh <<< 'bash "$1"'`,
+];
+/** A file operand after a `-c` string, which the string may run by its positional as it may a substitution. */
+const C_FILE_LINES = [`bash -c 'bash "$1"' _ ./x.sh`, `bash -c '. "$1"' _ ./x.sh`, `bash -c 'bash "$0"' ./x.sh`, `zsh -c 'zsh "$1"' _ ./x.sh`];
+/** A substitution after the file a shell or sourcer runs, which that file may run by its positional. */
+const SCRIPT_FILE_POSITIONAL_LINES = [`bash ./run.sh <(echo '${PUSH}')`, `bash ./src.sh <(echo '${PUSH}')`, `source ./src.sh <(echo '${PUSH}')`, "bash ./run.sh <(cat ./x.sh)"];
+/** bash 5.3's `source -p PATH FILE` reads FILE, looked up in PATH when it has no `/`; zsh reads a file named `-p`. */
+const SOURCE_PATH_LINES = [`source -p . <(echo '${PUSH}')`, `source -p. <(echo '${PUSH}')`, "source -p ./d evil.sh", "source -p ./d -- evil.sh", "source -p ./none:./d evil.sh", ". -p ./d evil.sh"];
+/** bash runs its `--rcfile` or `--init-file` when interactive. */
+const RCFILE_LINES = [`bash --rcfile <(echo '${PUSH}') -i < /dev/null`, "bash --rcfile ./x.sh -i -c true", "bash --init-file ./x.sh -i -c true", "bash --rcfile ./x.sh -i ./ok.sh"];
+/** A first word of `source` only known at run time may be `--`, so each later word may be the file. */
+const DYNAMIC_FIRST_SOURCE_LINES = [`source "$D" <(echo '${PUSH}')`, `. "$D" <(echo '${PUSH}')`, `source $D <(echo '${PUSH}')`, "source \"$D\" ./x.sh", "source \"$D\" <(cat ./x.sh)"];
+const OVER_READ_LINES = [`bash -s <(echo '${PUSH}') <<< 'echo hi'`, `bash -c 'cat "$1"' _ ./x.sh`, `bash ./ok.sh <(echo '${PUSH}')`];
+/** Whether bash runs this depends on what its stdin is, which a premise run cannot pin. */
+const REMOTE_RCFILE_LINE = `bash --rcfile <(echo '${PUSH}') -c true`;
+/** bash refuses `-x`, `-p ./d` finds no `ok.sh` or `x.sh` in `./d`, zsh finds no `./-p` or `./-x`, and the rcfile only echoes and never runs. */
+const HARMLESS_OPTION_LINES = ["source -p ./d ok.sh", "source -p ./d x.sh", "source -p ./d <(echo 'echo hi')", "source -x ./ok.sh", "bash --rcfile <(echo 'echo hi') -c true"];
 
 describe("a shell or source running a process substitution as its script", () => {
   it.each([...STDIN_LINES, "bash <(echo 'cat | sh') < \"$F\"", ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, `bash <({x} >/dev/null echo '${PUSH}')`])("denies a shell's own stdin or operands: %s", async (command) => {
@@ -219,6 +250,31 @@ describe("a shell or source running a process substitution as its script", () =>
     expect(spelling).toBe(PUSHED);
   });
 
+  it.each([...BARE_PROGRAM_LINES, ...STDIN_POSITIONAL_LINES, ...C_FILE_LINES, ...SCRIPT_FILE_POSITIONAL_LINES, ...SOURCE_PATH_LINES, ...RCFILE_LINES, ...DYNAMIC_FIRST_SOURCE_LINES])(
+    "reads what a script may run by its positional, rcfile or search path: %s",
+    async (command) => {
+      const { decision, spelling } = await verdict(command);
+
+      expect(decision).toBe("deny");
+      expect(spelling).toBe(PUSHED);
+    },
+  );
+
+  // Real shells push none of these: the stdin script, string or file never runs its positional, and bash runs a
+  // non-interactive rcfile only when it takes its stdin for a remote shell's. The guard does not model which do.
+  it.each([...OVER_READ_LINES, REMOTE_RCFILE_LINE])("denies an operand the script may run: %s", async (command) => {
+    const { decision, spelling } = await verdict(command);
+
+    expect(decision).toBe("deny");
+    expect(spelling).toBe(PUSHED);
+  });
+
+  it.each(HARMLESS_OPTION_LINES)("allows a harmless file or option, which main refused as unreadable: %s", async (command) => {
+    const { decision } = await verdict(command);
+
+    expect(decision).toBeNull();
+  });
+
   // The string `echo hi` never runs its `$0`, so this denies more than real shells push; the guard does not model which strings do.
   it("denies a -c string's positional the string may run", async () => {
     const { decision, spelling } = await verdict(`bash -c 'echo hi' <(echo ${PUSH})`);
@@ -277,6 +333,11 @@ describe("a shell or source running a process substitution as its script", () =>
     ["source -- <(kubectl completion bash)", "kubectl completion bash | bash"],
     ["env <(kubectl completion bash)", "kubectl completion bash | bash"],
     [`bash -c 'bash "$1"' _ <(echo '${PUSH}')`, `echo '${PUSH}' | bash -c 'bash'`],
+    [`bash -s <(echo '${PUSH}') <<< 'bash "$1"'`, `echo '${PUSH}' | bash`],
+    [`bash ./run.sh <(echo '${PUSH}')`, `echo '${PUSH}' | bash`],
+    [`<(echo '${PUSH}')`, `exec <(echo '${PUSH}')`],
+    [`bash -c 'bash "$1"' _ ./x.sh`, "bash ./x.sh"],
+    ["source -p . <(kubectl completion bash)", "kubectl completion bash | bash"],
   ])("gives %s the verdict of %s", async (substitution, piped) => {
     const [a, b] = [await verdict(substitution), await verdict(piped)];
 
@@ -314,6 +375,10 @@ writeFileSync(join(scratch, "x.sh"), `${PUSH}\n`);
 writeFileSync(join(scratch, "evil.sh"), `${PUSH}\n`);
 writeFileSync(join(scratch, "ok.sh"), "echo ok\n");
 writeFileSync(join(scratch, "--"), "echo ok\n");
+writeFileSync(join(scratch, "run.sh"), 'bash "$1"\n');
+writeFileSync(join(scratch, "src.sh"), '. "$1"\n');
+mkdirSync(join(scratch, "d"));
+writeFileSync(join(scratch, "d", "evil.sh"), `${PUSH}\n`);
 afterAll(() => {
   rmSync(bin, { recursive: true, force: true });
   rmSync(scratch, { recursive: true, force: true });
@@ -322,7 +387,8 @@ afterAll(() => {
 function pushes(shell: string, line: string): boolean {
   const log = join(scratch, `log-${Math.random().toString(36).slice(2)}`);
   const flags = shell === "zsh" ? ["-f", "-c", line] : ["-c", line];
-  spawnSync(shell, flags, { cwd: scratch, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GIT_LOG: log }, timeout: 10_000 });
+  // `D` is the `--` a run-time first word of `source` may expand to.
+  spawnSync(shell, flags, { cwd: scratch, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GIT_LOG: log, D: "--" }, timeout: 10_000 });
   try {
     return readFileSync(log, "utf8").includes("push");
   } catch {
@@ -354,15 +420,40 @@ describe.each(["bash", "zsh"])("under real %s", (shell) => {
     `bash -c 'echo hi' <(echo ${PUSH})`,
     "diff <(echo a) <(echo b)",
     ...PROGRAM_LINES,
+    ...BARE_PROGRAM_LINES,
+    ...OVER_READ_LINES,
+    ...HARMLESS_OPTION_LINES,
   ])("%s does not push", (line) => {
     expect(pushes(shell, line)).toBe(false);
   });
 });
 
-describe("the shell's own stdin and operands under a real shell", () => {
-  it.each([...STDIN_LINES, ...OPERAND_LINES, ...RELAY_LINES, ...NULLCMD_LINES, ...REDIRECTED_LINES, ...NAMED_FD_LINES, ...PIPED_BODY_LINES, ...POSITIONAL_PROCSUB_LINES, ...C_POSITIONAL_LINES, ...DOUBLE_DASH_SOURCE_LINES])("%s pushes", (line) => {
-    const pushing = ["bash", "zsh"].filter((shell) => haveShell(shell) && pushes(shell, line));
+const pushesSomewhere = (line: string): boolean => ["bash", "zsh"].some((shell) => haveShell(shell) && pushes(shell, line));
 
-    expect(pushing.length).toBeGreaterThan(0);
+describe("the shell's own stdin and operands under a real shell", () => {
+  it.each([
+    ...STDIN_LINES,
+    ...OPERAND_LINES,
+    ...RELAY_LINES,
+    ...NULLCMD_LINES,
+    ...REDIRECTED_LINES,
+    ...NAMED_FD_LINES,
+    ...PIPED_BODY_LINES,
+    ...POSITIONAL_PROCSUB_LINES,
+    ...C_POSITIONAL_LINES,
+    ...DOUBLE_DASH_SOURCE_LINES,
+    ...STDIN_POSITIONAL_LINES,
+    ...C_FILE_LINES,
+    ...SCRIPT_FILE_POSITIONAL_LINES,
+    ...RCFILE_LINES,
+    ...DYNAMIC_FIRST_SOURCE_LINES,
+  ])("%s pushes", (line) => {
+    expect(pushesSomewhere(line)).toBe(true);
+  });
+
+  // bash before 5.3 refuses `-p` as an invalid option and sources nothing.
+  const sourcesWithPath = haveShell("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
+  it.skipIf(!sourcesWithPath).each(SOURCE_PATH_LINES)("%s pushes under bash 5.3", (line) => {
+    expect(pushes("bash", line)).toBe(true);
   });
 });
