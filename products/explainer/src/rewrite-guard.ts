@@ -1,6 +1,6 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { contentTerms, sentencesOf } from "./lint-text.js";
-import { numberSpans, spokenText, type TextSpan } from "./lint-register.js";
+import { DEVICE_METRICS, deviceSpans, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForm, remapCuesInPlace } from "./spoken-numbers.js";
@@ -14,6 +14,7 @@ export type BeatRejectionRule =
   | "number-lost"
   | "number-invented"
   | "number-vague"
+  | "device-added"
   | "label-bare"
   | "list-lost"
   | "cue-lost"
@@ -116,6 +117,16 @@ function vagueRejections(before: string, after: BeatRewrite): BeatRejection[] {
   return surplus(vagueIn(after.spoken), vagueIn(before)).map((word) => ({
     rule: "number-vague" as const,
     detail: `"${word}" was added where a number left the line; keep the number or cut the clause and let the label carry it`,
+  }));
+}
+
+/** A beat may keep a colon, tail, semicolon or "let's" it had, but not gain one: these rows cap near zero in any state. */
+function deviceRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  const was = spokenText([before]).text;
+  const now = spokenText([after.spoken]).text;
+  return DEVICE_METRICS.filter((metric) => deviceSpans(metric, now).length > deviceSpans(metric, was).length).map((metric) => ({
+    rule: "device-added" as const,
+    detail: `the rewrite adds a ${metric} device the original did not have; say it as a plain sentence`,
   }));
 }
 
@@ -226,6 +237,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...terms,
     ...numberRejections(before.spoken, after),
     ...vagueRejections(before.spoken, after),
+    ...deviceRejections(before.spoken, after),
     ...listRejections(before.spoken, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
