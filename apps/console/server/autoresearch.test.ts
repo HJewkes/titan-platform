@@ -53,7 +53,7 @@ describe("autoresearch reader", () => {
 
   it("strips fields the page does not pin, at the top and inside a ladder", async () => {
     const [first, ...rest] = AR_RUN_FIXTURE.rounds;
-    const ladder = { ...first!.ladders[0]!, implementer: { agent: "impl-1", sessionId: "s-1" } };
+    const ladder = { ...first!.ladders[0]!, usage: { costUsd: 1.6, retries: 0 } };
     const extended = { ...AR_RUN_FIXTURE, stepResults: [{ stepId: "ar-pin" }], rounds: [{ ...first!, ladders: [ladder, ...first!.ladders.slice(1)] }, ...rest] };
     const port = await serve((command) => (command === "autoresearch.runs" ? [{ ...AR_RUN_SUMMARY, rawConfig: { lanes: 3 } }] : extended));
     const reader = autoresearchReader(port);
