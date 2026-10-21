@@ -11,7 +11,7 @@ import { EXIT, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_FRAME_BYTES, frameIndex, getFrame, listFrames, roundFramesCommands } from "./round-frames.js";
+import { MAX_FRAME_BYTES, frameIndex, getFrame, getFrameTargets, listFrames, roundFramesCommands } from "./round-frames.js";
 import { closedPort, send, sessionCookie, writeSelfSignedCert, type Reply, type SelfSignedPair } from "./test-support.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8 as a remote host.
@@ -96,9 +96,9 @@ describe("rounds.frame reads a listed frame", () => {
     const { entries } = await frameIndex(round);
     const story = await frameIndex(path.join(dir, "lantern-cards-r1"));
 
-    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true });
+    expect(entries.get("tile-light")).toEqual({ files: { head: "images/tile-light.png", base: "base/tile-light.png", diff: "diff/tile-light.png" }, theme: "light", indexed: true, unchanged: false, viewportWidth: 64 });
     expect(entries.get("panel-wide")?.files).toEqual({ head: "images/panel-wide.png", base: "base/panel-wide.png" });
-    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false });
+    expect(entries.get("badge-new")).toEqual({ files: { head: "images/badge-new.png" }, indexed: false, unchanged: false });
     expect(story.entries.size).toBe(0);
   });
 });
@@ -132,13 +132,37 @@ describe("rounds.frames", () => {
       data: {
         indexed: true,
         frames: [
-          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true },
-          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true },
-          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true },
-          { key: "badge-new", views: ["head"], indexed: false },
+          { key: "tile-light", theme: "light", views: ["head", "base", "diff"], indexed: true, unchanged: false, viewportWidth: 64 },
+          { key: "tile-dark", theme: "dark", views: ["head", "base", "diff"], indexed: true, unchanged: false, viewportWidth: 64 },
+          { key: "panel-wide", theme: "light", views: ["head", "base"], indexed: true, unchanged: false, viewportWidth: 96 },
+          { key: "badge-new", views: ["head"], indexed: false, unchanged: false },
         ],
       },
     });
+  });
+
+  it("drops a malformed viewport instead of refusing the index, so the frame's pins fall back to its pixels", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), viewport: { width: "wide" } }]);
+
+    const { frames } = await listFrames({ dir }, SHIP);
+
+    expect(frames.find((each) => each.key === "tile-light")).toEqual({ key: "tile-light", views: ["head"], indexed: true, unchanged: false });
+  });
+});
+
+describe("an unchanged frame", () => {
+  it("is listed unchanged when frames.json gives its head and base one sha256", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFile(path.join(round, "base", "tile-light.png"), tile);
+    await writeFramesIndex([
+      { key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), base: { file: "base/tile-light.png", sha256: sha256Of(tile) } },
+      { key: "tile-dark", file: "images/tile-dark.png", sha256: sha256Of(await readFile(path.join(round, "images", "tile-dark.png"))) },
+    ]);
+
+    const { frames } = await listFrames({ dir }, SHIP);
+
+    expect(frames.map(({ key, unchanged }) => [key, unchanged])).toEqual([["tile-light", true], ["tile-dark", false], ["badge-new", false], ["panel-wide", false]]);
   });
 });
 
@@ -164,6 +188,64 @@ describe("a design round's frames", () => {
     await writeFile(path.join(dir, DESIGN, "frames", "frames.json"), JSON.stringify({ schema: "titan-review/frames@0", frames: [] }));
 
     await expectRefused(listFrames({ dir }, DESIGN), /not a frames@1 index/);
+  });
+});
+
+describe("rounds.frameTargets", () => {
+  const BOXES = [
+    { x: 0, y: 0, width: 64, height: 64, target: { testId: "tile-root" } },
+    { x: 8, y: 8, width: 16, height: 16, target: { testId: "tile-icon", role: "img" } },
+  ];
+  const TARGETS_TEXT = JSON.stringify({ schema: "titan-review/frame-targets@1", boxes: BOXES });
+  const targets = (key = "tile-light") => getFrameTargets({ dir }, SHIP, key);
+
+  /** tile-light's record naming `frames/tile-light.targets.json` under `sha256`, the file holding `text`. */
+  async function writeTargets(text: string, sha256 = sha256Of(Buffer.from(text)), file = "frames/tile-light.targets.json"): Promise<void> {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFile(path.join(round, "frames", "tile-light.targets.json"), text);
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), targets: { file, sha256 } }]);
+  }
+
+  it("returns the boxes of the element map a record names, and lists the frame as having one", async () => {
+    await writeTargets(TARGETS_TEXT);
+
+    expect(await targets()).toEqual({ sha256: sha256Of(Buffer.from(TARGETS_TEXT)), boxes: BOXES });
+    expect((await listFrames({ dir }, SHIP)).frames.find((each) => each.key === "tile-light")).toMatchObject({ targets: true });
+  });
+
+  it("refuses a targets file whose bytes differ from the sha256 the index names", async () => {
+    await writeTargets(TARGETS_TEXT, "0".repeat(64));
+
+    await expectRefused(targets(), /^frame refused: the targets file does not match the frames index sha256$/);
+  });
+
+  it("refuses a targets file that is a symlink, even to a file inside the round", async () => {
+    await writeTargets(TARGETS_TEXT);
+    await writeFile(path.join(round, "frames", "real.targets.json"), TARGETS_TEXT);
+    await rm(path.join(round, "frames", "tile-light.targets.json"));
+    await symlink(path.join(round, "frames", "real.targets.json"), path.join(round, "frames", "tile-light.targets.json"));
+
+    await expectRefused(targets(), /the file is a symlink/);
+  });
+
+  it("refuses a frame whose record names no targets, and a key no record lists", async () => {
+    await expectRefused(targets("tile-dark"), /lists no targets for "tile-dark"/);
+    await expectRefused(targets("badge-new"), /lists no targets for "badge-new"/);
+  });
+
+  it("refuses a targets path that is not a relative .json path, and a file that is not frame-targets@1", async () => {
+    await writeTargets(TARGETS_TEXT, undefined, "../outside.json");
+    await expectRefused(targets(), /not a relative \.json path/);
+
+    await writeTargets(JSON.stringify({ schema: "titan-review/frame-targets@0", boxes: [] }));
+    await expectRefused(targets(), /not a frame-targets@1 file/);
+  });
+
+  it("drops a malformed targets record instead of refusing the index, so the frame's pins stay coordinates only", async () => {
+    const tile = await readFile(path.join(round, "images", "tile-light.png"));
+    await writeFramesIndex([{ key: "tile-light", file: "images/tile-light.png", sha256: sha256Of(tile), targets: { file: "frames/t.json" } }]);
+
+    expect((await listFrames({ dir }, SHIP)).frames.find((each) => each.key === "tile-light")).toEqual({ key: "tile-light", views: ["head"], indexed: true, unchanged: false });
   });
 });
 

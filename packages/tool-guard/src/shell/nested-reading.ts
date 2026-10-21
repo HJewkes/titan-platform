@@ -1,5 +1,6 @@
 import { type ArithTrials, sameSpend } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
+import { mathCutByWindow } from "./assign-on-expand.js";
+import { backtickEnd, balancedEnd, type NestedReaders, refusingMisreadLongMath, refusingMisreadMath, unreadExpansion } from "./balanced.js";
 import { nextAfter } from "./joins.js";
 import { lexNested, tokenize } from "./lexer.js";
 import { nested, NestingLimitError } from "./nesting.js";
@@ -34,16 +35,38 @@ export function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token
   }
 }
 
+/**
+ * A body the guard's window cuts before its close is read whole once the lexer finds that close; when the lexer finds
+ * none, or nests past the limit looking, the expansion is refused as unread.
+ */
 function expansionEnd(at: Reading, dollar: number, found: Token[][]): number {
+  const cut = mathCutByWindow(at.src, dollar);
   const known = at.trials.ends.get(dollar);
-  if (known === -1) return -1;
-  if (known !== undefined) return withSubshellReading(at, dollar, known, found, arithmeticTokens(at, dollar));
+  if (known === -1) return unfound(cut);
+  if (known !== undefined) return withSubshellReading(at, dollar, checkedClose(at.src, dollar, known, cut), found, arithmeticTokens(at, dollar));
   const trial: Token[][] = [];
-  const end = arithmeticTrial(at, dollar, trial);
+  const end = cut ? unreadPastLimit(() => arithmeticTrial(at, dollar, trial)) : arithmeticTrial(at, dollar, trial);
   at.trials.ends.set(dollar, end);
-  if (end === -1) return -1;
+  if (end === -1) return unfound(cut);
   at.trials.arithmetic.set(dollar, trial);
-  return withSubshellReading(at, dollar, end, found, trial);
+  return withSubshellReading(at, dollar, checkedClose(at.src, dollar, end, cut), found, trial);
+}
+
+function unfound(cut: boolean): number {
+  if (cut) throw unreadExpansion();
+  return -1;
+}
+
+function checkedClose(src: string, dollar: number, end: number, cut: boolean): number {
+  return cut ? refusingMisreadLongMath(src, dollar, end) : refusingMisreadMath(src, dollar, end);
+}
+
+function unreadPastLimit(find: () => number): number {
+  try {
+    return find();
+  } catch (error) {
+    throw error instanceof NestingLimitError ? unreadExpansion() : error;
+  }
 }
 
 function arithmeticTokens(at: Reading, dollar: number): Token[][] {

@@ -1,8 +1,8 @@
 import { classifyReports, type Classification } from "./classify.js";
 import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
-import { classifyMutants, mutantsError, type MutantsResult } from "./mutant-classify.js";
-import { testOnlyOf, type FixProofPlan } from "./plan.js";
+import { classifyMutants, mutantsError, withCoverage, type MutantsResult } from "./mutant-classify.js";
+import { testOnlyReading, type FixProofPlan } from "./plan.js";
 import { formatResultLine, toResult } from "./result-line.js";
 import { readSpecs, SpecError } from "./spec-read.js";
 import { decodeMutantsReport, decodeReport, type DecodedReport } from "./transport.js";
@@ -66,7 +66,8 @@ function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classificat
 
 async function judgeMutants(ctx: Context, plan: FixProofPlan, shas: Shas, encoded: string | undefined): Promise<MutantsResult> {
   try {
-    return classifyMutants(await readSpecs(ctx, plan, shas), decodeMutantsReport(encoded));
+    const specs = await readSpecs(ctx, plan, shas);
+    return withCoverage(classifyMutants(specs, decodeMutantsReport(encoded)), specs, plan.tests);
   } catch (error) {
     if (!(error instanceof SpecError || error instanceof RunError)) throw error;
     return mutantsError(error.message);
@@ -76,8 +77,9 @@ async function judgeMutants(ctx: Context, plan: FixProofPlan, shas: Shas, encode
 async function verdict(ctx: Context, plan: FixProofPlan, shas: Shas, reports: JudgeReports): Promise<string> {
   const classification = classifyDecoded(plan, reports);
   const result = toResult({ head: shas.head, mergeBase: shas.base, plan, classification });
-  // Mutants stand in for base-vs-head proof only on a diff of test material alone; with source in it they prove nothing.
-  if (plan.mutations.length > 0 && testOnlyOf(plan)) result.mutants = await judgeMutants(ctx, plan, shas, reports.mutants);
+  // Mutants stand in for base-vs-head proof only on a diff of test material alone; with source in it they prove nothing,
+  // and a deleted test, or one renamed out of the tests, has no file left at head for a spec to sit beside.
+  if (plan.mutations.length > 0 && testOnlyReading(plan).testOnly) result.mutants = await judgeMutants(ctx, plan, shas, reports.mutants);
   return formatResultLine(result);
 }
 

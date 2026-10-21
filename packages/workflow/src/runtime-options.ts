@@ -1,6 +1,7 @@
 import type { ActorClass, PolicyTable } from "@titan-design/authority";
 import type { GateStore } from "@titan-design/hitl";
 import type { Db } from "@titan-design/store-sqlite";
+import type { WorkflowCapability } from "./capabilities.js";
 import type { TemplateRenderer } from "./prompt.js";
 import type { SignalParser } from "./signals.js";
 import type { StepRunner, WorkflowEvent } from "./types.js";
@@ -36,4 +37,6 @@ export interface WorkflowRuntimeOptions {
   executionId?: () => string;
   /** Required by `ctx.authorize`; a run without it fails at its first authorize step. */
   authority?: WorkflowAuthorityOptions;
+  /** Handles a workflow reaches through `ctx.capability(name)`; their `secrets` never reach step output, the trace, the store or a prompt. */
+  capabilities?: Record<string, WorkflowCapability>;
 }

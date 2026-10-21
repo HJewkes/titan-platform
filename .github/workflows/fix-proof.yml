@@ -2,8 +2,8 @@ name: fix-proof
 
 # pull_request only, never pull_request_target: the PR's code runs here with a read-only token and no secrets.
 #
-# Three jobs, so no PR-head code can reach the verdict. fix-proof-base and fix-proof-head each build and test one side
-# and pass encoded reports on as job outputs. fix-proof, the check run Shepherd reads, runs only code built from the
+# Four jobs, so no PR-head code can reach the verdict. fix-proof-base, fix-proof-head and fix-proof-mutants each build
+# and test one side and pass encoded reports on as job outputs. fix-proof, the check run Shepherd reads, runs only code built from the
 # merge base: it decodes those reports and prints the one result line. A head process cannot write into another job's
 # VM, outputs or log.
 on:
@@ -160,10 +160,85 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit head "$RUNNER_TEMP/fix-proof-out"
 
+  # A test-only diff runs the same production code on both sides, so base against head can only read vacuous. This job
+  # applies each mutation a *.mutations.json spec declares to the merge base, with the head's tests overlaid, and the
+  # judge requires those tests to fail under it. Laid out and sandboxed like fix-proof-base, since head tests run here.
+  fix-proof-mutants:
+    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      report: ${{ steps.emit.outputs.report }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: src
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .fix-proof-workflow
+          sparse-checkout: scripts/fix-proof-run.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      # The same refusing merge base as fix-proof-base, before anything reads the runner tree.
+      - name: Find the merge base
+        id: merge-base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ $BASE_SHA =~ ^[0-9a-f]{40}$ && $HEAD_SHA =~ ^[0-9a-f]{40}$ ]] || { echo "fix-proof: base or head is not a commit sha" >&2; exit 1; }
+          bash .fix-proof-workflow/scripts/fix-proof-run.sh merge-base src "$BASE_SHA" "$HEAD_SHA"
+      # Most PRs carry no spec, and they skip the runner build; the judge ignores the absent report on a plan with no spec.
+      - name: Find mutation specs
+        id: specs
+        if: steps.merge-base.outputs.sha != ''
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh specs src "$MERGE_BASE" "$HEAD_SHA"
+      - name: Check out the runner at the merge base
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+        run: git -C src worktree add --detach "$GITHUB_WORKSPACE/runner" "$MERGE_BASE"
+      - uses: pnpm/action-setup@v4
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        with:
+          package_json_file: runner/package.json
+      - uses: actions/setup-node@v4
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        with:
+          node-version-file: runner/.node-version
+      - name: Build the runner at the merge base
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        working-directory: runner
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @titan-design/fix-proof... run build
+      - name: Run the mutants side
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TURBO_TELEMETRY_DISABLED: 1
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec mutants "$GITHUB_WORKSPACE/runner" "$GITHUB_WORKSPACE/src" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
+      - name: Pass the report to the judge
+        id: emit
+        if: ${{ !cancelled() }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit mutants "$RUNNER_TEMP/fix-proof-out"
+
   # The check run Shepherd reads. No cache: a store saved by fix-proof-head must not reach it. Every tool and dependency
   # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
   fix-proof:
-    needs: [fix-proof-base, fix-proof-head]
+    needs: [fix-proof-base, fix-proof-head, fix-proof-mutants]
     if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -220,6 +295,7 @@ jobs:
           REPORT_BASE: ${{ toJSON(needs.fix-proof-base.outputs.report) }}
           REPORT_BASE_RERUN: ${{ toJSON(needs.fix-proof-base.outputs.rerun) }}
           REPORT_HEAD: ${{ toJSON(needs.fix-proof-head.outputs.report) }}
+          REPORT_MUTANTS: ${{ toJSON(needs.fix-proof-mutants.outputs.report) }}
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh receive "$RUNNER_TEMP/fix-proof-reports"
       # The verdict is the printed fix-proof/v1 line and the judge always exits 0. A report that failed to arrive is an
       # error verdict, so this runs whatever the steps before it did.

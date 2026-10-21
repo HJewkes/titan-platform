@@ -78,6 +78,9 @@ export const ESCALATIONS = {
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
+/** Round outcomes that say nothing about the head: the reviewer never answered, so a standing MERGE still speaks for it (TP-3697). */
+export const INFRA_FAILURES: ReadonlySet<string> = new Set<ReviewOutcome>(["no-verdict", "timeout", "throttled"]);
+
 /** How a failed-rounds gate names the outcome of its last round. */
 export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
   "no-verdict": "no reviewer verdict",
@@ -92,6 +95,8 @@ export interface Escalated {
   detail: string;
   /** Replaces `ESCALATIONS[escalation]` in the gate reason; the row id stays `escalation`. */
   words?: string;
+  /** Set on a failed-rounds escalation whose every counted round failed on infrastructure: throttled, timed out, or no verdict. */
+  infraOnly?: true;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }

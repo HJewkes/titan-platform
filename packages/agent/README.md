@@ -258,7 +258,8 @@ requested cause and process exit evidence. Temporary schema cleanup completes
 before the terminal progress event, so cleanup failure cannot follow a reported
 successful finish.
 
-Turn usage carries `cost: null` unless the caller passes `prices`, a dated table of
+Turn usage carries `cost: null` unless the caller passes `prices` or `pricingService`.
+`prices` is a dated table of
 `CodexPriceRow` entries (`model`, `effectiveFrom` as a UTC `YYYY-MM-DD` date, and
 input, cached-input and output rates in USD per million tokens). The adapter then
 fills `cost: { usd, kind: "estimate" }` from the row for the run's model with the
@@ -272,6 +273,34 @@ policy and a checked-in table would go stale. `createCodexExecAdapter` rejects a
 negative or non-finite rate, a bad date, or a duplicate `(model, effectiveFrom)` row.
 `priceCodexUsage(measurements, prices, atMs)` applies the same rule to any
 measurements.
+
+## Codex app-server client
+
+`startCodexAppServer({ cwd, env, executablePath?, args? })` spawns `codex app-server`
+(stdio JSON-RPC), runs the `initialize` handshake, and returns a client with
+`threadStart`, `threadResume`, `turnStart` and `turnSteer`. Use it to keep one Codex
+thread alive and feed it input: `turnSteer` adds input to the active turn at its next
+sampling point without interrupting a running tool, and `turnStart` wakes an idle thread.
+
+```ts
+const server = await startCodexAppServer({ cwd, env });
+const { threadId } = await server.threadStart({ cwd });
+const { turnId } = await server.turnStart({ threadId, input: [{ type: "text", text: "go" }] });
+try {
+  await server.turnSteer({ threadId, expectedTurnId: turnId, input: [{ type: "text", text: "more" }] });
+} catch (error) {
+  if (!(error instanceof CodexSteerPreconditionError)) throw error;
+  await server.turnStart({ threadId, input: [{ type: "text", text: "more" }] });
+}
+```
+
+A steer that finds no active turn, or a different one, rejects with
+`CodexSteerPreconditionError`; any other JSON-RPC error is a `CodexAppServerRpcError`.
+`onEvent` reports `turn_started`, `turn_completed`, `thread_status` (`idle`, `active`
+and the rest), every other notification as `notification`, and `exit`. When the child
+exits, pending and later calls reject with `CodexAppServerExitedError`. The client
+declines server requests such as approvals with a JSON-RPC error. Choose an approval
+policy at `threadStart` that never asks.
 
 ## Ending a run
 
@@ -332,3 +361,9 @@ terminal result through a newer owner's fence. Durable results must be JSON-safe
 ### Shared pricing implementation
 
 The existing pricing exports now delegate to `@titan-design/agent-protocol/pricing`. Their signatures, dated rows, matching, arithmetic and unavailable-result behavior remain unchanged; this package retains its compatibility entrypoints. The canonical pure implementation is shared with session-analytics. No current prices are fetched and no stored costs are rewritten.
+
+## Injected Codex pricing service
+
+`createCodexExecAdapter` accepts optional `pricingService: HarnessPricingPort<"codex">`. Supplying both `prices` and `pricingService` is a configuration error. The adapter validates the service harness/callability, then quotes normalized turn usage once at the captured turn-completed timestamp. Progress and returned usage share the same observation and cost. An unpriced quote leaves cost null. A thrown/malformed quote becomes a runtime failure retaining raw normalized usage; cleanup still runs with its existing failure precedence. Without a service, legacy caller-table and no-table behavior is unchanged.
+
+Pricing does not authorize execution, account access, policy/bus activation or native billing selection.

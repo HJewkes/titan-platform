@@ -65,6 +65,16 @@ describe("fix-proof-run.sh", () => {
       );
     });
 
+    it("adds the mutants report when the merge-base judge reads one", () => {
+      writeFileSync(path.join(dist, "bin.js"), echoArgs);
+      writeFileSync(path.join(dist, "judge.js"), echoArgs);
+      writeFileSync(path.join(dist, "chunk-ABC.js"), 'var flags = ["mutants-report"];\n');
+
+      const result = judge();
+
+      expect(result.stdout.trim()).toMatch(new RegExp(` --mutants-report ${path.join(tmp, "reports")}/mutants\\.report$`));
+    });
+
     describe("with a refusal from the merge-base step", () => {
       const refusal = "fix-proof runs only against the default branch: base parent is not main";
       beforeEach(() => {
@@ -169,6 +179,49 @@ describe("fix-proof-run.sh", () => {
 
       expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
       expect(output().trimEnd().split("\n")).toHaveLength(1);
+    });
+  });
+
+  describe("specs", () => {
+    let repo;
+    let mergeBase;
+    const git = (...args) => {
+      const result = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    const commit = (files, removed = []) => {
+      for (const [file, content] of Object.entries(files)) {
+        mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+        writeFileSync(path.join(repo, file), content);
+      }
+      for (const file of removed) rmSync(path.join(repo, file));
+      git("add", "-A");
+      git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "change");
+      return git("rev-parse", "HEAD");
+    };
+    const outputFile = () => path.join(tmp, "github-output");
+    const specs = (headSha) => {
+      sh(["specs", repo, mergeBase, headSha], { GITHUB_OUTPUT: outputFile() });
+      return readOutputs(outputFile());
+    };
+    beforeEach(() => {
+      repo = path.join(tmp, "repo");
+      mkdirSync(repo);
+      git("init", "-q", "-b", "main");
+      mergeBase = commit({ "pkg/src/x.ts": "export const x = 1;\n", "pkg/src/old.test.mutations.json": "[]\n" });
+    });
+
+    it("reads present when the diff adds a spec in a nested directory", () => {
+      expect(specs(commit({ "pkg/src/x.test.ts": "", "pkg/src/x.test.mutations.json": "[]\n" }))).toEqual({ present: "true" });
+    });
+
+    it("reads absent when the diff has no spec", () => {
+      expect(specs(commit({ "pkg/src/x.test.ts": "" }))).toEqual({ present: "false" });
+    });
+
+    it("reads absent when the diff only deletes a spec, which leaves nothing to run", () => {
+      expect(specs(commit({}, ["pkg/src/old.test.mutations.json"]))).toEqual({ present: "false" });
     });
   });
 
@@ -336,6 +389,25 @@ esac
         expectBaseMarkers("base: sandbox unavailable: useradd failed");
       });
 
+      it("exec mutants runs head tests on the merge base, so it passes --sandbox-user like the base side", () => {
+        withSandboxSupport();
+
+        const result = execWith("mutants");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.split("\n")[0]).toBe(
+          `exec --side mutants --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000 --sandbox-user fix-proof-sandbox`,
+        );
+      });
+
+      it("exec mutants writes an error marker, never an unsandboxed run, when the runner has no sandbox support", () => {
+        const result = execWith("mutants");
+
+        expect(result.stdout).toBe("");
+        const decoded = decodeReport(readFileSync(path.join(out(), "mutants.report"), "utf8"));
+        expect(decoded).toEqual({ ok: false, error: "mutants: sandbox unavailable: the merge-base runner has no sandbox support", reported: true });
+      });
+
       it("exec head never passes --sandbox-user and never touches sudo", () => {
         withSandboxSupport();
 
@@ -368,6 +440,18 @@ esac
       expect(readFileSync(path.join(received, "base.report"), "utf8")).toBe(report);
       expect(readFileSync(path.join(received, "base-rerun.report"), "utf8")).toBe(report);
       expect(existsSync(path.join(received, "head.report"))).toBe(false);
+    });
+
+    it("passes the mutants report as report, and receive writes it back as mutants.report", () => {
+      writeFileSync(path.join(out(), "mutants.report"), report);
+
+      expect(emit("mutants").status).toBe(0);
+      const outputs = readOutputs(outputFile());
+      const received = path.join(tmp, "reports");
+      expect(sh(["receive", received], { REPORT_MUTANTS: JSON.stringify(outputs.report) }).status).toBe(0);
+
+      expect(Object.keys(outputs)).toEqual(["report"]);
+      expect(readFileSync(path.join(received, "mutants.report"), "utf8")).toBe(report);
     });
 
     it("replaces a report that would add lines to GITHUB_OUTPUT with an error marker", () => {
@@ -413,14 +497,14 @@ describe("fix-proof workflow", () => {
     const named = Object.entries(workflow.jobs).filter(([id, job]) => (job.name ?? id) === "fix-proof");
 
     expect(named.map(([id]) => id)).toEqual(["fix-proof"]);
-    expect(Object.keys(workflow.jobs).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head"]);
+    expect(Object.keys(workflow.jobs).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
   });
 
   it("skips every job on the Version Packages PR, so the judge prints no error verdict for reports that never came", () => {
     const skip = "github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository";
     const guarded = Object.entries(workflow.jobs).filter(([, job]) => String(job.if ?? "").includes(skip));
 
-    expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head"]);
+    expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
   });
 
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
@@ -431,7 +515,7 @@ describe("fix-proof workflow", () => {
     expect(cached.map(([id]) => id)).toEqual(["fix-proof-head"]);
   });
 
-  it.each(["fix-proof-base", "fix-proof"])("%s takes pnpm, node and their config only from the merge-base runner tree", (id) => {
+  it.each(["fix-proof-base", "fix-proof-mutants", "fix-proof"])("%s takes pnpm, node and their config only from the merge-base runner tree", (id) => {
     const steps = workflow.jobs[id].steps;
     const index = (match) => steps.findIndex(match);
 
@@ -451,7 +535,7 @@ describe("fix-proof workflow", () => {
   });
 
   it("the judge job has no cache and installs only from the runner tree", () => {
-    expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head"]);
+    expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
     expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}");
     expect(judge.steps.some((step) => step.with !== undefined && "cache" in step.with)).toBe(false);
     expect(judge.steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
@@ -468,6 +552,7 @@ describe("fix-proof workflow", () => {
       REPORT_BASE: "${{ toJSON(needs.fix-proof-base.outputs.report) }}",
       REPORT_BASE_RERUN: "${{ toJSON(needs.fix-proof-base.outputs.rerun) }}",
       REPORT_HEAD: "${{ toJSON(needs.fix-proof-head.outputs.report) }}",
+      REPORT_MUTANTS: "${{ toJSON(needs.fix-proof-mutants.outputs.report) }}",
     });
     const runs = Object.values(workflow.jobs).flatMap((job) => job.steps.map((step) => step.run ?? ""));
     expect(runs.some((run) => run.includes("${{"))).toBe(false);
@@ -476,6 +561,18 @@ describe("fix-proof workflow", () => {
   it("each exec job passes its emitted reports on as job outputs", () => {
     expect(workflow.jobs["fix-proof-base"].outputs).toEqual({ report: "${{ steps.emit.outputs.report }}", rerun: "${{ steps.emit.outputs.rerun }}" });
     expect(workflow.jobs["fix-proof-head"].outputs).toEqual({ report: "${{ steps.emit.outputs.report }}" });
+    expect(workflow.jobs["fix-proof-mutants"].outputs).toEqual({ report: "${{ steps.emit.outputs.report }}" });
+  });
+
+  it("the mutants job builds and runs only when the diff carries a mutation spec", () => {
+    const steps = workflow.jobs["fix-proof-mutants"].steps;
+    const specs = steps.findIndex((step) => step.id === "specs");
+    const runnerSteps = steps.slice(specs + 1).filter((step) => step.id !== "emit");
+
+    expect(steps[specs].run).toMatch(/fix-proof-run\.sh specs src "\$MERGE_BASE" "\$HEAD_SHA"$/);
+    expect(runnerSteps.length).toBeGreaterThan(3);
+    expect(runnerSteps.every((step) => step.if === "steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'")).toBe(true);
+    expect(runnerSteps.at(-1).run).toMatch(/fix-proof-run\.sh exec mutants /);
   });
 
   it("runs the script from the workflow's own commit, not from the PR head checkout", () => {
@@ -485,7 +582,7 @@ describe("fix-proof workflow", () => {
   });
 
   describe("merge base", () => {
-    const jobs = ["fix-proof-base", "fix-proof-head", "fix-proof"];
+    const jobs = ["fix-proof-base", "fix-proof-head", "fix-proof-mutants", "fix-proof"];
     const gate = "steps.merge-base.outputs.sha != ''";
     const mergeBaseIndex = (steps) => steps.findIndex((step) => step.id === "merge-base");
     const readsRunner = (step) =>

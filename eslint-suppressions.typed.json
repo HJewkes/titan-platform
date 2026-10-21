@@ -1648,11 +1648,6 @@
       "count": 1
     }
   },
-  "packages/registry/src/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/registry/src/zod-introspect.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -2560,11 +2555,6 @@
   "packages/worktree/src/park.repo.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/worktree/src/park.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "packages/worktree/src/reattach.ts": {

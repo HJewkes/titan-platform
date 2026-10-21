@@ -5,10 +5,14 @@ const TESTS_ONLY = { kind: "test-only" } as const;
 const SOURCE = { kind: "source", paths: ["packages/x/src/x.ts"] } as const;
 
 describe("kindMoveRefusal", () => {
-  it("refuses every move into test-only while the gate does not read test-only diffs", () => {
-    const into = TASK_KINDS.filter((kind) => kind !== "test-only").map((from) => kindMoveRefusal(from, "test-only", TESTS_ONLY));
+  it("lets every kind but security move into test-only on a tests-only diff, now the gate reads mutants", () => {
+    const into = TASK_KINDS.filter((kind) => kind !== "test-only").map((from) => [from, kindMoveRefusal(from, "test-only", TESTS_ONLY)]);
 
-    expect(into.every((refusal) => refusal !== undefined)).toBe(true);
+    expect(into.filter(([, refusal]) => refusal !== undefined).map(([from]) => from)).toEqual(["security"]);
+  });
+
+  it("refuses correctness to test-only on a source change", () => {
+    expect(kindMoveRefusal("correctness", "test-only", SOURCE)).toMatch(/non-test source packages\/x\/src\/x\.ts/);
   });
 
   it.each<TaskKind>(["feature", "refactor", "unknown"])("refuses test-only to %s, which drops the fix-proof gate", (to) => {
@@ -28,7 +32,7 @@ describe("kindMoveRefusal", () => {
   });
 });
 
-describe("testOnlyMoveRefusal, the guard once the kind is live", () => {
+describe("testOnlyMoveRefusal", () => {
   it("lets correctness move to test-only on a tests-only diff", () => {
     expect(testOnlyMoveRefusal("correctness", TESTS_ONLY)).toBeUndefined();
   });

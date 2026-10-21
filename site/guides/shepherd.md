@@ -73,12 +73,12 @@ commit or a rebase gets a fresh review. The run log records each clean merge-up 
 `security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
 `correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
-`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies,
-except a move into `test-only`.
+`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies.
+A move into `test-only` meets the diff check [below](#the-test-only-kind).
 
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
 head's fix-proof result before the review. A vacuous or test-less proof ends the round as
-`NO_REPRO`. A proof that shows nothing about the head goes to the reviewer marked unverified.
+`NO_REPRO`, unless its mutation check proves it (see [the test-only kind](#the-test-only-kind)). A proof that shows nothing about the head goes to the reviewer marked unverified.
 That covers an `error` verdict (a skipped base included), an untrusted run, and a result that
 could not be read although one was due. A read that fails is read once more at the same head
 first. A MERGE on such a head keeps the policy's merge-on-green grant (owner decision 303), so
@@ -95,20 +95,43 @@ serve drives it`.
 
 ### The test-only kind
 
-A move into `test-only` is refused with exit 65 while the fix-proof gate does not yet read
-test-only diffs. Once it does, only a `correctness` run may move there, and only when the pull
-request's diff changes nothing but tests, carried test files, `*.mutations.json` sidecars and
+A pull request that only adds or changes tests runs the same production code on both sides of
+the fix-proof, so base against head can only read `vacuous`. It proves itself with a mutation
+spec instead: a `<test>.mutations.json` beside the test, declaring changes to production code
+and the tests each one must fail (see
+[the fix-proof reference](../reference/fix-proof.md#test-only-diffs-and-mutation-specs)). When
+the diff adds or changes a spec, the `fix-proof-mutants` CI job applies each mutation to the
+merge base with the head's tests overlaid, and the judge adds a `mutants` field to the
+`fix-proof/v1` line.
+
+The gate lets the review proceed on a `vacuous` line only when its `mutants` verdict is
+`killed`, every changed test file has a spec of its own added or changed in the same diff, and
+every selected test ran and passed at head (`provedByMutants`). A killed spec proves only the
+test file beside it, so one beside an unchanged test cannot vouch for a test the PR changed.
+A changed test file with no spec (listed as `mutants.uncovered`), a surviving mutation, a test
+that fails or does not run at head, a mutants error, or a line from a judge that never checked
+coverage leaves the `vacuous` verdict standing, so the round ends as `NO_REPRO`, and the wake asks the implementer for kills
+rather than for a test that fails at the merge base, fencing the test files that still need a
+spec. The judge adds `mutants` only when it reads
+the diff from git as test material alone, so a line from a diff with source in it never passes
+this way. A diff that deletes a test, or renames one out of the test globs, gets no `mutants`
+either: no file is left at head for a spec to sit beside, and `provedByMutants` also refuses
+any line that lists `deletedTests`. A pull request with no spec reads `NO_REPRO` as before.
+
+A `feature`, `refactor` or `unknown` run may move into `test-only` freely, since that only adds
+the gate; a `security` run may not leave `security`. A `correctness` run may move there only
+when the pull request's diff changes nothing but tests, carried test files, `*.mutations.json` sidecars and
 `.changeset/*.md`. Shepherd classifies the diff from GitHub under `.github/fix-proof.json` at the
 default branch's merge base and at its tip. It reads the diff before it refreshes the
 registration or replaces a dead run, so a refusal names the first source path and leaves the
 stored kind and the run as they were. The guard also refuses when the diff cannot be read in
 full: a file list at GitHub's cap, a harness path, a pull request based on another branch, or a
 read error. A new registration with `--kind test-only` is not refused, because a branch may have
-no diff yet. Until the gate reads test-only diffs, it gates a `test-only` run exactly like
-`correctness`; once it does, it re-checks the diff at every head, so the kind never loosens it.
+no diff yet. The gate reads the judge's line at every head, and the judge re-checks the diff
+there, so the kind never loosens it. The kind keeps the run on the gate and out of MERGE carry.
 
-Once the kind is live, a `correctness` registration, stated or defaulted, on a pull request
-that changes only tests prints a hint after the run line:
+A `correctness` registration, stated or defaulted, on a pull request that changes only tests
+prints a hint after the run line:
 
 ```
 hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO
@@ -259,6 +282,13 @@ thaws only the episode the gate opened for. If the repo has thawed and frozen ag
 the answer changes nothing. Each run opens its own gate, so one episode can leave several
 open; answer any one with `unfreeze` and the rest go stale.
 
+## Merges and the guard on R27 {#merge-guard}
+
+From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents
+never call merge and the merge-lint warning are the **only guard on R27**: no count of
+owner-intent moves can run before the walk (D-M3-11). The lint warns until D-M3-03 and is an
+error after; D-M8-07 narrows it. Run it with `pnpm merge:lint`.
+
 ## Routing a reviewed head {#routing}
 
 After the review of a green head, the `sh-observe` step reads the pull request again, and one
@@ -354,16 +384,27 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 
 `approve-merge` opens for five reasons only, and its prompt names the reason:
 
-- `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Answer `merge` to
-  have Shepherd land the next resolved head, or `abandon`.
+- `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Under
+  `GATE_DEMOTIONS.conflict` (on) Shepherd first wakes one fresh fixer, a successor rather than
+  the implementer, and if the conflict survives that too it tells the repo's seat and waits for
+  a new head. The gate opens only when that notice cannot go out. Answer `merge` to have
+  Shepherd land the next resolved head, or `abandon`.
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
-  conflict. A `FIX_FIRST` that yields a new head is progress and does not count.
+  conflict. A `FIX_FIRST` that yields a new head is progress and does not count. When every
+  round failed on infrastructure, one fallback fresh reviewer goes first. If it fails too,
+  `GATE_DEMOTIONS.failedFallback` (on) records `D7/ops-notice`, and the hub seat hears that
+  this is a reviewer infrastructure defect, with the failed outcomes and the reviewer's
+  account. A seat that held Shepherd's own `MERGE` past its rounds gets a seat notice under
+  `D7/seat-notice` instead. Either way the run waits for a new head, whose rounds count from
+  zero, and the gate opens only when the notice cannot go out.
 - `shepherd-route/fix-first-runaway`: 3 `FIX_FIRST` reviews at this task, for every kind of PR.
   Two fix rounds that did not converge mean point fixes are not working, so Shepherd wakes no
   third fixer. Route the task to the planner to redesign or split it; Shepherd files no planner
   task itself. It is checked before `no-progress`, so a third `FIX_FIRST` always names this
-  route.
+  route. Since TP-3734 (D8) this and `no-progress` reach you only when no seat can be told: one
+  fresh convergence reviewer judges the `FIX_FIRST` trail first, and its `FIX_FIRST` goes to the
+  planner through a seat notice.
 - `shepherd-route/no-progress`: 2 `FIX_FIRST` reviews in a row ended with `Closer: no`, meaning
   the head is no closer to `MERGE` than the last one. A `FIX_FIRST` with `Closer: yes` or no
   Closer line, and any other round, resets the count. Under the cap of 3 it can only fire at
@@ -433,9 +474,13 @@ a restart replays the recorded notice instead of sending it again. A run that wa
 paused on one of these gates before the notice step existed keeps that gate.
 
 A review round's Ship pick at one head (decision 97) is the owner's merge approval at that
-head. Today it answers an `approve-merge` gate only after the gate is open, through
-`roundMergeDecisions` (`products/factory/src/shepherd/round-merge.ts`). Nothing reads a Ship
-record before the gate opens yet.
+head. Where `shepherd.consoleAnswers` is configured, serve's round ship sweep reads its
+`roundsDir` every minute and answers each open `approve-merge` gate through
+`roundMergeDecisions` (`products/factory/src/shepherd/round-ship-sweep.ts`). A Ship submitted
+before the gate opened answers it on the first sweep after it opens, for up to 24 hours. Per
+PR, only the round built last decides, so a re-ask, Don't ship or Send back voids an earlier
+Ship. The Ship counts only at the gate's exact head and only on a seat-policy or authority
+MRG-AU gate, and a held PR stays pending. The merge step still checks every hold.
 
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.

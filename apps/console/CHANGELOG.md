@@ -1,5 +1,100 @@
 # titan-console
 
+## 0.12.3
+
+### Patch Changes
+
+- ff8b628: Add the coordinator config store: an append-only revision log under `<state>/config/`, a materializer that writes the head document to titan-coordinator's config dir by temp file, fsync and rename, a shadow import of an autonomy tree that must round-trip through `renderSeatBook`, the `config.compareTree` read, and `titan-console config import` / `config compare-tree` for the owner's one-time rev 0. The compared tree is the one `TITAN_CONSOLE_AUTONOMY_DIR` names, the same tree `config.surfaces` reads.
+
+## 0.12.2
+
+### Patch Changes
+
+- fce0e08: A round's merge offer must say which head it merges. A pick-one with a "Merge #N" or "Ship" option, or a signsOff naming "#N at <sha>", needs a `merge` binding whose pr and head agree with that wording. Otherwise `rounds import` refuses it. A round already in the rounds dir still lists and takes a submit; the list marks an unbound one "unbound: no merge tap".
+
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+  - @titan-design/worktree@0.3.0
+
+## 0.12.0
+
+### Minor Changes
+
+- 14e5db5: A question round can be answered in the console. It sends its picks and text through `rounds.submit` with the same Send answers card a design round uses, shows the sent or already-answered state and the revealed recommendations afterwards, and shows the server's refusal when the session cannot write. The "Read-only" notice is gone.
+
+### Patch Changes
+
+- fc50f10: Add the round feedback adapter: it builds a feedback@1 document from the owner's posted answers, with each recommendation echoed and `agreed` set only on an answered question, mirroring the review harness (TP-1988).
+
+## 0.11.0
+
+### Minor Changes
+
+- 3267b54: Add `GET /media/videos/:id/poster` and the `videos.resolve` command for the Theater, and a `poster` field in the video sidecar (TP-3707, TP-3711).
+
+### Patch Changes
+
+- fc9e56d: Round notes read as text: a section's changed and context lines, and the round's own context, show as body text in the primary colour with their line breaks kept, and each "LABEL:" (such as WHY WAITING) is a quiet label row above its value. The "Context only:" prefix is gone.
+
+## 0.10.0
+
+### Minor Changes
+
+- c6d2ead: The theater list becomes a feed: renders are sectioned by day in the reader's timezone with a count and total run time per day, each row carries a purpose pill (the sidecar `purpose` first, then a fallback cascade), an Old take or Phone flag and a byline, and search (`?q=`), purpose chips with counts (`?tag=`) and old takes (`?old=1`) live in the URL. Clips wait behind their chip, folded copies are counted, and an empty result offers Clear.
+
+## 0.9.0
+
+### Minor Changes
+
+- 49eed0a: `videos.list` reads each video's headers (mp4 `mvhd`/`tkhd`/`hdlr`, webm EBML) into `durationS`, `width`, `height`, `orientation` and `audio`, caching them by device, inode, size and mtime. A file whose headers cannot be parsed becomes a gap line. Rows also gain a derived `title` (render notes H1, then BRIEF.md H1, then the stem, with the take appended when siblings share a title), `description`, `series`, `take` and `superseded`, each beaten by a sidecar value; `copies`, folding identical files under `copies` or `intermediate` folders; and `openNoteCount`, the open notes under the agent pickup rule.
+
+## 0.8.0
+
+### Minor Changes
+
+- adb1f25: Read a `titan-console/video-meta@1` sidecar (`<stem>.video.json`) and a `titan-console/video-folder@1` manifest (`_videos.json`) into `videos.list`. Each row gains whichever of `purpose`, `tags`, `subject`, `parent`, `posterAtS`, `alias`, `title`, `description`, `series`, `take` and `status` are set. A sidecar beats the manifest. A bad file becomes a gap line instead of a failed list. A video with neither file lists as before.
+
+## 0.7.0
+
+### Minor Changes
+
+- 940abfc: Show a Ship round's lineage before the owner taps Ship: the proven-at sha, merged or UNMERGED, the PR base's tip and how many base commits the proven head lacks, with a stale head marked. `rounds.get` carries it as `lineage`, read from GitHub and cached per binding for a minute; anything unread shows "lineage unknown" with its reason.
+
+### Patch Changes
+
+- 06feba3: The inbox action tests import `CONFIRM_TTL_MS` from `owner-tap.ts`, so `inbox-actions.ts` no longer re-exports it.
+
+## 0.6.2
+
+### Patch Changes
+
+- c158727: Home, initiatives and an initiative's detail no longer scroll sideways on a 390px phone: the initiative title, the initiative cards and the upstream cards shrink to the row they sit in.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [6dd2f97]
+  - @titan-design/session-graph@0.18.0
+  - @titan-design/session-read@0.16.1
+  - @titan-design/session-analytics@0.17.4
+  - @titan-design/worktree@0.2.0
+
 ## 0.6.1
 
 ### Patch Changes

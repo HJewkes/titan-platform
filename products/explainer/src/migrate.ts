@@ -142,3 +142,76 @@ export function migrateTourV0(tour: unknown, probe: unknown, options: MigrateOpt
     beats: t.beats.map((b) => migrateBeat(b, shots.get(b.id) ?? [])),
   });
 }
+
+type Json = Record<string, unknown>;
+const isJson = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
+const without = (value: Json, keys: readonly string[]): Json => Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+const mapIf = (value: unknown, fn: (item: Json) => Json): unknown => (Array.isArray(value) ? value.map((v) => (isJson(v) ? fn(v) : v)) : value);
+
+// The spike labelled provenance by how a number was got; script/v1 labels it by how far it can be trusted.
+const SPIKE_CHIP_KINDS: Record<string, (typeof CHIP_KINDS)[number]> = { measured: "verified", estimated: "inferred", target: "our-framing" };
+
+// Keys the spike writer emits for its own renderer: they carry no claim any L0 check reads, so they are dropped
+// rather than admitted to `ScriptSchema`. Any other unknown key still fails the parse.
+const SPIKE_ONLY = {
+  top: ["facts"],
+  video: ["map"],
+  beat: ["contested", "simplification", "pivot"],
+  visual: ["recipe", "titles"],
+  mapState: ["item"],
+  cue: ["state"],
+} as const;
+
+const migrateChip = (chip: Json): Json => {
+  const kind = SPIKE_CHIP_KINDS[String(chip.kind)] ?? chip.kind;
+  return { ...(chip.fact_id === null ? without(chip, ["fact_id"]) : chip), kind };
+};
+const migrateCue = (cue: Json): Json => without(cue, SPIKE_ONLY.cue);
+
+// The spike's "then" is a plain sequence, which script/v1 spells "and".
+const migrateConnector = (connector: unknown): Json => (connector === "then" ? { connector_in: "and" } : connector === undefined ? {} : { connector_in: connector });
+
+// A camera that follows an item, or fits a keyword rather than box ids, has no script/v1 form.
+const hasCameraForm = (camera: unknown): boolean => isJson(camera) && (Array.isArray(camera.fit) || typeof camera.station === "string");
+
+function migrateMapState(state: Json): Json {
+  const rest: Json = { ...without(state, SPIKE_ONLY.mapState), ...(state.annotations ? { annotations: mapIf(state.annotations, (a) => without(a, ["text"])) } : {}) };
+  return hasCameraForm(rest.camera) ? rest : without(rest, ["camera"]);
+}
+
+// A generic model of more than five slots (the v4 "seven nouns") has no script/v1 form, so it is dropped whole
+// rather than truncated into a different claim.
+function migrateVideo(video: Json): Json {
+  const slots = isJson(video.generic_model) ? video.generic_model.slots : undefined;
+  const oversized = Array.isArray(slots) && slots.length > 5;
+  return without(video, oversized ? [...SPIKE_ONLY.video, "generic_model"] : SPIKE_ONLY.video);
+}
+
+function migrateSpikeVisual(visual: unknown): unknown {
+  if (!isJson(visual)) return visual;
+  const mapState = isJson(visual.map_state) ? { map_state: migrateMapState(visual.map_state) } : {};
+  // "design" marks an edge drawn by hand; the evidence sources are code-derived, so it has none to name.
+  const edgeSources = Array.isArray(visual.edge_sources) ? { edge_sources: visual.edge_sources.filter((s) => s !== "design") } : {};
+  return { ...without(visual, SPIKE_ONLY.visual), ...mapState, ...edgeSources, chips: mapIf(visual.chips, migrateChip), cues: mapIf(visual.cues, migrateCue) };
+}
+
+function migrateSpikeBeat(beat: Json): Json {
+  return { ...without(beat, [...SPIKE_ONLY.beat, "connector_in"]), ...migrateConnector(beat.connector_in), new_terms: beat.new_terms ?? [], visual: migrateSpikeVisual(beat.visual) };
+}
+
+/**
+ * Migrates a Python-emitted spike `script.json` (motion-spike, v4) to `script/v1`. The spike's `band`, `origin`,
+ * `render`, `maps` and map_state `map`/`old`/`new` carry over as the optional fields `ScriptSchema` admits; keys
+ * only the spike renderer reads are dropped (so are an oversized `generic_model`, "design" edge sources and a camera with no
+ * script/v1 form), and chip kinds are mapped onto `CHIP_KINDS` (measured is verified,
+ * estimated is inferred, target is our-framing). A spike script has no per-beat `new_terms`, so each gets `[]`.
+ */
+export function migrateSpike(raw: unknown): ScriptV1 {
+  if (!isJson(raw)) throw new Error("expected a spike script object");
+  const { video, beats } = raw;
+  return ScriptSchema.parse({
+    ...without(raw, SPIKE_ONLY.top),
+    ...(isJson(video) ? { video: migrateVideo(video) } : {}),
+    beats: mapIf(beats, migrateSpikeBeat),
+  });
+}

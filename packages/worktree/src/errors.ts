@@ -33,3 +33,14 @@ export class OriginUnreachableError extends Error {
     this.name = "OriginUnreachableError";
   }
 }
+
+/** A missing assigned tree cannot be re-created without its caller's matching allocation record. */
+export class MissingAssignedWorktreeRecordError extends Error {
+  constructor(readonly worktreePath: string) {
+    super(
+      `assigned worktree ${worktreePath} does not exist, and there is no record of allocating it ` +
+        "to re-create it from. Not spawned"
+    );
+    this.name = "MissingAssignedWorktreeRecordError";
+  }
+}

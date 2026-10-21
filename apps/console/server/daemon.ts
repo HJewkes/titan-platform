@@ -13,12 +13,15 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
+import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { APP_VERSION } from "./paths.js";
+import type { ConsoleSources } from "./commands.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
+import { mountRoundMedia } from "./round-clip.js";
 import { createSources } from "./upstreams.js";
 import { mountVideoMedia } from "./videos.js";
 
@@ -42,6 +45,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const logger = options.logger ?? consoleLogger;
   const sources = createSources(config, logger);
   const { upstreams } = sources;
+  const build = readBuildInfo();
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
@@ -50,12 +54,9 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
-    // Targets only: /health must answer without waiting on an upstream.
-    health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
-    mountRoutes: (app) => {
-      if (sources.videos) mountVideoMedia(app, sources.videos);
-      if (staticRoot) mountStaticApp(app, { root: staticRoot });
-    },
+    // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
+    health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
+    mountRoutes: (app) => mountRoutes(app, sources, staticRoot),
     logger,
   });
   void sources.listeners?.sweep();
@@ -64,6 +65,13 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     await Promise.all([relay.close(), handle.close()]);
   };
   return { ...handle, close };
+}
+
+/** Media routes go ahead of the static app, whose `/*` would answer them with the page. */
+function mountRoutes(app: Parameters<typeof mountStaticApp>[0], sources: ConsoleSources, staticRoot: string | undefined): void {
+  if (sources.videos) mountVideoMedia(app, sources.videos);
+  mountRoundMedia(app, sources.rounds);
+  if (staticRoot) mountStaticApp(app, { root: staticRoot });
 }
 
 const SIGN_IN_HINT = "Ask the operator for a fresh sign-in link. It is minted on the host with titan-console login-link.";

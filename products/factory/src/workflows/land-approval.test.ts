@@ -1,20 +1,22 @@
 import { fakeSha, type FakeGitHub } from "@titan-design/github";
 import { GatePayloadInvalid, GateResolverRefused, type GateResolver } from "@titan-design/hitl";
+import { partialFake } from "@titan-design/test-kit";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { gateEverything, type GatePolicy, type PolicyRule } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
-import { DEVICE_CHECK, LAND_STEPS, land, type ApprovalAnswer, type ApprovalQuestion, type AskApproval, type LandOutcome } from "./land.js";
+import { DEVICE_CHECK, LAND_STEPS, SET_ANSWER_ORIGIN, land, type ApprovalAnswer, type ApprovalQuestion, type AskApproval, type LandOutcome } from "./land.js";
+import { approveMergeGate } from "./land-approval.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A land run whose approval is the hook, answering in turn from `answers`; `beforeAnswer` runs as each question arrives. */
-function hookedRun(answers: ApprovalAnswer[], beforeAnswer: (question: ApprovalQuestion, fake: FakeGitHub) => void = () => undefined) {
-  const scenario = landScenario();
+function hookedRun(answers: ApprovalAnswer[], beforeAnswer: (question: ApprovalQuestion, fake: FakeGitHub) => void = () => undefined, scenario = landScenario()) {
   const asked: ApprovalQuestion[] = [];
   const askApproval: AskApproval = async (_ctx, question) => (asked.push(question), beforeAnswer(question, scenario.fake), answers[asked.length - 1]!);
   const outcomes: LandOutcome[] = [];
@@ -67,6 +69,51 @@ describe("land with an askApproval hook", () => {
     expect(world.asked.map((question) => question.headSha)).toEqual([H1, H2]);
     expect(world.fake.effects.merge).toBe(0);
     expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "abandoned", headSha: H2 });
+  });
+});
+
+/** A non-strict repo whose base keeps moving, so every approved head is refreshed once before its merge. */
+function movingBaseScenario() {
+  const scenario = landScenario();
+  scenario.fake.rules.strict = false;
+  const keepGreen = scenario.fake.onGetPr!;
+  scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
+  return scenario;
+}
+
+describe("land's pre-merge refresh within one round", () => {
+  it("merges the refreshed head of a human approval without asking again", async () => {
+    const world = hookedRun(["merge"], undefined, movingBaseScenario());
+
+    await world.host.runtime.wait(world.runId);
+
+    expect(world.asked.map((question) => question.headSha)).toEqual([H1]);
+    expect(world.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+  });
+
+  it("asks again at the refreshed head of an approved-set answer instead of inheriting it", async () => {
+    const world = hookedRun(["merge-by-set", "abandon"], undefined, movingBaseScenario());
+
+    await world.host.runtime.wait(world.runId);
+
+    const refreshed = world.fake.pr(1).headSha;
+    expect(refreshed).not.toBe(H1);
+    expect(world.asked.map((question) => question.headSha)).toEqual([H1, refreshed]);
+    expect(world.fake.effects).toMatchObject({ updateBranch: 1, merge: 0 });
+    expect(world.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "abandoned", headSha: refreshed });
+  });
+});
+
+describe("approveMergeGate", () => {
+  const RULE: PolicyRule = { table: "shepherd-merge-guard", rowId: "visual-path", version: 1 };
+  const QUESTION: ApprovalQuestion = { repo: REPO, pr: 1, headSha: H1, round: 0, reason: "a visual path changed", base: "main" };
+  const answering = (data: Record<string, unknown>) => partialFake<WorkflowContext>({ assisted: async (stepId) => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data }) });
+
+  it.each<[string, Record<string, unknown>, ApprovalAnswer]>([
+    ["the owner's merge", { decision: "merge", headSha: H1 }, "merge"],
+    ["a merge the approved set answered", { decision: "merge", headSha: H1, origin: SET_ANSWER_ORIGIN }, "merge-by-set"],
+  ])("reads %s with its source", async (_name, data, expected) => {
+    expect(await approveMergeGate(RULE)(answering(data), QUESTION)).toBe(expected);
   });
 });
 

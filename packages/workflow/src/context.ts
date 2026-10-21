@@ -2,10 +2,11 @@ import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecor
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
+import { NO_CAPABILITIES, seedBody } from "./capabilities.js";
+import { renderGuarded } from "./guarded-render.js";
 import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
 import type { CompletedStep, ContextDeps, Memo, RecoveredStep } from "./context-deps.js";
-import { buildStepVars } from "./prompt.js";
 import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from "./recovery.js";
 import { ReplayGuard } from "./replay-frontier.js";
 import { messageOf } from "./runtime-values.js";
@@ -74,6 +75,10 @@ export class RunContext implements WorkflowContext {
     return this.run.params[key];
   }
 
+  capability(name: string): unknown {
+    return (this.deps.capabilities ?? NO_CAPABILITIES).get(name);
+  }
+
   iteration(stepId: string): number {
     return this.iterations[stepId] ?? 0;
   }
@@ -101,7 +106,7 @@ export class RunContext implements WorkflowContext {
     const recovered = this.deps.recovered.get(iterKey);
     if (recovered) this.claimed.add(iterKey);
     else this.throwIfCancelled();
-    const prompt = await this.deps.render(template, buildStepVars(this.run, options.vars));
+    const prompt = await renderGuarded(this.deps, this.run, stepId, template, options.vars);
     const completed = await this.runWithRetry(stepId, iteration, iterKey, prompt, options, recovered);
     const data = options.schema ? this.parsedData(stepId, iteration, completed, options.schema) : undefined;
     const result: StepResult = {
@@ -145,7 +150,7 @@ export class RunContext implements WorkflowContext {
     if (cached) return this.bumpSeed(stepId, cached);
     if (this.replay.unread()) await this.replay.beforeLive("seed", stepId);
     this.setCurrent(stepId);
-    const seed = await fn();
+    const seed = await seedBody(this.deps.capabilities, stepId, fn);
     Object.assign(this.run.params, seed.data);
     const result: StepResult = {
       stepId,
@@ -167,6 +172,7 @@ export class RunContext implements WorkflowContext {
     const { index: iteration, key, cached } = this.recall("assisted", stepId);
     if (cached) return this.bump(stepId, cached);
     if (this.replay.unread()) await this.replay.beforeLive("assisted", stepId);
+    this.deps.capabilities?.refuse({ prompt, brief: options.brief }, `${stepId} gate`);
     const gateId = assistedGateId(this.run, stepId, iteration, (id) => gateIsPending(this.deps.gates, id));
     this.requireResumedGate(stepId, gateId);
     this.openGateOnce(gateId, prompt, options, stepId);
@@ -368,6 +374,7 @@ export class RunContext implements WorkflowContext {
   }
 
   private record(key: string, result: StepResult): void {
+    this.deps.capabilities?.refuse(result, `${result.stepId} result`);
     this.run.stepResults[key] = result;
     this.persist();
   }

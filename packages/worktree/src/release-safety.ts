@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
 import { readMergedTipProof } from "./gh-landing.js";
 import type { ReleaseProof } from "./options.js";
-import { unsavedWork } from "./unsaved-work.js";
+import { observeUnsavedWork, type UnsavedObservation } from "./unsaved-work.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -98,6 +98,85 @@ async function commitsAhead(gitRoot: string, branch: string, baseRef: string): P
   return [count === null ? null : Number.parseInt(count, 10), compareTo];
 }
 
+/** Shared implementation for public inspection and allocator presentation. */
+async function inspectReleaseSafety(
+  gitRoot: string,
+  worktreePath: string,
+  branch: string,
+  baseRef: string,
+  releaseProof: ReleaseProof,
+  observations: UnsavedObservation[]
+): Promise<WorktreeReleaseSafety> {
+  const unsaved = await recordUnsaved(worktreePath, observations);
+  const dirty = unsaved !== undefined;
+  const checked = [dirtyCheck(unsaved)];
+
+  if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null)
+    return { dirty, unmerged: false, landed: false, ahead: 0, checked };
+
+  const [ahead, compareTo] = await commitsAhead(gitRoot, branch, baseRef);
+  checked.push(pushedCheck(ahead, compareTo));
+  if (ahead === 0) return { dirty, unmerged: false, landed: false, ahead, checked };
+
+  const targets = await landingTargets(gitRoot);
+  const target = await landedOn(gitRoot, branch, targets);
+  checked.push(landedCheck(target, targets));
+  const safety = { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
+  return target === null
+    ? withExternalLanding(safety, { gitRoot, worktreePath, branch }, releaseProof, observations)
+    : safety;
+}
+
+/** The external proof may outlive the first file check; retain earlier refusals too. */
+async function withPostProofFileSafety(
+  safety: WorktreeReleaseSafety,
+  worktreePath: string,
+  observations: UnsavedObservation[]
+): Promise<WorktreeReleaseSafety> {
+  const afterProof = safety.landed ? await recordUnsaved(worktreePath, observations) : undefined;
+  if (afterProof !== undefined) safety.checked.push(dirtyCheck(afterProof));
+  return { ...safety, dirty: safety.dirty || afterProof !== undefined };
+}
+
+async function recordUnsaved(worktree: string, observations: UnsavedObservation[]): Promise<string | undefined> {
+  const observation = existsSync(worktree) ? await observeUnsavedWork(worktree) : undefined;
+  if (observation !== undefined) observations.push(observation);
+  return observation?.detail;
+}
+
+async function withExternalLanding(
+  safety: WorktreeReleaseSafety,
+  ref: { gitRoot: string; worktreePath: string; branch: string },
+  proofMode: ReleaseProof,
+  observations: UnsavedObservation[]
+): Promise<WorktreeReleaseSafety> {
+  if (proofMode === "git-or-merged-pr-tip") {
+    const proof = await readMergedTipProof(ref.gitRoot, ref.branch);
+    if (proof !== null) {
+      safety.checked.push(proof.check);
+      return withPostProofFileSafety({ ...safety, unmerged: !proof.merged, landed: proof.merged }, ref.worktreePath, observations);
+    }
+  } else {
+    const state = await ghPrState(ref.gitRoot, ref.branch);
+    if (state !== null) safety.checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
+  }
+  return safety;
+}
+
+/** Internal details for the allocator; public inspection keeps its original object shape. */
+export async function inspectReleaseDetails(
+  gitRoot: string,
+  worktreePath: string,
+  branch: string,
+  baseRef: string,
+  proofMode: ReleaseProof = "git"
+): Promise<{ safety: WorktreeReleaseSafety; refusalCode?: "unsaved-changes" }> {
+  const observations: UnsavedObservation[] = [];
+  const safety = await inspectReleaseSafety(gitRoot, worktreePath, branch, baseRef, proofMode, observations);
+  const ordinaryOnly = safety.dirty && !safety.unmerged && observations.every(observation => observation.kind === "changes");
+  return { safety, ...(ordinaryOnly ? { refusalCode: "unsaved-changes" as const } : {}) };
+}
+
 /**
  * Is it safe to destroy this worktree and its branch?
  *
@@ -122,41 +201,7 @@ export async function inspectForRelease(
   baseRef: string,
   releaseProof: ReleaseProof = "git"
 ): Promise<WorktreeReleaseSafety> {
-  const unsaved = existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
-  const dirty = unsaved !== undefined;
-  const checked = [dirtyCheck(unsaved)];
-
-  if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null)
-    return { dirty, unmerged: false, landed: false, ahead: 0, checked };
-
-  const [ahead, compareTo] = await commitsAhead(gitRoot, branch, baseRef);
-  checked.push(pushedCheck(ahead, compareTo));
-  if (ahead === 0) return { dirty, unmerged: false, landed: false, ahead, checked };
-
-  const targets = await landingTargets(gitRoot);
-  const target = await landedOn(gitRoot, branch, targets);
-  checked.push(landedCheck(target, targets));
-  if (target === null && releaseProof === "git-or-merged-pr-tip") {
-    const proof = await readMergedTipProof(gitRoot, branch);
-    if (proof !== null) {
-      checked.push(proof.check);
-      return withPostProofFileSafety({ dirty, unmerged: !proof.merged, landed: proof.merged, ahead, checked }, worktreePath);
-    }
-  } else if (target === null) {
-    const state = await ghPrState(gitRoot, branch);
-    if (state !== null) checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
-  }
-  return { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
-}
-
-/** The external proof may outlive the first file check; retain earlier refusals too. */
-async function withPostProofFileSafety(
-  safety: WorktreeReleaseSafety,
-  worktreePath: string
-): Promise<WorktreeReleaseSafety> {
-  const afterProof = safety.landed && existsSync(worktreePath) ? await unsavedWork(worktreePath) : undefined;
-  if (afterProof !== undefined) safety.checked.push(dirtyCheck(afterProof));
-  return { ...safety, dirty: safety.dirty || afterProof !== undefined };
+  return (await inspectReleaseDetails(gitRoot, worktreePath, branch, baseRef, releaseProof)).safety;
 }
 
 /** The failed checks, as one line a coordinator can act on. */

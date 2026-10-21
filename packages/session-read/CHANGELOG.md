@@ -1,5 +1,18 @@
 # @titan-design/session-read
 
+## 0.16.1
+
+### Patch Changes
+
+- 9914239: Move the existing pure transcript source, observation and continuation declarations into agent-protocol/harness, preserving session-read compatibility exports and all decoder/read behavior. This is a further partial TP-3426 S01 checkpoint; account, pricing, policy and bus ports remain unfinished.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+
 ## 0.16.0
 
 ### Minor Changes

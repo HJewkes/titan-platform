@@ -627,6 +627,22 @@ describe("npm config during worktree setup", () => {
     expect(markersIn(markers)).toEqual([]);
   }, 120_000);
 
+  it("pins Playwright browser GC off even when the broker env turns it on", () => {
+    const env = setupEnv({ PATH: "/bin", PLAYWRIGHT_SKIP_BROWSER_GC: "0" });
+    expect(env.PLAYWRIGHT_SKIP_BROWSER_GC).toBe("1");
+  });
+
+  it.each([undefined, "0", "1"])(
+    "pins Playwright browser GC off with caller value %s",
+    (value) => {
+      const env = setupEnv({
+        PATH: "/bin",
+        PLAYWRIGHT_SKIP_BROWSER_GC: value,
+      });
+      expect(env.PLAYWRIGHT_SKIP_BROWSER_GC).toBe("1");
+    }
+  );
+
   it("ignores the branch pnpmfile even when the host environment loads it", () => {
     const env = setupEnv({
       PATH: "/bin",

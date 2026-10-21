@@ -17,6 +17,21 @@ declare class TokenFileError extends Error {
 declare function ensureTokenFile(file: string): string;
 /** Replace the secret by writing a 0600 temp file and renaming it over the old one. */
 declare function rotateTokenFile(file: string): string;
+/**
+ * The same tracked read for any secret shape. `parse` gets the file text and returns the
+ * secret or throws; a {@link SecretRejection} picks the problem, any other throw becomes
+ * "malformed". The thrown text is dropped, so a parser cannot leak the value into an error.
+ * The caller supplies the path: nothing here knows where a given secret lives.
+ */
+declare function trackSecretFile(file: string, parse: SecretParser): () => string;
+type SecretParser = (raw: string) => string;
+/** A parser's refusal with a stated problem; `detail` must never quote the file's text. */
+declare class SecretRejection extends Error {
+    readonly problem: TokenFileProblem;
+    constructor(problem: TokenFileProblem, detail: string);
+}
+/** The daemon's own secrets: at least 32 random bytes, base64url, one optional trailing newline. */
+declare function parseBase64Secret(raw: string): string;
 
 declare const SESSION_COOKIE = "titan_session";
 declare const LOGIN_PATH = "/auth/login";
@@ -510,4 +525,4 @@ interface FileResponseOptions {
  */
 declare function fileResponse(request: Request, file: string, options: FileResponseOptions): Promise<Response>;
 
-export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, verifySession, watchTree, writePidFile };
+export { DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, SESSION_COOKIE, SESSION_MAX_AGE_MS, type SecretParser, SecretRejection, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, parseBase64Secret, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, trackSecretFile, verifySession, watchTree, writePidFile };

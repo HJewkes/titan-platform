@@ -216,7 +216,8 @@ export function openNotes<Note extends VideoNote>(notes: readonly Note[], curren
 
 export const summarizeNotes: NoteSummarizer = async (videoFile) => {
   const { notes, verdict: latest } = await readNotes(videoFile);
-  return { noteCount: notes.filter((note) => note.current && note.kind === "comment").length, verdict: latest };
+  const openNoteCount = notes.length === 0 ? 0 : openNotes(notes, await renderSha256(videoFile)).length;
+  return { noteCount: notes.filter((note) => note.current && note.kind === "comment").length, openNoteCount, verdict: latest };
 };
 
 async function locate(catalog: VideoCatalog, id: string): Promise<string> {

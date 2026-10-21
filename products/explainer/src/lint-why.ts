@@ -111,6 +111,14 @@ function invariantPerHow(script: ScriptV1): L0Result {
   return verdict("Q-W6", "heuristic", missing);
 }
 
+/** The most invariants a script may declare; the parser no longer caps them, so a spike script still loads. */
+export const MAX_INVARIANTS = 2;
+
+function invariantCap(script: ScriptV1): L0Result {
+  const count = script.video.invariants?.length ?? 0;
+  return { check_id: "Q-W6:invariant-cap", mode: "tagged", severity: "warning", value: count, threshold: MAX_INVARIANTS, pass: count <= MAX_INVARIANTS, detail_beats: [] };
+}
+
 /** L0 half of Q-W8: a fence exists and is drawn as a design. Whether each deep dive has one is the judge's half. */
 function fenceAsDesign(script: ScriptV1): L0Result {
   const fences = script.beats.filter((beat) => beat.function === "FENCE");
@@ -193,4 +201,4 @@ const SCRIPT_RULES = [
 ];
 
 /** The why, value and thread rules (Q-W*, Q-F3, Q-F12, Q-F13), one row each. */
-export const whyCheck: L0Check = (input) => [...SCRIPT_RULES.map((rule) => rule(input.script)), demoSteps(input)];
+export const whyCheck: L0Check = (input) => [...SCRIPT_RULES.map((rule) => rule(input.script)), invariantCap(input.script), demoSteps(input)];

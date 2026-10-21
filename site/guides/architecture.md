@@ -195,6 +195,9 @@ graph TD
   explainer --> evidence
   explainer --> graphLayout
   explainer --> pm
+  explainer --> speechG2p
+  explainer --> speechStt
+  explainer --> speechTts
   explainer --> speechVet
   factory --> agent
   factory --> agentDispatch
@@ -240,8 +243,10 @@ graph TD
   codewatch --> reactApp
   codewatch --> rpcClient
   codewatch --> rpcProtocol
+  console --> agentDispatch
   console --> appPaths
   console --> chatProtocol
+  console --> coordinator
   console --> daemon
   console --> decider
   console --> github

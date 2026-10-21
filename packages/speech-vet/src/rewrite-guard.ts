@@ -154,8 +154,15 @@ const STOPWORDS = new Set(
     "here now just also only very your you our we us his her he she chapter chapters about after before over under").split(" "),
 );
 
-// A crude suffix fold, enough for "reader", "reads" and "reading" to meet; no lexicon ships with it.
-const stem = (word: string): string => word.replace(/(ing|ers|er|ed|es|s)$/, "") || word;
+// A crude inflection fold, enough for "reader", "reads" and "reading" to meet, and for "raise"/"raises"
+// and "carry"/"carries" to meet; no lexicon ships with it.
+const SUFFIX = /(ing|ers|er|ed|es|s)$/;
+function stem(word: string): string {
+  const cut = word.replace(SUFFIX, "");
+  // A root that ends like a suffix ("need", "king") keeps its letters, so it still meets its plural.
+  const base = cut.length >= 3 && cut !== word ? cut : word.replace(/e$/, "");
+  return base.replace(/y$/, "i");
+}
 
 /** Lower-cased, stemmed content words, so "the reader" and "reads it" share a term. */
 export function contentTerms(text: string): Set<string> {
@@ -163,6 +170,6 @@ export function contentTerms(text: string): Set<string> {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((w) => w.length > 2 && !STOPWORDS.has(w))
-    .map((w) => (w.length > 4 ? stem(w) : w));
+    .map((w) => (w.length > 3 ? stem(w) : w));
   return new Set(terms);
 }

@@ -1,5 +1,6 @@
-import { assignsProtectedAt } from "./assign-on-expand.js";
+import { assignsProtectedAt, closedMathVerdict, mathCloseDisagrees } from "./assign-on-expand.js";
 import { joinedDollar, nextAfter } from "./joins.js";
+import { QUOTED_LITERAL_OPENERS } from "./math-close.js";
 import { type Nesting, nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
 import { zshRunsValue } from "./zsh-value-flags.js";
@@ -70,9 +71,6 @@ export const DOLLAR_OPENERS: Readonly<Record<string, DollarOpener>> = {
 /** Characters after a `$` that open an expansion; a reader handed one the table does not list refuses the line. */
 export const EXPANSION_OPENERS = "{[(";
 
-/** Inside double quotes `$'` and `$"` are a literal `$` and a quote, not the ANSI-C and locale openers. */
-export const QUOTED_LITERAL_OPENERS = "'\"";
-
 /** The opener after the `$` at `j`, or null when bash reads that `$` as a name, a special parameter or text. */
 export function dollarOpener(src: string, j: number): DollarOpener | null {
   const next = src[j + 1] ?? "";
@@ -85,7 +83,7 @@ export function dollarOpener(src: string, j: number): DollarOpener | null {
 const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedReaders) => number> = {
   pid: (_src, j) => j + 1,
   braced: (src, j, read) => balancedEnd(src, j + 1, read),
-  bracket: (src, j, read) => balancedEnd(src, j + 1, read),
+  bracket: (src, j, read) => bracketArithmeticEnd(src, j, read),
   paren: (src, j, read) => sameIn32(src, j + 1, src[nextAfter(src, j + 1)] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read),
   // Inside an expansion the shells read `$'` as a quote that expands like a double quote, so a `$(` in it runs.
   "ansi-c": (src, j, read) => {
@@ -96,13 +94,38 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
   locale: (_src, j) => j,
 };
 
+/** Index of the `]` closing the `$[` at `dollar`, refused when the guard's math scan closed it elsewhere. */
+export function bracketArithmeticEnd(src: string, dollar: number, read: NestedReaders): number {
+  return refusingMisreadMath(src, dollar, balancedEnd(src, dollar + 1, read));
+}
+
+/** `last`, the lexer's close of the math at `dollar`, once the guard's scan is shown to have checked the same body. */
+export function refusingMisreadMath(src: string, dollar: number, last: number): number {
+  if (mathCloseDisagrees(src, dollar, last)) throw misreadMath();
+  return last;
+}
+
+/** As `refusingMisreadMath`, for a `$((` longer than the window: the whole body up to `last` is read, its writes included. */
+export function refusingMisreadLongMath(src: string, dollar: number, last: number): number {
+  const verdict = closedMathVerdict(src, dollar, last);
+  if (verdict === "misread") throw misreadMath();
+  if (verdict === "writes") throw assignsProtected();
+  return last;
+}
+
+export const unreadExpansion = (): SplitParseError => new SplitParseError("the guard cannot read this expansion to its end", "unclosed-expansion");
+const misreadMath = (): SplitParseError => new SplitParseError("the guard reads this math's close elsewhere", "unclosed-expansion");
+const assignsProtected = (): ParseError => new ParseError("an expansion assigns a parameter the guard protects");
+
 /**
  * zsh runs the value of `${~x}`, `${(e)x}` and `$~x` as a glob qualifier or as code, and `${n::=v}` stores into whatever
  * parameter `n` names, so the line is refused where it is read when either is possible.
  */
 export function refuseValueRun(src: string, dollar: number): void {
   if (zshRunsValue(src, dollar)) throw new ParseError("zsh runs this expansion's value as code");
-  if (assignsProtectedAt(src, dollar)) throw new ParseError("an expansion assigns a parameter the guard protects");
+  const verdict = assignsProtectedAt(src, dollar);
+  if (verdict === "writes") throw assignsProtected();
+  if (verdict === "unread") throw unreadExpansion();
 }
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {

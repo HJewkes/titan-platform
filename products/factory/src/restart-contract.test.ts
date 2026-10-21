@@ -42,6 +42,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-wake-fix-proof": `${RECORD}: counts fix-proof wakes against the bounce cap`,
   "sh-flake-check": `${READ}: whether failures fall outside the diff`,
   "sh-exit-notice": `${WRITE}: sends the exit notice`,
+  "sh-auto-pass": `${WRITE}: posts the audit comment for an owner gate a demotion rule passed`,
   "sh-park": `${WRITE}: parks the implementer's worktree`,
   "sh-fix-proof": `${READ}: waits for the fixer's proof`,
   "sh-review-intent": `${WRITE}: posts the review intent through the broker`,

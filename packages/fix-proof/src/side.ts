@@ -5,7 +5,7 @@ import { call, GIT_SAFETY, messageOf, planDiff, RunError, withContext, type Cont
 import type { Exec } from "./exec.js";
 import { relativeToRoot } from "./paths.js";
 import type { FixProofPlan } from "./plan.js";
-import { assertSandboxUser, sandboxCommand } from "./sandbox.js";
+import { assertSandboxUser, sandboxCommand, sandboxEnv } from "./sandbox.js";
 import { toolchainOf } from "./toolchain.js";
 import { encodeError, encodeReport } from "./transport.js";
 
@@ -113,8 +113,7 @@ async function sudo(ctx: Context, args: readonly string[]): Promise<void> {
 /** Runs `sh -c <script> sh ...args` in tree, inside the sandbox when a sandbox user is given. */
 export function runInTree(ctx: Context, tree: string, script: string, args: readonly string[], sandboxUser: string | undefined) {
   if (sandboxUser === undefined) return sh(ctx, tree, script, args);
-  const env = { PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: tree, CI: "1" };
-  const command = sandboxCommand(sandboxUser, ctx.deadline - Date.now(), env, script, args);
+  const command = sandboxCommand(sandboxUser, ctx.deadline - Date.now(), sandboxEnv(tree, process.env), script, args);
   return call(ctx, tree, command.file, command.args);
 }
 

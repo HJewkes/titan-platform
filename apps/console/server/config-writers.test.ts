@@ -36,6 +36,7 @@ const NON_WRITING_CONFIG_VERBS: ReadonlyMap<string, string> = new Map([
   ["drift", "read"],
   ["prepare", "read"],
   ["hosts", "read"],
+  ["compareTree", "read"],
   ["report", "deposit"],
 ]);
 

@@ -1,0 +1,88 @@
+# The owner's six script rules (FB1-FB6) as craft doctrine. Planner text states structure only: the
+# thresholds behind FB3 and FB5 reach the writer through L0 rows, never a prompt (the leak rule).
+schema: doctrine-craft/v1
+rules:
+  - id: owner-FB1
+    source: { doc: owner-feedback, ref: FB1 }
+    text: "Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan, script]
+  - id: owner-FB1.2
+    source: { doc: owner-feedback, ref: FB1 }
+    text: "No chapter shows the architecture before the first chapter that follows the journey."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E15, live: true }
+  - id: owner-FB2.1
+    source: { doc: owner-feedback, ref: FB2 }
+    text: "Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan, script]
+  - id: owner-FB2.2
+    source: { doc: owner-feedback, ref: FB2 }
+    text: "A beat that names three or more new items glosses them."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E14, live: true }
+  - id: owner-FB3
+    source: { doc: owner-feedback, ref: FB3 }
+    text: "Show only a few new on-screen items in one beat."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E7, live: true }
+  - id: owner-FB4.1
+    source: { doc: owner-feedback, ref: FB4 }
+    text: "A list holds one kind of item."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan, script]
+  - id: owner-FB4.2
+    source: { doc: owner-feedback, ref: FB4 }
+    text: "Every item in a list or card set has the same declared kind."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E16, live: true }
+  - id: owner-FB5
+    source: { doc: owner-feedback, ref: FB5 }
+    text: "Leave no long stretch of narration without a new on-screen digest."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E9, live: true }
+  - id: owner-FB6.1
+    source: { doc: owner-feedback, ref: FB6 }
+    text: "Seat each invariant in an architecture row that keeps it."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan, script]
+  - id: owner-FB6.2
+    source: { doc: owner-feedback, ref: FB6 }
+    text: "A beat that states an invariant has a map on screen and states at most one."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E11, live: true }
+  - id: owner-FB6.3
+    source: { doc: owner-feedback, ref: FB6 }
+    text: "Each invariant names the architecture row that keeps it, or the fact that shows how it breaks today."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [qa]
+    check: { kind: qrule, ref: Q-E18, live: true }

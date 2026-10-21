@@ -1,14 +1,14 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { addWorktree, boundedAdd, WORKTREE_ADD_TIMEOUT_MS, type WorktreeAddRunner } from "./add.js";
-import { resolveBranchBase } from "./branch-base.js";
-import { WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
+import { resolveBranchBase, resolveRequestedBase, type BranchBase } from "./branch-base.js";
+import { MissingAssignedWorktreeRecordError, WorktreeInUseError } from "./errors.js";
+import { capacityError } from "./capacity.js";
 import { findGitRoot, gitOrNull } from "./git.js";
-import { allocatedPaths, checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
+import { checkoutOf, copyClaudeDir, pruneStaleWorktrees, removeWorktree } from "./layout.js";
 import {
   basePathOf,
   branchFor,
-  budgetOf,
   DEFAULT_FETCH_TIMEOUT_MS,
   RECLAIM_GRACE_MS,
   slug,
@@ -16,8 +16,8 @@ import {
   type ReleaseProof,
 } from "./options.js";
 import { readoptWorktree, setupTarget, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
-import { describeRefusal, inspectForRelease } from "./release-safety.js";
-import { runWorktreeSetup } from "./setup.js";
+import { describeRefusal, inspectForRelease, inspectReleaseDetails } from "./release-safety.js";
+import { runWorktreeSetup, type SetupTarget } from "./setup.js";
 
 /** One agent's request for a worktree. A caller's richer context record satisfies it structurally. */
 export interface WorktreeRequest {
@@ -34,6 +34,8 @@ export interface WorktreeRequest {
   exitedAt?: number;
   /** Discard a leftover branch instead of adopting it. Allocation can destroy commits as release can. */
   forceReset?: boolean;
+  /** Fetch this origin branch for the checkout, with no default-branch fallback. */
+  baseRef?: string;
 }
 
 export interface WorktreeCheck {
@@ -43,7 +45,7 @@ export interface WorktreeCheck {
   warnings: string[];
 }
 
-export type WorktreeReleaseOutcome = { released: true } | { released: false; refusal: string };
+export type WorktreeReleaseOutcome = { released: true } | { released: false; refusal: string; refusalCode?: "unsaved-changes" };
 
 export interface WorktreeAllocator {
   check(req: WorktreeRequest): Promise<WorktreeCheck>;
@@ -52,7 +54,7 @@ export interface WorktreeAllocator {
   release(
     req: Pick<WorktreeRequest, "exitedAt">,
     alloc: { ref?: Record<string, string> },
-    opts?: { force?: boolean }
+    opts?: { force?: boolean; keepBranch?: boolean }
   ): Promise<WorktreeReleaseOutcome>;
 }
 
@@ -103,20 +105,19 @@ async function refuseRelease(
   exitedAt: number | undefined,
   ref: { gitRoot: string; worktree: string; branch: string; base: string },
   releaseProof: ReleaseProof = "git"
-): Promise<string | null> {
+): Promise<{ refusal: string; refusalCode?: "unsaved-changes" } | null> {
   if (exitedAt !== undefined && Date.now() - exitedAt < RECLAIM_GRACE_MS)
-    return `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window`;
-  const safety = await inspectForRelease(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
-  return safety.dirty || safety.unmerged ? describeRefusal(safety) : null;
+    return { refusal: `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window` };
+  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
+  return safety.dirty || safety.unmerged
+    ? { refusal: describeRefusal(safety), ...(refusalCode === undefined ? {} : { refusalCode }) }
+    : null;
 }
 
 /** A gone assigned tree comes back only from the caller's record of allocating it. */
 function unrecoverableAssigned(assigned: string, record: WorktreeRecord | undefined): Error | undefined {
   if (existsSync(assigned) || (record !== undefined && path.resolve(record.worktree) === assigned)) return undefined;
-  return new Error(
-    `assigned worktree ${assigned} does not exist, and there is no record of allocating it ` +
-      "to re-create it from. Not spawned"
-  );
+  return new MissingAssignedWorktreeRecordError(assigned);
 }
 
 async function adoptAssigned(
@@ -153,10 +154,8 @@ async function preflight(req: WorktreeRequest, gitRoot: string, opts: WorktreeOp
     return { refusals: refusal === undefined ? [] : [refusal], warnings: [] };
   }
   await pruneStaleWorktrees(gitRoot);
-  const allocated = await allocatedPaths(gitRoot, basePathOf(opts));
-  const budget = budgetOf(opts);
-  const refusals: Error[] =
-    allocated.length >= budget ? [new WorktreeBudgetExhaustedError(allocated.length, budget)] : [];
+  const exhausted = await capacityError(gitRoot, req.agentName, opts);
+  const refusals: Error[] = exhausted === undefined ? [] : [exhausted];
   const branch = branchFor(req.agentName, opts);
   if ((await gitOrNull(["rev-parse", "--verify", branch], gitRoot)) === null) return { refusals, warnings: [] };
   if (req.forceReset !== true) {
@@ -184,7 +183,10 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
 
   const branch = branchFor(req.agentName, opts);
   const worktreePath = path.resolve(gitRoot, basePathOf(opts), slug(req.agentName));
-  const base = await resolveBranchBase(gitRoot, opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+  const timeout = opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+  const base = req.baseRef === undefined
+    ? await resolveBranchBase(gitRoot, timeout)
+    : await resolveRequestedBase(gitRoot, req.baseRef, timeout);
   const reused = await attachWorktree(gitRoot, branch, worktreePath, {
     base: base.sha,
     force: req.forceReset === true,
@@ -193,8 +195,10 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
   const warnings = [
     ...copyClaudeDir(gitRoot, worktreePath),
     ...(base.warning === undefined ? [] : [base.warning]),
-    ...(await runWorktreeSetup(setupTarget(gitRoot, worktreePath, base), opts.runSetup)),
   ];
+  const target = await allocationSetupTarget(gitRoot, worktreePath, base, req, opts);
+  if (!opts.skipSetup && target !== undefined)
+    warnings.push(...await runWorktreeSetup(target, opts.runSetup));
   const carried = reused ? " It already carries commits from an earlier run under this name." : "";
   return {
     cwd: worktreePath,
@@ -208,13 +212,25 @@ async function allocate(req: WorktreeRequest, opts: WorktreeOptions): Promise<Wo
       ...(reused ? { reused: "true" } : {}),
     },
     ...(warnings.length === 0 ? {} : { warnings }),
+    ...(opts.includeSetupTarget === true && target !== undefined ? { setupTarget: target } : {}),
   };
+}
+
+/** A requested checkout does not grant its branch authority to declare host setup. */
+async function allocationSetupTarget(
+  gitRoot: string, worktree: string, base: BranchBase,
+  req: WorktreeRequest, opts: WorktreeOptions
+): Promise<SetupTarget | undefined> {
+  if (opts.skipSetup && opts.includeSetupTarget !== true) return undefined;
+  const trusted = req.baseRef === undefined ? base
+    : await resolveBranchBase(gitRoot, opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS);
+  return setupTarget(gitRoot, worktree, trusted);
 }
 
 async function release(
   req: Pick<WorktreeRequest, "exitedAt">,
   alloc: { ref?: Record<string, string> },
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; keepBranch?: boolean } = {},
   releaseProof: ReleaseProof = "git"
 ): Promise<WorktreeReleaseOutcome> {
   const ref = alloc.ref;
@@ -225,10 +241,15 @@ async function release(
   // An assigned tree belongs to whoever assigned it and may be shared, so even
   // `force` leaves it: force discards THIS agent's commits, not someone else's tree.
   if (ref.assigned === "true") return { released: true };
+  if (opts.keepBranch) {
+    if (existsSync(worktree)) return { released: false, refusal: `${worktree} is still on disk; a branch-keeping release takes only a parked tree` };
+    await pruneStaleWorktrees(gitRoot);
+    return { released: true };
+  }
 
   if (!opts.force) {
     const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, releaseProof);
-    if (refusal !== null) return { released: false, refusal };
+    if (refusal !== null) return { released: false, ...refusal };
   }
   const refused = await removeWorktree(gitRoot, worktree, branch, opts);
   return refused === undefined ? { released: true } : { released: false, refusal: refused };

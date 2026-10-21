@@ -68,7 +68,7 @@ export const MALFORMED_REFUSALS: Record<MalformedRefusal, true> = {
 };
 
 const Refusal = z.string().refine((value): value is MalformedRefusal => Object.hasOwn(MALFORMED_REFUSALS, value), "a malformed refusal");
-export const MalformedSchema = z.object({ refusal: Refusal, writtenAt: z.number().refine(Number.isFinite, "epoch milliseconds") });
+export const MalformedSchema = z.object({ refusal: Refusal, writtenAt: z.number().refine(Number.isFinite, "epoch milliseconds"), quotes: z.array(z.string()).optional() });
 
 /** The record `acceptVerdict` leaves on a `none` whose final message was malformed; `writtenAt` is that message's time. */
 export type Malformed = z.infer<typeof MalformedSchema>;

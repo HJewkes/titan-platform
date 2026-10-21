@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVerdictBlock, visibleLines } from "./verdict-block.js";
+import { parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const block = (verdict = "MERGE", pr = "octo/demo#12", head = SHA) =>
@@ -428,5 +428,35 @@ describe("the optional CI-policy line", () => {
     expect(parseVerdictBlock(withLine("WAIT", "CI-policy: unchanged"))).toEqual({
       ok: false, reason: "wait", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0,
     });
+  });
+});
+
+describe("refusedLines", () => {
+  const trailer = `${block()}\nCI-policy: unchanged`;
+
+  it("reads a prose CI policy heading as malformed, quotes it, and reads MERGE once it is removed", () => {
+    const heading = "**CI policy:** nothing under `.github/` changed in this PR.";
+    const message = `Looked at it.\n\n${heading}\n\n${trailer}`;
+
+    expect(parseVerdictBlock(message)).toMatchObject({ ok: true, ciPolicy: { kind: "malformed" } });
+    expect(refusedLines(message, "ci_policy_malformed")).toEqual([heading]);
+    expect(parseVerdictBlock(`Looked at it.\n\n${trailer}`)).toMatchObject({ ok: true, verdict: "MERGE", ciPolicy: { kind: "unchanged" } });
+  });
+
+  it("quotes a Verdict sentence in the body as the second block, and reads MERGE once it is removed", () => {
+    const sentence = "Verdict: merge. The PR is docs-only and touches no code.";
+    const message = `${sentence}\n\n${trailer}`;
+
+    expect(refused(message)).toBe("multiple_blocks");
+    expect(refusedLines(message, "multiple_blocks")).toEqual([sentence]);
+    expect(refused(trailer)).toBe("accepted");
+  });
+
+  it("quotes every Verdict line when all of them are canonical", () => {
+    expect(refusedLines(`${block()}\n${block("FIX_FIRST")}`, "multiple_blocks")).toEqual(["Verdict: MERGE", "Verdict: FIX_FIRST"]);
+  });
+
+  it("quotes nothing for another refusal", () => {
+    expect(refusedLines(block(), "bad_head")).toEqual([]);
   });
 });

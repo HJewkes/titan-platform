@@ -3,7 +3,7 @@ import { prFilesOf, registeredBase } from "./git-pr-files.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps } from "./phases.js";
 import { everG10Held } from "./registration-hold.js";
-import { prChangedLines, prTouchesDependency, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { prChangedLines, prTouchesDependency, prTouchesMigration, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 
 type FactsDeps = Pick<ShepherdDeps, "store" | "port" | "prFiles">;
 
@@ -35,8 +35,8 @@ async function sizeFacts(deps: FactsDeps, { repo, pr, head }: ReviewTarget, base
   try {
     const files = await prFilesOf(deps.port, { repo, pr, head, ...(base !== undefined && { base }) }, deps.prFiles);
     const changedLines = prChangedLines(files, limit);
-    const dependency = prTouchesDependency(files) && { dependencyTouch: true };
-    return changedLines === undefined ? { sizeUnread: true, ...dependency } : { changedLines, ...dependency };
+    const touches = { ...(prTouchesDependency(files) && { dependencyTouch: true }), ...(prTouchesMigration(files) && { migrationTouch: true }) };
+    return changedLines === undefined ? { sizeUnread: true, ...touches } : { changedLines, ...touches };
   } catch {
     return { sizeUnread: true };
   }

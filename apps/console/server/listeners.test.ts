@@ -5,10 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
 import { invokeCommand } from "@titan-design/registry";
+import { SHIP_OPTIONS as TD_SHIP_OPTIONS } from "@titan-design/review-schema";
 import type { AnswerOutcome, GateAnswerClient, GateAnswerRequest, Unreachable } from "./gate-answer.js";
+import { SHIP_OPTIONS as VENDORED_SHIP_OPTIONS } from "./review-schema-0.3/contract.js";
 import { createRoundListeners, type ListenerDeps, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -76,7 +78,7 @@ function ownerContext(): ConsoleContext {
 }
 
 function submit(listeners: RoundListeners, pick = "Ship") {
-  const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick }] };
+  const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick, ...(pick === "Ship" ? {} : { comment: "Cap the jitter." }) }] };
   return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
 }
 
@@ -120,6 +122,21 @@ describe("the gate-answer listener after rounds.submit", () => {
 
     await submit(createRoundListeners(deps()), "Don't ship");
 
+    expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
+  });
+
+  it("sends back when the round's revisionOption is the pick, which the feedback writes as a revision request", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    manifest.questions[0].revisionOption = "Don't ship";
+    await writeFile(file, JSON.stringify(manifest));
+    manifestSha256 = sha256(await readFile(file));
+    reply = () => ({ status: "resolved", gateId: "run-1/approve-merge:1", choice: "send-back" });
+    const args = { id: ROUND, manifestSha256, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the delay lower." }] };
+
+    await invokeCommand(roundsSubmitCommands({ dir }, undefined, createRoundListeners(deps()))["rounds.submit"], args, ownerContext());
+
+    expect(JSON.parse(await readFile(path.join(dir, ROUND, "feedback.json"), "utf8")).answers[0]).toMatchObject({ revisionRequested: true });
     expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
   });
 
@@ -200,6 +217,45 @@ describe("the gate-answer listener after rounds.submit", () => {
     expect(ship.merge.ship).toEqual(["Ship"]);
   });
 
+  it("pins the Ship round to td's published SHIP_OPTIONS, so drift in td's wording fails here", async () => {
+    const round = JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8"));
+    const ship = round.questions.find((question: { id: string }) => question.id === "ship-backoff");
+
+    expect(ship.options).toEqual([...TD_SHIP_OPTIONS]);
+    expect(ship.merge.ship).toEqual([TD_SHIP_OPTIONS[0]]);
+    expect([...VENDORED_SHIP_OPTIONS]).toEqual([...TD_SHIP_OPTIONS]);
+  });
+
+  describe("gate id anchoring", () => {
+    const since = "2026-10-01T00:00:00.000Z";
+    it.each([
+      ["sh-visual-accept-offer:0", "sh-visual-accept-offer:0"],
+      ["xsh-visual-accept", "xsh-visual-accept"],
+      ["run-1/approve-merge-x", "approve-merge-x"],
+      ["run-1/xapprove-merge", "xapprove-merge"],
+    ])("records gone without a post for gate %s", async (gateId, stepId) => {
+      rows = [row({ pendingGate: { gateId, stepId, since } })];
+
+      await submit(createRoundListeners(deps()));
+
+      expect(posts).toEqual([]);
+      expect(JSON.parse(await readFile(answerFile(), "utf8")).outcome.status).toBe("gone");
+    });
+
+    it.each([
+      ["sh-visual-accept", "accept-set"],
+      ["run-1/sh-visual-accept:2", "accept-set"],
+      ["run-1/approve-merge:1", "merge"],
+      ["approve-merge", "merge"],
+    ])("posts for gate %s", async (gateId, choice) => {
+      rows = [row({ pendingGate: { gateId, stepId: gateId, since } })];
+
+      await submit(createRoundListeners(deps()));
+
+      expect(posts.map((post) => [post.gateId, post.choice])).toEqual([[gateId, choice]]);
+    });
+  });
+
   it("reads no status and posts nothing while the flag is off", async () => {
     await submit(createRoundListeners(deps({ enabled: false })));
 
@@ -238,6 +294,81 @@ describe("the gate-answer listener after rounds.submit", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
     expect(await exists(answerFile())).toBe(false);
+  });
+});
+
+describe("the gate-answer listener on a round with two PRs (TP-3789)", () => {
+  const TWO = "tiles-and-panels-r1";
+  const TILES_GATE = "run-tiles/approve-merge:1";
+  const PANELS_GATE = "run-panels/approve-merge:1";
+  const twoAnswerFile = (): string => path.join(dir, TWO, "answer.json");
+  let twoSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, "ship-tile-r1"), path.join(dir, TWO), { recursive: true });
+    await writeFile(path.join(dir, TWO, "packet.json"), PACKET);
+    const bytes = Buffer.from(JSON.stringify(twoPrRound()));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    twoSha = sha256(bytes);
+    rows = [
+      row({ repo: "example/tiles", pr: 1, runId: "run-tiles", headSha: TILES_HEAD, pendingGate: { gateId: TILES_GATE, stepId: "approve-merge", since: "2026-10-01T00:00:00.000Z" } }),
+      row({ repo: "example/panels", pr: 2, runId: "run-panels", headSha: PANELS_HEAD, pendingGate: { gateId: PANELS_GATE, stepId: "approve-merge", since: "2026-10-01T00:00:00.000Z" } }),
+    ];
+    reply = () => {
+      const { gateId, choice } = posts.at(-1)!;
+      return { status: "resolved", gateId, choice };
+    };
+  });
+
+  function submitTwo(listeners: RoundListeners) {
+    const answers = [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Don't ship", comment: "Narrow the panel." }];
+    const args = { id: TWO, manifestSha256: twoSha, answers, heads: { "ship-tiles": TILES_HEAD } };
+    return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
+  }
+
+  it("posts one request per PR, each to its own gate at its own head", async () => {
+    await submitTwo(createRoundListeners(deps()));
+
+    expect(posts).toEqual([
+      { runId: "run-tiles", gateId: TILES_GATE, headSha: TILES_HEAD, tree: TREE, packetSha: sha256(PACKET), roundId: TWO, choice: "merge" },
+      { runId: "run-panels", gateId: PANELS_GATE, headSha: PANELS_HEAD, tree: TREE, packetSha: sha256(PACKET), roundId: TWO, choice: "send-back" },
+    ]);
+  });
+
+  it("records every PR's outcome under its question, the first PR's on top where readAnswer reads it", async () => {
+    await submitTwo(createRoundListeners(deps()));
+
+    const tiles = { request: { runId: "run-tiles", gateId: TILES_GATE, headSha: TILES_HEAD, choice: "merge" }, outcome: { status: "resolved", gateId: TILES_GATE, choice: "merge" } };
+    const panels = { request: { runId: "run-panels", gateId: PANELS_GATE, headSha: PANELS_HEAD, choice: "send-back" }, outcome: { status: "resolved", gateId: PANELS_GATE, choice: "send-back" } };
+    expect(JSON.parse(await readFile(twoAnswerFile(), "utf8"))).toEqual({
+      schema: "titan-console/gate-answer@1",
+      at: "2026-10-02T03:04:05.000Z",
+      ...tiles,
+      answers: [{ questionId: "ship-tiles", ...tiles }, { questionId: "ship-panels", ...panels }],
+    });
+  });
+
+  it("records each PR's own outcome when only one of them has a gate", async () => {
+    rows = rows.slice(0, 1);
+
+    await submitTwo(createRoundListeners(deps()));
+
+    const { answers } = JSON.parse(await readFile(twoAnswerFile(), "utf8"));
+    expect(answers.map((each: { outcome: { status: string } }) => each.outcome.status)).toEqual(["resolved", "gone"]);
+    expect(posts.map((post) => post.gateId)).toEqual([TILES_GATE]);
+  });
+
+  it("writes nothing while one PR's gate is unreachable, and answers both on the sweep", async () => {
+    const resolved = reply;
+    reply = () => (posts.at(-1)!.gateId === PANELS_GATE ? { status: "unreachable", detail: "ECONNREFUSED" } : resolved());
+    const listeners = createRoundListeners(deps());
+    await submitTwo(listeners);
+    expect(await exists(twoAnswerFile())).toBe(false);
+
+    reply = resolved;
+    await listeners.sweep();
+
+    expect(JSON.parse(await readFile(twoAnswerFile(), "utf8")).answers).toHaveLength(2);
   });
 });
 

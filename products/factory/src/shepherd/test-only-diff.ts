@@ -67,8 +67,9 @@ const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
  */
 type TrustedRefs = { mergeBase: string; tip: string; headSha: string };
 
-async function trustedBase(port: GitHubPort, repo: RepoSlug, pr: number): Promise<TrustedRefs | { unread: string }> {
+async function trustedBase(port: GitHubPort, repo: RepoSlug, pr: number, expectedHead: string | undefined): Promise<TrustedRefs | { unread: string }> {
   const { baseRef, headSha } = await port.getPr(repo, pr);
+  if (expectedHead !== undefined && headSha !== expectedHead) return { unread: `the PR's head is ${headSha}, not the ${expectedHead} under judgement` };
   const defaultBranch = await port.defaultBranch(repo);
   if (baseRef !== defaultBranch) {
     return { unread: `the PR's base ${JSON.stringify(baseRef)} is not the default branch ${JSON.stringify(defaultBranch)}, so its ${CONFIG_PATH} is not trusted` };
@@ -83,9 +84,9 @@ async function trustedBase(port: GitHubPort, repo: RepoSlug, pr: number): Promis
  * The config at the merge base and at the default branch's tip, never the PR's head or base branch. An old fork point may
  * predate the config or hold wider globs, so the diff must be test-only under both; neither read alone can widen the result.
  */
-async function readTrustedConfigs(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ texts: (string | null)[]; refs: TrustedRefs } | { unread: string }> {
+async function readTrustedConfigs(port: GitHubPort, repo: RepoSlug, pr: number, expectedHead: string | undefined): Promise<{ texts: (string | null)[]; refs: TrustedRefs } | { unread: string }> {
   try {
-    const refs = await trustedBase(port, repo, pr);
+    const refs = await trustedBase(port, repo, pr, expectedHead);
     if ("unread" in refs) return refs;
     const files = await Promise.all([refs.mergeBase, refs.tip].map((ref) => port.getFile(repo, CONFIG_PATH, ref)));
     return { texts: files.map((file) => file?.content ?? null), refs };
@@ -151,15 +152,18 @@ async function unreadBlob(port: GitHubPort, repo: RepoSlug, files: readonly PrFi
   return undefined;
 }
 
-/** Classifies the PR's diff; every read error, a list at the file cap, a harness path, an unparseable entry or a blob not read inline fails closed. */
-export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<TestOnlyDiff> {
+/**
+ * Classifies the PR's diff at `expectedHead`, the immutable head under judgement: a PR whose head has moved is unread, since a gate decided
+ * from a moving ref could be replayed against a head it never classified. Undefined pins nothing and is for a caller that holds no head.
+ * Every read error, a list at the file cap, a harness path, an unparseable entry or a blob not read inline fails closed. */
+export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, expectedHead: string | undefined): Promise<TestOnlyDiff> {
   if (pr === null) return { kind: "unread", reason: "the registration names no PR, so its changed files are unknown" };
   const files = await readFiles(port, repo, pr);
   if ("unread" in files) return { kind: "unread", reason: files.unread };
   if (files.length === 0) return { kind: "unread", reason: "the PR lists no changed files" };
   const nameStatus = nameStatusOf(files);
   if ("unread" in nameStatus) return { kind: "unread", reason: nameStatus.unread };
-  const configs = await readTrustedConfigs(port, repo, pr);
+  const configs = await readTrustedConfigs(port, repo, pr, expectedHead);
   if ("unread" in configs) return { kind: "unread", reason: configs.unread };
   const diff = classify(nameStatus.text, configs.texts);
   if (diff.kind !== "test-only") return diff;

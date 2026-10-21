@@ -7,7 +7,7 @@ import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { landedOf, type LandedPr } from "./land-landed.js";
-import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
+import { approveMergeGate, askedApproval, type ApprovalSource, type AskApproval } from "./land-approval.js";
 import type { CiSnapshot, FailingCheck } from "./land-ci.js";
 import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
@@ -18,7 +18,7 @@ export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 export { afterWrite } from "./land-ci-wait.js";
 export { sleep } from "./deadline.js";
 export { codeRoute, landRoutes, type LandDeps, type Timing } from "./land-routes.js";
-export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
+export { DEVICE_CHECK, SET_ANSWER_ORIGIN, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
@@ -113,8 +113,8 @@ interface LandState {
   decisions: number;
   /** Heads a resolved approve-merge gate covers: the approved head plus heads this run's updates built on it. */
   trusted: Set<string>;
-  /** A policy allow covers only the head it named, so this run's updates never extend it. */
-  trustedBy: "human" | "policy";
+  /** A policy allow or an approved-set answer covers only the head it named, so this run's updates never extend it. */
+  trustedBy: ApprovalSource | "policy";
   /** The base the trusted heads were approved or allowed on; trust never carries to another base. */
   trustedOn: string;
   /** A head whose trust a retarget dropped, so its next decision re-reads the evidence against the new base. */
@@ -332,7 +332,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
-  return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, () => trust(state, ci.headSha, "human", base));
+  return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, (by) => trust(state, ci.headSha, by, base));
 }
 
 /** The recorded decision, not a fresh `decide`, drives the branch: a replay must not flip a gate to an allow. */
