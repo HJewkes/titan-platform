@@ -16,7 +16,7 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   }],
   h2: ["ch1", {
     before: "The desk held 12 parcels today. It sent 3 back to the dock. The rest went out on time. Each had a ledger row.",
-    after: "The desk held 12 parcels today. It sent some back to the dock, and the rest went out on time because each had a ledger row.",
+    after: "The desk held 12 parcels today. It sent parcels back to the dock, and the rest went out on time because each had a ledger row.",
     labels: ["3 sent back"],
   }],
   h3: ["ch1", {
@@ -34,7 +34,7 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   }],
   w4: ["ch2", {
     before: "The ledger answers in 9 milliseconds. It holds 50 rows per dock. The desk trusts that answer. It never caches it.",
-    after: "The desk trusts that answer. The ledger answers in 9 milliseconds though it holds many rows per dock, and the desk never caches it.",
+    after: "The desk trusts that answer. The ledger answers in 9 milliseconds though it holds rows per dock, and the desk never caches it.",
     labels: ["50 rows per dock"],
   }],
   k1: ["ch3", {
