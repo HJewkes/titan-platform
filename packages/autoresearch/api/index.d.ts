@@ -252,7 +252,7 @@ declare const TargetSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strip>;
 type Target = z.infer<typeof TargetSchema>;
-/** A result schema that also requires every metric the keep rule reads, so a run missing one fails its eval step. */
+/** A result schema that also requires every metric the keep rule reads, the gates of an allGate target and each zero-tolerance violation count, so a run missing one fails its eval step. */
 declare function resultSchemaFor(metric: MetricSpec): z.ZodType<ArResult>;
 
 declare const REGISTRY_TAIL = 40;
