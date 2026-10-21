@@ -40,7 +40,8 @@ describe("the run view schema", () => {
 
   it("reads a round whose planner gave no quota exemption as exempting nothing", () => {
     const [first, ...rest] = AR_RUN_FIXTURE.rounds;
-    const { exempt: _omitted, ...withoutExempt } = first!;
+    const withoutExempt: Record<string, unknown> = { ...first! };
+    delete withoutExempt.exempt;
 
     const parsed = ArRunViewSchema.parse({ ...AR_RUN_FIXTURE, rounds: [withoutExempt, ...rest] });
 
@@ -48,7 +49,8 @@ describe("the run view schema", () => {
   });
 
   it("refuses a runs row without its current round, which the Round column shows", () => {
-    const { round: _omitted, ...row } = AR_RUN_SUMMARY;
+    const row: Record<string, unknown> = { ...AR_RUN_SUMMARY };
+    delete row.round;
     expect(ArRunSummarySchema.safeParse(row).success).toBe(false);
   });
 

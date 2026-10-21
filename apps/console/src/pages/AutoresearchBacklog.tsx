@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Typography,
 } from "@titan-design/react-ui";
 import type { ArIdea, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { shortId } from "./autoresearch-format.js";
@@ -25,6 +26,8 @@ import { shortId } from "./autoresearch-format.js";
 interface Quota {
   tone: PillTone;
   text: string;
+  /** The planner's own words, which can run long, so they wrap as text beside the pill. */
+  reason?: string;
 }
 
 /** Design §1.2: the planner queue after the newest round's picks, highest priority first, under its quota strip. */
@@ -49,9 +52,12 @@ export function AutoresearchBacklog({ run }: { run: ArRunView }): ReactNode {
 
 function QuotaPill({ quota }: { quota: Quota }): ReactNode {
   return (
-    <Pill variant="subtle" size="xs" tone={quota.tone}>
-      {quota.text}
-    </Pill>
+    <HStack gap={2} align="center" justify="end" wrap>
+      <Pill variant="subtle" size="xs" tone={quota.tone}>
+        {quota.text}
+      </Pill>
+      {quota.reason === undefined ? null : <Typography variant="caption">{quota.reason}</Typography>}
+    </HStack>
   );
 }
 
@@ -65,7 +71,7 @@ function poolQuota(round: ArRound, minPool: number): Quota {
 /** The planner owes a bold idea each round, or an `[EXEMPT]` reason; requeues are not its adds. */
 function boldQuota(round: ArRound): Quota {
   if (addedThisRound(round).some((idea) => idea.bold)) return { tone: "success", text: "met" };
-  if (round.exempt.bold !== undefined) return { tone: "info", text: `[EXEMPT] ${round.exempt.bold}` };
+  if (round.exempt.bold !== undefined) return { tone: "info", text: "[EXEMPT]", reason: round.exempt.bold };
   return { tone: "error", text: "missed" };
 }
 
@@ -74,7 +80,7 @@ function followupQuota(round: ArRound, previous: ArRound | undefined): Quota {
   const keptLastRound = previous?.ladders.some((ladder) => ladder.outcome?.verdict === "kept") ?? false;
   if (!keptLastRound) return { tone: "neutral", text: "not due: nothing kept last round" };
   if (addedThisRound(round).some((idea) => idea.source === "followup")) return { tone: "success", text: "met" };
-  if (round.exempt.followup !== undefined) return { tone: "info", text: `[EXEMPT] ${round.exempt.followup}` };
+  if (round.exempt.followup !== undefined) return { tone: "info", text: "[EXEMPT]", reason: round.exempt.followup };
   return { tone: "error", text: "missed" };
 }
 
