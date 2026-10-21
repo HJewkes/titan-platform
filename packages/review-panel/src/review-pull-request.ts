@@ -135,7 +135,7 @@ async function correctOnce(run: Run, state: MemberState, name: string, result: O
   if (!malformed || state.corrected) return result;
   state.corrected = true;
   const dispatchedAt = run.ports.clock.now();
-  const prompt = correctionPrompt({ ...run.target, refusal: malformed.refusal, ...(run.request.brief.ownerBrief && { ownerBrief: true }) });
+  const prompt = correctionPrompt({ ...run.target, refusal: malformed.refusal, ...(malformed.quotes && { quotes: malformed.quotes }), ...(run.request.brief.ownerBrief && { ownerBrief: true }) });
   if (!(await run.ports.dispatch.resume(name, prompt).then(() => true, () => false))) return result;
   const input = await awaitStart(run, name, dispatchedAt);
   return input ? awaitMember(run, input) : { kind: "timeout" };

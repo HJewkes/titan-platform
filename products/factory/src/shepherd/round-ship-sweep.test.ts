@@ -98,6 +98,37 @@ describe("roundShips", () => {
     expect(shipFor101([stored(1, 0, allShipped)], heldAt)).toMatchObject({ kind: "pending", reason: expect.stringContaining("held: g10 review") });
   });
 
+  describe("a merge-guard gate on PR 101", () => {
+    const guarded = (rowId: string): { guardGates: PendingGate[]; guardRuns: WorkflowRun[] } => ({
+      guardGates: recase(gates, "Policy shepherd-seat/implementer: visual PRs wait", `Policy shepherd-merge-guard/${rowId}: the owner decides visual changes`),
+      guardRuns: recase(runs, '\\"table\\": \\"shepherd-seat\\", \\"rowId\\": \\"implementer\\"', `\\"table\\": \\"shepherd-merge-guard\\", \\"rowId\\": \\"${rowId}\\"`),
+    });
+    const guardShip = (rowId: string, rounds: StoredRound[], heldAt: HeldAt = notHeld) => {
+      const { guardGates, guardRuns } = guarded(rowId);
+      return roundShips(rounds, guardGates, guardRuns, NOW, heldAt).find((each) => ("pr" in each ? each.pr.endsWith("#101") : each.runId === "run-101"));
+    };
+
+    it("a visual-path gate is answered by a Ship at its head", () => {
+      expect(guardShip("visual-path", [stored(1, 0, allShipped)])).toMatchObject({ kind: "resolve", runId: "run-101", payload: { decision: "merge", headSha: H1 } });
+    });
+
+    it("a visual-path gate stays pending when the Ship is for another head", () => {
+      const { guardGates, guardRuns } = guarded("visual-path");
+      const moved = recase(guardGates, `at head ${H1}`, `at head ${"c3".repeat(20)}`);
+      const result = roundShips([stored(1, 0, allShipped)], moved, recase(guardRuns, H1, "c3".repeat(20)), NOW, notHeld);
+      expect(result.find((each) => ("pr" in each ? each.pr.endsWith("#101") : each.runId === "run-101"))).toMatchObject({ kind: "pending" });
+    });
+
+    it("another merge-guard kind stays pending", () => {
+      expect(guardShip("skill-path", [stored(1, 0, allShipped)])).toMatchObject({ kind: "pending", reason: expect.stringContaining("shepherd-merge-guard/skill-path") });
+    });
+
+    it("a held visual-path gate stays pending", () => {
+      const heldAt: HeldAt = (_repo, pr, headSha) => (pr === 101 && headSha === H1 ? "g10 review" : undefined);
+      expect(guardShip("visual-path", [stored(1, 0, allShipped)], heldAt)).toMatchObject({ kind: "pending", reason: expect.stringContaining("held: g10 review") });
+    });
+  });
+
   it("a route gate at a shipped head stays pending: the round showed the render, not that decision", () => {
     const conflict = roundShips([stored(1, 0, allShipped)], gates, runs, NOW, notHeld).find((each) => "pr" in each && each.pr.endsWith("#104"));
     expect(conflict).toMatchObject({ kind: "pending", reason: expect.stringContaining("shepherd-route/conflict") });

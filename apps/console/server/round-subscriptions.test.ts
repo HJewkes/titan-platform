@@ -206,10 +206,10 @@ describe("rounds import --seat, then the owner answers", () => {
     const manifestSha256 = createHash("sha256").update(await readFile(path.join(IMPORT_FIXTURE, "round.json"))).digest("hex");
     const submit = roundsSubmitCommands({ dir: config.roundsDir }, undefined, listeners())["rounds.submit"];
 
-    await invokeCommand(submit, { id: "sample-batch-r2", manifestSha256, answers: [{ questionId: "ship-cards", pick: "Don't ship" }] }, ownerContext());
+    await invokeCommand(submit, { id: "sample-batch-r2", manifestSha256, answers: [{ questionId: "ship-cards", pick: "Don't ship", comment: "The card edge clips." }] }, ownerContext());
     await listeners().sweep();
 
-    expect(sent).toEqual([{ seat: "seat-importer", text: answerNotice("sample-batch-r2", feedbackPath("sample-batch-r2"), "asker", false) }]);
+    expect(sent).toEqual([{ seat: "seat-importer", text: answerNotice("sample-batch-r2", feedbackPath("sample-batch-r2"), "asker", true) }]);
   });
 });
 

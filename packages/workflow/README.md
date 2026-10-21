@@ -116,6 +116,18 @@ paused inside `assisted("x")` after a `dispatch("x")` is still waiting on
 `<runId>/x`, so `assisted` adopts a gate that is still pending there when the
 bare key holds no result.
 
+## Capabilities
+
+A runtime can hold handles a step body needs but the record must never see, such as a bot client:
+
+```ts
+const rt = new WorkflowRuntime({ ...options, capabilities: { "github-bot": { handle: client, secrets: [token] } } });
+// in a workflow
+const bot = ctx.capability("github-bot") as BotClient;
+```
+
+`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured.
+
 ## Authority steps
 
 `authorize(stepId, request, { prompt?, expiresAt?, brief? })` asks the authority table

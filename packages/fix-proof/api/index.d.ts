@@ -257,7 +257,7 @@ declare const TEST_CLASSES: readonly ["reproduces", "passes-on-base", "new-api",
 type TestClass = (typeof TEST_CLASSES)[number];
 declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error"];
 type Verdict = (typeof VERDICTS)[number];
-type FileState = "ran" | "load-error" | "not-collected";
+type FileState = "ran" | "load-error" | "hook-error" | "not-collected";
 interface ReportRun {
     /** Absolute directory the report's file paths are relative to. */
     root: string;

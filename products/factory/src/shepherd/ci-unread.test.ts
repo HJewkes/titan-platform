@@ -24,6 +24,7 @@ function contextAt(next: string | undefined): { ctx: WorkflowContext; dispatched
     historyNext: () => next,
     resumedGate: () => undefined,
     recoveredInFlight: () => [],
+    capability: () => { throw new Error("no capabilities in this fake"); },
     expireGates: () => [],
     dispatch: async (stepId, _template, options) => {
       dispatched.push(stepId);

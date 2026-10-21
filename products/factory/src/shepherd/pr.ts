@@ -38,7 +38,7 @@ import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
-import { countRound, endedOutcome, type Routed } from "./routed.js";
+import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { fixConflict } from "./conflict-demotion.js";
@@ -48,16 +48,17 @@ import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
-import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
+import { convergenceOf, withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
 import { autoPassRoute } from "./auto-pass.js";
-import { countConflictRound, noteReviewerAccount, onEscalated, type FailedRoundsState } from "./failed-rounds-demotion.js";
+import { countConflictRound, noteReviewerAccount, type FailedRoundsState } from "./failed-rounds-demotion.js";
+import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -110,7 +111,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
-    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0 },
+    ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const checked = checkedBaseTap();
@@ -203,19 +204,21 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     historyNext: () => ctx.historyNext(),
     resumedGate: () => ctx.resumedGate(),
     recoveredInFlight: () => ctx.recoveredInFlight(),
+    capability: (name) => ctx.capability(name),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, askingOnlyOverMerge(run, recordingOverrides(followingApprovals(ctx, conflictCheckedGates(
       packetTriggering(packetRunOf(run), supersedingGates(ctx, supersede, () => (run.carried = undefined))), conflictCheck, leaveOnConflict), { ...setCarryOf(run, isVisualGate), reviewedMerge }),
-      reviewedMerge, (override) => recordOverride(ctx, run.target, override))),
+      reviewedMerge, (override) => recordOverride(ctx, run.target, override)))),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
-    dispatch: async (stepId, template, options) => {
-      const done = await ctx.dispatch(stepId, template, options);
-      if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
-      if (stepIdMatches("update-branch", stepId)) onUpdated(run, done.data?.result);
-      return done;
-    },
+    dispatch: async (stepId, template, options) => readDispatch(run, stepId, await ctx.dispatch(stepId, template, options)),
   };
+}
+
+async function readDispatch<R extends { data?: { result?: unknown } }>(run: ShepherdRun, stepId: string, done: R): Promise<R> {
+  if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
+  if (stepIdMatches("update-branch", stepId)) onUpdated(run, done.data?.result);
+  return done;
 }
 
 /** A reviewable head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
@@ -250,7 +253,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
   const escalated = await countRound(run, routed);
-  if (escalated) return onEscalated(run, headSha, escalated);
+  if (escalated) return routeEscalation(run, headSha, escalated);
   switch (route) {
     case "merge":
       return true;
@@ -289,7 +292,7 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tap, run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
-  const request = { ...run.target, round: run.state.round, headSha };
+  const request = { ...run.target, round: run.state.round, headSha, ...convergenceOf(run, headSha) };
   const billing = tapped(run.ctx, (stepId, result) => noteReviewerAccount(run, stepId, result));
   const verdict = await reviewKeepingSeatHold(run.seatHeld, headSha, (seatHeld) =>
     run.phases.review(billing, { ...request, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) }));

@@ -18,6 +18,7 @@ function fakeContext(): WorkflowContext {
     historyNext: () => undefined,
     resumedGate: () => undefined,
     recoveredInFlight: () => [],
+    capability: () => { throw new Error("no capabilities in this fake"); },
     expireGates: () => [],
     dispatch: unused,
     seed: unused,

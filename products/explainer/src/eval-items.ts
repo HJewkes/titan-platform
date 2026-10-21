@@ -2,13 +2,13 @@ import { z } from "zod";
 import { chaptersOf, ODD_ONE_OUT_MIN_ITEMS, type ColdChapterBeats } from "./eval-cold.js";
 import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, formatEvidence, voidReason } from "./eval-evidence.js";
+import { explainItemRoutes, roleAsks, roleVersionParts, type ItemExplainRoute } from "./eval-items-roles.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { kindRoutes, spineSeats, type KindRoute, type SpineSeat } from "./eval-items-spine.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
-import { explainRoutes, type ExplainRoute } from "./lint-gloss.js";
 import { seatRoutes, type SeatReason, type SeatRoute } from "./lint-seat.js";
 import type { PaceBeat } from "./pace-items.js";
-import type { SpineV1 } from "./spine-schema.js";
+import { contrastBeats, type SpineV1 } from "./spine-schema.js";
 
 export const ITEMS_EVAL_ID = "L1-items";
 
@@ -20,9 +20,11 @@ export interface ListRoute {
   items: string[];
 }
 
+export type { ExplainRole, ItemExplainRoute } from "./eval-items-roles.js";
+
 /** The L0 route lists: the item judge asks about these beats and items and nothing else. */
 export interface ItemRoutes {
-  explain: readonly ExplainRoute[];
+  explain: readonly ItemExplainRoute[];
   seat: readonly SeatRoute[];
   lists: readonly ListRoute[];
 }
@@ -38,7 +40,7 @@ export function listRoutes(beats: readonly PaceBeat[]): ListRoute[] {
 }
 
 export const itemRoutes = (beats: readonly PaceBeat[], invariants: readonly string[]): ItemRoutes => ({
-  explain: explainRoutes(beats),
+  explain: explainItemRoutes(beats),
   seat: seatRoutes(beats, invariants),
   lists: listRoutes(beats),
 });
@@ -59,12 +61,17 @@ const seatedText = (beat: string, reason: SeatReason): string =>
 const oddOneOutText = (beat: string, items: readonly string[]): string =>
   `In ${beat}, of ${items.map((i) => `"${i}"`).join(", ")}: which item is a different kind of thing, if any?`;
 
-const explainedQuestion = (beat: string, item: string): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: explainedText(beat, item) });
+const explainedQuestion = (beat: string, item: string, text = explainedText): ItemQuestion => ({ kind: "explained", beat, subject: item, options: [], text: text(beat, item) });
+
+function explainedQuestions(route: ItemExplainRoute): ItemQuestion[] {
+  const asked = roleAsks(route);
+  return asked.items.map((item) => explainedQuestion(route.beat, item, asked.text ?? explainedText));
+}
 
 /** Every question is read off a route, so a script cannot pass on questions written to suit it. */
 export function itemQuestions(routes: ItemRoutes): ItemQuestion[] {
   return [
-    ...routes.explain.flatMap((r) => r.items.map((item) => explainedQuestion(r.beat, item))),
+    ...routes.explain.flatMap(explainedQuestions),
     ...routes.seat.map((r): ItemQuestion => ({ kind: "seated", beat: r.beat, subject: r.reason, options: [], text: seatedText(r.beat, r.reason) })),
     ...routes.lists.map((r): ItemQuestion => ({ kind: "odd-one-out", beat: r.beat, subject: r.items.join("; "), options: r.items, text: oddOneOutText(r.beat, r.items) })),
   ];
@@ -112,16 +119,17 @@ function seatQuestions(routes: ItemRoutes, seats: ReadonlyMap<string, SpineSeat>
 
 /**
  * With a spine, a list beat the ledger fully declares is asked whether each item is the kind declared, in place of
- * the blind odd one out, and an invariant seat is paired with its §4 part or failed without a call.
+ * the blind odd one out, and an invariant seat is paired with its §4 part or failed without a call. A `contrast` beat
+ * gets neither list question.
  */
 function spinePlan(routes: ItemRoutes, beats: readonly PaceBeat[], spine: SpineV1): QuestionPlan {
   const kinds = kindRoutes(routes.lists, spine);
-  const declaredBeats = new Set(kinds.map((k) => k.beat));
+  const skipped = new Set([...kinds.map((k) => k.beat), ...contrastBeats(spine)]);
   const seats = spineSeats(beats, routes.seat, spine);
   const questions = [
     ...itemQuestions({ explain: routes.explain, seat: [], lists: [] }),
     ...seatQuestions(routes, seats),
-    ...itemQuestions({ explain: [], seat: [], lists: routes.lists.filter((l) => !declaredBeats.has(l.beat)) }),
+    ...itemQuestions({ explain: [], seat: [], lists: routes.lists.filter((l) => !skipped.has(l.beat)) }),
     ...kinds.map(kindHonestQuestion),
   ];
   return { questions, ruled: [...seats.values()].filter((s) => s.part === null).map(unseatedVerdict) };
@@ -296,6 +304,7 @@ const spineQuestionTemplates = (): string[] => [
 export const itemsEvalVersion = (input: Pick<ItemsInput, "rubric" | "judge" | "spine">): string =>
   evalVersion(ITEMS_EVAL_ID, input.rubric, input.judge, {
     questions: [explainedText("<beat>", "<item>"), seatedText("<beat>", "invariant"), seatedText("<beat>", "finding"), oddOneOutText("<beat>", ["<a>", "<b>", "<c>"])],
+    ...roleVersionParts(),
     canary: CANARY_SPOKEN,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
     ...(input.spine ? { spine_questions: spineQuestionTemplates() } : {}),

@@ -6,7 +6,7 @@
  * The request is built only from files the console wrote or imported (`round.json`, `packet.json`,
  * `feedback.json`) and from the factory's own status row, never from the browser. The row's head
  * must equal the head the round showed, or nothing is posted and the outcome is `moved`. The
- * result is kept in `<round>/answer.json`, written once; while the factory is unreachable nothing
+ * result is kept in `<round>/answer.json`, written once, with one record per PR when the round has several; while the factory is unreachable nothing
  * is written, and `sweep` retries such rounds when the console starts.
  *
  * The other tells the seat that filed a round, every seat subscribed to it, or else tp-operator, that the owner
@@ -17,8 +17,7 @@ import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
-import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
-import { FeedbackDocument } from "./round2-adapter.js";
+import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { notifyRound } from "./round-asker.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
@@ -38,6 +37,8 @@ interface AnswerRecord {
   /** `runId` and `gateId` are absent when no status row or pending gate was found to name them. */
   request: { runId?: string; gateId?: string; headSha: string; choice: AnswerChoice };
   outcome: AnswerOutcome;
+  /** Present only for a round with several merge questions: every PR's request and outcome. */
+  answers?: { questionId: string; request: AnswerRecord["request"]; outcome: AnswerOutcome }[];
 }
 type ShipQuestion = Extract<Question, { kind: "pick-one" }>;
 type Merge = NonNullable<ShipQuestion["merge"]>;
@@ -70,6 +71,7 @@ export interface ListenerDeps {
 /** The owner's choice on one merge-bound question, with everything the round files bind it to. */
 interface RoundAnswer {
   roundId: string;
+  questionId: string;
   merge: Merge;
   verdict: Verdict;
   tree: string;
@@ -121,33 +123,38 @@ async function readRound(file: string): Promise<RoundRead> {
 
 type Verdict = "ship" | "send-back";
 
-/** Ship ships; the one other option sends back. A question with more options than that is not one this relays. */
-function verdictOf(question: ShipQuestion, merge: Merge, pick: string): Verdict | undefined {
+/**
+ * Ship ships; the one other option sends back. A question with more options than that is not one this relays.
+ * The feedback writes a pick of the round's `revisionOption` as a revision request, which sends back too.
+ */
+function verdictOf(question: ShipQuestion, merge: Merge, answer: Feedback["answers"][number]): Verdict | undefined {
+  if (answer.revisionRequested) return "send-back";
+  const { pick } = answer;
+  if (pick === undefined) return undefined;
   if (merge.ship.includes(pick)) return "ship";
   const others = question.options.filter((option) => !merge.ship.includes(option));
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
 
-/** Undefined unless the round is merge-bound, answered, and has the packet beside it. */
-async function readRoundAnswer(deps: ListenerDeps, roundId: string): Promise<RoundAnswer | undefined> {
+/** One answer per merge-bound question the owner answered, in round order; none unless the packet is beside the round. */
+async function readRoundAnswers(deps: ListenerDeps, roundId: string): Promise<RoundAnswer[]> {
   const dir = path.join(deps.roundsDir, roundId);
   const [round, feedback, packetBytes] = await Promise.all([
     readRound(path.join(dir, ROUND_FILE)),
-    readJson(path.join(dir, FEEDBACK_FILE), FeedbackDocument),
+    readJson(path.join(dir, FEEDBACK_FILE), FeedbackSchema),
     readFileCapped(path.join(dir, PACKET_FILE)),
   ]);
   if (round.invalid !== undefined && feedback) deps.logger?.warn({ roundId }, `${roundId}: round.json invalid; answer not relayed (${round.invalid})`);
   const { manifest } = round;
-  if (!manifest || !feedback || !packetBytes) return undefined;
-  for (const question of manifest.questions) {
-    const pick = feedback.answers.find((answer) => answer.questionId === question.id)?.pick;
-    if (question.kind !== "pick-one" || !question.merge || pick === undefined) continue;
-    const verdict = verdictOf(question, question.merge, pick);
-    const tree = packetHeadTree(packetBytes);
-    if (verdict === undefined || tree === undefined) return undefined;
-    return { roundId, merge: question.merge, verdict, tree, packetSha: sha256(packetBytes) };
-  }
-  return undefined;
+  const tree = packetBytes && packetHeadTree(packetBytes);
+  if (!manifest || !feedback || !packetBytes || tree === undefined) return [];
+  const packetSha = sha256(packetBytes);
+  return manifest.questions.flatMap((question) => {
+    const answer = feedback.answers.find((each) => each.questionId === question.id);
+    if (question.kind !== "pick-one" || !question.merge || answer === undefined) return [];
+    const verdict = verdictOf(question, question.merge, answer);
+    return verdict === undefined ? [] : [{ roundId, questionId: question.id, merge: question.merge, verdict, tree, packetSha }];
+  });
 }
 
 function packetHeadTree(bytes: Buffer): string | undefined {
@@ -218,15 +225,38 @@ const exists = (file: string): Promise<boolean> =>
     (error: unknown) => errnoOf(error) !== "ENOENT",
   );
 
+type Answered = { answer: RoundAnswer; record: AnswerRecord };
+
+/** The factory's verdict on one PR's answer; undefined while it cannot be reached. */
+async function answerQuestion(deps: ListenerDeps, answer: RoundAnswer, at: Date): Promise<Answered | undefined> {
+  const decision = await bindGate(deps.shepherd, answer);
+  const outcome = decision.request ? await deps.answer.post(decision.request) : decision.outcome;
+  return outcome.status === "unreachable" ? undefined : { answer, record: recordOf(answer, decision, outcome, at) };
+}
+
+/**
+ * A round with one merge question keeps the one-record file. With several (TP-3329), the first PR's record stays on top,
+ * where `readAnswer` reads it, and `answers` holds every PR's, each under its question id.
+ */
+function fileOf(first: Answered, answered: readonly Answered[]): AnswerRecord {
+  if (answered.length < 2) return first.record;
+  return { ...first.record, answers: answered.map(({ answer, record }) => ({ questionId: answer.questionId, request: record.request, outcome: record.outcome })) };
+}
+
+/** Every PR's answer is posted before the file is written, so one unreachable PR leaves the whole round to the sweep. */
 async function answerRound(deps: ListenerDeps, roundId: string): Promise<void> {
   const dir = path.join(deps.roundsDir, roundId);
   if (await exists(path.join(dir, ANSWER_FILE))) return;
-  const answer = await readRoundAnswer(deps, roundId);
-  if (!answer) return;
-  const decision = await bindGate(deps.shepherd, answer);
-  const outcome = decision.request ? await deps.answer.post(decision.request) : decision.outcome;
-  if (outcome.status === "unreachable") return;
-  await writeOnce(path.join(dir, ANSWER_FILE), recordOf(answer, decision, outcome, (deps.now ?? (() => new Date()))()));
+  const answers = await readRoundAnswers(deps, roundId);
+  const at = (deps.now ?? (() => new Date()))();
+  const answered: Answered[] = [];
+  for (const answer of answers) {
+    const each = await answerQuestion(deps, answer, at);
+    if (each === undefined) return;
+    answered.push(each);
+  }
+  const [first] = answered;
+  if (first !== undefined) await writeOnce(path.join(dir, ANSWER_FILE), fileOf(first, answered));
 }
 
 async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {

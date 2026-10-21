@@ -198,6 +198,30 @@ function strictestCiPolicy(readings: CiPolicy[]): CiPolicy {
   return readings.some((reading) => reading.kind === "malformed") ? { kind: "malformed" } : { kind: "unchanged" };
 }
 
+const CANONICAL_VERDICT_LINE = /^Verdict: (MERGE|FIX_FIRST|WAIT)$/;
+
+/**
+ * The raw lines that made `text` refuse as `multiple_blocks` or `ci_policy_malformed`, trimmed, so a correction can quote
+ * them. A canonical line is never blamed while another line is: the prose line is the one to reword. When every
+ * labelled line is canonical, all are returned, since the reviewer then wrote the label twice.
+ */
+export function refusedLines(text: string, refusal: VerdictBlockRefusal | "ci_policy_malformed"): string[] {
+  if (refusal === "multiple_blocks") return blamed(visibleLines(text).filter((line): line is string => line?.startsWith("Verdict:") === true), (line) => CANONICAL_VERDICT_LINE.test(line));
+  if (refusal !== "ci_policy_malformed") return [];
+  const block = parseVerdictBlock(text);
+  const canonicalAt = "lineOffset" in block ? block.lineOffset + 3 : -1;
+  const labelled = text.split("\n").flatMap((raw, index) => {
+    if (!foldCiPolicyLine(raw).startsWith(CI_POLICY_LABEL)) return [];
+    return [{ line: raw.trim(), canonical: index === canonicalAt && raw.trim() === CI_POLICY_UNCHANGED_LINE }];
+  });
+  return blamed(labelled, (entry) => entry.canonical).map((entry) => entry.line);
+}
+
+function blamed<T>(found: T[], canonical: (item: T) => boolean): T[] {
+  const others = found.filter((item) => !canonical(item));
+  return others.length > 0 ? others : found;
+}
+
 function isDotName(name: string): boolean {
   return name === "." || name === "..";
 }

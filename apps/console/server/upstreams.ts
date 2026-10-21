@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
 import type { ConsoleSources } from "./commands.js";
@@ -155,6 +156,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
+    autoresearch: autoresearchReader(config.factoryPort),
     coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,

@@ -34,6 +34,7 @@ import { watchRow } from "./view.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 import { OWNER } from "../test-support/resolver.js";
 import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
+import { withDemotionOff } from "../test-support/gate-demotions.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -472,6 +473,9 @@ describe("a pull request whose base moved into a conflict while approve-merge wa
 });
 
 describe("the route table in a run", () => {
+  // These pin the runaway and no-progress owner gates, which D8's flag set false restores (TP-3734).
+  withDemotionOff("fixFirstRunaway");
+
   const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
   const locator = transcriptLocator();
   const merges = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>

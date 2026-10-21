@@ -177,4 +177,20 @@ describe("classifyReports", () => {
   it("gives error for an unsafe selected path", () => {
     expect(classifyReports(input(["../a.test.ts"], report(), report())).verdict).toBe("error");
   });
+
+  it("reports an error, not a vacuous run, when a base hook failure skipped every test in a file", () => {
+    const hookFailed = fileResult("a.test.ts", [{ name: "opens", status: "skipped" }, { name: "closes", status: "skipped" }], "failed");
+    const result = classifyReports(input(["a.test.ts"], report(hookFailed), report(fileResult("a.test.ts", [passing("opens"), passing("closes")]))));
+
+    expect(result.verdict).toBe("error");
+    expect(result.error).toMatch(/base: .*hook/);
+    expect(result.files).toEqual([{ file: "a.test.ts", base: "hook-error", head: "ran" }]);
+  });
+
+  it("still calls a file with deliberately skipped tests vacuous", () => {
+    const skipped = fileResult("a.test.ts", [{ name: "later", status: "skipped" }]);
+    const result = classifyReports(input(["a.test.ts"], report(skipped), report(fileResult("a.test.ts", [passing("later")]))));
+
+    expect(result.verdict).toBe("vacuous");
+  });
 });

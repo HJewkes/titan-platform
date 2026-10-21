@@ -2,6 +2,7 @@ import {
   CONTEXTS_QUERY,
   REVIEWS_QUERY,
   SNAPSHOT_QUERY,
+  TRAIN_PREFIX,
   postWhole,
   type GhCommit,
   type GhConnection,
@@ -10,6 +11,7 @@ import {
   type GhDonePr,
   type GhHistoryTarget,
   type GhOpenPr,
+  type GhRef,
   type GhReview,
   type GhReviews,
   type GhReviewsData,
@@ -19,10 +21,10 @@ import {
 import type { Rest } from "./rest.js";
 
 export type { RateLimit } from "./backstop-query.js";
-export { graphqlPoints, snapshotRequests } from "./backstop-query.js";
+export { graphqlPoints, snapshotRequests, TRAIN_PREFIX } from "./backstop-query.js";
 
 /** Page caps per range: past one, the read throws rather than answer a range cut short. */
-export const BACKSTOP_CAPS = { open: 20, done: 10, main: 20, contexts: 10, reviews: 10 } as const;
+export const BACKSTOP_CAPS = { open: 20, done: 10, main: 20, contexts: 10, reviews: 10, trains: 4 } as const;
 
 export type BackstopRange = keyof typeof BACKSTOP_CAPS;
 
@@ -53,7 +55,7 @@ export interface BackstopRequest {
 
 export type RollupContext =
   | { kind: "check"; databaseId: number; name: string; status: string; conclusion: string | null; completedAt: string | null }
-  | { kind: "status"; context: string; state: string; createdAt: string };
+  | { kind: "status"; context: string; state: string; createdAt: string; creator?: string | null };
 
 export type BackstopReview = GhReview;
 
@@ -82,11 +84,18 @@ export interface BackstopDonePr {
   updatedAt: string;
 }
 
+/** A `shepherd-train/**` branch head; `ref` is the full branch name. */
+export interface BackstopTrain {
+  ref: string;
+  oid: string;
+}
+
 export interface BackstopSnapshot {
   open: BackstopOpenPr[];
   done: BackstopDonePr[];
   /** `tip` is the branch head at the first page; `commits` are newest first, back to the cursor or `since`. */
   main: { tip: string; commits: BackstopCommit[] };
+  trains: BackstopTrain[];
   /** `cost` sums every query the read sent; `remaining` and `resetAt` are the last query's. */
   rateLimit: RateLimit & { queries: number };
 }
@@ -102,6 +111,7 @@ interface Pending {
   done: GhDonePr[];
   tip: string | null;
   commits: GhCommit[];
+  trains: GhRef[];
 }
 
 /**
@@ -126,6 +136,7 @@ export async function readBackstopSnapshot(api: Rest, request: BackstopRequest):
     })),
     done: pending.done.map(donePr),
     main: { tip: pending.tip, commits: await sequential(pending.commits, (commit) => wholeContexts(post, commit)) },
+    trains: pending.trains.flatMap((ref) => (ref.target ? [{ ref: `${TRAIN_PREFIX}${ref.name}`, oid: ref.target.oid }] : [])),
     rateLimit: meter.total(),
   };
 }
@@ -136,22 +147,25 @@ async function readRanges(post: Post, request: BackstopRequest): Promise<Pending
   const open = startRange();
   const done = startRange();
   const history = startRange();
+  const trains = startRange();
   const doneFloor = Date.parse(request.doneSince) - DONE_OVERLAP_MS;
-  const pending: Pending = { open: [], done: [], tip: null, commits: [] };
-  while (open.more || done.more || history.more) {
+  const pending: Pending = { open: [], done: [], tip: null, commits: [], trains: [] };
+  while (open.more || done.more || history.more || trains.more) {
     const variables = {
       branch: `refs/heads/${request.branch}`,
       since: request.since,
       ...pageVariables("open", open, "openAfter"),
       ...pageVariables("done", done, "doneAfter"),
       ...pageVariables("main", history, "historyAfter"),
+      ...pageVariables("trains", trains, "trainsAfter"),
     };
-    const page = await post<GhSnapshotData>("backstop snapshot", SNAPSHOT_QUERY, { ...variables, withOpen: open.more, withDone: done.more, withHistory: history.more });
+    const page = await post<GhSnapshotData>("backstop snapshot", SNAPSHOT_QUERY, { ...variables, withOpen: open.more, withDone: done.more, withHistory: history.more, withTrains: trains.more });
     const repository = page.repository;
     if (!repository) throw new Error(`backstop snapshot of ${request.repo} unreadable: no repository`);
     if (repository.open) pending.open.push(...advance(open, repository.open));
     if (repository.done) pending.done.push(...readDone(done, repository.done, doneFloor));
     if (repository.ref !== undefined) readHistory(pending, history, repository.ref?.target ?? null, request.mainCursor);
+    if (repository.trains) pending.trains.push(...advance(trains, repository.trains));
   }
   return pending;
 }
@@ -226,7 +240,7 @@ async function wholeReviews(post: Post, number: number, first: GhReviews): Promi
 
 function rollupContext(node: GhContext): RollupContext {
   if (node.__typename === "CheckRun") return { kind: "check", databaseId: node.databaseId, name: node.name, status: node.status, conclusion: node.conclusion, completedAt: node.completedAt };
-  return { kind: "status", context: node.context, state: node.state, createdAt: node.createdAt };
+  return { kind: "status", context: node.context, state: node.state, createdAt: node.createdAt, creator: node.creator?.login ?? null };
 }
 
 function donePr(pr: GhDonePr): BackstopDonePr {

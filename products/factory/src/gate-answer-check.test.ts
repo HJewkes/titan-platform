@@ -94,6 +94,7 @@ interface RoundOptions {
   general?: string;
   comment?: string;
   questionOptions?: string[];
+  variants?: unknown[];
 }
 
 function roundFiles(pr: number, options: RoundOptions = {}) {
@@ -101,7 +102,7 @@ function roundFiles(pr: number, options: RoundOptions = {}) {
   const round = bytes({ unit: "example-unit", round: 1, questions: [{ id: "q-ship", kind: "pick-one", options: options.questionOptions ?? ["Ship it", "Revise"], merge }] });
   const answer = { questionId: "q-ship", pick: options.pick ?? "Ship it", ...(options.revisionRequested ? { revisionRequested: true } : {}), ...(options.comment !== undefined && { comment: options.comment }) };
   const submittedAt = new Date(NOW.getTime() - (options.ageMs ?? 10 * MINUTE)).toISOString();
-  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }], ...(options.general !== undefined && { general: options.general }) });
+  const feedback = bytes({ unit: "example-unit", round: 1, manifestSha256: options.manifestSha256 ?? hash(round), submittedAt, answers: [answer, { questionId: "q-other", comment: "not about the merge" }], ...(options.general !== undefined && { general: options.general }), ...(options.variants && { variants: options.variants }) });
   const packet = bytes({ schema: "titan-review/ci-packet@1", packetId: "p-1", repo: REPO, pr, headSha: H, headTree: TREE, mainSha: sha("e"), images: [], warnings: [], ...options.packet });
   return { round, feedback, packet };
 }
@@ -268,6 +269,34 @@ describe("checkAnswer", () => {
     const outcome = await check(w, { pick: "Revise", revisionRequested: true, general: "x".repeat(MAX_NOTE_CHARS + 10) }, { choice: "send-back" });
 
     expect(outcome).toMatchObject({ kind: "resolve", payload: { note: "x".repeat(MAX_NOTE_CHARS) } });
+  });
+
+  const frame = (key: string, comment: string, annotations: unknown[] = []) => ({ key, verdict: "rejected", comment, annotations });
+
+  it("resolves a Send back that has only a frame comment, with the frame line in the note", async () => {
+    const w = await world();
+
+    const outcome = await check(w, { pick: "Revise", general: "", variants: [frame("a", "Too cramped.")] }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ kind: "resolve", payload: { decision: "send-back", note: "frame a (rejected): Too cramped." } });
+  });
+
+  it("renders a pin with percent coordinates, its target and its note", async () => {
+    const w = await world();
+    const pin = { id: "a-1", width: 1280, x: 320, y: 90, xPct: 0.25, yPct: 0.125, target: { testId: "save-button" }, note: "Misaligned." };
+
+    const outcome = await check(w, { pick: "Revise", variants: [frame("a", "Off.", [pin, { ...pin, id: "a-2", target: undefined, note: "Also." }])] }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ payload: { note: "frame a (rejected): Off.\n  pin 1 at 25%,13% [save-button]: Misaligned.\n  pin 2 at 25%,13%: Also." } });
+  });
+
+  it("keeps the general note whole and cuts frame lines when the note is over the cap", async () => {
+    const w = await world();
+    const general = "g".repeat(MAX_NOTE_CHARS - 60);
+
+    const outcome = await check(w, { pick: "Revise", general, variants: [frame("a", "short"), frame("b", "y".repeat(200))] }, { choice: "send-back" });
+
+    expect(outcome).toMatchObject({ payload: { note: `${general}\n\nframe a (rejected): short` } });
   });
 
   it("refuses a send-back whose feedback holds no words for the implementer", async () => {

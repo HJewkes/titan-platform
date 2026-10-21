@@ -228,3 +228,44 @@ describe("conditional open-PR list over the fake", () => {
     expect(fake.notModified).toBe(1);
   });
 });
+
+describe("conditional ref and rulesets reads over the fake", () => {
+  it("answers 304 for an unchanged branch tip, a new ETag once it moves, and a null tip for a missing branch", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+
+    const first = await port.revalidateRef(REPO, "main", null);
+    const etag = first.notModified ? null : first.etag;
+    const unchanged = await port.revalidateRef(REPO, "main", etag);
+    fake.refs.set("main", ADVANCED);
+    const moved = await port.revalidateRef(REPO, "main", etag);
+    const missing = await port.revalidateRef(REPO, "gone", etag);
+
+    expect(first).toMatchObject({ notModified: false, sha: BASE });
+    expect(unchanged).toEqual({ notModified: true });
+    expect(moved).toMatchObject({ notModified: false, sha: ADVANCED });
+    expect(missing).toEqual({ notModified: false, sha: null, etag: null });
+    expect(fake.notModified).toBe(1);
+  });
+
+  it("answers rulesets by id until one is updated, then a new list; a free-plan repo answers unreadable", async () => {
+    const fake = fakeGitHub();
+    fake.rulesets.set(11, "2026-10-01T00:00:00Z");
+    const port = githubPort(fake.wire);
+
+    const first = await port.revalidateRulesets(REPO, null);
+    const etag = first.notModified || first.unreadable ? null : first.etag;
+    const unchanged = await port.revalidateRulesets(REPO, etag);
+    fake.rulesets.set(11, "2026-10-05T00:00:00Z");
+    const updated = await port.revalidateRulesets(REPO, etag);
+    fake.rulesetsFreePlan = true;
+    const freePlan = await port.revalidateRulesets(REPO, etag);
+
+    expect(first).toMatchObject({ notModified: false, unreadable: false, rulesets: { 11: "2026-10-01T00:00:00Z" } });
+    expect(unchanged).toEqual({ notModified: true });
+    expect(updated).toMatchObject({ rulesets: { 11: "2026-10-05T00:00:00Z" } });
+    expect(freePlan).toEqual({ notModified: false, unreadable: true });
+    expect(fake.calls.filter((call) => call === "revalidateRulesets")).toHaveLength(4);
+    expect(fake.notModified).toBe(1);
+  });
+});

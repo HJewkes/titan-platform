@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { fileRound } from "./round-file.js";
@@ -68,6 +69,17 @@ describe("filing a decision round", () => {
     const again = await fileRound({ body, roundsDir, asker: { seat: "other-seat", initiative: null } });
 
     expect(again).toEqual({ id: QUESTIONS_ONLY, created: false, ...ASKER });
+  });
+
+  it("refuses a round that breaks the builder rules, naming the rule, and writes nothing", async () => {
+    const round = z.looseObject({ questions: z.array(z.looseObject({ id: z.string() })) }).parse(JSON.parse(await fixture(QUESTIONS_ONLY)));
+    round.questions = round.questions.map((question) => (question.id === "ramp-default" ? { ...question, decision: "decide" } : question));
+
+    await expect(fileRound({ body: JSON.stringify(round), roundsDir, asker: ASKER })).rejects.toMatchObject({
+      message: expect.stringMatching(/^decision round refused: round\.json breaks the builder rules: missing-implemented-option: question ramp-default:/),
+      code: EXIT.DATAERR,
+    });
+    expect(await entries(roundsDir)).toEqual([]);
   });
 
   it("refuses a different round.json under an id already filed", async () => {

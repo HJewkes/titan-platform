@@ -52,6 +52,7 @@ export const answerNotice = (roundId: string, feedbackPath: string, reason: Noti
 const FreeTextFields = z.looseObject({
   general: z.string().optional(),
   answers: z.array(z.looseObject({ text: z.string().optional(), comment: z.string().optional(), optionNotes: z.array(z.unknown()).optional() })).optional(),
+  variants: z.array(z.looseObject({ comment: z.string().optional(), annotations: z.array(z.looseObject({ note: z.string().optional() })).optional() })).optional(),
 });
 
 const written = (text: string | undefined): boolean => text !== undefined && text.trim() !== "";
@@ -60,7 +61,12 @@ function carriesFreeText(feedback: StateFile): boolean {
   const fields = parseStateJson(feedback, FreeTextFields);
   if (fields === undefined) return false;
   const answers = fields.answers ?? [];
-  return written(fields.general) || answers.some((answer) => written(answer.text) || written(answer.comment) || (answer.optionNotes?.length ?? 0) > 0);
+  const frames = fields.variants ?? [];
+  return (
+    written(fields.general) ||
+    answers.some((answer) => written(answer.text) || written(answer.comment) || (answer.optionNotes?.length ?? 0) > 0) ||
+    frames.some((frame) => written(frame.comment) || (frame.annotations ?? []).some((pin) => written(pin.note)))
+  );
 }
 
 async function roundFacts(dir: string, id: string): Promise<RoundFacts> {

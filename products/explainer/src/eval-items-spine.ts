@@ -1,6 +1,6 @@
 import { speaks, type SeatRoute } from "./lint-seat.js";
 import { labelKey, type PaceBeat } from "./pace-items.js";
-import type { SpineLedgerRow, SpineV1 } from "./spine-schema.js";
+import { contrastBeats, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 
 type SpineKind = SpineLedgerRow["kind"];
 
@@ -14,11 +14,14 @@ const declared = (items: { label: string; kind: SpineKind | undefined }[]): item
 
 /**
  * List beats whose every item the ledger declares a kind for. A beat with an unledgered item is left to the blind
- * odd one out: Q-E17 already fails it, and a half-declared list would ask the judge about kinds nobody stated.
+ * odd one out: Q-E17 already fails it, and a half-declared list would ask the judge about kinds nobody stated. A
+ * beat the spine declares `contrast` mixes kinds by design, so it is never a kind route.
  */
 export function kindRoutes(lists: readonly { beat: string; items: readonly string[] }[], spine: SpineV1): KindRoute[] {
   const ledger = new Map(spine.ledger.map((row) => [labelKey(row.item), row.kind]));
+  const contrast = contrastBeats(spine);
   return lists.flatMap((list) => {
+    if (contrast.has(list.beat)) return [];
     const items = list.items.map((label) => ({ label, kind: ledger.get(labelKey(label)) }));
     return declared(items) ? [{ beat: list.beat, items }] : [];
   });

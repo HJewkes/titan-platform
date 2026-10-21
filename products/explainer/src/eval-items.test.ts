@@ -18,7 +18,10 @@ import { explainRoutes } from "./lint-gloss.js";
 import { seatRoutes } from "./lint-seat.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { buildPaceBeats, type PaceBeat, type PaceSourceBeat } from "./pace-items.js";
+import { v4Durations, v4FullScript } from "./spike-fixtures.test-helpers.js";
+import { fromSpikeScript } from "./spike-script.js";
 import { parseSpine } from "./spine-schema.js";
+import { readTiming } from "./timing.js";
 
 const rubric = readRubric("l1-items.md");
 
@@ -116,6 +119,125 @@ describe("item judge questions", () => {
     const asked = judge.calls.flatMap(promptQuestions).map((q) => q.text);
     expect(asked.filter((t) => t.includes("c1-2"))).toEqual([]);
     expect(asked).toHaveLength(itemQuestions(routes).length + 2);
+  });
+});
+
+describe("item judge questions by beat role", () => {
+  /** ch1 promises three moves and names three skipped details; ch2 lists three bare jobs. Each beat routes on M3. */
+  const roleTrack = (): PaceBeat[] =>
+    buildPaceBeats([
+      { ...source("c1-1", "ch1", "The desk keeps, drops and adds bins.", ["card:keeps", "card:drops", "card:adds"]), fn: "PROMISE" },
+      { ...source("c1-2", "ch1", "Customs holds, returns and refunds are left out; each is data, so the flow holds.", ["open:customs holds", "open:returns", "open:refunds"]), fn: "CAVEAT" },
+      source("c2-1", "ch2", "Three jobs: scan, weigh and stack.", ["job:scan", "job:weigh", "job:stack"]),
+    ]);
+  const explainedOnly = (beats: PaceBeat[]): ItemRoutes => ({ ...itemRoutes(beats, []), seat: [], lists: [] });
+  /** The E9 judge: no beat in these chapters says what and why, so every plain "explained" is a no. */
+  const literalJudge = () => fakeJudge((q) => (q.canary ? {} : { pass: q.text.includes("left out on purpose") }));
+
+  it("routes all three beats on M3, so only the role decides what is asked", () => {
+    expect(explainRoutes(roleTrack()).map((r) => r.beat)).toEqual(["c1-1", "c1-2", "c2-1"]);
+  });
+
+  // Mutation: asking a PROMISE beat the plain question flags keeps, drops and adds.
+  it("never asks a promise beat whether its items are explained", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const asked = judge.calls.flatMap(promptQuestions).map((q) => beatOf(q.text));
+    expect(asked).not.toContain("c1-1");
+    expect(agreedFlags([result, result]).filter((f) => f.beat === "c1-1")).toEqual([]);
+  });
+
+  // Mutation: asking a CAVEAT beat the plain question flags all three skipped details.
+  it("asks a simplification beat why the picture holds without each item, which it can pass", async () => {
+    const judge = literalJudge();
+    const beats = roleTrack();
+
+    const result = await runItems(input(judge.harness, { beats, routes: explainedOnly(beats) }));
+
+    const verdicts = result.chapters.flatMap((c) => c.verdicts);
+    expect(verdicts.filter((v) => v.beat === "c1-2").map((v) => [v.kind, v.subject, v.pass])).toEqual([
+      ["explained", "customs holds", true],
+      ["explained", "returns", true],
+      ["explained", "refunds", true],
+    ]);
+    expect(agreedFlags([result, result]).map((f) => [f.beat, f.item])).toEqual([["c2-1", "scan"], ["c2-1", "weigh"], ["c2-1", "stack"]]);
+  });
+
+  it("on the full v4 script, asks nothing of r1-7-promise and asks r3-7-simple's list why the picture holds", () => {
+    const { beats } = fromSpikeScript(v4FullScript(), readTiming(v4Durations()));
+
+    const explained = itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+
+    expect(explained.filter((q) => q.beat === "r1-7-promise")).toEqual([]);
+    expect(explained.filter((q) => q.beat === "r3-7-simple").map((q) => [q.subject, q.text.includes("left out on purpose")])).toEqual([
+      ["pool policy details", true],
+      ["risk table rows", true],
+      ["stacking", true],
+    ]);
+    expect(new Set(explained.map((q) => q.beat)).size).toBe(8);
+  });
+
+  it("on the full v4 script, asks nothing of the r1-5-seams cast line and asks r10-6b only what its questions ask", () => {
+    const { beats } = fromSpikeScript(v4FullScript(), readTiming(v4Durations()));
+
+    const explained = itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+
+    expect(explained.filter((q) => q.beat === "r1-5-seams")).toEqual([]);
+    expect(explained.filter((q) => q.beat === "r10-6b-q10-q11").map((q) => [q.subject, q.text.includes("asked to decide")])).toEqual([
+      ["Q10 pool rules for the score", true],
+      ["Q11 research fan-out", true],
+    ]);
+  });
+});
+
+describe("item judge questions for cast lines and owner questions", () => {
+  type Cue = [target: string, atCue: string];
+  const cued = (id: string, spoken: string, cues: Cue[]): PaceSourceBeat => ({ ...source(id, "ch1", spoken, []), cues: cues.map(([target, atCue]) => ({ target, atCue })) });
+  const explainedOf = (beat: PaceSourceBeat) => {
+    const beats = buildPaceBeats([beat]);
+    expect(explainRoutes(beats).map((r) => r.beat)).toEqual([beat.id]);
+    return itemQuestions({ ...itemRoutes(beats, []), seat: [], lists: [] });
+  };
+  const castLine = (third: Cue) =>
+    cued("c1-1", `Around the desk: a reviewer, a duty planner, and ${third[1]}.`, [["card:reviewer", "reviewer"], ["card:duty planner", "planner"], third]);
+  const ownerQuestions = (kind: string) =>
+    cued("c1-1", "Ten: scales replace the tape. Eleven: two clerks study returns. Both defaults are yes.", [
+      [`${kind}:Q10 scales`, "Ten"],
+      [`${kind}:Q11 returns study`, "Eleven"],
+      [`${kind}:default: yes to both`, "defaults"],
+    ]);
+
+  // Mutation: dropping the cast rule asks the reviewer, the planner and you what and why.
+  it("asks nothing of a line that introduces people", () => {
+    expect(explainedOf(castLine(["card:owner", "you"]))).toEqual([]);
+  });
+
+  // Mutation: clearing a beat when any one item names a person clears the components here.
+  it("still asks a list of components that opens with a reviewer", () => {
+    const asked = explainedOf(castLine(["card:poller", "poller"]));
+
+    expect(asked.map((q) => q.subject)).toContain("poller");
+    expect(asked.every((q) => q.text.includes("explained: does this beat"))).toBe(true);
+  });
+
+  // Mutation: dropping the answer-label rule asks whether "default: yes to both" is explained.
+  it("asks an owner question only what it puts to the owner, and never asks its default answer label", () => {
+    const asked = explainedOf(ownerQuestions("open"));
+
+    expect(asked.map((q) => [q.subject, q.text.includes("asked to decide")])).toEqual([
+      ["Q10 scales", true],
+      ["Q11 returns study", true],
+    ]);
+  });
+
+  // Mutation: reading any "default:" label as an answer, without an open question before it, clears this setting.
+  it("still asks a default setting that follows no open question", () => {
+    const asked = explainedOf(ownerQuestions("row"));
+
+    expect(asked.map((q) => [q.subject, q.text.includes("asked to decide")])).toContainEqual(["default: yes to both", false]);
   });
 });
 
@@ -329,6 +451,16 @@ describe("runItems with a story spine", () => {
     expect(verdictsOf(result).find((v) => v.kind === "kind-honest")).toMatchObject({ pass: true, picked: null });
   });
 
+  it("tells the kind-honest judge that an item the narration sets apart is not the odd one", async () => {
+    const judge = kindJudge();
+
+    await runItems(spineInput(judge.harness, spineDoc(ledgerRows(DESK_LEDGER))));
+
+    const prompt = judge.calls.find((p) => p.includes("spine ledger declares"))!;
+    expect(prompt).toContain("**An exception is not the odd one** (for Odd one out and Kind honest)");
+    expect(prompt).toMatch(/a default that applies when nothing is chosen, "not X", "until", "except", and an\s+item that "goes" or "is removed"/);
+  });
+
   it("keeps the blind odd one out for a list beat with an item the ledger does not list", async () => {
     const partial = Object.fromEntries(Object.entries(DESK_LEDGER).filter(([item]) => item !== "be legible"));
 
@@ -336,6 +468,16 @@ describe("runItems with a story spine", () => {
 
     expect(verdictsOf(result).map((v) => v.kind)).toContain("odd-one-out");
     expect(verdictsOf(result).map((v) => v.kind)).not.toContain("kind-honest");
+  });
+
+  // Mutation: dropping the contrast skip from kindRoutes asks kind-honest; dropping it from spinePlan asks the odd one out.
+  it("asks no list question about a beat the spine declares a contrast", async () => {
+    const shapes = "\n## 9. List shapes\n| Beat | Shape |\n|---|---|\n| c1-1 | contrast |\n";
+
+    const result = await runItems(spineInput(kindJudge().harness, spineDoc(ledgerRows(DESK_LEDGER)) + shapes));
+
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("kind-honest");
+    expect(verdictsOf(result).map((v) => v.kind)).not.toContain("odd-one-out");
   });
 
   it("fails an invariant seat no §4 part keeps without a model call", async () => {

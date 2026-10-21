@@ -119,6 +119,11 @@ interface AgentInit {
 interface AgentUsage {
     totalCostUsd: number;
     modelUsage: Record<string, ModelUsage>;
+    /** Cache writes by TTL from the result's raw `usage`, which is not broken out per model; absent when the harness gave no split. */
+    cacheCreation?: {
+        ephemeral5m: number;
+        ephemeral1h: number;
+    };
     turns: number;
     durationMs: number;
 }
@@ -363,6 +368,8 @@ type CodexAppServerEvent = {
     stderrTail: string;
 } & CodexProcessExit);
 interface CodexAppServer {
+    /** The spawned app-server process id, also its process group id; for callers that record or reap it. */
+    readonly pid: number;
     readonly initialized: CodexInitializeResult;
     readonly exited: Promise<CodexProcessExit>;
     threadStart(options?: CodexThreadOptions): Promise<CodexThreadResult>;

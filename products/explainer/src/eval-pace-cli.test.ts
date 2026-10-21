@@ -91,6 +91,13 @@ describe("explainer eval pace", () => {
     );
   });
 
+  // Mutation: reverting Q-E9 to a warning changes the severity cell; flagging a pilot beat fails the "0" count.
+  it("records Q-E9 as an error row that flags no pilot beat, on planned lengths", async () => {
+    await pace(write("script.json", pipelineScript()));
+
+    expect(row("Q-E9")?.slice(5, 9)).toEqual(["error", "0", "0", "true"]);
+  });
+
   it("passes a spike script whose only failures are warnings, still recording them as failing rows", async () => {
     const code = await pace(write("script.json", spike(spikeBeat("b1-parts", FOUR_PARTS))));
 

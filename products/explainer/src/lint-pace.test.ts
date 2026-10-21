@@ -89,6 +89,14 @@ describe("Q-E9 (M4) time to digest", () => {
     expect(failing(twoDense(15), "Q-E9")).toEqual([]);
   });
 
+  // Mutation: reverting the severity to "warning" reports the failure below as a warning and l0HardPass stays true.
+  it("is an error: a synthetic violation fails the hard gate", () => {
+    const result = rows(twoDense(14.9)).get("Q-E9");
+
+    expect(result).toMatchObject({ severity: "error", pass: false });
+    expect(l0HardPass(result ? [result] : [])).toBe(false);
+  });
+
   it("counts a beat dense when it fails Q-E8 alone", () => {
     const specs = { first: { items: 4 }, second: { items: 4 } };
 
@@ -171,7 +179,7 @@ describe("the pace lints on the v4 spike script", () => {
     expect(sets.get("Q-E12")).toEqual(["r2-4-measure"]);
     expect(sets.get("Q-E13")).toEqual(["r2-1-jobs", "r2-2-inv", "r2-3-limits"]);
     expect(sets.get("Q-E7")).toEqual(expect.arrayContaining(["r2-1-jobs", "r2-2-inv"]));
-    expect(l0HardPass(results.filter((r) => !["Q-E7", "Q-E11"].includes(r.check_id)))).toBe(true);
+    expect(l0HardPass(results.filter((r) => !["Q-E7", "Q-E9", "Q-E11"].includes(r.check_id)))).toBe(true);
   });
 
   it("reproduces the method review's M1, M2 and M4 sets for the beats the fixture holds", () => {
@@ -180,6 +188,13 @@ describe("the pace lints on the v4 spike script", () => {
     expect(sets.get("Q-E7")).toEqual(["r2-1-jobs", "r2-2-inv", "r3-1-nouns"]);
     expect(sets.get("Q-E8")).toEqual(["r2-1-jobs", "r2-3-limits", "r3-1-nouns"]);
     expect(sets.get("Q-E9")).toEqual(["r2-1-jobs", "r2-2-inv", "r2-3-limits", "r3-1-nouns"]);
+  });
+
+  it("raises Q-E9 as an error, flagging none of the beats the v4 labels call false", () => {
+    const q9 = paceRows(beats(), spike().invariants).find((r) => r.check_id === "Q-E9");
+
+    expect(q9?.severity).toBe("error");
+    expect(q9?.detail_beats).not.toEqual(expect.arrayContaining(["r9-3-middle", "r10-5-q5-q6", "r10-6-q7-q9", "r10-7b-research", "r10-8-measures"]));
   });
 
   // ch3 holds only r3-1 and r3-3 in the fixture, so its rate is a subset artifact; ch2 is complete. The review

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>frame-capture animation fixture</title>
+    <style>
+      body { margin: 0; background: #fff; }
+      .box { position: absolute; top: 0; left: 0; width: 40px; height: 40px; background: #000; }
+      @keyframes slide { from { transform: translateX(0); } to { transform: translateX(1000px); } }
+      #spin { animation: slide 1s linear infinite; }
+      #glide { top: 60px; transition: left 1s linear; }
+      #glide.moved { left: 1000px; }
+      #late { top: 120px; }
+      #late.on { animation: slide 1s linear forwards; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Motion the page leaves to the browser, all linear from 0 to 1000 px over 1 s:
+        #spin   a CSS animation running from load
+        #glide  a CSS transition the seek starts at t >= 0.2 s
+        #late   a CSS animation a 300 ms timer starts
+    -->
+    <div id="spin" class="box"></div>
+    <div id="glide" class="box"></div>
+    <div id="late" class="box"></div>
+    <script>
+      const glide = document.getElementById('glide')
+      setTimeout(() => document.getElementById('late').classList.add('on'), 300)
+      window.__titanMotion = {
+        duration: 1,
+        seek: (t) => glide.classList.toggle('moved', t >= 0.2),
+        ready: () => Promise.resolve(),
+      }
+    </script>
+  </body>
+</html>

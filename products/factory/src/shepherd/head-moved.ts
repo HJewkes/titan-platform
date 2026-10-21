@@ -112,6 +112,12 @@ function guardGateHead(run: WorkflowRun, prompt: string): string | undefined {
   return decision?.rule?.table === MERGE_GUARD_TABLE ? decision.headSha : undefined;
 }
 
+/** The head a merge-guard visual-path gate asks about, as the run recorded it: the owner decides a visual change, so a console Ship at that head answers it. */
+export function visualPathHead(run: WorkflowRun, prompt: string): string | undefined {
+  const decision = gatingDecision(run, prompt);
+  return decision?.rule?.table === MERGE_GUARD_TABLE && decision.rule.rowId === "visual-path" ? decision.headSha : undefined;
+}
+
 /** The head a Version Packages release gate asks about, under any release row: each row is a fact about one head's preflight. */
 function releaseGateHead(run: WorkflowRun, prompt: string): string | undefined {
   const decision = gatingDecision(run, prompt);

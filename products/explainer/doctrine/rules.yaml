@@ -60,7 +60,7 @@ rules:
     owner_support: none
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V7
-    rule: 'Banned register: let''s, simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
+    rule: 'Banned register: simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
     fields: [beats.spoken]
     related: ["DF 1.9", "CT R1", K13]
     owner_support: none
@@ -72,7 +72,7 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V8"] }
   - id: Q-V9
-    rule: "Sentences at most 25 words (a TTS guardrail, never a target)"
+    rule: "Sentences at most 25 words; 26 to 32 pass only when speech-vet reports the sentence clean to speak (a TTS guardrail, never a target)"
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
@@ -83,6 +83,23 @@ rules:
     fields: [beats.spoken]
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"] }
+  - id: Q-V11
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s", and at most one number mention in a beat'
+    fields: [beats.spoken]
+    related: [Q-V5, Q-V7, Q-V9]
+    owner_support: none
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning."
+    l0:
+      severity: warning
+      status: implemented
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
+
+  - id: Q-V12
+    rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
+    fields: [beats.spoken]
+    related: [Q-V11]
+    owner_support: none
+    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -420,8 +437,8 @@ rules:
     fields: [beats.visual, beats.plannedS]
     related: ["SM M4", "FB 5"]
     owner_support: for
-    note: "A warning until a timed human check confirms the 15 s gap."
-    l0: { severity: warning, status: implemented, checks: ["Q-E9"] }
+    note: "An error since TP-3788: calibration measured no false positive on the v4 spike and the pilot."
+    l0: { severity: error, status: implemented, checks: ["Q-E9"] }
   - id: Q-E10
     rule: "At most 20 new on-screen items a chapter minute"
     fields: [beats.visual, beats.chapter, beats.plannedS]
