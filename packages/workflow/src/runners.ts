@@ -46,7 +46,7 @@ function outputText(output: unknown): string {
 function stepUsage(usage: AgentUsage): StepUsage {
   const names = Object.keys(usage.modelUsage);
   const models = Object.values(usage.modelUsage);
-  const cacheRead = models.filter((model) => model.cacheReadInputTokens !== undefined);
+  const cacheRead = models.filter((model) => typeof (model as Partial<typeof model>).cacheReadInputTokens === "number");
   return {
     costUsd: usage.totalCostUsd,
     inputTokens: models.reduce((sum, model) => sum + model.inputTokens, 0),
