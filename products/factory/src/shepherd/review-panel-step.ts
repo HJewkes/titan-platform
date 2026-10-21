@@ -68,14 +68,17 @@ export function panelReviewerNames({ repo, pr, reviewer, mode }: MemberNaming, p
 /** Under `on` the intent also names each member but correctness, so a repeat spawns the same names. */
 export type PanelOnPlan = IntentPlan & { panel: "on"; panelReviewers: Record<string, string> };
 
-interface PanelWiring {
+export interface ProfileCheck {
+  /** Whether an agent-chat profile is installed headless; absent means a member lowered to a missing profile is refused only at dispatch. */
+  profileInstalled?: (profile: string) => boolean;
+}
+
+interface PanelWiring extends ProfileCheck {
   panel?: PanelMode;
   panelPolicy?: PanelPolicy;
   roles?: ReviewerRoles;
   /** Set while `shepherd.gateReset.twoMergeRelease` is not `off`: a g10-adversary hold's member. */
   holdMember?: HoldMember;
-  /** Whether an agent-chat profile is installed headless; absent checks nothing at plan time. */
-  profileInstalled?: (profile: string) => boolean;
 }
 
 /** The hold's member, when the run is held for an adversary; an unreadable store plans none, as it would with the flag off. */
