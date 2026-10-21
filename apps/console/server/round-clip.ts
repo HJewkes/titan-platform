@@ -1,10 +1,12 @@
 /**
- * `rounds.clip`: `GET /media/rounds/:id/clip/:key` serves the recorded clip a round's variant declares, with HTTP
- * byte ranges so the page can seek. The client names a round and a variant key, never a path; the path is the
- * variant's own `clip` in `round.json`.
+ * `rounds.clip` and `rounds.audio`: `GET /media/rounds/:id/clip/:key` and `/media/rounds/:id/audio/:key` serve the
+ * recorded clip or sound a round's variant declares, with HTTP byte ranges so the page can seek. The client names a
+ * round and a variant key, never a path; the path is the variant's own `clip` or `audio` in `round.json`.
  *
  * Guarded as `rounds.frame` guards a PNG: the path stays inside the round dir, every directory below it is lstat'd so
- * none is a symlink, and the file itself is regular, never a symlink or a FIFO. Every refusal is one fixed 404 that names no path.
+ * none is a symlink, and the file itself is regular, never a symlink or a FIFO. Every refusal is one fixed 404 that
+ * names no path. Only a variant's own `audio` is served: a blind-ab round never parses (`round-schema.ts`), so none of
+ * its takes, whose engines the page must not learn, is reachable.
  */
 import { lstat } from "node:fs/promises";
 import path from "node:path";
@@ -14,11 +16,12 @@ import { readManifest, roundDirExists, type RoundsSource } from "./rounds.js";
 
 type DaemonApp = Parameters<typeof mountStaticApp>[0];
 
-export type RoundMediaKind = "clip";
+export type RoundMediaKind = "clip" | "audio";
 
 const VARIANT_KEY = /^[A-Za-z0-9_-]{1,128}$/;
 const MEDIA_TYPES: Record<RoundMediaKind, Record<string, string>> = {
   clip: { ".mp4": "video/mp4", ".webm": "video/webm" },
+  audio: { ".wav": "audio/wav", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".m4a": "audio/mp4" },
 };
 const NOT_FOUND = "Round media not found";
 
@@ -45,7 +48,7 @@ async function containedFile(roundDir: string, relative: string): Promise<string
   return leaf?.isFile() === true ? full : null;
 }
 
-/** One variant's clip, whole or as the byte range the request asks for. */
+/** One variant's clip or sound, whole or as the byte range the request asks for. */
 export async function serveRoundMedia(request: Request, source: RoundsSource, id: string, key: string, kind: RoundMediaKind): Promise<Response> {
   const file = await declaredFile(source, id, key, kind);
   const contentType = file === null ? undefined : MEDIA_TYPES[kind][path.extname(file).toLowerCase()];
@@ -57,6 +60,7 @@ export async function serveRoundMedia(request: Request, source: RoundsSource, id
 /** Mounted ahead of the static app, whose `/*` would answer a media request with the page. HEAD rides on GET. */
 export function mountRoundMedia(app: DaemonApp, source: RoundsSource): void {
   app.get("/media/rounds/:id/clip/:key", (c) => serveRoundMedia(c.req.raw, source, c.req.param("id"), c.req.param("key"), "clip"));
+  app.get("/media/rounds/:id/audio/:key", (c) => serveRoundMedia(c.req.raw, source, c.req.param("id"), c.req.param("key"), "audio"));
 }
 
 function notFound(): Response {

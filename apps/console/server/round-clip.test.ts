@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { serveRoundMedia } from "./round-clip.js";
+import { serveRoundMedia, type RoundMediaKind } from "./round-clip.js";
 import { closedPort, syntheticMp4 } from "./test-support.js";
 
 const ROUND = "ember-motion-r1";
 const CLIP = syntheticMp4();
+/** A RIFF header and a few silent samples: enough bytes to slice, no real recording. */
+const SOUND = Buffer.concat([Buffer.from("RIFF\0\0\0\0WAVEfmt ", "latin1"), Buffer.alloc(64)]);
 const notes = { changed: "The ember glows before it fades.", context: "Colour is out of scope." };
 
 let root: string;
@@ -28,7 +30,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function roundJson(clip: string): unknown {
+const BLIND_AB = { id: "listen", kind: "blind-ab", prompt: "Which take reads better?", pairs: [{ id: "line-1", transcript: "Welcome back.", takes: [{ engine: "engine-alpha", src: "sounds/chime.wav" }, { engine: "engine-beta", src: "sounds/other.wav" }] }] };
+
+function roundJson(clip: string, blind = false): unknown {
+  const questionIds = blind ? ["fade-pick", "listen"] : ["fade-pick"];
   return {
     schema: "titan-review/round@2",
     unit: "ember-motion",
@@ -38,9 +43,10 @@ function roundJson(clip: string): unknown {
     variants: [
       { key: "ember", clip, label: "Ember fade", motion: { mechanism: "clip", keyframes: [{ atMs: 500, label: "glow" }] } },
       { key: "lamp", image: "shots/lamp.png", label: "Lamp" },
+      { key: "chime", audio: "sounds/chime.wav", transcript: "The kettle is ready.", label: "Chime" },
     ],
-    sections: [{ id: "fade", title: "Ember fade", deciding: "How the ember fades.", ...notes, kind: "STATES", parts: [{ id: "ember-fade", label: "Ember fade", proposed: "fade: 500ms" }], variantKeys: ["ember", "lamp"], questionIds: ["fade-pick"] }],
-    questions: [{ id: "fade-pick", kind: "pick-one", prompt: "Does the fade read?", options: ["yes", "no"], signsOff: "ember-fade" }],
+    sections: [{ id: "fade", title: "Ember fade", deciding: "How the ember fades.", ...notes, kind: "STATES", parts: [{ id: "ember-fade", label: "Ember fade", proposed: "fade: 500ms" }], variantKeys: ["ember", "lamp", "chime"], questionIds }],
+    questions: [{ id: "fade-pick", kind: "pick-one", prompt: "Does the fade read?", options: ["yes", "no"], signsOff: "ember-fade" }, ...(blind ? [BLIND_AB] : [])],
   };
 }
 
@@ -49,16 +55,18 @@ async function put(file: string, body: string | Buffer): Promise<void> {
   await writeFile(file, body);
 }
 
-/** A round whose `ember` variant declares `clip`, with the synthetic clip written at `clips/ember.mp4`. */
-async function stage(clip = "clips/ember.mp4"): Promise<string> {
+/** A round whose `ember` variant declares a clip and `chime` a sound, with both written as the round names them. */
+async function stage(clip = "clips/ember.mp4", blind = false): Promise<string> {
   const roundDir = path.join(dir, ROUND);
-  await put(path.join(roundDir, "round.json"), JSON.stringify(roundJson(clip)));
+  await put(path.join(roundDir, "round.json"), JSON.stringify(roundJson(clip, blind)));
   await put(path.join(roundDir, "clips", "ember.mp4"), CLIP);
+  await put(path.join(roundDir, "sounds", "chime.wav"), SOUND);
   return roundDir;
 }
 
-const get = (key: string, range?: string, id = ROUND): Promise<Response> =>
-  serveRoundMedia(new Request(`http://127.0.0.1/media/rounds/${id}/clip/${key}`, range === undefined ? {} : { headers: { range } }), { dir }, id, key, "clip");
+const get = (key: string, range?: string, id = ROUND, kind: RoundMediaKind = "clip"): Promise<Response> =>
+  serveRoundMedia(new Request(`http://127.0.0.1/media/rounds/${id}/${kind}/${key}`, range === undefined ? {} : { headers: { range } }), { dir }, id, key, kind);
+const listen = (key: string, range?: string): Promise<Response> => get(key, range, ROUND, "audio");
 
 async function expectRefused(response: Promise<Response>): Promise<void> {
   const answer = await response;
@@ -176,14 +184,57 @@ async function startConsole(): Promise<string> {
   return `http://127.0.0.1:${handle.port}`;
 }
 
+describe("rounds.audio serves an audio variant's sound", () => {
+  it("answers a range with 206 and the sound's type", async () => {
+    await stage();
+
+    const response = await listen("chime", "bytes=0-3");
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(response.headers.get("content-range")).toBe(`bytes 0-3/${SOUND.length}`);
+    expect(response.headers.get("content-type")).toBe("audio/wav");
+    expect(Buffer.from(await response.arrayBuffer()).toString("latin1")).toBe("RIFF");
+  });
+
+  it("answers a range past the end with 416", async () => {
+    await stage();
+
+    expect((await listen("chime", `bytes=${SOUND.length + 5}-`)).status).toBe(416);
+  });
+
+  it("serves neither kind under the other's route", async () => {
+    await stage();
+
+    await expectRefused(listen("ember"));
+    await expectRefused(get("chime"));
+  });
+
+  it("refuses a sound reached through a symlinked directory", async () => {
+    const roundDir = await stage();
+    await rm(path.join(roundDir, "sounds"), { recursive: true });
+    await put(path.join(root, "outside", "chime.wav"), SOUND);
+    await symlink(path.join(root, "outside"), path.join(roundDir, "sounds"));
+
+    await expectRefused(listen("chime"));
+  });
+
+  it("serves nothing from a blind-ab round, not even a variant's own sound that a take shares", async () => {
+    await stage("clips/ember.mp4", true);
+
+    await expectRefused(listen("chime"));
+  });
+});
+
 describe("the console daemon", () => {
-  it("mounts rounds.clip ahead of the built app", async () => {
+  it("mounts rounds.clip and rounds.audio ahead of the built app", async () => {
     await stage();
     const origin = await startConsole();
 
-    const response = await fetch(`${origin}/media/rounds/${ROUND}/clip/ember`, { headers: { range: "bytes=0-1" } });
+    const clip = await fetch(`${origin}/media/rounds/${ROUND}/clip/ember`, { headers: { range: "bytes=0-1" } });
+    const sound = await fetch(`${origin}/media/rounds/${ROUND}/audio/chime`, { headers: { range: "bytes=0-1" } });
 
-    expect(response.status).toBe(206);
-    expect(response.headers.get("content-range")).toBe(`bytes 0-1/${CLIP.length}`);
+    expect([clip.status, clip.headers.get("content-range")]).toEqual([206, `bytes 0-1/${CLIP.length}`]);
+    expect([sound.status, sound.headers.get("content-range")]).toEqual([206, `bytes 0-1/${SOUND.length}`]);
   });
 });

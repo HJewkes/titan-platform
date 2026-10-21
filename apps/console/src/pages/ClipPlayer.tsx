@@ -29,20 +29,20 @@ interface ClipPlayerProps {
   keyframes?: readonly Keyframe[];
 }
 
-/** The player's state, kept in step with the video's own events, and the seeks and toggles its controls press. */
-function useClip(initialLoop: boolean, durationMs: number | undefined) {
-  const video = useRef<HTMLVideoElement>(null);
+/** A player's state, kept in step with its media element's own events, and the seeks and toggles its controls press. */
+export function useMediaControls<E extends HTMLMediaElement>(initialLoop: boolean, durationMs: number | undefined) {
+  const media = useRef<E>(null);
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(initialLoop);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(durationMs === undefined ? 0 : durationMs / 1000);
   const seek = (to: number): void => {
-    if (video.current === null) return;
-    video.current.currentTime = to;
+    if (media.current === null) return;
+    media.current.currentTime = to;
     setTime(to);
   };
   const toggle = (): void => {
-    const element = video.current;
+    const element = media.current;
     if (element === null) return;
     if (playing) element.pause();
     else void element.play().catch(() => setPlaying(false));
@@ -50,20 +50,20 @@ function useClip(initialLoop: boolean, durationMs: number | undefined) {
   const events = {
     onPlay: () => setPlaying(true),
     onPause: () => setPlaying(false),
-    onTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => setTime(event.currentTarget.currentTime),
-    onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => Number.isFinite(event.currentTarget.duration) && setDuration(event.currentTarget.duration),
+    onTimeUpdate: (event: SyntheticEvent<E>) => setTime(event.currentTarget.currentTime),
+    onLoadedMetadata: (event: SyntheticEvent<E>) => Number.isFinite(event.currentTarget.duration) && setDuration(event.currentTarget.duration),
   };
-  return { video, events, playing, loop, time, duration, seek, toggle, toggleLoop: () => setLoop(!loop) };
+  return { media, events, playing, loop, time, duration, seek, toggle, toggleLoop: () => setLoop(!loop) };
 }
 
-type Clip = ReturnType<typeof useClip>;
+type MediaControlsState = Pick<ReturnType<typeof useMediaControls>, "playing" | "loop" | "time" | "duration" | "seek" | "toggle" | "toggleLoop">;
 
 export function ClipPlayer({ src, label, autoplay = true, loop = true, durationMs, keyframes = [] }: ClipPlayerProps): ReactNode {
-  const clip = useClip(loop, durationMs);
+  const clip = useMediaControls<HTMLVideoElement>(loop, durationMs);
   return (
     <VStack gap={2} testID="clip-player">
       <video
-        ref={clip.video}
+        ref={clip.media}
         src={src}
         aria-label={label}
         muted
@@ -74,13 +74,14 @@ export function ClipPlayer({ src, label, autoplay = true, loop = true, durationM
         className="block h-auto w-full rounded border border-hairline-strong bg-surface-sunken"
         {...clip.events}
       />
-      <ClipControls clip={clip} label={label} />
+      <MediaControls clip={clip} label={label} />
       <Keyframes keyframes={keyframes} seek={clip.seek} />
     </VStack>
   );
 }
 
-function ClipControls({ clip, label }: { clip: Clip; label: string }): ReactNode {
+/** Play/Pause, Loop, a scrubber and the time, for a clip or a sound. */
+export function MediaControls({ clip, label }: { clip: MediaControlsState; label: string }): ReactNode {
   const { playing, loop, time, duration } = clip;
   return (
     <HStack gap={2} align="center" wrap>

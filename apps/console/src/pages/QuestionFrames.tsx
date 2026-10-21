@@ -27,7 +27,7 @@ interface RoundFramesProviderProps {
 export function RoundFramesProvider({ roundId, manifest, indexed, children }: RoundFramesProviderProps): ReactNode {
   const value = useMemo(() => {
     const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
-    const media = new Map(manifest.variants.map(({ key, frameReference, scale, clip, motion }) => [key, { frameReference, scale, clip, motion }]));
+    const media = new Map(manifest.variants.map(({ key, frameReference, scale, clip, motion, audio, transcript, durationMs }) => [key, { frameReference, scale, clip, motion, audio, transcript, durationMs }]));
     const images = manifest.variants.filter((variant) => variant.image !== undefined).map((variant) => variant.key);
     return { roundId, labels, media, loadable: new Set([...images, ...(indexed ?? [])]) };
   }, [roundId, manifest, indexed]);
