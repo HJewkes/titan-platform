@@ -646,7 +646,7 @@ Key exports:
 - `envelope`: `describeError`, `errorEnvelope`, `successEnvelope`
 - `zod-introspect`: `arrayElementKind`, `fieldSchema`, `isOptionalField`, `schemaKind`, `unwrapSchema`
 - `cli-options`: `camelizeFlagKey`, `coerceCliValue`
-- +28 more in the [reference page](/reference/registry)
+- +30 more in the [reference page](/reference/registry)
 
 <a id="cap-retrieval"></a>
 
@@ -1190,7 +1190,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +397 more in `products/explainer/src/index.ts`
+- +403 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

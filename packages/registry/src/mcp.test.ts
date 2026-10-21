@@ -5,6 +5,8 @@ import { defineCommand } from "./types.js";
 
 const naming = { prefix: "active__" };
 
+const propertiesOf = (schema: Record<string, unknown>) => z.record(z.string(), z.unknown()).parse(schema.properties);
+
 const taskAdd = defineCommand({
   name: "task.add",
   description: "Add a task",
@@ -34,7 +36,7 @@ describe("commandToTool", () => {
     expect(tool.description).toBe("Add a task");
     expect(tool.inputSchema.type).toBe("object");
     expect(tool.inputSchema.required).toEqual(["slug", "title"]);
-    expect(Object.keys(tool.inputSchema.properties as object)).toEqual(["slug", "title", "priority"]);
+    expect(Object.keys(propertiesOf(tool.inputSchema))).toEqual(["slug", "title", "priority"]);
   });
 
   it("projects an array-typed field as a JSON Schema array, independent of any CLI rendering", () => {
@@ -49,8 +51,55 @@ describe("commandToTool", () => {
       },
     });
     const tool = commandToTool(withTags, naming);
-    const properties = tool.inputSchema.properties as Record<string, { type?: string; items?: { type?: string } }>;
-    expect(properties.tags).toMatchObject({ type: "array", items: { type: "string" } });
+    expect(propertiesOf(tool.inputSchema).tags).toMatchObject({ type: "array", items: { type: "string" } });
+  });
+
+  it("can describe input objects without closing nested objects, preserving the output default", () => {
+    const nested = defineCommand({
+      name: "declared.nested",
+      description: "Nested declared fields",
+      args: z.object({ declared: z.object({ text: z.string() }) }),
+      result: z.object({ id: z.string() }),
+      async run() {
+        return { id: "T-1" };
+      },
+    });
+    const input = commandToTool(nested, naming, { io: "input" }).inputSchema;
+    const output = commandToTool(nested, naming).inputSchema;
+    expect(input).not.toHaveProperty("additionalProperties");
+    expect(input.properties).toEqual({
+      declared: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    });
+    expect(output).toHaveProperty("additionalProperties", false);
+    expect(propertiesOf(output).declared).toHaveProperty("additionalProperties", false);
+    expect(commandToTool(nested, naming, { io: "output" }).inputSchema).toEqual(output);
+  });
+
+  it("passes a schema override through for free-form declared maps", () => {
+    const declared = z.record(z.string(), z.string());
+    const command = defineCommand({
+      name: "declared.map",
+      description: "Declared string map",
+      args: z.object({ declared }),
+      result: z.object({ id: z.string() }),
+      async run() {
+        return { id: "T-1" };
+      },
+    });
+    const tool = commandToTool(command, naming, {
+      io: "input",
+      override: (context) => {
+        if (context.zodSchema === declared) {
+          delete context.jsonSchema.propertyNames;
+          delete context.jsonSchema.properties;
+          context.jsonSchema.additionalProperties = { type: "string" };
+        }
+      },
+    });
+    expect(tool.inputSchema.properties).toEqual({
+      declared: { type: "object", additionalProperties: { type: "string" } },
+    });
+    expect(tool.inputSchema).not.toHaveProperty("$schema");
   });
 
   it("strips the $schema and definitions keys some MCP clients reject", () => {

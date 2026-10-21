@@ -39,3 +39,10 @@ export function arrayElementKind(schema: ZodType | undefined): SchemaKind | unde
 export function isOptionalField(schema: ZodType | undefined): boolean {
   return schema instanceof ZodOptional || schema instanceof ZodDefault;
 }
+
+/** Read an explicit default without parsing or running unrelated schema transforms. */
+export function schemaDefault(schema: ZodType | undefined): unknown {
+  if (!schema) return undefined;
+  if (schema instanceof ZodDefault) return schema.def.defaultValue;
+  return isWrapper(schema) ? schemaDefault(schema.unwrap()) : undefined;
+}
