@@ -275,13 +275,13 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
   return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
-export async function getRound(source: RoundsSource, id: string): Promise<RoundDetail> {
+export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
   const { dir } = source;
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
   const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
   const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
-  const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest) : undefined;
+  const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest, remote) : undefined;
   const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
   return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }), ...(live && { live }) };
 }

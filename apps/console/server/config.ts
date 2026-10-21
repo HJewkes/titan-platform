@@ -12,6 +12,8 @@ import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/h
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
+/** The story origin's port (TP-3793): its own origin, so a round's Storybook build never runs as the console. */
+export const DEFAULT_STORY_PORT = 7501;
 const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
 /** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
@@ -25,6 +27,12 @@ const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-revie
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
   port: number;
+  /**
+   * The story origin's port, which serves stored Storybook builds read-only on loopback and, with
+   * `lanHost`, the LAN (TP-3793). 0 binds an ephemeral port; null or absent serves no story origin.
+   * `TITAN_CONSOLE_STORY_PORT=0` turns it off, as an ephemeral story port could never be dialled from the LAN.
+   */
+  storyPort?: number | null;
   /** Holds the console daemon's pid file. */
   stateDir: string;
   /** Loopback ports of the upstream daemons; the console never starts any of them. */
@@ -129,6 +137,7 @@ export function resolveConfig(
   const stateDir = expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
+    storyPort: storyPortFrom(env),
     stateDir,
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
@@ -209,6 +218,15 @@ function assertCoherent(config: ConsoleConfig): void {
   if ([config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(config.port)) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
   }
+  const story = config.storyPort ?? null;
+  if (story !== null && [config.port, config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(story)) {
+    throw new Error(`TITAN_CONSOLE_STORY_PORT ${story} is taken by the console or an upstream daemon; the story origin needs a port of its own`);
+  }
+}
+
+function storyPortFrom(env: NodeJS.ProcessEnv): number | null {
+  const port = portFrom(env, "TITAN_CONSOLE_STORY_PORT", DEFAULT_STORY_PORT);
+  return port === 0 ? null : port;
 }
 
 function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
