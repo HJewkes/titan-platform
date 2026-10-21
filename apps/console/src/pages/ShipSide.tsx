@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Alert, Typography } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Manifest, Question } from "../../server/round-schema.js";
-import type { ShipBlocker } from "../../server/ship-blockers.js";
+import { addressedRounds, type ShipBlocker } from "../../server/ship-blockers.js";
 import type { SubmitState } from "../data/submit.js";
 import { asksRevision, submittedAnswers } from "./RoundAnswers.js";
 import { RoundComment } from "./RoundComment.js";
@@ -16,10 +16,10 @@ import { shipsAfter } from "./ship-stack.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
-/** The Addressed ticks and follow-up marks as `rounds.submit` args, each left out when empty. */
+/** The Addressed ticks and follow-up marks as `rounds.submit` args, each left out when empty; ticks go as their rounds, as `addressed.json` keeps no PR. */
 export function sideMarks(side: RoundAnswers) {
   return {
-    addressed: side.addressed.length > 0 ? { addressed: side.addressed } : {},
+    addressed: side.addressed.length > 0 ? { addressed: addressedRounds(side.addressed) } : {},
     followUps: side.followUps.length > 0 ? { followUps: side.followUps } : {},
   };
 }

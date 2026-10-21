@@ -22,9 +22,12 @@ const FrameDraftSchema = z.strictObject({
   pinsIssued: z.number().int().min(0),
 });
 
-/** A Ship round's Addressed ticks, follow-up marks, and each Ship question's held verdict and Send back note. */
+/**
+ * A Ship round's Addressed ticks, follow-up marks, and each Ship question's held verdict and Send back note. A tick names its
+ * PR when the card it ticks is one PR's (TP-3885); a bare round, as every draft saved before that holds, still restores.
+ */
 const ShipDraftSchema = z.strictObject({
-  addressed: z.array(z.number().int()),
+  addressed: z.array(z.union([z.number().int(), z.strictObject({ round: z.number().int(), pr: z.string() })])),
   followUps: z.array(z.string()),
   verdicts: z.record(z.string(), z.enum(["ship", "back"])),
   backNotes: z.record(z.string(), z.string()),

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, Card, CardContent, Checkbox, Link, Typography, VStack } from "@titan-design/react-ui";
-import type { PriorFeedback, ShipBlocker } from "../../server/ship-blockers.js";
+import { isAddressed, type AddressedTick, type PriorFeedback, type ShipBlocker } from "../../server/ship-blockers.js";
 import { ShipTarget, shipTargetId, useShipJump } from "./ShipTabs.js";
 
 /** An earlier round's entries that bear on `pr`: its own, and those on no PR in particular (TP-3790). */
@@ -10,8 +10,9 @@ interface ShipPriorFeedbackProps {
   items: readonly PriorFeedback[];
   /** The PR whose tab shows these cards, so a blocker on that tab scrolls to its own card. */
   pr: string;
-  addressed: readonly number[];
-  onToggle: (round: number, checked: boolean) => void;
+  /** A tick naming another PR leaves this PR's card open (TP-3885). */
+  addressed: readonly AddressedTick[];
+  onToggle: (item: PriorFeedback, checked: boolean) => void;
   /** Sent or sending: the ticks show as sent and take no more presses. */
   locked?: boolean;
 }
@@ -34,10 +35,10 @@ export function ShipPriorFeedback({ items, pr, addressed, onToggle, locked = fal
                 <Checkbox
                   label="Addressed"
                   accessibilityLabel={`Round ${item.round} feedback addressed`}
-                  isChecked={addressed.includes(item.round)}
-                  aria-checked={addressed.includes(item.round)}
+                  isChecked={isAddressed(addressed, item)}
+                  aria-checked={isAddressed(addressed, item)}
                   isDisabled={locked}
-                  onCheckedChange={(checked) => (locked ? undefined : onToggle(item.round, checked))}
+                  onCheckedChange={(checked) => (locked ? undefined : onToggle(item, checked))}
                 />
               </VStack>
             </CardContent>

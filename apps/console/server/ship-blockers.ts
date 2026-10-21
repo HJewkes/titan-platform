@@ -38,11 +38,24 @@ interface DraftFrame {
   annotations?: readonly { note: string }[];
 }
 
+/**
+ * One Addressed tick. A bare round ticks that round's feedback on every PR: what `rounds.submit` and `addressed.json` carry,
+ * and what a draft saved before TP-3885 holds. `{ round, pr }` ticks only that PR's card, so in a round with several PRs
+ * ticking one PR's card leaves the other's open.
+ */
+export type AddressedTick = number | { round: number; pr: string };
+
+export const isAddressed = (ticks: readonly AddressedTick[], item: Pick<PriorFeedback, "round" | "pr">): boolean =>
+  ticks.some((tick) => (typeof tick === "number" ? tick === item.round : tick.round === item.round && tick.pr === item.pr));
+
+/** The rounds the ticks name, once each: what `rounds.submit` records. */
+export const addressedRounds = (ticks: readonly AddressedTick[]): number[] => [...new Set(ticks.map((tick) => (typeof tick === "number" ? tick : tick.round)))];
+
 /** The answer about to be sent: every answer with its comment, the round note, the rounds ticked Addressed and the follow-ups. */
 interface ShipDraft {
   answers: readonly DraftAnswer[];
   general: string;
-  addressed: readonly number[];
+  addressed: readonly AddressedTick[];
   /** The side questions marked follow-up; absent is none. */
   followUps?: readonly string[];
   /** The frames' feedback; absent is none. */
@@ -211,11 +224,34 @@ function shippingPr(manifest: Manifest, mergeId: string | undefined): string | u
   return merge && pageOf(merge);
 }
 
-/** Why Ship is off, each reason with what it is about; empty when it may ship. Given `mergeId`, only that PR's answers count (`shipScope`). */
+/** The Ship question of the PR group `pr`'s group is stacked on, when that holder is a PR group of this round. */
+function holderShip(manifest: Manifest, pr: string): MergeQuestion | undefined {
+  const on = manifest.prGroups?.find((group) => group.pr === pr)?.stackedOn;
+  const holder = on && `${on.repo}#${on.pr}`;
+  if (holder === undefined || !manifest.prGroups?.some((group) => group.pr === holder)) return undefined;
+  return manifest.questions.filter(isMerge).find((question) => pageOf(question) === holder);
+}
+
+/**
+ * A stacked PR ships after its holder (the schema's `holder-not-shipped`), so it may not ship while the holder is
+ * answered Send back or asks for a revision. An unanswered or shipped holder holds nothing, as an unanswered question does not.
+ */
+function holderBlocker(manifest: Manifest, answers: readonly DraftAnswer[], pr: string | undefined): ShipBlocker[] {
+  const ship = pr === undefined ? undefined : holderShip(manifest, pr);
+  const answer = ship && answers.find((each) => each.questionId === ship.id);
+  if (ship === undefined || answer === undefined) return [];
+  const why = answer.revisionRequested ? "a revision was requested" : answer.pick !== undefined && !ship.merge.ship.includes(answer.pick) ? `it is answered "${answer.pick}"` : undefined;
+  return why === undefined ? [] : [{ message: `stacked on ${pageOf(ship)}, which may not ship: ${why}`, target: { kind: "question", id: ship.id } }];
+}
+
+/**
+ * Why Ship is off, each reason with what it is about; empty when it may ship. Given `mergeId`, only that PR's answers count
+ * (`shipScope`), and the Send back of the PR it is stacked on.
+ */
 export function shipBlockerItems(manifest: Manifest, prior: readonly PriorFeedback[], draft: ShipDraft, mergeId?: string): ShipBlocker[] {
   const pr = shippingPr(manifest, mergeId);
   const ours = prior.filter((item) => item.pr === undefined || item.pr === pr);
-  const open = [...new Set(ours.filter((item) => !draft.addressed.includes(item.round)).map((item) => item.round))];
+  const open = [...new Set(ours.filter((item) => !isAddressed(draft.addressed, item)).map((item) => item.round))];
   const scope = mergeId === undefined ? undefined : shipScope(manifest, mergeId);
   const thisPr = draft.answers.filter((answer) => !(draft.followUps ?? []).includes(answer.questionId) && (scope?.has(answer.questionId) ?? true));
   const frames = mergeId === undefined ? undefined : frameScope(manifest, mergeId);
@@ -225,6 +261,7 @@ export function shipBlockerItems(manifest: Manifest, prior: readonly PriorFeedba
     ...thisPr.flatMap((answer) => answerBlockers(manifest, answer).map((message) => ({ message, target: { kind: "question" as const, id: answer.questionId } }))),
     ...judged.map((frame) => ({ message: `you left feedback on frame "${labelOf(manifest, frame.key)}"`, target: { kind: "frame" as const, key: frame.key } })),
     ...(blank(draft.general) ? [] : [{ message: "you left feedback on this round", target: { kind: "general" as const } }]),
+    ...holderBlocker(manifest, draft.answers, pr),
   ];
 }
 

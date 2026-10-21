@@ -84,6 +84,13 @@ describe("a stored round draft", () => {
     expect(loadDraft(localStorage, ROUND, SHA)).toEqual({ draft: { ...draft, ship }, discarded: false });
   });
 
+  it("round-trips an Addressed tick scoped to one PR beside a bare one an older draft saved (TP-3885)", () => {
+    const ship = { addressed: [2, { round: 1, pr: "example/tiles#1" }], followUps: [], verdicts: {}, backNotes: {} };
+    localStorage.setItem(draftKey(ROUND), JSON.stringify({ manifestSha256: SHA, draft: { ...draft, ship } }));
+
+    expect(loadDraft(localStorage, ROUND, SHA)).toEqual({ draft: { ...draft, ship }, discarded: false });
+  });
+
   it("restores a draft saved before Ship rounds kept one, which has no ship part", () => {
     localStorage.setItem(draftKey(ROUND), JSON.stringify({ manifestSha256: SHA, draft }));
 
