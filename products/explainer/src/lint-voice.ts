@@ -84,10 +84,14 @@ export interface VoiceOptions {
   speechClean?: SpeechVerdict;
 }
 
-function overlongSentence(text: string, speechClean: SpeechVerdict | undefined): boolean {
+export function overlongSentence(
+  text: string,
+  speechClean: SpeechVerdict | undefined,
+  vettedCeiling: number = MAX_VETTED_SENTENCE_WORDS,
+): boolean {
   const words = wordsOf(text).length;
   if (words <= MAX_SENTENCE_WORDS) return false;
-  return words > MAX_VETTED_SENTENCE_WORDS || !speechClean?.(text);
+  return words > vettedCeiling || !speechClean?.(text);
 }
 
 /**
