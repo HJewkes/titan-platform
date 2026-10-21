@@ -18,9 +18,10 @@ const StatusEntrySchema = z.object({
 });
 
 // Tiers mirror the `$tiers` keys in .codewatch/check.json; products outside this repo use "product".
+// scripts/areas.test.mjs fails when a `$tiers` key has no literal here.
 const AreaEntrySchema = z.object({
   id: categoryId,
-  tier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal("ui"), z.literal("product")]),
+  tier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal("ui"), z.literal("product")]),
   path: z.string().min(1).optional(),
 });
 
