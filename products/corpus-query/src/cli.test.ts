@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,5 +29,21 @@ describe("corpus-query index", () => {
     const code = await runCli(["index", ".", "--layout", "nope"], () => undefined);
 
     expect(code).toBe(2);
+  });
+});
+
+describe("corpus-query cost", () => {
+  it("prints the folded cost of a run against the baseline", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "cq-cost-"));
+    mkdirSync(path.join(dir, "run1"));
+    writeFileSync(path.join(dir, "run1", "cost.json"), JSON.stringify([{ stage: "screen", model: "claude-haiku-5-5", inputTokens: 1000, cacheWrite1hTokens: 500 }]));
+    const lines: string[] = [];
+
+    const code = await runCli(["cost", "run1", "--runs-dir", dir], (l) => lines.push(l));
+    rmSync(dir, { recursive: true });
+
+    expect(code).toBe(0);
+    expect(lines.join("\n")).toContain("cache write 1h 500");
+    expect(lines.join("\n")).toContain("of $19.10 baseline");
   });
 });

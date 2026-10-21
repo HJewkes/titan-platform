@@ -4,6 +4,8 @@ import { appDirs } from "@titan-design/app-paths";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { Command, CommanderError } from "commander";
 import { indexCorpus, type IndexStats } from "./index-corpus.js";
+import { BASELINE_USD } from "./cost/cost.js";
+import { costReportText } from "./cost/command.js";
 import { LAYOUTS } from "./layout.js";
 
 /** One index per corpus root, so two corpora never share a database. */
@@ -32,6 +34,15 @@ export async function runCli(argv: string[], write: (line: string) => void = con
       } finally {
         db.close();
       }
+    });
+  program
+    .command("cost <runId>")
+    .description("Print a run's token and USD cost by stage and model, against the baseline")
+    .option("--baseline-usd <usd>", "baseline cost to compare against", String(BASELINE_USD))
+    .option("--runs-dir <dir>", "runs directory (default: per-user data dir)")
+    .action((runId: string, opts: { baselineUsd: string; runsDir?: string }) => {
+      const runsDir = opts.runsDir ?? path.join(appDirs("corpus-query").data, "runs");
+      write(costReportText(runsDir, runId, Number(opts.baselineUsd)));
     });
   try {
     await program.parseAsync(argv, { from: "user" });

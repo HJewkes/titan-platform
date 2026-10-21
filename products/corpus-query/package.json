@@ -36,6 +36,7 @@
     "corpus-query": "./dist/bin.js"
   },
   "dependencies": {
+    "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
