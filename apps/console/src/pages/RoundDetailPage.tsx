@@ -11,6 +11,8 @@ import { DesignRound } from "./RoundDesign.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
 import { PagedSections } from "./RoundPager.js";
+import { RoundKeyLegend } from "./RoundKeys.js";
+import { ROUND_KEYS } from "./round-keys.js";
 import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
@@ -67,19 +69,20 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </HStack>
       {manifest.context ? <RoundNote heading="Context" text={manifest.context} /> : null}
+      <RoundKeyLegend />
     </VStack>
   );
 }
 
 function QuestionRound({ round }: { round: ValidRound }): ReactNode {
-  const { submitting, check, checking, locked, frozen, draft } = useRoundSend(round);
+  const { submitting, check, checking, locked, frozen, draft, review } = useRoundSend(round);
   // Frozen, no question is handed over, so no digit key can change an answer already sent or being checked.
   const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, undefined, draft);
   return (
     <VStack gap={4}>
       <DraftDiscarded discarded={state.draftDiscarded} />
-      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
-      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} check={check} checking={checking} send={<RoundSend round={round} state={state} submitting={submitting} check={check} />} />
+      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">{`Recommendations are hidden until you answer; reveal one first with ${ROUND_KEYS.reveal.label}.`}</Typography> : null}
+      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} check={check} checking={checking} review={review} send={<RoundSend round={round} state={state} submitting={submitting} check={check} />} />
     </VStack>
   );
 }

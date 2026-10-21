@@ -16,7 +16,7 @@ const PR_TABS = [
 /** The element id a blocker's link scrolls to; the page puts it on the question, Addressed tick, frame or round note. */
 export function shipTargetId(target: ShipBlockerTarget): string {
   if (target.kind === "question") return `ship-question-${target.id}`;
-  if (target.kind === "prior") return `ship-prior-${target.round}`;
+  if (target.kind === "prior") return `ship-prior-${target.pr ?? "round"}-${target.round}`;
   return target.kind === "frame" ? `ship-frame-${target.key}` : "ship-general";
 }
 

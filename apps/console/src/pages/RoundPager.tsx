@@ -4,16 +4,18 @@ import type { Question } from "../../server/round-schema.js";
 import { replace, useRoute } from "../router.js";
 import { submittedAnswers, unanswered } from "./RoundAnswers.js";
 import type { SendCheck } from "./RoundCheck.js";
+import { useAdvance, useAdvanceKey, useReviewKey } from "./RoundKeys.js";
 import { choicesOf } from "./RoundQuestion.js";
 import { RoundSections, orderedQuestions, type RoundAnswers, type RoundSectionsProps } from "./RoundSections.js";
 import { pageAt, pageMark, sectionPages, withSection, type SectionPage } from "./round-pages.js";
+import { ROUND_KEYS, pressed } from "./round-keys.js";
 import { typedInto } from "./typed-into.js";
 
 /**
  * A round's sections one page at a time (owner decision 513): Back, Next, a jump list and `?section=` in the URL, so
  * a reload or a link keeps the page. The send controls close the last page. A round of one section is one page, as before.
  */
-export function PagedSections({ send, check, checking, ...sections }: RoundSectionsProps & PagedSendProps): ReactNode {
+export function PagedSections({ send, check, checking, review, ...sections }: RoundSectionsProps & PagedSendProps): ReactNode {
   const pages = useMemo(() => sectionPages(orderedQuestions(sections.manifest)), [sections.manifest]);
   const paging = useSectionPaging(pages, sections.state, !checking);
   const endRef = useRef<HTMLDivElement>(null);
@@ -22,6 +24,7 @@ export function PagedSections({ send, check, checking, ...sections }: RoundSecti
   useFocusWhenDone(page.id, page.questions.length > 0 && page.questions.every((question) => !open.includes(question)), endRef);
   useScrollOnPageChange(page.id, topRef);
   useLanding(pages, paging, check, sections.state.setActiveId);
+  useFlowKeys({ pages, open, activeId: sections.state.activeId, check, review, answering: !checking && sections.locked !== true });
   if (checking) return send;
   if (pages.length < 2) return <><RoundSections {...sections} />{send}</>;
   const last = paging.index === pages.length - 1;
@@ -47,6 +50,29 @@ interface PagedSendProps {
   send: ReactNode;
   check: SendCheck;
   checking: boolean;
+  /** Opens the check screen; absent while the round cannot be sent or is already being checked. */
+  review: (() => void) | undefined;
+}
+
+/**
+ * Enter lands on the next open question, on its own page, the way a step from the check screen does; past the last
+ * it opens the check screen. Cmd/Ctrl+Enter opens it from anywhere.
+ */
+function useFlowKeys({ pages, open, activeId, check, review, answering }: FlowKeys): void {
+  const all = useMemo(() => pages.flatMap((page) => page.questions), [pages]);
+  const advance = useAdvance({ all, open, activeId, land: check.jumpTo, review });
+  useAdvanceKey(answering ? advance : undefined);
+  useReviewKey(review);
+}
+
+interface FlowKeys {
+  pages: readonly SectionPage[];
+  open: readonly Question[];
+  activeId: string | undefined;
+  check: SendCheck;
+  review: (() => void) | undefined;
+  /** False while the round is locked or its check screen is open. */
+  answering: boolean;
 }
 
 const submittedOf = (questions: readonly Question[], { answers, comments, optionNotes }: RoundAnswers) => submittedAnswers(questions, answers, comments, optionNotes);
@@ -93,8 +119,8 @@ function usePageKeys(enabled: boolean, step: (delta: number) => void): void {
   useEffect(() => {
     if (!enabled) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey || typedInto(event.target)) return;
-      const delta = event.key === "n" ? 1 : event.key === "p" ? -1 : 0;
+      if (typedInto(event.target)) return;
+      const delta = pressed(ROUND_KEYS.nextSection, event) ? 1 : pressed(ROUND_KEYS.prevSection, event) ? -1 : 0;
       if (delta === 0) return;
       event.preventDefault();
       step(delta);
@@ -171,7 +197,7 @@ function PagerSteps({ pages, paging: { index, page, step }, end = false }: Pager
 function KeyHint(): ReactNode {
   return (
     <span className="hidden md:inline">
-      <Typography variant="caption" color="secondary">n and p step through the sections</Typography>
+      <Typography variant="caption" color="secondary">{`${ROUND_KEYS.nextSection.label} and ${ROUND_KEYS.prevSection.label} step through the sections`}</Typography>
     </span>
   );
 }

@@ -19,7 +19,7 @@ import { sendBackBlocker, shipBlockerItems } from "../../server/ship-blockers.js
 import { ShipContext } from "./ShipContext.js";
 import { ShipLineageLine } from "./ShipLineage.js";
 import { Montages } from "./ShipMontages.js";
-import { ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { ShipPrsRound } from "./ShipPrs.js";
 import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
 import { PrTabs, ShipTarget } from "./ShipTabs.js";
@@ -52,7 +52,8 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes, locked, undefined, draft);
   if (question === undefined) return null;
   const pr = `${question.merge.repo}#${question.merge.pr}`;
-  const prior = <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />;
+  const priorItems = priorFor(round.priorFeedback ?? [], pr);
+  const prior = <ShipPriorFeedback items={priorItems} pr={pr} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />;
   const review = round.manifest.questions.map((each, index) =>
     each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
   );
@@ -62,7 +63,7 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
       <ShipHeading round={round} question={question} />
       <PrTabs
         pr={pr}
-        review={sideQuestions.length === 0 && (round.priorFeedback ?? []).length === 0 ? <NothingToReview /> : <>{review}{prior}</>}
+        review={sideQuestions.length === 0 && priorItems.length === 0 ? <NothingToReview /> : <>{review}{prior}</>}
         // Only the montages judge frames: a frame the Ship question draws above itself is one of them, shown again.
         diff={<FrameFeedbackProvider value={side.frames}><Montages round={round} merge={question.merge} /></FrameFeedbackProvider>}
         context={<ShipContext pr={pr} group={round.manifest.prGroups?.find((group) => group.pr === pr)} />}

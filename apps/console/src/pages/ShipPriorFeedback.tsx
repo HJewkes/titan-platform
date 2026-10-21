@@ -3,8 +3,13 @@ import { Alert, Card, CardContent, Checkbox, Link, Typography, VStack } from "@t
 import type { PriorFeedback, ShipBlocker } from "../../server/ship-blockers.js";
 import { ShipTarget, shipTargetId, useShipJump } from "./ShipTabs.js";
 
+/** An earlier round's entries that bear on `pr`: its own, and those on no PR in particular (TP-3790). */
+export const priorFor = (items: readonly PriorFeedback[], pr: string): PriorFeedback[] => items.filter((item) => item.pr === undefined || item.pr === pr);
+
 interface ShipPriorFeedbackProps {
   items: readonly PriorFeedback[];
+  /** The PR whose tab shows these cards, so a blocker on that tab scrolls to its own card. */
+  pr: string;
   addressed: readonly number[];
   onToggle: (round: number, checked: boolean) => void;
   /** Sent or sending: the ticks show as sent and take no more presses. */
@@ -12,12 +17,12 @@ interface ShipPriorFeedbackProps {
 }
 
 /** The owner's earlier feedback on this unit, each to be ticked Addressed before Ship is offered. */
-export function ShipPriorFeedback({ items, addressed, onToggle, locked = false }: ShipPriorFeedbackProps): ReactNode {
+export function ShipPriorFeedback({ items, pr, addressed, onToggle, locked = false }: ShipPriorFeedbackProps): ReactNode {
   if (items.length === 0) return null;
   return (
     <VStack gap={3} testID="ship-prior-feedback">
       {items.map((item) => (
-        <ShipTarget key={`${item.round}-${item.submittedAt}`} target={{ kind: "prior", round: item.round }}>
+        <ShipTarget key={`${item.pr ?? ""}-${item.round}-${item.submittedAt}`} target={{ kind: "prior", round: item.round, pr }}>
           <Card variant="outline">
             <CardContent>
               <VStack gap={2}>

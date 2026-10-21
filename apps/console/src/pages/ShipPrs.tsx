@@ -17,7 +17,7 @@ import { DraftDiscarded } from "./RoundDraft.js";
 import { useWithSeen } from "./RoundReveal.js";
 import { ShipContext } from "./ShipContext.js";
 import { Montages } from "./ShipMontages.js";
-import { ShipBlockedReason, ShipPriorFeedback } from "./ShipPriorFeedback.js";
+import { ShipBlockedReason, ShipPriorFeedback, priorFor } from "./ShipPriorFeedback.js";
 import { useRoundAnswers, type RoundAnswers, type ShipVerdict } from "./RoundSections.js";
 import { useDraftBinding } from "./RoundSend.js";
 import { NothingToReview, ShipNotices, ShipsAfterNote, SideQuestion, sideMarks } from "./ShipSide.js";
@@ -125,7 +125,6 @@ export function ShipPrsRound({ round, merges }: { round: ValidRound; merges: rea
       </FrameFeedbackProvider>
       {units.map((unit) => <PrSection key={unit.question.id} unit={unit} state={state} />)}
       <SharedQuestions state={state} />
-      <ShipPriorFeedback items={round.priorFeedback ?? []} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
       {state.sent ? <SentGeneral text={round.notes?.general} /> : <PrsSend state={state} submitting={submitting} />}
     </VStack>
   );
@@ -159,9 +158,7 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
           <PrProposal unit={unit} pick={state.round.notes?.answers[question.id]?.pick ?? mergeAnswer(question, state.verdicts)[0]?.pick} />
           <PrTabs
             pr={unit.pr}
-            review={unit.sideQuestions.length === 0 ? <NothingToReview /> : unit.sideQuestions.map((each) => (
-              <SideQuestion key={each.id} round={state.round} question={each} position={state.round.manifest.questions.indexOf(each) + 1} side={state.side} locked={state.locked} />
-            ))}
+            review={<PrReview unit={unit} state={state} />}
             diff={<FrameFeedbackProvider value={state.side.frames}><Montages round={state.round} keys={unit.keys} merge={question.merge} /></FrameFeedbackProvider>}
             context={<ShipContext pr={unit.pr} group={group} />}
             bar={state.sent ? <PrSent unit={unit} state={state} /> : <PrDecision unit={unit} state={state} />}
@@ -169,6 +166,19 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
         </div>
       </SectionContent>
     </Section>
+  );
+}
+
+/** The PR's own side questions, then the earlier feedback on it that waits for an Addressed tick. */
+function PrReview({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNode {
+  const { round, side, locked } = state;
+  const prior = priorFor(round.priorFeedback ?? [], unit.pr);
+  if (unit.sideQuestions.length === 0 && prior.length === 0) return <NothingToReview />;
+  return (
+    <>
+      {unit.sideQuestions.map((each) => <SideQuestion key={each.id} round={round} question={each} position={round.manifest.questions.indexOf(each) + 1} side={side} locked={locked} />)}
+      <ShipPriorFeedback items={prior} pr={unit.pr} addressed={round.notes?.addressed ?? side.addressed} onToggle={side.toggleAddressed} locked={locked} />
+    </>
   );
 }
 
