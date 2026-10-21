@@ -110,7 +110,8 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
   const claims: Claim[] = [];
   const poolState = memoryPoolStateStore();
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send: (call) => github.send(call), clock, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
-  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe: options.observe ?? fakeObserve() };
+  const observe = options.observe ?? fakeObserve();
+  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe };
   const db = openDatabase(":memory:");
   runMigrations(db, [mergeLogMigration(), eventLogMigration(), reconcilerCursorMigration(), botIntentMigration()]);
   const cursor = sqliteReconcilerCursor(db, clock.now);

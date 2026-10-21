@@ -1,6 +1,6 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
 
-/** What the bot may write on GitHub. A merge's intent is the merge log's (`merge_op`); the others have rows here. */
+/** What the bot may write on GitHub. A merge's intent row is the merge log's; the others have rows here. */
 export type BotActionKind = "review" | "merge" | "status" | "train-push";
 
 type LoggedKind = Exclude<BotActionKind, "merge">;
@@ -30,7 +30,7 @@ const BOT_INTENT_DDL = `
     BEGIN SELECT RAISE(ABORT, 'a not-factory mark is never cleared'); END;`;
 
 /**
- * TP-3094 C7: the bot's intent rows for reviews, statuses and train pushes, written before the call as `merge_op`'s are,
+ * TP-3094 C7: the bot's intent rows for reviews, statuses and train pushes, written before the call as the merge log's are,
  * and the marks the reconciler leaves on bot actions with none. 37 follows the reconciler cursor at 36.
  */
 export function botIntentMigration(version = 37): Migration {
@@ -45,7 +45,7 @@ export function recordBotIntent(db: Db, intent: { repo: string; kind: LoggedKind
   db.prepare("INSERT INTO factory_bot_intent (repo, kind, subject, at) VALUES (?, ?, ?, ?)").run(intent.repo, intent.kind, intent.subject, intent.at);
 }
 
-/** A merge's subject is its PR number, matched against any `merge_op` intent on that PR. */
+/** A merge's subject is its PR number, matched against any merge log intent on that PR. */
 export function hasBotIntent(db: Db, repo: string, kind: BotActionKind, subject: string): boolean {
   const row =
     kind === "merge"

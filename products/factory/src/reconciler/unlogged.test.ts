@@ -1,4 +1,4 @@
-import type { BackstopSnapshot } from "@titan-design/github";
+import type { BackstopReview, BackstopSnapshot } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { isNotFactory, recordBotIntent } from "../bot-intent.js";
@@ -12,13 +12,13 @@ const TRAIN_SHA = "c".repeat(40);
 const AT = "2027-01-15T07:00:00Z";
 const ONE_REPO = { repos: [REPO], fullEvery: 1 };
 
-const review = (databaseId: number, login: string, oid = HEAD) => ({ databaseId, state: "APPROVED", submittedAt: AT, author: { login }, commit: { oid } });
+const review = (databaseId: number, login: string, oid = HEAD): BackstopReview => ({ databaseId, state: "APPROVED", submittedAt: AT, author: { login }, commit: { oid } });
 
 function snapshotWith(over: Partial<BackstopSnapshot>): BackstopSnapshot {
   return { open: [], done: [], main: { tip: "c1", commits: [commit("c1")] }, trains: [], rateLimit: { cost: 1, remaining: 4999, resetAt: AT, queries: 1 }, ...over };
 }
 
-const openPr = (reviews: ReturnType<typeof review>[], head: BackstopSnapshot["main"]["commits"][number] | null = null) => ({ number: 7, headRefOid: HEAD, baseRefName: "main", updatedAt: AT, head, reviews });
+const openPr = (reviews: BackstopReview[], head: BackstopSnapshot["main"]["commits"][number] | null = null) => ({ number: 7, headRefOid: HEAD, baseRefName: "main", updatedAt: AT, head, reviews });
 
 async function pass(snapshot: BackstopSnapshot, arrange: (db: Db) => void = () => undefined, passes = 1) {
   const r = rig();

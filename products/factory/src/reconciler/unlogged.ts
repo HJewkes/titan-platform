@@ -2,7 +2,7 @@ import type { BackstopCommit, BackstopSnapshot } from "@titan-design/github";
 import type { BotActionKind } from "../bot-intent.js";
 
 /** `id` names the action in the alarm and its not-factory mark; `subject` is the key its intent row would carry. */
-export interface BotAction {
+interface BotAction {
   kind: BotActionKind;
   id: string;
   subject: string;
@@ -19,7 +19,9 @@ export function botActions(snapshot: BackstopSnapshot, botLogin: string): BotAct
   const bot = normalLogin(botLogin);
   const byBot = (login: string | null | undefined): boolean => login != null && normalLogin(login) === bot;
   const reviews = snapshot.open.flatMap((pr) =>
-    pr.reviews.filter((review) => byBot(review.author?.login)).map((review): BotAction => ({ kind: "review", id: String(review.databaseId), subject: `${pr.number}@${review.commit?.oid ?? "unknown"}` })),
+    pr.reviews
+      .filter((review) => byBot(review.author?.login))
+      .map((review): BotAction => ({ kind: "review", id: String(review.databaseId), subject: `${pr.number}@${review.commit?.oid ?? "unknown"}` })),
   );
   const commits = [...snapshot.open.flatMap((pr) => (pr.head ? [pr.head] : [])), ...snapshot.main.commits];
   const merges = snapshot.done.filter((pr) => pr.merged && byBot(pr.mergedBy)).map((pr): BotAction => ({ kind: "merge", id: String(pr.number), subject: String(pr.number) }));
