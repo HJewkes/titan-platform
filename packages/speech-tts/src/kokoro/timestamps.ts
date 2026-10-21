@@ -43,6 +43,10 @@ export function assertFramesMatchWaveform(providerId: string, frames: readonly n
 /**
  * Port of kokoro 0.9.4 `KPipeline.join_timestamps`. `frames` are the rounded durations including
  * `<bos>` and `<eos>`. Python mutates its tokens; this returns one time per token instead.
+ *
+ * One deliberate divergence (TP-3833): a null-phoneme token owns only its one space id, because the
+ * previous word already stepped past its own. Python advances twice, skipping the next word's first
+ * id; the drift grows per null word until the last word's timing is dropped.
  */
 export function joinTimestamps(tokens: readonly TimedToken[], frames: readonly number[]): TokenTime[] {
   const times: TokenTime[] = tokens.map(() => ({ start: null, end: null }));
@@ -55,9 +59,6 @@ export function joinTimestamps(tokens: readonly TimedToken[], frames: readonly n
   for (const [k, token] of tokens.entries()) {
     if (i >= frames.length - 1) break;
     if (!token.phonemes) {
-      // Deliberately not Python's double advance: the previous word already stepped past its own
-      // space, so a null token owns only its one space id. Python's extra `i += 1` skips the next
-      // word's first id, and the drift grows per null word until the last word's timing is dropped.
       if (token.whitespace) {
         left = right + frame(i);
         right = left + frame(i);
