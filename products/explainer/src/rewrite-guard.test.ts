@@ -41,6 +41,32 @@ describe("guardBeat", () => {
     expect(rules(beatWith(), after)).toContain("number-invented");
   });
 
+  describe("number-vague", () => {
+    const REAL = "The desk server flags the scans. About 60 were real. The ledger keeps them.";
+    const vague = { spoken: "The desk server flags the scans. Only some were real. The ledger keeps them.", labelsAdded: ["about 60 real"] };
+
+    it("rejects a vague word standing in for a moved number", () => {
+      expect(rules(beatWith({}, REAL), vague)).toContain("number-vague");
+    });
+
+    it("rejects many for a moved count of minutes", () => {
+      const before = beatWith({}, "The desk server was up to 13 minutes late. The ledger keeps them.");
+      const after = { spoken: "The desk server was many minutes late. The ledger keeps them.", labelsAdded: ["13 minutes late"] };
+      expect(rules(before, after)).toContain("number-vague");
+    });
+
+    it("accepts the clause cut with the number in a label", () => {
+      const after = { spoken: "The desk server flags the scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
+      expect(rules(beatWith({}, REAL), after)).not.toContain("number-vague");
+    });
+
+    it("does not count a vague word the original already had", () => {
+      const before = beatWith({}, "The desk server flags some scans. About 60 were real. The ledger keeps them.");
+      const after = { spoken: "The desk server flags some scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
+      expect(rules(before, after)).not.toContain("number-vague");
+    });
+  });
+
   it("rejects a rewrite that drops a cue word", () => {
     const before = withCues(["ledger"]);
     const after = { ...joined, spoken: joined.spoken.replace(/ledger/g, "store") };
@@ -150,7 +176,7 @@ describe("guardBeat", () => {
 
   describe("with a spelled number moved to a digit label", () => {
     const SPELLED = "The factory had twenty-eight implementer slots this morning. It filled almost none of them.";
-    const MOVED = "The factory had plenty of implementer slots this morning, and it filled almost none of them.";
+    const MOVED = "The factory had spare implementer slots this morning, and it filled almost none of them.";
 
     it("accepts the label written in digits", () => {
       expect(guardBeat(beatWith({}, SPELLED), { spoken: MOVED, labelsAdded: ["28 slots"] })).toEqual([]);
@@ -158,7 +184,7 @@ describe("guardBeat", () => {
 
     it("accepts a spelled hundred read with an and", () => {
       const before = beatWith({}, "A hundred and ninety tasks were marked ready, and the tick dispatched none of them.");
-      const after = { spoken: "Many tasks were marked ready, and the tick dispatched none of them.", labelsAdded: ["190 tasks ready"] };
+      const after = { spoken: "The tasks were marked ready, and the tick dispatched none of them.", labelsAdded: ["190 tasks ready"] };
       expect(guardBeat(before, after)).toEqual([]);
     });
 
