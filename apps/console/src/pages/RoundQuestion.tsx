@@ -5,6 +5,7 @@ import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
+import { typedInto } from "./typed-into.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
@@ -32,11 +33,6 @@ export function choiceForKey(question: Question, key: string): string | null {
   const digit = Number(key);
   if (!/^[1-9]$/.test(key) || digit > MAX_KEYED_CHOICES) return null;
   return choicesOf(question)[digit - 1] ?? null;
-}
-
-function typedInto(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 /** Digits 1-9 choose in the active question, unless a modifier is held or the owner is typing in a field. */

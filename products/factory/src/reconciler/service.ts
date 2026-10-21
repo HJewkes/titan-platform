@@ -2,7 +2,9 @@ import type { Logger } from "@titan-design/daemon";
 import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { appendEvent, type NewEvent } from "../event-log/event-log.js";
-import { startSweep, type Sweep } from "../sweep.js";
+import { startReconcilerSchedule } from "../github-sources/schedule.js";
+import type { PassStamp, SourcesReader } from "../github-sources/mode.js";
+import type { Sweep } from "../sweep.js";
 import type { ReconcilerConfig } from "./config.js";
 import { sqliteReconcilerCursor, type ReconcilerCursorStore, type RepoCursor } from "./cursor.js";
 
@@ -173,13 +175,17 @@ export interface ReconcilerServeOptions {
   bot: BotPorts;
 }
 
-/** Off unless `reconciler.enabled`. The first tick is the forced start pass, and it is not awaited: serve never waits on GitHub. */
-export function startReconcilerSweep(options: ReconcilerServeOptions | undefined, db: Db, log: Logger, now: () => number = Date.now): Sweep | undefined {
+/**
+ * Off unless `reconciler.enabled`. Passes run at the effective sources mode's interval (TP-3099), not `reconciler.intervalMs`.
+ * The first tick is the forced start pass, and it is not awaited: serve never waits on GitHub.
+ */
+export function startReconcilerSweep(options: ReconcilerServeOptions | undefined, sources: SourcesReader, db: Db, log: Logger, now: () => number = Date.now, stamp?: PassStamp): Sweep | undefined {
   if (!options?.config.enabled) return undefined;
   const { config, bot } = options;
   const service = createReconciler(config, { ...bot, db, cursor: sqliteReconcilerCursor(db, now), log, now });
-  const sweep = startSweep((signal) => service.tick(signal), config.intervalMs, "reconciler", log);
-  void sweep.tick();
-  log.info({ repos: config.repos, intervalMs: config.intervalMs }, "reconciler.started");
-  return sweep;
+  const schedule = startReconcilerSchedule({ sources, pass: (signal) => service.tick(signal), now, log, stamp });
+  void schedule.tick();
+  const { effective, reason, intervalMs } = sources();
+  log.info({ repos: config.repos, effective, reason, intervalMs }, "reconciler.started");
+  return schedule;
 }

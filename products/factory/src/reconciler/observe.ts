@@ -4,11 +4,14 @@ import { ciEvent, fromBackstopContext, type BackstopContext, type Transport } fr
 import type { NewEvent } from "../event-log/event-log.js";
 import { fromBackstopDonePr, fromBackstopMain, fromBackstopOpenPr, fromBackstopRulesets, repoEvent } from "../event-log/repo-keys.js";
 import type { RepoCursor } from "./cursor.js";
+import { declaredFor } from "./kinds.js";
 import type { Observation, Observe } from "./service.js";
 
 const BRANCH = "main";
 
 const SeenRulesets = z.record(z.string(), z.string());
+
+const declared = { main: declaredFor("main"), open: declaredFor("open"), done: declaredFor("done"), rulesets: declaredFor("rulesets") };
 
 /** TP-3097's answer for one read: only `confirmed` may become a row; `non-ancestor` is a tip off the cursor's line. */
 export type GuardVerdict = { kind: "confirmed"; by?: "non-ancestor" } | { kind: "stale" | "pending" | "unknown" };
@@ -39,7 +42,7 @@ export function createObserve(deps: ObserveDeps): Observe {
     const transport: Transport = { source: "backstop", observedAt: new Date(deps.now()).toISOString() };
     const main = observeMain(repo, snapshot.main, cursor.main?.value ?? null, deps.guard, transport);
     const open = snapshot.open.map((pr) => observeOpen(repo, pr, deps.guard, transport));
-    const done = snapshot.done.flatMap((pr) => fromBackstopDonePr(repo, doneNode(pr)).map((o) => backstopRow(repoEvent(o, transport))));
+    const done = snapshot.done.flatMap((pr) => fromBackstopDonePr(repo, doneNode(pr)).map((o) => backstopRow(repoEvent(o, transport)))).filter(declared.done);
     const ruleset = observeRulesets(repo, rulesets, cursor, transport);
     const parts = [main, ...open, { events: [...done, ...ruleset.events], disagreements: [] }];
     return {
@@ -74,7 +77,7 @@ function observeOpen(repo: string, pr: BackstopOpenPr, guard: HeadTipGuard, tran
   const node = { number: pr.number, headRefOid: pr.headRefOid, baseRefName: pr.baseRefName, reviews: { nodes: pr.reviews } };
   const observed = fromBackstopOpenPr(repo, node).filter((o) => headConfirmed || o.kind !== "HeadPushed");
   const ci = headConfirmed && pr.head !== null ? ciRows(repo, pr.head, transport) : [];
-  return { events: [...observed.map((o) => backstopRow(repoEvent(o, transport))), ...ci], disagreements: unconfirmed(verdict, `${repo}#${pr.number}`, pr.headRefOid) };
+  return { events: [...observed.map((o) => backstopRow(repoEvent(o, transport))), ...ci].filter(declared.open), disagreements: unconfirmed(verdict, `${repo}#${pr.number}`, pr.headRefOid) };
 }
 
 function ciRows(repo: string, commit: BackstopCommit, transport: Transport): BackstopEvent[] {
@@ -106,7 +109,7 @@ function observeMain(repo: string, main: BackstopSnapshot["main"], cursor: strin
   const subject = `${repo}:${BRANCH}`;
   if (verdict.kind !== "confirmed") return { events: [], disagreements: unconfirmed(verdict, subject, main.tip), cursor: kept };
   const lost = verdict.by === "non-ancestor" && cursor !== null ? [{ class: "main-ancestry-lost" as const, subject, detail: `${cursor}..${main.tip}` }] : [];
-  const events = [backstopRow(repoEvent(fromBackstopMain(repo, BRANCH, main.tip), transport)), ...main.commits.flatMap((commit) => ciRows(repo, commit, transport))];
+  const events = [backstopRow(repoEvent(fromBackstopMain(repo, BRANCH, main.tip), transport)), ...main.commits.flatMap((commit) => ciRows(repo, commit, transport))].filter(declared.main);
   return { events, disagreements: lost, cursor: heldCursor(main, kept) };
 }
 
@@ -133,7 +136,7 @@ function observeRulesets(repo: string, list: RulesetList | undefined, cursor: Re
   if (list === undefined || list.notModified || list.unreadable) return { events: [], cursor: undefined };
   const seen = SeenRulesets.parse(JSON.parse(cursor.rulesets?.value ?? "{}"));
   const moved = Object.fromEntries(Object.entries(list.rulesets).filter(([id, at]) => seen[id] !== at));
-  return { events: fromBackstopRulesets(repo, moved).map((o) => backstopRow(repoEvent(o, transport))), cursor: JSON.stringify(list.rulesets) };
+  return { events: fromBackstopRulesets(repo, moved).map((o) => backstopRow(repoEvent(o, transport))).filter(declared.rulesets), cursor: JSON.stringify(list.rulesets) };
 }
 
 function definedOnly(next: Record<"main" | "done" | "rulesets", string | undefined>): Observation["cursor"] {

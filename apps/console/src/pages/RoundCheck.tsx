@@ -3,6 +3,7 @@ import { Alert, Button, ButtonText, Card, CardContent, HStack, Heading, Pill, Ty
 import type { Manifest } from "../../server/round-schema.js";
 import { InlineMarkdown } from "./RoundMarkdown.js";
 import { answerText, firstOpen, type CheckFrame, type CheckVerdict, type CheckGroup, type CheckRow } from "./round-check.js";
+import { pinNumber, type Pin } from "./frame-pins.js";
 import { typedInto } from "./typed-into.js";
 
 /**
@@ -149,8 +150,18 @@ function FrameRow({ frame }: { frame: CheckFrame }): ReactNode {
           <Pill variant="subtle" size="xs" tone={frame.verdict ? VERDICT_TONE[frame.verdict] : "neutral"}>{frame.verdict ?? "no verdict"}</Pill>
         </HStack>
         {frame.comment ? <Quote label="Your comment" text={frame.comment} /> : null}
+        {frame.annotations?.length ? <FramePins frameKey={frame.key} pins={frame.annotations} /> : null}
       </VStack>
     </div>
+  );
+}
+
+function FramePins({ frameKey, pins }: { frameKey: string; pins: readonly Pin[] }): ReactNode {
+  return (
+    <VStack gap={1} testID={`round-check-pins-${frameKey}`}>
+      <Typography variant="body2">{pins.length === 1 ? "1 pin" : `${pins.length} pins`}</Typography>
+      {pins.map((pin) => <Quote key={pin.id} label={`Pin ${pinNumber(frameKey, pin.id)}`} text={pin.note || "No note"} />)}
+    </VStack>
   );
 }
 

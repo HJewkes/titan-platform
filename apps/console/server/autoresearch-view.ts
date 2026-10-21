@@ -78,11 +78,15 @@ const ladder = z.object({
   outcome: outcome.nullable(),
 });
 
+/** The planner's `[EXEMPT]` reasons for skipping a quota this round, as its queue ops carry them; absent means none given. */
+const quotaExemptions = z.object({ bold: z.string().optional(), followup: z.string().optional() });
+
 const round = z.object({
   round: z.number().int().positive(),
   queue: z.array(idea),
   rejected: z.array(z.object({ code: z.string() })),
   plannerRetried: z.boolean(),
+  exempt: quotaExemptions.default({}),
   analysis: z.array(z.string()),
   selection: z.object({ picks: z.array(z.string()), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) }),
   ladders: z.array(ladder),
@@ -117,11 +121,13 @@ export const ArRunViewSchema = z.object({
   cells: z.array(cell),
 });
 
-/** One row of `autoresearch.runs`; `best` is null until the baseline has run. */
+/** One row of `autoresearch.runs`; `best` is null until the baseline has run, and `round` is 0 until the first round starts. */
 export const ArRunSummarySchema = z.object({
   runId: z.string(),
   target: z.string(),
   phase: z.string(),
+  round: z.number().int().nonnegative(),
+  rounds: z.number().int().positive(),
   status: z.enum(WORKFLOW_STATUSES),
   startedAt: z.string(),
   completedAt: z.string().nullable(),
@@ -138,5 +144,8 @@ export const ArDiffSchema = z.object({
 
 export type ArRunView = z.infer<typeof ArRunViewSchema>;
 export type ArLadder = z.infer<typeof ladder>;
+export type ArRound = z.infer<typeof round>;
+export type ArIdea = z.infer<typeof idea>;
+export type ArOutcome = z.infer<typeof outcome>;
 export type ArRunSummary = z.infer<typeof ArRunSummarySchema>;
 export type ArDiff = z.infer<typeof ArDiffSchema>;

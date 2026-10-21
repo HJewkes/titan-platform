@@ -9,8 +9,8 @@
  * (`round-rules.ts`), naming each rule. It also refuses a "Merge #N", "Ship" or "#N at <sha>"
  * offer with no agreeing merge binding (`round-merge-binding.ts`), which the page still lists, and a Ship round that is not
  * one clean main-vs-head package (`round-ship-package.ts`). `frames/frames.json` must name the
- * round.json bytes it was built for; it is copied with only the files it lists, each read through
- * `round-frames.ts`'s reader and checked against its sha256. A `packet.json` or `prose.json` it names is
+ * round.json bytes it was built for; it is copied with only the files it lists (each record's PNGs and its optional
+ * `targets` element map), each read through `round-frames.ts`'s reader and checked against its sha256. A `packet.json` or `prose.json` it names is
  * copied beside round.json, sha256-checked, and the packet must bind the PR and head the round's Ship
  * questions merge, because the factory's Ship answer route trusts it there. A new round is built in a dot-named
  * staging dir, which `ROUND_ID` hides from `listRounds`, and renamed into place. A re-import of the
@@ -23,7 +23,7 @@ import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { FramesIndexSchema, readFrameBytes } from "./round-frames.js";
+import { FramesIndexSchema, readFrameBytes, type ListedKind } from "./round-frames.js";
 import { mergeBindingProblems } from "./round-merge-binding.js";
 import { roundRuleRefusal } from "./round-rules.js";
 import { shipPackageProblems } from "./round-ship-package.js";
@@ -44,7 +44,7 @@ const PacketBinding = z.object({ schema: z.literal("titan-review/ci-packet@1"), 
 export interface ImportResult {
   id: string;
   created: boolean;
-  /** Distinct frame files the frames index lists, all present in the destination after the import. */
+  /** Distinct files the frames index lists (PNGs and targets files), all present in the destination after the import. */
   frames: number;
   feedback: "copied" | "kept" | "none";
 }
@@ -56,8 +56,8 @@ interface SourceRound {
   roundBytes: Buffer;
   /** `frames/frames.json` as read, copied verbatim so `rounds.frame` finds the base, after and diff views. */
   index: Buffer | null;
-  /** sha256 by the file's normalised path relative to the round dir. */
-  frames: Map<string, string>;
+  /** sha256 and kind by the file's normalised path relative to the round dir. */
+  frames: Map<string, ListedFile>;
   /** `packet.json` and `prose.json` when frames.json names them, keyed by file name. */
   sidecars: Map<string, Buffer>;
   feedback: Buffer | null;
@@ -65,6 +65,7 @@ interface SourceRound {
 
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
 type Listed = { file: string; sha256: string };
+type ListedFile = { sha256: string; kind: ListedKind };
 type ShipBinding = { repo: string; pr: number; headSha: string };
 
 interface Binding {
@@ -134,15 +135,20 @@ async function readIndex(dir: string): Promise<{ bytes: Buffer; index: FramesInd
 }
 
 /** Every listed file is read and checked here, before anything is written. */
-async function readFrameList(dir: string, index: FramesIndex, binding: Binding): Promise<Map<string, string>> {
-  const frames = new Map<string, string>();
+async function readFrameList(dir: string, index: FramesIndex, binding: Binding): Promise<Map<string, ListedFile>> {
+  const frames = new Map<string, ListedFile>();
   checkBinding(index, binding);
-  for (const listed of index.frames.flatMap((record) => [record, record.base, record.diff, record.after])) {
+  const listedFiles = index.frames.flatMap((record) => [
+    ...[record, record.base, record.diff, record.after].map((listed) => listed && { ...listed, kind: "png" as const }),
+    record.targets && { ...record.targets, kind: "targets" as const },
+  ]);
+  for (const listed of listedFiles) {
     if (listed === undefined) continue;
-    await readFrameBytes(dir, listed.file, listed.sha256);
+    await readFrameBytes(dir, listed.file, listed.sha256, listed.kind);
     const rel = path.normalize(listed.file);
-    if ((frames.get(rel) ?? listed.sha256) !== listed.sha256) refuse("frames.json gives one file two sha256s");
-    frames.set(rel, listed.sha256);
+    const seen = frames.get(rel);
+    if (seen && (seen.sha256 !== listed.sha256 || seen.kind !== listed.kind)) refuse("frames.json gives one file two sha256s or kinds");
+    frames.set(rel, { sha256: listed.sha256, kind: listed.kind });
   }
   return frames;
 }
@@ -207,7 +213,7 @@ async function readSource(dir: string): Promise<SourceRound> {
   if (unclean.length > 0) refuse(`${ROUND_FILE}: ${unclean.join("; ")}`);
   const broken = roundRuleRefusal(parsed.manifest);
   if (broken !== null) refuse(broken);
-  const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, string>();
+  const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, ListedFile>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
   return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding) };
 }
@@ -249,9 +255,9 @@ async function ensureParents(root: string, rel: string, create = true): Promise<
 async function checkDestFrames(source: SourceRound, dest: string): Promise<void> {
   const written = source.index === null ? [] : [FRAMES_INDEX_PATH];
   for (const rel of [...source.frames.keys(), ...written]) await ensureParents(dest, rel, false);
-  for (const [rel, expected] of source.frames) {
+  for (const [rel, { sha256: expected, kind }] of source.frames) {
     if (!(await lstatOrNull(path.join(dest, rel)))) continue;
-    await readFrameBytes(dest, rel, expected).catch((error: unknown) => {
+    await readFrameBytes(dest, rel, expected, kind).catch((error: unknown) => {
       if (isFailure(error)) refuse(`round ${source.id} holds ${rel}, which is not the frame frames.json names; it is not overwritten`);
       throw error;
     });
@@ -263,10 +269,10 @@ async function checkDestFrames(source: SourceRound, dest: string): Promise<void>
  * refused, then frames.json, packet.json and prose.json where the target has none.
  */
 async function writeFrames(source: SourceRound, target: string): Promise<void> {
-  for (const [rel, expected] of source.frames) {
+  for (const [rel, { sha256: expected, kind }] of source.frames) {
     await ensureParents(target, rel);
     if (await lstatOrNull(path.join(target, rel))) continue;
-    const { bytes } = await readFrameBytes(source.dir, rel, expected);
+    const { bytes } = await readFrameBytes(source.dir, rel, expected, kind);
     await writeNew(path.join(target, rel), bytes);
   }
   if (source.index === null) return;
