@@ -193,8 +193,11 @@ describe("confirm role", () => {
     expect(CONFIRM_ROLE).toMatch(/"referenced"/);
   });
 
-  it("gives the judge a way to exclude a passage and to judge a canary on its own text", () => {
+  it("gives the judge a way to exclude a passage", () => {
     expect(CONFIRM_ROLE).toMatch(/"included": false/);
-    expect(CONFIRM_ROLE).toMatch(/ref is CANARY[\s\S]*text alone/);
+  });
+
+  it("tells both judges to read a canary as in scope, so a book's context cannot make them reject it", () => {
+    for (const role of [CONFIRM_ROLE, SCREEN_ROLE]) expect(role).toMatch(/ref is CANARY[\s\S]*read whoever it is about as in scope/);
   });
 });
