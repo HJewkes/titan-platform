@@ -71,9 +71,11 @@ describe("planRegisterEdits: sentence shape", () => {
 describe("planRegisterEdits: numbers and triads", () => {
   const CROWDED = "The desk held 12 parcels, sent 3 back and lost two.";
   const LIST = "It checks the scan, the row and the label.";
+  // Crowded beats beyond the capped share, so the numbers-per-beat row fails and the planner acts.
+  const MORE_CROWDED = Array.from({ length: 5 }, () => CROWDED);
 
   it("lists every number a crowded beat speaks, and the list of three it holds", () => {
-    const s = script([CROWDED, LIST, ...choppyLines(20)]);
+    const s = script([CROWDED, LIST, ...MORE_CROWDED, ...choppyLines(15)]);
     const crowded = directiveFor(plan(s).directives, "h1");
 
     expect(crowded?.numbers).toEqual(["12", "3", "two"]);
@@ -82,7 +84,7 @@ describe("planRegisterEdits: numbers and triads", () => {
   });
 
   it("leaves a beat that speaks one number alone", () => {
-    const s = script(["The desk held 12 parcels overnight.", CROWDED, ...choppyLines(20)]);
+    const s = script(["The desk held 12 parcels overnight.", CROWDED, ...MORE_CROWDED, ...choppyLines(14)]);
 
     expect(directiveFor(plan(s).directives, "h1")?.numbers).toBeUndefined();
   });
@@ -92,7 +94,8 @@ describe("planRegisterEdits: round 2", () => {
   const LIST = "It checks the scan, the row and the label.";
 
   it("directs the beats that still hold a triad or crowded numbers", () => {
-    const roundOneText = script([LIST, "The desk held 12 parcels and 3 of them moved.", ...choppyLines(12)]);
+    const moved = "The desk held 12 parcels and 3 of them moved.";
+    const roundOneText = script([LIST, moved, moved, moved, moved, ...choppyLines(10)]);
     const { directives } = plan(roundOneText, 2);
 
     expect(directiveFor(directives, "h1")?.triads).toEqual(["checks the scan, the row and the label."]);
