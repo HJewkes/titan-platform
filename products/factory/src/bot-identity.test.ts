@@ -10,6 +10,7 @@ import { runCommand } from "./service-ports.js";
 /** Built, not written out, so no source line carries a token-shaped literal. */
 const SENTINEL = `ghp_${"SYNTHETICsentinel".padEnd(36, "0")}`;
 const HOUR_S = 3600;
+const DAY_MS = 24 * HOUR_S * 1000;
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -31,11 +32,11 @@ interface Seen {
 }
 
 /** Answers every call with the given rate headers and status, and records the authorization it was sent. */
-function fakeGitHub(seen: Seen[], status = 200, remaining = 4999): typeof fetch {
+function fakeGitHub(seen: Seen[], status = 200, remaining = 4999, extra: Record<string, string> = {}): typeof fetch {
   return async (_url, init) => {
     seen.push({ authorization: new Headers(init?.headers).get("authorization") });
     const reset = Math.floor(Date.now() / 1000) + HOUR_S;
-    const headers = { "content-type": "application/json", "x-ratelimit-limit": "5000", "x-ratelimit-remaining": String(remaining), "x-ratelimit-used": "1", "x-ratelimit-reset": String(reset), "x-ratelimit-resource": "core" };
+    const headers = { "content-type": "application/json", "x-ratelimit-limit": "5000", "x-ratelimit-remaining": String(remaining), "x-ratelimit-used": "1", "x-ratelimit-reset": String(reset), "x-ratelimit-resource": "core", ...extra };
     return new Response(JSON.stringify(status === 200 ? {} : { message: "API rate limit exceeded" }), { status, headers });
   };
 }
@@ -139,8 +140,49 @@ describe("bot identity: an absent or refused file disables only the bot (V5)", (
   it("a readable token is ok and is listed as the capability's secret", () => {
     const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([]) });
 
-    expect(bot.health()).toEqual({ state: "ok" });
+    expect(bot.health()).toEqual({ state: "ok", expiresAt: null });
     expect(bot.capabilities[BOT_CAPABILITY]!.secrets).toEqual([SENTINEL]);
+  });
+});
+
+/** GitHub's own shape for the header: `YYYY-MM-DD HH:MM:SS UTC`, so it is cut to the second. */
+function expiresIn(days: number): Record<string, string> {
+  const at = new Date(Date.now() + days * DAY_MS).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  return { "github-authentication-token-expiration": at };
+}
+
+describe("bot identity: the token's expiry header (V7)", () => {
+  it.each([
+    [15, 0],
+    [14, 1],
+  ])("a bot response with %i days left raises %i ops alarms", async (days, alarms) => {
+    const lines: string[] = [];
+    const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([], 200, 4999, expiresIn(days)), log: (line) => lines.push(line), alarmed: new Set() });
+
+    await okClient(bot).request("GET /rate_limit");
+    await okClient(bot).request("GET /rate_limit");
+
+    expect(lines.filter((line) => line.startsWith("factory: ops-alarm bot-token-expiry "))).toHaveLength(alarms);
+    expect(lines.join("\n")).not.toContain(SENTINEL);
+  });
+
+  it("an error response still carries the header, so a refused call is read too", async () => {
+    const lines: string[] = [];
+    const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([], 403, 0, expiresIn(2)), log: (line) => lines.push(line), alarmed: new Set() });
+
+    await okClient(bot).request("GET /repos/{owner}/{repo}", { owner: "fixture-org", repo: "fixture-repo" }).catch(() => undefined);
+
+    expect(lines).toHaveLength(1);
+  });
+
+  it("puts the header's expiry on health once a response carried it", async () => {
+    const header = expiresIn(30);
+    const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([], 200, 4999, header), alarmed: new Set() });
+
+    await okClient(bot).request("GET /rate_limit");
+
+    const expected = new Date(Date.parse(header["github-authentication-token-expiration"]!.replace(" UTC", "Z").replace(" ", "T"))).toISOString();
+    expect(bot.health()).toEqual({ state: "ok", expiresAt: expected });
   });
 });
 
