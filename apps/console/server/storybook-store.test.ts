@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { importRound } from "./round-import.js";
 import { storybookLiveReader } from "./round-live.js";
 import { getRound, parseManifest, type RoundDetail } from "./rounds.js";
@@ -47,6 +48,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+const jsonObject = z.record(z.string(), z.unknown());
+const jsonObjects = z.array(jsonObject);
 const sha256Of = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const staticDir = (from = source) => path.join(from, "storybook", "static");
 const listing = (files: Record<string, string>): BuildFile[] =>
@@ -72,7 +75,7 @@ async function writeBuild({ from = source, builtAt = "2026-10-21T00:00:00Z", sha
 }
 
 async function editRound(edit: (round: Record<string, unknown>) => void, from = source): Promise<void> {
-  const round = JSON.parse(await readFile(path.join(from, "round.json"), "utf8")) as Record<string, unknown>;
+  const round = jsonObject.parse(JSON.parse(await readFile(path.join(from, "round.json"), "utf8")));
   edit(round);
   await writeFile(path.join(from, "round.json"), JSON.stringify(round));
 }
@@ -80,7 +83,7 @@ async function editRound(edit: (round: Record<string, unknown>) => void, from = 
 /** The fixture's pick names no frames, which the import's builder rules refuse. */
 const anchorQuestion = (from = source) =>
   editRound((round) => {
-    for (const question of round.questions as Record<string, unknown>[]) question.frames = ["compact", "roomy"];
+    round.questions = jsonObjects.parse(round.questions).map((question) => ({ ...question, frames: ["compact", "roomy"] }));
   }, from);
 
 /** A frames.json whose roomy record is shot in the light theme, bound to the source's round.json. */
@@ -214,8 +217,8 @@ describe("rounds.get live", () => {
 
   it("gives a story id the build's index.json does not list a reason and no url", async () => {
     await editRound((round) => {
-      const [compact] = round.variants as Record<string, unknown>[];
-      if (compact) compact.storyId = "lantern-card--missing";
+      const [compact, ...rest] = jsonObjects.parse(round.variants);
+      round.variants = [{ ...compact, storyId: "lantern-card--missing" }, ...rest];
     });
     await runImport();
 
@@ -224,8 +227,8 @@ describe("rounds.get live", () => {
 
   it("gives args Storybook would strip from the url a reason and no url", async () => {
     await editRound((round) => {
-      const [compact] = round.variants as Record<string, unknown>[];
-      if (compact) compact.args = { label: "a;b" };
+      const [compact, ...rest] = jsonObjects.parse(round.variants);
+      round.variants = [{ ...compact, args: { label: "a;b" } }, ...rest];
     });
     await runImport();
 

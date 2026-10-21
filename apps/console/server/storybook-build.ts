@@ -97,7 +97,7 @@ const sha7 = (sha: string): string => sha.slice(0, 7);
 
 /** The heads a variant's build must be at: its section's PR group, else the round's merge-bound Ship heads, else none. */
 function pinnedHeads(manifest: Manifest, key: string): string[] {
-  const section = manifest.sections?.find((candidate) => candidate.variantKeys.includes(key));
+  const section = manifest.sections.find((candidate) => candidate.variantKeys.includes(key));
   const group = section && manifest.prGroups?.find((candidate) => candidate.sectionIds.includes(section.id));
   if (group) return [group.headSha];
   return manifest.questions.flatMap((question) => (question.kind === "pick-one" && question.merge ? [question.merge.headSha] : []));
