@@ -72,11 +72,12 @@ export interface HoldMember {
 
 export const DEFAULT_ADVERSARY_PROFILE = "fable-reviewer";
 
-const HOLD_RULE: ShapeRule = { shape: "adversary", classes: ["g10", "standard"], touches: [], blocking: true, always: true };
+const HOLD_RULE: ShapeRule = { shape: "adversary", classes: ["g10", "standard"], touches: [], blocking: true, always: true, uncapped: true };
 
 /**
  * The hold's adversary member goes first among the shapes beside correctness, so the member cap never drops it, and at the hold's
- * profile, so it never shares the correctness member's. Under a panel other than `on` it is the only member beside correctness.
+ * profile, so it never shares the correctness member's. It is uncapped: an opus or fable correctness member keeps the premium
+ * seat and the hold member keeps its own profile beside it (TP-3907). Under a panel other than `on` it is the only member beside correctness.
  */
 function withHoldMember(policy: PanelPolicy, member: HoldMember, fullPanel: boolean): PanelPolicy {
   const rest = fullPanel ? (policy.panel ?? []).filter((rule) => rule.shape !== "adversary") : [];

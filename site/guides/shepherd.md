@@ -197,6 +197,15 @@ and `sh-await-verdict:<head>:<shape>`, at its planned profile, with its shape's 
 checks out under `<review checkouts>/<shape>`. All members are started before any verdict is
 awaited.
 
+A head gets at most one premium member, opus (`bd-reviewer`) or Fable (`fable-reviewer`);
+a later premium member is planned at its sonnet fallback. A g10-adversary hold's member
+(`shepherd.review.adversaryProfile`, default `fable-reviewer`) is outside that cap: it keeps
+its profile beside an opus correctness member, and neither is lowered. Before it records the
+intent, Shepherd checks that every fallback a member is lowered to is an installed headless
+agent-chat profile. If one is not, the intent step is refused with
+`UninstalledProfileError`, naming the profile, rather than dispatching a member that could
+only come back with no verdict.
+
 The aggregate decides:
 
 - A `FIX_FIRST` from any blocking member sends the head back. The findings carry each
