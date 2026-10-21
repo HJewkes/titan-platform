@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { RECONCILER_KINDS } from "../../reconciler/kinds.js";
 import type { CiFact } from "./ci-shapes.js";
 import type { Feed } from "./feed.js";
@@ -7,7 +8,7 @@ import type { RepoFact } from "./repo-shapes.js";
 
 const REPO = "o/r";
 const sha = (c: string): string => c.repeat(40);
-const [A, B, C, D, E, F, G, H, I] = ["a", "b", "c", "d", "e", "f", "1", "2", "3"].map(sha) as [string, string, string, string, string, string, string, string, string];
+const [A, B, C, D, E, F, G, H, I] = [sha("a"), sha("b"), sha("c"), sha("d"), sha("e"), sha("f"), sha("1"), sha("2"), sha("3")];
 
 const check = (over: Partial<CiFact>): CiFact => ({ type: "check", repo: REPO, head: A, context: "build", checkRunId: 101, outcome: "success", at: "2026-10-17T10:00:00Z", ...over });
 const status = (over: Partial<CiFact>): CiFact => ({ type: "status", repo: REPO, head: A, context: "ci", outcome: "success", at: "2026-10-17T10:02:00Z", ...over });
@@ -93,6 +94,8 @@ const SCENARIOS: readonly Scenario[] = [
   },
 ];
 
+const RowKeys = z.record(z.string(), z.unknown());
+
 interface KeyRow {
   seq: number;
   occurrence_key: string;
@@ -102,7 +105,7 @@ interface KeyRow {
 /** A transition's key names the seq it follows, which depends on how the mode interleaved its inserts; its value does not. */
 function canonicalKeys(feed: Feed, sinceSeq: number): string[] {
   const rows = feed.db.prepare<[], KeyRow>("SELECT seq, occurrence_key, keys FROM factory_event ORDER BY seq").all();
-  const valueAt = new Map(rows.map((row) => [row.seq, String((JSON.parse(row.keys) as { value?: unknown }).value)]));
+  const valueAt = new Map(rows.map((row) => [row.seq, String(RowKeys.parse(JSON.parse(row.keys)).value)]));
   return rows
     .filter((row) => row.seq > sinceSeq)
     .map((row) => row.occurrence_key.replace(/\|after:(\d+)$/, (_, seq: string) => `|after:${seq === "0" ? "none" : valueAt.get(Number(seq))}`))
