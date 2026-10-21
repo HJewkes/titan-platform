@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Button, ButtonText, Input, Pill, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundNotes } from "../../server/rounds.js";
 import { EMPTY_DRAFT, VERDICTS, draftsFromSent, toggledVerdict, verdictForKey, type FrameDraft, type Verdict } from "./frame-feedback.js";
+import type { VerdictChange } from "./frame-link.js";
 import { nextPinId, pinNumber, type Pin, type PngWidths } from "./frame-pins.js";
 import { FramePinsProvider, PinList, useCoarsePointer, type DrawnPin, type FramePins } from "./FramePins.js";
 import { typedInto } from "./typed-into.js";
@@ -76,12 +77,31 @@ function useDraftPins(drafts: Readonly<Record<string, FrameDraft>>, update: Upda
   return { focusPin, addPin, setPinNote, removePin };
 }
 
+/** The verdicts other frames take once frame `key` takes `verdict`; `verdictOf` already reads `key` as `verdict`. */
+export type VerdictLink = (key: string, verdict: Verdict | null, verdictOf: (key: string) => Verdict | null) => readonly VerdictChange[];
+
+/** Setting a verdict also sets the ones `link` says follow from it; `applyVerdicts` sets verdicts and follows none. */
+function useVerdicts(drafts: Readonly<Record<string, FrameDraft>>, update: UpdateDraft, locked: boolean, link?: VerdictLink) {
+  const applyVerdicts = useCallback((changes: readonly VerdictChange[]) => changes.forEach(({ key, verdict }) => update(key, () => ({ verdict }))), [update]);
+  const setVerdict = useCallback(
+    (key: string, verdict: Verdict | null) => {
+      if (locked) return;
+      update(key, () => ({ verdict }));
+      applyVerdicts(link?.(key, verdict, (other) => (other === key ? verdict : (drafts[other] ?? EMPTY_DRAFT).verdict)) ?? []);
+    },
+    [drafts, update, locked, link, applyVerdicts],
+  );
+  const pressVerdict = useCallback((key: string, verdict: Verdict) => setVerdict(key, toggledVerdict((drafts[key] ?? EMPTY_DRAFT).verdict, verdict)), [drafts, setVerdict]);
+  return { applyVerdicts, setVerdict, pressVerdict };
+}
+
 /**
  * Each frame's draft verdict, comment and pins, which frame is active and whether it is in pin mode, and the setters its
  * controls and keys call. Locked (sent or sending), every one of them is a no-op and no frame is active, so nothing
- * changes what was sent. A sent round's `frames` seed the drafts and carry the pins, so a reload shows what was sent.
+ * changes what was sent. A sent round's `frames` seed the drafts and carry the pins, so a reload shows what was sent. `link`
+ * names the verdicts that follow from one the owner sets.
  */
-export function useFrameFeedback(active: ActiveTarget | undefined, setActive: SetTarget, locked: boolean, sent?: RoundNotes["frames"]) {
+export function useFrameFeedback(active: ActiveTarget | undefined, setActive: SetTarget, locked: boolean, sent?: RoundNotes["frames"], link?: VerdictLink) {
   const [drafts, setDrafts] = useState<Record<string, FrameDraft>>(() => draftsFromSent(sent));
   const update = useCallback<UpdateDraft>(
     (key, change) => {
@@ -89,8 +109,7 @@ export function useFrameFeedback(active: ActiveTarget | undefined, setActive: Se
     },
     [locked],
   );
-  const setVerdict = useCallback((key: string, verdict: Verdict | null) => update(key, () => ({ verdict })), [update]);
-  const pressVerdict = useCallback((key: string, verdict: Verdict) => update(key, (draft) => ({ verdict: toggledVerdict(draft.verdict, verdict) })), [update]);
+  const { applyVerdicts, setVerdict, pressVerdict } = useVerdicts(drafts, update, locked, link);
   const setComment = useCallback((key: string, comment: string) => update(key, () => ({ comment })), [update]);
   const mode = usePinMode(setActive, locked);
   const keyActions = useMemo(() => ({ verdict: setVerdict, togglePins: mode.togglePins, leavePins: mode.leavePins }), [setVerdict, mode.togglePins, mode.leavePins]);
@@ -99,7 +118,7 @@ export function useFrameFeedback(active: ActiveTarget | undefined, setActive: Se
   const activeFrame = live?.kind === "frame" ? live.key : undefined;
   const pinning = live?.kind === "frame" && live.pinning ? live.key : undefined;
   const pins = useDraftPins(drafts, update);
-  return { drafts, sent, activeFrame, pinning, pressVerdict, setComment, ...mode, ...pins, locked };
+  return { drafts, sent, activeFrame, pinning, pressVerdict, applyVerdicts, setComment, ...mode, ...pins, locked };
 }
 
 type FrameFeedbackState = ReturnType<typeof useFrameFeedback>;

@@ -39,7 +39,7 @@ function DesignNotice({ storybookUrl }: { storybookUrl: string | null }): ReactN
 
 function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }): ReactNode {
   const { submitting, check, checking, locked, frozen } = useRoundSend(round);
-  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen);
+  const state = useDesignAnswers(round, frozen);
   const indexed = useMemo(() => new Set(listed.frames.filter((frame) => frame.indexed).map((frame) => frame.key)), [listed]);
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
@@ -66,6 +66,12 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
       </FrameFeedbackProvider>
     </RoundFramesProvider>
   );
+}
+
+/** The round's answers; an option picking one of its frames stays in step with that frame's Chosen verdict. */
+function useDesignAnswers(round: ValidRound, frozen: boolean) {
+  const frameKeys = useMemo(() => round.manifest.variants.map((variant) => variant.key), [round.manifest]);
+  return useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, frameKeys);
 }
 
 /** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in, and whether it has an element map. */
