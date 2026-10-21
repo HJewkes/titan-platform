@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Alert, HStack, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
-import type { Manifest, Section } from "../../server/round-schema.js";
+import type { Section } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
@@ -94,23 +94,15 @@ function declaredWidths({ id, manifest }: ValidRound, listed: FramesList): Map<s
   );
 }
 
-/** Each section's strip, and the frames no section shows as one more strip. */
+/** Each section's strip. */
 function useStrips(round: ValidRound, indexed: ReadonlySet<string>) {
   const labels = new Map(round.manifest.variants.map((variant) => [variant.key, variant.label]));
   const strip = { roundId: round.id, indexed, labels };
   const anchored = useMemo(() => anchoredKeys(round.manifest), [round.manifest]);
-  const loose = useMemo(() => looseKeys(round.manifest, anchored), [round.manifest, anchored]);
   return {
     labels,
     frames: (section: Section) => <SectionFrames section={section} anchored={anchored} {...strip} />,
-    otherFrames: loose.length > 0 ? <FrameStrip keys={loose} size="strip" {...strip} /> : undefined,
   };
-}
-
-/** Frames no section's strip names and no question draws, which would otherwise never be shown. */
-function looseKeys(manifest: Manifest, anchored: ReadonlySet<string>): string[] {
-  const placed = new Set(manifest.sections.flatMap((section) => section.variantKeys));
-  return manifest.variants.map((variant) => variant.key).filter((key) => !placed.has(key) && !anchored.has(key));
 }
 
 interface StripProps {

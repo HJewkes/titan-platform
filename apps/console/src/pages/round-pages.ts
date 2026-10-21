@@ -12,14 +12,9 @@ const OTHER_PAGE = "~other";
 
 export const pageIdOf = (section: Section | null): string => section?.id ?? OTHER_PAGE;
 
-/** The page of the frames no section shows, last, as the check screen lists their verdicts. */
-export const OTHER_FRAMES_PAGE = "~frames";
-const OTHER_FRAMES: SectionPage = { id: OTHER_FRAMES_PAGE, title: "Other frames", questions: [] };
-
-/** One page per group of `orderedQuestions`, in its order, then an "Other frames" page when some frame has no section. */
-export function sectionPages(groups: readonly { section: Section | null; questions: Question[] }[], otherFrames = false): SectionPage[] {
-  const pages = groups.map(({ section, questions }) => ({ id: pageIdOf(section), title: section?.title ?? "Other questions", questions }));
-  return otherFrames ? [...pages, OTHER_FRAMES] : pages;
+/** One page per group of `orderedQuestions`, in its order. */
+export function sectionPages(groups: readonly { section: Section | null; questions: Question[] }[]): SectionPage[] {
+  return groups.map(({ section, questions }) => ({ id: pageIdOf(section), title: section?.title ?? "Other questions", questions }));
 }
 
 /** A round with neither sections nor questions still has a page to stand on. */

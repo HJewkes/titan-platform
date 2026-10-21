@@ -14,8 +14,7 @@ import { typedInto } from "./typed-into.js";
  * a reload or a link keeps the page. The send controls close the last page. A round of one section is one page, as before.
  */
 export function PagedSections({ send, check, checking, ...sections }: RoundSectionsProps & PagedSendProps): ReactNode {
-  const otherFrames = sections.otherFrames !== undefined;
-  const pages = useMemo(() => sectionPages(orderedQuestions(sections.manifest), otherFrames), [sections.manifest, otherFrames]);
+  const pages = useMemo(() => sectionPages(orderedQuestions(sections.manifest)), [sections.manifest]);
   const paging = useSectionPaging(pages, sections.state, !checking);
   const endRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
