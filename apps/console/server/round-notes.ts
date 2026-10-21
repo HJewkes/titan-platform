@@ -22,6 +22,22 @@ const sentAnswer = z.object({
   recommendationSeen: z.literal(true).optional(),
 });
 
+/** A pin as sent; its number is the suffix of its `${key}-${n}` id. */
+const sentPin = z.object({
+  id: z.string(),
+  xPct: z.number(),
+  yPct: z.number(),
+  note: z.string(),
+  target: z.object({ testId: z.string().optional(), role: z.string().optional(), text: z.string().optional() }).optional(),
+});
+
+/** One frame's sent verdict, comment and pins (TP-3773). */
+const sentFrame = z.object({
+  verdict: z.enum(["chosen", "rejected", "maybe"]).nullable(),
+  comment: z.string(),
+  annotations: z.array(sentPin),
+});
+
 export const roundNotes = z.object({
   general: z.string(),
   /** Each answered question's comment, by question id. */
@@ -30,10 +46,13 @@ export const roundNotes = z.object({
   answers: z.record(z.string(), sentAnswer),
   /** The earlier rounds a Ship ticked Addressed, from `addressed.json`; empty when none were. */
   addressed: z.array(z.number()),
+  /** Each frame that was sent a verdict, a comment or a pin, by variant key; absent when none was. */
+  frames: z.record(z.string(), sentFrame).optional(),
 });
 
 export type RoundNotes = z.infer<typeof roundNotes>;
 export type SentAnswer = z.infer<typeof sentAnswer>;
+type SentFrame = z.infer<typeof sentFrame>;
 
 const sentAnswerOf = ({ pick, picks, value, text, revisionRequested, optionNotes, recommendationSeen }: Feedback["answers"][number]): SentAnswer => ({
   ...(pick !== undefined && { pick }),
@@ -45,10 +64,31 @@ const sentAnswerOf = ({ pick, picks, value, text, revisionRequested, optionNotes
   ...(recommendationSeen && { recommendationSeen }),
 });
 
+const sentPinOf = ({ id, xPct, yPct, note, target }: Feedback["variants"][number]["annotations"][number]): SentFrame["annotations"][number] => ({
+  id,
+  xPct,
+  yPct,
+  note,
+  ...(target !== undefined && { target }),
+});
+
+/** The frames whose feedback holds something; every other frame is the server's undecided echo. */
+function framesOf(variants: Feedback["variants"]): Record<string, SentFrame> {
+  const held = variants.filter(({ verdict, comment, annotations }) => verdict !== null || comment.trim() !== "" || annotations.length > 0);
+  return Object.fromEntries(held.map(({ key, verdict, comment, annotations }) => [key, { verdict, comment, annotations: annotations.map(sentPinOf) }]));
+}
+
 export function notesOf(feedback: Feedback, addressed: number[]): RoundNotes {
   const commented = feedback.answers.flatMap((answer) => (answer.comment?.trim() ? [[answer.questionId, answer.comment] as const] : []));
   const answers = feedback.answers.map((answer) => [answer.questionId, sentAnswerOf(answer)] as const);
-  return { general: feedback.general, comments: Object.fromEntries(commented), answers: Object.fromEntries(answers), addressed };
+  const frames = framesOf(feedback.variants);
+  return {
+    general: feedback.general,
+    comments: Object.fromEntries(commented),
+    answers: Object.fromEntries(answers),
+    addressed,
+    ...(Object.keys(frames).length > 0 && { frames }),
+  };
 }
 
 const AddressedSchema = z.object({ schema: z.literal(ADDRESSED_SCHEMA_ID), rounds: z.array(z.number().int()) });

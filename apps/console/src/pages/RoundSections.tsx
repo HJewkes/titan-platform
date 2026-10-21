@@ -44,7 +44,7 @@ export function useRoundAnswers(questions: readonly Question[], notes?: RoundNot
   const [target, setTarget] = useState<ActiveTarget | undefined>(() => firstChoosable(questions));
   const activeId = target?.kind === "question" ? target.id : undefined;
   const setActiveId = useCallback((id: string | undefined) => setTarget(id === undefined ? undefined : { kind: "question", id }), []);
-  const frames = useFrameFeedback(target, setTarget, locked);
+  const frames = useFrameFeedback(target, setTarget, locked, notes?.frames);
   const active = questions.find((question) => question.id === activeId);
   const choose = useCallback(
     (question: Question, choice: string) => setAnswers((current) => ({ ...current, [question.id]: chooseIn(question, current[question.id], choice) })),

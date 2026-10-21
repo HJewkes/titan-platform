@@ -272,6 +272,7 @@ export {
   type RegisterMetric,
   type SpokenText,
 } from "./lint-register.js";
+export { numberSpans, triadSpans, type TextSpan } from "./lint-register.js";
 export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { hasSpokenDigits, spellSpokenNumbers, spokenDigitsCheck } from "./spoken-numbers.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
@@ -345,3 +346,5 @@ export {
   type ReviewBundle,
 } from "./presets/repo-explainer/index.js";
 export { GUIDE_STAGES, guidePlan, type GuideDeps, type GuideStage } from "./guide-plan.js";
+export { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type BeatDirective, type PlanOptions, type RegisterEditPlan, type RewriteRound, type ShapeProjection } from "./rewrite-plan.js";
+export { renderRewritePrompt, type RewritePromptDeps } from "./rewrite-prompt.js";

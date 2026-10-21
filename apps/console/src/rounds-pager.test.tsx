@@ -65,7 +65,7 @@ describe("a round of several sections", () => {
     expect(position()).toBe("Section 1 of 2: Firing ramp");
     expect(screen.getByTestId("round-question-ramp-default")).toBeTruthy();
     expect(screen.queryByTestId("round-question-report-columns")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Send answers" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check and send" })).toBeNull();
 
     fireEvent.click(endNext());
     await onSection("report");
@@ -74,7 +74,7 @@ describe("a round of several sections", () => {
     expect(screen.queryByTestId("round-question-ramp-default")).toBeNull();
     expect(screen.getByTestId("round-question-report-columns")).toBeTruthy();
     expect(isDisabled(endNext())).toBe(true);
-    expect(screen.getByRole("button", { name: "Send answers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check and send" })).toBeTruthy();
 
     fireEvent.click(within(screen.getByTestId("section-steps")).getByText("← Back"));
     await onSection("ramp");
