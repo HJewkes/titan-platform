@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,7 +8,7 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BRIDGE_ERROR_ATTRIBUTE, BRIDGE_PATH, BRIDGE_TAG, type BridgeMessage } from "./story-bridge.js";
-import { STORY_BUILD_FILES, closedPort, importStoryRound, send } from "./test-support.js";
+import { STORY_BUILD_FILES, STORY_INLINE_SCRIPT, closedPort, importStoryRound, send } from "./test-support.js";
 
 // Synthetic throughout: a temp state dir and a three-file build imported with the lantern-cards fixture round.
 let dir: string;
@@ -80,6 +81,13 @@ describe("the story origin's build routes", () => {
     for (const directive of ["default-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:", "form-action 'none'", "base-uri 'self'", "object-src 'none'"]) expect(csp).toContain(directive);
     expect(csp).not.toContain("unsafe-eval");
     expect(csp).not.toMatch(/\*|https?:\/\/(?!127\.0\.0\.1|localhost)/);
+  });
+
+  it("allows iframe.html's own inline scripts by hash, never by 'unsafe-inline'", async () => {
+    const csp = String((await sb("iframe.html")).headers["content-security-policy"]);
+    const scriptSrc = csp.split("; ").find((directive) => directive.startsWith("script-src "));
+
+    expect(scriptSrc).toBe(`script-src 'self' 'sha256-${createHash("sha256").update(STORY_INLINE_SCRIPT).digest("base64")}'`);
   });
 
   it("serves a JS asset byte for byte as immutable, with the story CSP", async () => {

@@ -14,6 +14,7 @@
  * limits what a story can reach (no outside host for scripts, fetches, images or fonts) and pins
  * which pages may frame it.
  */
+import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { containedFile, fileResponse, type mountStaticApp } from "@titan-design/daemon";
@@ -37,13 +38,15 @@ const NO_CACHE = "private, no-cache";
 const HEAD_CLOSE = /<\/head>/i;
 
 /**
- * `'unsafe-inline'` scripts: Storybook's static `iframe.html` boots from inline scripts, and a
- * nonce cannot be put on a prebuilt file. Styles are inline too (emotion and the story's own).
+ * Scripts: `'self'` plus the hash of each inline script the served document carries. Storybook's
+ * static `iframe.html` boots from three inline scripts, and a prebuilt file can carry no nonce, so
+ * hashing them is what keeps `'unsafe-inline'` out. Styles do need `'unsafe-inline'`: Storybook and
+ * a story's CSS-in-JS insert `<style>` elements at run time, and CSS can reach no other host here.
  */
-export function storyCsp(consoleOrigins: readonly string[]): string {
+export function storyCsp(consoleOrigins: readonly string[], inlineScripts: readonly string[] = []): string {
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    ["script-src 'self'", ...inlineScripts.map(scriptHashSource)].join(" "),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -88,8 +91,18 @@ async function storyHost(file: string, options: StoryRoutesOptions): Promise<Res
   const html = await readFile(file, "utf8").catch(() => null);
   if (html === null || !HEAD_CLOSE.test(html)) return fastFail(`the build's ${IFRAME_FILE} has no </head>`, options);
   const injected = html.replace(HEAD_CLOSE, (close) => `<script src="${BRIDGE_PATH}"></script>${close}`);
-  return storyResponse(injected, { status: 200, type: HTML, cache: NO_CACHE }, options);
+  return storyResponse(injected, { status: 200, type: HTML, cache: NO_CACHE, inlineScripts: inlineScriptsOf(html) }, options);
 }
+
+const SCRIPT_ELEMENT = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+const SRC_ATTRIBUTE = /\bsrc\s*=/i;
+
+/** The text of each script element with no `src`, exactly as the browser hashes it. */
+export function inlineScriptsOf(html: string): string[] {
+  return [...html.matchAll(SCRIPT_ELEMENT)].flatMap(([, attributes = "", text = ""]) => (SRC_ATTRIBUTE.test(attributes) ? [] : [text]));
+}
+
+const scriptHashSource = (text: string): string => `'sha256-${createHash("sha256").update(text, "utf8").digest("base64")}'`;
 
 function fastFail(reason: string, options: StoryRoutesOptions): Response {
   const text = escapeHtml(reason);
@@ -101,15 +114,17 @@ interface ResponseShape {
   status: number;
   type: string;
   cache: string;
+  /** The document's own inline scripts, each allowed by its hash. */
+  inlineScripts?: readonly string[];
 }
 
-function storyResponse(body: string, { status, type, cache }: ResponseShape, options: StoryRoutesOptions): Response {
-  return withStoryHeaders(new Response(body, { status, headers: { "content-type": type, "cache-control": cache } }), options);
+function storyResponse(body: string, { status, type, cache, inlineScripts }: ResponseShape, options: StoryRoutesOptions): Response {
+  return withStoryHeaders(new Response(body, { status, headers: { "content-type": type, "cache-control": cache } }), options, inlineScripts);
 }
 
-function withStoryHeaders(response: Response, options: StoryRoutesOptions): Response {
+function withStoryHeaders(response: Response, options: StoryRoutesOptions, inlineScripts: readonly string[] = []): Response {
   const headers = new Headers(response.headers);
-  headers.set("content-security-policy", storyCsp(options.consoleOrigins()));
+  headers.set("content-security-policy", storyCsp(options.consoleOrigins(), inlineScripts));
   headers.set("referrer-policy", "no-referrer");
   headers.set("x-content-type-options", "nosniff");
   return new Response(response.body, { status: response.status, headers });

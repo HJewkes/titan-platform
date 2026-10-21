@@ -214,9 +214,12 @@ export function syntheticWebm({ durationS = 2, width = 64, height = 36, audio = 
   return Buffer.concat([header, ebml([0x18, 0x53, 0x80, 0x67], Buffer.concat([info, tracks, cluster]), null)]);
 }
 
+/** Storybook's static iframe.html boots from inline scripts like this one. */
+export const STORY_INLINE_SCRIPT = 'window.CONFIG_TYPE = "PRODUCTION";';
+
 /** Synthetic: a Storybook static build of three files, as `build-storybook` lays one out. */
 export const STORY_BUILD_FILES: Readonly<Record<string, string>> = {
-  "iframe.html": '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="storybook-root"></div><script type="module" src="./assets/a-hash.js"></script></body></html>',
+  "iframe.html": `<!doctype html><html><head><meta charset="utf-8"><script>${STORY_INLINE_SCRIPT}</script></head><body><div id="storybook-root"></div><script type="module" src="./assets/a-hash.js"></script></body></html>`,
   "index.json": JSON.stringify({
     v: 5,
     entries: {
