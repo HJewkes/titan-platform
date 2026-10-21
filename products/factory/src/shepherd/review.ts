@@ -30,7 +30,7 @@ import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
 import { convergenceFields } from "./fix-first-trail.js";
-import { FIX_PROOF_STEPS, fixProofStanding, fixProofVerdict, readFixProofAt } from "./fix-proof.js";
+import { FIX_PROOF_STEPS, fixProofStanding, fixProofVerdict, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofWaivedAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
@@ -356,8 +356,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
-  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }), ...(proof.kind === "workflow-ci" && proof.proved && { workflowCiProof: { mergeBase: proof.mergeBase, head: proof.head } }) };
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...(base.workflowCiProof !== undefined && { workflowCiProof: base.workflowCiProof }), ...convergenceFields(request.convergence) }, Dispatched);
+  const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }), ...workflowCiFieldOf(proof) };
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...workflowCiFieldOf(proof), ...convergenceFields(request.convergence) }, Dispatched);
   if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {

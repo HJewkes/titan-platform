@@ -308,3 +308,7 @@ export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head:
   if (!parsed?.ok || parsed.result.head !== head) return { unverified: "unread" };
   return parsed.result.verdict === "error" ? { unverified: "error" } : undefined;
 }
+
+/** A workflow-only diff that CI proved names its two commits to the reviewer; any other read adds nothing. */
+export const workflowCiFieldOf = (proof: z.infer<typeof FixProofReadSchema>): { workflowCiProof?: { mergeBase: string; head: string } } =>
+  proof.kind === "workflow-ci" && proof.proved ? { workflowCiProof: { mergeBase: proof.mergeBase, head: proof.head } } : {};

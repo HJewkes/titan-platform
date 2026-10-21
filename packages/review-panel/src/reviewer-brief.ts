@@ -1,7 +1,7 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
 import { quoteLines } from "./briefs/quotes.js";
-import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiProof } from "./briefs/tests.js";
+import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/ci.js";
 import { OWNER_PICK_CONTRADICTED, boundedFindings, findingsText } from "./fix-first-findings.js";
@@ -42,7 +42,7 @@ export const CI_POLICY_RULE =
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
-export interface ReviewerBriefInput {
+export interface ReviewerBriefInput extends WorkflowCiInput {
   repo: RepoSlug;
   pr: number;
   head: string;
@@ -64,8 +64,6 @@ export interface ReviewerBriefInput {
   fixProofUnverified?: FixProofUnverified;
   /** The head the owner waived the fix-proof at; it replaces the fix-proof section only when it is this head. */
   fixProofWaivedAt?: string;
-  /** Set by Shepherd when CI proved a workflow-only diff at this head; the brief then names CI as its proof. */
-  workflowCiProof?: WorkflowCiProof;
   /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
   earlierFindings?: readonly EarlierFinding[];
   /** True when this is a runaway's one convergence review: its FIX_FIRST goes to the planner, never to another fix round. */
@@ -108,11 +106,10 @@ const ciLines = (input: ReviewerBriefInput): string[] => (input.ciChecks && ciTa
 /** Checks CI already ran at this head cost build slots when a reviewer reruns them; the fix-proof text is rebuilt from the parsed result, never echoed. */
 function rerunLines(input: ReviewerBriefInput): string[] {
   const waived = waivedLines(input.head, input.fixProofWaivedAt);
-  const proof = waived.length > 0 ? waived : input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
+  const proof = waived.length > 0 ? waived : [...(input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof)), ...workflowCiLines(input.head, input.workflowCiProof)];
   const rerun = input.fixProofUnverified === undefined && fixProofReproduced(input.head, input.fixProof);
   return [
     ...proof,
-    ...workflowCiLines(input.head, input.workflowCiProof),
     ...unverifiedLines(input.fixProofUnverified),
     ...(rerun ? ["Do not rerun the checks named here, including typecheck, lint and the full suite when they are named; read their results and spend your time on the diff."] : []),
   ];

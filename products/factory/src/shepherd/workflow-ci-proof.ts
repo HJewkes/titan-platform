@@ -8,7 +8,7 @@ const WORKFLOWS = ".github/workflows/";
 
 const CitationSchema = z.object({ name: z.string(), sha: z.string(), runId: z.number().nullable(), conclusion: z.string().nullable() });
 /** One required check's newest run at one commit; a context with no run there cites a null run and conclusion. */
-export type CiCitation = z.infer<typeof CitationSchema>;
+type CiCitation = z.infer<typeof CitationSchema>;
 
 export const WorkflowCiReadSchema = z.looseObject({
   kind: z.literal("workflow-ci"),

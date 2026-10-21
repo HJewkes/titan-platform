@@ -78,6 +78,12 @@ export interface WorkflowCiProof {
   head: string;
 }
 
+/** The field a brief input carries it in. */
+export interface WorkflowCiInput {
+  /** Set by Shepherd when CI proved a workflow-only diff at this head; the brief then names CI as its proof. */
+  workflowCiProof?: WorkflowCiProof;
+}
+
 const SHA = /^[0-9a-f]{40}$/;
 
 /** Only the two shas reach the prompt, each checked; a proof read at any other head yields nothing. */
