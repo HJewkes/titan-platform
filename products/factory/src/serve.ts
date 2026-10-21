@@ -10,7 +10,7 @@ import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
-import { resolveSources, type SourcesReader } from "./github-sources/mode.js";
+import { createPassStamp, resolveSources, type PassStamp, type SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns } from "./restart-drain.js";
@@ -138,7 +138,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const log = options.logger ?? consoleLogger;
   const notify = options.gateNotify && gateNotifyWatch(host, options.gateNotify, log);
   const ingressRef: { listener?: IngressListener } = {};
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status() }));
+  const passStamp = createPassStamp();
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp }));
   const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);
@@ -168,9 +169,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now);
-  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep];
-  sweeps.push(reconcilerSweep);
+  const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
+  const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
+  sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, reconcilerSweep);
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }
@@ -230,7 +231,7 @@ function ownerProofs(options: FactoryServerOptions): OwnerProofs {
   return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
 }
 
-type ServeExtras = Pick<DaemonExtras, "notify" | "ingress">;
+type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp">;
 
 interface DaemonExtras {
   proofs: OwnerProofs;
@@ -238,10 +239,11 @@ interface DaemonExtras {
   notify: GateNotifyWatch | undefined;
   /** Started after the daemon, so a second serve beside a live one never binds the ingress port. */
   ingress: () => IngressStatus | undefined;
+  passStamp: PassStamp;
 }
 
 function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, extras: DaemonExtras): StartDaemonOptions<FactoryContext> {
-  const { proofs, start, notify, ingress } = extras;
+  const { proofs, start, notify, ingress, passStamp } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
@@ -253,7 +255,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     host: options.hostname,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
-    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress() }),
+    health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp }),
     mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
     logger: options.logger,
   };
