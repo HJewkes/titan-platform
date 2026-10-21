@@ -486,11 +486,12 @@ describe("sh-fix-proof in reviewPhase", () => {
     });
 
     describe("a test-only head that proceeds on a vacuous proof", () => {
-      const testOnly = (overrides: Partial<Scene> = {}): Scene => ({ kind: "test-only", noReproProceed: "on", panel: "on", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "src/auth.test.ts", status: "modified", additions: 5, deletions: 0 }], ...overrides });
+      const testOnly = (overrides: Partial<Scene> = {}): Scene => ({ kind: "test-only", noReproProceed: "on", panel: "on", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }], ...overrides });
 
       it("goes back as the proof's NO_REPRO when only the unplanned tests member is missing, never a reviewer retry", async () => {
-        const { verdicts } = await review(testOnly());
+        const { verdicts, stepIds } = await review(testOnly());
 
+        expect(stepIds).toContain(`sh-review-panel:${H}`);
         expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "vacuous" } }]);
       });
 
