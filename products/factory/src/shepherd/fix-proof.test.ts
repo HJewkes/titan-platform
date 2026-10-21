@@ -13,6 +13,7 @@ import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from ".
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import type { PanelMode } from "./review-panel-plan.js";
+import { proofWaiverMigration, waiveProof } from "./proof-waiver.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -116,6 +117,8 @@ interface Scene {
   noReproProceed?: "off" | "on";
   baseValidate?: string;
   panel?: PanelMode;
+  /** The owner waives the head's fix-proof after the first review, which then runs again. */
+  waiveAfterFirst?: boolean;
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -155,8 +158,13 @@ describe("sh-fix-proof in reviewPhase", () => {
     const verdicts: Verdict[] = [];
     const inputs: Record<string, unknown> = {};
     const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...(scene.panel && { panel: scene.panel }) }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
-    const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), proofWaiverMigration(32)], bind: store.bind } });
+    const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
+      verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
+      if (!scene.waiveAfterFirst) return;
+      await waiveProof(ctx, H);
+      verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 1, headSha: H }));
+    };
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "fix-proof-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("fix-proof-test", { policy: JSON.stringify(AUTO) });
@@ -470,11 +478,27 @@ describe("sh-fix-proof in reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     });
 
-    it("sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry", async () => {
+    it("keeps an errored proof's unverified review, never turning it into a NO_REPRO the fixer cannot answer", async () => {
       const { verdicts, spawns } = await review(panelScene(resultLine(H, "error")));
 
       expect(spawns).toHaveLength(2);
-      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "error" } }]);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "none", cause: "no-verdict" })]);
+    });
+
+    describe("a test-only head that proceeds on a vacuous proof", () => {
+      const testOnly = (overrides: Partial<Scene> = {}): Scene => ({ kind: "test-only", noReproProceed: "on", panel: "on", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "src/auth.test.ts", status: "modified", additions: 5, deletions: 0 }], ...overrides });
+
+      it("goes back as the proof's NO_REPRO when only the unplanned tests member is missing, never a reviewer retry", async () => {
+        const { verdicts } = await review(testOnly());
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "vacuous" } }]);
+      });
+
+      it("is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again", async () => {
+        const { verdicts } = await review(testOnly({ waiveAfterFirst: true }));
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }, { kind: "MERGE", headSha: H }]);
+      });
     });
   });
 

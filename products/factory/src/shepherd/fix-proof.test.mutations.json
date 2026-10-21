@@ -4,16 +4,29 @@
     {
       "name": "an unplanned tests shortfall is retried as a plain no-verdict",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "if (verdict.fixProofShortfall === true) return",
-      "replace": "if (verdict.fixProofShortfall === undefined) return",
-      "kills": ["sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry"]
+      "find": "verdict.fixProofShortfall === true && line !== undefined",
+      "replace": "false",
+      "kills": [
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof goes back as the proof's NO_REPRO when only the unplanned tests member is missing, never a reviewer retry"
+      ]
     },
     {
-      "name": "the shortfall's NO_REPRO carries the raw line, not the parsed result",
+      "name": "any bad line in a shortfall goes back as NO_REPRO",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "result: parsed?.ok ? parsed.result : (line ?? null)",
-      "replace": "result: line ?? null",
-      "kills": ["sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry"]
+      "find": "? noReproOfLine(line, head) : undefined",
+      "replace": "? { kind: \"NO_REPRO\", headSha: head, result: line } : undefined",
+      "kills": [
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member keeps an errored proof's unverified review, never turning it into a NO_REPRO the fixer cannot answer"
+      ]
+    },
+    {
+      "name": "a test-only head that proceeds never reads the owner's waiver",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "const waived = noRepro !== undefined && (await proofWaivedAt(ctx, target.head));",
+      "replace": "const waived = noRepro !== undefined && !testOnlyProceed && (await proofWaivedAt(ctx, target.head));",
+      "kills": [
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again"
+      ]
     }
   ]
 }

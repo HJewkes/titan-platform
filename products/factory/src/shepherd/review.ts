@@ -349,8 +349,10 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const noRepro = fixProofVerdict(proof, target.head);
   const unverified = fixProofStanding(proof, target.head);
   const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
-  if (noRepro && !testOnlyProceed && !(await proofWaivedAt(ctx, target.head))) return noRepro;
-  const standing: ProofStanding = noRepro && !testOnlyProceed ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  // A test-only head that proceeds can still come back as the panel's NO_REPRO, so its waiver is read too.
+  const waived = noRepro !== undefined && (await proofWaivedAt(ctx, target.head));
+  if (noRepro && !testOnlyProceed && !waived) return noRepro;
+  const standing: ProofStanding = waived ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);

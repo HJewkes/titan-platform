@@ -1,12 +1,11 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { parseResultLine } from "@titan-design/fix-proof";
 import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import type { FixProofUnverified } from "./fix-proof.js";
+import { noReproOfLine, type FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
@@ -242,10 +241,12 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
-/** Only a new head's proof can fill the unplanned tests seat, so the head goes back as the proof's NO_REPRO, not to a fresh reviewer (tp#2145). */
-function proofShortfall(head: string, line: string | undefined): Verdict {
-  const parsed = line === undefined ? undefined : parseResultLine(line);
-  return { kind: "NO_REPRO", headSha: head, result: parsed?.ok ? parsed.result : (line ?? null) };
+/**
+ * No fresh reviewer fills the unplanned tests seat. A vacuous or test-less line goes back as Shepherd's own NO_REPRO, which the
+ * owner can waive and the fixer's brief explains (tp#2145); any other bad line keeps its unverified review, so this is undefined.
+ */
+function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string | undefined): Verdict | undefined {
+  return verdict.fixProofShortfall === true && line !== undefined ? noReproOfLine(line, head) : undefined;
 }
 
 const MemberVerdict = z.looseObject({
@@ -287,7 +288,8 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
-  if (verdict.fixProofShortfall === true) return proofShortfall(target.head, base.fixProof);
+  const shortfall = proofShortfall(verdict, target.head, base.fixProof);
+  if (shortfall) return shortfall;
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results, memberProfiles(members)) } : decided;
