@@ -35,8 +35,6 @@ export interface RoundsSource {
   lineage?: LineageReader;
   /** Absent, no round carries a `live` field; the daemon wires the console's Storybook store. */
   live?: LiveReader;
-  /** The story origin a page on the LAN (`remote`) or loopback listener frames; absent or null, `live.origin` is null. */
-  storyOrigin?: (remote: boolean) => string | null;
 }
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
@@ -277,15 +275,13 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
   return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
-/** `remote`: the call came through the LAN listener, so `live.origin` is the LAN story origin. */
 export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
   const { dir } = source;
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
   const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
   const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
-  const read = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest) : undefined;
-  const live = read && { ...read, origin: source.storyOrigin?.(remote) ?? null };
+  const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest, remote) : undefined;
   const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
   return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }), ...(live && { live }) };
 }

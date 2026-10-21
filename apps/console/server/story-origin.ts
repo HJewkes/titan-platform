@@ -23,13 +23,13 @@ import { BUILD_ID, IFRAME_FILE } from "./storybook-build.js";
 
 type DaemonApp = Parameters<typeof mountStaticApp>[0];
 
-export interface StoryRoutesOptions {
+interface StoryRoutesOptions {
   storybooksDir: string;
   /** The console page's own origins, read per request: the only frame ancestors and the bridge's only targets. */
   consoleOrigins: () => readonly string[];
 }
 
-export const STORY_PREFIX = "/sb/";
+const STORY_PREFIX = "/sb/";
 const HTML = "text/html; charset=utf-8";
 const JS = "text/javascript; charset=utf-8";
 /** A build's id is the hash of its bytes, so a file under it never changes. */
@@ -43,7 +43,7 @@ const HEAD_CLOSE = /<\/head>/i;
  * hashing them is what keeps `'unsafe-inline'` out. Styles do need `'unsafe-inline'`: Storybook and
  * a story's CSS-in-JS insert `<style>` elements at run time, and CSS can reach no other host here.
  */
-export function storyCsp(consoleOrigins: readonly string[], inlineScripts: readonly string[] = []): string {
+function storyCsp(consoleOrigins: readonly string[], inlineScripts: readonly string[] = []): string {
   return [
     "default-src 'self'",
     ["script-src 'self'", ...inlineScripts.map(scriptHashSource)].join(" "),
@@ -98,7 +98,7 @@ const SCRIPT_ELEMENT = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
 const SRC_ATTRIBUTE = /\bsrc\s*=/i;
 
 /** The text of each script element with no `src`, exactly as the browser hashes it. */
-export function inlineScriptsOf(html: string): string[] {
+function inlineScriptsOf(html: string): string[] {
   return [...html.matchAll(SCRIPT_ELEMENT)].flatMap(([, attributes = "", text = ""]) => (SRC_ATTRIBUTE.test(attributes) ? [] : [text]));
 }
 

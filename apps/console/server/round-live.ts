@@ -26,7 +26,8 @@ import {
 } from "./storybook-build.js";
 import { readStoredFile } from "./storybook-store.js";
 
-export type LiveReader = (roundDir: string, manifest: Manifest) => Promise<RoundLive | undefined>;
+/** `remote`: the call came through the LAN listener, whose pages frame the LAN story origin. */
+export type LiveReader = (roundDir: string, manifest: Manifest, remote?: boolean) => Promise<RoundLive | undefined>;
 
 const SIDECAR = path.join(STORYBOOK_DIR, STORYBOOK_FILE);
 

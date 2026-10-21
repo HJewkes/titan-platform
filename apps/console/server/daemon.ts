@@ -23,6 +23,7 @@ import type { ConsoleSources } from "./commands.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
+import type { LiveReader } from "./round-live.js";
 import { mountStoryRoutes } from "./story-origin.js";
 import { createSources } from "./upstreams.js";
 import { mountVideoMedia } from "./videos.js";
@@ -98,18 +99,23 @@ function storyContentOrigin(config: ConsoleConfig, ports: BoundPorts): { content
 
 /** `rounds.get` names the story origin a page on that listener can frame: the LAN page gets the LAN one. */
 function withStoryOrigin(sources: ConsoleSources, config: ConsoleConfig, ports: BoundPorts): ConsoleSources {
-  if (ports.story === null || config.storybooksDir === undefined) return sources;
+  const read = sources.rounds.live;
+  if (ports.story === null || read === undefined) return sources;
   const storyOrigin = (remote: boolean): string | null => {
     if (ports.story === null) return null;
     return remote ? lanOrigin(config, ports.story) : `http://${LOOPBACK}:${ports.story}`;
   };
-  return { ...sources, rounds: { ...sources.rounds, storyOrigin } };
+  const live: LiveReader = async (roundDir, manifest, remote = false) => {
+    const found = await read(roundDir, manifest);
+    return found && { ...found, origin: storyOrigin(remote) };
+  };
+  return { ...sources, rounds: { ...sources.rounds, live } };
 }
 
 const LOOPBACK = "127.0.0.1";
 
 /** Every origin a console page is served from: loopback by address and by name, and each LAN name and the LAN address. */
-export function consolePageOrigins(config: ConsoleConfig, port: number): string[] {
+function consolePageOrigins(config: ConsoleConfig, port: number): string[] {
   const loopback = [LOOPBACK, "localhost"].map((host) => `http://${host}:${port}`);
   if (config.lanHost === null) return loopback;
   const lanAddress = isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost;
