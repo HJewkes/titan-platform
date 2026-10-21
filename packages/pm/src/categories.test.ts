@@ -54,7 +54,12 @@ describe("CategoryRegistrySchema", () => {
     expect(CategoryRegistrySchema.safeParse({ ...registry, status }).success).toBe(false);
   });
 
-  it.each([3, "app", "0"])("rejects area tier %s", (tier) => {
+  it("accepts an area in tier 3, compositions", () => {
+    const area = [{ id: "autoresearch", tier: 3 }];
+    expect(CategoryRegistrySchema.safeParse({ ...registry, area }).success).toBe(true);
+  });
+
+  it.each([4, "3", "app", "0"])("rejects area tier %s", (tier) => {
     const area = [{ id: "pm", tier }];
     expect(CategoryRegistrySchema.safeParse({ ...registry, area }).success).toBe(false);
   });
