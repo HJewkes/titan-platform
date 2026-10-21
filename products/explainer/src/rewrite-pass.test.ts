@@ -5,7 +5,7 @@ import { registerCheck } from "./lint-register.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { bandDistance, rewriteScript, roundRefusal } from "./rewrite-pass.js";
 import { REWRITE_TARGET_ROWS } from "./rewrite-plan.js";
-import { hasSpokenDigits } from "./spoken-numbers.js";
+import { hasSpokenDigits, spellSpokenNumbers } from "./spoken-numbers.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { BEATS, choppy, compliant, fakeRewriter, promptBeatIds, REWRITES, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
 
@@ -17,6 +17,7 @@ const rewrite = (script: ScriptV1, fake = fakeRewriter(), options: { rounds?: nu
 const targets = (s: ScriptV1) => runL0(s, undefined, [registerCheck]).filter((row) => (REWRITE_TARGET_ROWS as readonly string[]).includes(row.check_id));
 const failingTargets = (s: ScriptV1): string[] => targets(s).filter((row) => !row.pass).map((row) => row.check_id);
 const spokenOf = (s: ScriptV1, id: string): string => s.beats.find((beat) => beat.id === id)!.spoken;
+const spellAll = (s: ScriptV1): ScriptV1 => ({ ...s, beats: s.beats.map(spellSpokenNumbers) });
 const labelsOf = (s: ScriptV1, id: string): string[] => s.beats.find((beat) => beat.id === id)!.visual.labels;
 
 describe("rewriteScript with compliant rewrites", () => {
@@ -229,5 +230,39 @@ describe("roundRefusal", () => {
   it("refuses a round that fails more error rows", () => {
     const after = [row("register:sentence-mean", 10, 12.51, false), row("register:numbers", 18, 25.62, true), row("Q-V7", 1, 0, false, "error")];
     expect(roundRefusal(before, after)).toBe("more error rows fail");
+  });
+});
+
+describe("rewriteScript spells before it vets", () => {
+  // 24 words as written, 27 once "1%" and "100%" are spelled.
+  const DIGITS = "The desk held 12 parcels today and sent 3 back because 1% lacked a ledger row while 100% of the rest left on time.";
+  const SPELLED_WORDS = 27;
+  const rewriteH2: Rewriter = (id, prompt) => (id === "h2" ? { id, spoken: DIGITS, labels_added: [] } : compliant(id, prompt));
+  const rowsFor = (s: ScriptV1) => runL0(s, undefined).filter((r) => r.check_id === "Q-V9");
+
+  it("counts the spelled words, so the plain cap rejects a line that fits only in digits", async () => {
+    expect(DIGITS.split(/\s+/)).toHaveLength(SPELLED_WORDS - 3);
+
+    const result = await rewriteScript(choppy(), { harness: fakeRewriter(rewriteH2).harness, judge: sonnet, rounds: 1, speechClean: () => false });
+
+    const rejected = result.report.rounds[0]!.rejected.find((r) => r.beat === "h2");
+    expect(rejected?.rejections.map((r) => r.rule)).toContain("sentence-cap");
+    expect(spokenOf(result.script, "h2")).not.toBe(DIGITS);
+    expect(rowsFor(result.script).filter((r) => !r.pass)).toEqual(rowsFor(choppy()).filter((r) => !r.pass));
+  });
+
+  it("measures the before rows on spelled text", async () => {
+    const digits = choppy();
+    const result = await rewrite(digits, fakeRewriter(), { rounds: 1 });
+
+    expect(hasSpokenDigits(result.script.beats[1]!.spoken)).toBe(false);
+    expect(result.report.before).toEqual(targets(spellAll(digits)).map(({ check_id, value, threshold, pass }) => ({ check_id, value, threshold, pass })));
+  });
+
+  it("leaves a spelled beat as it is when spelled again", () => {
+    const beat = choppy().beats[1]!;
+    const once = spellSpokenNumbers(beat);
+
+    expect(spellSpokenNumbers(once)).toEqual(once);
   });
 });
