@@ -1,8 +1,9 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeSha } from "@titan-design/github";
+import { fakeSha, successRun } from "@titan-design/github";
 import { silentLogger } from "@titan-design/daemon";
+import type { GateResolver } from "@titan-design/hitl";
 import { WorkflowRuntime, type StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { factoryContext } from "../registry.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
+import { CARRIED_MERGE_STEP } from "./diverged-merge.js";
 import { restartDivergedRuns } from "./diverged-sweep.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
@@ -135,7 +137,7 @@ describe("restartDivergedRuns", () => {
 
     const again = await restartDivergedRuns(ctxOf(next));
 
-    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
   });
 
   it("cancels a diverged run whose pull request closed and starts no new run", async () => {
@@ -160,7 +162,7 @@ describe("restartDivergedRuns", () => {
     expect(sweep.ended).toEqual([{ runId, reason: "replay diverged; PR closed" }]);
     expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", error: "replay diverged; PR closed", activeSteps: {} });
     expect(adopted).not.toContain(runId);
-    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
+    expect(await restartDivergedRuns(ctxOf(next))).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
   });
 
   it("ends the superseded run of an open PR with a step in flight as cancelled in the same sweep", async () => {
@@ -195,7 +197,7 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
   });
 
   it("leaves a diverged branch-only registration alone", async () => {
@@ -205,8 +207,123 @@ describe("restartDivergedRuns", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next));
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
+  });
+});
+
+const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "factory-cli" };
+const landPrompt = (head: string, base = "main", table = "authority"): string => `Merge PR #1 in ${REPO} at head ${head} into ${base}? CI is green. Policy ${table}/MRG-OW: owner gate`;
+
+interface Answered extends Parked {
+  runId: string;
+  gateId: string;
+}
+
+/** A diverged run the sweep kept for its land gate, then answered by `resolver` while it stays parked. */
+async function answeredWhileParked(payload: Record<string, unknown> | undefined, prompt = landPrompt(HEAD_B), resolver = OWNER): Promise<Answered> {
+  const parked = await parkedRuns();
+  const runId = parked.oldRunIds[0]!;
+  const gateId = `${runId}/approve-merge`;
+  parked.next.host.gates.create({ id: gateId, prompt, ...TEST_BRIEF });
+  expect((await restartDivergedRuns(ctxOf(parked.next))).kept).toEqual([{ runId, gateId }]);
+  if (payload) parked.next.host.runtime.signal(runId, "approve-merge", payload, resolver);
+  return { ...parked, runId, gateId };
+}
+
+/** The sweep restarted the parked run as before, merged nothing, and the new run asks again. */
+async function restartedAndAsking({ next, runId }: Answered, sweep: Awaited<ReturnType<typeof restartDivergedRuns>>): Promise<void> {
+  expect(sweep.merged).toEqual([]);
+  expect(sweep.restarted.map((restart) => restart.runId)).toEqual([runId]);
+  await next.host.adopt();
+  await vi.waitFor(() => expect(next.host.gates.listPending().map((gate) => gate.id)).toContain(`${sweep.restarted[0]!.newRunId}/extra-ask`));
+  expect(next.fake.merges).toEqual([]);
+  expect(next.host.runtime.status(runId)?.status).toBe("cancelled");
+}
+
+describe("restartDivergedRuns on an owner answer given while the run was parked (TP-3918)", () => {
+  it("A resolved merge on a kept diverged run with an unchanged head merges once", async () => {
+    const { next, runId, gateId } = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+    const again = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.merged).toEqual([{ runId, gateId, headSha: HEAD_B, mergeSha: next.fake.pr(1).mergeSha }]);
+    expect(sweep.restarted).toEqual([]);
+    expect(next.fake.merges).toHaveLength(1);
+    expect(next.fake.pr(1)).toMatchObject({ merged: true });
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", stepResults: { [CARRIED_MERGE_STEP]: { data: { gateId, headSha: HEAD_B, base: "main", resolvedBy: OWNER } } } });
+    expect(again).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
+  });
+
+  it("A moved head restarts and asks again", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    answered.next.fake.pushHead(1, fakeSha("head-c"));
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("An abandon answer cancels the parked run and restarts it as before, merging nothing", async () => {
+    const answered = await answeredWhileParked({ decision: "abandon", headSha: HEAD_B });
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("A pending (unanswered) gate stays kept and merges nothing", async () => {
+    const { next, runId, gateId } = await answeredWhileParked(undefined);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.kept).toEqual([{ runId, gateId }]);
+    expect(sweep.merged).toEqual([]);
+    expect(next.fake.merges).toEqual([]);
+  });
+
+  it("restarts as before when the approved head is behind its base on a strict repo", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    answered.next.fake.pr(1).behind = true;
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("restarts as before when the approved head conflicts with its base", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    answered.next.fake.pr(1).mergeableState = "dirty";
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("restarts as before when a required check is red at the approved head", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    answered.next.fake.onGetPr = (pr) => answered.next.fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2, undefined, "failure")]);
+
+    const sweep = await restartDivergedRuns(ctxOf(answered.next));
+
+    expect(sweep.merged).toEqual([]);
+    expect(sweep.restarted.map((restart) => restart.runId)).toEqual([answered.runId]);
+    expect(answered.next.fake.merges).toEqual([]);
+  });
+
+  it("restarts as before when the merge answer came from a resolver that is not the owner", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B });
+    const gates = answered.next.host.gates;
+    const get = gates.get.bind(gates);
+    const coordinator: GateResolver = { class: "coordinator", id: "coord", channel: "factory-cli" };
+    vi.spyOn(gates, "get").mockImplementation((id) => (id === answered.gateId ? { ...get(id)!, resolvedBy: coordinator } : get(id)));
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("restarts as before when the approved gate named another base", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B }, landPrompt(HEAD_B, "release"));
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+  });
+
+  it("restarts as before when the merge answer is on an escalation that shares the approve-merge step", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B }, landPrompt(HEAD_B, "main", "shepherd-route"));
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
   });
 });
 
@@ -256,7 +373,7 @@ describe("restartDivergedRuns reclassification", () => {
 
     const sweep = await restartDivergedRuns(ctxOf(next), () => true);
 
-    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], errors: [] });
+    expect(sweep).toEqual({ restarted: [], ended: [], closed: [], kept: [], merged: [], errors: [] });
     expect(next.host.runtime.status(oldRunIds[0]!)?.status).toBe("recovery_required");
   });
 });
