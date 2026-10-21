@@ -3,6 +3,8 @@ import { Alert, Button, ButtonText, Card, CardContent, HStack, Input, Typography
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question } from "../../server/round-schema.js";
 import { useSubmit, type SubmitState } from "../data/submit.js";
+import { FrameFeedbackProvider } from "./FrameFeedback.js";
+import { frameDrafts } from "./frame-feedback.js";
 import { QuestionFrames } from "./QuestionFrames.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { RoundGeneral, SentComment, SentGeneral, SentPick } from "./RoundComment.js";
@@ -42,12 +44,15 @@ function OnePrRound({ round }: { round: ValidRound }): ReactNode {
   const submitting = useSubmit();
   const locked = round.status === "sent" || submitting.state.status === "sending" || submitting.state.status === "sent";
   // Locked, the side questions are not handed over, so no digit key can change an answer already sent.
-  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes);
+  const side = useRoundAnswers(locked ? [] : sideQuestions, round.notes, locked);
   if (question === undefined) return null;
   return (
     <VStack gap={4}>
       <ShipHeading round={round} question={question} />
-      <Montages round={round} merge={question.merge} />
+      {/* Only the montages judge frames: a frame the Ship question draws above itself is one of them, shown again. */}
+      <FrameFeedbackProvider value={side.frames}>
+        <Montages round={round} merge={question.merge} />
+      </FrameFeedbackProvider>
       {round.manifest.questions.map((each, index) =>
         each === question ? null : <SideQuestion key={each.id} round={round} question={each} position={index + 1} side={side} locked={locked} />,
       )}
@@ -106,13 +111,15 @@ function shipDraft({ round, question, sideQuestions, side }: Omit<ShipAnswerProp
   const tagged = withSeen(sideAnswers);
   const seen = shipSeen ? { recommendationSeen: true as const } : {};
   const { addressed, followUps } = sideMarks(side);
-  const shipArgs = { ...sent, ...addressed, ...followUps, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: question.merge.ship[0], ...seen }]) };
-  const backArgs = { ...sent, ...followUps, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}), ...seen }]) };
+  const variants = frameDrafts(round.manifest.variants.map((variant) => variant.key), side.frames.drafts);
+  const framed = variants.length > 0 ? { variants } : {};
+  const shipArgs = { ...sent, ...addressed, ...followUps, ...framed, headSha: question.merge.headSha, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: question.merge.ship[0], ...seen }]) };
+  const backArgs = { ...sent, ...followUps, ...framed, answers: inOrder(round.manifest, [...tagged, { questionId: question.id, pick: sendBack, ...(comment ? { comment } : {}), ...seen }]) };
   return {
     shipArgs,
     backArgs,
     canSendBack: sendBack !== undefined,
-    blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps }),
+    blockers: shipBlockers(round.manifest, round.priorFeedback ?? [], { answers: sideAnswers, general: sent.general, addressed: side.addressed, followUps: side.followUps, variants }),
     noNote: sendBackBlocker(backArgs, question.id),
   };
 }
