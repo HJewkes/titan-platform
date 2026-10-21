@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { confirmRule, keepRule, median, type KeepSettings } from "./keep.js";
-import type { ArResult } from "./schemas.js";
+import { resultSchemaFor, type ArResult } from "./schemas.js";
 
 const SETTINGS: KeepSettings = {
   primary: { name: "cc_total_delta_pct", direction: "min" },
@@ -71,5 +71,26 @@ describe("keep rule", () => {
 
   it("takes the median of an even count as the mean of the middle two", () => {
     expect(median([4, 1, 3, 2])).toBe(2.5);
+  });
+});
+
+describe("result schema for a target", () => {
+  const parse = (metric: Partial<KeepSettings>, value: ArResult) =>
+    resultSchemaFor({ ...SETTINGS, ...metric, noise: { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBand: 1.5 } }).safeParse(value);
+
+  it("rejects an allGate target's result that carries no gates", () => {
+    const parsed = parse({ allGate: true }, { ...result(0), gates: {} });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.path)).toContainEqual(["gates"]);
+  });
+
+  it("rejects a zero-tolerance target's result that omits that violation count", () => {
+    const parsed = parse({ zeroTolerance: ["x"] }, result(0));
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.path)).toContainEqual(["violations", "x"]);
+  });
+
+  it("accepts a result that carries the gates and violations the target names", () => {
+    expect(parse({}, result(0)).success).toBe(true);
   });
 });

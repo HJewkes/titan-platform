@@ -130,10 +130,13 @@ export const TargetSchema = z.object({
 });
 export type Target = z.infer<typeof TargetSchema>;
 
-/** A result schema that also requires every metric the keep rule reads, so a run missing one fails its eval step. */
+/** A result schema that also requires every metric the keep rule reads, the gates of an allGate target and each zero-tolerance violation count, so a run missing one fails its eval step. */
 export function resultSchemaFor(metric: MetricSpec): z.ZodType<ArResult> {
   const required = [metric.primary.name, ...Object.keys(metric.guards), ...(metric.noOp ? [metric.noOp] : [])];
   return ArResultSchema.superRefine((result, issues) => {
     for (const name of required.filter((key) => result.metrics[key] === undefined)) issues.addIssue({ code: "custom", path: ["metrics", name], message: `missing metric ${name}` });
+    const unreported = metric.zeroTolerance.filter((key) => result.violations[key] === undefined);
+    for (const name of unreported) issues.addIssue({ code: "custom", path: ["violations", name], message: `missing violation count ${name}` });
+    if (metric.allGate && Object.keys(result.gates).length === 0) issues.addIssue({ code: "custom", path: ["gates"], message: "allGate target needs gates" });
   });
 }
