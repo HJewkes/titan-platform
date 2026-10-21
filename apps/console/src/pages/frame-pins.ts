@@ -21,16 +21,32 @@ interface PinSurface {
 export interface PngWidths {
   viewportWidth?: number;
   referenceWidth?: number;
+  /** The round whose `rounds.frameTargets` holds this frame's element map; absent, its pins are coordinates only. */
+  targetsRoundId?: string;
+}
+
+export type TargetBox = ConsoleCommands["rounds.frameTargets"]["result"]["boxes"][number];
+
+/** The element under (x, y): the smallest box holding the point, so a button wins over the card it sits in. */
+export function hitBox(boxes: readonly TargetBox[], x: number, y: number): PinTarget | undefined {
+  let best: TargetBox | undefined;
+  for (const box of boxes) {
+    const inside = x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height;
+    if (inside && (best === undefined || box.width * box.height < best.width * best.height)) best = box;
+  }
+  return best?.target;
 }
 
 /**
  * A PNG frame as a pin surface: frames.json's viewport width, else the variant's frameReference width, else the PNG's
  * natural width, which on a 2x shot is device pixels; xPct and yPct hold either way. Undefined before the image has size.
+ * Boxes are in viewport CSS px, so only a frame that declares its viewport width hit-tests them.
  */
-export function pngSurface({ viewportWidth, referenceWidth }: PngWidths, natural: { width: number; height: number }): PinSurface | undefined {
+export function pngSurface({ viewportWidth, referenceWidth }: PngWidths, natural: { width: number; height: number }, boxes?: readonly TargetBox[]): PinSurface | undefined {
   if (natural.width <= 0 || natural.height <= 0) return undefined;
   const width = viewportWidth ?? referenceWidth ?? natural.width;
-  return { width, height: (natural.height * width) / natural.width, hitTest: () => undefined };
+  const hitTest = boxes && viewportWidth !== undefined ? (x: number, y: number) => hitBox(boxes, x, y) : () => undefined;
+  return { width, height: (natural.height * width) / natural.width, hitTest };
 }
 
 const round = (value: number, places: number): number => Number(value.toFixed(places));

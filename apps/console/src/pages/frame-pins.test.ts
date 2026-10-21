@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeTarget, isTap, nextPinId, pngSurface, pointerPin, type Pin } from "./frame-pins.js";
+import { describeTarget, hitBox, isTap, nextPinId, pngSurface, pointerPin, type Pin, type TargetBox } from "./frame-pins.js";
 
 const pin = (id: string): Pin => ({ id, width: 375, x: 0, y: 0, xPct: 0, yPct: 0, note: "" });
 
@@ -33,6 +33,38 @@ describe("pngSurface", () => {
   it("has no surface before the image has a size, and no element under any point", () => {
     expect(pngSurface({ viewportWidth: 375 }, { width: 0, height: 0 })).toBeUndefined();
     expect(pngSurface({}, { width: 10, height: 10 })?.hitTest(1, 1)).toBeUndefined();
+  });
+});
+
+describe("hitBox", () => {
+  const card: TargetBox = { x: 10, y: 10, width: 200, height: 100, target: { testId: "card" } };
+  const save: TargetBox = { x: 150, y: 70, width: 50, height: 30, target: { testId: "save", role: "button" } };
+
+  it("picks the inner of two nested boxes, wherever it is listed", () => {
+    expect(hitBox([card, save], 160, 80)).toEqual({ testId: "save", role: "button" });
+    expect(hitBox([save, card], 160, 80)).toEqual({ testId: "save", role: "button" });
+    expect(hitBox([card, save], 20, 20)).toEqual({ testId: "card" });
+  });
+
+  it("gives undefined outside every box, including just past a box's far edge", () => {
+    expect(hitBox([card, save], 5, 5)).toBeUndefined();
+    expect(hitBox([card, save], 210, 50)).toBeUndefined();
+    expect(hitBox([], 0, 0)).toBeUndefined();
+  });
+});
+
+describe("a PNG surface with an element map", () => {
+  const boxes: TargetBox[] = [{ x: 100, y: 0, width: 100, height: 50, target: { testId: "dot" } }];
+
+  it("records the element under a press in the viewport's px", () => {
+    const surface = pngSurface({ viewportWidth: 320 }, { width: 640, height: 360 }, boxes);
+    if (!surface) throw new Error("no surface");
+
+    expect(pointerPin({ clientX: 75, clientY: 10 }, { left: 0, top: 0, width: 160 }, surface)).toMatchObject({ x: 150, y: 20, target: { testId: "dot" } });
+  });
+
+  it("stays coordinates only on a frame with no viewport width, whose px are not the boxes' px", () => {
+    expect(pngSurface({ referenceWidth: 320 }, { width: 640, height: 360 }, boxes)?.hitTest(150, 20)).toBeUndefined();
   });
 });
 
