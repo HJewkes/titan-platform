@@ -22,15 +22,29 @@ const FrameDraftSchema = z.strictObject({
   pinsIssued: z.number().int().min(0),
 });
 
+/** A Ship round's Addressed ticks, follow-up marks, and each Ship question's held verdict and Send back note. */
+const ShipDraftSchema = z.strictObject({
+  addressed: z.array(z.number().int()),
+  followUps: z.array(z.string()),
+  verdicts: z.record(z.string(), z.enum(["ship", "back"])),
+  backNotes: z.record(z.string(), z.string()),
+});
+
 const DraftAnswersSchema = z.strictObject({
   answers: z.record(z.string(), QuestionAnswerSchema),
   comments: z.record(z.string(), z.string()),
   optionNotes: z.record(z.string(), z.record(z.string(), z.string())),
   general: z.string(),
   frames: z.record(z.string(), FrameDraftSchema),
+  // Optional, so a draft saved before Ship rounds kept one (TP-3778) still restores.
+  ship: ShipDraftSchema.optional(),
 });
 
 const StoredDraftSchema = z.strictObject({ manifestSha256: z.string(), draft: DraftAnswersSchema });
+
+export type ShipDraft = z.infer<typeof ShipDraftSchema>;
+
+export const NO_SHIP_DRAFT: ShipDraft = { addressed: [], followUps: [], verdicts: {}, backNotes: {} };
 
 export type DraftAnswers = Omit<z.infer<typeof DraftAnswersSchema>, "frames"> & { frames: Readonly<Record<string, FrameDraft>> };
 
@@ -72,8 +86,12 @@ export function clearDraft(storage: Storage, roundId: string): void {
   attempt(() => storage.removeItem(draftKey(roundId)), undefined);
 }
 
+const emptyShip = ({ addressed, followUps, verdicts, backNotes }: ShipDraft): boolean =>
+  addressed.length === 0 && followUps.length === 0 && Object.keys(verdicts).length === 0 && Object.values(backNotes).every((text) => text.trim() === "");
+
 /** A draft holding nothing typed is not worth a storage entry. */
-export const emptyDraft = ({ answers, comments, optionNotes, general, frames }: DraftAnswers): boolean =>
+export const emptyDraft = ({ answers, comments, optionNotes, general, frames, ship = NO_SHIP_DRAFT }: DraftAnswers): boolean =>
+  emptyShip(ship) &&
   Object.keys(answers).length === 0 &&
   Object.values(comments).every((text) => text.trim() === "") &&
   Object.values(optionNotes).every((notes) => Object.values(notes).every((text) => text.trim() === "")) &&
