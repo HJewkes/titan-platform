@@ -18,7 +18,7 @@ import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from ".
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import type { ShepherdDeps, ShepherdPhases } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { PUBLISH_REVIEW_STEPS, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, ReviewerAskTimedOut, busyWaits, clearReviewWait, notStarted, noteReviewWait, rosterUnread, startedSession, timedOutUnseen, whileBrokerBusy, whileBrokerDown, whileRosterSlow, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
@@ -335,6 +335,21 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
 }
 
+type FixProofRead = Awaited<ReturnType<typeof readFixProofAt>>;
+
+/**
+ * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A test-only head that proceeds can
+ * still come back as the panel's NO_REPRO, so its waiver is read too.
+ */
+async function proofStandingAt(ctx: Parameters<typeof readFixProofAt>[0], head: string, proof: FixProofRead): Promise<{ ended: Verdict } | { standing: ProofStanding }> {
+  const noRepro = fixProofVerdict(proof, head);
+  const unverified = fixProofStanding(proof, head);
+  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
+  if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
+  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
+}
+
 /**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
@@ -346,13 +361,9 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
   const proof = await readFixProofAt(ctx, target);
-  const noRepro = fixProofVerdict(proof, target.head);
-  const unverified = fixProofStanding(proof, target.head);
-  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
-  // A test-only head that proceeds can still come back as the panel's NO_REPRO, so its waiver is read too.
-  const waived = noRepro !== undefined && (await proofWaivedAt(ctx, target.head));
-  if (noRepro && !testOnlyProceed && !waived) return noRepro;
-  const standing: ProofStanding = waived ? { waivedAt: target.head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  const gated = await proofStandingAt(ctx, target.head, proof);
+  if ("ended" in gated) return gated.ended;
+  const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);

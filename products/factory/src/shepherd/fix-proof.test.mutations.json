@@ -22,8 +22,8 @@
     {
       "name": "a test-only head that proceeds never reads the owner's waiver",
       "file": "products/factory/src/shepherd/review.ts",
-      "find": "const waived = noRepro !== undefined && (await proofWaivedAt(ctx, target.head));",
-      "replace": "const waived = noRepro !== undefined && !testOnlyProceed && (await proofWaivedAt(ctx, target.head));",
+      "find": "const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));",
+      "replace": "const waived = noRepro !== undefined && !testOnlyProceed && (await proofWaivedAt(ctx, head));",
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again"
       ]
