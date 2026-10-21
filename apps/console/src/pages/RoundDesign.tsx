@@ -7,7 +7,7 @@ import { useQuery } from "../data/rpc.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
 import type { PngWidths } from "./frame-pins.js";
-import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
+import { RoundFramesProvider, RoundVariantFrame, anchoredKeys } from "./QuestionFrames.js";
 import { DraftDiscarded, type DraftBinding } from "./RoundDraft.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
@@ -160,7 +160,9 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         const body = (
           <>
             <Typography variant={size === "strip" ? "subtitle2" : "caption"}>{label}</Typography>
-            {indexed.has(key) ? (
+            {size === "strip" ? (
+              <RoundVariantFrame frameKey={key} alt={label} loadable={indexed.has(key)} missing="Not in frames.json" />
+            ) : indexed.has(key) ? (
               <FrameImage roundId={roundId} frameKey={key} view="head" alt={label} />
             ) : (
               <Typography variant="caption" color="secondary">Not in frames.json</Typography>

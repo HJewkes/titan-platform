@@ -14,6 +14,10 @@ interface FrameImageProps {
   frameKey: string;
   view: FrameView;
   alt: string;
+  /** Draws the PNG this many CSS px wide, its true size, instead of fitting it to its box. */
+  trueWidth?: number;
+  /** Laid over the image, inside its box, such as a true-size frame's ladder. */
+  overlay?: ReactNode;
 }
 
 /** One PNG of a round, fetched only once it nears the viewport; pressing it opens it at full size. */
@@ -27,7 +31,7 @@ export function FrameImage(props: FrameImageProps): ReactNode {
   );
 }
 
-function useNearViewport(ref: RefObject<HTMLElement | null>): boolean {
+export function useNearViewport(ref: RefObject<HTMLElement | null>): boolean {
   const [near, setNear] = useState(false);
   useEffect(() => {
     const element = ref.current;
@@ -41,7 +45,7 @@ function useNearViewport(ref: RefObject<HTMLElement | null>): boolean {
   return near;
 }
 
-function LoadedFrame({ roundId, frameKey, view, alt }: FrameImageProps): ReactNode {
+function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay }: FrameImageProps): ReactNode {
   const frame = useQuery("rounds.frame", { id: roundId, key: frameKey, view });
   const [enlarged, setEnlarged] = useState(false);
   const pins = useFramePins();
@@ -58,10 +62,11 @@ function LoadedFrame({ roundId, frameKey, view, alt }: FrameImageProps): ReactNo
   };
   return (
     <>
-      <div className="relative">
+      <div className="relative" style={trueWidth === undefined ? undefined : { width: trueWidth }}>
         <button type="button" className="block w-full cursor-zoom-in" aria-label={`Enlarge ${alt}`} onClick={() => setEnlarged(true)}>
           <img ref={image} src={src} alt={alt} className="block h-auto w-full rounded border border-hairline-strong" />
         </button>
+        {overlay}
         {pins ? <PinLayer pins={{ ...pins, placing: pins.placing && !coarse }} image={image} /> : null}
       </div>
       {enlarged || pinsFullSize ? <Enlarge src={src} alt={alt} pins={pinsFullSize ? pins : null} onClose={close} /> : null}
