@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
-import { openBotIdentity, type BotHealth, type BotIdentity } from "./bot-identity.js";
+import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
@@ -23,7 +23,7 @@ import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import { startReconcilerSweep, type ReconcilerServeOptions } from "./reconciler/service.js";
-import { recordServeStart, type ServeStart } from "./serve-starts.js";
+import { recordStartOrWarn, type ServeStart } from "./serve-starts.js";
 import { serveHealth } from "./serve-health.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
@@ -135,7 +135,7 @@ export interface FactoryServer {
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const stateDir = stateDirOf(options);
   const log = options.logger ?? consoleLogger;
-  const bot = openBot(options, log);
+  const bot = openServeBot(options.bot, log);
   const { host, frames } = openFramedHost({ ...options, capabilities: { ...options.capabilities, ...bot.capabilities } });
   const github = options.github ?? githubHealth();
   void github.refresh();
@@ -212,30 +212,12 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
     const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
     const recorded: { start?: ServeStart } = {};
     const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start, ...extras }));
-    recorded.start = recordStart(stateDir, unclean, options, log);
+    recorded.start = recordStartOrWarn(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) }, log);
     return daemon;
   } catch (err) {
     host.close();
     throw err;
   }
-}
-
-/** A start record that cannot be written costs /health its start fields, never the start itself. */
-function recordStart(stateDir: string, unclean: boolean, options: FactoryServerOptions, log: Logger): ServeStart | undefined {
-  try {
-    return recordServeStart(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) });
-  } catch (err) {
-    log.warn({ err }, "could not record the serve start");
-    return undefined;
-  }
-}
-
-/** A refused token file costs only the bot: serve starts, and /health names the problem. */
-function openBot(options: FactoryServerOptions, log: Logger): BotIdentity {
-  const bot = (options.bot ?? openBotIdentity)();
-  const health = bot.health();
-  if (health.state === "refused") log.warn({ problem: health.problem }, "bot token file refused; bot steps are blocked");
-  return bot;
 }
 
 /** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */

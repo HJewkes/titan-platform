@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { octokitClient, sharedRateBudget } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOT_CAPABILITY, BOT_TOKEN_PATH, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
+import { BOT_CAPABILITY, BOT_TOKEN_PATH, botAccess, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
 import { runCommand } from "./service-ports.js";
 
 /** Built, not written out, so no source line carries a token-shaped literal. */
@@ -84,7 +84,7 @@ describe("bot identity: the token never reaches an env (V3)", () => {
 });
 
 describe("bot identity: its own throttle and budget (V4)", () => {
-  it("a bot near its rate floor leaves the HJewkes budget untouched and the HJewkes client free", async () => {
+  it("a bot near its rate floor leaves the user login's budget untouched and its client free", async () => {
     const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([], 200, 0) });
     await okClient(bot).request("GET /rate_limit");
     const sharedAfterBot = sharedRateBudget.remaining;
@@ -141,5 +141,20 @@ describe("bot identity: an absent or refused file disables only the bot (V5)", (
 
     expect(bot.health()).toEqual({ state: "ok" });
     expect(bot.capabilities[BOT_CAPABILITY]!.secrets).toEqual([SENTINEL]);
+  });
+});
+
+describe("botAccess", () => {
+  it("is blocked, not a throw, in a runtime built without serve's capabilities", () => {
+    const bare = { capability: (name: string) => { throw new Error(`unknown capability: ${name}`); } };
+
+    expect(botAccess(bare)).toEqual({ state: "blocked", reason: "absent" });
+  });
+
+  it("refuses a look-alike handle that this module did not make", () => {
+    const client = octokitClient({ token: async () => "user-fixture", fetch: fakeGitHub([]) });
+    const impostor = { capability: () => ({ access: () => ({ state: "ok", client }) }) };
+
+    expect(botAccess(impostor)).toEqual({ state: "blocked", reason: "absent" });
   });
 });

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BOT_CAPABILITY, openBotIdentity, type BotAccess, type BotHandle } from "./bot-identity.js";
+import { z } from "zod";
+import { botAccess, openBotIdentity, type BotAccess } from "./bot-identity.js";
 import { defineWorkflow } from "./definition.js";
 import type { FactoryRoutes } from "./host.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
@@ -36,7 +37,7 @@ function botProbe(seen: BotAccess[]) {
     name: "bot-probe",
     steps: [],
     run: async (ctx) => {
-      seen.push((ctx.capability(BOT_CAPABILITY) as BotHandle).access());
+      seen.push(botAccess(ctx));
     },
   });
 }
@@ -56,8 +57,8 @@ async function serveWithBot(path: string, seen: BotAccess[]): Promise<FactorySer
 }
 
 async function botHealth(server: FactoryServer): Promise<unknown> {
-  const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
-  return health.bot;
+  const health: unknown = await (await fetch(`http://127.0.0.1:${server.port}/health`)).json();
+  return z.object({ bot: z.unknown() }).parse(health).bot;
 }
 
 async function runProbe(server: FactoryServer, seen: BotAccess[]): Promise<BotAccess | undefined> {
