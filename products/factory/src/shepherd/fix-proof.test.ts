@@ -12,6 +12,7 @@ import type { ShepherdDeps, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
+import type { PanelMode } from "./review-panel-plan.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -114,6 +115,7 @@ interface Scene {
   workflow?: boolean;
   noReproProceed?: "off" | "on";
   baseValidate?: string;
+  panel?: PanelMode;
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -148,11 +150,11 @@ describe("sh-fix-proof in reviewPhase", () => {
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, ...(scene.noReproProceed && { noReproProceed: scene.noReproProceed }) };
     const dispatch = fakeDispatch();
     if (scene.external) dispatch.agents.push({ name: scene.external, agentId: `agent-${scene.external}`, sessionId: `session-${scene.external}`, presence: "live", spawnedBy: null, predecessor: null });
-    const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
+    const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Probes: empty token -> refused\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
     const reader: ReviewerReader = { read: async (input) => dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map(said) };
     const verdicts: Verdict[] = [];
     const inputs: Record<string, unknown> = {};
-    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000 }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
+    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...(scene.panel && { panel: scene.panel }) }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
     const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "fix-proof-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
@@ -452,6 +454,28 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(proof).toMatchObject({ kind: "workflow-ci", proved: false });
     expect(verdicts).toEqual([{ kind: "NO_REPRO", headSha: H, result: proof }]);
     expect(spawns).toEqual([]);
+  });
+
+  describe("under the review panel, whose g10 plan has correctness and adversary but no tests member", () => {
+    const SECURITY_FILES: PrFile[] = [
+      { path: "src/auth.ts", status: "modified", additions: 5, deletions: 1 },
+      { path: "src/auth.test.ts", status: "modified", additions: 5, deletions: 0 },
+    ];
+    const panelScene = (line: string): Scene => ({ kind: "correctness", panel: "on", runs: [fixProofRun()], log: actionsLog(line), files: SECURITY_FILES });
+
+    it("merges a vacuous proof its killed mutants prove when both members say MERGE (tp#2145)", async () => {
+      const { verdicts, spawns } = await review(panelScene(mutantsLine("killed")));
+
+      expect(spawns).toHaveLength(2);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    });
+
+    it("sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry", async () => {
+      const { verdicts, spawns } = await review(panelScene(resultLine(H, "error")));
+
+      expect(spawns).toHaveLength(2);
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "error" } }]);
+    });
   });
 
   it("keeps today's grant for a feature PR outside the gate whose fix-proof errored", async () => {

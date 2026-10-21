@@ -1,4 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
+import { parseResultLine } from "@titan-design/fix-proof";
 import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -197,6 +198,7 @@ const PanelVerdictRead = z.looseObject({
   dissent: z.array(SHAPE),
   degraded: z.array(SHAPE),
   satisfiesG10: z.boolean(),
+  fixProofShortfall: z.literal(true).optional(),
 });
 type PanelVerdictRecord = z.infer<typeof PanelVerdictRead>;
 
@@ -240,6 +242,12 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
+/** Only a new head's proof can fill the unplanned tests seat, so the head goes back as the proof's NO_REPRO, not to a fresh reviewer (tp#2145). */
+function proofShortfall(head: string, line: string | undefined): Verdict {
+  const parsed = line === undefined ? undefined : parseResultLine(line);
+  return { kind: "NO_REPRO", headSha: head, result: parsed?.ok ? parsed.result : (line ?? null) };
+}
+
 const MemberVerdict = z.looseObject({
   kind: z.literal("verdict"),
   reviewer: z.object({ agentId: z.string(), sessionId: z.string() }),
@@ -279,6 +287,7 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
+  if (verdict.fixProofShortfall === true) return proofShortfall(target.head, base.fixProof);
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results, memberProfiles(members)) } : decided;

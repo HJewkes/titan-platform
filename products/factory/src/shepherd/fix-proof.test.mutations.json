@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unplanned tests shortfall is retried as a plain no-verdict",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "if (verdict.fixProofShortfall === true) return",
+      "replace": "if (verdict.fixProofShortfall === undefined) return",
+      "kills": ["sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry"]
+    },
+    {
+      "name": "the shortfall's NO_REPRO carries the raw line, not the parsed result",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "result: parsed?.ok ? parsed.result : (line ?? null)",
+      "replace": "result: line ?? null",
+      "kills": ["sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member sends a head whose proof only an unplanned tests member could clear back as NO_REPRO, never a reviewer retry"]
+    }
+  ]
+}

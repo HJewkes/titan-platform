@@ -243,6 +243,17 @@ describe("aggregate reads a fix-proof/v1 line", () => {
     expect(verdict.satisfiesG10).toBe(false);
   });
 
+  it("marks a no-verdict whose only missing member is the unplanned tests seat as a fix-proof shortfall", () => {
+    const shortfall = aggregate(G10, g10, { ...input, fixProof: mutantsLine("not-killed") });
+    const silent = aggregate(G10, [merge("correctness")], { ...input, fixProof: mutantsLine("not-killed") });
+    const plain = aggregate(G10, [merge("correctness")], input);
+
+    expect(shortfall.fixProofShortfall).toBe(true);
+    expect(silent.outcome).toBe("no-verdict");
+    expect(silent.fixProofShortfall).toBeUndefined();
+    expect(plain.fixProofShortfall).toBeUndefined();
+  });
+
   it.each(["", "  "])("treats an empty fix-proof %j as none ran", (fixProof) => {
     const verdict = aggregate(G10, g10, { ...input, fixProof });
 

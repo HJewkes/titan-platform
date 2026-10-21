@@ -117,6 +117,9 @@ function outcomeOf(blocking: readonly Seat[]): PanelOutcome {
   return absent.every((s) => s.status === "timeout") ? "timeout" : "no-verdict";
 }
 
+const onlyUnplannedTestsMissing = (blocking: readonly Seat[]): boolean =>
+  blocking.includes(UNPLANNED_TESTS) && blocking.filter((s) => s.status !== "MERGE").every((s) => s === UNPLANNED_TESTS);
+
 /** A finding starts at a blank line or a list item, so one reviewer's separate points are checked separately. */
 function splitFindings(text: string): string[] {
   let current: string[] = [];
@@ -194,7 +197,8 @@ function satisfiesG10(plan: PanelPlan, seats: readonly Seat[], outcome: PanelOut
 /** The panel verdict for one head from its members' results. Every path it cannot classify ends short of MERGE. Pure. */
 export function aggregate(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): PanelVerdict {
   const seats = seatsOf(plan, results, input);
-  const outcome = outcomeOf(seats.filter((s) => s.blocking));
+  const blocking = seats.filter((s) => s.blocking);
+  const outcome = outcomeOf(blocking);
   const dissent = seats.filter((s) => s.blocking && s.status === "FIX_FIRST");
   const degraded = seats.filter((s) => s.member.degraded || results.some((r) => r.shape === s.member.shape && r.degraded)).map((s) => s.member.shape);
   const closer = closerOf(dissent);
@@ -208,5 +212,6 @@ export function aggregate(plan: PanelPlan, results: readonly MemberResult[], inp
     dissent: dissent.map((s) => s.member.shape),
     degraded,
     satisfiesG10: satisfiesG10(plan, seats, outcome, degraded, input),
+    ...(outcome === "no-verdict" && onlyUnplannedTestsMissing(blocking) && { fixProofShortfall: true as const }),
   };
 }
