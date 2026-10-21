@@ -12,3 +12,6 @@ site/.vitepress/cache/
 site/.vitepress/dist/
 .turbo/
 .eslintcache
+# corpus-query CLI scratch output from local hits/ask runs
+/refs.txt
+/spec.json
