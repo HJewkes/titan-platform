@@ -6,6 +6,7 @@ import type { RoundDetail } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
 import { FrameFeedbackProvider, FrameFigure } from "./FrameFeedback.js";
 import { frameDrafts } from "./frame-feedback.js";
+import type { PngWidths } from "./frame-pins.js";
 import { RoundFramesProvider, anchoredKeys } from "./QuestionFrames.js";
 import { FrameImage } from "./RoundFrame.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
@@ -44,9 +45,10 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
   const strip = { roundId: round.id, indexed, labels };
   const anchored = anchoredKeys(round.manifest);
   const variants = frameDrafts([...labels.keys()], state.frames.drafts);
+  const widths = useMemo(() => declaredWidths(round.manifest, listed), [round.manifest, listed]);
   return (
     <RoundFramesProvider roundId={round.id} manifest={round.manifest} indexed={indexed}>
-      <FrameFeedbackProvider value={state.frames}>
+      <FrameFeedbackProvider value={state.frames} widths={widths}>
         <VStack gap={4}>
           <Typography variant="caption" color="secondary">Tap a frame to open it full size.</Typography>
           {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations are hidden until you answer; reveal one first with r.</Typography> : null}
@@ -63,6 +65,18 @@ function DesignBody({ round, listed }: { round: ValidRound; listed: FramesList }
         </VStack>
       </FrameFeedbackProvider>
     </RoundFramesProvider>
+  );
+}
+
+/** Each frame's frames.json viewport width and true-size frameReference width, which its pins are measured in. */
+function declaredWidths(manifest: ValidRound["manifest"], listed: FramesList): Map<string, PngWidths> {
+  const viewports = new Map(listed.frames.map((frame) => [frame.key, frame.viewportWidth]));
+  return new Map(
+    manifest.variants.map((variant) => {
+      const referenceWidth = variant.frameReference?.frame.width;
+      const viewportWidth = viewports.get(variant.key);
+      return [variant.key, { ...(viewportWidth !== undefined && { viewportWidth }), ...(referenceWidth !== undefined && { referenceWidth }) }];
+    }),
   );
 }
 
@@ -112,7 +126,7 @@ function FrameStrip({ keys, size, roundId, indexed, labels }: StripProps & { key
         );
         // A see-also thumbnail points at a frame judged where it is drawn full width, so it takes no verdict of its own.
         if (size === "thumb") return <figure key={key} className="flex min-w-0 flex-col gap-1" data-testid={`see-also-${key}`}>{body}</figure>;
-        return <FrameFigure key={key} frameKey={key} label={label} testID={`design-frame-${key}`}>{body}</FrameFigure>;
+        return <FrameFigure key={key} frameKey={key} label={label} pinnable={indexed.has(key)} testID={`design-frame-${key}`}>{body}</FrameFigure>;
       })}
     </div>
   );

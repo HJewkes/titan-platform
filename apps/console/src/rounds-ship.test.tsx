@@ -159,6 +159,17 @@ describe("the Ship view", () => {
     expect(frameCalls(rendered)).toContainEqual({ name: "rounds.frame", args: { id: SHIP, key: "tile-dark", view: "diff" } });
   });
 
+  it("offers no Pin on a montage, whose BEFORE, AFTER and DIFF would share one frame's pins", async () => {
+    await renderShip({ answers: true });
+    const montage = screen.getByTestId("montage-tile-light");
+    fireEvent.pointerDown(montage);
+
+    fireEvent.keyDown(window, { key: "a" });
+
+    expect(within(montage).queryByRole("button", { name: /^Pin / })).toBeNull();
+    expect(within(montage).queryByText(/place a pin/)).toBeNull();
+  });
+
   it("reads AFTER from a CI packet's after image, not its montage head", async () => {
     const rendered = await renderShip({ listed: PACKET_FRAMES });
 
