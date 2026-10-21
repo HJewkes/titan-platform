@@ -5,6 +5,7 @@ import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type S
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForm, remapCuesInPlace } from "./spoken-numbers.js";
 
+
 export type BeatRejectionRule =
   | "empty"
   | "entity"
@@ -17,6 +18,7 @@ export type BeatRejectionRule =
   | "device-added"
   | "label-bare"
   | "list-lost"
+  | "list-emptied"
   | "cue-lost"
   | "cue-order"
   | "new-term"
@@ -43,9 +45,20 @@ export interface BeatGuardOptions {
 }
 
 const DEFAULT_LENGTH_TOLERANCE = 0.35;
+// A short beat that gains a "three things" clause grows by about six words, which 35 % of 15 words does not allow.
+const DEFAULT_LENGTH_SLACK = 6;
+
+const ONE_BEFORE = /\b(?:the|each|no|any|every|which|this|that|another|first|last)\s+$/i;
+const ONE_AFTER = /^\s+(?:of|that|who|which|matters|among)\b/i;
+
+/** "The one that", "one of" and "no one" count nothing, so a rewrite that says them invents no number. */
+const pronounOne = (text: string, span: TextSpan): boolean =>
+  /^one$/i.test(span.text) && (ONE_BEFORE.test(text.slice(0, span.index)) || ONE_AFTER.test(text.slice(span.index + span.text.length)));
+
+const countSpans = (text: string): TextSpan[] => numberSpans(text).filter((span) => !pronounOne(text, span));
 
 /** The number mentions the numbers rows count in a spoken line, after markup is reduced to its words. */
-const numbersIn = (spoken: string): string[] => numberSpans(spokenText([spoken]).text).map((span) => span.text);
+const numbersIn = (spoken: string): string[] => countSpans(spokenText([spoken]).text).map((span) => span.text);
 
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -79,7 +92,7 @@ const inLabel = (labels: readonly string[], form: string): boolean => labels.som
 function carriedSpans(before: string, after: BeatRewrite): { text: string; spans: TextSpan[] } {
   const carried = movedNumbers(before, after).filter((form) => inLabel(after.labelsAdded, form));
   const text = spokenText([before]).text;
-  const spans = numberSpans(text).filter((span) => {
+  const spans = countSpans(text).filter((span) => {
     const at = carried.indexOf(numberForm(span.text));
     if (at === -1) return false;
     carried.splice(at, 1);
@@ -89,22 +102,18 @@ function carriedSpans(before: string, after: BeatRewrite): { text: string; spans
 }
 
 /**
- * The original line without the number mentions an appended label now carries. The terms rule reads this, so
- * "5000 rows" moved to a label does not count "thousand" as a dropped content term.
+ * The original line without what an appended label now carries: its moved number mentions and every word a label
+ * speaks. The terms rule reads this, so "5000 rows" moved to a label does not count "thousand" as a dropped content
+ * term, and a list item moved to a label does not count its words.
  */
-function withoutCarriedNumbers(before: string, after: BeatRewrite): string {
+function withoutCarried(before: string, after: BeatRewrite): string {
   const { text, spans } = carriedSpans(before, after);
-  return spans.reduceRight((line, span) => line.slice(0, span.index) + line.slice(span.index + span.text.length), text);
-}
-
-function numberRejections(before: string, after: BeatRewrite): BeatRejection[] {
-  const moved = movedNumbers(before, after);
-  const lost = moved.filter((form) => !inLabel(after.labelsAdded, form));
-  return [
-    ...lost.map((form) => ({ rule: "number-lost" as const, detail: `"${form}" left the line and is not in an appended label` })),
-    ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
-    ...surplus(formsIn(after.spoken), formsIn(before)).map((form) => ({ rule: "number-invented" as const, detail: `"${form}" was not in the original` })),
-  ];
+  const line = spans.reduceRight((rest, span) => rest.slice(0, span.index) + rest.slice(span.index + span.text.length), text);
+  const spokenByLabels = contentTerms(after.labelsAdded.join(" "));
+  return line.replace(/[\p{L}\p{N}'’-]+/gu, (word) => {
+    const terms = [...contentTerms(word)];
+    return terms.length > 0 && terms.every((term) => spokenByLabels.has(term)) ? " " : word;
+  });
 }
 
 const VAGUE_QUANTIFIER = /(?<![\p{L}\p{N}'’-])(?:some|many|several|a few|a lot|lots|plenty|a handful|a bunch|a pile|numerous|countless)(?![\p{L}\p{N}'’-])/giu;
@@ -141,14 +150,94 @@ function bareLabelRejections(moved: readonly string[], labels: readonly string[]
 // A named list is three items joined by commas and a final and/or; the items are one to three words each.
 const NAMED_LIST = /\b([\w'’-]+(?: [\w'’-]+){0,2}), ([\w'’-]+(?: [\w'’-]+){0,2}),? (?:and|or) ([\w'’-]+(?: [\w'’-]+){0,2})[.,;:!?]/g;
 
+// The match takes up to three words an item, so the sentence's own verb can trail the last one ("and runner come first").
+const ITEM_TAIL = /(?:\s+(?:come|comes|came|follow|follows|first|last|next|too))+$/i;
+
+interface ListItem {
+  raw: string;
+  terms: readonly string[];
+}
+
+interface NamedList {
+  items: readonly ListItem[];
+  /** Content terms of the list's sentence outside the list: what the sentence says about its items. */
+  rest: readonly string[];
+}
+
+const itemOf = (raw: string): ListItem => ({ raw, terms: [...contentTerms(raw.replace(ITEM_TAIL, ""))] });
+
+function namedLists(before: string): NamedList[] {
+  return sentencesOf(spokenText([before]).text).flatMap((sentence) =>
+    [...sentence.matchAll(NAMED_LIST)].map((match) => ({
+      items: match.slice(1, 4).map((raw) => itemOf(raw!)),
+      rest: [...contentTerms(sentence.replace(match[0], " "))],
+    })),
+  );
+}
+
+const holdsAll = (text: string, terms: readonly string[]): boolean => {
+  const have = contentTerms(text);
+  return terms.every((term) => have.has(term));
+};
+
+const itemInLine = (item: ListItem, after: BeatRewrite): boolean => holdsAll(after.spoken, item.terms);
+
+/** A label carries an item only when it holds all the item's content terms: "agents" does not carry "agents crash". */
+const itemCarried = (item: ListItem, after: BeatRewrite): boolean => after.labelsAdded.some((label) => holdsAll(label, item.terms));
+
 /** An item of a list in the original that left the spoken line must be on screen in an appended label. */
-function listRejections(before: string, after: BeatRewrite): BeatRejection[] {
-  const spoken = norm(after.spoken);
-  const labels = after.labelsAdded.map(norm);
-  const items = [...before.matchAll(NAMED_LIST)].flatMap((match) => match.slice(1, 4).map((item) => norm(item).replace(/^(?:the|a|an) /, "")));
-  return items
-    .filter((item) => !hasWord(spoken, item) && !labels.some((label) => hasWord(label, item)))
-    .map((item) => ({ rule: "list-lost" as const, detail: `list item "${item}" left the line and is not in an appended label` }));
+const listRejections = (lists: readonly NamedList[], after: BeatRewrite): BeatRejection[] =>
+  lists
+    .flatMap(({ items }) => items)
+    .filter((item) => !itemInLine(item, after) && !itemCarried(item, after))
+    .map((item) => ({ rule: "list-lost" as const, detail: `list item "${item.raw}" left the line and is not in an appended label` }));
+
+/**
+ * A collapsed list must leave the line saying something: one of its items, or a word its sentence said about them.
+ * "There are three of them" with every item on screen tells the listener nothing.
+ */
+function emptiedListRejections(lists: readonly NamedList[], after: BeatRewrite): BeatRejection[] {
+  const said = contentTerms(after.spoken);
+  return lists
+    .filter(({ items, rest }) => !items.some((item) => item.terms.length > 0 && itemInLine(item, after)) && !rest.some((term) => said.has(term)))
+    .map(({ items }) => ({
+      rule: "list-emptied" as const,
+      detail: `the line keeps no item of "${items.map((item) => item.raw).join(", ")}" and nothing its sentence said about them`,
+    }));
+}
+
+/** Numbers of the new line said as "N more" or "N other": the only way a count of some of a list's items may appear. */
+function partialCounts(spoken: string): string[] {
+  const text = spokenText([spoken]).text;
+  return countSpans(text)
+    .filter((span) => /^\s+(?:more|other)\b/i.test(text.slice(span.index + span.text.length)))
+    .map((span) => numberForm(span.text));
+}
+
+/**
+ * Count words a list collapse may add: the list's full size when every item is still in the line or in a label, and
+ * "N more" or "N other" when N items moved to labels.
+ */
+function allowedCounts(lists: readonly NamedList[], after: BeatRewrite): string[] {
+  const partial = partialCounts(after.spoken);
+  return lists.flatMap(({ items }) => {
+    const labelled = items.filter((item) => itemCarried(item, after));
+    const moved = labelled.filter((item) => !itemInLine(item, after));
+    const whole = items.every((item) => itemInLine(item, after) || itemCarried(item, after)) ? [String(items.length)] : [];
+    const some = [labelled.length, moved.length].map(String).filter((n) => n !== "0" && partial.includes(n));
+    return [...new Set([...whole, ...some])];
+  });
+}
+
+function numberRejections(before: string, after: BeatRewrite, lists: readonly NamedList[]): BeatRejection[] {
+  const moved = movedNumbers(before, after);
+  const lost = moved.filter((form) => !inLabel(after.labelsAdded, form));
+  const invented = surplus(surplus(formsIn(after.spoken), formsIn(before)), allowedCounts(lists, after));
+  return [
+    ...lost.map((form) => ({ rule: "number-lost" as const, detail: `"${form}" left the line and is not in an appended label` })),
+    ...bareLabelRejections(moved, after.labelsAdded.map(norm)),
+    ...invented.map((form) => ({ rule: "number-invented" as const, detail: `"${form}" was not in the original` })),
+  ];
 }
 
 const orderOf = (positions: readonly number[]): number[] =>
@@ -227,18 +316,20 @@ function capRejections(spoken: string, { speechClean, maxVettedSentenceWords }: 
  * original text. Moved numbers may leave `spoken` only when an appended label carries them, in digits or in words.
  */
 export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuardOptions = {}): BeatRejection[] {
-  const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, ...opts.guard };
+  const guard: GuardOptions = { lengthTolerance: DEFAULT_LENGTH_TOLERANCE, minLengthSlack: DEFAULT_LENGTH_SLACK, ...opts.guard };
   const generic: BeatRejection[] = guardRewrite(before.spoken, after.spoken, "", guard)
     .flatMap(({ rule, detail }) => (rule === "number" || rule === "terms" ? [] : [{ rule, detail }]));
-  const terms: BeatRejection[] = guardRewrite(withoutCarriedNumbers(before.spoken, after), after.spoken, "", guard)
+  const terms: BeatRejection[] = guardRewrite(withoutCarried(before.spoken, after), after.spoken, "", guard)
     .flatMap(({ rule, detail }) => (rule === "terms" ? [{ rule, detail }] : []));
+  const lists = namedLists(before.spoken);
   return [
     ...generic,
     ...terms,
-    ...numberRejections(before.spoken, after),
+    ...numberRejections(before.spoken, after, lists),
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
-    ...listRejections(before.spoken, after),
+    ...listRejections(lists, after),
+    ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),
     ...newTermRejections(before, after.spoken),
     ...capRejections(after.spoken, opts),

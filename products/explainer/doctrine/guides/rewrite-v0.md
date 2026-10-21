@@ -16,6 +16,10 @@ and only their spoken line.
   on the spoken line or goes to the labels.
 - When a number leaves the spoken line, put it in `labels_added` with the noun it counts, as the original words it:
   "12 parcels held", never "12" alone. When a named list leaves the spoken line, put each name in `labels_added`.
+- A list of three that leaves the spoken line: put every item in `labels_added`, one each, keep at most a single item in
+  the line, and you may say how many there are. Keep what the sentence said about the list; "there are three of them"
+  alone says nothing. Example: "We skip the oven timer, glaze notes and crate labels." becomes spoken "We skip three
+  things the screen lists." with labels_added ["oven timer", "glaze notes", "crate labels"].
 
 Return JSON: `{"beats":[{"id":"...","spoken":"...","labels_added":["..."]}]}`, one entry for every beat listed,
 with `labels_added` empty when nothing moved to the screen.
