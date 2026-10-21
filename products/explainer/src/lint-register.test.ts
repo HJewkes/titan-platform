@@ -176,19 +176,36 @@ describe("Q-V11 register rows", () => {
     expect(emitted.every((row) => row.severity === "warning")).toBe(true);
   });
 
-  it("passes a beat with one number and warns on a beat with two, naming the beat", () => {
-    const row = rows("It took 3 runs.", "It took 3 runs and 12 ms.", FILLER).get("register:numbers-per-beat");
+  const CROWDED = "It took 3 runs and 12 ms.";
+  const perBeat = (crowded: number, total: number, line = CROWDED) =>
+    rows(...Array.from({ length: total }, (_, i) => (i < crowded ? line : FILLER))).get("register:numbers-per-beat");
 
-    expect(row).toMatchObject({ severity: "warning", pass: false, value: 1, detail_beats: ["w4"] });
-    expect(rows("It took 3 runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true, value: 0 });
+  it("passes one crowded beat in twenty, a 5% share under the cap", () => {
+    expect(perBeat(1, 20)).toMatchObject({ severity: "warning", pass: true, value: 0.05, threshold: 0.24, detail_beats: ["h1"] });
+  });
+
+  it("warns on five crowded beats in twenty, a 25% share, naming the beats", () => {
+    expect(perBeat(5, 20)).toMatchObject({ pass: false, value: 0.25, threshold: 0.24, detail_beats: ["h1", "w4", "c1", "b3", "b4"] });
+  });
+
+  it("passes a script with no crowded beat", () => {
+    expect(perBeat(0, 20)).toMatchObject({ pass: true, value: 0, detail_beats: [] });
+  });
+
+  it("reports but never warns on a 100-word script whose every beat is crowded", () => {
+    const hundred = "It took 3 runs and 12 ms on the free worker.";
+    const short = rows(...Array.from({ length: 10 }, () => hundred)).get("register:numbers-per-beat");
+
+    expect(short).toMatchObject({ pass: true, value: 1 });
+    expect(short?.detail_beats).toHaveLength(10);
   });
 
   it("counts a run of number words in a beat as one mention", () => {
-    expect(rows("It took two hundred and five runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true });
+    expect(perBeat(5, 20, "It took two hundred and five runs.")).toMatchObject({ pass: true, value: 0 });
   });
 
-  it("warns on a beat whose number words are split by other words", () => {
-    expect(rows("It took two runs and five retries.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: false, detail_beats: ["h1"] });
+  it("counts a beat whose number words are split by other words as crowded", () => {
+    expect(perBeat(5, 20, "It took two runs and five retries.")).toMatchObject({ pass: false, value: 0.25 });
   });
 
   it("warns on a rate over the band's cap and passes one inside it", () => {
