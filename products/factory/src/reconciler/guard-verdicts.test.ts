@@ -5,6 +5,7 @@ import { advanceEpoch, headEpochMigration, readEpoch } from "../head-guard/epoch
 import type { Ancestry, Unavailable } from "../head-guard/guard.js";
 import type { RepoCursor } from "./cursor.js";
 import { guardVerdicts, type GuardVerdictDeps, type RemoteRef } from "./guard-verdicts.js";
+import type { GuardVerdict } from "./observe.js";
 
 const REPO = "example-org/widgets";
 const AT = "2027-01-15T08:00:00.000Z";
@@ -66,6 +67,16 @@ describe("guard verdicts on an open PR's head (TP-3097 through TP-3431)", () => 
     expect(asked).toEqual([`compare a1...a2`]);
   });
 
+  it("confirms the stored head read again without asking GitHub anything", async () => {
+    const { db, asked, guardDeps } = deps();
+    advanceEpoch(db, { repo: REPO, pr: 7, expectedEpoch: 0, head: NEW, by: "bootstrap", at: AT });
+
+    const guard = await guardVerdicts(REPO, snapshot(NEW), at(TIP), guardDeps);
+
+    expect(guard.confirmHead(REPO, 7, NEW)).toEqual({ kind: "confirmed" });
+    expect(asked).toEqual([]);
+  });
+
   it("answers unknown when the compare could not be read", async () => {
     const { db, guardDeps } = deps({ ancestry: DOWN });
     advanceEpoch(db, { repo: REPO, pr: 7, expectedEpoch: 0, head: OLD, by: "bootstrap", at: AT });
@@ -85,22 +96,25 @@ describe("guard verdicts on an open PR's head (TP-3097 through TP-3431)", () => 
 });
 
 describe("guard verdicts on the main tip (TP-3431)", () => {
-  it.each([
-    { name: "a first tip ls-remote agrees with", cursor: null, script: { remote: () => TIP }, verdict: { kind: "confirmed" } },
-    { name: "a first tip ls-remote disagrees with", cursor: null, script: { remote: () => CURSOR }, verdict: { kind: "stale" } },
-    { name: "a fast-forward of the cursor", cursor: CURSOR, script: { ancestry: "ahead" }, verdict: { kind: "confirmed" } },
-    { name: "a tip that diverged from the cursor", cursor: CURSOR, script: { ancestry: "diverged" }, verdict: { kind: "confirmed", by: "non-ancestor" } },
-    { name: "an ancestor of the cursor that ls-remote shows", cursor: CURSOR, script: { ancestry: "behind", remote: () => TIP }, verdict: { kind: "confirmed", by: "non-ancestor" } },
-    { name: "an ancestor of the cursor while ls-remote shows the cursor", cursor: CURSOR, script: { ancestry: "behind", remote: () => CURSOR }, verdict: { kind: "stale" } },
-    { name: "a tip GitHub's compare cannot find", cursor: CURSOR, script: { ancestry: "missing" }, verdict: { kind: "stale" } },
-    { name: "a tip whose compare could not be read", cursor: CURSOR, script: { ancestry: DOWN }, verdict: { kind: "unknown" } },
-  ] as const)("answers $verdict.kind for $name", async ({ cursor, script, verdict }) => {
-    const { guardDeps } = deps(script);
+  const cases: readonly { name: string; cursor: string | null; script: Script; verdict: GuardVerdict }[] = [
+    { name: "confirms a first tip ls-remote agrees with", cursor: null, script: { remote: () => TIP }, verdict: { kind: "confirmed" } },
+    { name: "answers stale for a first tip ls-remote disagrees with", cursor: null, script: { remote: () => CURSOR }, verdict: { kind: "stale" } },
+    { name: "confirms a fast-forward of the cursor", cursor: CURSOR, script: { ancestry: "ahead" }, verdict: { kind: "confirmed" } },
+    { name: "confirms a tip that diverged from the cursor as off its line", cursor: CURSOR, script: { ancestry: "diverged" }, verdict: { kind: "confirmed", by: "non-ancestor" } },
+    { name: "confirms an ancestor of the cursor that ls-remote shows as off its line", cursor: CURSOR, script: { ancestry: "behind", remote: () => TIP }, verdict: { kind: "confirmed", by: "non-ancestor" } },
+    { name: "answers stale for an ancestor of the cursor while ls-remote shows the cursor", cursor: CURSOR, script: { ancestry: "behind", remote: () => CURSOR }, verdict: { kind: "stale" } },
+    { name: "answers stale for a tip GitHub's compare cannot find", cursor: CURSOR, script: { ancestry: "missing" }, verdict: { kind: "stale" } },
+    { name: "answers unknown for a tip whose compare could not be read", cursor: CURSOR, script: { ancestry: DOWN }, verdict: { kind: "unknown" } },
+  ];
+  for (const { name, cursor, script, verdict } of cases) {
+    it(name, async () => {
+      const { guardDeps } = deps(script);
 
-    const guard = await guardVerdicts(REPO, snapshot(null), at(cursor), guardDeps);
+      const guard = await guardVerdicts(REPO, snapshot(null), at(cursor), guardDeps);
 
-    expect(guard.confirmTip(REPO, "main", TIP, cursor)).toEqual(verdict);
-  });
+      expect(guard.confirmTip(REPO, "main", TIP, cursor)).toEqual(verdict);
+    });
+  }
 
   it("reads nothing for a tip still at the cursor", async () => {
     const { asked, guardDeps } = deps();

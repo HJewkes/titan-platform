@@ -33,13 +33,13 @@ export async function guardVerdicts(repo: string, snapshot: BackstopSnapshot, cu
   const heads = new Map<number, { sha: string; verdict: GuardVerdict }>();
   for (const pr of snapshot.open) heads.set(pr.number, { sha: pr.headRefOid, verdict: await headVerdict(repo, pr.number, pr.headRefOid, deps) });
   const from = cursor.main?.value ?? null;
-  const tip = snapshot.main.tip === from ? undefined : { sha: snapshot.main.tip, from, verdict: await tipVerdict(repo, snapshot.main.tip, from, deps) };
+  const tip = { sha: snapshot.main.tip, from, verdict: await tipVerdict(repo, snapshot.main.tip, from, deps) };
   return {
     confirmHead: (_repo, pr, sha) => {
       const head = heads.get(pr);
       return head?.sha === sha ? head.verdict : UNREAD;
     },
-    confirmTip: (_repo, _branch, sha, at) => (tip?.sha === sha && tip.from === at ? tip.verdict : UNREAD),
+    confirmTip: (_repo, _branch, sha, at) => (tip.sha === sha && tip.from === at ? tip.verdict : UNREAD),
   };
 }
 
@@ -56,7 +56,7 @@ async function headVerdict(repo: string, pr: number, sha: string, deps: GuardVer
   return { kind: result.outcome };
 }
 
-/** The tip is classified against the cursor, the last tip scanned. */
+/** The tip is classified against the cursor, the last tip scanned; one still at the cursor reads as `same`, with no read. */
 async function tipVerdict(repo: string, tip: string, from: string | null, deps: GuardVerdictDeps): Promise<GuardVerdict> {
   const reads = { ancestry: (base: string, head: string) => deps.ancestry(repo, base, head), lsRemote: () => deps.lsRemote(repo, { branch: BRANCH }), now: () => new Date(deps.now()) };
   return tipAnswer(await classifyTipRead(reads, from, tip));
