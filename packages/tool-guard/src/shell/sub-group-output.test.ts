@@ -25,29 +25,28 @@ async function verdict(command: string): Promise<"deny" | "pass"> {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
 }
 
-/** A substitution holding a group, subshell, list or pipeline prints text a shell then runs (TP-3333). */
+/** A substitution holding a group, subshell, list or pipeline prints text that `eval` or `-c` then runs (TP-3333). */
 const PRINTS_A_PUSH = [
-  `echo "$(echo ${PUSH})" | sh`,
   `bash -c "$({ echo ${PUSH}; })"`,
   `eval "$( { echo ${PUSH}; } )"`,
   `bash -c "$( ( echo ${PUSH} ) )"`,
   `bash -c "$(echo ${PUSH} | cat)"`,
   `bash -c "$(printf '%s\\n' hi '${PUSH}')"`,
+  `sh -c "$(echo hi; echo ${PUSH})"`,
+  `zsh -c "$( { echo hi; } ; echo ${PUSH})"`,
 ];
 
 /** Pieces whose later text is the push, and stages that pass text through. */
 const MORE_DENIED = [
-  `printf '%s\\n' "$(echo ${PUSH})" | bash`,
-  `echo "$(printf '%s\\n' '${PUSH}')" | sh`,
-  `echo "$({ echo hi; echo ${PUSH}; })" | bash`,
-  `bash -c "$(echo hi; echo ${PUSH})"`,
   `bash -c "$(echo hi && echo ${PUSH})"`,
   `bash -c "$({ echo hi; } | tee /dev/null; echo ${PUSH})"`,
   `bash -c "$(echo ${PUSH} | tee log)"`,
   `eval "$(echo ${PUSH} | cat | cat)"`,
+  // bash drops a NUL from a substitution's output, so `pu\0sh` runs as `push` there.
+  `bash -c "$(printf 'git pu\\0sh origin HEAD:main')"`,
 ];
 
-describe("a command substitution holding a group, subshell or pipeline is read (TP-3333)", () => {
+describe("eval and -c read a command substitution holding a group, subshell, list or pipeline (TP-3333)", () => {
   it.each([...PRINTS_A_PUSH, ...MORE_DENIED])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
   });
@@ -55,21 +54,14 @@ describe("a command substitution holding a group, subshell or pipeline is read (
   it.each([
     'echo "$({ echo a; echo b; })"',
     'echo "$(git rev-parse HEAD)"',
-    'echo "$(git rev-parse HEAD)" | cat',
-    'echo "$(date)" | sh',
-    'echo "$(cat x.sh)" | sh',
-    'echo "$(echo hi; echo ls)" | bash',
     'eval "$(ssh-agent -s)"',
     'eval "$(direnv hook bash)"',
-    'eval "$(brew shellenv)"',
-    "x=$( (cd pkg && pwd) )",
-    'bash -c "$(echo echo hi | cat)"',
-    'git commit -m "$(printf \'%s\\n\' fix: thing)"',
-    'echo "$( { echo a; } | sort )"',
-    'bash -c "$(cat x.sh)"',
-    'bash -c "$(echo hi; git status)"',
-    'eval "$(ssh-agent -s | cat)"',
     'eval "$( { ssh-agent -s; } )"',
+    'bash -c "$(cat x.sh)"',
+    'bash -c "$(echo echo hi | cat)"',
+    'bash -c "$(echo hi; git status)"',
+    "git commit -m \"$(cat <<'EOF'\nfix: thing\nEOF\n)\"",
+    'gh pr create --body "$(cat f)"',
   ])("allows %s", async (line) => {
     expect(await verdict(line)).toBe("pass");
   });
@@ -80,6 +72,32 @@ describe("a command substitution holding a group, subshell or pipeline is read (
   });
 });
 
+/**
+ * A print of a substitution piped on still pipes unknown text, so `xargs` fails closed as on main. Each row is one a
+ * strict reading of the piped text let through in an earlier round; TP-3333 b takes the piped route.
+ */
+const MAIN_DENIES = [
+  'echo "$(echo status 01>&2; echo push origin HEAD:main)" | xargs git',
+  'echo "$(echo status | cat 0>&2; echo push origin HEAD:main)" | xargs git',
+  `echo() { command echo "$@" >&2; }; printf '%s\\n' "$(echo status; printf '%s\\n' push origin HEAD:main)" | xargs git`,
+  'echo "$(cat <<<status <f)" | xargs git',
+  'echo "$(echo ma)${x-in}" | xargs git push origin',
+  'echo "$(echo ma)$((0))" | xargs git push origin',
+  'echo "$(echo ma)$[0]" | xargs git push origin',
+  'echo "$(echo status >&2; echo push origin HEAD:main)" | xargs git',
+  `echo "$(cat f; printf '')" | xargs git`,
+  'echo "$(<f)" | xargs git',
+  'echo "$(echo {push,} origin HEAD:main)" | xargs git',
+  `echo "$(printf 'pu\\0sh origin HEAD:main')" | xargs git`,
+  `echo "$(printf '' || printf 'status '; echo push origin HEAD:main)" | xargs git`,
+];
+
+describe("lines main denies still deny (TP-3333)", () => {
+  it.each(MAIN_DENIES)("denies %s", async (line) => {
+    expect(await verdict(line)).toBe("deny");
+  });
+});
+
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
 /** Runs `line` under `runner` in a scratch dir with a fake `git` first on PATH, and reports whether it was asked to push. */
@@ -87,8 +105,6 @@ function runsPush(line: string, runner: string): boolean {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sub-group-output-"));
   try {
     fs.mkdirSync(path.join(dir, "bin"));
-    fs.writeFileSync(path.join(dir, "f"), "push origin HEAD:main\n");
-    fs.writeFileSync(path.join(dir, "push"), "");
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\n[ "$*" = "push origin HEAD:main" ] && touch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
     const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
@@ -99,127 +115,6 @@ function runsPush(line: string, runner: string): boolean {
   }
 }
 
-/** A substitution that also runs an unknown command prints text only known at run time, which xargs reads as unknown. */
-const PARTLY_UNKNOWN = [
-  `echo "$(cat f; printf '')" | xargs git`,
-  `echo "$(cat f; echo)" | xargs git`,
-  `echo "$(printf ''; cat f)" | xargs git`,
-  `echo "$(echo status; cat f)" | xargs git`,
-  `printf '%s' "$(cat f; printf '')" | xargs git`,
-  `echo $(cat f; printf '') | xargs git`,
-  `echo "$(cat f; printf '')" | xargs -I{} git {}`,
-];
-
-/** A file read by a bare redirect, a brace or a glob prints or expands to text the line does not hold (TP-3333). */
-const READ_OR_EXPANDED = [
-  'echo "$(<f)" | xargs git',
-  'echo "$(< f)" | xargs git',
-  "echo `<f` | xargs git",
-  "echo $(<f) | xargs git",
-  `printf '%s\\n' "$(<f)" | xargs git`,
-  'echo "$(<f)" | xargs -I{} git {}',
-  `echo "$(<f; printf '')" | xargs git`,
-  `echo "$(printf ''; <f)" | xargs git`,
-  'echo "$(echo {push,} origin HEAD:main)" | xargs git',
-  'echo "$(echo {push,origin,HEAD:main})" | xargs git',
-  'echo "$(echo pus[h] origin HEAD:main)" | xargs git',
-  'echo "$(echo p?sh origin HEAD:main)" | xargs git',
-  'echo "$(echo pus* origin HEAD:main)" | xargs git',
-  'echo "$(cat <f)" | xargs git',
-  'echo "$(echo status | cat 00<f)" | xargs git',
-  'echo "$(echo status | cat 0<f)" | xargs git',
-];
-
-describe("a substitution that reads a file or expands a brace or glob is not read as its text (TP-3333)", () => {
-  it.each(READ_OR_EXPANDED)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-
-  it.each(['echo "$(echo status)" | xargs git', 'echo "$(git rev-parse HEAD)" | xargs git show', "git commit -m \"$(cat <<'EOF'\nfix: thing\nEOF\n)\"", 'echo "$( { echo a; echo b; } | sort )" | sh'])("allows %s", async (line) => {
-    expect(await verdict(line)).toBe("pass");
-  });
-});
-
-/** Output sent elsewhere, and words the shell splits on IFS or globs, are not the text on the line (TP-3333). */
-const REDIRECTED_OR_SPLIT = [
-  'echo "$(echo status >&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status >/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status 1>&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status >>/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status >|/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status &>/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(printf status >&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status | cat >/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status | tee /dev/null >/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$({ echo status; } >&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$({ echo status; } >/dev/null; echo push origin HEAD:main)" | xargs git',
-  "echo $(echo 'pus[h]' origin HEAD:main) | xargs git",
-  "echo $(echo 'pus*') origin HEAD:main | xargs git",
-  "echo $(echo 'p?sh' origin HEAD:main) | xargs git",
-  "echo $(echo '[p]ush' origin HEAD:main) | xargs git",
-  "echo `echo 'pus[h]' origin HEAD:main` | xargs git",
-  "IFS=,; echo $(echo push,origin,HEAD:main) | xargs git",
-  'echo "$(echo status {fd} >&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status {fd}>&2; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status {fd} >/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status | cat {fd} >/dev/null; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status {x}>&2; echo push origin HEAD:main)" | xargs git',
-  `sh -c 'echo "$(echo status {fd}>&2; echo push origin HEAD:main)" | xargs git'`,
-];
-
-describe("a substitution whose output goes elsewhere or is split or globbed is not read as the text on the line (TP-3333)", () => {
-  it.each(REDIRECTED_OR_SPLIT)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-
-  it.each([
-    'echo "$(echo HEAD 2>/dev/null)" | xargs git show',
-    'echo "$(git rev-parse HEAD 2>/dev/null)" | xargs git show',
-    'echo "$(echo a; echo b >&2)" | sh',
-    'echo "$(echo status)" | xargs git',
-  ])("allows %s", async (line) => {
-    expect(await verdict(line)).toBe("pass");
-  });
-});
-
-/** Every spelling of a redirect that may send a stage's stdout elsewhere, in the three places a stage can stand (TP-3333). */
-const STDOUT_REDIRECTS = [
-  ">/dev/null", ">>/dev/null", ">|/dev/null", ">&2", "1>&2", ">& 2", ">&-", "1>&-", "&>/dev/null", "&>>/dev/null", "1<>/dev/null", ">/dev/stderr",
-  "1>/dev/null", "1>>/dev/null", "{fd}>&2", "{fd} >&2", "{x}>/dev/null", "{fd}>>/dev/null", "{fd}>|/dev/null", "{fd} >/dev/null", "{fd}&>/dev/null",
-  "01>/dev/null", "001>/dev/null", "01>>/dev/null", "01>|/dev/null", "001>&2", "01>&-", "01<>/dev/null",
-];
-/** These leave stdout on the substitution, so its text stays known; a redirect after a subshell's `)` is left unknown, as on main. */
-const OTHER_FD_REDIRECTS = ["2>/dev/null", "2>&1", "3>/dev/null", "2>&1 3>/dev/null"];
-const PLACEMENTS: Array<(redirect: string) => string> = [
-  (r) => `echo "$(echo status ${r}; echo push origin HEAD:main)" | xargs git`,
-  (r) => `echo "$({ echo status; } ${r}; echo push origin HEAD:main)" | xargs git`,
-  (r) => `echo "$(echo status | cat ${r}; echo push origin HEAD:main)" | xargs git`,
-  (r) => `echo "$( ( echo status ) ${r}; echo push origin HEAD:main)" | xargs git`,
-  (r) => `echo "$(${r} echo status; echo push origin HEAD:main)" | xargs git`,
-];
-
-describe("every spelling of a stdout redirect makes its stage unknown (TP-3333)", () => {
-  const swept = STDOUT_REDIRECTS.flatMap((redirect) => PLACEMENTS.map((place) => place(redirect)));
-
-  it.each(swept)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-
-  it.each(OTHER_FD_REDIRECTS.flatMap((redirect) => PLACEMENTS.filter((_, i) => i !== 3).map((place) => place(redirect))))("allows %s", async (line) => {
-    expect(await verdict(line)).toBe("pass");
-  });
-});
-
-describe("a substitution that prints part unknown text is not read as all of it (TP-3333)", () => {
-  it.each(PARTLY_UNKNOWN)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-
-  it.each(['gh pr create --body "$(cat f)"', 'echo "$(echo HEAD)" | xargs git show', 'echo "$(ls)" | xargs rm', 'echo "$(echo a; ls)"'])("allows %s", async (line) => {
-    expect(await verdict(line)).toBe("pass");
-  });
-});
-
 const RUNNERS = ["bash", "zsh -f", "dash", "zsh --emulate sh -f"];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push the denied lines print (TP-3333)", () => {
@@ -227,83 +122,7 @@ describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push t
     expect(runsPush(line, runner)).toBe(true);
   });
 
-  it.each(PARTLY_UNKNOWN.filter((line) => !line.includes("echo status")).flatMap((line) => ["bash", "zsh -f", "dash"].map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
-  });
-
-  it.each(READ_OR_EXPANDED.slice(0, 13)
-      .flatMap((line) => ["bash", "zsh -f"].map((runner): [string, string] => [line, runner]))
-      // Only zsh reads a `<f` beside other commands as the file's text; bash prints nothing for it.
-      .filter(([line, runner]) => runner === "zsh -f" || !/<f;|; <f/.test(line)))("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
-  });
-
-  // zsh does not glob what a substitution splits out; bash and dash do.
-  const globbed = REDIRECTED_OR_SPLIT.slice(11, 16);
-  const runners = (line: string): string[] => {
-    if (line.startsWith("sh -c")) return ["dash"];
-    // Only dash and sh keep a glued `{fd}` a word; bash and native zsh read it as the descriptor, and zsh a spaced one too.
-    if (/\{\w+\}>/.test(line)) return ["dash", "zsh --emulate sh -f"];
-    if (line.includes("{fd} ")) return ["bash", "dash"];
-    return globbed.includes(line) ? ["bash", "dash"] : line.includes("IFS") ? ["bash"] : ["bash", "zsh -f"];
-  };
-
-  it.each(REDIRECTED_OR_SPLIT.flatMap((line) => runners(line).map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
-  });
-
-  it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'echo "$(echo ls)" | sh', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
+  it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
     expect(RUNNERS.map((runner) => runsPush(line, runner))).toEqual([false, false, false, false]);
-  });
-});
-
-/** bash and dash drop a NUL from a substitution's output, so `pu\0sh` runs as `push` there (TP-3333). */
-const NUL_OUTPUT = [
-  `echo "$(printf 'pu\\0sh origin HEAD:main')" | xargs git`,
-  `echo "$(printf 'pu\\000sh origin HEAD:main')" | xargs git`,
-  `printf '%s\\n' "$(printf 'status\\0'; echo push origin HEAD:main)" | xargs git`,
-  `bash -c "$(printf 'git pu\\0sh origin HEAD:main')"`,
-];
-
-describe("a substitution that prints a NUL is not read as the text with it kept (TP-3333)", () => {
-  it.each(NUL_OUTPUT)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-});
-
-/** A body may skip, repeat or stop its commands, so only `;`, newline and `|` between printers read as all it prints (TP-3333). */
-const NOT_RUN_ONCE_IN_ORDER = [
-  `echo "$(printf '' || printf 'status '; echo push origin HEAD:main)" | xargs git`,
-  `echo "$(printf 'status ' && false; echo push origin HEAD:main)" | xargs git`,
-  `echo "$(echo() { printf 'status '; }; printf 'push origin HEAD:main')" | xargs git`,
-  `echo "$(f() { echo status; }; echo push origin HEAD:main)" | xargs git`,
-  'echo "$({ echo push origin HEAD:main })" | xargs git',
-  'echo "$({ echo status; echo push origin HEAD:main )" | xargs git',
-  'echo "$(if false; then echo status; fi; echo push origin HEAD:main)" | xargs git',
-  'echo "$(if true; then echo push origin HEAD:main; else echo status; fi)" | xargs git',
-  'echo "$(while false; do echo status; done; echo push origin HEAD:main)" | xargs git',
-  'echo "$(case x in y) echo status;; esac; echo push origin HEAD:main)" | xargs git',
-  'echo "$(for x in; do echo status; done; echo push origin HEAD:main)" | xargs git',
-  'echo "$(! echo status; echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo push origin HEAD:main; exit; echo status)" | xargs git',
-  'echo "$(echo push origin HEAD:main; return 2>/dev/null; echo status)" | xargs git',
-  'echo "$(exec echo push origin HEAD:main; echo status)" | xargs git',
-  'echo "$(echo status & echo push origin HEAD:main)" | xargs git',
-  'echo "$(echo status |& cat; echo push origin HEAD:main)" | xargs git',
-  'echo "$( ( echo status ) echo push origin HEAD:main)" | xargs git',
-];
-
-describe("a body that may not run each command once, in order, is not read as all it prints (TP-3333)", () => {
-  it.each(NOT_RUN_ONCE_IN_ORDER)("denies %s", async (line) => {
-    expect(await verdict(line)).toBe("deny");
-  });
-
-  it.each([
-    'echo "$( { echo status; } )" | xargs git',
-    'echo "$( ( echo status ) )" | xargs git',
-    'echo "$(echo status\n)" | xargs git',
-    'echo "$(echo stat | cat; echo us)" | xargs git',
-  ])("allows %s", async (line) => {
-    expect(await verdict(line)).toBe("pass");
   });
 });

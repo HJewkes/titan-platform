@@ -1,13 +1,13 @@
 import type { RedirectToken } from "./lexer.js";
 import { printedReadings, printedText } from "./printed.js";
-import { catOperands, knownSplice, SPLICING_SHELLS, stdinScript } from "./sub-output.js";
+import { catOperands, SPLICING_SHELLS, stdinScript } from "./sub-output.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
 export function nextStdin(op: string, cmd: Unwrapped | null, empty: boolean, stdin: string | null): string | null {
   if (op === "(" && empty) return stdin;
   if (!cmd || (op !== "|" && op !== "|&")) return null;
-  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : (splicedReadings(cmd)[0] ?? null));
+  return printedText(cmd.name, cmd.args) ?? (passesThrough(cmd) ? stdin : null);
 }
 
 /**
@@ -18,23 +18,7 @@ export function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean
   if (op === "(" && empty) return shellStdin;
   if (!cmd || (op !== "|" && op !== "|&")) return [];
   if (printedText(cmd.name, cmd.args) === null && passesThrough(cmd)) return shellStdin;
-  const printed = printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
-  return printed.length > 0 ? printed : splicedReadings(cmd).slice(1);
-}
-
-/**
- * Each splicing shell's distinct text of a print whose arguments are command substitutions of known output under every one of them; the first is
- * piped as the command's own text and the rest beside it (TP-3333).
- */
-function splicedReadings(cmd: Unwrapped): string[] {
-  if (!cmd.args.some((arg) => arg.cuts)) return [];
-  const texts = SPLICING_SHELLS.map((shell) => {
-    const args = knownSplice(cmd.args, shell);
-    return args && printedText(cmd.name, args, shell);
-  });
-  // The line runs under one shell, so a text only some of them know may be a shell the line does not run under.
-  const known = texts.filter((text) => typeof text === "string");
-  return known.length < texts.length ? [] : [...new Set(known)];
+  return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
 }
 
 /** Whether the command writes what is piped into it: `tee`, or `cat` reading stdin. */
