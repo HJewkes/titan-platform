@@ -6,6 +6,7 @@ import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pu
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
 import { merge, rerunFailed, rerunJob } from "./merge-writes.js";
+import { deleteRef, ensureBranch } from "./ref-writes.js";
 import { closePr, closedSkip, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
 import { findPr, openPr } from "./pr-open.js";
@@ -335,21 +336,6 @@ function checkPutFile(request: PutFileRequest): PutFileRequest {
   checkRef("branch", request.branch);
   if (request.expectedBlobSha !== null) checkSha("expectedBlobSha", request.expectedBlobSha);
   return request;
-}
-
-async function ensureBranch(wire: GitHubWire, repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>> {
-  const existing = await wire.getRef(repo, branch);
-  if (existing) return { sha: existing, done: false, skipped: "exists" };
-  await wire.createRef(repo, branch, baseSha);
-  return { sha: baseSha, done: true };
-}
-
-async function deleteRef(wire: GitHubWire, repo: RepoSlug, head: HeadRef): Promise<WriteResult> {
-  if (head.repo === null || head.repo.toLowerCase() !== repo.toLowerCase()) return { done: false, skipped: "fork-head" };
-  if (head.branch === (await wire.getDefaultBranch(repo))) return { done: false, skipped: "default-branch" };
-  if ((await wire.getRef(repo, head.branch)) === null) return { done: false, skipped: "absent" };
-  await wire.deleteRef(repo, head.branch);
-  return { done: true };
 }
 
 function tail(log: string, lines: number): string {

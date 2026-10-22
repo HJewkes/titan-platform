@@ -12,7 +12,7 @@ import type { CiSnapshot, FailingCheck } from "./land-ci.js";
 import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
-import { OrphanRerunResult, spendOrphanRerun, type OrphanedCheck } from "./land-orphan.js";
+import { rerunOrphaned } from "./land-orphan.js";
 import { CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
@@ -143,7 +143,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
     if (state.cycle - state.settles >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
     if (ci.orphaned?.length) {
-      await rerunOrphaned(ctx, input, ci.headSha, ci.orphaned, state);
+      await rerunOrphaned(ctx, roundId("ci-orphan-rerun", round, state.orphanReruns++), { repo: input.repo, pr: input.pr, headSha: ci.headSha, jobs: ci.orphaned });
       continue;
     }
     if (await rebased(ctx, input, ci, state)) continue;
@@ -162,15 +162,6 @@ async function rebased(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   if (ci.verdict !== "green" || ci.baseRef === undefined || ci.baseRef === state.rules.base) return false;
   state.rules = await step(ctx, roundId("land-rules", state.round, ++state.rulesReads), { repo: input.repo, pr: input.pr }, LandRulesResult);
   return true;
-}
-
-/**
- * A job GitHub left open under a completed workflow run never reports, and its wait held the merge train for an hour
- * (tp#2215). One recorded rerun per head; a second orphan there throws, so the run fails as stuck CI.
- */
-async function rerunOrphaned(ctx: WorkflowContext, input: LandInput, headSha: string, orphaned: OrphanedCheck[], state: LandState): Promise<void> {
-  spendOrphanRerun(ctx, headSha, orphaned);
-  await step(ctx, roundId("ci-orphan-rerun", state.round, state.orphanReruns++), { repo: input.repo, pr: input.pr, headSha, jobs: orphaned }, OrphanRerunResult);
 }
 
 /** Round 0 keeps the ids runs recorded before rounds existed; later rounds never share an id with an earlier one. */

@@ -1,5 +1,5 @@
 import type { GitHubPort } from "@titan-design/github";
-import type { WorkflowContext } from "@titan-design/workflow";
+import { codeStep, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { CiInput, CiSnapshot } from "./land-ci.js";
 
@@ -61,7 +61,7 @@ export interface OrphanRerunInput {
   jobs: OrphanedCheck[];
 }
 
-export const OrphanRerunResult = z.looseObject({
+const OrphanRerunResult = z.looseObject({
   headSha: z.string(),
   reruns: z.array(z.looseObject({ name: z.string(), jobId: z.number(), done: z.boolean(), skipped: z.string().optional() })),
 });
@@ -77,14 +77,15 @@ export async function rerunOrphans(port: GitHubPort, input: OrphanRerunInput): P
 const rerunHeads = new WeakMap<WorkflowContext, Set<string>>();
 
 /**
- * Spends the run's one orphan rerun at this head. A head that orphans again after it throws as a ci-wait timeout, the
- * stuck-CI failure, rather than wait on a job that may never report.
+ * An orphaned job never reports, and the wait on one held the merge train for an hour (tp#2215). One recorded rerun per
+ * head; a head that orphans again after it throws as a ci-wait timeout, the stuck-CI failure, rather than wait on.
  */
-export function spendOrphanRerun(ctx: WorkflowContext, headSha: string, orphaned: readonly OrphanedCheck[]): void {
+export async function rerunOrphaned(ctx: WorkflowContext, stepId: string, input: OrphanRerunInput): Promise<void> {
   const heads = rerunHeads.get(ctx) ?? rerunHeads.set(ctx, new Set()).get(ctx)!;
-  if (heads.has(headSha)) {
-    const jobs = orphaned.map((job) => `${job.name} (${job.status})`).join(", ");
-    throw new Error(`ci-wait timed out on orphaned checks at ${headSha}: ${jobs} still open under a completed workflow run after one rerun`);
+  if (heads.has(input.headSha)) {
+    const jobs = input.jobs.map((job) => `${job.name} (${job.status})`).join(", ");
+    throw new Error(`ci-wait timed out on orphaned checks at ${input.headSha}: ${jobs} still open under a completed workflow run after one rerun`);
   }
-  heads.add(headSha);
+  heads.add(input.headSha);
+  await codeStep(ctx, stepId, input, OrphanRerunResult);
 }
