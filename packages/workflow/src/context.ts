@@ -11,7 +11,7 @@ import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from 
 import { ReplayGuard } from "./replay-frontier.js";
 import { messageOf } from "./runtime-values.js";
 import { reportingStepFailure } from "./step-failure.js";
-import { dispatchTiming, newActiveStep, resumeCounts, tryTiming } from "./step-timing.js";
+import { completedTiming, dispatchTiming, newActiveStep, resumeCounts, tryTiming } from "./step-timing.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
 import {
@@ -116,6 +116,9 @@ export class RunContext implements WorkflowContext {
       agentId: completed.runnerRef,
       signal: this.deps.parseSignal(completed.output),
       completedAt: nowIso(),
+      startedAt: completed.startedAt,
+      firstStartedAt: completed.firstStartedAt,
+      restarts: completed.restarts,
       output: completed.output,
       ...(data ? { data } : {}),
       ...(completed.usage ? { usage: completed.usage } : {}),
@@ -150,6 +153,7 @@ export class RunContext implements WorkflowContext {
     if (cached) return this.bumpSeed(stepId, cached);
     if (this.replay.unread()) await this.replay.beforeLive("seed", stepId);
     this.setCurrent(stepId);
+    const startedAt = nowIso();
     const seed = await seedBody(this.deps.capabilities, stepId, fn);
     Object.assign(this.run.params, seed.data);
     const result: StepResult = {
@@ -159,6 +163,7 @@ export class RunContext implements WorkflowContext {
       agentId: null,
       signal: null,
       completedAt: nowIso(),
+      startedAt,
       output: seed.output,
       data: seed.data,
     };
@@ -275,7 +280,7 @@ export class RunContext implements WorkflowContext {
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage), attempt };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage), attempt, ...completedTiming(active!) };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
