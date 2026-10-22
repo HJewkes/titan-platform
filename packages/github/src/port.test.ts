@@ -110,7 +110,7 @@ describe("listOpenPrs and jobLogTail", () => {
 });
 
 describe("checkRuns", () => {
-  it("returns every run on the sha, including a superseded one latestCheckRuns drops", async () => {
+  it("returns a separate workflow run's superseded run of a check, which latestCheckRuns drops", async () => {
     const { fake, port } = setup();
     const sha = fakeSha("head");
     fake.setRuns(sha, [successRun("check", 1, "2026-01-01T00:00:00Z", "failure"), successRun("check", 2, "2026-01-02T00:00:00Z")]);
@@ -118,5 +118,15 @@ describe("checkRuns", () => {
     expect((await port.checkRuns(REPO, sha)).map((run) => run.id)).toEqual([1, 2]);
     expect((await port.latestCheckRuns(REPO, sha)).map((run) => run.id)).toEqual([2]);
     await expect(port.checkRuns(REPO, "not-a-sha")).rejects.toBeInstanceOf(GitHubInputError);
+  });
+
+  it("hides a rerun job's earlier attempt, as GitHub's default filter does, and only checkRunAttempts keeps it", async () => {
+    const { fake, port } = setup();
+    const sha = fakeSha("head");
+    const attempt = (id: number, conclusion: string) => ({ ...successRun("check", id, "2026-01-01T00:00:00Z", conclusion), workflowRunId: 77 });
+    fake.setRuns(sha, [attempt(1, "failure"), attempt(2, "success")]);
+
+    expect((await port.checkRuns(REPO, sha)).map((run) => run.id)).toEqual([2]);
+    expect((await port.checkRunAttempts(REPO, sha)).map((run) => run.id)).toEqual([1, 2]);
   });
 });

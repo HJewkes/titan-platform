@@ -38,11 +38,18 @@ export interface FixTaskFields {
   notes: string;
 }
 
+/** Active-work refused the call itself, which no retry changes; any other throw from `FixTasks` is an outage to wait out. */
+export class FixTaskRefused extends Error {
+  override readonly name = "FixTaskRefused";
+}
+
+export const notRefused = (error: unknown): boolean => !(error instanceof FixTaskRefused);
+
 /** The active-work calls `sh-file-fix-task` makes; the lookup by tag is what makes a repeated add a no-op. */
 export interface FixTasks {
   findByTag(initiative: string, tag: string): Promise<string | undefined>;
   add(initiative: string, fields: FixTaskFields): Promise<string>;
-  /** Turns a filed fix task into a flake task: sets its done_when, appends `notes` once, and adds `tag`. Absent means no rerun thaw. */
+  /** Turns a filed fix task into a flake task: replaces its done_when, adds `tag`, reopens it, then appends `notes` once. Absent means no rerun thaw. */
   markFlake?(initiative: string, id: string, flake: FlakeFields): Promise<void>;
 }
 
@@ -301,7 +308,7 @@ export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | un
   const id = await patiently(deps, signal, async () => {
     if (!wiring.freezes().live(input.repo, input.episode)) return undefined;
     return (await tasks.findByTag(initiative, key)) ?? (await tasks.add(initiative, fields));
-  });
+  }, notRefused);
   if ("error" in id) return noTask(`active-work did not take the fix task: ${id.error}`);
   if (id.value === undefined) return noTask(THAWED, true);
   const task = `${initiative}/${id.value}`;

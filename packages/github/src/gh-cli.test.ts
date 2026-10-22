@@ -323,6 +323,16 @@ describe("gh api adapter", () => {
     expect(gh.calls[1]?.args).toEqual(["api", "-i", "-X", "GET", "repositories/9/commits/x/check-runs?per_page=100&page=2"]);
   });
 
+  it("asks GitHub for every attempt only when the read is for attempt history", async () => {
+    const gh = scriptedGh({ "check-runs": included(200, {}, { check_runs: [] }) });
+    const wire = ghCliWire(gh.exec);
+
+    await wire.listCheckRuns(REPO, H1);
+    await wire.listCheckRuns(REPO, H1, "all");
+
+    expect(gh.calls.map((call) => call.args.includes("filter=all"))).toEqual([false, true]);
+  });
+
   it("reads a missing ref as null and sends file content base64-encoded on stdin", async () => {
     const notFound = { code: 1, stdout: '{"message":"Not Found","status":"404"}', stderr: "gh: Not Found (HTTP 404)\n" };
     const gh = scriptedGh({ "git/ref/heads/": notFound, "contents/": JSON.stringify({ content: { sha: "blob2" } }) });
@@ -419,6 +429,7 @@ describe("gh api adapter, REST only", () => {
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       branchProtected: () => port.branchProtected(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
+      checkRunAttempts: () => port.checkRunAttempts(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),

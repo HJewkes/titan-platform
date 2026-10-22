@@ -130,7 +130,8 @@ export interface GitHubWire {
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
   getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-  listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** `all` asks for every attempt; without it GitHub's default filter hides a rerun's earlier attempts of a job. */
+  listCheckRuns(repo: RepoSlug, sha: string, filter?: "all"): Promise<CheckRun[]>;
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
@@ -202,8 +203,13 @@ export interface GitHubPort {
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
   branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-  /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
+  /**
+   * Every run on `sha` from every app, as GitHub's default `filter=latest` lists them: a separate workflow run of the
+   * same check stays listed, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts.
+   */
   checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** Every run on `sha` with each rerun's earlier attempts kept (`filter=all`), for a reader of attempt order. */
+  checkRunAttempts(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** The latest run for each check name on `sha`. */
   latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
@@ -296,6 +302,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
     branchProtected: async (repo, branch) => wire.getBranchProtected(repoOf(repo), checkRef("branch", branch)),
     checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
+    checkRunAttempts: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha), "all"),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),

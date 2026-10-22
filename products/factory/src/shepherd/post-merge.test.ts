@@ -433,7 +433,8 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   if (deploy === undefined) fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
-  const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) });
+  const refresh = (sha: string) => sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns()));
+  const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (refresh(sha), base.checkRuns(repo, sha)), checkRunAttempts: async (repo: string, sha: string) => (refresh(sha), base.checkRunAttempts(repo, sha)) });
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);

@@ -277,12 +277,18 @@ notes the landing and leaves its task open for the seat to close after live evid
    It runs at the same time as `sh-spawn-fixer`, so a deterministic red never waits on it.
    If each red job comes back green, the repo thaws at the red sha itself. The fixer keeps
    working the same task, which is now the flake task. Only Shepherd's own rerun counts: a job's run must be newer than every check run
-   at the sha before the rerun, so a pass from someone else's rerun never thaws. Before the
-   thaw, the fix task becomes a flake task. Shepherd appends both runs (Actions run ids, job
+   at the sha before the rerun, read with every attempt kept, so a pass from someone else's
+   rerun never thaws. Before the thaw, main is judged again at the red sha by every check
+   that judges it, so a check still running when main went red, or a red required context
+   from another app, keeps the repo frozen. The thaw also holds only while the episode's red
+   sha is still the one rerun: a later red in the episode keeps it frozen. Then the fix task
+   becomes a flake task. Shepherd appends both runs (Actions run ids, job
    ids and URLs), the job names, the failing tests and a fenced error excerpt, tags the task
    `flake`, reopens it if it was done, and sets its `done_when` to a root-cause fix. A retry,
-   a longer timeout or a quarantine does not count as that fix. If active-work cannot take
-   the update, the repo stays frozen. The rerun is skipped, and the repo stays frozen as
+   a longer timeout or a quarantine does not count as that fix. The filed `done_when` is
+   replaced with `force`, and the notes are appended last. If active-work cannot take the
+   update, the repo stays frozen; a refusal from active-work ends the step at once instead
+   of being waited out as an outage. The rerun is skipped, and the repo stays frozen as
    below, for:
    - a red made only of cancels, which has its own path (see Green);
    - a red whose log names no failing test;

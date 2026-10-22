@@ -13,12 +13,68 @@
     {
       "name": "the thaw skips filing the flake task",
       "file": "products/factory/src/shepherd/main-rerun.ts",
-      "find": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));",
+      "find": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields), notRefused);",
       "replace": "  const marked = { value: fields };",
       "kills": [
         "sh-main-rerun thaws on Shepherd's own green rerun at the red sha and leaves the fix task open as the flake task",
         "sh-main-rerun files the flake with both runs' ids and URLs, the job, the failing test, an error excerpt and a root-cause done_when",
         "sh-main-rerun stays frozen when the flake task cannot be filed, so no flake thaws unrecorded"
+      ]
+    },
+    {
+      "name": "an active-work refusal is retried as an outage",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields), notRefused);",
+      "replace": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));",
+      "kills": [
+        "sh-main-rerun ends the step at once, frozen, when active-work refuses the flake task, with no retry"
+      ]
+    },
+    {
+      "name": "the flake port replaces done_when without force",
+      "file": "products/factory/src/shepherd/cleanup-ports.ts",
+      "find": "value: flake.done_when, force: true });",
+      "replace": "value: flake.done_when });",
+      "kills": [
+        "sh-main-rerun thaws through the active-work port on the fix task as filed, replacing its done_when with the root-cause one",
+        "the active-work flake port replaces the filed done_when with force, tags and reopens a done task, and appends the notes last, never closing it"
+      ]
+    },
+    {
+      "name": "the rerun is read without its earlier attempts",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  const runs = (await port.checkRunAttempts(input.repo, input.mergeSha)).filter(",
+      "replace": "  const runs = (await port.checkRuns(input.repo, input.mergeSha)).filter(",
+      "kills": [
+        "sh-main-rerun counts only Shepherd's own rerun, not a later one someone else started, though GitHub's default listing shows only the latest attempt"
+      ]
+    },
+    {
+      "name": "main is not judged again after the rerun",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  if (notGreen !== undefined) return stays(notGreen);\n",
+      "replace": "",
+      "kills": [
+        "sh-main-rerun stays frozen, filing no flake, when a check that was still running at the red is not green after the rerun",
+        "sh-main-rerun stays frozen when a required context pinned to another app is red beside the flaky Actions job"
+      ]
+    },
+    {
+      "name": "the rerun thaw ignores a moved red sha",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "    if (live.redSha !== redSha) return \"red-moved\";\n",
+      "replace": "",
+      "kills": [
+        "sh-main-rerun does not thaw an episode whose red sha moved on, even on a green rerun of the earlier red"
+      ]
+    },
+    {
+      "name": "the rerun wait ignores a moved red sha",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "    if (live.redSha !== input.mergeSha) return stays(`the episode's red moved on to ${live.redSha} during the rerun`);\n",
+      "replace": "",
+      "kills": [
+        "sh-main-rerun stays frozen when a later red in the episode moved its red sha during the rerun"
       ]
     }
   ]

@@ -1,12 +1,13 @@
 import { dataFence } from "@titan-design/agent-dispatch";
-import { isPassing, latestPerName, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { isPassing, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { deadline } from "../workflows/deadline.js";
 import { step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { FreezeStore } from "./freeze.js";
-import { FixerResult, MAIN_RERUN_STEP, THAWED, failedTests, failingLogs, patiently, type EpisodeInput, type FailingRead, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
+import { judgeMain, readMainRules } from "./main-verdict.js";
+import { FixerResult, MAIN_RERUN_STEP, THAWED, failedTests, failingLogs, notRefused, patiently, type EpisodeInput, type FailingRead, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { tailBytes } from "./wake-brief.js";
 
@@ -48,11 +49,12 @@ export function rerunAlongsideFixer(ctx: WorkflowContext, input: RerunInput, fix
 
 /**
  * Reruns the failed jobs at the red sha once per episode (decision 525). Only Shepherd's own rerun counts: each red job
- * must come back green in a run newer than every check run at the sha before the rerun. A green rerun files the flake on
- * the fix task, which stays open, and only then thaws. A failing test that thawed this way within 24 h stays frozen.
+ * must come back green in a run newer than every check run at the sha before the rerun, read with every attempt kept,
+ * since GitHub's default listing hides a rerun's earlier attempts. A green rerun files the flake on the fix task, which
+ * stays open, and only then thaws. A failing test that thawed this way within 24 h stays frozen.
  */
 export async function rerunRedMain(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: RerunInput, signal: AbortSignal): Promise<Rerun> {
-  const all = await deps.port.checkRuns(input.repo, input.mergeSha);
+  const all = await deps.port.checkRunAttempts(input.repo, input.mergeSha);
   const newest = Math.max(0, ...all.map((run) => run.id));
   const red = await redToRerun(deps, wiring, input, all, newest);
   if ("thawed" in red) return red;
@@ -115,7 +117,9 @@ async function awaitRerun(deps: ShepherdDeps, red: Red, input: RerunInput, after
   const clock = deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_MAIN_RERUN_TIMEOUT_MS });
   const names = [...new Set(red.read.failing.map((run) => run.name))];
   for (;;) {
-    if (!red.freezes.live(input.repo, red.episode)) return { thawed: true, detail: THAWED };
+    const live = red.freezes.live(input.repo, red.episode);
+    if (!live) return { thawed: true, detail: THAWED };
+    if (live.redSha !== input.mergeSha) return stays(`the episode's red moved on to ${live.redSha} during the rerun`);
     const ours = await rerunsAfter(deps.port, input, names, after).catch(() => undefined);
     if (ours !== undefined && ours.every((run) => run.status === "completed")) {
       const failed = ours.filter((run) => !isPassing(run)).map((run) => run.name);
@@ -128,20 +132,42 @@ async function awaitRerun(deps: ShepherdDeps, red: Red, input: RerunInput, after
 
 /** Per name, the oldest check run newer than `after`, which is the one Shepherd's rerun queued; undefined until each has one. */
 async function rerunsAfter(port: GitHubPort, input: RerunInput, names: readonly string[], after: number): Promise<CheckRun[] | undefined> {
-  const runs = (await port.checkRuns(input.repo, input.mergeSha)).filter((run) => run.headSha === input.mergeSha && run.id > after);
+  const runs = (await port.checkRunAttempts(input.repo, input.mergeSha)).filter((run) => run.headSha === input.mergeSha && run.id > after);
   const ours = names.flatMap((name) => runs.filter((run) => run.name === name).sort((a, b) => a.id - b.id).slice(0, 1));
   return ours.length === names.length ? ours : undefined;
 }
 
-/** The flake goes on the fix task first; a task that cannot be updated keeps the repo frozen, so no flake thaws unrecorded. */
+/**
+ * Main is judged again at the red sha first, so a check still running when main was called red, or a red context from
+ * another app, keeps it frozen. The flake then goes on the fix task; a refusal ends the step at once, and a task that
+ * cannot be updated keeps the repo frozen, so no flake thaws unrecorded. The thaw holds only while the red sha stands.
+ */
 async function thawOnFlake(deps: ShepherdDeps, red: Red, input: RerunInput, green: readonly CheckRun[], signal: AbortSignal): Promise<Rerun> {
+  const notGreen = await notGreenAfterRerun(deps.port, input);
+  if (notGreen !== undefined) return stays(notGreen);
   const at = input.task.indexOf("/");
   const [initiative, id] = [input.task.slice(0, at), input.task.slice(at + 1)];
   const fields = flakeFields(input, red, green);
-  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));
+  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields), notRefused);
   if ("error" in marked) return stays(`active-work did not take the flake task: ${marked.error}`);
-  if (!red.freezes.episodes.thawOnRerun(input.repo, red.episode, red.tests)) return { thawed: true, detail: `${THAWED} after the flake was filed on ${input.task}` };
+  const thawed = red.freezes.episodes.thawOnRerun(input.repo, red.episode, input.mergeSha, red.tests);
+  if (thawed === "red-moved") return stays(`the episode's red moved on from ${input.mergeSha} before the thaw; the flake stays filed on ${input.task}`);
+  if (thawed === "not-live") return { thawed: true, detail: `${THAWED} after the flake was filed on ${input.task}` };
   return { thawed: true, detail: `thawed on Shepherd's green rerun at ${input.mergeSha}; flake filed on ${input.task}` };
+}
+
+const findingText = (finding: CheckFinding): string => (finding.kind === "missing" ? `${finding.name} missing` : `${finding.run.name} ${finding.kind}`);
+
+/** Why main is not green by every check that judges it at the red sha, or undefined when it is; an unreadable answer is not green. */
+async function notGreenAfterRerun(port: GitHubPort, input: RerunInput): Promise<string | undefined> {
+  try {
+    const rules = await readMainRules(port, input.repo, (await port.getPr(input.repo, input.pr)).baseRef);
+    if (!rules.readable) return `the required checks at ${input.mergeSha} could not be read after the rerun`;
+    const { findings } = judgeMain(input.mergeSha, await port.latestCheckRuns(input.repo, input.mergeSha), rules.rules);
+    return findings.length === 0 ? undefined : `main is still not green at ${input.mergeSha} after the rerun: ${[...new Set(findings.map(findingText))].join(", ")}`;
+  } catch (error) {
+    return `main could not be judged at ${input.mergeSha} after the rerun: ${failureOf(error)}`;
+  }
 }
 
 const runLine = (run: CheckRun): string => `- ${run.name}: Actions run ${run.workflowRunId ?? "none"}, job ${run.id}, ${run.url}`;

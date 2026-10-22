@@ -34,8 +34,11 @@ export interface EpisodeRecords {
   claimRerun(repo: RepoSlug, episode: number, runId: string, after: number): { after: number; fresh: boolean } | undefined;
   /** `episode`'s rerun claim, if one was made: the run that made it and the check run id it recorded. */
   rerunClaim(repo: RepoSlug, episode: number): { runId: string | null; after: number } | undefined;
-  /** Thaws live `episode` on Shepherd's own green rerun at the red sha, recording the failing tests `rerunThawedTests` reads. */
-  thawOnRerun(repo: RepoSlug, episode: number, tests: readonly string[]): boolean;
+  /**
+   * Thaws live `episode` on Shepherd's own green rerun at `redSha`, recording the failing tests `rerunThawedTests` reads.
+   * A later red in the episode moves its red sha, and a green rerun of the earlier one must not thaw that.
+   */
+  thawOnRerun(repo: RepoSlug, episode: number, redSha: string, tests: readonly string[]): "thawed" | "red-moved" | "not-live";
   /** The failing tests of each rerun thaw of `repo` at or after `since` (ISO time). */
   rerunThawedTests(repo: RepoSlug, since: string): string[];
 }
@@ -83,6 +86,15 @@ function claimRerun(records: Records, repo: RepoSlug, episode: number, runId: st
   }).immediate();
 }
 
+function thawOnRerun({ db, freezes }: Records, repo: RepoSlug, episode: number, redSha: string, tests: readonly string[]): "thawed" | "red-moved" | "not-live" {
+  return db.transaction(() => {
+    const live = freezes.live(repo, episode);
+    if (!live) return "not-live";
+    if (live.redSha !== redSha) return "red-moved";
+    return freezes.release(repo, episode, SHEPHERD_ACTOR, `${RERUN_THAW} ${JSON.stringify(tests)}`) ? "thawed" : "not-live";
+  }).immediate();
+}
+
 function rerunThawedTests({ db, repoKey }: Records, repo: RepoSlug, since: string): string[] {
   const rows = db.prepare("SELECT run_id, reason FROM shepherd_event WHERE repo = ? AND kind = 'thaw' AND at >= ? AND reason LIKE ?").all(repoKey(repo), since, `${RERUN_THAW} %`);
   return rows.flatMap((row) => testsOf(ReasonRow.parse(row).reason));
@@ -94,7 +106,7 @@ export function episodeRecords(db: Db, now: () => number, freezes: EpisodeFreeze
     linkFix: (repo, episode, task, fixer) => linkFix(records, repo, episode, task, fixer),
     rerunClaim: (repo, episode) => rerunClaim(records, repo, episode),
     claimRerun: (repo, episode, runId, after) => claimRerun(records, repo, episode, runId, after),
-    thawOnRerun: (repo, episode, tests) => freezes.release(repo, episode, SHEPHERD_ACTOR, `${RERUN_THAW} ${JSON.stringify(tests)}`),
+    thawOnRerun: (repo, episode, redSha, tests) => thawOnRerun(records, repo, episode, redSha, tests),
     rerunThawedTests: (repo, since) => rerunThawedTests(records, repo, since),
   };
 }
