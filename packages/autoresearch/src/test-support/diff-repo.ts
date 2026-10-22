@@ -10,7 +10,7 @@ export interface Change {
   rename?: Record<string, string>;
 }
 
-export interface RealDiff {
+interface RealDiff {
   text: string;
   files: DiffFile[];
   /** A path's text at the base and at the head commit, read with `git show`. */
