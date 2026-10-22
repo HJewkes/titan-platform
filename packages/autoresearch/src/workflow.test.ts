@@ -1,8 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
-import { ideaId, OutcomeSchema, type Outcome } from "./schemas.js";
+import { z } from "zod";
+import { RoundSummarySchema } from "./ports.js";
+import { IdeaSchema, ideaId, OutcomeSchema, type Outcome, type Proposal } from "./schemas.js";
 import {
   FIXTURE_BOUNDS,
   FIXTURE_POLICY,
@@ -21,7 +24,7 @@ import {
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
-import { AUTORESEARCH_WORKFLOW, pickWinner } from "./workflow.js";
+import { AUTORESEARCH_WORKFLOW, finalOutcomes, pickWinner } from "./workflow.js";
 
 /** σ is 0.2 and the default band 1.5 pp, so a 3 pp gain clears the band and a 0.8 pp gain sits inside it whatever the noise. */
 const CC = "cc_total_delta_pct";
@@ -29,6 +32,7 @@ const POLICY: Policy = {
   ...FIXTURE_POLICY,
   mechanisms: {
     better: { metrics: { [CC]: -3 } },
+    "better-2": { metrics: { [CC]: -3 } },
     "in-band-loses": { metrics: { [CC]: -0.8 }, by_key: { c2: { metrics: { [CC]: 1 } } } },
     flat: { micro: false },
     "hidden-once": { metrics: { [CC]: -3 }, by_key: { r3: { violations: { hidden_regressions: 1 } } } },
@@ -250,5 +254,112 @@ describe("picking the winner that moves the ratchet", () => {
 
   it("takes the larger Δ when the gap is more than one σ", () => {
     expect(pickWinner([winner("small", 2, 5), winner("big", 3, 40)], 0.5).map((outcome) => outcome.ideaId)).toEqual(["big", "small"]);
+  });
+});
+
+const seedOf = <T>(run: WorkflowRun, key: string, schema: z.ZodType<T>): T => schema.parse(JSON.parse(run.stepResults[key]!.output!));
+const dispatchedOf = (run: WorkflowRun, stepId: string) => (run.stepResults[`${stepId}:0`]!.data as { result: unknown }).result;
+const summaryOf = (run: WorkflowRun, round: number) => seedOf(run, `ar-summary:${round}`, RoundSummarySchema);
+const queueOf = (run: WorkflowRun, round: number) => seedOf(run, `ar-queue:${round}`, z.object({ queue: z.array(IdeaSchema) })).queue;
+const endOf = (run: WorkflowRun) => seedOf(run, "ar-end", z.object({ stopReason: z.string() })).stopReason;
+
+describe("what a round records for readers", () => {
+  it("records the kept winner, the superseded one and the ratchet move on the round summary", async () => {
+    const { repo, run, ports } = await loop(["better", "better-2"]);
+
+    const summary = summaryOf(run, 1);
+    const [first, second] = [ports.calls.ratchet[0]!.ideaId, [id("better"), id("better-2")].find((ideaId) => ideaId !== ports.calls.ratchet[0]!.ideaId)];
+    expect(summary).toMatchObject({ round: 1, keptIds: [first], superseded: [second], ratchet: { from: repo.pin, to: ports.calls.ratchet[0]!.to } });
+    expect(summary.best.head).toBe(ports.calls.ratchet[0]!.to);
+  });
+
+  it("names the first planner answer's quota misses when the retry met them", async () => {
+    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
+    const { run } = await loop([], { planner });
+
+    expect(summaryOf(run, 1)).toMatchObject({ plannerRetried: true, quotaViolations: ["no bold idea and no [EXEMPT] reason"] });
+  });
+
+  it("settles the same outcomes the archive received: the superseded winner stopped, every one stamped with σ", async () => {
+    const { run, ports } = await loop(["better", "better-2", "flat"]);
+    const summary = summaryOf(run, 1);
+
+    const settled = finalOutcomes([...stopOutcomes(run).values()], { sigma: summary.against.sigma, superseded: summary.superseded });
+
+    const byId = (outcomes: readonly Outcome[]) => [...outcomes].sort((a, b) => a.ideaId.localeCompare(b.ideaId));
+    expect(byId(settled)).toEqual(byId(ports.calls.archives[0]!.record.outcomes));
+    expect(settled.find((outcome) => outcome.ideaId === summary.superseded[0])).toMatchObject({ verdict: "stopped", reason: "superseded" });
+    expect(settled.every((outcome) => outcome.sigma === summary.against.sigma)).toBe(true);
+  });
+
+  it("records why the loop ended: rounds without gain, or the round limit", async () => {
+    const { run } = await loop(["flat"], {}, { ...CONFIG, rounds: 5 });
+    const { run: short } = await loop(["flat"]);
+
+    expect(endOf(run)).toBe("rounds-without-gain");
+    expect(run.stepResults["ar-plan:4:0"]).toBeUndefined();
+    expect(endOf(short)).toBe("rounds-exhausted");
+  });
+});
+
+describe("owner ideas", () => {
+  const owned = (mechanism: string) => proposal(mechanism, { source: "planner", bold: true });
+
+  it("queues an owner idea written between rounds with source owner, and reads the inbox from where it left off", async () => {
+    const inbox = [owned("flat")];
+    const planner: FakeOptions["planner"] = ({ round }) => {
+      if (round === 1) inbox.push(owned("flat-late"));
+      if (round === 1) return { add: [proposal("better", { bold: true })] };
+      return { add: [proposal("flat-2")], drop: [{ id: id("flat-late") }], exempt: { bold: "test", followup: "test" } };
+    };
+    const { run, ports } = await loop([], { planner, inbox }, { ...CONFIG, rounds: 2 });
+
+    expect(queueOf(run, 2).find((idea) => idea.id === id("flat-late"))).toMatchObject({ source: "owner" });
+    expect(queueOf(run, 1).find((idea) => idea.id === id("flat"))).toMatchObject({ source: "owner" });
+    expect(ports.calls.inbox).toEqual([{ round: 1, after: 0 }, { round: 2, after: 1 }]);
+  });
+
+  it("replays the recorded inbox answer after a kill, whatever the inbox holds by then", async () => {
+    const inbox: Proposal[] = [];
+    const held = latch();
+    let killed = false;
+    const beforePlan = async (round: number) => {
+      if (round !== 2 || killed) return;
+      killed = true;
+      inbox.push(owned("flat-after-kill"));
+      held.open();
+      await new Promise(() => undefined);
+    };
+    const planner: FakeOptions["planner"] = ({ round }) => (round === 1 ? (inbox.push(owned("flat")), { add: [proposal("better", { bold: true })] }) : { exempt: { bold: "test", followup: "test" } });
+    const { repo, ports } = await world([], { planner, inbox, beforePlan });
+    const dir = mkdtempSync(join(tmpdir(), "ar-inbox-"));
+    dirs.push(dir);
+    const first = openHost(ports, join(dir, "runs.db"));
+    const runId = start(first, repo, { ...CONFIG, rounds: 2 });
+    await held.opened;
+    first.close();
+
+    const second = openHost(ports, join(dir, "runs.db"));
+    await second.adopt();
+    const run = await second.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(dispatchedOf(run, "ar-inbox:2")).toMatchObject({ cursor: 1 });
+    expect(queueOf(run, 2).map((idea) => idea.id)).toEqual([id("flat")]);
+  });
+});
+
+describe("the phase registry row", () => {
+  it("counts each evaluated idea once by rung and names every round archive", async () => {
+    const { run, ports } = await loop(["better", "better-2", "flat"]);
+
+    expect(ports.calls.registry).toHaveLength(1);
+    const { row } = ports.calls.registry[0]!;
+    const evaluated = [...stopOutcomes(run).values()].length - summaryOf(run, 1).superseded.length;
+    expect(Object.values(row.ideasByRung).reduce((total, count) => total + count, 0)).toBe(evaluated);
+    expect(evaluated).toBe(2);
+    expect(row.archives).toEqual(ports.calls.archives.map(({ round }) => expect.stringContaining(`round-${round}.json`)));
+    expect(row).toMatchObject({ phase: "p1", trainCases: ["t-alpha"], stopReason: "rounds-exhausted", spend: { agentUsd: 0.25, cacheReadTokens: 40 } });
+    expect(dispatchedOf(run, "ar-registry:p1")).toEqual({ path: expect.stringContaining("registry.jsonl") });
   });
 });

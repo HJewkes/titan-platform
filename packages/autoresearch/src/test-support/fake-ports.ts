@@ -8,7 +8,7 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, ImplementRequest, MicroRequest, RatchetRequest, RoundRecord, RunPin } from "../ports.js";
+import type { ArPorts, ImplementRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
@@ -184,6 +184,9 @@ interface FakeCalls {
   archives: { round: number; record: RoundRecord }[];
   /** The run pin every evaluator step named, by step. */
   runPins: { step: "eval" | "l0" | "l1" | "ratchet"; runPin: RunPin }[];
+  inbox: { round: number; after: number }[];
+  looks: LookRequest[];
+  registry: { runId: string; row: RegistryRow }[];
 }
 
 const FIXTURE_FROZEN_HASH = "f".repeat(64);
@@ -200,7 +203,14 @@ export interface FakeOptions {
   /** Awaited before an implement or an eval runs: tests hold a lane open or simulate a kill with it. */
   beforeImplement?: (idea: Idea, call: number, lane: number) => Promise<void>;
   beforeEval?: (ideaId: string | null, key: string) => Promise<void>;
+  beforePlan?: (round: number) => Promise<void>;
+  /** The owner inbox, read live: a test pushes to it while the run is going. */
+  inbox?: Proposal[];
+  /** What a validator look answers; by default one aggregate with no per-case key. */
+  validate?: (input: LookRequest) => unknown;
 }
+
+const FIXTURE_LOOK = { aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: { all_gate: 3 } }, provenance: "fixture validator", usd: 0 };
 
 export type FakeArPorts = ArPorts & { calls: FakeCalls };
 
@@ -280,13 +290,32 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
   };
 }
 
-/** A load gate that never waits and an archive that only records what it was given. */
-function recordPorts(repo: FixtureRepo, calls: FakeCalls): Pick<ArPorts, "loadWait" | "archive"> {
+/** A load gate that never waits; an archive, a registry and an inbox that only record or replay what they were given. */
+function recordPorts(repo: FixtureRepo, calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "loadWait" | "archive" | "ownerIdeas" | "registry"> {
   return {
     loadWait: async () => ({ waitedMs: 0, load5: 0.5 }),
     async archive({ runId, round, record }) {
       calls.archives.push({ round, record });
       return { path: join(repo.root, "archive", runId, `round-${round}.json`), sha256: "0".repeat(64) };
+    },
+    async ownerIdeas({ round, after }) {
+      calls.inbox.push({ round, after });
+      const inbox = options.inbox ?? [];
+      return { ideas: inbox.slice(after), cursor: inbox.length };
+    },
+    async registry(input) {
+      calls.registry.push(input);
+      return { path: join(repo.root, "registry.jsonl") };
+    },
+  };
+}
+
+function validatePort(calls: FakeCalls, options: FakeOptions, now: () => number): Pick<ArPorts, "validate"> {
+  return {
+    async validate(input) {
+      calls.looks.push(input);
+      const answer = options.validate?.(input) ?? { look: input.look, at: new Date(now()).toISOString(), sha: input.head, ...FIXTURE_LOOK };
+      return answer as LookAggregate;
     },
   };
 }
@@ -299,12 +328,13 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [], runPins: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
+  const now = () => Date.parse("2026-10-21T00:00:00Z");
   return {
     calls,
-    now: () => Date.parse("2026-10-21T00:00:00Z"),
+    now,
     async pin({ runId, pin }) {
       const ratchetRef = `refs/heads/${target.ratchetPrefix}/${runId}`;
       await git(repo.work, "push", "--quiet", "origin", `${pin}:${ratchetRef}`);
@@ -312,6 +342,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
     },
     async plan(input) {
       calls.plans.push(input);
+      await options.beforePlan?.(input.round);
       const agent = `planner-${input.runId}`;
       return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
@@ -320,7 +351,8 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.runPins.push({ step: "ratchet", runPin: runPinIn(input) });
       return (options.ratchet ?? pushRatchet)(input);
     },
-    ...recordPorts(repo, calls),
+    ...recordPorts(repo, calls, options),
+    ...validatePort(calls, options, now),
     ...treePorts(repo, calls, ideaOfTree, policy, options),
     ...rungPorts(repo, calls, ideaOfTree, target, options),
   };
