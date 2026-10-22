@@ -629,9 +629,10 @@ video shows) or about the video itself (how the system made it: what works, what
 | `content` | the video's `owner` (sidecar, else folder manifest); `video-coord` when none is set |
 | `video` | `video-coord`, always |
 
-The notice is fixed text naming the video, the time, the note id and the notes file, sent through
-the same `agent-chat` transport as round notices (`round-notice-transport.ts`); the comment's text
-is never relayed, so the seat reads it from the file. Delivery is best effort: the note is stored
+The notice is fixed text naming the video id, the time and the note id, sent through the same
+`agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
+human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
 either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
 a failed send. Verdicts are not routed (`routedTo: null`).
 

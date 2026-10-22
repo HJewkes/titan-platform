@@ -246,7 +246,7 @@ async function storeAndRoute(catalog: VideoCatalog, notify: SeatNotifier | undef
   const file = await locate(catalog, videoId);
   const note = await appendNote(file, videoId, input);
   if (note.kind === "verdict") return { ...note, routedTo: null };
-  return { ...note, routedTo: await deliverNote(notify, note, await ownerOf(catalog, videoId), notesFileOf(file)) };
+  return { ...note, routedTo: await deliverNote(notify, note, await ownerOf(catalog, videoId)) };
 }
 
 /** `notify` tells the seat a comment is routed to; absent, comments are stored and nobody is told. */

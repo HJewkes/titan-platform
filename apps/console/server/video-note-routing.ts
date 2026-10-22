@@ -4,8 +4,10 @@
  * manifest); with no owner it goes to video-coord. A comment about the video itself, meaning how the
  * system made it, always goes to video-coord.
  *
- * The notice is fixed text built from the note's own fields and the notes file's path, sent through
- * the transport round notices use, so the comment's text is read from the notes file and never relayed.
+ * The notice goes out from the human seat through the transport round notices use, so it carries only
+ * what the server derives: the video id, the note id, the time and the kind. Agents write the video's
+ * file name, its folders and its sidecar, so none of those, nor the comment's text, is ever relayed;
+ * the seat reads the note with `videos.notes`.
  */
 import type { SeatNotifier } from "./round-notice-transport.js";
 
@@ -37,21 +39,24 @@ const ABOUT_LABELS: Record<NoteAbout, string> = { content: "the video's content"
 
 interface NoticeFacts {
   id: string;
-  video: string;
+  videoId: string;
   atS: number;
   about: NoteAbout;
 }
 
-const noteNotice = (note: NoticeFacts, reason: RouteReason, notesFile: string): string =>
-  `titan-console: the owner commented on ${ABOUT_LABELS[note.about]} of ${note.video} at ${note.atS}s (${WHY[reason]}). ` +
-  `The comment is note ${note.id} in ${notesFile} (titan-console/video-note@1); read it there.`;
+const VIDEO_ID = /^v_[0-9a-f]{20}$/;
+const NOTE_ID = /^[0-9a-f]{16}$/;
+
+const noteNotice = (note: NoticeFacts, reason: RouteReason): string =>
+  `titan-console: the owner commented on ${ABOUT_LABELS[note.about]} of video ${note.videoId} at ${note.atS}s (${WHY[reason]}). ` +
+  `The comment is note ${note.id}; read it with videos.notes ${note.videoId}.`;
 
 /** Delivery is best effort: the notes file is the store of record, so a failed send loses nothing but the nudge. */
-export async function deliverNote(notify: SeatNotifier | undefined, note: NoticeFacts, owner: string | undefined, notesFile: string): Promise<{ seat: string; delivered: boolean }> {
+export async function deliverNote(notify: SeatNotifier | undefined, note: NoticeFacts, owner: string | undefined): Promise<{ seat: string; delivered: boolean }> {
   const { seat, reason } = noteRoute(note.about, owner);
-  if (notify === undefined) return { seat, delivered: false };
+  if (notify === undefined || !VIDEO_ID.test(note.videoId) || !NOTE_ID.test(note.id)) return { seat, delivered: false };
   try {
-    await notify(seat, noteNotice(note, reason, notesFile));
+    await notify(seat, noteNotice(note, reason));
     return { seat, delivered: true };
   } catch {
     return { seat, delivered: false };
