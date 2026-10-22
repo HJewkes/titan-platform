@@ -84,15 +84,29 @@ function planned(input: PlanInput): FixProofPlan {
   return result.plan;
 }
 
-/** The plan from git alone, so each side and the judge derive the same test set without trusting one another. */
-export async function planDiff(ctx: Context, shas: Shas): Promise<FixProofPlan> {
+/** A plan read from the diff alone, before any spec's sibling test is listed at head. */
+export interface DiffPlan {
+  input: PlanInput;
+  plan: FixProofPlan;
+}
+
+export async function planDiffOnly(ctx: Context, shas: Shas): Promise<DiffPlan> {
   const nameStatus = await git(ctx, ["diff", "--no-ext-diff", "--no-textconv", "-M", "--name-status", shas.base, shas.head], "git diff");
   const input = { nameStatus, baseConfig: await readConfig(ctx, shas.base), headConfig: await readConfig(ctx, shas.head) };
-  const first = planned(input);
-  if (first.mutations.length === 0) return first;
+  return { input, plan: planned(input) };
+}
+
+/** Replans with the head files beside each spec, so a spec-only diff plans the sibling test its mutants run against. */
+export async function withSpecSiblings(ctx: Context, head: string, diffPlan: DiffPlan): Promise<FixProofPlan> {
+  if (diffPlan.plan.mutations.length === 0) return diffPlan.plan;
   const headFiles: string[] = [];
-  for (const spec of first.mutations) headFiles.push(...(await headFilesBeside(ctx, shas.head, spec)));
-  return planned({ ...input, headFiles });
+  for (const spec of diffPlan.plan.mutations) headFiles.push(...(await headFilesBeside(ctx, head, spec)));
+  return planned({ ...diffPlan.input, headFiles });
+}
+
+/** The plan from git alone, so each side and the judge derive the same test set without trusting one another. */
+export async function planDiff(ctx: Context, shas: Shas): Promise<FixProofPlan> {
+  return withSpecSiblings(ctx, shas.head, await planDiffOnly(ctx, shas));
 }
 
 /** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */

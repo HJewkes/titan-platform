@@ -145,6 +145,17 @@ function addSpecSiblings(sorter: Sorter, buckets: Buckets, headFiles: readonly s
   }
 }
 
+function sorterFor(config: FixProofConfig, buckets: Buckets): Sorter {
+  return {
+    isTest: compileGlobs(config.tests),
+    isCarry: compileGlobs(config.carry),
+    isRuntime: compileGlobs(config.runtime),
+    isSpec: compileGlobs([MUTATION_SPEC_GLOB]),
+    isChangeset: compileGlobs([CHANGESET_GLOB]),
+    add: (bucket, path) => buckets[bucket].add(path),
+  };
+}
+
 function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: boolean, headFiles: readonly string[]): FixProofPlan {
   const buckets: Buckets = {
     tests: new Set(),
@@ -154,14 +165,7 @@ function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: b
     mutations: new Set(),
     source: new Set(),
   };
-  const sorter: Sorter = {
-    isTest: compileGlobs(config.tests),
-    isCarry: compileGlobs(config.carry),
-    isRuntime: compileGlobs(config.runtime),
-    isSpec: compileGlobs([MUTATION_SPEC_GLOB]),
-    isChangeset: compileGlobs([CHANGESET_GLOB]),
-    add: (bucket, path) => buckets[bucket].add(path),
-  };
+  const sorter = sorterFor(config, buckets);
   entries.forEach((entry) => sortEntry(sorter, entry));
   addSpecSiblings(sorter, buckets, headFiles);
   const sorted = (set: Set<string>) => [...set].sort();
