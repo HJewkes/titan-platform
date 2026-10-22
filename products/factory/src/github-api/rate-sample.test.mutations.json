@@ -22,7 +22,7 @@
     {
       "name": "a bucket missing its fields is written",
       "file": "products/factory/src/github-api/rate-sample.ts",
-      "find": "if (![used, limit, reset].every(Number.isSafeInteger)) throw",
+      "find": "if (!isCount(used) || !isCount(limit) || !isCount(reset)) throw",
       "replace": "if (false) throw",
       "kills": ["refuses an answer missing a bucket"]
     },

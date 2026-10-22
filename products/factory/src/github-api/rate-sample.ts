@@ -19,14 +19,22 @@ export type RateRecord = { at: string } & Record<Resource, RateBucket>;
 
 /** Throws on a body without both buckets, so the sampler skips that minute rather than write half a record. */
 export function rateRecord(body: unknown, at: Date): RateRecord {
-  const resources = (body as { resources?: Record<string, unknown> } | null)?.resources;
-  return { at: at.toISOString(), core: bucket(resources?.core, "core"), graphql: bucket(resources?.graphql, "graphql") };
+  const resources = isRecord(body) && isRecord(body.resources) ? body.resources : {};
+  return { at: at.toISOString(), core: bucket(resources.core, "core"), graphql: bucket(resources.graphql, "graphql") };
 }
 
 function bucket(value: unknown, name: Resource): RateBucket {
-  const { used, limit, reset } = (value ?? {}) as Record<string, unknown>;
-  if (![used, limit, reset].every(Number.isSafeInteger)) throw new Error(`rate_limit answer has no ${name} bucket`);
-  return { used: used as number, limit: limit as number, reset: reset as number };
+  const { used, limit, reset } = isRecord(value) ? value : {};
+  if (!isCount(used) || !isCount(limit) || !isCount(reset)) throw new Error(`rate_limit answer has no ${name} bucket`);
+  return { used, limit, reset };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value);
 }
 
 /** The peak per reset window is the max `used` seen before that reset, whatever the last sample in it read. */
