@@ -28,6 +28,13 @@
       "find": "return { status: response.status, body: response.data };",
       "replace": "return { status: response.status };",
       "kills": ["production bot ports: the durable pool (TP-3431) reopens a closed pair through the bot's own GET /rate_limit once the limit's reset passes"]
+    },
+    {
+      "name": "a changed open-PR list does not count as a change",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "changed: !pulls.notModified || !ref.notModified",
+      "replace": "changed: !ref.notModified",
+      "kills": ["production bot ports: conditional gates (TP-3431) snapshots on the quiet tick where the pulls read changes"]
     }
   ]
 }
