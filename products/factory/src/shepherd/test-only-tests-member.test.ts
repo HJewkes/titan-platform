@@ -44,7 +44,23 @@ function seedDiffReads(fake: FakeGitHub, files: readonly PrFile[]): void {
   for (const file of files) for (const ref of [H, MERGE_BASE]) fake.files.set(`${ref}:${file.path}`, { content: "blob", blobSha: fakeSha(`${ref}:${file.path}`) });
 }
 
-const locatorIn = (sessionId: string) => ({ source: { conversation: { nativeId: sessionId } } }) as unknown as SourceTextLocator;
+const locatorIn = (nativeId: string): SourceTextLocator => ({
+  source: {
+    sourceId: nativeId,
+    harness: "claude-code",
+    format: "jsonl",
+    formatVersion: null,
+    path: `${nativeId}.jsonl`,
+    namespace: "test",
+    conversation: { harness: "claude-code", namespace: "test", nativeId },
+    provenance: { kind: "claude-code-transcript", legacySessionId: nativeId },
+  },
+  evidence: {
+    line: { sourceId: nativeId, byteOffset: 0, byteLength: 0, contentHash: "", lineNumber: null, nativeOrdinal: null },
+    subrecord: { index: 0, path: [] },
+  },
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+});
 
 /** What the tests member says; every other member says MERGE. */
 type TestsSays = "MERGE" | "FIX_FIRST" | "nothing";

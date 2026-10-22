@@ -51,6 +51,7 @@ export interface ShapeBriefInput extends ReviewerBriefInput {
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
   const { fixProof, holdContext, ...base } = input;
   const proved = waivedLines(input.head, input.fixProofWaivedAt).length > 0 || workflowCiLines(input.head, input.workflowCiProof).length > 0;
-  const extra = shape === "tests" && !proved ? ["", ...fixProofLines(input.head, fixProof), ...testOnlyMemberLines(input.fixProofUnverified)] : shape === "adversary" ? holdContextLines(holdContext) : [];
+  const testsLines = () => ["", ...fixProofLines(input.head, fixProof), ...testOnlyMemberLines(input.fixProofUnverified)];
+  const extra = shape === "tests" && !proved ? testsLines() : shape === "adversary" ? holdContextLines(holdContext) : [];
   return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief(base)].join("\n");
 }
