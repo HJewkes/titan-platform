@@ -149,8 +149,12 @@ A `correctness` registration, stated or defaulted, on a pull request that change
 prints a hint after the run line:
 
 ```
-hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO
+hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO
 ```
+
+The fix-proof wake brief says the same to a fixer woken on a NO_REPRO: a flaky-test fix that
+changes only tests registers `--kind test-only` and leaves out any mutation spec, since
+`shepherd.gateReset.noReproProceed` lets only a spec-free test-only pull request past a vacuous proof.
 
 ## Phases
 

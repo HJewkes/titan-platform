@@ -333,6 +333,9 @@ const MUTANTS_ASK =
 const UNCOVERED_LABEL = "changed test files with no mutation spec";
 const REPRO_ASK =
   "Add or change a test on the head branch named in the fence below that fails at the merge base and passes at the head; support files it needs must match the carry globs below, or the proof will not copy them to the merge-base side.";
+/** `proceedsOnNoRepro` lets only a spec-free test-only PR past a vacuous proof, so a flake fix must not add a spec. */
+const FLAKE_FIX_ASK =
+  "A flaky-test fix that changes only tests needs no base-failing test and no mutation spec: register it with `--kind test-only` and leave out any `*.mutations.json`, since with noReproProceed on a test-only PR's vacuous proof goes on to review, and a mutation spec keeps it NO_REPRO.";
 const CARRY_UNREADABLE = "The carry globs could not be read at the merge base, so the error follows in their place.";
 
 /** The carry globs the runner uses, read at the merge base as the runner reads them, so a head edit to the config is never believed. */
@@ -358,6 +361,7 @@ async function fixProofWake(port: GitHubPort, input: WakeFacts, pr: PullRequest)
     `The fix-proof check at head ${head} returned NO_REPRO: ${why}.`,
     `The merge base is ${mergeBase}.`,
     mutants !== undefined ? MUTANTS_ASK : REPRO_ASK,
+    FLAKE_FIX_ASK,
     ...(carry.ok ? [] : [CARRY_UNREADABLE]),
   ].join(" ");
   const globs = carry.ok ? dataFence("carry globs", carry.globs.join("\n")) : dataFence("carry globs error", carry.error);
