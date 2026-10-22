@@ -3,9 +3,10 @@ import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Idea, ImplementRequest } from "@titan-design/autoresearch";
+import type { Digest, Idea, ImplementRequest } from "@titan-design/autoresearch";
 import { parseLimits } from "@titan-design/agent-dispatch/limits";
 import { priceRequest } from "@titan-design/session-analytics";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
 import { loadWaitPort } from "./load-wait.js";
@@ -14,6 +15,9 @@ let dir: string;
 let clone: string;
 let bases: string[];
 const signal = new AbortController().signal;
+/** Every test shells out to git and a node fake many times, which a loaded CI runner stretches past the defaults. */
+const WAIT = { timeout: 20_000, interval: 10 };
+vi.setConfig({ testTimeout: 60_000 });
 const OPEN = { version: 1, pools: { agents: { config_dir: "/accounts/agents", ceiling_five_hour: 90, reserve_seven_day: 5 } } };
 
 const git = (cwd: string, ...args: string[]): string =>
@@ -78,7 +82,7 @@ function ports(overrides: Partial<ArAgentsOptions> = {}) {
   });
 }
 
-const idea = (id: string): Idea => ({ id, class: "accept-gate", targets: [], mechanism: "m", lineage: [], cell: "c" }) as unknown as Idea;
+const idea = (id: string): Idea => partialFake<Idea>({ id, class: "accept-gate", targets: [], mechanism: "m" });
 const request = (tree: string, id: string, extra: Partial<ImplementRequest> = {}): ImplementRequest =>
   ({ idea: idea(id), tree, base: bases[0]!, brief: "make it faster", round: 1, lane: 1, fork: "explore", ...extra });
 const nameFor = (tree: string, round: number, id: string) => basename(tree).replace(`-${id}`, `-r${round}-${id}`);
@@ -224,12 +228,12 @@ describe("implementers", () => {
     behave(nameFor(two.tree, 1, "i-two"), { commit: true, turns: [implemented()] });
 
     const lanes = [p.implement(request(one.tree, "i-one"), signal), p.implement(request(two.tree, "i-two", { lane: 2 }), signal)];
-    await vi.waitFor(() => expect(spawns()).toHaveLength(1));
+    await vi.waitFor(() => expect(spawns()).toHaveLength(1), WAIT);
     await sleep(60);
     expect(spawns().map((call) => call.args[2])).toEqual([first]);
 
     appendFileSync(join(dir, `t-${first}.jsonl`), assistantLine("r0", "looking", { read: 0, w5m: 0, w1h: 0 }) + "\n");
-    await vi.waitFor(() => expect(spawns()).toHaveLength(2));
+    await vi.waitFor(() => expect(spawns()).toHaveLength(2), WAIT);
     appendFileSync(join(dir, `t-${first}.jsonl`), implemented().replace("{HEAD}", git(one.tree, "rev-parse", "HEAD")) + "\n");
     setRoster(roster().map((r) => (r.name === first ? { ...r, presence: "exited" } : r)));
 
@@ -242,7 +246,7 @@ describe("the planner", () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}')] });
-    const input = { runId: "run-1", digest: {} as never, violations: [] };
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
 
     expect(await p.plan({ ...input, round: 1, mode: "spawn" }, signal)).toEqual({ add: [] });
     behave(name, { turns: [final("p2", '{"add": [], "close": []}')] });

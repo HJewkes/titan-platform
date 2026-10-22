@@ -45,7 +45,7 @@ const BRANCH_PREFIX = "ar/";
 /** Peer names are capped at 64 lowercase characters, so the run id is folded to a fixed tag. */
 const runTag = (runId: string): string => createHash("sha256").update(runId).digest("hex").slice(0, 8);
 export const plannerName = (runId: string): string => `ar-${runTag(runId)}-planner`;
-export const treeName = (runId: string, ideaId: string): string => `ar-${runTag(runId)}-${ideaId}`;
+const treeName = (runId: string, ideaId: string): string => `ar-${runTag(runId)}-${ideaId}`;
 const implementerName = (tag: string, round: number, ideaId: string): string => `ar-${tag}-r${round}-${ideaId}`.toLowerCase();
 const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
 
@@ -151,7 +151,8 @@ async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: A
 
 async function allocTree(host: Host, input: Parameters<ArPorts["allocTree"]>[0]) {
   const allocation = await host.allocator.allocate({ agentName: treeName(input.runId, input.ideaId), baseCwd: host.options.clone });
-  const { worktree, branch } = allocation.ref as { worktree: string; branch: string };
+  const { worktree, branch } = allocation.ref;
+  if (!worktree || !branch) throw new Error(`[alloc] the allocator returned no tree for ${input.ideaId}`);
   if (allocation.ref.reused !== "true") await execGit(["reset", "--quiet", "--hard", input.base], worktree);
   return { tree: worktree, branch };
 }

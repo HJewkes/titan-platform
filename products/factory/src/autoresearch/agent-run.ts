@@ -11,7 +11,7 @@ export interface AgentChat {
 }
 
 /** One dispatch's spend, in the shape `ImplementedSchema.usage` reads. */
-export interface DispatchUsage {
+interface DispatchUsage {
   usd: number;
   cacheReadTokens: number;
   cacheWrite5mTokens: number;
@@ -41,7 +41,7 @@ export function transcriptEnd(row: AgentRow | undefined): { path?: string; offse
 }
 
 /** Polls the roster until `name` has exited. */
-export async function awaitExit(chat: AgentChat, name: string, signal: AbortSignal): Promise<AgentRow> {
+async function awaitExit(chat: AgentChat, name: string, signal: AbortSignal): Promise<AgentRow> {
   for (;;) {
     signal.throwIfAborted();
     const row = await rosterRow(chat, name);
@@ -51,7 +51,7 @@ export async function awaitExit(chat: AgentChat, name: string, signal: AbortSign
 }
 
 /** The last fenced JSON block of the final assistant message, or the whole message when it has none. */
-export function lastJsonBlock(text: string): unknown {
+function lastJsonBlock(text: string): unknown {
   const fenced = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)].at(-1)?.[1];
   const body = (fenced ?? text).trim();
   try {
@@ -75,7 +75,7 @@ export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSig
 type Request = Awaited<ReturnType<typeof extractTranscript>>["requests"][number];
 
 /** A response split over several transcript lines repeats its usage on each, so it counts once. */
-export function sumUsage(requests: readonly Request[]): DispatchUsage {
+function sumUsage(requests: readonly Request[]): DispatchUsage {
   const once = [...new Map(requests.map((request) => [request.requestId, request])).values()];
   const total: DispatchUsage = { usd: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, retries: 0 };
   for (const request of once) {
