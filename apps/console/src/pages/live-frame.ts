@@ -39,7 +39,7 @@ export type LiveEvent = { type: "ready" } | { type: "failed" } | { type: "height
 type ForwardedKey = (typeof FORWARDED_KEYS)[number];
 
 /** What a trusted bridge message asks of the page: a change to the frame's state, or a navigation key pressed in the story. */
-export type BridgeEvent = LiveEvent | { type: "key"; key: ForwardedKey };
+type BridgeEvent =LiveEvent | { type: "key"; key: ForwardedKey };
 
 export const MOUNTING: LiveState = { phase: "mounting", mount: 0, failures: 0, boxes: [] };
 

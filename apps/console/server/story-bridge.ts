@@ -33,7 +33,7 @@ export const MAX_BOX_TEXT = 120;
 /** A scroll inside the story moves every box; one report per this many ms is enough to aim a pin. */
 const SCROLL_BOXES_MS = 100;
 
-export interface BridgeBox {
+interface BridgeBox {
   x: number;
   y: number;
   width: number;

@@ -121,7 +121,7 @@ const CARD_BOXES: TargetBox[] = [
 const placeholder = (key: string): HTMLElement | null => screen.queryByAltText(`Card ${key}`);
 
 const onPhone = (): void =>
-  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === PHONE_WIDTH, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
+  void vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === PHONE_WIDTH, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
 
 describe("a live story frame", () => {
   it("is sandboxed to scripts, its own origin and forms, with no permissions", async () => {
