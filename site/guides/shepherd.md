@@ -542,7 +542,9 @@ account on its roster row exhausted until the notice's reset. agent-chat's defau
 marked when the row names none. The next successor then moves to the next account in the rotation.
 A fixer that writes the same words itself marks nothing.
 
-A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
+A retired implementer is never resumed; a successor takes the wake. A lineage the roster no
+longer shows at all still gets one: it starts in the repo's checkout and takes over from the
+registered implementer (TP-4045). When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
 refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
@@ -576,10 +578,18 @@ Who receives a seat notice, an exit notice and the seat digest follows the run, 
 (TP-3653). `shepherd register` records the agent-chat session that ran it (`AGENT_CHAT_NAME`),
 and only the first registrant is kept, so a restarted run or a successor's repeat registration
 still reaches it. A session that registered a PR it does not implement, such as a coordinator,
-receives them. An implementer that registered its own PR exits at turn end, so the first
-session that spawned its lineage receives them. A run with no registrant, or whose lineage
-names no session, goes to the repo's seat as before. A held run naming no seat and a
-reviewer-infrastructure notice still go to the hub seat.
+receives them while its roster row is `live` (TP-3958). An implementer that registered its own
+PR exits at turn end, so the first session that spawned its lineage receives them. A run with
+no registrant, whose registrant is no longer live, or whose lineage names no session, goes to
+the repo's seat as before. A held run naming no seat and a reviewer-infrastructure notice still
+go to the hub seat.
+
+A seat notice or exit notice is sent only to a seat that holds a live session, by the same
+`receivesMessages` rule as the [main CI watch](#main-ci-watch). When the chosen seat holds
+none, as after its coordinator retired, the notice goes to the first live one of the repo's
+`shepherd.redSeat` entry, `shepherd.redSeat.fallback` and `shepherd.hubSeat`, and the step's
+`detail` names which one. With none live, no notice is sent and the owner gate opens with that
+reason. A roster that cannot be read keeps the chosen seat.
 
 A registrant stands in only for a repo that has one seat. A notice lets the gate take its
 default action, and the seat book is what authorises that, so a repo that is on a deny list
