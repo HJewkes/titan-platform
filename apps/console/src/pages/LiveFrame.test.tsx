@@ -308,6 +308,71 @@ describe("keys pressed in a live story", () => {
   });
 });
 
+describe("a variant drawn at 390 and 1440 px (TP-3964)", () => {
+  const wide: Manifest = RoundSchema.parse({ ...manifest, widths: [390, 1440] });
+  const narrowPin = { id: "compact-1", width: 390, xPct: 0.5, yPct: 0.5 };
+  const widePin = { id: "compact-2", width: 1440, xPct: 0.2, yPct: 0.3 };
+  afterEach(() => vi.restoreAllMocks());
+
+  function renderWide(pins: FramePins["pins"], widths: FramePins["widths"] = {}): void {
+    render(
+      <RpcProvider source={pngs}>
+        <FramePinsProvider value={{ ...framePins(false, pins), widths }}>
+          <RoundFramesProvider roundId={ROUND} manifest={wide} indexed={new Set(KEYS)} live={allLive}>
+            <QuestionFrames question={question("density-pick")} />
+          </RoundFramesProvider>
+        </FramePinsProvider>
+      </RpcProvider>,
+    );
+  }
+
+  const viewport = (width: number) => within(screen.getByTestId(`live-viewport-compact-${width}`));
+  const markersAt = (width: number): string[] => viewport(width).queryAllByTestId(/^pin-marker-/).map((marker) => marker.dataset.testid ?? "");
+  const storyAt = (width: number): Window | null => (screen.getByTitle(`Card compact, live at ${width}px`) as HTMLIFrameElement).contentWindow;
+
+  async function goLive(): Promise<void> {
+    await screen.findAllByAltText("Card compact");
+    post(storyAt(390), ready);
+    post(storyAt(1440), ready);
+  }
+
+  it("draws a pin placed on the 390 px story on that render only, and a 1440 px pin on its own", async () => {
+    renderWide([narrowPin, widePin]);
+    await goLive();
+
+    expect(markersAt(390)).toEqual(["pin-marker-compact-1"]);
+    expect(markersAt(1440)).toEqual(["pin-marker-compact-2"]);
+  });
+
+  it("draws a pin with no width, as sent notes read before widths were kept, on every render", async () => {
+    renderWide([{ id: "compact-1", xPct: 0.5, yPct: 0.5 }]);
+    await goLive();
+
+    expect(markersAt(390)).toEqual(["pin-marker-compact-1"]);
+    expect(markersAt(1440)).toEqual(["pin-marker-compact-1"]);
+  });
+
+  it("draws only the pins placed at the captured PNG's declared width on its placeholder", async () => {
+    renderWide([narrowPin, widePin], { viewportWidth: 1440 });
+    await screen.findAllByAltText("Card compact");
+
+    expect(markersAt(390)).toEqual(["pin-marker-compact-2"]);
+    expect(markersAt(1440)).toEqual(["pin-marker-compact-2"]);
+  });
+
+  it("draws only the pins placed at the PNG's own pixels once it loads, when the frame declares no width", async () => {
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(1440);
+    vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(900);
+    renderWide([narrowPin, widePin]);
+    const images = await screen.findAllByAltText("Card compact");
+
+    images.forEach((image) => fireEvent.load(image));
+
+    expect(markersAt(390)).toEqual(["pin-marker-compact-2"]);
+    expect(markersAt(1440)).toEqual(["pin-marker-compact-2"]);
+  });
+});
+
 describe("a live frame's pin surface", () => {
   it("hit-tests the innermost element that has a testId, in the frame's CSS px", () => {
     const surface = iframeSurface({ width: 390, height: 480, boxes: CARD_BOXES });
