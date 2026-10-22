@@ -3,6 +3,7 @@ import { octokitClient, parseGitHubToken, rateBudget, type GitHubClient } from "
 import type { WorkflowCapability } from "@titan-design/workflow";
 import { botTokenExpiryWatch, observingFetch } from "./bot-token-expiry.js";
 import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js";
+import { usageMeter, type UsageMeter } from "./github-api/usage-meter.js";
 
 /**
  * The bot's token file. Fixed in code like `OWNER_KEYS_DIR`: no environment variable, flag or config can point serve
@@ -35,6 +36,8 @@ export interface BotIdentity {
   readonly fingerprint?: string;
   /** Handed only to the workflow runtime, so a step reaches the bot through `ctx.capability(BOT_CAPABILITY)` alone. */
   readonly capabilities: Readonly<Record<string, WorkflowCapability<BotHandle>>>;
+  /** Every bot response's rate-limit headers, for the F11 peak lines; set only when the token was read, and never holds it. */
+  readonly usage?: UsageMeter;
 }
 
 interface BotIdentityOptions {
@@ -82,10 +85,14 @@ export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_
   if (read.state !== "ok") return disabled(read);
   const fingerprint = tokenFingerprint(read.token);
   const expiry = botTokenExpiryWatch({ fingerprint, now: options.now, log: options.log, alarmed: options.alarmed });
-  const fetch = observingFetch(options.fetch, expiry.observe);
+  const usage = usageMeter();
+  const fetch = observingFetch(options.fetch, (headers) => {
+    expiry.observe(headers);
+    usage.observe(headers);
+  });
   const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch, now: options.now });
   const access = (): BotAccess => ({ state: "ok", client });
-  return { health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, capabilities: capabilitiesOf({ access }, [read.token]) };
+  return { health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, usage, capabilities: capabilitiesOf({ access }, [read.token]) };
 }
 
 function disabled(health: Exclude<BotHealth, { state: "ok" }>): BotIdentity {
