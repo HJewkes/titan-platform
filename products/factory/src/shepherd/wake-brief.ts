@@ -11,6 +11,12 @@ import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarl
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 
+/** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
+const BRANCH = /^[A-Za-z0-9._/-]+$/;
+/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
+const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
+export const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
+
 const FreshFixerPayload = z.looseObject({ freshFixer: z.literal(true) });
 /** A wake whose payload asks for a fresh fixer resumes no agent: a successor takes it, so a failed conflict attempt is not repeated (TP-3734). */
 export const wantsFreshFixer = (payload: unknown): boolean => FreshFixerPayload.safeParse(payload).success;
@@ -134,16 +140,19 @@ const generatedOnly = (conflict: Conflict): boolean => !conflict.truncated && co
 function conflictList(conflict: Conflict): string {
   const mark = !generatedOnly(conflict) && conflict.files.some(isRegistry);
   const files = conflict.files.map((path) => (mark && isRegistry(path) ? `${path} (generated registry)` : path));
-  const lines = files.length > 0 ? files : ["No file both this PR and the base changed; rebase and resolve what git reports."];
+  const lines = files.length > 0 ? files : ["No file both this PR and the base changed; resolve what git reports."];
   return [...lines, ...(conflict.truncated ? ["GitHub truncated the base comparison, so this list may be missing files."] : [])].join("\n");
 }
 
 const REGENERATE = "run `pnpm capabilities` and `pnpm docs:reference`, commit the regenerated files and push";
 
+/** Workers cannot force-push, so a history rewrite strands the fix; the recipe names the one path that pushes plainly. */
+const MERGE_RECIPE = "Merge the base branch from origin: `git fetch origin`, `git merge origin/<base>`, resolve, commit and push with a plain `git push`. Never rewrite history or force-push.";
+
 function conflictReason(input: WakeFacts, conflict: Conflict): string {
-  const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below.`;
+  const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below. ${MERGE_RECIPE}`;
   if (generatedOnly(conflict)) {
-    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Merge the base branch from origin, take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
+    return `${intro} The conflict is generated-only: every file both sides changed is a generated registry. Once merged, take the base's side of those files, ${REGENERATE}. Do not hand-merge them.`;
   }
   const registries = conflict.files.some(isRegistry) ? ` Do not hand-merge a file marked (generated registry): take the base's side of it, then ${REGENERATE}.` : "";
   return `${intro} The files both sides changed follow.${registries}`;

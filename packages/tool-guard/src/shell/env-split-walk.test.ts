@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget } from "../test-support/cpu-budget.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
@@ -113,15 +114,16 @@ describe("env's leading words are read in one pass", () => {
   const MAX_RATIO = 24;
   const ROUNDS = 5;
   const largeBytes = 64 * 1024 - 32;
+  // The slowest row took 1.3 s of wall time on a green CI run, an upper bound on its CPU there.
+  const GROWTH_CPU_MS = 5_000;
 
   // This thread's CPU time, not wall time: under a parallel run the scheduler preempts the long case more often than
   // the short one, which inflated a wall-clock ratio past the bound (TP-3612).
   async function cpuMs(script: string): Promise<number> {
     const readScript = (p: string) => (p === `${REPO}/p.sh` ? script : null);
-    const started = process.threadCpuUsage();
+    const elapsed = cpuStopwatch();
     await verdict("bash ./p.sh", { ...context, readScript });
-    const used = process.threadCpuUsage(started);
-    return (used.user + used.system) / 1000;
+    return elapsed();
   }
 
   // Interleaved so a burst of load lands on both sizes rather than only the one measured during it.
@@ -130,28 +132,29 @@ describe("env's leading words are read in one pass", () => {
     for (let round = 0; round < ROUNDS; round++) {
       best.small = Math.min(best.small, await cpuMs(small));
       best.large = Math.min(best.large, await cpuMs(large));
+      expectWithinCpuBudget();
     }
     return best;
   }
 
   const envLine = (unit: string, bytes: number) => `env ${unit.repeat(Math.floor(bytes / unit.length))}true\n`;
 
-  it.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", async (unit) => {
+  cpuBudgetIt.each([["A=1 - "], ["-- "], ["-S "], ["A=1 -i "], ["A=1 -S '' "]])("reads a script of env %j words in linear time", GROWTH_CPU_MS, async (unit) => {
     const { small, large } = await growth(envLine(unit, largeBytes / SCALE), envLine(unit, largeBytes));
 
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
-  }, 60_000);
+  });
 
   const splitLine = (unit: string, bytes: number) => `env -S '${unit.repeat(Math.floor(bytes / unit.length))}true'\n`;
 
-  it.each([
+  cpuBudgetIt.each([
     ["env -S 'env env …'", splitLine, "env "],
     ["env -S env -S env -S …", envLine, "-S env "],
-  ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", async (_form, line, unit) => {
+  ] as const)("reads a chain of envs a -S string supplies, %s, in linear time (TP-3291)", GROWTH_CPU_MS, async (_form, line, unit) => {
     const { small, large } = await growth(line(unit, largeBytes / SCALE), line(unit, largeBytes));
 
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
-  }, 60_000);
+  });
 });
 
 const envSplits = spawnSync("env", ["-S", "-u X true"]).status === 0;

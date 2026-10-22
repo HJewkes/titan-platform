@@ -12,6 +12,8 @@ import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/h
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
+/** The story origin's port (TP-3793): its own origin, so a round's Storybook build never runs as the console. */
+export const DEFAULT_STORY_PORT = 7501;
 const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
 /** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
@@ -25,6 +27,12 @@ const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-revie
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
   port: number;
+  /**
+   * The story origin's port, which serves stored Storybook builds read-only on loopback and, with
+   * `lanHost`, the LAN (TP-3793). 0 binds an ephemeral port; null or absent serves no story origin.
+   * `TITAN_CONSOLE_STORY_PORT=0` turns it off, as an ephemeral story port could never be dialled from the LAN.
+   */
+  storyPort?: number | null;
   /** Holds the console daemon's pid file. */
   stateDir: string;
   /** Loopback ports of the upstream daemons; the console never starts any of them. */
@@ -64,6 +72,11 @@ export interface ConsoleConfig {
    * Optional so a config built by hand serves no `reviews.list`; `resolveConfig` always sets it.
    */
   reviewsDir?: string;
+  /**
+   * The Storybook builds rounds ship, one `<buildId>/` each, under the state dir (TP-3793).
+   * Optional so a config built by hand imports no build and gives no round a `live` field; `resolveConfig` always sets it.
+   */
+  storybooksDir?: string;
   /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
@@ -124,6 +137,7 @@ export function resolveConfig(
   const stateDir = expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
+    storyPort: storyPortFrom(env),
     stateDir,
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
@@ -159,8 +173,9 @@ function lanOptionsFrom(
 }
 
 /** The dirs other processes write and the console reads from or files into. */
-function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir"> {
   return {
+    storybooksDir: path.join(stateDir, "storybooks"),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
@@ -203,6 +218,15 @@ function assertCoherent(config: ConsoleConfig): void {
   if ([config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(config.port)) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
   }
+  const story = config.storyPort ?? null;
+  if (story !== null && [config.port, config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(story)) {
+    throw new Error(`TITAN_CONSOLE_STORY_PORT ${story} is taken by the console or an upstream daemon; the story origin needs a port of its own`);
+  }
+}
+
+function storyPortFrom(env: NodeJS.ProcessEnv): number | null {
+  const port = portFrom(env, "TITAN_CONSOLE_STORY_PORT", DEFAULT_STORY_PORT);
+  return port === 0 ? null : port;
 }
 
 function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): number {

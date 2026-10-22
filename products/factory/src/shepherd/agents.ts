@@ -1,4 +1,4 @@
-import { dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
 
@@ -35,6 +35,16 @@ export interface AgentChatAgents {
   resume(name: string, message: string, runningReviews?: readonly number[], review?: ReviewAsk): Promise<void>;
   /** Delivers `message` to a live agent as one chat message. */
   message(name: string, message: string): Promise<void>;
+}
+
+/** The check `spawn` makes before agent-chat runs, asked ahead of time, so a panel plan can refuse a profile its dispatch would. */
+export function installedHeadless(profile: string, dir?: string): boolean {
+  try {
+    assertInstalledHeadless(profile, dir);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Every mutation invalidates `roster`, so the read that checks whether it took effect is never a cached one. */

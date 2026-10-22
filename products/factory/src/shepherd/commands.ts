@@ -73,7 +73,8 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
-  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base };
+  const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -236,7 +237,7 @@ type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict or abandoned, with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: registerWithHold,

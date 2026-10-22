@@ -1,17 +1,20 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { GATE_DEMOTIONS, recordAutoPass, type GateDemotions } from "./auto-pass.js";
+import { DIAGNOSIS_RULE, GATE_DEMOTIONS, recordAutoPass, type GateDemotions } from "./auto-pass.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import { awaitNewHead } from "./gates.js";
 import { LeaveLand } from "./leave-land.js";
+import { requestDiagnosis } from "./no-verdict-diagnosis.js";
+import { freshNoVerdictState, noteReviewerStep, startRound, type NoVerdictState } from "./no-verdict-round.js";
+import { tapped } from "./review-cause.js";
 import type { Verdict } from "./phases.js";
 import { REVIEW_INTENT_STEP } from "./review.js";
 import { SEAT_HELD_ROUNDS_WORDS, type Escalated } from "./route-table.js";
 import { stepIdMatches } from "../definition.js";
 
 /** The run state D7 adds: what each counted round failed on, and whether the fallback reviewer went. */
-export interface FailedRoundsState {
+export interface FailedRoundsState extends NoVerdictState {
   /** The outcome of each round `failedRounds` counted; a conflict counts as `conflict`. */
   failedOutcomes: string[];
   failedRounds: number;
@@ -28,20 +31,30 @@ export interface FailedRoundsRun extends FailedRoundsState {
   reviews: Map<string, Verdict>;
   fresh: Set<string>;
   escalations: Map<string, Escalated>;
+  task?: string;
 }
 
-/** `review-again` sends a fresh reviewer to the same head, `notice` tells ops or the seat and waits, `gate` asks the owner. */
-type FailedRoundsRoute = { route: "review-again" } | { route: "notice"; to: "review-infra" | "seat-held"; escalated: Escalated } | { route: "gate"; escalated: Escalated };
+/**
+ * `review-again` sends a fresh reviewer to the same head, `diagnose` spawns a planner over the silent reviewers and waits,
+ * `notice` tells ops or the seat and waits, `gate` asks the owner.
+ */
+type FailedRoundsRoute =
+  | { route: "review-again" }
+  | { route: "diagnose"; escalated: Escalated }
+  | { route: "notice"; to: "review-infra" | "seat-held"; escalated: Escalated }
+  | { route: "gate"; escalated: Escalated };
 
 /**
  * D7 (TP-3697): a failed-rounds escalation whose every counted round failed on infrastructure sends one fresh reviewer
  * before anyone else. D7 never merges: a MERGE still has to stand through the normal review path. A failed fallback is
  * a reviewer infrastructure defect for ops, and a seat-held run-out is the seat's (TP-3734); only a round that failed on
- * more than infrastructure keeps the owner gate.
+ * more than infrastructure keeps the owner gate. Rounds where no adversary ever returned a verdict get no fourth blind review:
+ * a planner works out why the reviews fail (TP-3796).
  */
 export async function demoteFailedRounds(run: FailedRoundsRun, headSha: string, escalated: Escalated, demotions: GateDemotions = GATE_DEMOTIONS): Promise<FailedRoundsRoute> {
   if (escalated.escalation !== "failed-rounds") return { route: "gate", escalated };
   if (escalated.words === SEAT_HELD_ROUNDS_WORDS) return demotions.failedFallback ? { route: "notice", to: "seat-held", escalated } : { route: "gate", escalated };
+  if (demotions.neverVerdictDiagnosis && (escalated.neverVerdict === true || escalated.repeatedNoVerdict === true) && escalated.words === undefined) return { route: "diagnose", escalated };
   if (!demotions.failedRounds || escalated.words !== undefined || !escalated.infraOnly) return { route: "gate", escalated };
   if (run.fallbackReviewed) {
     const failedToo = { ...escalated, detail: `${escalated.detail}; the fallback fresh reviewer failed too` };
@@ -61,12 +74,24 @@ export function countConflictRound(run: FailedRoundsState): void {
   run.failedOutcomes.push("conflict");
 }
 
+/** The failed-rounds state of a run, or of a new head whose rounds count afresh. */
+export const freshFailedRounds = (): Omit<FailedRoundsState, "reviewerAccount"> => ({ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false, ...freshNoVerdictState() });
+
 const Billed = z.looseObject({ kind: z.literal("intent"), account: z.string().optional() });
 
 /** Taps the review's recorded steps, so the run knows which account its last reviewer billed; a replay rebuilds it. */
 export function noteReviewerAccount(run: FailedRoundsState, stepId: string, result: unknown): void {
   const billed = stepIdMatches(REVIEW_INTENT_STEP, stepId) ? Billed.safeParse(result) : undefined;
   if (billed?.success) run.reviewerAccount = billed.data.account ?? "the default account";
+}
+
+/** The run's context for one review, tapped for the account it bills and the reviewers it dispatches; the round starts with none. */
+export function tappedReview(run: FailedRoundsState & { ctx: WorkflowContext }): WorkflowContext {
+  startRound(run);
+  return tapped(run.ctx, (stepId, result) => {
+    noteReviewerAccount(run, stepId, result);
+    noteReviewerStep(run, stepId, result);
+  });
 }
 
 type Notice = Extract<FailedRoundsRoute, { route: "notice" }>;
@@ -92,14 +117,40 @@ async function noticeOrGate(run: FailedRoundsRun, headSha: string, notice: Notic
     run.escalations.set(headSha, { ...notice.escalated, detail: `${notice.escalated.detail} (${told.detail})` });
     return true;
   }
-  Object.assign(run, { failedRounds: 0, failedOutcomes: [], fallbackReviewed: false });
+  return awaitNewHeadAfresh(run, headSha);
+}
+
+/** The run waits for a new head, whose rounds count afresh. */
+async function awaitNewHeadAfresh(run: FailedRoundsRun, headSha: string): Promise<never> {
+  Object.assign(run, freshFailedRounds());
   throw new LeaveLand(await awaitNewHead(run, headSha));
+}
+
+const NEVER_VERDICT_WHY = "no adversary verdict in any round";
+const REPEATED_WHY = "the round repeated the last one's panel outcome and missing seats at this head, with every member started and none timed out";
+
+/**
+ * A planner reads the silent reviewers' sessions and the serve log, and the run waits for a new head. A planner that could
+ * not start leaves the ops notice, or the owner gate where that notice is reverted, so the PR never waits on nobody.
+ */
+async function diagnoseOrNotice(run: FailedRoundsRun, headSha: string, escalated: Escalated): Promise<boolean> {
+  const why = escalated.repeatedNoVerdict === true ? REPEATED_WHY : NEVER_VERDICT_WHY;
+  const detail = `${escalated.detail}; ${why}, so a planner diagnoses why instead of another review or the owner.`;
+  const evidence = [`head ${headSha}`, `failed rounds: ${run.failedOutcomes.join(", ")}`, `reviewers with no verdict: ${run.failedReviewers.filter((reviewer) => reviewer.verdict !== true).length}`];
+  await recordAutoPass(run.ctx, { ...run.target, rule: DIAGNOSIS_RULE, headSha, detail, evidence });
+  const diagnosis = await requestDiagnosis(run, headSha);
+  if (diagnosis.spawned) return awaitNewHeadAfresh(run, headSha);
+  const unspawned = { ...escalated, detail: `${escalated.detail}; the diagnosis planner did not start: ${diagnosis.reason ?? "no reason given"}` };
+  if (GATE_DEMOTIONS.failedFallback) return noticeOrGate(run, headSha, { route: "notice", to: "review-infra", escalated: unspawned });
+  run.escalations.set(headSha, unspawned);
+  return true;
 }
 
 /** True goes on to the merge decision, where the owner gate opens; false reviews the head again with the D7 fallback reviewer. */
 export async function onEscalated(run: FailedRoundsRun, headSha: string, escalated: Escalated): Promise<boolean> {
   const demoted = await demoteFailedRounds(run, headSha, escalated);
   if (demoted.route === "review-again") return false;
+  if (demoted.route === "diagnose") return diagnoseOrNotice(run, headSha, demoted.escalated);
   if (demoted.route === "notice") return noticeOrGate(run, headSha, demoted);
   run.escalations.set(headSha, demoted.escalated);
   return true;

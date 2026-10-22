@@ -18,8 +18,11 @@ const context: ClassifyContext = {
   readScript: (file) => (file === `${REPO}/x.sh` ? `${PUSH}\n` : [`${REPO}/ok.sh`, `${REPO}/f`].includes(file) ? "echo hi\n" : null),
 };
 
-async function verdict(command: string): Promise<"deny" | "pass"> {
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+/** The hook's own descriptors read as harmless text, as they may in a real hook, so only the fd model can deny. */
+const heldContext: ClassifyContext = { ...context, readScript: (file) => (/^\/dev\/(fd\/\d+|stdin)$/.test(file) ? "echo hi\n" : context.readScript(file)) };
+
+async function verdict(command: string, ctx: ClassifyContext = context): Promise<"deny" | "pass"> {
+  const port: HookPort = { context: ctx, now: () => new Date(0), loadDecide: async () => decide };
   const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
   const { stdout } = await handle(event, { PATH: "/usr/bin" }, port);
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
@@ -104,9 +107,37 @@ const ALREADY_DENIED = [
   "exec 3< ./x.sh; bash <&3",
 ];
 
+/** `--` ends the options of `source` and `.`, quoted or escaped too, so the fd after it is still the file read. */
+const DOUBLE_DASH_SOURCE = [
+  "exec {fd}< ./x.sh; source -- /dev/fd/$fd",
+  "exec {fd}< ./x.sh; . '--' /dev/fd/$fd",
+  "exec {fd}< ./x.sh; source \\-\\- /dev/fd/$fd",
+  "exec 3< ./x.sh; . -- /dev/fd/3",
+  "exec 3< ./x.sh; source \"--\" /dev/fd/3",
+  "exec < ./x.sh; source -- /dev/stdin",
+  "exec < ./x.sh; . \\-\\- /dev/stdin",
+];
+
+/** A word a `-c` string runs by its positional, bash's rcfile, or the file `source -p` reads. */
+const BESIDE_SCRIPT = [
+  "exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3",
+  "exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true",
+  "exec {fd}< ./x.sh; source -p . /dev/fd/$fd",
+  // The string never runs its `$0`, but which strings do cannot be told, as with a substitution operand.
+  "bash -c 'echo hi' /dev/fd/$fd",
+];
+
 describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
-  it.each([...RUN_TIME_OPERAND, ...NAMED_ON_COMMAND, ...INNER_EXEC, ...INDIRECT, ...SWAPPED_STDIN, ...ALREADY_DENIED])("denies %s", async (line) => {
+  it.each([...RUN_TIME_OPERAND, ...NAMED_ON_COMMAND, ...INNER_EXEC, ...INDIRECT, ...SWAPPED_STDIN, ...ALREADY_DENIED, ...BESIDE_SCRIPT])("denies %s", async (line) => {
     expect(await verdict(line)).toBe("deny");
+  });
+
+  it.each(DOUBLE_DASH_SOURCE)("denies %s, whatever the hook's own descriptor holds", async (line) => {
+    expect(await verdict(line, heldContext)).toBe("deny");
+  });
+
+  it("allows a harmless file sourced after -- with an fd open", async () => {
+    expect(await verdict("exec {fd}< f; source -- ./ok.sh", heldContext)).toBe("pass");
   });
 
   it("refuses a run-time fd operand with nothing opened, as it does a literal one", async () => {
@@ -140,7 +171,6 @@ describe("a shell runs an fd the line opened for reading (TP-3314)", () => {
     "bash \"$S\"",
     "exec 3>&1; bash \"$S\"",
     "exec >log; sh \"$S\"",
-    "bash -c 'echo hi' /dev/fd/$fd",
     "cat /dev/fd/$fd",
     "exec {fd}< f; cat /dev/fd/$fd",
     "exec {fd}< f; python3 ./ok.py",
@@ -184,11 +214,21 @@ const PREMISES: Array<[string, string[]]> = [
   ["exec < ./x.sh; bash", ["bash", "zsh -f", "dash"]],
   ["exec < ./x.sh; bash -s", ["bash", "zsh -f", "dash"]],
   ["exec 3< ./x.sh; exec <&3; bash", ["bash", "zsh -f", "dash"]],
+  ...DOUBLE_DASH_SOURCE.map((line): [string, string[]] => [line, ["bash", "zsh -f"]]),
+  ["exec 3< ./x.sh; bash -c 'cat \"$1\" | bash' _ /dev/fd/3", ["bash", "zsh -f", "dash"]],
+  ["exec 3< ./x.sh; bash --rcfile /dev/fd/3 -i -c true", ["bash", "dash"]],
 ];
+
+/** bash before 5.3 refuses `source -p` as an invalid option. */
+const sourcesWithPath = has("bash") && spawnSync("bash", ["-c", "source -p . /dev/null"]).status === 0;
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash and zsh run the push the denied lines hide (TP-3314)", () => {
   it.each(PREMISES.flatMap(([line, runners]) => runners.map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
     expect(runsGit(line, runner)).toBe(true);
+  });
+
+  it.skipIf(!sourcesWithPath)("exec {fd}< ./x.sh; source -p . /dev/fd/$fd runs the push under bash 5.3", () => {
+    expect(runsGit("exec {fd}< ./x.sh; source -p . /dev/fd/$fd", "bash")).toBe(true);
   });
 
   it("keeps no fd open for an assignment-only {name} redirect, so that clause adds nothing to hide", () => {
