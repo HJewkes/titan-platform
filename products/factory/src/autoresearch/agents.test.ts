@@ -219,6 +219,29 @@ describe("implementers", () => {
     expect(existsSync(winnerHome)).toBe(false);
   });
 
+  it("on a resume count only the new turn's usage, not the winner's earlier turns", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-bbb", base: bases[1]!, lane: 1 }, signal);
+    setRoster([row("ar-winner", join(dir, "winner-tree"))]);
+    appendFileSync(join(dir, "t-ar-winner.jsonl"), final("r-old", `{"head": "${bases[0]!}"}`, { read: 500, w5m: 50, w1h: 5 }) + "\n");
+    behave("ar-winner", { commit: true, turns: [final("r-new", '{"head": "{HEAD}"}', { read: 7, w5m: 3, w1h: 1 })] });
+
+    const built = await p.implement(request(tree, "i-bbb", { fork: "exploit", resumeFrom: "ar-winner", round: 2 }), signal);
+
+    expect(built.usage).toMatchObject({ cacheReadTokens: 7, cacheWrite5mTokens: 3, cacheWrite1hTokens: 1 });
+  });
+
+  it("read the last fenced JSON block of the final message when it has several", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    const text = 'Planned:\n```json\n{"head": "not-this-one"}\n```\nDone.\n```json\n{"head": "{HEAD}"}\n```';
+    behave(nameFor(tree, 1, "i-aaa"), { commit: true, turns: [assistantLine("r1", text, { read: 0, w5m: 0, w1h: 0 })] });
+
+    const built = await p.implement(request(tree, "i-aaa"), signal);
+
+    expect(built.head).toBe(git(tree, "rev-parse", "HEAD"));
+  });
+
   it("of later lanes start only after the round's first lane has answered", async () => {
     const p = ports();
     const one = await p.allocTree({ runId: "run-1", ideaId: "i-one", base: bases[0]!, lane: 1 }, signal);
