@@ -66,7 +66,7 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-45 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the five conditional
+48 allow, 9 gate and 81 deny rows: one unconditional row per pair, plus the five conditional
 allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
@@ -89,6 +89,9 @@ the enforcing code should record.
 | `authority-config` | allow | deny | deny | deny | deny | deny | deny |
 | `human-verb` | allow | gate (OR) | deny | deny | deny | deny | deny |
 | `answer-question` | deny | deny | deny | deny | deny | deny | deny; allow by ANS-DC-QA |
+| `pr-close` | allow | gate (OR) | deny | deny | deny | deny | deny |
+| `deploy-resume` | allow | gate (OR) | deny | deny | deny | deny | deny |
+| `fleet-config` | allow | gate (OR) | deny | deny | deny | deny | deny |
 
 ### Conditional rows
 
@@ -192,6 +195,14 @@ evaluate(DEFAULT_TABLE, {
 // { verdict: "allow", ruleId: "MRG-AU-RV" } when every condition holds
 ```
 
+`pr-close`, `deploy-resume` and `fleet-config` are the console's owner ops. Owner-remote gets
+a gate that only owner-remote resolves: the console tap, after a read-back of what it acts
+on. `pr-close` closes only at the head the owner saw and keeps the branch. `deploy-resume`
+clears only the exact deploy pause read back, never while a deploy runs and never a hand-set
+hold. `fleet-config` covers caps, pools, spend and machine limits and factory knobs,
+restart-class keys included; permission surfaces stay under `authority-config`. Every
+agent class is denied all three, so a seat asks the owner instead.
+
 Spend is monitored, not capped: `spend-over-cap` is allowed for every local actor, with
 the spend recorded and a notice to the owner at a threshold. Only raising a cap remotely
 is denied.
@@ -213,6 +224,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), the `decider` class with the `answer-question` rows in TP-713, and the `pr-close`, `deploy-resume` and `fleet-config` rows in TP-3946 (owner decisions 445 and 528). The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.
