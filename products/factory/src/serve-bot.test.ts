@@ -1,13 +1,14 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { silentLogger } from "@titan-design/daemon";
+import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { botAccess, openBotIdentity, type BotAccess } from "./bot-identity.js";
 import { BOT_FINGERPRINT_FILE, tokenFingerprint } from "./bot-token-fingerprint.js";
 import { defineWorkflow } from "./definition.js";
 import type { FactoryRoutes } from "./host.js";
+import { PEAK_LOG_MS, USAGE_LOG_MS } from "./github-api/usage-meter.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 
 const SENTINEL = `ghp_${"SYNTHETICsentinel".padEnd(36, "0")}`;
@@ -43,13 +44,13 @@ function botProbe(seen: BotAccess[]) {
   });
 }
 
-async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scratch(), "state"), open = () => openBotIdentity({ path })): Promise<FactoryServer> {
+async function serveWithBot(path: string, seen: BotAccess[], stateDir = join(scratch(), "state"), open = () => openBotIdentity({ path }), logger: Logger = silentLogger): Promise<FactoryServer> {
   const server = await startFactoryServer({
     dbPath: join(stateDir, "factory.sqlite3"),
     workflows: [botProbe(seen)],
     routes: NO_ROUTES,
     port: 0,
-    logger: silentLogger,
+    logger,
     github: { status: () => "ok", refresh: async () => undefined },
     bot: open,
   });
@@ -127,5 +128,31 @@ describe("serve's bot-token fingerprint for the A17 scan (V6)", () => {
     await serveWithBot(path(), [], stateDir);
 
     expect(existsSync(join(stateDir, BOT_FINGERPRINT_FILE))).toBe(false);
+  });
+});
+
+describe("serve's F11 usage lines for the bot", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("logs the bot's github-api.usage every 5 minutes and github-api.peak hourly, from its own responses", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const lines: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const logger: Logger = { ...silentLogger, info: (fields, message) => lines.push({ message, fields }) };
+    const path = tokenFile(0o600);
+    const metered: typeof fetch = async () => new Response("{}", { status: 200, headers: { "content-type": "application/json", "x-ratelimit-used": "2600", "x-ratelimit-limit": "5000", "x-ratelimit-reset": "1790000000", "x-ratelimit-resource": "core" } });
+    const bot = openBotIdentity({ path, fetch: metered, alarmed: new Set() });
+    await serveWithBot(path, [], join(scratch(), "state"), () => bot, logger);
+    const access = botAccess({ capability: () => bot.capabilities["github-bot"]!.handle });
+    if (access.state !== "ok") throw new Error(`bot is ${access.state}`);
+    await access.client.request("GET /rate_limit");
+
+    await vi.advanceTimersByTimeAsync(USAGE_LOG_MS);
+    const usage = lines.filter((line) => line.message === "github-api.usage");
+    await vi.advanceTimersByTimeAsync(PEAK_LOG_MS - USAGE_LOG_MS);
+    const peak = lines.filter((line) => line.message === "github-api.peak");
+
+    expect(usage.map((line) => line.fields)).toEqual([{ identity: "bot", resource: "core", used: 2600, limit: 5000, pct: 52, reset: "2026-09-21T14:13:20.000Z" }]);
+    expect(peak.map((line) => [line.fields.identity, line.fields.used])).toEqual([["bot", 2600]]);
+    expect(JSON.stringify(lines)).not.toContain(SENTINEL);
   });
 });
