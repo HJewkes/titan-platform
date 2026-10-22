@@ -639,8 +639,7 @@ interface ArPorts {
         runId: string;
         pin: string;
     }, signal: AbortSignal): Promise<Pinned>;
-    /** The central planner's queue ops for one round; the workflow checks them against the schema and quotas. */
-    /** Round 1 spawns the planner (`mode: "spawn"`); later rounds resume it. */
+    /** The central planner's queue ops for one round, which the workflow checks against the schema and quotas. Round 1 spawns the planner; later rounds resume it. */
     plan(input: {
         runId: string;
         round: number;

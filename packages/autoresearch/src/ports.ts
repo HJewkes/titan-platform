@@ -99,8 +99,7 @@ export interface RoundRecord {
 export interface ArPorts {
   /** Reads `target.json` and `bounds.json` at the pin and points the ratchet ref at the run's starting head. */
   pin(input: { runId: string; pin: string }, signal: AbortSignal): Promise<Pinned>;
-  /** The central planner's queue ops for one round; the workflow checks them against the schema and quotas. */
-  /** Round 1 spawns the planner (`mode: "spawn"`); later rounds resume it. */
+  /** The central planner's queue ops for one round, which the workflow checks against the schema and quotas. Round 1 spawns the planner; later rounds resume it. */
   plan(input: { runId: string; round: number; digest: Digest; violations: string[]; mode: PlanMode }, signal: AbortSignal): Promise<unknown>;
   allocTree(input: { runId: string; ideaId: string; base: string; lane: number }, signal: AbortSignal): Promise<z.infer<typeof TreeSchema>>;
   implement(input: ImplementRequest, signal: AbortSignal): Promise<z.input<typeof ImplementedSchema>>;
