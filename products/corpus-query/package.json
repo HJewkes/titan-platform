@@ -36,9 +36,12 @@
     "corpus-query": "./dist/bin.js"
   },
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/evidence": "workspace:^",
+    "@titan-design/hitl": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
+    "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
     "zod": "^4.4.3"
   }

@@ -6,7 +6,8 @@ import type { AuditPorts } from "./audit/ports.js";
 import { systemAuditPorts } from "./audit/production.js";
 import { auditRoutes } from "./audit/routes.js";
 import { measurementAuditWorkflow } from "./audit/workflow.js";
-import { ownCheckout } from "./cli-service.js";
+import { deployCheckoutAncestry } from "./build-ancestry.js";
+import { deployCheckoutFor, ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import { configRef, current, liveField, type ConfigRef, type Live } from "./config-ref.js";
 import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, withHoldAdversary } from "./workflows-live.js";
@@ -58,6 +59,7 @@ import { shadowRefresh, trainShadowMigration, trainShadowRef } from "./shepherd/
 import { shadowHeldCheck } from "./shepherd/train-shadow-held.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { withAutoresearch } from "./autoresearch/configured.js";
 import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
@@ -290,7 +292,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat, store) : undefined;
-  const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
+  const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env), isAncestor: deployCheckoutAncestry(deployCheckoutFor(env)) });
   const client = sharedOctokit();
   const port = overrides.port ?? githubPort(octokitWire({ client }));
   const pacing = tickPacing({ now: overrides.now });
@@ -300,7 +302,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
   const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, ...overrides, seats });
-  return Object.assign(routes, { config });
+  return withAutoresearch(Object.assign(routes, { config }), config.get().autoresearch);
 }
 
 /** The packager spawns through the shared roster and spawn gate, under agent-chat's default account; `off` wires nothing. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBatches, buildJudgePrefix, prefixSha, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
+import { buildBatches, buildJudgePrefix, prefixSha, resolveLabels, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
 import type { QuerySpec } from "../types.js";
 
 const spec: QuerySpec = {
@@ -57,8 +57,25 @@ describe("judge prefix", () => {
 describe("batching", () => {
   it("puts the canary after every real passage", () => {
     const batch = batchFor();
-    const lastHeader = batch.message.lastIndexOf("=== PASSAGE ");
-    expect(batch.message.slice(lastHeader)).toContain(batch.canary!.id);
+    const lastLabel = [...batch.message.matchAll(/^=== PASSAGE (\S+) /gm)].at(-1)![1]!;
+    expect(batch.labels[lastLabel]).toBe(batch.canary!.id);
+  });
+
+  it("shows short labels instead of passage ids and resolves a verdict's labels back to ids", () => {
+    const batch = batchFor();
+
+    const resolved = resolveLabels(batch, { judged: ["P1", "P2", "P3"], items: [{ id: "P1", quote: "q" }] });
+
+    expect(passages.some((p) => batch.message.includes(p.id))).toBe(false);
+    expect(resolved).toEqual({ judged: [passages[0]!.id, passages[1]!.id, batch.canary!.id], items: [{ id: passages[0]!.id, quote: "q" }] });
+  });
+
+  it("keeps a name that is not a label, so verification voids it as an unknown id", () => {
+    const batch = batchFor();
+
+    const resolved = resolveLabels(batch, { judged: [], items: [{ id: "P9", quote: "q" }, { id: "constructor", quote: "q" }] });
+
+    expect(verifyVerdict(batch, resolved).voided).toEqual([{ id: "P9", reason: "unknown-id" }, { id: "constructor", reason: "unknown-id" }]);
   });
 
   it("shows the canary with an id and ref shaped like a real passage", () => {
