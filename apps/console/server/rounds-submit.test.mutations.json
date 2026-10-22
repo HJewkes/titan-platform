@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a round batch reads the human-only list once per answer",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "const recordInBatch = recordWith(readOnce(humanOnly));",
+      "replace": "const recordInBatch = recordWith(humanOnly);",
+      "kills": [
+        "a long round sends in about one human-only read (TP-4001) reads the human-only list once for twelve answers and logs all twelve",
+        "a long round sends in about one human-only read (TP-4001) responds in about one read's latency, not twelve"
+      ]
+    },
+    {
+      "name": "the submit waits on its round listener",
+      "file": "apps/console/server/rounds-submit.ts",
+      "find": "  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined);",
+      "replace": "  await hooks.listeners?.afterRoundSubmit(id, result);",
+      "kills": [
+        "a long round sends in about one human-only read (TP-4001) responds while the round listener is still running, and keeps the submit when it fails"
+      ]
+    }
+  ]
+}
