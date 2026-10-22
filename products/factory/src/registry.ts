@@ -5,7 +5,8 @@ import type { GateQuestion } from "@titan-design/hitl";
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
-import { AR_READ_COMMANDS } from "./autoresearch/commands.js";
+import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./autoresearch/commands.js";
+import type { ArConfig } from "./autoresearch/config.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
@@ -29,6 +30,8 @@ export interface FactoryContext extends BaseContext {
   needsSources?: NeedsSources;
   /** The local clone of an autoresearch target, from factory config; `autoresearch.diff` refuses a target with none. */
   autoresearchClone?: (target: string) => string | undefined;
+  /** The autoresearch config section; absent, the autoresearch write commands refuse `[no-config]`. */
+  autoresearch?: ArConfig;
 }
 
 export interface PrRef {
@@ -179,13 +182,18 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
     ...(routes.shepherd && { shepherd: routes.shepherd }),
     ...(aud !== undefined && { aud }),
     ...(needsSources && { needsSources }),
+    ...autoresearchContext(routes.autoresearch),
   };
+}
+
+function autoresearchContext(config: ArConfig | undefined): Pick<FactoryContext, "autoresearch" | "autoresearchClone"> {
+  return config ? { autoresearch: config, autoresearchClone: (target) => config.targets[target]?.clone } : {};
 }
 
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  const commands = [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS];
+  const commands = [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
   for (const cmd of commands) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

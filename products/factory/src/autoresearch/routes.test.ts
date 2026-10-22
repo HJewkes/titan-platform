@@ -46,7 +46,7 @@ const MOVE = {
 
 /** One route call as the runtime makes it after a restart: the first attempt's start time survives. */
 async function routeOutcome(name: ArDispatchStep, input: object, ports: ArPorts = answeringPorts()) {
-  const route = arRoutes(ports).find((candidate) => candidate.match === arStepId(name))!;
+  const route = arRoutes(() => ports).find((candidate) => candidate.match === arStepId(name))!;
   const stepId = `${arStepId(name)}:x`;
   const timing = { attempt: 1, requestKey: `run-1/${stepId}`, firstStartedAt: "2026-10-20T08:00:00.000Z", restarts: 1 };
   return route.runner.run({ runId: "run-1", workflowName: "autoresearch", stepId, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, ...timing });
@@ -107,7 +107,7 @@ describe("autoresearch routes", () => {
 
 describe("autoresearch on the factory host", () => {
   it("routes every dispatch step of the package's workflow and fails the run on a port error", async () => {
-    const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(portsFailingAtPin()), gatePollMs: 5 });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(portsFailingAtPin), gatePollMs: 5 });
     hosts.push(host);
 
     const run = await host.runtime.wait(host.runtime.start("autoresearch", { pin: "abc123" }));
