@@ -2,7 +2,7 @@
  * `inbox.list`: the owner's one inbox, read only. It takes `approvals.flow`'s merged order, joins each factory gate to its
  * live Shepherd row by run id, and gives every item the one action a tap would take, or the terminal command and why the
  * console offers none. A write action's target comes from a system of record, never from a deposit: a hitl gate joined to a
- * live row (or, with no row, a land gate's own prompt), or a deposit's typed `op`. A deposit is agent-written, so its op only
+ * live row that is not replay-diverged, or a deposit's typed `op`. A deposit is agent-written, so its op only
  * names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
  * whose read-back `inbox.prepare` takes from the factory's preview. Nothing here writes.
  */
@@ -63,8 +63,13 @@ const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
 const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head"]);
-/** A land run's approve-merge prompt, as the factory's `landGate` reads it; the factory re-checks the head against GitHub at the tap. */
-const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\b/;
+/**
+ * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
+ * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
+ * tell which, so every rowless gate is held to the Morning path until TP-3918 lands.
+ */
+export const DIVERGED_HOLD = "resolve from Morning (TP-3918)";
+const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Read as Shepherd's `holdClassOf` reads it: the text before the first colon, untrimmed. */
 export const holdClassOf = (reason: string): string | undefined => (reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : undefined);
@@ -94,26 +99,16 @@ function gateStepAction(stepId: string, command: string | undefined): InboxActio
   return undefined;
 }
 
-/** A land run has no Shepherd row, so its gate's PR and head come from the gate's own prompt, the first line of the hitl context. */
-function landPromptAt(item: OwnerItem): { repo: string; pr: number; headSha: string } | undefined {
-  if (item.sources[0]?.system !== "hitl") return undefined;
-  const match = LAND_PROMPT.exec(item.context);
-  return match === null ? undefined : { repo: match[2]!, pr: Number(match[1]), headSha: match[3]! };
-}
-
-function gatePrAt(item: OwnerItem, row: WatchRow | undefined): { repo: string; pr: number; headSha: string } | undefined {
-  if (row === undefined) return landPromptAt(item);
-  return row.pr === null || row.headSha === null ? undefined : { repo: row.repo, pr: row.pr, headSha: row.headSha };
-}
+const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
 
 function gateAction(item: OwnerItem, gateId: string, row: WatchRow | undefined): InboxAction {
   const parts = gateParts(gateId);
   if (parts === undefined) return terminal("the gate names no run, so the console cannot read its PR back", item.command);
   const refused = gateStepAction(parts.stepId, item.command);
   if (refused !== undefined) return refused;
-  const at = gatePrAt(item, row);
-  if (at === undefined) return terminal("no live Shepherd row or land prompt pins this gate's PR and head", item.command);
-  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, ...at, decision: "merge" };
+  if (isDiverged(row)) return terminal(DIVERGED_HOLD, item.command);
+  if (row!.pr === null || row!.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
+  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision: "merge" };
 }
 
 function holdAction(row: WatchRow, holdClass: string | undefined): InboxAction {

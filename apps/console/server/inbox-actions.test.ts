@@ -636,3 +636,39 @@ describe("inbox owner-op", () => {
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "the authority table refuses a merge-at-head op to the console: owner-remote may not merge here" } });
   });
 });
+
+describe("the next state after a landed tap", () => {
+  const merged = ({ repo, pr }: { repo: string; pr: number }) => ({ ...openPreview({ repo, pr }, HEAD), pr: { ...openPreview({ repo, pr }, HEAD).pr, state: "merged", head: undefined, mergeSha: NEW_HEAD } });
+
+  async function approvePlain(): Promise<JsonEnvelope<unknown>> {
+    const { prepare, act } = await harness(spyFactory().client);
+    const { confirm } = ready(await prepare(PLAIN_ID));
+    return (await act(PLAIN_ID, confirm)).envelope;
+  }
+
+  it("reads a merge that landed as merged, from GitHub through the preview", async () => {
+    preview = merged;
+
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, next: { state: "merged", detail: `${REPO}#1 merged as abcdef1` } } });
+  });
+
+  it("reads a head that moved under the tap as a new review", async () => {
+    preview = (op) => openPreview(op, NEW_HEAD);
+
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { next: { state: "new-review", detail: `${REPO}#1 moved to abcdef1, so its run reviews the new head` } } });
+  });
+
+  it("reads a run that has not moved on as still pending, in its live phase", async () => {
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { next: { state: "pending", detail: `${REPO}#1 is still awaiting-approval at 1234567: owner: resolve approve-merge` } } });
+  });
+
+  it("reads no next state for a tap that did not land", async () => {
+    const { prepare, act } = await harness(spyFactory(NEW_HEAD).client);
+    const { confirm } = ready(await prepare(PLAIN_ID));
+
+    const { envelope } = await act(PLAIN_ID, confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "moved" } } });
+    expect(envelope.ok && "next" in (envelope.data as object)).toBe(false);
+  });
+});

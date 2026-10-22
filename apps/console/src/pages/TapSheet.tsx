@@ -15,6 +15,8 @@ type Prepared<R extends TapReady> = R | { status: "no-action"; reason: string };
 interface Acted {
   outcome: { status: string };
   message: string;
+  /** The run's state read again after the tap landed, when the target has one. */
+  next?: { state: string; detail: string };
 }
 
 type Sheet<R> = { status: "reading" } | { status: "refused"; reason: string } | { status: "ready"; prepared: R } | { status: "acting"; prepared: R } | { status: "acted"; prepared: R; acted: Acted } | { status: "failed"; prepared?: R; error: string };
@@ -118,6 +120,7 @@ function SheetBody<R extends TapReady>({ sheet, reading, command, renderReadBack
     <>
       {sheet.status === "acting" ? <Spinner size="sm" label="Sending" /> : null}
       {sheet.status === "acted" ? <Alert status={LANDED.has(sheet.acted.outcome.status) ? "success" : "warning"} message={sheet.acted.message} testID={`${testID}-outcome`} /> : null}
+      {sheet.status === "acted" && sheet.acted.next !== undefined ? <Typography variant="body2" testID={`${testID}-next`}>{`Now: ${sheet.acted.next.detail}`}</Typography> : null}
       {sheet.status === "failed" ? <TerminalFallback message={`Not done: ${sheet.error}`} command={command} testID={testID} /> : null}
       {sheet.prepared === undefined ? null : renderReadBack(sheet.prepared)}
     </>

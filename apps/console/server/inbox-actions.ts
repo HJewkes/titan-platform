@@ -23,6 +23,7 @@ import { failure } from "./active-work.js";
 import type { DecisionItem, DecisionLog, DecisionLogResult } from "./decision-log.js";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
+import { nextStateOf, type NextState } from "./inbox-next.js";
 import { opReadBackOf, postedOp, type OpAction, type OpReadBack } from "./inbox-op.js";
 import { readInbox, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
@@ -86,6 +87,8 @@ type ActResult = {
   /** One line for the owner, naming what to do next when the tap did not land. */
   message: string;
   log?: DecisionLogResult;
+  /** What the PR's run does now, read live after a landed PR tap: merged, a new review, or still pending. */
+  next?: NextState;
 };
 
 const isPostedAction = (action: InboxAction): action is PostedAction | OpAction => action.kind === "resolve-gate" || action.kind === "owner-release" || action.kind === "owner-op";
@@ -256,7 +259,18 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   const { file, record } = await recordOnce({ store, actionsDir: ctx.options.actionsDir, confirm: tap.confirm, key: tap.itemId, stale, schema: recordFile, write });
   const outcome = await dispatch(ctx, file, tap.confirm, record);
   const log = await settle(ctx, file, record, outcome);
-  return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }) };
+  const next = await nextAfter(ctx.sources, record, outcome);
+  return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
+}
+
+const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "already"]);
+
+/** Only a landed tap on a PR has a next state to read; an answer to an agent has no run. */
+function nextAfter(sources: InboxSources, record: ActionRecord, outcome: Outcome): Promise<NextState | undefined> {
+  if (!LANDED.has(outcome.status)) return Promise.resolve(undefined);
+  const target = isOpRecord(record) ? record.op : record.action;
+  if (!("pr" in target && "headSha" in target)) return Promise.resolve(undefined);
+  return nextStateOf(sources.shepherd, { repo: target.repo, pr: target.pr, headSha: target.headSha });
 }
 
 const assertOn = (options: InboxActionOptions): void => {

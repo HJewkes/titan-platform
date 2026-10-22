@@ -307,6 +307,15 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
   });
 
+  it("shows the run's live next state under a landed outcome", async () => {
+    const landed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved", next: { state: "merged", detail: "example/repo#12 merged as 9999999" } }));
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": landed });
+    await tapGate();
+    await screen.findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await screen.findByTestId("inbox-confirm-next")).textContent).toBe("Now: example/repo#12 merged as 9999999");
+  });
+
   it("shows a moved head as a warning naming the new head", async () => {
     const moved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "moved", currentHead: "9".repeat(40) }, message: "PR moved to 9999999, read again" }));
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": moved });

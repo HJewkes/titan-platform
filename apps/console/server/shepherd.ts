@@ -59,6 +59,7 @@ const opPreview = z
         title: z.string().nullable(),
         base: z.string(),
         head: z.string().optional(),
+        mergeSha: z.string().optional(),
         behind: z.boolean(),
         mergeableState: z.string(),
         shepherd: z.object({ runId: z.string(), held: z.boolean(), holdReason: z.string().nullable(), ownerHold: z.string().nullable() }).passthrough().nullable(),

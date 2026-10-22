@@ -673,9 +673,11 @@ blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic g
 
 `inbox.list` (`server/inbox-view.ts`) is a read: `approvals.flow`'s order joined to Shepherd's live rows, each item
 with the one action a tap takes, or the terminal command and why the console offers none. A write action's target
-comes only from a system of record: a hitl gate joined to a live Shepherd row, a land run's gate (which has no
-Shepherd row) at the head its own prompt names, or a deposit's typed `op` (see "Owner inbox deposits"). A deposit
-with no `op` never gets one.
+comes only from a system of record: a hitl gate joined to a live Shepherd row, or a deposit's typed `op` (see "Owner
+inbox deposits"). A deposit with no `op` never gets one. While TP-3918 is open (a gate on a replay-diverged run is
+consumed with no merge), a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from
+Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
+behind look the same in the item.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
@@ -705,6 +707,11 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
+
+After a landed tap on a PR (`resolved`, `released`, `accepted` or `already`), `inbox.act` reads the PR again and
+answers `next`: `merged` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
+Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
+sheet shows it as "Now: …" under the outcome.
 
 A settled outcome is written once as `<confirm>.outcome.json`. A landed resolve or release also writes one
 decision-log row (see "The decision log"), and a replay does not write it again. The factory's
