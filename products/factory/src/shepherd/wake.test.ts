@@ -308,6 +308,26 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(scene.agents.asked).toEqual([]);
   });
 
+  it("starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [] });
+
+    const { result } = await scene.run("review", fixFirst("fix the parser"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(scene.agents.asked).toMatchObject([{ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT }]);
+    expect(scene.agents.asked[0]!.message).toContain("taking over octo/demo#1 from impl-a");
+    expect(scene.store.get().authorsOf("run-1")).toMatchObject([{ name: "impl-a-s1", role: "successor", predecessor: "impl-a" }]);
+  });
+
+  it("still returns unhandled for a lineage gone from the roster when no checkout of the repo is bound (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [], checkoutFor: () => undefined });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "no checkout path is configured for octo/demo, so a successor has no checkout to start in" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
   it("records the successor in the run's lineage, so the next wake names the one after it", async () => {
     const scene = wakeStep();
     scene.agents.spawn = async (name) => void scene.agents.rows.push(row(name, { agentId: `agent-${name}` }));

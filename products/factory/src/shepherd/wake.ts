@@ -125,11 +125,25 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  return successorChoice(deps, wiring, task, newest.name, roster);
+}
+
+/** A successor starts in the repo's own checkout, never its predecessor's tree, so it needs no roster row of the predecessor. */
+function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, predecessor: string, roster: readonly AgentRow[]): Choice | string {
   if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor, message: successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
+}
+
+/**
+ * A lineage the roster no longer shows, as once agent-chat drops a finished agent's rows, takes over from the registered
+ * implementer (TP-4045); a live newest agent is messaged, and an exited one is resumed or succeeded.
+ */
+async function nextChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow | undefined, roster: readonly AgentRow[], refused: ReadonlySet<string>): Promise<Choice | string> {
+  if (newest === undefined) return successorChoice(deps, wiring, task, task.implementer, roster);
+  return newest.presence !== "exited" ? liveChoice(task, newest) : choose(deps, wiring, task, newest, roster, refused);
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -262,8 +276,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     const settled = asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, waiting);
     if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
-    if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
-    const live = newest.presence !== "exited";
+    const live = newest !== undefined && newest.presence !== "exited";
     const read: HeadRead = live ? await headMoved(deps.port, task.input) : { moved: false };
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
@@ -272,8 +285,8 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
       continue;
     }
     unreadable.read();
-    if (read.moved) return wokenBy(liveChoice(task, newest));
-    const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
+    if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
+    const choice = await nextChoice(deps, wiring, task, newest, roster, refused);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
     asked = { choice, at: deps.now() };

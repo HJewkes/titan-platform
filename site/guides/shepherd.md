@@ -541,7 +541,9 @@ account on its roster row exhausted until the notice's reset. agent-chat's defau
 marked when the row names none. The next successor then moves to the next account in the rotation.
 A fixer that writes the same words itself marks nothing.
 
-A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
+A retired implementer is never resumed; a successor takes the wake. A lineage the roster no
+longer shows at all still gets one: it starts in the repo's checkout and takes over from the
+registered implementer (TP-4045). When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
 refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
