@@ -67,6 +67,7 @@
           "packages/graph-layout",
           "packages/dispatch-ledger",
           "packages/speech-vet",
+          "packages/autoresearch",
           "packages/review-workflow"
         ],
         "ui": [
@@ -147,6 +148,7 @@
           "packages/graph-layout",
           "packages/dispatch-ledger",
           "packages/speech-vet",
+          "packages/autoresearch",
           "packages/review-workflow"
         ],
         [

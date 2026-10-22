@@ -30,18 +30,21 @@ export const useFramePins = (): FramePins | null => useContext(FramePinsContext)
 
 const COARSE_POINTER = "(pointer: coarse)";
 
-/** A phone or tablet: its strip draws a frame too small to aim at, so pins are placed in the full-size view. */
-export function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(COARSE_POINTER).matches);
+/** Whether a CSS media query matches now, following its changes; false where the browser has no `matchMedia`. */
+export function useMediaQuery(media: string): boolean {
+  const [matches, setMatches] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(media).matches);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia(COARSE_POINTER);
-    const onChange = (): void => setCoarse(query.matches);
+    const query = window.matchMedia(media);
+    const onChange = (): void => setMatches(query.matches);
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
-  }, []);
-  return coarse;
+  }, [media]);
+  return matches;
 }
+
+/** A phone or tablet: its strip draws a frame too small to aim at, so pins are placed in the full-size view. */
+export const useCoarsePointer = (): boolean => useMediaQuery(COARSE_POINTER);
 
 const LAYER = "absolute inset-0";
 const PLACING = "cursor-crosshair rounded outline-dashed outline-2 outline-brand-primary";

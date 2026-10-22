@@ -2480,6 +2480,11 @@
       "count": 1
     }
   },
+  "packages/workflow/src/code-step.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "packages/workflow/src/context.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
@@ -3997,11 +4002,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/workflows/land-routes.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

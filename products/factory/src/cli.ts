@@ -20,6 +20,7 @@ import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
 import { registerOwnerGates } from "./owner-gates/command.js";
+import { registerPlanner, type PlannerDeps } from "./planner/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHostOptions } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -93,6 +94,8 @@ export interface CliDeps {
   sources?: (env: NodeJS.ProcessEnv, log: Logger) => SourcesReader;
   /** The serve verb's webhook ingress listener; absent means serve binds no ingress port. */
   ingress?: (env: NodeJS.ProcessEnv) => ServeIngressOptions;
+  /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
+  planner?: PlannerDeps;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
   exitAfterServe?: () => void;
 }
@@ -132,7 +135,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerOwnerGates, registerBotToken]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerOwnerGates, registerBotToken, registerPlanner]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

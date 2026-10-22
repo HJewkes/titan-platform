@@ -44,7 +44,7 @@ function renderRun(snapshot: Snapshot = twin): void {
 }
 
 /** React's generated ids differ from one mount to the next, so they are blanked before two mounts are compared. */
-const withoutGeneratedIds = (html: string): string => html.replace(/«[^»]*»|:r[0-9a-z]+:/g, "«id»");
+const withoutGeneratedIds = (html: string): string => html.replace(/«[^»]*»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, "«id»");
 
 async function otherSectionsHtml(snapshot: Snapshot): Promise<Record<string, string>> {
   vi.useFakeTimers({ toFake: ["Date"] });
