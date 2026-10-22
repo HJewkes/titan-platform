@@ -44,14 +44,16 @@ interface NoiseReading {
 
 /**
  * Design §1.5: ±bandSigmas·σ once σ is locked, and the wider max(bandSigmas·σ_est, defaultBandPp) until then. The engine's
- * explicit `locked` wins, since it can re-open a lock; only a record without one falls back to counting pairs. With no σ at
- * all the band is the default.
+ * explicit `locked` wins, since it can re-open a lock; only a record without one falls back to counting pairs. As the
+ * engine's `band()` does, an unlocked σ counts only from `minPairs` pairs on; below that, or with no pair count, the band is
+ * the default.
  */
 export function bandFor(noise: NoiseConfig, reading: NoiseReading): Band {
   const { sigma, pairs } = reading;
   const locked = reading.locked ?? (pairs !== undefined && pairs >= noise.lockAfterPairs);
   if (sigma !== undefined && locked) return { halfWidth: noise.bandSigmas * sigma, locked: true };
-  return { halfWidth: Math.max(noise.bandSigmas * (sigma ?? 0), noise.defaultBandPp), locked: false };
+  const trusted = pairs !== undefined && pairs >= noise.minPairs ? sigma : undefined;
+  return { halfWidth: Math.max(noise.bandSigmas * (trusted ?? 0), noise.defaultBandPp), locked: false };
 }
 
 /** G7's snapshot names the case σ was measured on and the band the engine itself used, which wins over the recomputed one. */
