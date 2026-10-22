@@ -29,7 +29,7 @@ type Attempt = GuardOutcome | Unavailable | Retry;
 const isUnavailable = (value: string | null | Unavailable | Attempt): value is Unavailable => typeof value === "object" && value !== null && "kind" in value;
 
 /** One ref's second opinions: GitHub's compare against the stored sha, and `ls-remote` on the ref. */
-export interface RefReads {
+interface RefReads {
   ancestry(base: string, head: string): Promise<Ancestry | Unavailable>;
   lsRemote(): Promise<string | null | Unavailable>;
   now(): Date;

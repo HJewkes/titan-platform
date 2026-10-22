@@ -8,7 +8,7 @@ import type { GuardVerdict, HeadTipGuard } from "./observe.js";
 export type RemoteRef = { pr: number } | { branch: string };
 
 /** TP-3097's second opinions on a read, from the bot side: GitHub's compare, and `git ls-remote`. */
-export interface GuardReads {
+interface GuardReads {
   /** How `head` relates to `base`: `ahead` is a descendant. */
   ancestry(repo: string, base: string, head: string): Promise<Ancestry | Unavailable>;
   /** The sha the ref names, or null when the remote has no such ref. */
