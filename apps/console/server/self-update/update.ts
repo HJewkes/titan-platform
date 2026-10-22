@@ -4,6 +4,7 @@ import { z } from "zod";
 import { failureDeposit, type FailureStage } from "./alarm.js";
 import { releaseLock, takeLock, type LockPorts } from "./lock.js";
 import { BUILD_ARGS, CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
+import { smokeFromRelease, type SmokePorts } from "./release-smoke.js";
 
 export interface CommandResult {
   code: number;
@@ -12,7 +13,7 @@ export interface CommandResult {
 }
 
 /** Every effect the updater has; tests pass fakes, so none of them reaches git, pnpm, systemd or a port. */
-export interface UpdatePorts extends LockPorts {
+export interface UpdatePorts extends LockPorts, SmokePorts {
   git: (cwd: string, args: readonly string[]) => Promise<CommandResult>;
   pnpm: (cwd: string, args: readonly string[]) => Promise<CommandResult>;
   systemctl: (args: readonly string[]) => Promise<CommandResult>;
@@ -24,12 +25,9 @@ export interface UpdatePorts extends LockPorts {
   listDirs: (dir: string) => string[];
   mkdir: (dir: string) => void;
   writeFile: (file: string, text: string) => void;
-  /** Starts the release's bin on a spare port with a scratch state dir; undefined once its /health names `sha` and `/` answers 200, else why not. */
-  smoke: (release: string, sha: string) => Promise<string | undefined>;
   /** The build sha the console on `port` reports, polled until it is `want` or the wait ends; null when it answered with no sha, undefined when it never answered. */
   servedSha: (port: number, want: string) => Promise<string | null | undefined>;
   alarm: (deposit: OwnerItemDeposit) => Promise<void>;
-  log: (line: string) => void;
   now: () => number;
 }
 
@@ -166,7 +164,7 @@ async function apply(update: Update, go: Go): Promise<number> {
   update.ports.log(`updating ${go.served} -> ${go.target}; ${go.touched.length} changed path(s) reach the console build`);
   const built = await buildRelease(update, go);
   if (built !== undefined) return failBeforeSwap(update, go, "build", built);
-  const smoke = await update.ports.smoke(go.release, go.target);
+  const smoke = await smokeFromRelease(update.ports, go.release, go.target);
   if (smoke !== undefined) return failBeforeSwap(update, go, "smoke", smoke);
   update.ports.swapLink(update.link, go.release);
   const restarted = await restartTo(update, go.target);

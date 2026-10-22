@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
-import { ReconcilerConfigSchema, webhookIntervalProblem } from "./reconciler/config.js";
+import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
@@ -271,9 +271,6 @@ export const FactoryConfigSchema = z.object({
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
-}).superRefine((config, ctx) => {
-  const problem = webhookIntervalProblem(config);
-  if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["reconciler", "intervalMs"] });
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
@@ -297,9 +294,9 @@ export function defaultDbPath(env: NodeJS.ProcessEnv): string {
   return join(factoryStateDir(env), "factory.sqlite3");
 }
 
-function parseJson(path: string): unknown {
+function parseJson(path: string, text: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(text);
   } catch (error) {
     throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -309,10 +306,20 @@ export function loadConfig(path: string): FactoryConfig {
   return readConfig(path) ?? {};
 }
 
+/** The deprecation lines serve logs at start for keys the config file at `env`'s path still sets. */
+export function configDeprecations(env: NodeJS.ProcessEnv): string[] {
+  return reconcilerDeprecations(loadConfig(configPath(env)));
+}
+
 /** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
 export function readConfig(path: string): FactoryConfig | undefined {
   if (!existsSync(path)) return undefined;
-  const raw = parseJson(path);
+  return parseConfig(path, readFileSync(path, "utf8"));
+}
+
+/** Parses and validates config file text; `path` only names the file in an error. */
+export function parseConfig(path: string, text: string): FactoryConfig {
+  const raw = parseJson(path, text);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
   const parsed = FactoryConfigSchema.safeParse(raw);

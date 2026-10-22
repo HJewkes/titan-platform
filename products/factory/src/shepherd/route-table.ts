@@ -99,6 +99,8 @@ export interface Escalated {
   infraOnly?: true;
   /** Set beside `infraOnly` when no counted round had an adversary that returned a verdict (TP-3796). */
   neverVerdict?: true;
+  /** Set when a no-verdict round repeated the last one's panel outcome and missing seats at the same head, with no member failing to start or timing out (TP-3910). */
+  repeatedNoVerdict?: true;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }

@@ -176,6 +176,9 @@ async function readInside(roundDir: string, rel: string, cap: number): Promise<B
   }
 }
 
+/** Any other file a round carries beside its frames, such as its Storybook sidecar, read with the same defences. */
+export const readRoundBytes = (roundDir: string, rel: string, cap: number): Promise<Buffer> => readInside(path.resolve(roundDir), rel, cap);
+
 /** A round without a frames index is fine; one with an unreadable or invalid index has no frame that can be trusted. */
 async function readFramesIndex(roundDir: string): Promise<FramesIndex | null> {
   const present = await lstat(path.join(roundDir, FRAMES_INDEX)).then(

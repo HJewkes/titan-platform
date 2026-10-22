@@ -9,6 +9,7 @@ import { failureOf } from "./error-class.js";
 import { seatFixFirst } from "./external-review.js";
 import { registeredOwners } from "./seat-tie.js";
 import { registeredKind } from "./merge-facts.js";
+import { everG10Held } from "./registration-hold.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
 import { CiPolicySchema } from "./review-schemas.js";
@@ -50,22 +51,28 @@ export interface CarryTarget {
   pr: number;
 }
 
-/** `askedHead` is the head of the run's `shepherd review` ask, taken or not; a scope recorded before asks existed reads none. */
-const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable(), askedHead: z.string().nullable().optional() });
+/**
+ * `askedHead` is the head of the run's `shepherd review` ask, taken or not; a scope recorded before asks existed reads none.
+ * `g10Held` says the run holds or ever held a G10 hold; a scope recorded before it existed reads none.
+ */
+const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable(), askedHead: z.string().nullable().optional(), g10Held: z.boolean().optional() });
+type Scope = z.infer<typeof ScopeResult>;
 
 /** What a carry reads once per head: the registration's kind and the PR's base branch, unless a seat asked for its own review at a vouched head. */
-async function readScope(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[]): Promise<{ kind: string | null; baseRef: string | null } | undefined> {
+async function readScope(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[]): Promise<Scope | undefined> {
   const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${read}`, { ...target, runId: ctx.runId }, ScopeResult);
   return scope.askedHead && vouched.includes(scope.askedHead) ? undefined : scope;
 }
 
 /**
  * The base branch a carry probes against, or undefined when the run's kind does not carry, the base is unknown, or a seat
- * asked for Shepherd's own review at one of `vouched`, the heads the carried MERGE would stand for.
+ * asked for Shepherd's own review at one of `vouched`, the heads the carried MERGE would stand for. `patchCarries` opens the
+ * equal-diff rule only to a run on record as never G10-held, so a held run carries exactly what it did before.
  */
-async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[] = []): Promise<string | undefined> {
+async function carryingScope(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[]): Promise<{ baseRef: string; patchCarries: boolean } | undefined> {
   const scope = await readScope(ctx, target, read, vouched);
-  return scope && scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
+  if (!scope || scope.kind === null || !CARRYING_KINDS.has(scope.kind) || scope.baseRef === null) return undefined;
+  return { baseRef: scope.baseRef, patchCarries: scope.g10Held === false };
 }
 
 /**
@@ -85,6 +92,7 @@ function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): St
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
     kind: registeredKind(deps.store, input.runId).kind ?? null,
     askedHead: deps.store.get().byRun(input.runId)?.reviewRequest?.head ?? null,
+    g10Held: everG10Held(deps.store.get(), input.runId),
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
 }
@@ -222,10 +230,10 @@ interface CarryEvidence {
 }
 
 /** The tree probe decides first; a head it refuses may still be the reviewed head plus a merge whose remerge-diff resolved nothing reviewed. */
-async function carryRule(ctx: WorkflowContext, input: CarryInput, reviews: ReadonlyMap<string, Verdict>): Promise<CarryEvidence | undefined> {
+async function carryRule(ctx: WorkflowContext, input: CarryInput, reviews: ReadonlyMap<string, Verdict>, patchCarries: boolean): Promise<CarryEvidence | undefined> {
   const at = { fromHead: input.fromHead, head: input.head };
   const result = await carryStep(ctx, input);
-  if (treeCarries(result, input.fromHead, reviews)) return { ...at, result, rule: "tree-equal" };
+  if (treeCarries(result, input.fromHead, reviews, patchCarries)) return { ...at, result, rule: "tree-equal" };
   const remerge = await remergeStep(ctx, input);
   return remerge.carries && remerge.rule ? { ...at, result, rule: remerge.rule, remerge } : undefined;
 }
@@ -238,9 +246,9 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   const source = carriedSource(reviews, headSha);
   if (!source) return undefined;
   const fromHead = source.merge.verdict.head;
-  const baseRef = await carryingBase(ctx, target, String(scopeRead), vouchedHeads(reviews, fromHead, headSha));
-  if (baseRef === undefined) return undefined;
-  const carry = await carryRule(ctx, { repo: target.repo, baseRef, fromHead, head: headSha }, reviews);
+  const scope = await carryingScope(ctx, target, String(scopeRead), vouchedHeads(reviews, fromHead, headSha));
+  if (scope === undefined) return undefined;
+  const carry = await carryRule(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha }, reviews, scope.patchCarries);
   if (!carry) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
   const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, fromHead, head: headSha, heads }, SeatResult);

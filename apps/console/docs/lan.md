@@ -94,6 +94,7 @@ Environment=TITAN_CONSOLE_HOST=<tailnet-ip>
 Environment=TITAN_CONSOLE_LAN_NAMES=<fqdn>
 Environment=TITAN_CONSOLE_TLS_CERT=%h/.local/state/titan-console/tls/<fqdn>.crt
 Environment=TITAN_CONSOLE_TLS_KEY=%h/.local/state/titan-console/tls/<fqdn>.key
+Environment=TITAN_CONSOLE_STORY_PORT=7501
 Environment=PATH=/usr/bin:%h/.local/bin:/bin:/usr/sbin:/sbin
 UMask=0077
 Restart=always
@@ -115,6 +116,9 @@ WantedBy=default.target
 - `TITAN_CONSOLE_TOKEN` is unset, so the secret lives in `lan.token` under
   `~/.local/state/titan-console`, created at mode 0600.
 - `TITAN_CONSOLE_OWNER_WRITES` is unset, so owner writes stay off.
+- `TITAN_CONSOLE_STORY_PORT=7501` is the default, written out so the port the firewall opens
+  is named in the unit. It serves review rounds' Storybook builds; see
+  [The story origin](#the-story-origin-port-7501). `0` turns it off.
 
 ## Install
 
@@ -128,7 +132,8 @@ One command each.
 6. `loginctl show-user "$USER" -p Linger` must print `Linger=yes`; otherwise the unit stops at
    logout. Fix it with `loginctl enable-linger "$USER"`.
 7. If `sudo ufw status` shows ufw active, run
-   `sudo ufw allow in on tailscale0 to <tailnet-ip> port 7500 proto tcp`.
+   `sudo ufw allow in on tailscale0 to <tailnet-ip> port 7500 proto tcp`, and the same rule for
+   port 7501 (see [The story origin](#the-story-origin-port-7501)).
 
 ## Check it
 
@@ -144,6 +149,47 @@ tailnet device.
 | `ss -ltn 'sport = :7500'` | Two listeners: `127.0.0.1:7500` and `<tailnet-ip>:7500`, no wildcard |
 
 `<lan-ip>` is the machine's home LAN address, from `ip -4 addr`.
+
+## The story origin (port 7501)
+
+Review rounds that ship a Storybook build show their stories live (TP-3793). The console serves
+those builds from a second origin, `https://<fqdn>:7501`, so that PR code running in a story can
+never act as the console. It binds `127.0.0.1:7501` and `<tailnet-ip>:7501`, with the same
+certificate, the same Host check and the same login: the session cookie is host-only and ports
+do not split cookies, so a browser signed in on 7500 is signed in on 7501 too. It serves only
+`GET` and `HEAD` of `/sb/<build-id>/...` and `/__bridge.js`; there is no `/rpc`, `/events`,
+`/mcp` or sign-in page on it.
+
+Owner step, once, after the unit carries `TITAN_CONSOLE_STORY_PORT=7501` and has restarted:
+
+1. If `sudo ufw status` shows ufw active, run
+   `sudo ufw allow in on tailscale0 to <tailnet-ip> port 7501 proto tcp`.
+2. Check it:
+
+| Command | Must show |
+| --- | --- |
+| `curl -s -o /dev/null -w '%{http_code}\n' https://<fqdn>:7501/sb/` | `401`, with no certificate error |
+| `curl -sS http://<tailnet-ip>:7501/` | `curl: (52) Empty reply from server` |
+| `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:7501/sb/` | `405` |
+| `ss -ltn 'sport = :7501'` | Two listeners: `127.0.0.1:7501` and `<tailnet-ip>:7501`, no wildcard |
+
+With 7500, that makes four console listeners in all.
+
+### Check the phone reaches the story origin
+
+Whether iOS Safari sends the session cookie to a 7501 frame inside a 7500 page is the one part
+no test here can prove (TP-3793 U1). The daemon keeps no request log, so the check is what the
+phone shows. Run it once, on the phone you review from, signed in:
+
+1. Import a round that carries a Storybook build with `titan-console rounds import <round-dir>`,
+   and read its build id from `rounds.get`'s `live` urls: `/sb/<build-id>/iframe.html?...`.
+2. In the phone's browser, open `https://<fqdn>:7501/sb/<build-id>/iframe.html?id=<story-id>&viewMode=story`.
+   The story rendering is a pass for the cookie at the top level. `Not signed in` (401) is a fail.
+3. Once the page embeds live frames (TP-3793 S4), open `https://<fqdn>:7500/#/rounds/<round-id>`.
+   A live story in the frame is a pass for the cookie inside the frame. A frame that falls back to
+   its PNG with "Live story unavailable" on every story is a fail.
+4. On a fail, report it. The fallback is a second tailnet name for the story origin, never
+   serving stories on 7500.
 
 ## Log in
 

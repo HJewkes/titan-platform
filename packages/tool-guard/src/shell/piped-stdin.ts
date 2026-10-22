@@ -21,7 +21,8 @@ export function nextShellStdin(op: string, cmd: Unwrapped | null, empty: boolean
   return printedReadings(cmd.name, cmd.args, SPLICING_SHELLS).slice(1);
 }
 
-function passesThrough(cmd: Unwrapped): boolean {
+/** Whether the command writes what is piped into it: `tee`, or `cat` reading stdin. */
+export function passesThrough(cmd: Unwrapped): boolean {
   if (cmd.name === "tee") return true;
   if (cmd.name !== "cat") return false;
   const operands = catOperands(cmd.args.map((a) => a.value));

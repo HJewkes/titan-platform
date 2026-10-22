@@ -81,12 +81,12 @@ export function deliver(db: Db, deliveries: readonly (readonly [string, unknown]
 type ScenarioReconciler = ReturnType<typeof rig> & { service: ReturnType<typeof createReconciler> };
 
 /**
- * The real reconciler and its real observe over the reconciler rig's pool, answering whatever `state` holds. TP-3431 builds
- * the production observe port; this one closes over the ruleset read, which the service does not thread yet.
+ * The real reconciler, its real observe and guard over the reconciler rig's pool, answering whatever `state` holds. The rig
+ * reads no gates, so this observe closes over the ruleset read the gates would carry.
  */
 export function scenarioReconciler(state: { snapshot: BackstopSnapshot; rulesets: RulesetList }): ScenarioReconciler {
-  const observe = createObserve({ guard: { confirmHead: () => ({ kind: "confirmed" }), confirmTip: () => ({ kind: "confirmed" }) }, now: () => Date.parse("2027-01-15T08:00:00Z") });
-  const r = rig({ observe: (repo, snapshot, cursor) => observe(repo, snapshot, cursor, state.rulesets) });
+  const observe = createObserve({ now: () => Date.parse("2027-01-15T08:00:00Z") });
+  const r = rig({ observe: (repo, snapshot, cursor, _rulesets, guard) => observe(repo, snapshot, cursor, state.rulesets, guard) });
   r.github.snapshot = () => state.snapshot;
   return { ...r, service: createReconciler({ repos: [REPO], fullEvery: 3 }, r.deps) };
 }

@@ -1,5 +1,5 @@
 import type { Logger } from "@titan-design/daemon";
-import { POOL_PRIORITY, isPoolUnavailable, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
+import { POOL_PRIORITY, isPoolUnavailable, type Ancestry, type BackstopRequest, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolAnswer, type PoolStateStore, type RulesetList } from "@titan-design/github";
 import type { Db } from "@titan-design/store-sqlite";
 import { hasBotIntent, markNotFactory } from "../bot-intent.js";
 import { appendEvent, type NewEvent } from "../event-log/event-log.js";
@@ -8,6 +8,8 @@ import type { PassStamp, SourcesReader } from "../github-sources/mode.js";
 import type { Sweep } from "../sweep.js";
 import type { ReconcilerConfig } from "./config.js";
 import { sqliteReconcilerCursor, type ReconcilerCursorStore, type RepoCursor } from "./cursor.js";
+import { guardVerdicts, type GuardVerdictDeps } from "./guard-verdicts.js";
+import type { HeadTipGuard } from "./observe.js";
 import { botActions, unloggedActions } from "./unlogged.js";
 
 /** With no cursor, `main` and `done` are read this far back. */
@@ -18,15 +20,21 @@ const BRANCH = "main";
 interface GateRead {
   changed: boolean;
   etags: Record<string, string | null>;
+  /** The ruleset list, present only when it changed and was readable; observe diffs it against the cursor. */
+  rulesets?: RulesetList;
 }
 
 /** Every GitHub read the reconciler makes is one of these, sent only through the bot's pool. */
-export type BackstopCall = { kind: "gates"; repo: string; etags: Record<string, string | null> } | { kind: "snapshot"; request: BackstopRequest };
+export type BackstopCall =
+  | { kind: "gates"; repo: string; etags: Record<string, string | null> }
+  | { kind: "snapshot"; request: BackstopRequest }
+  | { kind: "ancestry"; repo: string; base: string; head: string };
 
 /** The pool classifies status and headers; the service reads the one value its call asked for. */
 export interface BackstopAnswer extends PoolAnswer {
   gates?: GateRead;
   snapshot?: BackstopSnapshot;
+  ancestry?: Ancestry;
 }
 
 type WithoutSource<E> = E extends NewEvent ? Omit<E, "source" | "deliveryId"> : never;
@@ -48,7 +56,7 @@ export interface Observation {
 }
 
 /** S3's pure step (TP-3429): a snapshot and S2's ruleset read against the repo's cursor, as appends and the next cursor. */
-export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor, rulesets?: RulesetList) => Observation;
+export type Observe = (repo: string, snapshot: BackstopSnapshot, cursor: RepoCursor, rulesets: RulesetList | undefined, guard: HeadTipGuard) => Observation;
 
 /** What the bot side supplies (TP-3431 wires the real ones); no other GitHub handle reaches the service. */
 export interface BotPorts {
@@ -60,6 +68,8 @@ export interface BotPorts {
   poolState: PoolStateStore;
   /** False until S2 lands: every tick then snapshots every repo. */
   conditionalGates: boolean;
+  /** `git ls-remote`, TP-3097's second opinion on a head or tip; it spends no rate-limit point, so it is no pool claim. */
+  lsRemote: GuardVerdictDeps["lsRemote"];
   observe: Observe;
 }
 
@@ -97,37 +107,51 @@ export function createReconciler(config: Pick<ReconcilerConfig, "repos" | "fullE
   };
 }
 
+/** With no gate wired, every tick reads as a change. */
+const UNGATED: GateRead = { changed: true, etags: {} };
+
 type Claimed<K extends keyof BackstopAnswer> = { refused: true } | { refused: false; value: NonNullable<BackstopAnswer[K]> };
 
+/**
+ * The start pass reads the gates too, so its ETags vouch for the next tick. A read's ETags are kept only once its pass
+ * lands: a refused or failed snapshot leaves the old ones, and the next read answers the same change again.
+ */
 async function runUnit(repo: string, state: RepoState, fullEvery: number, deps: ReconcilerDeps): Promise<void> {
   if (closedPair(deps) !== undefined) return skip(repo, state, deps);
-  const changed = state.forced || !deps.conditionalGates || (await readGates(repo, state, deps));
-  if (changed === undefined) return skip(repo, state, deps);
-  if (!changed && !state.pending && state.quietTicks + 1 < fullEvery) {
+  const gates = deps.conditionalGates ? await readGates(repo, state, deps) : UNGATED;
+  if (gates === undefined) return skip(repo, state, deps);
+  if (!state.forced && !gates.changed && !state.pending && state.quietTicks + 1 < fullEvery) {
     granted(state);
-    state.quietTicks += 1;
+    Object.assign(state, { quietTicks: state.quietTicks + 1, etags: gates.etags });
     return;
   }
   const cursor = deps.cursor.read(repo);
   const snapshot = await claim(deps, "graphql", { kind: "snapshot", request: requestFor(repo, cursor, deps.now()) }, "snapshot");
   if (snapshot.refused) return skip(repo, state, deps);
   granted(state);
-  const observation = deps.observe(repo, snapshot.value, cursor);
+  const guard = await guardVerdicts(repo, snapshot.value, cursor, { db: deps.db, now: deps.now, lsRemote: deps.lsRemote, ancestry: (...args) => readAncestry(deps, ...args) });
+  const observation = deps.observe(repo, snapshot.value, cursor, gates.rulesets, guard);
   appendAll(repo, observation, deps);
   flagUnlogged(repo, snapshot.value, deps);
   deps.cursor.write(repo, observation.cursor);
-  Object.assign(state, { forced: false, quietTicks: 0, pending: hasPending(snapshot.value) });
+  Object.assign(state, { forced: false, quietTicks: 0, pending: hasPending(snapshot.value), etags: gates.etags });
 }
 
 /** Undefined when the pool refused the gates claim. */
-async function readGates(repo: string, state: RepoState, deps: ReconcilerDeps): Promise<boolean | undefined> {
+async function readGates(repo: string, state: RepoState, deps: ReconcilerDeps): Promise<GateRead | undefined> {
   const gates = await claim(deps, "core-read", { kind: "gates", repo, etags: state.etags }, "gates");
-  if (gates.refused) return undefined;
-  state.etags = gates.value.etags;
-  return gates.value.changed;
+  return gates.refused ? undefined : gates.value;
 }
 
-async function claim<K extends "gates" | "snapshot">(deps: ReconcilerDeps, callClass: CallClass, call: BackstopCall, field: K): Promise<Claimed<K>> {
+const REFUSED = { kind: "unavailable" } as const;
+
+/** The guard's compare, as a claim like any other read; a refused one leaves its head unconfirmed this pass. */
+async function readAncestry(deps: ReconcilerDeps, repo: string, base: string, head: string): Promise<Ancestry | typeof REFUSED> {
+  const answer = await claim(deps, "core-read", { kind: "ancestry", repo, base, head }, "ancestry");
+  return answer.refused ? REFUSED : answer.value;
+}
+
+async function claim<K extends "gates" | "snapshot" | "ancestry">(deps: ReconcilerDeps, callClass: CallClass, call: BackstopCall, field: K): Promise<Claimed<K>> {
   const answer = await deps.pool.run(POOL_PRIORITY.backstop, callClass, call);
   if (isPoolUnavailable(answer)) return { refused: true };
   const value = answer[field];

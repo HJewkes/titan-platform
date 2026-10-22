@@ -1,7 +1,7 @@
 import type { MergeMethod, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief } from "@titan-design/review-panel";
-import type { WorkflowContext } from "@titan-design/workflow";
-import { z } from "zod";
+import { codeStep, type WorkflowContext } from "@titan-design/workflow";
+import type { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
@@ -39,9 +39,6 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "stuck-behind", kind: "assisted" },
 ];
 
-const INPUT_VAR = "LAND_STEP_INPUT";
-const TEMPLATE = `{{${INPUT_VAR}}}`;
-
 export interface LandInput {
   repo: RepoSlug;
   pr: number;
@@ -54,6 +51,8 @@ export interface LandInput {
   updateBound?: UpdateBound;
   /** The unsettled-merge wait at a head across every round of the run; a caller that re-enters `land` passes the same hold each time. */
   settleHold?: SettleHold;
+  /** False stops `behind` instead of updating the branch, so the only head land merges is one the caller already saw. */
+  update?: false;
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
@@ -96,7 +95,7 @@ export type LandOutcome =
   | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr; /** Set only when this run's own merge write landed, never for a PR GitHub reports merged elsewhere. */ own?: true }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   /** On `sent-back`, `detail` is the owner's note for the implementer. */
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved" | "behind"; headSha: string; detail: string };
 
 interface LandState {
   round: number;
@@ -119,8 +118,6 @@ interface LandState {
   trustedOn: string;
   /** A head whose trust a retarget dropped, so its next decision re-reads the evidence against the new base. */
   retargeted?: string;
-  /** Heads this round's own update made from a stale green in a non-strict repo: each is the refresh its merge needs. */
-  refreshed: Set<string>;
   /** Settle waits cost no ci-wait cycle against the backstop; the settle bound ends them. */
   settles: number;
   hold: SettleHold;
@@ -137,14 +134,14 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const state: LandState = {
     round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, cycle: 0, updates: 0, retries: 0,
     bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0,
-    trusted: new Set(), trustedBy: "human", trustedOn: rules.base, refreshed: new Set(),
+    trusted: new Set(), trustedBy: "human", trustedOn: rules.base,
   };
   for (;;) {
     if (state.cycle - state.settles >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
     if (await rebased(ctx, input, ci, state)) continue;
     if (ci.verdict !== "behind" && retryLanded(state.bound)) restartUpdates(state.bound);
-    const settled = landsAsIs(ci, state) ? { ...ci, verdict: "green" as const } : ci;
+    const settled = landsAsIs(ci) ? { ...ci, verdict: "green" as const } : ci;
     const next = settled.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, settled, state, options);
     if (next) return next;
   }
@@ -167,21 +164,18 @@ function roundId(name: string, round: number, n?: number): string {
 }
 
 /**
- * A repo that does not require up-to-date heads treats a stale green as green until the merge is approved, then
- * refreshes the approved head once against the base it will merge into. The refresh belongs to the head it made, not
- * to the run's update count, so a later head is refreshed again; a base that moves after the refresh does not loop it.
+ * A repo that does not require up-to-date heads merges a stale green as it stands, as GitHub would. A refresh before
+ * the merge restarted CI, and a base that moved during that CI again sent the next round's head back for another
+ * (tp#2054 chased main through three green heads). What the merge brings together is judged by main's own CI after it.
  */
-function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
-  return ci.baseMoved === true && (!state.trusted.has(ci.headSha) || state.refreshed.has(ci.headSha));
+function landsAsIs(ci: CiSnapshot): boolean {
+  return ci.baseMoved === true;
 }
 
-/**
- * A strict repo's update spends the bound shared by every round. A non-strict repo's pre-merge refresh stays out of it:
- * `refreshed` lets each approved head refresh once, so that path cannot loop and never reaches stuck-behind.
- */
+/** Only a strict repo reads a head behind here, so every update spends the bound shared by every round. */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
-  const refresh = ci.baseMoved === true;
-  const spent = !refresh && budgetSpent(state.bound, ci.readAt);
+  if (input.update === false) return stopped("behind", ci.headSha, `the base moved past head ${ci.headSha}; it needs a merge-up, and this run may not update the branch`);
+  const spent = budgetSpent(state.bound, ci.readAt);
   const retrying = spent && retryBeforeGate(ctx, state.bound);
   if (retrying) await backoff(ctx, state);
   else if (spent) {
@@ -190,8 +184,8 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   if (retrying) recordRetry(state.bound, ci.headSha);
-  else if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
-  return afterUpdate(ci, update, state, refresh);
+  else recordUpdate(state.bound, ci.headSha, update.at);
+  return afterUpdate(ci, update, state);
 }
 
 async function askStuckBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
@@ -221,11 +215,10 @@ async function backoff(ctx: WorkflowContext, state: LandState): Promise<void> {
 }
 
 /** What follows any update, a retry included: the stops, and the trust a head built on an approved one inherits. */
-function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>, state: LandState, refresh: boolean): LandOutcome | undefined {
+function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>, state: LandState): LandOutcome | undefined {
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
-  if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
 }
 
@@ -329,10 +322,19 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
       { repo: input.repo, baseRef: state.rules.base, ...wait },
       SettleResult,
     );
-  const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
+  const decision = gatedOnRecord(ctx) ? decided : await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, (by) => trust(state, ci.headSha, by, base));
+}
+
+/**
+ * A record that goes from its gated decision straight to the ask was made before that gate waited at its head (a freeze
+ * or missing facts, TP-3734), so a replay asks as it did.
+ */
+function gatedOnRecord(ctx: WorkflowContext): boolean {
+  const next = ctx.historyNext();
+  return next !== undefined && !next.startsWith("merge-settle");
 }
 
 /** The recorded decision, not a fresh `decide`, drives the branch: a replay must not flip a gate to an allow. */
@@ -363,7 +365,6 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 }
 
 /** Code steps take their input as JSON and answer with one evidence record whose `result` the workflow reads. */
-export async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
-  const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
-  return done.data!.result;
+export function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
+  return codeStep(ctx, stepId, input, result);
 }

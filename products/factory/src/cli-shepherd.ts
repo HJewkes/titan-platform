@@ -56,7 +56,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 type VerbOf = (spec: string, description: string) => Command;
 
 function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
-  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
     .option("--base <name>", "the PR's base branch; with --head, Shepherd classes the PR's files from local git")
@@ -143,7 +143,9 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
-  return { ...parsed, branch, head, base, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
+  const registrant = io.env.AGENT_CHAT_NAME || undefined;
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {

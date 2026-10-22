@@ -28,6 +28,11 @@ describe("the documented LAN unit", () => {
     expect(documentedUnit()).not.toMatch(/OWNER_WRITES/);
   });
 
+  it("names the story origin's port, which the firewall step opens on the tailnet", () => {
+    expect(documentedUnit()).toMatch(/^Environment=TITAN_CONSOLE_STORY_PORT=7501$/m);
+    expect(readFileSync(DOC, "utf8")).toContain("sudo ufw allow in on tailscale0 to <tailnet-ip> port 7501 proto tcp");
+  });
+
   it("retries a failed bind forever", () => {
     expect(documentedUnit()).toMatch(/^StartLimitIntervalSec=0$/m);
   });

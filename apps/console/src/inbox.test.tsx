@@ -307,6 +307,15 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
   });
 
+  it("shows the run's live next state under a landed outcome", async () => {
+    const landed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved", next: { state: "merged", detail: "example/repo#12 merged as 9999999" } }));
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": landed });
+    await tapGate();
+    await screen.findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await screen.findByTestId("inbox-confirm-next")).textContent).toBe("Now: example/repo#12 merged as 9999999");
+  });
+
   it("shows a moved head as a warning naming the new head", async () => {
     const moved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "moved", currentHead: "9".repeat(40) }, message: "PR moved to 9999999, read again" }));
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": moved });
@@ -376,6 +385,20 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.getByText("Release the g10-review hold on example/repo#14 at 0b7e2c1; no reviewer MERGE is recorded at this head")).toBeTruthy();
     expect(screen.getByText("head 0b7e2c1, matches the live head, read 12 s ago")).toBeTruthy();
     expect(screen.queryByText(/^Gate /)).toBeNull();
+  });
+
+  it("taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed", async () => {
+    const op = item("op-1", { sources: [{ system: "deposit", ref: "fixture-agent/op-1" }], kind: "do", summary: "Hand-merge example/repo#16", action: { kind: "owner-op", op: { kind: "merge-at-head", repo: "example/repo", pr: 16, headSha: HEAD } } });
+    const readBack = { repo: "example/repo", pr: 16, title: "tidy the fixtures", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "MRG-OR: gate", proposedBy: "fixture-agent", proposal: "Hand-merge example/repo#16", effect: "Merge example/repo#16 at 0b7e2c1 through a land run, once its required checks are green at this head" };
+    const accepted = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "accepted", runId: "land-1" }, message: "Merge queued: land run land-1 merges at this head once its checks are green" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-1", action: op.action, readBack })), "inbox.act": accepted });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-1")).getByText("Merge at head"));
+    expect((await screen.findByTestId("inbox-readback-proposal")).textContent).toBe("Proposed by fixture-agent: Hand-merge example/repo#16");
+    expect(screen.getByText("Into main; GitHub reads it clean. Authority MRG-OR: gate")).toBeTruthy();
+    fireEvent.click(confirmButton());
+    const outcome = await screen.findByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Merge queued: land run land-1");
+    expect(outcome.className).toContain("success");
   });
 
   it("names the gate on a gate read-back and gives it no confirm label", async () => {

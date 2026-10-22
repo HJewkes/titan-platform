@@ -16,7 +16,7 @@ import { coordinatorFilePath } from "./config-store/materialize.js";
 import { closeOnSignal, createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fileDeposit } from "./inbox.js";
 import { PAGE_FILE } from "./paths.js";
-import { SELF_UPDATE_USAGE, selfUpdateCli } from "./self-update/cli.js";
+import { SELF_UPDATE_USAGE, selfUpdateArgs, selfUpdateVerb } from "./self-update/cli.js";
 
 const USAGE = `usage: titan-console                    serve the console
        titan-console login-link         print a one-time, ten-minute LAN login link
@@ -93,6 +93,7 @@ const roundsWithdraw = roundsWithdrawArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
 const subscription = subscriptionArgs(argv);
 const configVerb = configArgs(argv);
+const selfUpdateVerbArgs = selfUpdateArgs(argv);
 if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
@@ -102,7 +103,7 @@ else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImpo
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);
-else if (args === "self-update") process.exitCode = await selfUpdateCli(resolveConfig());
+else if (selfUpdateVerbArgs !== null) process.exitCode = await selfUpdateVerb(resolveConfig, selfUpdateVerbArgs);
 else if (args === "--help" || args === "help") console.log(USAGE);
 else {
   console.error(USAGE);

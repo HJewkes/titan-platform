@@ -1,57 +1,58 @@
-import type { RestartRule, RoutedStepInput, StepRoute } from "@titan-design/workflow";
+import { arStepHandlers, arStepId, type ArPorts, type ArStepHandler } from "@titan-design/autoresearch";
+import type { RoutedStepInput, StepRoute, StepUsage } from "@titan-design/workflow";
 import { z } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
-import { arStepId, type ArDispatchStep } from "./manifest.js";
-import type { ArPorts } from "./ports.js";
-import { IdeaSchema } from "./schemas.js";
-import type { Digest } from "./digest.js";
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** Each route reads its input as JSON and answers under `result`, wrapped as factory evidence. */
-function arRoute<I>(name: ArDispatchStep, ports: ArPorts, onRestart: RestartRule, schema: z.ZodType<I>, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
-  const match = arStepId(name);
-  const run = async (step: RoutedStepInput) => {
-    try {
-      const result = await fn(schema.parse(JSON.parse(step.prompt)), step.signal);
-      return { ok: true as const, output: JSON.stringify(evidenceRecord(`autoresearch.${name}`, step, new Date(ports.now()).toISOString(), { result })) };
-    } catch (error) {
-      return { ok: false as const, error: redactForEvidence(messageOf(error)), retryable: false };
-    }
-  };
-  return { match, onRestart, runner: { run } };
+/**
+ * Port error codes a later attempt can clear: a tree is live only until its agent exits. Every other code, a
+ * frozen-file drift or a missing pin among them, needs a person, so a retry would only repeat it.
+ */
+const RETRYABLE_CODES: readonly string[] = ["tree-live"];
+const retryableOf = (message: string): boolean => RETRYABLE_CODES.some((code) => message.startsWith(`[${code}] `));
+
+interface PortSpend {
+  usd?: unknown;
+  usage?: { usd: number; cacheReadTokens?: number; cacheWrite5mTokens?: number; cacheWrite1hTokens?: number };
 }
 
-const text = z.string();
-const IdeaInput = z.object({ idea: IdeaSchema, tree: text, base: text });
-const RunInput = z.object({ runId: text });
-const Inputs = {
-  pin: RunInput.extend({ pin: text }),
-  eval: z.object({ tree: text, seed: text, key: text }),
-  plan: RunInput.extend({ round: z.number(), digest: z.custom<Digest>(), violations: z.array(text) }),
-  alloc: RunInput.extend({ ideaId: text, base: text }),
-  implement: IdeaInput.extend({ brief: text }),
-  l0: IdeaInput.extend({ head: text }),
-  l1: IdeaInput.extend({ rung: text }),
-  ratchet: z.object({ tree: text, ratchetRef: text, ratchetPrefix: text, from: text, to: text }),
-  release: z.object({ tree: text }),
-};
+/** A dispatch's own `usage` wins; an eval or micro run reports only the model dollars it spent as `usd`. */
+function usageOf(result: object): StepUsage | undefined {
+  const { usd, usage } = result as PortSpend;
+  if (usage) {
+    const { usd: costUsd, cacheReadTokens, cacheWrite5mTokens, cacheWrite1hTokens } = usage;
+    const reported = Object.entries({ cacheReadTokens, cacheWrite5mTokens, cacheWrite1hTokens }).filter(([, tokens]) => tokens !== undefined);
+    return { costUsd, ...Object.fromEntries(reported) };
+  }
+  return typeof usd === "number" ? { costUsd: usd } : undefined;
+}
 
-/**
- * Every step but the ratchet only reads, or writes inside its own idea tree, so a restart repeats it.
- * A ratchet push cut off mid-way may have moved the remote, so a person decides.
- */
+/** G12: the ratchet's evidence names the move it made, not only the head it reached. */
+function moveOf(step: RoutedStepInput, input: unknown) {
+  const { round, ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } = z.record(z.string(), z.unknown()).parse(input);
+  return { move: { run: step.runId, round, idea: ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } };
+}
+
+/** Each route reads its input as JSON and answers under `result`, wrapped as factory evidence. */
+function arRoute(handler: ArStepHandler, ports: ArPorts): StepRoute {
+  const run = async (step: RoutedStepInput) => {
+    try {
+      const input: unknown = JSON.parse(step.prompt);
+      const result = await handler.run(input, step.signal, { firstStartedAt: step.firstStartedAt });
+      const body = { startedAt: step.firstStartedAt, restarts: step.restarts, result, ...(handler.name === "ratchet" ? moveOf(step, input) : {}) };
+      const output = JSON.stringify(evidenceRecord(`autoresearch.${handler.name}`, step, new Date(ports.now()).toISOString(), body));
+      const usage = usageOf(result);
+      return { ok: true as const, output, ...(usage ? { usage } : {}) };
+    } catch (error) {
+      const message = messageOf(error);
+      return { ok: false as const, error: redactForEvidence(message), retryable: retryableOf(message) };
+    }
+  };
+  return { match: arStepId(handler.name), onRestart: handler.onRestart, runner: { run } };
+}
+
 export function arRoutes(ports: ArPorts): StepRoute[] {
-  return [
-    arRoute("pin", ports, "repeat", Inputs.pin, (input, signal) => ports.pin(input, signal)),
-    arRoute("eval", ports, "repeat", Inputs.eval, (input, signal) => ports.evalSeed(input, signal)),
-    arRoute("plan", ports, "repeat", Inputs.plan, async (input, signal) => ({ ops: await ports.plan(input, signal) })),
-    arRoute("alloc", ports, "repeat", Inputs.alloc, (input, signal) => ports.allocTree(input, signal)),
-    arRoute("implement", ports, "repeat", Inputs.implement, (input, signal) => ports.implement(input, signal)),
-    arRoute("l0", ports, "repeat", Inputs.l0, (input, signal) => ports.staticCheck(input, signal)),
-    arRoute("l1", ports, "repeat", Inputs.l1, (input, signal) => ports.micro(input, signal)),
-    arRoute("ratchet", ports, "park", Inputs.ratchet, (input, signal) => ports.ratchet(input, signal)),
-    arRoute("release", ports, "repeat", Inputs.release, async (input, signal) => (await ports.releaseTree(input, signal), { released: input.tree })),
-  ];
+  return arStepHandlers(ports).map((handler) => arRoute(handler, ports));
 }

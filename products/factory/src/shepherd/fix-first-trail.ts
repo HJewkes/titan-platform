@@ -6,7 +6,12 @@ export interface FixFirstEntry {
   headSha: string;
   text: string;
   defectClass?: string;
+  /** A fix-proof NO_REPRO that a record from before TP-3900 counted here; no reviewer said FIX_FIRST at it. */
+  noRepro?: true;
 }
+
+/** True when some reviewer, not the fix-proof, said FIX_FIRST somewhere in the trail. */
+export const hasReviewerFixFirst = (trail: readonly FixFirstEntry[]): boolean => trail.some((entry) => entry.noRepro !== true);
 
 /** A run's FIX_FIRSTs, oldest first; `countRound` builds it as verdicts replay, so a restart rebuilds it without a step of its own. */
 export interface FixFirstTrail {
@@ -15,7 +20,7 @@ export interface FixFirstTrail {
   convergedAt?: string;
 }
 
-export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional() });
+export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional(), noRepro: z.literal(true).optional() });
 
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
 

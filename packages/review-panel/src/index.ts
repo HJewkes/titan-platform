@@ -22,6 +22,7 @@ export {
   DEFAULT_SHAPE_ROLES,
   DEFAULT_SONNET_FOR,
   planPanel,
+  UninstalledProfileError,
 } from "./plan.js";
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {

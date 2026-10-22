@@ -30,6 +30,8 @@ export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true
 
 const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review", "R4/fresh-reviewer", "D7/no-verdict-diagnosis"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
+/** The rule a TP-3796 never-verdict run and a TP-3910 repeated no-verdict both take to the diagnosis planner. */
+export const DIAGNOSIS_RULE: AutoPassRule = "D7/no-verdict-diagnosis";
 
 const AUTO_PASS_STEP = "sh-auto-pass";
 export const AUTO_PASS_STEPS: readonly StepDeclaration[] = [{ id: AUTO_PASS_STEP, kind: "dispatch" }];
@@ -59,7 +61,7 @@ const RULE_WORDS: Record<AutoPassRule, string> = {
   "D7/seat-notice": "the seat held Shepherd's own MERGE past its rounds, so the seat hears instead of the owner",
   "D8/convergence-review": "FIX_FIRST rounds did not converge, so one fresh convergence reviewer judges the trail; its FIX_FIRST goes to the planner, never to you",
   "R4/fresh-reviewer": "no reviewer MERGE stood at this head, so a fresh reviewer goes instead of asking the owner to merge it",
-  "D7/no-verdict-diagnosis": "no review round returned an adversary verdict, so a planner diagnoses why the reviews fail instead of a fourth review or the owner",
+  "D7/no-verdict-diagnosis": "no review round returned an adversary verdict, or a round repeated the last one's no-verdict at this head, so a planner diagnoses why the reviews fail instead of another review or the owner",
 };
 
 const autoPassMarker = (rule: AutoPassRule, headSha: string): string => `<!-- shepherd-auto-pass:${rule}:${headSha} -->`;
@@ -92,8 +94,11 @@ export const autoPassRoute = (port: GitHubPort, now: () => number): StepRoute =>
 
 /** One record per rule and head, so a replay returns the recorded pass and a second pass at the same head posts nothing new. */
 export function recordAutoPass(ctx: WorkflowContext, input: AutoPassInput): Promise<AutoPassRecord> {
-  return step(ctx, `${AUTO_PASS_STEP}:${input.rule.replace("/", "-")}:${input.headSha}`, input, AutoPassResult);
+  return step(ctx, autoPassStepId(input.rule, input.headSha), input, AutoPassResult);
 }
+
+/** The step one rule's pass at one head records under. */
+export const autoPassStepId = (rule: AutoPassRule, headSha: string): string => `${AUTO_PASS_STEP}:${rule.replace("/", "-")}:${headSha}`;
 
 /** Owner gates a run passed on a demotion rule instead of opening, as the watch row and the owner digest show them. */
 export const AutoPassedSchema = z.array(z.object({ rule: z.enum(AUTO_PASS_RULES), headSha: z.string(), detail: z.string(), at: z.string() }));

@@ -32,8 +32,10 @@ TP-3506 is the CPU-margin form of the same mistake.
 - **CPU time is load-resistant, not load-proof.** CI thread CPU runs about four times local
   CPU: the `secret inside cmd-subst` sweep row takes 47 ms locally and took 250.5 and 258.9 ms on
   CI. SMT siblings, cache contention and cold JIT all count as CPU. That is TP-3506, a
-  250 ms budget with no margin. It is a budget-sizing problem, not a timeout one, and it stays
-  open on its own.
+  250 ms budget with no margin. It is a budget-sizing problem, not a timeout one. TP-3898 sized
+  `withinParseBudget`'s default from those CI readings (259.4 ms at most) to 500 ms. The row's
+  local cost had grown only from about 49 to 60 ms since the sweep landed, so this was no
+  regression.
 - **A wall-clock ratio is skewed by preemption.** The scheduler preempts a long run more often
   than a short one. That was TP-3612. The ratio checks now time thread CPU.
 - **The mutants judge.** fix-proof runs each sidecar's test file with `--testTimeout 30000`,

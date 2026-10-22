@@ -18,8 +18,11 @@ interface ParseBudgetResult {
   problems: string[];
 }
 
-/** Well under Claude Code's 5 s hook timeout, past which a command runs unchecked. */
-const DEFAULT_PARSE_BUDGET_MS = 250;
+/**
+ * A test bound, not a product one: the hook's own limit is its 3.5 s deadline. CI thread CPU runs four to five times
+ * local, and the slowest sweep row reached 259.4 ms there, so this allows about twice that (TP-3898).
+ */
+const DEFAULT_PARSE_BUDGET_MS = 500;
 
 const DENY_MARK = '"permissionDecision":"deny"';
 

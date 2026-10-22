@@ -1,11 +1,14 @@
 import { createContext, useContext, useMemo, type MouseEvent, type ReactNode } from "react";
 import { HStack, Typography, VStack } from "@titan-design/react-ui";
 import type { Manifest, Question } from "../../server/round-schema.js";
+import type { RoundLive } from "../../server/storybook-build.js";
 import { FrameFigure } from "./FrameFeedback.js";
 import { optionKey } from "./frame-link.js";
 import { SequenceFigure } from "./FrameSequence.js";
+import { LiveFrame } from "./LiveFrame.js";
+import { isShipQuestion, liveEntries, type LiveEntry } from "./live-frame.js";
 import { groupProgressStills, type FrameItem } from "./progress-stills-heuristic.js";
-import { VariantFrame, pinnableFrame, type FrameMedia } from "./TrueSize.js";
+import { VariantFrame, pinnableFrame, playsMedia, type FrameMedia } from "./TrueSize.js";
 
 /** What a question needs to draw the frames it names: the round, each variant's label and sizing, and which keys have an image. */
 interface RoundFrames {
@@ -15,6 +18,8 @@ interface RoundFrames {
   loadable: ReadonlySet<string>;
   /** Image variants' keys, the only ones a motion's stills are guessed from. */
   images: ReadonlySet<string>;
+  /** Story variants' live frames, by key; empty when the round carries no build. */
+  live: ReadonlyMap<string, LiveEntry>;
 }
 
 const RoundFramesContext = createContext<RoundFrames | null>(null);
@@ -24,17 +29,19 @@ interface RoundFramesProviderProps {
   manifest: Manifest;
   /** Keys `frames/frames.json` lists, where the page has read it; an image variant loads either way. */
   indexed?: ReadonlySet<string>;
+  /** `rounds.get`'s live field, where the round carries a Storybook build. */
+  live?: RoundLive;
   children: ReactNode;
 }
 
 /** Lets every question of one round draw its own frames; outside a provider a question draws none. */
-export function RoundFramesProvider({ roundId, manifest, indexed, children }: RoundFramesProviderProps): ReactNode {
+export function RoundFramesProvider({ roundId, manifest, indexed, live, children }: RoundFramesProviderProps): ReactNode {
   const value = useMemo(() => {
     const labels = new Map(manifest.variants.map((variant) => [variant.key, variant.label]));
     const media = new Map(manifest.variants.map(({ key, frameReference, scale, clip, motion, audio, transcript, durationMs }) => [key, { frameReference, scale, clip, motion, audio, transcript, durationMs }]));
     const images = manifest.variants.filter((variant) => variant.image !== undefined).map((variant) => variant.key);
-    return { roundId, labels, media, images: new Set(images), loadable: new Set([...images, ...(indexed ?? [])]) };
-  }, [roundId, manifest, indexed]);
+    return { roundId, labels, media, images: new Set(images), loadable: new Set([...images, ...(indexed ?? [])]), live: liveEntries(manifest, live) };
+  }, [roundId, manifest, indexed, live]);
   return <RoundFramesContext.Provider value={value}>{children}</RoundFramesContext.Provider>;
 }
 
@@ -96,10 +103,26 @@ interface RoundVariantFrameProps {
   missing: string;
 }
 
-/** A round's frame drawn as its variant asks: true size, a scale question's candidates, or a plain PNG. Nothing outside a provider. */
+/** A frame shows its live story only where it would otherwise be a plain PNG: a clip, a sound, a true-size or a scale frame keeps its own view. */
+const liveEntry = (frames: RoundFrames, key: string): LiveEntry | undefined => {
+  const media = frames.media.get(key);
+  return playsMedia(media) || media?.scale !== undefined || media?.frameReference !== undefined ? undefined : frames.live.get(key);
+};
+
+/** A plain frame's live story, its PNG as placeholder and fallback; null outside a provider or for a frame with no story. */
+export function useLiveFrame(key: string, alt: string): ReactNode {
+  const frames = useContext(RoundFramesContext);
+  const entry = frames && liveEntry(frames, key);
+  if (!frames || !entry) return null;
+  return <LiveFrame roundId={frames.roundId} frameKey={key} alt={alt} loadable={frames.loadable.has(key)} {...entry} />;
+}
+
+/** A round's frame drawn as its variant asks: true size, a scale question's candidates, its live story, or a plain PNG. Nothing outside a provider. */
 export function RoundVariantFrame(props: RoundVariantFrameProps): ReactNode {
   const frames = useContext(RoundFramesContext);
+  const live = useLiveFrame(props.frameKey, props.alt);
   if (frames === null) return null;
+  if (live !== null) return live;
   return <VariantFrame {...props} roundId={frames.roundId} media={frames.media.get(props.frameKey)} candidateLoadable={(key) => frames.loadable.has(key)} />;
 }
 
@@ -113,8 +136,6 @@ export function useOptionFrame(question: Question): (option: string) => string |
   const frames = useContext(RoundFramesContext);
   return (option) => (frames ? optionFrame(question, option, frames.labels) : undefined);
 }
-
-const isShip = (question: Question): boolean => question.decision === "ship" || (question.kind === "pick-one" && question.merge !== undefined);
 
 /** Hash routing owns `location.hash`, so an in-page link scrolls instead of navigating. */
 function InPageLink({ target, children }: { target: string; children: ReactNode }): ReactNode {
@@ -183,7 +204,7 @@ export function QuestionFrameLinks({ question }: { question: Question }): ReactN
   const labelled = question.frames.map((key) => ({ key, label: frames.labels.get(key) ?? key }));
   return (
     <VStack gap={1}>
-      {isShip(question) ? <Typography variant="caption">{`Ships: ${labelled.map(({ label }) => label).join(", ")}`}</Typography> : null}
+      {isShipQuestion(question) ? <Typography variant="caption">{`Ships: ${labelled.map(({ label }) => label).join(", ")}`}</Typography> : null}
       <HStack gap={2} align="center" wrap>
         <Typography variant="caption" color="secondary">Frames:</Typography>
         {labelled.map(({ key, label }) => (
