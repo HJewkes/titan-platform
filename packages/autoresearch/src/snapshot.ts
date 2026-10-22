@@ -9,8 +9,9 @@ import { runKey, runPinOf } from "./ladder.js";
 import { arStepId } from "./manifest.js";
 import {
   CadenceTriggerSchema,
+  RATCHET_MOVED,
   SnapshotResultSchema,
-  SyncResultSchema,
+  SyncStepSchema,
   type CadenceRound,
   type CadenceTrigger,
   type Pinned,
@@ -152,14 +153,24 @@ function gateText(input: SyncRequest, result: SyncResult) {
   return { prompt, brief: { summary, evidenceRef: `${input.ratchetRef}@${input.head}: ${named}`.slice(0, 500) } };
 }
 
+type Failed = { failed: string };
+
+/** A failed sync step is a failure like a port that threw, except a moved ratchet, which still stops the run for a person. */
+async function syncStep(run: SnapshotRun, stepId: string, input: SyncRequest): Promise<SyncResult | Failed> {
+  return step(run.ctx, stepId, input, SyncStepSchema).catch((error: unknown) => {
+    if (error instanceof StepFailedError && !error.reason.startsWith(RATCHET_MOVED)) return { failed: error.reason };
+    throw error;
+  });
+}
+
 /** A conflict or a frozen change holds the run at a gate until the owner names a merge, which goes back through the sync port. */
-async function settledSync(run: SnapshotRun, stepId: string, input: SyncRequest): Promise<SyncResult> {
-  let result = await step(run.ctx, stepId, input, SyncResultSchema);
-  while (holds(result) && input.round !== "end") {
+async function settledSync(run: SnapshotRun, stepId: string, input: SyncRequest): Promise<SyncResult | Failed> {
+  let result = await syncStep(run, stepId, input);
+  while (!("failed" in result) && holds(result) && input.round !== "end") {
     const { prompt, brief } = gateText(input, result);
     const answer = await run.ctx.assisted(`${arStepId("sync-gate")}:${input.round}`, prompt, { schema: SyncGateAnswerSchema, brief });
     const { resolved } = SyncGateAnswerSchema.parse(answer.data);
-    result = await step(run.ctx, `${stepId}.resolved`, { ...input, resolved, allowedFrozen: result.frozen ?? [] }, SyncResultSchema);
+    result = await syncStep(run, `${stepId}.resolved`, { ...input, resolved, allowedFrozen: result.frozen ?? [] });
   }
   return result;
 }
@@ -189,11 +200,20 @@ async function applySync<S extends Ledger>(run: SnapshotRun, state: S, round: Ca
   return { ...state, snapshot, best: { head, runs }, spend: { ...state.spend, modelUsd } };
 }
 
-/** Run at a round's start while a snapshot is open, and once at the end; an open PR changes nothing. */
+export const FailedSyncSchema = z.object({ pr: z.number().int().positive(), error: z.string() });
+
+/**
+ * Run at a round's start while a snapshot is open, and once at the end; an open PR changes nothing. A failed sync is
+ * recorded and leaves the snapshot open, so the next round's sync retries it under its own id.
+ */
 export async function syncOpen<S extends Ledger>(run: SnapshotRun, state: S, round: CadenceRound): Promise<S> {
   const { open } = state.snapshot;
   if (!open) return state;
   const { ratchetRef, target, integrationTree: tree } = run.pinned;
+  const stepId = `${arStepId("sync")}:${round}`;
   const input = { ...runPinOf(run), round, pr: open.pr, branch: open.branch, head: state.best.head, ratchetRef, ratchetPrefix: target.ratchetPrefix, tree };
-  return applySync(run, state, round, await settledSync(run, `${arStepId("sync")}:${round}`, input));
+  const synced = await settledSync(run, stepId, input);
+  if (!("failed" in synced)) return applySync(run, state, round, synced);
+  await recorded(run.ctx, `${stepId}.failed`, FailedSyncSchema, () => ({ pr: open.pr, error: synced.failed }));
+  return state;
 }

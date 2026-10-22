@@ -227,6 +227,7 @@ const sync = z.object({
   treeChanged: z.boolean().optional(),
   gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
   runs: z.array(evalRun).optional(),
+  failed: z.string().optional(),
 });
 
 const settledRound = round.extend({
