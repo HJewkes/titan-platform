@@ -254,18 +254,21 @@ describe("cost model", () => {
 describe("canaries in a run", () => {
   it("does not count a near-miss canary reported as lost as a screen miss, so no redo is paid for", async () => {
     fx = fixture(WINS);
+    const quote = "lost the Reed Cup final";
+    let reported = 0;
     const lostCanary: Behave = (call, input) => {
       if (call.stage !== "screen") return undefined;
       const { judged, candidates } = verdictData("screen", input.prompt);
-      const id = /=== PASSAGE (\S+) \(CANARY\) ===/.exec(input.prompt)?.[1];
-      const quote = "lost the Reed Cup final";
-      const extra = id && input.prompt.includes(quote) ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
+      const id = [...input.prompt.matchAll(/^=== PASSAGE (\S+) \(.*\) ===\n([^=]*)/gm)].find((m) => m[2]!.includes(quote))?.[1];
+      const extra = id ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
+      reported += extra.length;
       return { ok: true, output: JSON.stringify({ judged, candidates: [...candidates, ...extra] }), usage: { costUsd: 0.01 } };
     };
 
     const judges = fakeJudges({ behave: lostCanary });
     const result = await ask(options({ concurrency: 1 }), host(judges.runnerFor));
 
+    expect(reported).toBeGreaterThan(0);
     expect(result.answer!.coverage.screen.canaries.misses).toBe(0);
     expect(screenCalls(judges.calls).every((c) => c.model === "haiku")).toBe(true);
   });
