@@ -131,6 +131,20 @@ Whisper, so the pass may keep it under Q-V9's vetted cap; it is off by default, 
 when the result is written and every target row passes, 1 when it is written but a target row is still red, 2 on
 usage or an input or judge config that does not parse. Run `explainer eval smoke --judge <judge.json>` first.
 
+`explainer rewrite measure <script.json...> --judge <judge.json> --out-dir <dir> [--samples 3] [--format spike|v1]
+[--rounds 1|2] [--speech-vet] [--max-usd <usd>] [--report-only <input:row>]` measures the pass over model noise: one
+run cannot tell a 1σ gain from a lucky draw. It runs the pass `--samples` times on each input, sample by sample, and
+scores each output with L0 as `eval l0` does (under `--speech-vet`, Q-V9 reads the vetter's verdicts). Under `<dir>/<input>/` it writes `before.l0.json` and, per sample, `s<k>.rewrite.json`,
+`s<k>.report.json` and `s<k>.l0.json`. `summarizeMeasure` then reports, per input and target row, the mean, the sample
+sd and n, whether the mean is in band and closer to it than before, and whether it is decided: further from the band
+edge than its one-sided 90% t interval. Per row it reports the mean over inputs, σ (one sample's sd pooled over the
+inputs) and the verdict under the revised done-when: every input closer, and the mean over inputs in band or within
+1σ of it. A `--report-only` cell still counts toward its row's mean, but its input need not move closer. Results go to
+`<dir>/measure.json` and `<dir>/table.md`. Each run prints one JSON line with its spend and the running total, and a
+last line gives the verdict. `--max-usd` stops before a run whose cost, estimated as the dearest run so far, would take
+the total past the cap. A run already in `<dir>` is reused and its spend counted (its L0 is re-scored, at no cost), so a stopped measure can be resumed.
+Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an

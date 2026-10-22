@@ -6,7 +6,8 @@ import { failureOf } from "./error-class.js";
 import { singleSeat } from "./held-repair.js";
 import { MAIN_WATCH_DB, MainWatchLedger, type WatchedSha } from "./main-watch-ledger.js";
 import { judgeMain, readMainRules, type MainRules } from "./main-verdict.js";
-import type { SeatBook } from "./seats.js";
+import { resolveEffectivePolicy } from "./policy.js";
+import { lookupSeat, type SeatBook } from "./seats.js";
 import type { ShepherdStore } from "./store.js";
 
 /** How often serve reads each watched repo's main; one listing per repo, plus one check-run read per unsettled sha. */
@@ -63,7 +64,11 @@ export class MainCiReads {
 export interface MainWatchPorts {
   /** The config's shepherd.hubSeat: told about a red merge no seat can be found for. */
   hubSeat(): string | undefined;
+  /** The config's shepherd.redSeat for `repo`: when set, every red event on it goes there, whichever seat owns the merge. */
+  redSeat?(repo: string): string | undefined;
   send(seat: string, text: string): Promise<void>;
+  /** The names `send` can reach now, by the send's own rule; absent, no red-event seat is checked. */
+  liveNames?(): Promise<ReadonlySet<string>>;
 }
 
 export interface MainWatchDeps {
@@ -87,8 +92,24 @@ interface MainWatchNote {
 export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts, stateDir: string, log: Logger): { tick: () => Promise<void>; close: () => void } {
   const ledger = MainWatchLedger.open(join(stateDir, MAIN_WATCH_DB));
   const deps: MainWatchDeps = { port: services.port, ledger, store: { byPr: (repo, pr) => services.store.get().byPr(repo, pr) }, seats: services.seats, ports, now: Date.now };
+  let alarmed = "";
+  let unread = false;
+  const alarmOnChange = async (repos: readonly string[]): Promise<void> => {
+    const alarms = await deadRedSeats(services.seats(), repos, ports).catch((error: unknown) => {
+      if (!unread) log.warn({ error: failureOf(error) }, "main CI watch skipped its dead-seat check: the agent-chat roster could not be read");
+      unread = true;
+    });
+    if (alarms === undefined) return;
+    unread = false;
+    const key = alarms.map((alarm) => `${alarm.seat}:${alarm.repos.join(",")}`).join("\n");
+    if (key === alarmed) return;
+    alarmed = key;
+    for (const alarm of alarms) log.error({ ...alarm }, `main CI watch ALARM: red events go to seat ${alarm.seat}, which no live agent-chat session holds`);
+  };
   const tick = async (): Promise<void> => {
-    for (const note of await sweepMain(deps, watchedRepos(services.seats()))) {
+    const repos = watchedRepos(services.seats());
+    await alarmOnChange(repos);
+    for (const note of await sweepMain(deps, repos)) {
       if (note.outcome === "sent") log.info({ ...note }, "main CI watch sent a red event");
       else log.warn({ ...note }, "main CI watch");
     }
@@ -99,6 +120,43 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
 /** Every seat's owned remotes, once each: the repos whose main a merge can land on outside a run. */
 function watchedRepos(book: SeatBook): string[] {
   return [...new Set(book.seats.flatMap((seat) => seat.remotes))];
+}
+
+/** A red-event seat no live session holds, with the repos whose red merges it is sent; none means it stands in as the hub seat. */
+interface DeadSeat {
+  seat: string;
+  repos: string[];
+}
+
+/**
+ * The seats `ownerSeat` sends each repo's red events to: a run registered now, through the seat its policy records,
+ * and a merge no seat can be mapped to. A branch-prefix seat is left out; it is chosen per PR from the whole book.
+ */
+async function redEventSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<Map<string, string[]>> {
+  const seats = new Map<string, string[]>();
+  const none = async () => undefined;
+  for (const repo of repos) {
+    for (const seat of new Set([await redRoute(ports, repo, registeredSeat(book, repo), none), await redRoute(ports, repo, undefined, none)])) {
+      if (seat !== undefined) seats.set(seat, [...(seats.get(seat) ?? []), repo]);
+    }
+  }
+  return seats;
+}
+
+/** The seat a run registered on `repo` now records, by registration's own policy; a denied repo registers none. */
+function registeredSeat(book: SeatBook, repo: string): string | undefined {
+  const lookup = lookupSeat(book, repo);
+  return lookup.kind === "denied" ? undefined : singleSeat(resolveEffectivePolicy(lookup).seat);
+}
+
+/**
+ * Every red-event seat with no live agent-chat session, so a send that can only fail is reported as a dead route
+ * rather than retried quietly each sweep. A roster that cannot be read throws, and never reads as every seat dead.
+ */
+export async function deadRedSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<DeadSeat[]> {
+  if (ports.liveNames === undefined) return [];
+  const live = await ports.liveNames();
+  return [...(await redEventSeats(book, repos, ports))].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
 }
 
 /**
@@ -191,15 +249,22 @@ export function prNumberOf(subject: string): number | undefined {
 }
 
 /**
- * A merge from a Shepherd run goes to the seat the run names, as its seat notices do. Any other merge goes to the seat
+ * A repo with a configured red seat sends every red event there. Otherwise a merge from a Shepherd run goes to the seat
+ * the run names, as its seat notices do. Any other merge goes to the seat
  * whose initials prefix the PR's agent branch (`agent-chat/tc-...` to a seat named `t...-c...`), else to the hub seat.
  */
 async function ownerSeat(deps: MainWatchDeps, repo: string, pr: number | undefined): Promise<string | undefined> {
   const registration = pr === undefined ? undefined : deps.store.byPr(repo, pr);
-  const runSeat = singleSeat(registration?.policy.seat);
-  if (runSeat !== undefined) return runSeat;
-  const branch = registration?.implementer ?? (pr === undefined ? undefined : await deps.port.getPr(repo, pr).then((read) => read.headRef, () => undefined));
-  return (branch === undefined ? undefined : seatByPrefix(deps.seats(), branch)) ?? deps.ports.hubSeat();
+  const prefixSeat = async () => {
+    const branch = registration?.implementer ?? (pr === undefined ? undefined : await deps.port.getPr(repo, pr).then((read) => read.headRef, () => undefined));
+    return branch === undefined ? undefined : seatByPrefix(deps.seats(), branch);
+  };
+  return redRoute(deps.ports, repo, singleSeat(registration?.policy.seat), prefixSeat);
+}
+
+/** The one order a red event's seat is picked in, for the send and the dead-seat alarm alike; the prefix seat is read only when needed. */
+async function redRoute(ports: MainWatchPorts, repo: string, runSeat: string | undefined, prefixSeat: () => Promise<string | undefined>): Promise<string | undefined> {
+  return ports.redSeat?.(repo) ?? runSeat ?? (await prefixSeat()) ?? ports.hubSeat();
 }
 
 const initials = (name: string): string => name.split("-").map((part) => part.charAt(0)).join("").toLowerCase();

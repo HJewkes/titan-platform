@@ -9,6 +9,7 @@ import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend } from "./pages/round-pager.test-helpers.js";
 
 const ROUND = "tally-motion-r1";
@@ -99,10 +100,10 @@ describe("a design round with a motion's progress stills", () => {
     const calls = await renderRound();
     await screen.findAllByRole("img");
 
-    fireEvent.click(within(viewer("count")).getByRole("button", { name: "Next step of count" }));
-    fireEvent.click(within(screen.getByTestId("frame-feedback-count-p0_5")).getByRole("button", { name: "Chosen" }));
+    fireEvent.click(getButton("Next step of count", viewer("count")));
+    fireEvent.click(getButton("Chosen", screen.getByTestId("frame-feedback-count-p0_5")));
 
-    expect(within(viewer("count")).getByRole("button", { name: "Step to progress 0.5, has feedback" })).toBeTruthy();
+    expect(getButton("Step to progress 0.5, has feedback", viewer("count"))).toBeTruthy();
     checkAndSend();
     await act(async () => screen.findByText("Answers sent"));
     expect(calls.find((call) => call.name === "rounds.submit")?.args).toMatchObject({ variants: [{ key: "count-p0_5", verdict: "chosen" }] });

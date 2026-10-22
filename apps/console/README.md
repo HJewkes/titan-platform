@@ -154,7 +154,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `GET /media/rounds/<id>/clip/<key>` | `rounds.clip`: the `.mp4` or `.webm` clip the round's variant `<key>` declares as `clip`, with HTTP byte ranges (`206`, `Accept-Ranges`, `Content-Range`; `416` past the end) so the page can seek. The client names a variant key, never a path. Refused with one fixed 404 for an unknown or unsafe id or key, a variant with no clip, an invalid round, a path leaving the round, a symlink at any component, or a file that is not regular |
 | `GET /media/rounds/<id>/audio/<key>` | `rounds.audio`: the `.wav`, `.mp3`, `.ogg` or `.m4a` sound the round's variant `<key>` declares as `audio`, with byte ranges, refused exactly as `rounds.clip` refuses. A blind-ab round never parses, so none of its takes is served |
 | `POST /rpc/rounds.reveal` | `{ id, manifestSha256, questionId }` in; `{ recommendation, recorded }` out: one question's withheld recommendation in an open `after-answer` round, so the owner can see it before answering (decision 513). An `owner-write`: the reveal is appended to the round's `revealed.json` sidecar (`recorded` is false when it was already there), and `rounds.get` keeps stripping. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, for a sent, withdrawn or `shown` round, an unknown question or one with no recommendation |
-| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general?, addressed?, followUps?, variants? }` in; an answer may carry `recommendationSeen: true` when it was given while a revealed recommendation showed, refused (65) unless `revealed.json` records that question's reveal; `{ status: "submitted", path, sha256, headSha, addressed?, followUps? }` or `{ status: "already-submitted" }` out. `followUps` names side questions the owner marked follow-up: they never block Ship, their ids go to a `follow-ups.json` sidecar, and each answered one is filed into the inbox spool as a `review` item keyed `round-follow-up` with the answer text and the round and PR (`followUps.filed[].item` is null where none was written); a later round of the unit does not ask for them to be addressed. `variants` carries the owner's feedback per frame, `{ key, verdict?, comment?, annotations? }`: a verdict of `chosen`, `rejected`, `maybe` or null, a comment of at most 2000 characters, and at most 12 pins in review-schema 0.3's `Annotation` shape, each id `<key>-<n>` and each note at most 500 characters. The server adds each frame's source and related questions, and a frame not sent is written undecided. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, an unknown or repeated frame key, a pin not numbered on its own frame or placed outside it, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 256 KiB. A Ship is refused while a frame of that PR holds a comment, a pin or a Rejected verdict, and a Send back takes a comment or pin on one of its own PR's frames as its note. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
+| `POST /rpc/rounds.submit` | `{ id, manifestSha256, headSha?, answers, general?, addressed?, followUps?, variants? }` in; an answer may carry `recommendationSeen: true` when it was given while a revealed recommendation showed, refused (65) unless `revealed.json` records that question's reveal; `{ status: "submitted", path, sha256, headSha, addressed?, followUps?, superseded? }` or `{ status: "already-submitted" }` out; `superseded` lists what became of each round the manifest's `supersedes` names (see "Withdrawing rounds"). `followUps` names side questions the owner marked follow-up: they never block Ship, their ids go to a `follow-ups.json` sidecar, and each answered one is filed into the inbox spool as a `review` item keyed `round-follow-up` with the answer text and the round and PR (`followUps.filed[].item` is null where none was written); a later round of the unit does not ask for them to be addressed. `variants` carries the owner's feedback per frame, `{ key, verdict?, comment?, annotations? }`: a verdict of `chosen`, `rejected`, `maybe` or null, a comment of at most 2000 characters, and at most 12 pins in review-schema 0.3's `Annotation` shape, each id `<key>-<n>` and each note at most 500 characters. The server adds each frame's source and related questions, and a frame not sent is written undecided. An `owner-write`: writes the round's `feedback.json` in the `feedback@1` shape once (`wx`, mode 0600), never overwriting. Refused (65) when `manifestSha256` is not the sha256 of `round.json` on disk, when a Ship pick on a merge-bound question lacks the head sha it names, for an unknown question id, an option the question does not offer, an unknown or repeated frame key, a pin not numbered on its own frame or placed outside it, a design round (a round with frames and no merge-bound question) without a valid `frames/frames.json`, or feedback over 256 KiB. A Ship is refused while a frame of that PR holds a comment, a pin or a Rejected verdict, and a Send back takes a comment or pin on one of its own PR's frames as its note. An unknown or unsafe id, symlinks included, is not found (66). It resolves no gate |
 | `POST /rpc/autoresearch.runs` | Every autoresearch run titan-factory holds: `[{ runId, target, phase, round, rounds, status, startedAt, completedAt, best, spend }]`, where `round` is the current round (0 before the first) and `rounds` the planned count, read from the factory on `TITAN_CONSOLE_FACTORY_PORT`. A factory that is down or refuses answers an error envelope, never an empty list. The factory side is provisional until its read model lands |
 | `POST /rpc/autoresearch.run` | `{ runId }` in; that run's `ArRunView` (`server/autoresearch-view.ts`): target and metric config, settings, baseline, best, rounds with their ladders, registries and cells. Each round carries `exempt: { bold?, followup? }`, the planner's `[EXEMPT]` reasons, read as `{}` when absent. A round may carry `planner?: { agent, sessionId?, mode?: "spawn" | "resume", usage?: { usd, cacheReadTokens?, cacheWrite5mTokens?, cacheWrite1hTokens?, retries } }`, the agent that planned it (C-256 S3e, TP-3954). The run may carry `stopReason?`, the engine's `ar-end` code or a thrown run's error code, and each idea `lineageDepth?`, its parent-chain length (C-256 S4c). Each ladder carries `implementer: { agent, sessionId?, resumedFrom?, mode?, account? }` (design gap G2), read as `null` when absent, and `l0.checks?: [{ name, ok, code?, ms? }]` (G6). Each outcome may carry `against: { sigma, pairs, locked?, case?, head?, bandWidth? }` (G7), `lane?`, `fork?: "exploit" | "explore"` (G3) and `usage?: { implementUsd, evalUsd, microUsd }` (G4); dead-end and bug rows may carry `ideaId?` and `round?` (TP-3867). These C-256 S3a fields are all optional, so a run recorded before S3a still parses. `target` may carry the adapter's `repo` (`owner/name`) and `ratchetPrefix`; with `repo` a kept idea's ratchet move links to its GitHub commits. `validator: { maxLooks, looks: [{ look, at, sha, aggregate: { metrics, gates }, provenance }] }` (design gap G17) is optional, and only the held-out validator panel reads it. Fields the console does not pin are stripped |
 | `POST /rpc/autoresearch.diff` | `{ runId, ideaId }` in; `{ stat: { files, insertions, deletions }, patch, truncated }`, the idea's diff with the patch capped by the factory |
@@ -558,6 +558,38 @@ never a side. Ship rounds keep their own layout.
 
 ![A/B question at 1440](docs/question-ab-1440.png)
 
+## Withdrawing rounds
+
+A withdrawn round has a `withdrawn.json` beside its `round.json`, written once; the rounds page
+stops listing it and `rounds.submit` refuses it. An answer outranks a withdrawal, so an answered
+round is never withdrawn. Every path below goes through `server/round-withdraw.ts`, and none is an
+`/rpc` command.
+
+```sh
+titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere|superseded-by:<id>> [--json]
+titan-console rounds sweep                       # dry run: what would be withdrawn, and why; writes nothing
+titan-console rounds sweep --apply               # withdraws everything the dry run lists
+titan-console rounds sweep --decisions <path>    # also scan that decisions file (default TITAN_CONSOLE_DECISIONS_FILE)
+titan-console rounds sweep --json                # one line: {applied, superseded, decisions, gaps}
+```
+
+- **Supersedes (automatic).** A round may list `supersedes: ["<round-id>", ...]` in its `round.json`,
+  the earlier rounds it replaces. It is the console's own field, lifted off before review-schema's
+  strict parse. When the round is imported, and again when it is answered, each named round that
+  is still open is withdrawn as `superseded-by:<id>`. An answered target is reported
+  `kept-answered`, an already withdrawn one `already-withdrawn`, and an id with no round behind it
+  `unknown`; none of them blocks the import. The import prints one `supersedes <id>: <outcome>`
+  line per target (`superseded` with `--json`), and `rounds.submit` returns the same list.
+- **Decisions (propose only).** `rounds sweep` also reads a decisions markdown file and lists each
+  open round a line names, as a whole id, together with the word `answered` or `resolved`, giving
+  that line and its number. Prose matching is brittle, and hiding a live ask is the worse failure,
+  so a dry run, the default, writes nothing. Only `--apply` withdraws a listed round, as
+  `answered-elsewhere`. The file comes from `--decisions` or `TITAN_CONSOLE_DECISIONS_FILE`, with no
+  default. With neither, the sweep runs the supersedes rule only. A file that cannot be read
+  refuses the whole sweep before anything is written.
+- **Idempotent.** The sweep runs the supersedes rule over every round each time, and a second run
+  reports `already-withdrawn` and keeps the first `withdrawn.json`.
+
 ## Theater
 
 The theater lists the renders under `TITAN_CONSOLE_VIDEO_ROOTS` and keeps the owner's notes on
@@ -565,14 +597,15 @@ each one beside the video, in `<name>.notes.jsonl` (`cut.mp4` gets `cut.notes.js
 is the store of record: an agent re-rendering a video reads it in place, and nothing is copied into
 the state dir.
 
-- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", text }` or
+- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", about?, text }` or
   `{ videoId, atS, kind: "verdict", verdict: "ship" | "needs-changes" }`. Like `rounds.submit`, it
   runs only for the owner's session cookie on the LAN listener with `TITAN_CONSOLE_OWNER_WRITES=1`,
-  so loopback and bearer calls are refused.
+  so loopback and bearer calls are refused. It returns the stored note with `routedTo` (below).
 - **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
   carries `current`, and `verdict` is the latest verdict on the current render or null.
-- **`videos.list`** gives each video a `noteCount` (comments on the current render), an
-  `openNoteCount` (the open notes under the pickup rule below) and its `verdict`.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render), a
+  `videoNoteCount` (how many of those are about the video itself), an `openNoteCount` (the open
+  notes under the pickup rule below) and its `verdict`.
 
 Each line is a strict `titan-console/video-note@1` object:
 
@@ -584,7 +617,24 @@ Each line is a strict `titan-console/video-note@1` object:
 | `renderSha256` | sha256 of the video's bytes when the note was made |
 | `atS` | playback time in seconds, at or above 0, rounded to 0.001 |
 | `kind` | `"comment"` with `text` (1-2000 characters), or `"verdict"` with `verdict` |
+| `about` | comments only: `"content"` (the default) or `"video"`; a line without it reads as `"content"` |
 | `createdAt` | ISO time |
+
+**Two kinds of comment.** The comment box asks whether a comment is about the content (the work the
+video shows) or about the video itself (how the system made it: what works, what to improve).
+`videos.note` tells one seat about each comment:
+
+| `about` | Goes to |
+| --- | --- |
+| `content` | the video's `owner` (sidecar, else folder manifest); `video-coord` when none is set |
+| `video` | `video-coord`, always |
+
+The notice is fixed text naming the video id, the time and the note id, sent through the same
+`agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
+human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
+either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
+a failed send. Verdicts are not routed (`routedTo: null`).
 
 The file is opened with O_APPEND and O_NOFOLLOW, mode 0600, and each note is one write of at most
 4 KB, so concurrent appends never interleave. A reader skips a line it cannot parse and reports the
@@ -592,7 +642,8 @@ count as a gap, and refuses a file over 1 MB.
 
 **Agent pickup rule.** Read `<name>.notes.jsonl`. A note is on the current render when its
 `renderSha256` equals the video's sha256 now. The open notes are the current render's comments
-written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
+about the content written after its latest `ship` verdict, in file order (a comment about the video
+is video-coord's, never open): `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
 
@@ -618,6 +669,7 @@ row. A video with neither file lists with only what its file and folder give (be
 | `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
 | `series`, `take` | 1-200 characters each |
 | `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
+| `owner` | the agent-chat seat that owns the work shown (lowercase letters, digits, dashes); comments about the content go there |
 
 The folder manifest carries `schema: "titan-console/video-folder@1"`, any of the fields above
 except `title` and `alias` as defaults for every video directly in that folder, and `items`, a

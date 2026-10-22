@@ -3,6 +3,7 @@ import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
 import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { WAIT_BUDGET_MS } from "./scripts/wait-budget.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -41,6 +42,8 @@ export default defineConfig({
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: ["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
@@ -52,6 +55,7 @@ export default defineConfig({
     // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
     // --testTimeout and still catches a hang.
     testTimeout: 30_000,
+    expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {

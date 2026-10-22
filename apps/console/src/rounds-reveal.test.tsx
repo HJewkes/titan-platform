@@ -9,6 +9,7 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend, toSection } from "./pages/round-pager.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
@@ -122,7 +123,7 @@ describe("revealing a withheld recommendation", () => {
     fireEvent.click(screen.getByTestId("reveal-ramp-default"));
     await screen.findByTestId("recommendation-ramp-default");
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide recommendation" }));
+    fireEvent.click(getButton("Hide recommendation"));
 
     expect(screen.queryByTestId("recommendation-ramp-default")).toBeNull();
   });

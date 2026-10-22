@@ -5,7 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import { GATE_CANCELLED_SIGNAL, type StepResult, type WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { REPO, SETTLE_TIMEOUT_MS, gateId, gateOpened, outsideActions } from "../test-support/land.js";
+import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -175,7 +175,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     const superseded = await supersedeMovedGates(host, services);
 
     expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
-    await vi.waitFor(() => expect(reviewed).toEqual([SENT_BACK, GATED, MOVED]), SETTLE_TIMEOUT_MS);
+    await vi.waitFor(() => expect(reviewed).toEqual([SENT_BACK, GATED, MOVED]));
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
     expect(host.pendingGates().filter((pending) => pending.runId === runId)).toEqual([]);
     expect(host.runtime.status(runId)?.status).toBe("running");
@@ -201,7 +201,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     await gateOpened(host, gateId(runId, "approve-merge", 1));
     host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: MOVED }, OWNER);
 
-    await vi.waitFor(() => expect(fake.pr(1).merged).toBe(true), SETTLE_TIMEOUT_MS);
+    await vi.waitFor(() => expect(fake.pr(1).merged).toBe(true));
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}`);
     expect(mergePolicyHeads(host, runId)).toEqual([GATED, MOVED]);
     expect(fake.pr(1)).toMatchObject({ merged: true, headSha: MOVED });
@@ -401,7 +401,7 @@ describe("a pending shepherd-route failed-rounds approve-merge gate", () => {
 
     expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
-    await vi.waitFor(() => expect(reviewed).toContain(MOVED), SETTLE_TIMEOUT_MS);
+    await vi.waitFor(() => expect(reviewed).toContain(MOVED));
   });
 
   it("counts the new head's failed rounds from zero, so the owner is asked again only after three rounds and a fallback reviewer there", async () => {
@@ -444,7 +444,7 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
 
     expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: gated, to: MOVED, condition: "head-moved" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
-    await vi.waitFor(() => expect(reviewed).toContain(MOVED), SETTLE_TIMEOUT_MS);
+    await vi.waitFor(() => expect(reviewed).toContain(MOVED));
   });
 
   it("is asked again, pinned to the new head, when the new head's review is FIX_FIRST", async () => {
