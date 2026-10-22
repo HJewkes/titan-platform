@@ -219,6 +219,56 @@ describe("a held send-back, whose successor agent-chat refused", () => {
   });
 });
 
+describe("the sent-back gate after a fixer's exit, when the seat notice fails", () => {
+  const offered = (host: FactoryHost, runId: string) => host.gates.get(gateId(runId, "sh-sent-back"))?.questions?.flatMap((question) => question.options.map((option) => ({ id: option.id, recommended: option.recommended === true })));
+
+  /** NO_REPRO at H1, so the fixer is woken by its fix-proof; every later review of H1 reads no verdict and is retried. */
+  function exitedProofFixer(reviews: string[]): ShepherdPhases {
+    return {
+      ...exitedFixer(),
+      review: async (_ctx, request): Promise<Verdict> => (reviews.push(request.headSha), reviews.length === 1 ? { kind: "NO_REPRO", headSha: H1, result: { verdict: "vacuous" } } : { kind: "none" }),
+    };
+  }
+
+  it("offers the owner's waive-proof, never recommended, after a fix-proof wake", async () => {
+    const fake = fakeGitHub();
+    const w = world(seat({ fails: true }).ports, fake, ":memory:", exitedProofFixer([]));
+    fake.addPr({ headSha: H1 });
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("fix-proof wake");
+    expect(offered(w.host, runId)).toContainEqual({ id: "waive-proof", recommended: false });
+  });
+
+  it("records the waiver at that head and reviews it again when the owner waives", async () => {
+    const reviews: string[] = [];
+    const fake = fakeGitHub();
+    const w = world(seat({ fails: true }).ports, fake, ":memory:", exitedProofFixer(reviews));
+    fake.addPr({ headSha: H1 });
+    const runId = start(w);
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    w.host.runtime.signal(runId, "sh-sent-back", { decision: "waive-proof", headSha: H1 }, OWNER);
+
+    await vi.waitFor(() => expect(reviews.length).toBeGreaterThan(1));
+    expect(new Set(reviews)).toEqual(new Set([H1]));
+    expect(w.store.proofWaivers().waivedAt(runId, H1)).toBe(true);
+  });
+
+  it("offers no waive-proof after a review wake", async () => {
+    const fake = fakeGitHub();
+    const w = world(seat({ fails: true }).ports, fake);
+    fake.addPr({ headSha: H1 });
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(offered(w.host, runId)?.map((option) => option.id)).toEqual(["await-new-head", "abandon"]);
+  });
+});
+
 describe("the recorded cause of an exit", () => {
   it("reads a live wake whose last report predates the ask as exited before reading", () => {
     expect(exitCause(LIVE, EARLIER_REPORT)).toBe("unread");

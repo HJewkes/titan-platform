@@ -105,7 +105,7 @@ export async function conflictGate(run: GateRun, headSha: string, unsent = ""): 
 }
 
 /**
- * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO) send-back
+ * A human chooses between waiting for a fix and abandoning; a pushed head answers for them. On a `waivable` (NO_REPRO, or a fixer's exit from a fix-proof wake) send-back
  * the owner may instead waive this head's fix-proof, and the next round reviews it. Undefined lands the next round.
  */
 export async function sentBackGate(run: GateRun, headSha: string, prompt: string, abandoned: string, situation = prompt, waivable = false): Promise<LandOutcome | undefined> {
