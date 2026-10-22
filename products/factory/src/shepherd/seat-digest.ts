@@ -6,7 +6,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
-import { fixerRegistered, registrantSeat, runLineage } from "./registrant.js";
+import { registrantSeat, runLineage } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
@@ -173,12 +173,13 @@ export async function sendSeatDigests(
 
 /**
  * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat, and none when the repo has no
- * single seat (`runSeat`). The seat book is read once, and the roster once, only when some run's own fixer registered it.
+ * single seat (`runSeat`). The seat book is read once, and the roster once, only when some run names a registrant, since
+ * a registrant is named only while live.
  */
 async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
-  const roster = ports.roster && lineages.some(({ lineage }) => fixerRegistered(lineage)) ? await ports.roster().catch(() => undefined) : undefined;
+  const roster = ports.roster && lineages.length > 0 ? await ports.roster().catch(() => undefined) : undefined;
   const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster)]));
   return (run) => {
     const seat = seatFor(run.repo);
