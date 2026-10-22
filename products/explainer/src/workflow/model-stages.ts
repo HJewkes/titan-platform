@@ -61,14 +61,25 @@ export function scriptPrompt(spine: string, facts: string): string {
 const retryPrompt = (prompt: string, error: string): string =>
   `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
 
-/** The schema check the runner does not do: zod refinements (unknown chapters, unspoken cues) never reach a JSON schema. */
+/** The reply's outermost JSON object, so a reply wrapped in a code fence or a sentence still parses. */
+function replyObject(text: string): unknown {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end < start) throw new Error("no JSON object");
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+/**
+ * The reply is checked here rather than through the CLI's `--json-schema`: that flag refuses the tuple keywords
+ * ScriptSchema converts to, and zod refinements (unknown chapters, unspoken cues) never reach a JSON schema anyway.
+ */
 function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string } {
   if (!outcome.ok) return { error: outcome.error };
   let raw: unknown;
   try {
-    raw = JSON.parse(outcome.output);
+    raw = replyObject(outcome.output);
   } catch {
-    return { error: "the reply is not JSON" };
+    return { error: "the reply holds no JSON object" };
   }
   const parsed = ScriptSchema.safeParse(raw);
   if (parsed.success) return { script: parsed.data };
@@ -97,7 +108,7 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
   const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
   const signal = deps.signal ?? new AbortController().signal;
-  const call = (text: string) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, outputSchema: ScriptSchema, signal });
+  const call = (text: string) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
   let outcome = await call(prompt);
   let usage = stageUsage(outcome.usage);
   let result = checked(outcome);

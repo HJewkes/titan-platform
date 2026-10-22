@@ -146,7 +146,7 @@ export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?
       prompts.push(input.prompt);
       budgets.push(runner.maxBudgetUsd);
       if (bad-- > 0) return { ok: true, output: JSON.stringify({ ...script, chapters: [] }), usage };
-      return { ok: true, output: JSON.stringify(script), usage };
+      return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(script)}\n\`\`\`\n`, usage };
     },
   });
   return { runnerFor, prompts, budgets };
