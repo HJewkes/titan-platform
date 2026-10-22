@@ -188,9 +188,12 @@ describe("releasing that skill-path gate", () => {
     const { host, gate, runId, sources, fake } = await heldAtSkillGate();
     const io = { stdout: () => undefined, stderr: () => undefined, env: { AGENT_CHAT_AGENT_ID: "agent-synthetic", AGENT_CHAT_NAME: "tc-synthetic-coord" } };
 
-    const resolving = resolveGate(host, io, runId, "approve-merge", JSON.stringify(MERGE), async () => undefined, sources);
+    const outcome = await resolveGate(host, io, runId, "approve-merge", JSON.stringify(MERGE), async () => undefined, sources).then(
+      (exit) => `resolved with exit ${exit}`,
+      (error: unknown) => (error instanceof GateResolverRefused ? "refused" : String(error)),
+    );
 
-    await expect(resolving).rejects.toThrow(GateResolverRefused);
+    expect(outcome).toBe("refused");
     expect(host.gates.get(gate.id)?.status).toBe("pending");
     expect(fake.effects.merge).toBe(0);
   });
