@@ -1,10 +1,12 @@
 import { dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, latestPerName, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { z } from "zod";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { deadline } from "../workflows/deadline.js";
+import { step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { FreezeStore } from "./freeze.js";
-import { THAWED, failedTests, failingLogs, patiently, type EpisodeInput, type FailingRead, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
+import { FixerResult, MAIN_RERUN_STEP, THAWED, failedTests, failingLogs, patiently, type EpisodeInput, type FailingRead, type FixTasks, type FlakeFields, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { tailBytes } from "./wake-brief.js";
 
@@ -16,7 +18,7 @@ const FLAKE_TAG = "flake";
 const EXCERPT_BYTES = 4_000;
 
 /** `thawed` means the episode is over, by this rerun or by anything else while the step ran. */
-export const RerunResult = z.looseObject({ thawed: z.boolean(), detail: z.string() });
+const RerunResult = z.looseObject({ thawed: z.boolean(), detail: z.string() });
 type Rerun = z.infer<typeof RerunResult>;
 
 export interface RerunInput extends EpisodeInput {
@@ -34,6 +36,15 @@ interface Red {
 }
 
 const stays = (detail: string): Rerun => ({ thawed: false, detail });
+
+/**
+ * Runs the rerun and the fixer spawn at once, so a deterministic red never waits a CI run for its fixer. A rerun that
+ * thaws leaves the fixer on the same task, now the flake task, so the flake still gets its root-cause fix.
+ */
+export function rerunAlongsideFixer(ctx: WorkflowContext, input: RerunInput, fixer: boolean): Promise<[Rerun, z.infer<typeof FixerResult>]> {
+  const spawn = { repo: input.repo, mergeSha: input.mergeSha, task: input.task, fixer, episode: input.episode };
+  return Promise.all([step(ctx, MAIN_RERUN_STEP, input, RerunResult), step(ctx, "sh-spawn-fixer", spawn, FixerResult)]);
+}
 
 /**
  * Reruns the failed jobs at the red sha once per episode (decision 525). Only Shepherd's own rerun counts: each red job

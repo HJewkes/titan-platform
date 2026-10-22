@@ -11,8 +11,8 @@ import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
-import { RerunResult, rerunRedMain, type RerunInput } from "./main-rerun.js";
-import { FixTaskResult, FixerResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
+import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
+import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
@@ -111,7 +111,7 @@ function fixOf(frozen: z.infer<typeof FreezeResult>): string {
   return pr !== null ? `fix PR #${pr}` : `fixer ${frozen.fixer}`;
 }
 
-/** A fixer is spawned at most once per episode, after Shepherd's one rerun of the red jobs left the repo frozen, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
+/** A fixer is spawned at most once per episode, alongside Shepherd's one rerun, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
 async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string, demotions: GateDemotions): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
@@ -122,8 +122,8 @@ async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, de
   const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
   if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
-  if ((await step(ctx, MAIN_RERUN_STEP, { ...episode, task: filed.task }, RerunResult)).thawed) return;
-  const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer, episode: frozen.episode }, FixerResult);
+  const [rerun, spawned] = await rerunAlongsideFixer(ctx, { ...episode, task: filed.task }, fixer);
+  if (rerun.thawed) return;
   if (spawned.fixer === null && (spawned.fixPr ?? null) === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 

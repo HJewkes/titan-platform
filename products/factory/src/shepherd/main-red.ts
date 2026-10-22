@@ -315,8 +315,13 @@ function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[
     dataFence("failing jobs", failing.map((run) => run.name).join("\n") || "none read"),
     dataFence("CI log", log),
     `Branch from the latest origin main, fix the failure, and push. Open a PR, then register it with Shepherd (\`titan-factory shepherd register\`) with task \`${input.task}\` and implementer \`${name}\`. Report the PR and end with a line \`Head: <full sha>\` naming the head you pushed.`,
+    FLAKE_FIX_REGISTER,
   ].join("\n\n");
 }
+
+/** Mirrors TP-3987's TEST_ONLY_HINT: `proceedsOnNoRepro` lets only a spec-free test-only PR past a vacuous fix-proof. */
+const FLAKE_FIX_REGISTER =
+  "If the failure is a flaky test and your fix changes only tests, register the PR with `--kind test-only` and add no `<test>.mutations.json`: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO. The red may also thaw on Shepherd's rerun while you work; the task then holds both runs, and its done_when still asks for a root-cause fix, never a retry, a longer timeout or a quarantine.";
 
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError || error instanceof SpawnDeferred;
 

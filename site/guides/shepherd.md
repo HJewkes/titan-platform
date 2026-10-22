@@ -274,8 +274,9 @@ notes the landing and leaves its task open for the seat to close after live evid
    fixer, fix task or marked fix PR of its own. A fixer already exempt keeps its exemption
    for the rest of the episode.
 3. `sh-main-rerun` reruns the failed jobs at the red sha, once per episode (decision 525).
-   If each red job comes back green, the repo thaws at the red sha itself, and no fixer is
-   spawned. Only Shepherd's own rerun counts: a job's run must be newer than every check run
+   It runs at the same time as `sh-spawn-fixer`, so a deterministic red never waits on it.
+   If each red job comes back green, the repo thaws at the red sha itself. The fixer keeps
+   working the same task, which is now the flake task. Only Shepherd's own rerun counts: a job's run must be newer than every check run
    at the sha before the rerun, so a pass from someone else's rerun never thaws. Before the
    thaw, the fix task becomes a flake task. Shepherd appends both runs (Actions run ids, job
    ids and URLs), the job names, the failing tests and a fenced error excerpt, tags the task
@@ -293,7 +294,9 @@ notes the landing and leaves its task open for the seat to close after live evid
    fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
    watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
-   register its fix pull request with the fix task and with itself as `--implementer`. It
+   register its fix pull request with the fix task and with itself as `--implementer`. A
+   flaky-test fix that changes only tests registers `--kind test-only` and adds no mutation
+   spec, because a spec keeps a vacuous fix-proof NO_REPRO even with `noReproProceed` on. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
 
 Each step writes only to the episode `sh-freeze` returned. If the repo thaws while a step

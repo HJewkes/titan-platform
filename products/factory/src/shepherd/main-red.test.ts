@@ -230,6 +230,18 @@ describe("sh-spawn-fixer", () => {
     expect(brief).toContain("task `demo/FX-1`");
   });
 
+  it("tells the fixer a flaky-test fix registers test-only with no mutation spec, and that a rerun thaw leaves the root-cause task", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+
+    await spawnFixer(r.deps, r.wiring, fixer, signal);
+
+    const { brief } = r.spawned[0]!;
+    expect(brief).toContain("register the PR with `--kind test-only` and add no `<test>.mutations.json`");
+    expect(brief).toContain("with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO");
+    expect(brief).toContain("its done_when still asks for a root-cause fix");
+  });
+
   it("spawns nothing when the episode thaws and a new red freezes again while the broker is down", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
