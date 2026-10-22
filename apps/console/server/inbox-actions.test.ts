@@ -669,6 +669,6 @@ describe("the next state after a landed tap", () => {
     const { envelope } = await act(PLAIN_ID, confirm);
 
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "moved" } } });
-    expect(envelope.ok && "next" in (envelope.data as object)).toBe(false);
+    expect(envelope).not.toMatchObject({ data: { next: expect.anything() } });
   });
 });
