@@ -17,6 +17,7 @@ import {
   hasStoryVariants,
   indexedStories,
   liveFrames,
+  pinnedBuild,
   sidecarOf,
   unavailableFrames,
   type LiveBuild,
@@ -53,13 +54,27 @@ export async function readRoundSidecar(roundDir: string): Promise<Sidecar | { re
 }
 
 /**
- * The round's one Storybook build id; null when it carries no build, its sidecar does not parse, or it is a
- * storybook-set@1 round, whose builds are per PR group and so are not one id.
+ * `buildId` is the round's one Storybook build; null when it carries no build, its sidecar does not parse, or it is a
+ * storybook-set@1 round, whose builds are per PR group. Only a set round has `builds`, so the single-build row is unchanged.
  */
-export async function roundBuildId(roundDir: string): Promise<string | null> {
+export interface ViewedBuilds {
+  buildId: string | null;
+  builds?: Record<string, string | null>;
+}
+
+/**
+ * The builds the owner's live-viewed keys were shown from (TP-3968). A storybook-set@1 round gives each key the build
+ * the live view pinned it to, its own PR group's head, or null where that pin found none.
+ */
+export async function viewedBuilds(roundDir: string, manifest: Manifest, keys: readonly string[]): Promise<ViewedBuilds> {
   const sidecar = await readRoundSidecar(roundDir);
-  if (sidecar === null || "reason" in sidecar || sidecar.set) return null;
-  return sidecar.builds[0]?.buildId ?? null;
+  if (sidecar === null || "reason" in sidecar) return { buildId: null };
+  if (!sidecar.set) return { buildId: sidecar.builds[0]?.buildId ?? null };
+  const pinnedId = (key: string): string | null => {
+    const pin = pinnedBuild(manifest, key, sidecar.builds);
+    return "pinned" in pin ? pin.pinned.buildId : null;
+  };
+  return { buildId: null, builds: Object.fromEntries(keys.map((key) => [key, pinnedId(key)])) };
 }
 
 async function readStories(storybooksDir: string, { build, buildId }: SidecarBuild): Promise<Set<string> | string> {
