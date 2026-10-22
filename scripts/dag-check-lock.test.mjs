@@ -580,9 +580,11 @@ describe("the capped indexer child", () => {
     return join(root, "worker.mjs");
   }
 
+  // The out-of-memory child's V8 "Reached heap limit" report reached the CI log through inherited stdio and read as a
+  // vitest worker OOM twice (TP-3487, TP-3972), so these children write nowhere.
   async function run(body, heapCapMb = 64) {
     const lines = [];
-    const code = await runCappedWorker({ script: scriptFile(body), args: [], name: "indexer", heapCapMb, cleanups: [], log: (m) => lines.push(m) });
+    const code = await runCappedWorker({ script: scriptFile(body), args: [], name: "indexer", heapCapMb, cleanups: [], log: (m) => lines.push(m), stdio: "ignore" });
     return { code, lines };
   }
 
