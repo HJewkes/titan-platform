@@ -236,8 +236,8 @@ describe("sh-fix-proof in reviewPhase", () => {
       expect(spawns).toEqual([]);
     });
 
-    it.each(["correctness", "security"])("keeps NO_REPRO for a %s PR even when its diff is tests alone", async (kind) => {
-      const { verdicts, spawns } = await review(scene({ kind }));
+    it("keeps NO_REPRO for a security PR even when its diff is tests alone", async () => {
+      const { verdicts, spawns } = await review(scene({ kind: "security" }));
 
       expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
       expect(spawns).toEqual([]);
@@ -254,6 +254,47 @@ describe("sh-fix-proof in reviewPhase", () => {
       const { verdicts } = await review(scene({ log: actionsLog(mutantsLine("not-killed")), files: TEST_ONLY_FILES }));
 
       expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    });
+
+    describe("a correctness registration whose diff is tests alone (TP-3261 replays)", () => {
+      const CHANGESET: PrFile = { path: ".changeset/quiet-tests.md", status: "added" };
+      const correctness = (overrides: Scene): Scene => scene({ kind: "correctness", ...overrides });
+
+      it.each([
+        ["a test timeout bump and a changeset", [{ path: "packages/x/src/view.test.ts", status: "modified" }, CHANGESET]],
+        ["a flaky bound rewritten in one test and a changeset", [{ path: "packages/y/src/token.test.ts", status: "modified" }, CHANGESET]],
+      ] as const)("sends %s on to a reviewer with no waiver, marked no-repro-test-only", async (_, files) => {
+        const { verdicts, spawns, inputs } = await review(correctness({ files: [...files] }));
+
+        expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+        expect(spawns).toHaveLength(1);
+        expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
+        expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofWaivedAt");
+      });
+
+      it("reviews a test, its new mutation spec and a changeset once every mutant is killed", async () => {
+        const { verdicts, spawns } = await review(correctness({ log: actionsLog(mutantsLine("killed")), files: [...TEST_ONLY_FILES, CHANGESET] }));
+
+        expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+        expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
+      });
+
+      it("keeps NO_REPRO when the diff also changes source", async () => {
+        const { verdicts, spawns } = await review(correctness({ files: [...TESTS_ONLY, CHANGESET, { path: "packages/x/src/a.ts", status: "modified" }] }));
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+        expect(spawns).toEqual([]);
+      });
+
+      it("keeps NO_REPRO when its mutation spec is refused", async () => {
+        const refused = mutantsLine("killed").replace(/"mutants":\{.*\}\}$/, '"mutants":{"verdict":"error","results":[],"error":"mutants: spec refused"}}');
+
+        const { verdicts, spawns } = await review(correctness({ log: actionsLog(refused), files: [...TEST_ONLY_FILES, CHANGESET] }));
+
+        expect(refused).toContain("spec refused");
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { mutants: { verdict: "error" } } }]);
+        expect(spawns).toEqual([]);
+      });
     });
   });
 
