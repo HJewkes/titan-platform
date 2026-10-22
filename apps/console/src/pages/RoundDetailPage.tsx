@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
+import { LiveViewedProvider } from "../data/live-viewed.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { RoundFramesProvider } from "./QuestionFrames.js";
@@ -36,7 +37,11 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
 
 function RoundBody({ round }: { round: ValidRound }): ReactNode {
   const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
-  return <RoundFramesProvider roundId={round.id} manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></RoundFramesProvider>;
+  return (
+    <LiveViewedProvider key={round.id}>
+      <RoundFramesProvider roundId={round.id} manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></RoundFramesProvider>
+    </LiveViewedProvider>
+  );
 }
 
 function Framed({ id, children }: { id: string; children: ReactNode }): ReactNode {

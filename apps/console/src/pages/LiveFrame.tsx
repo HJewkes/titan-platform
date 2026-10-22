@@ -5,6 +5,7 @@
  */
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
+import { useMarkLiveViewed } from "../data/live-viewed.js";
 import { SurfacePinLayer, useCoarsePointer, useFramePins, useMediaQuery } from "./FramePins.js";
 import { FrameImage, NEAR_VIEWPORT, useEscapeKey } from "./RoundFrame.js";
 import { useFitScale } from "./TrueSize.js";
@@ -232,11 +233,13 @@ function MountedStory({ fitted, onDead, onEnlarge, ...props }: MountedProps): Re
   const box = useRef<HTMLDivElement>(null);
   const fit = useFitScale(box, props.width);
   const focused = useFrameFocus(frame);
+  const markViewed = useMarkLiveViewed();
   useBridge(props.story.origin, frame, dispatch);
   useReadyTimeout(state, dispatch);
   useEffect(() => {
     if (state.phase === "dead") onDead();
-  }, [state.phase, onDead]);
+    if (state.phase === "live") markViewed(props.frameKey);
+  }, [state.phase, onDead, markViewed, props.frameKey]);
   if (state.phase === "dead") return <CapturedPng {...props} />;
   const scale = fitted ? (fit ?? 1) : 1;
   return (

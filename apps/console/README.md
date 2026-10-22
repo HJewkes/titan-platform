@@ -231,6 +231,11 @@ initiative, or any answer while active-work cannot say which initiatives are hum
 nothing. A failed log write never undoes the submit: the result's `log` array says what was
 written per question, with a reason that names no path, and the daemon log has the error.
 
+A submit that carries `liveViewed` (the variant keys whose live story rendered on the owner's page)
+also appends one line to `$TITAN_CONSOLE_STATE/live-viewed.jsonl`: the round, the submit time, the
+keys and the round's Storybook build id, or null. It lets an audit tell an approval made from the
+PNG from one made after live exploration. feedback.json never carries it and no carry rule reads it.
+
 ## Live updates
 
 The daemon holds one SSE connection to each upstream's `/events` (`server/events-relay.ts`)
