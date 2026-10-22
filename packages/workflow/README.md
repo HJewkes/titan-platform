@@ -234,6 +234,31 @@ the same `match` throw when the runner is built. Route runners receive the
 step's `attempt` and `requestKey` with the usual input, and a step's `agentId`
 is its request key.
 
+### Code steps
+
+A code step runs a function instead of a model. `codeStep(ctx, stepId, input,
+schema)` dispatches the input as JSON and returns the stored record's
+`result`, parsed by `schema`. `codeRoute(match, fn, options)` is its route: it
+parses the input, stores `fn`'s answer as `{ result }`, and repeats on a
+restart, so a code step must read before it writes. A throw is recorded once
+as a non-retryable failure. `codeRecordRoute` is the same for a body that
+returns the whole record, with trace keys beside `result`.
+
+Two options let a host shape what is stored. `envelope(record, step)` wraps
+the record, for example in an evidence envelope with a kind, a time and trace
+ids. `errorText(message)` rewrites a thrown message before it is recorded, so
+a redactor can keep secrets out of the store.
+
+```ts
+const routes = [
+  codeRoute("ci-read", (input: { pr: number }) => readChecks(input.pr), {
+    envelope: (record, step) => ({ ...record, kind: "ci-read", span: step.requestKey }),
+    errorText: redact,
+  }),
+];
+const checks = await codeStep(ctx, "ci-read", { pr: 7 }, ChecksSchema);
+```
+
 ## Signals
 
 `parseSignals(output)` returns every signal an output carries, highest

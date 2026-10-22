@@ -1,7 +1,7 @@
 import type { MergeMethod, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief } from "@titan-design/review-panel";
-import type { WorkflowContext } from "@titan-design/workflow";
-import { z } from "zod";
+import { codeStep, type WorkflowContext } from "@titan-design/workflow";
+import type { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
@@ -38,9 +38,6 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "approve-merge", kind: "assisted" },
   { id: "stuck-behind", kind: "assisted" },
 ];
-
-const INPUT_VAR = "LAND_STEP_INPUT";
-const TEMPLATE = `{{${INPUT_VAR}}}`;
 
 export interface LandInput {
   repo: RepoSlug;
@@ -356,7 +353,6 @@ function stopped(reason: Extract<LandOutcome, { kind: "stopped" }>["reason"], he
 }
 
 /** Code steps take their input as JSON and answer with one evidence record whose `result` the workflow reads. */
-export async function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
-  const done = await ctx.dispatch(stepId, TEMPLATE, { vars: { [INPUT_VAR]: JSON.stringify(input) }, schema: z.looseObject({ result }) });
-  return done.data!.result;
+export function step<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R> {
+  return codeStep(ctx, stepId, input, result);
 }
