@@ -193,7 +193,7 @@ export interface FakeOptions {
   /** Defaults to a fast-forward push from the integration tree; a host may pass its own ratchet. */
   ratchet?: (request: RatchetRequest) => Promise<{ head: string }>;
   /** Awaited before an implement or an eval runs: tests hold a lane open or simulate a kill with it. */
-  beforeImplement?: (idea: Idea, call: number) => Promise<void>;
+  beforeImplement?: (idea: Idea, call: number, lane: number) => Promise<void>;
   beforeEval?: (ideaId: string | null, key: string) => Promise<void>;
 }
 
@@ -232,7 +232,7 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       const { idea, tree } = input;
       calls.implement.push(idea.id);
       calls.implementInputs.push(input);
-      await options.beforeImplement?.(idea, calls.implement.length);
+      await options.beforeImplement?.(idea, calls.implement.length, input.lane);
       appendFileSync(join(tree, "applied.txt"), `${idea.mechanism}\n`);
       for (const [path, text] of Object.entries(editsOf(idea, policy, options.bounds ?? FIXTURE_BOUNDS))) {
         mkdirSync(dirname(join(tree, path)), { recursive: true });
