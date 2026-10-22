@@ -434,12 +434,15 @@ describe("coordinator resolve of a sent-back gate (owner decision 529)", () => {
     expectFellBack(await resolveAs(ciFailed, "ci-failed", { decision: "await-fix", headSha: HEAD }));
   });
 
-  it("refuses pr-at-head evidence on an approve-merge gate written straight to the store", async () => {
-    const world = await paused({ gate: "merge" });
-    const gateId = `${world.runId}/approve-merge`;
+  it.each([
+    ["an approve-merge merge", "merge", "approve-merge", MERGE],
+    ["a sent-back abandon", "sent-back", "sh-sent-back", { decision: "abandon" }],
+  ] as const)("refuses open-at-head evidence written straight to the store for %s", async (_case, gate, step, payload) => {
+    const world = await paused({ gate });
+    const gateId = `${world.runId}/${step}`;
     const evidence = { kind: "pr-at-head", gateId, repo: REPO, pr: 1, state: "open", headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" };
 
-    expect(() => world.host.gates.resolve(gateId, MERGE, { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" }, evidence)).toThrow(GateResolverRefused);
+    expect(() => world.host.gates.resolve(gateId, payload, { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" }, evidence)).toThrow(GateResolverRefused);
     expect(world.host.gates.get(gateId)?.status).toBe("pending");
   });
 });
