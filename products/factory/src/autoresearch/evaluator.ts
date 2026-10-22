@@ -20,7 +20,7 @@ import {
   type RunPin,
   type Target,
 } from "@titan-design/autoresearch";
-import { execGit, ratchetFastForward } from "./ratchet.js";
+import { execGit, ratchetFastForward, remoteDefaultBranch, seedRatchet } from "./ratchet.js";
 import { lastLine, runCommand } from "./run-command.js";
 
 export interface EvaluatorOptions {
@@ -37,7 +37,7 @@ export interface EvaluatorOptions {
 
 type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive">;
 
-type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string };
+type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string; defaultBranch: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
 
 const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
@@ -76,18 +76,34 @@ async function refuseFrozenClasses(clone: string, pin: string, bounds: Bounds, f
 
 const evaluatorTreeOf = (workRoot: string, runId: string) => join(workRoot, `eval-${runId}`);
 
+/** A run is judged against the default branch, so a pin from a side branch would ratchet work main never had. */
+async function refuseOffMain(clone: string, pin: string, defaultBranch: string): Promise<void> {
+  await execGit(["fetch", "--quiet", "origin"], clone);
+  const onMain = await execGit(["merge-base", "--is-ancestor", pin, `origin/${defaultBranch}`], clone).then(
+    () => true,
+    (error: { code?: unknown }) => {
+      if (error.code === 1) return false;
+      throw error;
+    },
+  );
+  if (!onMain) throw new Error(`[pin-not-on-main] ${pin} is not on origin/${defaultBranch}`);
+}
+
 async function pinRun(options: EvaluatorOptions, runId: string, rev: string): Promise<Pinned & Session> {
   const { clone, workRoot, adapterDir } = options;
   const pin = await execGit(["rev-parse", "--verify", `${rev}^{commit}`], clone);
+  const defaultBranch = await remoteDefaultBranch(execGit, clone);
+  await refuseOffMain(clone, pin, defaultBranch);
   const adapter = await readAdapter(clone, pin, adapterDir);
   await refuseFrozenClasses(clone, pin, adapter.bounds, adapter.target.frozen);
   const [evaluatorTree, integrationTree] = [evaluatorTreeOf(workRoot, runId), join(workRoot, `int-${runId}`)];
   await checkout(clone, evaluatorTree, pin);
   await checkout(clone, integrationTree, pin);
-  const ratchetRef = `refs/heads/${adapter.target.ratchetPrefix}/${runId}`;
-  await execGit(["push", "--quiet", "origin", `${pin}:${ratchetRef}`], integrationTree);
+  const { ratchetPrefix } = adapter.target;
+  const ratchetRef = `refs/heads/${ratchetPrefix}/${runId}`;
+  await seedRatchet(execGit, { tree: integrationTree, ratchetRef, ratchetPrefix, defaultBranch, pin });
   const hash = await frozenHash(evaluatorTree, adapter.target.frozen);
-  return { pin, ratchetRef, ratchetHead: pin, integrationTree, evaluatorTree, frozenHash: hash, ...adapter };
+  return { pin, ratchetRef, ratchetHead: pin, integrationTree, evaluatorTree, frozenHash: hash, defaultBranch, ...adapter };
 }
 
 async function assertIntact(session: Session): Promise<void> {
@@ -106,7 +122,7 @@ async function resumeRun(options: EvaluatorOptions, { runId, pin, frozenHash: re
   if (recorded === undefined) throw new Error(`[no-pin] run ${runId} recorded no frozen hash, so its evaluator cannot be checked`);
   if (!existsSync(evaluatorTree)) throw new Error(`[no-pin] run ${runId} has no evaluator checkout at ${evaluatorTree}`);
   const { target, bounds } = await readAdapter(options.clone, pin, options.adapterDir);
-  const session = { pin, target, bounds, evaluatorTree, frozenHash: recorded };
+  const session = { pin, target, bounds, evaluatorTree, frozenHash: recorded, defaultBranch: await remoteDefaultBranch(execGit, options.clone) };
   await assertIntact(session);
   return session;
 }
@@ -244,7 +260,8 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
     staticCheck: async (input, signal) => staticCheck(await session.of(input), options.caseNames ?? [], input, signal),
     ratchet: async (input) => {
       const { tree, ratchetRef, from, to } = input;
-      return ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: (await session.of(input)).target.ratchetPrefix, from, to });
+      const { target, defaultBranch } = await session.of(input);
+      return ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, defaultBranch, from, to });
     },
     archive: (input) => archiveRound(options.archiveDir, input),
   };
