@@ -160,7 +160,7 @@ describe("the serve verb's exit", () => {
 });
 
 describe("the serve verb's config deprecations", () => {
-  async function serveWarnings(reconciler: object): Promise<unknown[]> {
+  async function serveWarnings(reconciler: object): Promise<{ code: number; warnings: unknown[] }> {
     const dbPath = dbFile();
     const configHome = join(dirname(dirname(dbPath)), "config");
     mkdirSync(join(configHome, "titan-factory"), { recursive: true });
@@ -168,16 +168,17 @@ describe("the serve verb's config deprecations", () => {
     const warnings: unknown[] = [];
     const logger = { ...silentLogger, warn: (_fields: unknown, msg?: unknown) => void warnings.push(msg) };
     const stop = new AbortController();
-    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), logger, stop: stop.signal, configDeprecations }, { XDG_CONFIG_HOME: configHome });
-    await vi.waitFor(async () => (await readPidFile(daemonPaths(dirname(dbPath))))!.meta.port);
+    let ended = false;
+    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), logger, stop: stop.signal, configDeprecations }, { XDG_CONFIG_HOME: configHome }).finally(() => (ended = true));
+    await vi.waitFor(async () => expect(ended || (await readPidFile(daemonPaths(dirname(dbPath)))) !== null).toBe(true));
     stop.abort();
-    await serving;
-    return warnings.filter((msg) => msg === DEPRECATED_INTERVAL);
+    const { code } = await serving;
+    return { code, warnings: warnings.filter((msg) => msg === DEPRECATED_INTERVAL) };
   }
 
   it("logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not", async () => {
-    expect(await serveWarnings({ intervalMs: 900_000 })).toEqual([DEPRECATED_INTERVAL]);
-    expect(await serveWarnings({ enabled: false })).toEqual([]);
+    expect(await serveWarnings({ intervalMs: 900_000 })).toEqual({ code: EXIT.OK, warnings: [DEPRECATED_INTERVAL] });
+    expect(await serveWarnings({ enabled: false })).toEqual({ code: EXIT.OK, warnings: [] });
   });
 });
 
