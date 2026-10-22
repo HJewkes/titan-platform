@@ -104,15 +104,39 @@ describe("execMutants", { timeout: 120_000 }, () => {
     expect(await runScenario({ head: { "src/calc.test.ts": CALC_TEST } })).toEqual({ ok: true, skipped: "no mutation spec in the diff" });
   });
 
-  it("with source in the diff writes a skipped marker naming it and runs nothing", async () => {
+  it("with source in the diff writes a skipped marker naming it and runs nothing, though the find is in no merge-base text", async () => {
     const built = path.join(outDir(), "built");
     const out = outDir();
+    const triples: Mutation = { ...DOUBLE_ADDS, find: "n * 3" };
 
-    const decoded = await runScenario({ build: `touch ${built}`, head: { ...calcSpec(DOUBLE_ADDS), "src/double.ts": DOUBLE.replace("2", "3") }, out });
+    const decoded = await runScenario({ build: `touch ${built}`, head: { ...calcSpec(triples), "src/double.ts": DOUBLE.replace("2", "3") }, out });
 
     expect(decoded).toEqual({ ok: true, skipped: "the diff changes source: src/double.ts" });
     expect(fs.existsSync(built)).toBe(false);
     expect(refusedIn(out)).toBeNull();
+  });
+
+  it.each([
+    ["targets its own test file", { ...DOUBLE_ADDS, file: "src/calc.test.ts", find: "doubles" }, "src/calc.test.ts is a test"],
+    ["has a find not in the file at head", { ...DOUBLE_ADDS, find: "n * 9" }, "find does not occur in src/double.ts at head"],
+    ["has a find twice in the file at head", { ...DOUBLE_ADDS, find: "n" }, "find occurs more than once in src/double.ts at head"],
+    ["targets a file missing at head", { ...DOUBLE_ADDS, file: "src/gone.ts" }, "src/gone.ts does not exist at head"],
+  ])("with source in the diff, a spec whose mutation %s is refused", async (_what, mutation, error) => {
+    const out = outDir();
+
+    await runScenario({ head: { ...calcSpec(mutation), "src/double.ts": DOUBLE.replace("2", "3") }, out });
+
+    expect(refusedIn(out)).toContain(`src/calc.test.mutations.json: mutation double adds: ${error}`);
+  });
+
+  it("with source in the diff, a git failure reading the specs is refused, since no judge reads them", async () => {
+    const out = outDir();
+    const exec: Exec = (file, args, options) =>
+      args.includes("-r") && args.includes("--name-only") ? Promise.resolve({ status: 1, stdout: "", stderr: "" }) : spawnExec(file, args, options);
+
+    await runScenario({ head: { ...calcSpec(DOUBLE_ADDS), "src/double.ts": DOUBLE.replace("2", "3") }, exec, out });
+
+    expect(refusedIn(out)).toContain("listing the spec's directory failed");
   });
 
   it("with source in the diff, a spec over the mutation cap is refused, not skipped", async () => {

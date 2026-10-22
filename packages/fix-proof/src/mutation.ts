@@ -114,16 +114,17 @@ function targetRefusal(file: string, config: FixProofConfig): string | undefined
 
 /**
  * Whether one mutation can run against the merge base: its file must be code under test, not a test, carried file, spec or
- * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once.
+ * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once. `at` names
+ * the commit `baseText` came from in the error, for a caller that checks against another one.
  */
-export function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig): MutationCheck {
+export function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig, at = "the merge base"): MutationCheck {
   const refused = targetRefusal(mutation.file, config);
   if (refused !== undefined) return { ok: false, error: `mutation ${mutation.name}: ${mutation.file} ${refused}` };
-  if (baseText === null) return { ok: false, error: `mutation ${mutation.name}: ${mutation.file} does not exist at the merge base` };
+  if (baseText === null) return { ok: false, error: `mutation ${mutation.name}: ${mutation.file} does not exist at ${at}` };
   const count = occurrences(baseText, mutation.find);
   if (count !== 1) {
     const found = count === 0 ? "does not occur" : "occurs more than once";
-    return { ok: false, error: `mutation ${mutation.name}: find ${found} in ${mutation.file} at the merge base` };
+    return { ok: false, error: `mutation ${mutation.name}: find ${found} in ${mutation.file} at ${at}` };
   }
   return { ok: true };
 }

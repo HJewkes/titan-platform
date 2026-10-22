@@ -36,29 +36,30 @@ async function readPairedSpec(ctx: Context, plan: FixProofPlan, head: string, pa
   return { path, testFile, mutations: spec.mutations };
 }
 
-/** Reads one spec at head, pairs it with its test file and checks every mutation against the merge base. */
-async function readSpec(ctx: Context, plan: FixProofPlan, shas: Shas, path: string): Promise<SpecUnderTest> {
-  const spec = await readPairedSpec(ctx, plan, shas.head, path);
+/** Reads one spec at head, pairs it with its test file and checks every mutation against the text at `sha`. */
+async function readSpecAgainst(ctx: Context, plan: FixProofPlan, head: string, path: string, against: { sha: string; at: string }): Promise<SpecUnderTest> {
+  const spec = await readPairedSpec(ctx, plan, head, path);
   for (const mutation of spec.mutations) {
-    const checked = checkMutation(mutation, await readBlob(ctx, shas.base, mutation.file), plan.config);
+    const checked = checkMutation(mutation, await readBlob(ctx, against.sha, mutation.file), plan.config, against.at);
     if (!checked.ok) throw new SpecError(`${path}: ${checked.error}`);
   }
   return spec;
 }
 
 /**
- * Every spec the plan names, parsed and paired at head only. A diff with source in it may mutate code the merge base
- * lacks, so the merge-base check would refuse a sound spec there; parsing still catches one no test-only diff could run.
+ * Every spec the plan names, read and checked against head. A diff with source in it may mutate code the merge base
+ * lacks, so the merge-base check would refuse a sound spec there; at head every mutation's code exists, so its target
+ * and an exactly-once find still catch a spec no later test-only diff could run.
  */
 export async function readSpecsAtHead(ctx: Context, plan: FixProofPlan, head: string): Promise<SpecUnderTest[]> {
   const specs: SpecUnderTest[] = [];
-  for (const path of plan.mutations) specs.push(await readPairedSpec(ctx, plan, head, path));
+  for (const path of plan.mutations) specs.push(await readSpecAgainst(ctx, plan, head, path, { sha: head, at: "head" }));
   return specs;
 }
 
 /** Every spec the plan names, read and checked in plan order; the judge and the mutants side share this one reading. */
 export async function readSpecs(ctx: Context, plan: FixProofPlan, shas: Shas): Promise<SpecUnderTest[]> {
   const specs: SpecUnderTest[] = [];
-  for (const path of plan.mutations) specs.push(await readSpec(ctx, plan, shas, path));
+  for (const path of plan.mutations) specs.push(await readSpecAgainst(ctx, plan, shas.head, path, { sha: shas.base, at: "the merge base" }));
   return specs;
 }

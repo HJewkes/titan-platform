@@ -103,11 +103,12 @@ interface Refusal {
   error?: string;
 }
 
-async function orRefuse<T>(refusal: Refusal, read: () => Promise<T>): Promise<T> {
+// A source diff's judge reads no spec, so there a git failure or timeout is a refusal too, or the specs would land unread.
+async function orRefuse<T>(refusal: Refusal, read: () => Promise<T>, anyError = false): Promise<T> {
   try {
     return await read();
   } catch (error) {
-    if (error instanceof SpecError) refusal.error = error.message;
+    if (anyError || error instanceof SpecError) refusal.error = messageOf(error);
     throw error;
   }
 }
@@ -117,7 +118,7 @@ async function runMutants(ctx: Context, shas: Shas, sandboxUser: string | undefi
   if (plan.mutations.length === 0) return encodeMutantsSkipped("no mutation spec in the diff");
   if (!testOnlyOf(plan)) {
     // The judge never reads a source diff's specs, so without this a spec no later test-only diff could run lands unread.
-    await orRefuse(refusal, () => readSpecsAtHead(ctx, plan, shas.head));
+    await orRefuse(refusal, () => readSpecsAtHead(ctx, plan, shas.head), true);
     return encodeMutantsSkipped(`the diff changes source: ${plan.source[0] ?? ""}`);
   }
   const specs = await orRefuse(refusal, () => readSpecs(ctx, plan, shas));
