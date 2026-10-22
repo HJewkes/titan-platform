@@ -116,9 +116,12 @@ export function successorConfigDir(deps: ShepherdDeps): string | undefined {
 }
 
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
+export function markLimit(limits: AccountLimitStore, limit: Exhausted & { notice: string }, now: number): { resetsAt: number } {
+  return limits.markExhausted(limit.account, believedReset(limit.resetsAt ?? parseLimitReset(limit.notice, now), now), limit.notice);
+}
+
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
-  if (input.notice === undefined) return limits.exhausted(input.account);
-  return limits.markExhausted(input.account, believedReset(input.resetsAt ?? parseLimitReset(input.notice, now), now), input.notice);
+  return input.notice === undefined ? limits.exhausted(input.account) : markLimit(limits, { ...input, notice: input.notice }, now);
 }
 
 /** Claims the alert first, so two runs on one account send one; an alert that fails gives the claim back. */

@@ -603,7 +603,8 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
 
   it("draws a sent round's pins on the frame, with no way to place another", async () => {
     const echo = { verdict: null, comment: "", annotations: [] };
-    const pin = { id: "beacon-error-1", width: 375, x: 90, y: 30, xPct: 0.25, yPct: 0.5, note: "Too red." };
+    // Placed at the frame's declared 320 px viewport, the only width its render draws pins of (TP-3964).
+    const pin = { id: "beacon-error-1", width: 320, x: 80, y: 90, xPct: 0.25, yPct: 0.5, note: "Too red." };
     const variants = [{ key: "beacon-error", ...echo, annotations: [pin] }];
     const feedback = { schema: "titan-review/feedback@1", unit: "beacon-states", round: 1, manifestSha256: "0".repeat(64), submittedAt: "2031-03-02T10:00:00.000Z", answers: [], variants, general: "" };
     const staged = await sentRound(DESIGN, feedback);

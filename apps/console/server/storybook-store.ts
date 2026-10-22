@@ -2,7 +2,8 @@
  * The console's store of static Storybook builds, one `<storybooksDir>/<buildId>/` per build, where
  * buildId is the sha256 of the build's file list (`storybook-build.ts`). Rounds that ship the same
  * bytes share one copy. A build is written once, through a dot-named staging dir renamed into place,
- * and never changed after: a build already there is kept, as its name is its content.
+ * and never changed after: a build already there is kept, as its name is its content. A build leaves only through
+ * `removeStoredBuild`, which the GC sweep (`storybook-gc.ts`) calls.
  *
  * The source is another process's round dir, so each file is read the way `round-frames.ts` reads
  * a frame: every directory on its path lstat'd, opened O_NOFOLLOW and O_NONBLOCK, a regular file of
@@ -10,25 +11,14 @@
  * build and leaves the store as it was. Reads go through `@titan-design/daemon`'s `containedFile`,
  * the same containment the story origin serves with.
  */
-import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, open, readFile, rename, rm, writeFile, type FileHandle } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { containedFile } from "@titan-design/daemon";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { OPEN_FLAGS, readCapped } from "./rounds.js";
-import {
-  BUILD_ID,
-  MAX_SIDECAR_BYTES,
-  STORYBOOK_DIR,
-  STORYBOOK_FILE,
-  STORYBOOK_STATIC,
-  StorybookBuildSchema,
-  buildIdOf,
-  buildListProblems,
-  type BuildFile,
-  type StorybookBuild,
-} from "./storybook-build.js";
+import { BUILD_ID, MAX_SIDECAR_BYTES, STORYBOOK_DIR, STORYBOOK_FILE, buildListProblems, sidecarOf, type BuildFile, type Sidecar, type StorybookBuild } from "./storybook-build.js";
 
 /** What `rename` raises when another import put the same build in place first. */
 const RACED = new Set(["EEXIST", "ENOTEMPTY"]);
@@ -75,12 +65,18 @@ async function readListed(staticDir: string, file: BuildFile): Promise<Buffer> {
   }
 }
 
-export interface SourceBuild {
-  /** `storybook/storybook.json` as read, copied verbatim so `rounds.get` reads the build the store was given. */
-  bytes: Buffer;
+interface SourceBuild {
   build: StorybookBuild;
   buildId: string;
   staticDir: string;
+}
+
+export interface SourceStorybook {
+  /** `storybook/storybook.json` as read, copied verbatim so `rounds.get` reads the builds the store was given. */
+  bytes: Buffer;
+  /** True for a storybook-set@1 sidecar, whose builds the import checks against the round's PR groups. */
+  set: boolean;
+  builds: SourceBuild[];
 }
 
 async function readSidecarBytes(storybookDir: string): Promise<Buffer> {
@@ -93,28 +89,37 @@ async function readSidecarBytes(storybookDir: string): Promise<Buffer> {
   }
 }
 
-const parseSidecar = (bytes: Buffer): StorybookBuild => {
+const parseSidecar = (bytes: Buffer): Sidecar => {
   let json: unknown;
   try {
     json = JSON.parse(bytes.toString("utf8"));
   } catch {
     return refuse(`${STORYBOOK_FILE} is not JSON`);
   }
-  const parsed = StorybookBuildSchema.safeParse(json);
-  return parsed.success ? parsed.data : refuse(`${STORYBOOK_FILE} is not a storybook@1 sidecar`);
+  return sidecarOf(json) ?? refuse(`${STORYBOOK_FILE} is not a storybook@1 or storybook-set@1 sidecar`);
 };
 
-/** Null when a round dir has no `storybook/`; `storeBuild` checks the file list, before the import writes anything. */
-export async function readSourceBuild(roundDir: string): Promise<SourceBuild | null> {
+/** Every directory from `storybook/` down to a build's files is real, so no build is read through a symlink. */
+async function sourceStaticDir(storybookDir: string, staticRel: string): Promise<string> {
+  let at = storybookDir;
+  for (const part of staticRel.split("/")) {
+    at = path.join(at, part);
+    if (!(await lstat(at).catch(() => null))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${staticRel}/ is missing, a symlink or not a directory`);
+  }
+  return at;
+}
+
+/** Null when a round dir has no `storybook/`; `storeBuild` checks each file list, before the import writes anything. */
+export async function readSourceStorybook(roundDir: string): Promise<SourceStorybook | null> {
   const storybookDir = path.join(roundDir, STORYBOOK_DIR);
   const held = await lstat(storybookDir).catch(() => null);
   if (held === null) return null;
   if (!held.isDirectory()) refuse(`${STORYBOOK_DIR}/ is a symlink or not a directory`);
   const bytes = await readSidecarBytes(storybookDir);
-  const build = parseSidecar(bytes);
-  const staticDir = path.join(storybookDir, STORYBOOK_STATIC);
-  if (!(await lstat(staticDir).catch(() => null))?.isDirectory()) refuse(`${STORYBOOK_DIR}/${STORYBOOK_STATIC}/ is missing, a symlink or not a directory`);
-  return { bytes, build, buildId: buildIdOf(build.files), staticDir };
+  const { set, builds } = parseSidecar(bytes);
+  const sources: SourceBuild[] = [];
+  for (const { build, buildId, staticRel } of builds) sources.push({ build, buildId, staticDir: await sourceStaticDir(storybookDir, staticRel) });
+  return { bytes, set, builds: sources };
 }
 
 async function copyInto(stage: string, staticDir: string, files: readonly BuildFile[]): Promise<void> {
@@ -147,7 +152,57 @@ export async function storeBuild({ storybooksDir, staticDir, build, buildId }: {
   return true;
 }
 
-type StoredRead = { ok: true; bytes: Buffer } | { ok: false; reason: string };
+export interface StoredBuild {
+  buildId: string;
+  /** The regular files under the build; a symlink inside it counts nothing and is never followed. */
+  bytes: number;
+  storedAt: Date;
+}
+
+async function bytesUnder(dir: string): Promise<number> {
+  let total = 0;
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const at = path.join(dir, entry.name);
+    if (entry.isDirectory()) total += await bytesUnder(at);
+    else if (entry.isFile()) total += (await lstat(at)).size;
+  }
+  return total;
+}
+
+/**
+ * The store's builds: the real directories named by a build id. Anything else at the top, such as a staging dir, a
+ * symlink or a stray file, is listed in `skipped` and never touched. A missing store holds no builds.
+ */
+export async function listStoredBuilds(storybooksDir: string): Promise<{ builds: StoredBuild[]; skipped: string[] }> {
+  const entries = await readdir(storybooksDir, { withFileTypes: true }).catch((error: unknown) => (errnoOf(error) === "ENOENT" ? [] : Promise.reject(error)));
+  const builds: StoredBuild[] = [];
+  const skipped: string[] = [];
+  for (const entry of entries) {
+    const dir = path.join(storybooksDir, entry.name);
+    if (!BUILD_ID.test(entry.name) || !entry.isDirectory()) {
+      skipped.push(entry.name);
+      continue;
+    }
+    builds.push({ buildId: entry.name, bytes: await bytesUnder(dir), storedAt: (await lstat(dir)).mtime });
+  }
+  return { builds, skipped };
+}
+
+/**
+ * Takes a build out of the store. The build's own name is renamed to a dot-named dir first, so a reader sees it gone at
+ * once, and that dir is removed. Nothing is resolved: a symlink at the name is refused, and `rm` unlinks a symlink inside
+ * the build rather than following it.
+ */
+export async function removeStoredBuild(storybooksDir: string, buildId: string): Promise<void> {
+  if (!BUILD_ID.test(buildId)) refuse("its id is not a sha256");
+  const dir = path.join(storybooksDir, buildId);
+  if (!(await lstat(dir).catch(() => null))?.isDirectory()) refuse(`the store holds ${buildId} as a symlink, a file or nothing`);
+  const doomed = path.join(storybooksDir, `.gc-${buildId.slice(0, 12)}-${randomUUID()}`);
+  await rename(dir, doomed);
+  await rm(doomed, { recursive: true, force: true });
+}
+
+type StoredRead ={ ok: true; bytes: Buffer } | { ok: false; reason: string };
 
 /** One file of a stored build, checked against the sha256 its round's storybook.json lists for it. */
 export async function readStoredFile(storybooksDir: string, buildId: string, file: BuildFile): Promise<StoredRead> {

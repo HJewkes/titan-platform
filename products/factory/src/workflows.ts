@@ -247,10 +247,10 @@ function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
   return { agents: agentChatCleanupAgents(agentChatBin, undefined, undefined, roster), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
 }
 
-/** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
+/** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`, and each spawn names the account the successor rotation picks. */
 function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate): FactoryRouteDeps["mainRed"] {
   const agentChatBin = shepherd?.agentChatBin;
-  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster, gate })) }) };
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { roster, gate })) }) };
 }
 
 function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {

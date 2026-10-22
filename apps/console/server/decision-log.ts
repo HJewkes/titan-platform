@@ -15,6 +15,8 @@ import { LedgerRowSchema, isExcluded, type LedgerRowWire } from "@titan-design/d
 import type { OwnerAnswer, OwnerItem } from "@titan-design/owner-queue";
 
 export const ANSWERS_FILE = "answers.jsonl";
+/** Kept out of `answers.jsonl`, whose rows are all decider ledger rows. */
+export const LIVE_VIEWED_FILE = "live-viewed.jsonl";
 const TAIL_BYTES = 64 * 1024;
 const MAX_LINE_CHARS = 600;
 const LEDGER_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
@@ -54,6 +56,19 @@ interface DecisionLogOptions {
 
 export interface DecisionLog {
   record(item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult>;
+}
+
+/** The story variants the owner opened live before submitting a round, for an audit; no carry rule reads it (TP-3793 S7). */
+export interface LiveViewedEntry {
+  roundId: string;
+  at: string;
+  keys: readonly string[];
+  /** The round's Storybook build, or null when it carries none that parses. */
+  buildId: string | null;
+}
+
+export interface RoundDecisionLog extends DecisionLog {
+  recordLiveViewed(entry: LiveViewedEntry): Promise<"written" | "failed">;
 }
 
 export function decisionsClass(item: DecisionItem, answer: DecisionAnswer): DecisionsClass | null {
@@ -149,7 +164,7 @@ async function appendLedger(file: string, row: Record<string, unknown>): Promise
     const stats = await handle.stat();
     const uid = process.getuid?.();
     if (!stats.isFile() || (uid !== undefined && stats.uid !== uid) || (stats.mode & 0o077) !== 0) {
-      throw new Error("answers.jsonl is not a private regular file owned by this user");
+      throw new Error(`${path.basename(file)} is not a private regular file owned by this user`);
     }
     await handle.write(`${JSON.stringify(row)}\n`);
   });
@@ -235,7 +250,7 @@ function withReason(result: Omit<DecisionLogResult, "reason">, reason: Reason | 
   return reason === null ? result : { ...result, reason };
 }
 
-export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = localDate, logger }: DecisionLogOptions): DecisionLog {
+export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = localDate, logger }: DecisionLogOptions): RoundDecisionLog {
   const writer: Writer = { ledgerFile: path.join(stateDir, ANSWERS_FILE), decisionsFile, today, ...(logger ? { logger } : {}) };
   const serialize = serializer();
   const record = async (item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> => {
@@ -246,5 +261,14 @@ export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = 
       return { ledger: "failed" as const, decisions: "failed" as const, reason: "ledger write failed" as const };
     });
   };
-  return { record };
+  const liveViewedFile = path.join(stateDir, LIVE_VIEWED_FILE);
+  const recordLiveViewed = (entry: LiveViewedEntry): Promise<"written" | "failed"> =>
+    serialize(() => appendLedger(liveViewedFile, { v: 1, ...entry })).then(
+      () => "written" as const,
+      (error: unknown) => {
+        logger?.warn({ error }, "decision log: live-viewed write failed");
+        return "failed" as const;
+      },
+    );
+  return { record, recordLiveViewed };
 }

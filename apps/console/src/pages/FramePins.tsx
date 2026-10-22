@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Input, VStack } from "@titan-design/react-ui";
 import { useQuery } from "../data/rpc.js";
-import { describeTarget, isTap, pinNumber, pngSurface, pointerPin, type Pin, type PinSurface, type PngWidths, type TargetBox } from "./frame-pins.js";
+import { describeTarget, isTap, pinNumber, pinsDrawnAt, pngSurface, pngWidth, pointerPin, type Pin, type PinSurface, type PngWidths, type TargetBox } from "./frame-pins.js";
 
-/** Where a pin is drawn: enough of a draft or a sent pin to number and place it. */
-export type DrawnPin = Pick<Pin, "id" | "xPct" | "yPct">;
+/** Where a pin is drawn: enough of a draft or a sent pin to number and place it, and the render width it was placed at. */
+export type DrawnPin = Pick<Pin, "id" | "xPct" | "yPct"> & Partial<Pick<Pin, "width">>;
 
 /** One frame's pins as its figure shares them with the image inside it; outside a design round's figure there is none. */
 export interface FramePins {
@@ -68,9 +68,10 @@ export const naturalSize = (image: RefObject<HTMLImageElement | null>) => (): Su
  */
 export function PinLayer(props: PinLayerProps): ReactNode {
   const { placing, widths } = props.pins;
-  if (!placing) return <MarkersLayer pins={props.pins} />;
-  if (widths.targetsRoundId === undefined) return <PlacingLayer pins={props.pins} surface={pngSurfaceOf(props)} />;
-  return <TargetedPlacingLayer {...props} roundId={widths.targetsRoundId} />;
+  const width = pngWidth(widths, props.size());
+  if (!placing) return <MarkersLayer pins={props.pins} width={width} />;
+  if (widths.targetsRoundId === undefined) return <PlacingLayer pins={props.pins} surface={pngSurfaceOf(props)} width={width} />;
+  return <TargetedPlacingLayer {...props} roundId={widths.targetsRoundId} width={width} />;
 }
 
 /** Read at each tap; undefined until the surface has a size. */
@@ -83,18 +84,22 @@ const pngSurfaceOf = ({ pins, size }: PinLayerProps, boxes?: readonly TargetBox[
 
 /** A live story's pins, laid over the frame: in pin mode a tap places one against the surface the story's bridge reported. */
 export function SurfacePinLayer({ pins, surface }: { pins: FramePins; surface: SurfaceOf }): ReactNode {
-  return pins.placing ? <PlacingLayer pins={pins} surface={surface} /> : <MarkersLayer pins={pins} />;
+  const width = surface()?.width;
+  return pins.placing ? <PlacingLayer pins={pins} surface={surface} width={width} /> : <MarkersLayer pins={pins} width={width} />;
 }
 
-const MarkersLayer = ({ pins }: { pins: FramePins }): ReactNode => <div className={`${LAYER} pointer-events-none`}><PinMarkers pins={pins} /></div>;
+/** The width of the render a layer draws on, which picks the pins it draws; undefined until that render has a size. */
+type DrawnWidth = { width: number | undefined };
+
+const MarkersLayer = ({ pins, width }: { pins: FramePins } & DrawnWidth): ReactNode => <div className={`${LAYER} pointer-events-none`}><PinMarkers pins={pins} width={width} /></div>;
 
 /** Pin mode on a frame with an element map: until its boxes arrive, or if the read is refused, a pin is coordinates only. */
-function TargetedPlacingLayer({ roundId, ...props }: PinLayerProps & { roundId: string }): ReactNode {
+function TargetedPlacingLayer({ roundId, width, ...props }: PinLayerProps & DrawnWidth & { roundId: string }): ReactNode {
   const read = useQuery("rounds.frameTargets", { id: roundId, key: props.pins.frameKey });
-  return <PlacingLayer pins={props.pins} surface={pngSurfaceOf(props, read.data?.boxes)} />;
+  return <PlacingLayer pins={props.pins} surface={pngSurfaceOf(props, read.data?.boxes)} width={width} />;
 }
 
-function PlacingLayer({ pins, surface }: { pins: FramePins; surface: SurfaceOf }): ReactNode {
+function PlacingLayer({ pins, surface, width }: { pins: FramePins; surface: SurfaceOf } & DrawnWidth): ReactNode {
   const down = useRef<{ clientX: number; clientY: number } | null>(null);
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     // After a touch the browser sends a mousedown, which would take focus off the new pin's note before the owner types.
@@ -110,13 +115,14 @@ function PlacingLayer({ pins, surface }: { pins: FramePins; surface: SurfaceOf }
   };
   return (
     <div className={`${LAYER} ${PLACING}`} data-testid={`pin-layer-${pins.frameKey}`} aria-label={`Place a pin on ${pins.label}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
-      <PinMarkers pins={pins} />
+      <PinMarkers pins={pins} width={width} />
     </div>
   );
 }
 
-function PinMarkers({ pins: { frameKey, pins } }: { pins: FramePins }): ReactNode {
-  return pins.map((pin) => (
+/** The pins placed on a surface of this one's width; the same frame drawn at another width draws its own. */
+function PinMarkers({ pins: { frameKey, pins }, width }: { pins: FramePins } & DrawnWidth): ReactNode {
+  return pinsDrawnAt(pins, width).map((pin) => (
     <span
       key={pin.id}
       data-testid={`pin-marker-${pin.id}`}
