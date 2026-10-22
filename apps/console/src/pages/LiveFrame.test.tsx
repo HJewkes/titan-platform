@@ -328,7 +328,7 @@ describe("a variant drawn at 390 and 1440 px (TP-3964)", () => {
 
   const viewport = (width: number) => within(screen.getByTestId(`live-viewport-compact-${width}`));
   const markersAt = (width: number): string[] => viewport(width).queryAllByTestId(/^pin-marker-/).map((marker) => marker.dataset.testid ?? "");
-  const storyAt = (width: number): Window | null => (screen.getByTitle(`Card compact, live at ${width}px`) as HTMLIFrameElement).contentWindow;
+  const storyAt = (width: number): Window | null => screen.getByTitle<HTMLIFrameElement>(`Card compact, live at ${width}px`).contentWindow;
 
   async function goLive(): Promise<void> {
     await screen.findAllByAltText("Card compact");
