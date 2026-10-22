@@ -5,6 +5,7 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
+import type { TakeRecheck } from "./hold.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { OWNER_PACKET_FILES } from "./signoffs.js";
@@ -289,6 +290,25 @@ function recordedWithoutAsk(ctx: WorkflowContext, holdClass: string | undefined)
 }
 
 /**
+ * Runs whose newest release ask, at the head mapped to, was answered no by a replayed step: an earlier build judged it, so a deploy
+ * that fixed the rule would never be asked. The merge wait at that head ends once and the run asks again under the code serving now (TP-3956).
+ */
+const replayedRefusals = new Map<string, string>();
+
+/** True once when the run's newest release ask at `head` was a replayed no; the merge wait then ends with no merge, so the run asks live. */
+export function takeG10Recheck(runId: string, head: string): boolean {
+  if (replayedRefusals.get(runId) !== head) return false;
+  replayedRefusals.delete(runId);
+  return true;
+}
+
+/** The merge wait's recheck for the run registered on `repo#pr`; an unregistered PR has no run to ask. */
+export const g10Recheck = (store: () => ShepherdStore): TakeRecheck => (repo, pr, sha) => {
+  const runId = store().byPr(repo, pr)?.runId;
+  return runId !== undefined && takeG10Recheck(runId, sha);
+};
+
+/**
  * Records the release as a step, so `shepherd status` and the ledger show it; the route re-reads the PR head and the hold before it
  * writes. A `g10-review` hold is judged on one opus MERGE, a `g10-adversary` hold on Shepherd's correctness and adversary MERGEs.
  * A shadow would-release is asked once per pair of verdicts, as a release is.
@@ -299,9 +319,12 @@ export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | n
   const ask = ci && askFor(holdClass, run.reviews, ci.headSha);
   if (!ci || !ask || used.get(run.ctx)?.has(ask.key) || recordedWithoutAsk(run.ctx, holdClass)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
+  const replayed = run.ctx.historyNext() !== undefined;
   const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...ask.refs, checks: { head: ci.headSha, green: greenAt(ci, ask.refs.mergeUp) } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
   if (done.released || done.wouldRelease) used.set(run.ctx, (used.get(run.ctx) ?? new Set()).add(ask.key));
+  if (replayed && !done.released && !done.wouldRelease) replayedRefusals.set(run.ctx.runId, ci.headSha);
+  else replayedRefusals.delete(run.ctx.runId);
 }
 
 /**

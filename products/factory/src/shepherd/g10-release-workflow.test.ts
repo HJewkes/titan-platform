@@ -62,6 +62,7 @@ interface World {
   ref: ShepherdStoreRef;
   runId: string;
   services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
+  reviewers: ReturnType<typeof mergingReviewers>;
 }
 
 interface Scene {
@@ -75,6 +76,10 @@ interface Scene {
   /** A head whose review ends with the PR conflicting, so the round leaves through the conflict route. */
   conflictsAfter?: string;
   dbPath?: string;
+  /** The lineage roster cannot be read, so a two-MERGE release answers no. */
+  rosterDown?: boolean;
+  /** The reviewers a later deploy's host shares with the first, so the agents the first spawned stay on its roster. */
+  reviewers?: ReturnType<typeof mergingReviewers>;
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
@@ -83,10 +88,11 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
 }
 
 /** One deploy's host over `fake` and `ref`; a second one on the same `dbPath` adopts what the first left in flight. */
-function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles, { silentAt, twoMerge, conflictsAfter, dbPath = ":memory:" }: Scene) {
+function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles, { silentAt, twoMerge, conflictsAfter, dbPath = ":memory:", rosterDown, reviewers: shared = mergingReviewers() }: Scene) {
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
-  const { roster, ...reviewers } = mergingReviewers();
+  const { roster: up, ...reviewers } = shared;
+  const roster: RosterReader = rosterDown ? { ...up, read: async () => ({ kind: "unknown", error: new Error("roster down") }) } : up;
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary } });
   const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
   const review: ShepherdPhases["review"] = async (ctx, request) => {
@@ -104,14 +110,15 @@ function heldRun(roles: ReviewerRoles, scene: Scene): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const ref = shepherdStoreRef();
-  const { host, routes } = sceneHost(fake, ref, roles, scene);
+  const reviewers = scene.reviewers ?? mergingReviewers();
+  const { host, routes } = sceneHost(fake, ref, roles, { ...scene, reviewers });
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, files.map((path) => ({ path, status: "modified" })));
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
   store.hold(runId, hold, undefined, { actor: "seat" });
-  return { host, fake, store, ref, runId, services: routes.shepherd! };
+  return { host, fake, store, ref, runId, services: routes.shepherd!, reviewers };
 }
 
 const stepIds = (w: World): string[] => Object.values(w.host.runtime.status(w.runId)!.stepResults).map((result) => result.stepId);
@@ -315,5 +322,49 @@ describe("a g10-adversary run recorded with an adversary member MERGE and adopte
 
     const keys = recordedKeys(w.host, w.runId);
     expect(keys.indexOf(`${G10_RELEASE_STEP}:${H1}:0:0`)).toBe(keys.indexOf("sh-policy:0:0") + 1);
+  });
+});
+
+describe("a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956)", () => {
+  const ADVERSARY_HOLD = "g10-adversary: authority touch";
+  const releaseResults = (host: FactoryHost, runId: string): unknown[] =>
+    Object.entries(host.runtime.status(runId)!.stepResults).filter(([key]) => isReleaseKey(key)).map(([, result]) => result.data?.["result"]);
+
+  /** A run whose two-MERGE release answered no, waiting held at merge:0 when its host closes as a deploy closes it. */
+  async function refusedAtMerge(): Promise<World & { dbPath: string; refusals: unknown[] }> {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp-g10-recheck-")), "factory.db");
+    const w = heldRun(OPUS, { hold: ADVERSARY_HOLD, twoMerge: "on", rosterDown: true, dbPath });
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+    const refusals = releaseResults(w.host, w.runId);
+    expect(refusals).toContainEqual(expect.objectContaining({ released: false }));
+    expect(refusals).not.toContainEqual(expect.objectContaining({ released: true }));
+    w.host.close();
+    return { ...w, dbPath, refusals };
+  }
+
+  it("asks the release again under the next build, which releases the hold, and the PR merges", async () => {
+    const w = await refusedAtMerge();
+    const { host } = sceneHost(w.fake, w.ref, OPUS, { twoMerge: "on", dbPath: w.dbPath, reviewers: w.reviewers });
+
+    await host.adopt();
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+    expect(releaseResults(host, w.runId)).toEqual([...w.refusals, expect.objectContaining({ released: true, rule: TWO_MERGE_RULE })]);
+    expect(w.ref.get().eventsOf(w.runId).filter((event) => event.kind === "release")).toEqual([expect.objectContaining({ actor: "shepherd", headSha: H1 })]);
+  });
+
+  it("asks once more when the next build still answers no, then waits held at merge without asking again", async () => {
+    const w = await refusedAtMerge();
+    const { host } = sceneHost(w.fake, w.ref, OPUS, { twoMerge: "on", rosterDown: true, dbPath: w.dbPath, reviewers: w.reviewers });
+
+    await host.adopt();
+
+    await vi.waitFor(() => expect(host.runtime.status(w.runId)?.currentStep).toBe("merge:1"), { timeout: 5_000 });
+    const polled = w.fake.calls.length;
+    await vi.waitFor(() => expect(w.fake.calls.length).toBeGreaterThan(polled + 40), { timeout: 5_000 });
+    expect(host.runtime.status(w.runId)?.currentStep).toBe("merge:1");
+    expect(releaseResults(host, w.runId)).toEqual([...w.refusals, expect.objectContaining({ released: false })]);
+    expect(w.ref.get().byRun(w.runId)).toMatchObject({ held: true, holdReason: ADVERSARY_HOLD });
+    expect(w.fake.pr(1).merged).toBe(false);
   });
 });
