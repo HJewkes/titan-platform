@@ -242,7 +242,8 @@ describe("reconciler disagreement log (plan §3)", () => {
 });
 
 describe("reconciler head guard (TP-3097 through TP-3431)", () => {
-  const [STALE, STORED] = ["a1", "a2"].map((sha) => sha.padEnd(40, "0")) as [string, string];
+  const STALE = "a1".padEnd(40, "0");
+  const STORED = "a2".padEnd(40, "0");
   const at = "2027-01-15T07:00:00.000Z";
 
   function openPr(head: string) {

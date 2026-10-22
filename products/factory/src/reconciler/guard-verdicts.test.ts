@@ -9,7 +9,11 @@ import type { GuardVerdict } from "./observe.js";
 
 const REPO = "example-org/widgets";
 const AT = "2027-01-15T08:00:00.000Z";
-const [OLD, NEW, TIP, CURSOR] = ["a1", "a2", "c2", "c1"].map((sha) => sha.padEnd(40, "0")) as [string, string, string, string];
+const sha = (prefix: string): string => prefix.padEnd(40, "0");
+const OLD = sha("a1");
+const NEW = sha("a2");
+const TIP = sha("c2");
+const CURSOR = sha("c1");
 const DOWN: Unavailable = { kind: "unavailable" };
 
 interface Script {
