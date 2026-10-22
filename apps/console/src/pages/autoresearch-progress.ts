@@ -99,7 +99,7 @@ function toPoint(primary: string, ladder: Decided, index: number): ProgressPoint
 /**
  * The chart's data. Every decided idea is a point, but only a kept one with a primary moves best-so-far: a rejected or stopped
  * point is drawn where it landed and leaves the line alone. The band follows the newest G7 record, carried past an outcome
- * that has none because that outcome says nothing new about noise; before any record it reads the stamped σ, unlocked.
+ * that has none because that outcome says nothing new about noise; before any record the band is the unlocked default.
  */
 export function runProgress(run: ArRunView): RunProgress {
   const { primary, noise } = run.target.metric;

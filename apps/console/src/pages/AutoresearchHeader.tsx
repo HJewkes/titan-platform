@@ -95,7 +95,7 @@ function bestParts(run: ArRunView): StatParts {
 /** Design G7: the newest decision's noise snapshot; absent on a run recorded before the engine kept one. */
 const latestAgainst = (run: ArRunView): ArAgainst | undefined => ladders(run).flatMap((ladder) => (ladder.outcome?.against === undefined ? [] : [ladder.outcome.against])).at(-1);
 
-/** A run without the snapshot reads the stamped σ as unlocked, the progress chart's rule, so the two never disagree on the band. */
+/** A run without the snapshot shows the stamped σ, but with no pair count its band is the default, the progress chart's rule, so the two never disagree. */
 function noiseParts(run: ArRunView): StatParts {
   const against = latestAgainst(run);
   const sigma = against?.sigma ?? latestSigma(run);

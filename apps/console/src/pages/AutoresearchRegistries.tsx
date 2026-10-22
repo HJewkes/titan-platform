@@ -27,7 +27,7 @@ import { bugRepeatRates, REGISTRY_TAIL, registryTails, type RoundRepeats } from 
 const PERCENT = 100;
 
 /** Below this the registry tables scroll sideways rather than squeeze a lesson into a sliver. */
-const REGISTRY_MIN_WIDTH = 720;
+const REGISTRY_MIN_WIDTH = 880;
 
 /** Design §1.6: the dead-end and bug tails every brief gets, and how often an L0 failure repeats a known bug. */
 export function AutoresearchRegistries({ run }: { run: ArRunView }): ReactNode {
@@ -52,71 +52,76 @@ export function AutoresearchRegistries({ run }: { run: ArRunView }): ReactNode {
   );
 }
 
-function DeadEnds({ runId, rows }: { runId: string; rows: ArRegistries["deadEnds"] }): ReactNode {
-  if (rows.length === 0) return <EmptyState title="No idea has failed past L0 yet" />;
-  return (
-    <Table density="dense" contentMinWidth={REGISTRY_MIN_WIDTH} testID="autoresearch-dead-ends">
-      <TableHeader>
-        <TableRow>
-          <TableHeaderCell>Cell</TableHeaderCell>
-          <TableHeaderCell>Targets</TableHeaderCell>
-          <TableHeaderCell>Rung failed</TableHeaderCell>
-          <TableHeaderCell>Δ/σ</TableHeaderCell>
-          <TableHeaderCell>Lesson</TableHeaderCell>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => (
-          <TableRow key={index}>
-            <ProducedBy runId={runId} row={row} />
-            <TableCell>{row.cell}</TableCell>
-            <TableCell>{row.targets.join(", ") || "—"}</TableCell>
-            <TableCell>{row.rungFailed}</TableCell>
-            <TableCell>{row.deltaOverSigma === undefined ? "—" : `${signed(row.deltaOverSigma)}σ`}</TableCell>
-            <TableCell>{row.lesson ?? "—"}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
+/** One column: its header label and the cell it draws for a row. Header and body both read this list, so they cannot drift. */
+interface Column<Row> {
+  label: string;
+  cell: (row: Row) => ReactNode;
 }
 
-function Bugs({ runId, rows }: { runId: string; rows: ArRegistries["bugs"] }): ReactNode {
-  if (rows.length === 0) return <EmptyState title="No L0 failure or planner analysis has logged a bug yet" />;
-  return (
-    <Table density="dense" contentMinWidth={REGISTRY_MIN_WIDTH} testID="autoresearch-bugs">
-      <TableHeader>
-        <TableRow>
-          <TableHeaderCell>Symptom</TableHeaderCell>
-          <TableHeaderCell>Fix</TableHeaderCell>
-          <TableHeaderCell>Source</TableHeaderCell>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => (
-          <TableRow key={index}>
-            <ProducedBy runId={runId} row={row} />
-            <TableCell>{row.symptom}</TableCell>
-            <TableCell>{row.fix || "—"}</TableCell>
-            <TableCell>{row.source}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
+type ProducedRow = { ideaId?: string; round?: number };
 
 /**
  * TP-3867: the idea that produced the row, linked to its drawer, and its round. A planner analysis bug names no idea, and a
  * row recorded before the engine kept either shows a dash.
  */
-function ProducedBy({ runId, row }: { runId: string; row: { ideaId?: string; round?: number } }): ReactNode {
+function producedByColumns<Row extends ProducedRow>(runId: string): Column<Row>[] {
+  return [
+    { label: "Idea", cell: (row) => (row.ideaId === undefined ? "—" : <IdeaLink runId={runId} ideaId={row.ideaId} />) },
+    { label: "Round", cell: (row) => (row.round === undefined ? "—" : `r${row.round}`) },
+  ];
+}
+
+function deadEndColumns(runId: string): Column<ArRegistries["deadEnds"][number]>[] {
+  return [
+    ...producedByColumns(runId),
+    { label: "Cell", cell: (row) => row.cell },
+    { label: "Targets", cell: (row) => row.targets.join(", ") || "—" },
+    { label: "Rung failed", cell: (row) => row.rungFailed },
+    { label: "Δ/σ", cell: (row) => (row.deltaOverSigma === undefined ? "—" : `${signed(row.deltaOverSigma)}σ`) },
+    { label: "Lesson", cell: (row) => row.lesson ?? "—" },
+  ];
+}
+
+function bugColumns(runId: string): Column<ArRegistries["bugs"][number]>[] {
+  return [
+    ...producedByColumns(runId),
+    { label: "Symptom", cell: (row) => row.symptom },
+    { label: "Fix", cell: (row) => row.fix || "—" },
+    { label: "Source", cell: (row) => row.source },
+  ];
+}
+
+function RegistryTable<Row>({ columns, rows, testID }: { columns: Column<Row>[]; rows: readonly Row[]; testID: string }): ReactNode {
   return (
-    <>
-      <TableCell>{row.ideaId === undefined ? "—" : <IdeaLink runId={runId} ideaId={row.ideaId} />}</TableCell>
-      <TableCell>{row.round === undefined ? "—" : `r${row.round}`}</TableCell>
-    </>
+    <Table density="dense" contentMinWidth={REGISTRY_MIN_WIDTH} testID={testID}>
+      <TableHeader>
+        <TableRow>
+          {columns.map((column) => (
+            <TableHeaderCell key={column.label}>{column.label}</TableHeaderCell>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, index) => (
+          <TableRow key={index}>
+            {columns.map((column) => (
+              <TableCell key={column.label}>{column.cell(row)}</TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
+}
+
+function DeadEnds({ runId, rows }: { runId: string; rows: ArRegistries["deadEnds"] }): ReactNode {
+  if (rows.length === 0) return <EmptyState title="No idea has failed past L0 yet" />;
+  return <RegistryTable columns={deadEndColumns(runId)} rows={rows} testID="autoresearch-dead-ends" />;
+}
+
+function Bugs({ runId, rows }: { runId: string; rows: ArRegistries["bugs"] }): ReactNode {
+  if (rows.length === 0) return <EmptyState title="No L0 failure or planner analysis has logged a bug yet" />;
+  return <RegistryTable columns={bugColumns(runId)} rows={rows} testID="autoresearch-bugs" />;
 }
 
 function IdeaLink({ runId, ideaId }: { runId: string; ideaId: string }): ReactNode {

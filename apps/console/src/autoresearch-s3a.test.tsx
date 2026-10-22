@@ -123,6 +123,31 @@ describe("the registries' link to the idea and round", () => {
   });
 });
 
+const headerLabels = (table: HTMLElement): string[] => within(table).getAllByRole("columnheader").map((cell) => cell.textContent ?? "");
+const bodyRows = (table: HTMLElement): HTMLElement[] => within(table).getAllByRole("row").filter((row) => within(row).queryAllByRole("columnheader").length === 0);
+
+function expectAligned(table: HTMLElement, headers: string[]): void {
+  expect(headerLabels(table)).toEqual(headers);
+  const rows = bodyRows(table);
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) expect(within(row).getAllByRole("cell")).toHaveLength(headers.length);
+}
+
+describe("the registry tables' columns", () => {
+  const DEAD_END_HEADERS = ["Idea", "Round", "Cell", "Targets", "Rung failed", "Δ/σ", "Lesson"];
+  const BUG_HEADERS = ["Idea", "Round", "Symptom", "Fix", "Source"];
+
+  for (const route of [RUN_ROUTE, PRE_S3A_ROUTE]) {
+    it(`labels every body cell with a header, Idea and Round first, on ${route}`, async () => {
+      renderConsole(route);
+      const registries = within(await screen.findByTestId("autoresearch-registries"));
+      expectAligned(registries.getByTestId("autoresearch-dead-ends"), DEAD_END_HEADERS);
+      fireEvent.click(registries.getByText(/^Bugs /));
+      expectAligned(registries.getByTestId("autoresearch-bugs"), BUG_HEADERS);
+    });
+  }
+});
+
 describe("a run recorded before S3a", () => {
   it("renders its header, registries and idea drawer, saying what it did not record", async () => {
     renderConsole(`${PRE_S3A_ROUTE}?idea=${KEPT}`);
