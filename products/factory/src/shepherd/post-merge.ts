@@ -1,5 +1,5 @@
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import { GATE_CANCELLED_SIGNAL, type StepRoute, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
@@ -138,10 +138,22 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
-/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
+/** How a sweep's cancel of a frozen gate starts; `askFrozen` reads it as the gate's answer, so the run moves on to cleanup. */
+export const EPISODE_THAWED = "thawed: ";
+
+/**
+ * Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. A sweep
+ * cancels the gate once its episode thawed without it, and the run goes on to cleanup; any other cancel fails the run.
+ */
 async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
   const { schema, brief } = frozenDecision({ repo: red.repo, mergeSha: red.mergeSha, situation: prompt });
-  const answer = schema.parse((await ctx.assisted(gate, prompt, { schema, brief })).data);
+  const asked = await ctx.assisted(gate, prompt, { schema, brief, recordCancel: true });
+  if (asked.signal === GATE_CANCELLED_SIGNAL) {
+    const reason = String(asked.data?.reason);
+    if (reason.startsWith(EPISODE_THAWED)) return;
+    throw new Error(`${gate} was cancelled: ${reason}`);
+  }
+  const answer = schema.parse(asked.data);
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }
