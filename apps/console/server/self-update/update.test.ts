@@ -2,20 +2,21 @@ import { describe, expect, it } from "vitest";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { closureDirs, touchedPaths } from "./plan.js";
 import { verdictLine, type NodeRun } from "./release-smoke.js";
-import { EXIT, lockPath, readRecord, recordPath, selfUpdate, type CommandResult, type UpdateOptions, type UpdatePorts } from "./update.js";
+import { applyRelease, EXIT, lockPath, readRecord, recordPath, reportRecorded, type CommandResult, type UpdateOptions, type UpdatePorts } from "./update.js";
 
 const ROOT = "/srv/console";
 const OLD = "a".repeat(40);
 const NEW = "b".repeat(40);
+const STALE = "c".repeat(40);
 const RELEASE = `${ROOT}/releases/${NEW}`;
+const PREV = `${ROOT}/releases/${OLD}`;
 const OPTIONS: UpdateOptions = { root: ROOT, stateDir: "/state", port: 7500, unit: "titan-console.service" };
 const CLOSURE = JSON.stringify([
-  { name: "titan-console", path: `${ROOT}/checkout/apps/console` },
-  { name: "@titan-design/daemon", path: `${ROOT}/checkout/packages/daemon` },
+  { name: "titan-console", path: `${RELEASE}/apps/console` },
+  { name: "@titan-design/daemon", path: `${RELEASE}/packages/daemon` },
 ]);
 
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
-const failed = (stderr: string): CommandResult => ({ code: 1, stdout: "", stderr });
 const ran = (run: Partial<NodeRun>): NodeRun => ({ code: 0, stdout: "", stderr: "", timedOut: false, ...run });
 const verdict = (why?: string): NodeRun => ran({ code: why === undefined ? 0 : 1, stdout: `boot line\n${verdictLine(why)}\n` });
 
@@ -25,47 +26,42 @@ interface Fake {
   links: Map<string, string>;
   calls: string[];
   alarms: OwnerItemDeposit[];
-  /** The build sha the served unit answers after each restart, in order. */
-  restarts: (string | null | undefined)[];
 }
 
 interface Scenario {
   changed?: string[];
-  build?: CommandResult;
   /** What the new release's own `self-update --smoke` does. */
   releaseSmoke?: NodeRun;
   /** What this updater's in-process smoke says, used only for a release without the verb. */
   smoke?: string;
+  /** The build sha the served unit answers after each restart, in order. */
   afterRestart?: (string | null | undefined)[];
   liveHolder?: number;
+  /** Where `current` points before the pass. */
+  serving?: string;
 }
 
 function fakePorts(scenario: Scenario = {}): Fake {
-  const files = new Map<string, string>();
-  const links = new Map([[`${ROOT}/current`, `${ROOT}/checkout`]]);
+  const files = new Map([[`${RELEASE}/apps/console/dist/cli.js`, "built"]]);
+  const links = new Map([[`${ROOT}/current`, scenario.serving ?? PREV]]);
   const calls: string[] = [];
   const alarms: OwnerItemDeposit[] = [];
   const restarts = [...(scenario.afterRestart ?? [NEW])];
   const git = async (cwd: string, args: readonly string[]): Promise<CommandResult> => {
     calls.push(`git ${args.join(" ")}`);
-    if (args[0] === "rev-parse") return ok(`${args[3] === "origin/main^{commit}" ? NEW : cwd.includes("releases/") ? NEW : OLD}\n`);
+    if (args[0] === "rev-parse") return ok(`${cwd.endsWith(NEW) ? NEW : OLD}\n`);
     if (args[0] === "diff") return ok((scenario.changed ?? ["apps/console/src/App.tsx"]).join("\n"));
     return ok();
-  };
-  const pnpm = async (_cwd: string, args: readonly string[]): Promise<CommandResult> => {
-    calls.push(`pnpm ${args.join(" ")}`);
-    if (args.includes("ls")) return ok(CLOSURE);
-    return args.includes("build") ? (scenario.build ?? ok()) : ok();
   };
   const ports: UpdatePorts = {
     pid: 100,
     git,
-    pnpm,
+    pnpm: async (_cwd, args) => (calls.push(`pnpm ${args.join(" ")}`), ok(args.includes("ls") ? CLOSURE : "")),
     systemctl: async (args) => (calls.push(`systemctl ${args.join(" ")}`), ok()),
     readLink: (link) => links.get(link),
     swapLink: (link, target) => (calls.push(`swap ${target}`), void links.set(link, target)),
-    exists: (file) => files.has(file),
-    listDirs: () => [OLD, NEW, "c".repeat(40)],
+    exists: (file) => [...files.keys()].some((key) => key === file || key.startsWith(`${file}/`)),
+    listDirs: () => [OLD, NEW, STALE],
     mkdir: () => {},
     writeFile: (file, text) => void files.set(file, text),
     readFile: (file) => files.get(file),
@@ -79,65 +75,98 @@ function fakePorts(scenario: Scenario = {}): Fake {
     log: () => {},
     now: () => Date.parse("2031-03-05T12:00:00.000Z"),
   };
-  return { ports, files, links, calls, alarms, restarts };
+  return { ports, files, links, calls, alarms };
 }
 
 const record = (fake: Fake) => readRecord(fake.files.get(recordPath(OPTIONS.stateDir)));
 const served = (fake: Fake) => fake.links.get(`${ROOT}/current`);
+const removed = (fake: Fake) => fake.calls.filter((call) => call.startsWith("git worktree remove")).map((call) => call.split(" ").at(-1));
+const apply = (fake: Fake) => applyRelease(fake.ports, OPTIONS, NEW);
 
-describe("the console self-update", () => {
-  it("does nothing when no commit since the served sha touches the console closure", async () => {
+describe("the console updater the bootstrap hands off to", () => {
+  it("records a sha with no console change and drops its release without a restart", async () => {
     const fake = fakePorts({ changed: ["products/factory/src/serve.ts", "apps/console/README.md", "packages/daemon/src/http.test.ts"] });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
-    expect(fake.calls.filter((call) => /worktree add|install|build|restart|swap/.test(call))).toEqual([]);
-    expect(served(fake)).toBe(`${ROOT}/checkout`);
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    expect(fake.calls.filter((call) => /restart|swap|--smoke/.test(call))).toEqual([]);
+    expect(served(fake)).toBe(PREV);
+    expect(record(fake)).toMatchObject({ outcome: "unchanged", target: NEW, served: OLD });
+    expect(removed(fake)).toEqual([RELEASE]);
   });
 
-  it("builds, smokes, swaps and restarts when a closure package changed, then keeps two releases", async () => {
+  it("smokes, swaps and restarts a good build, then keeps it and the previous release", async () => {
     const fake = fakePorts({ changed: ["packages/daemon/src/http.ts"] });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
-    expect(served(fake)).toBe(`${ROOT}/releases/${NEW}`);
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    expect(served(fake)).toBe(RELEASE);
     expect(fake.calls).toContain(`node ${RELEASE}/apps/console/dist/cli.js self-update --smoke ${RELEASE} ${NEW}`);
     expect(fake.calls).toContain("systemctl --user restart titan-console.service");
-    expect(fake.calls.filter((call) => call.startsWith("git worktree remove"))).toEqual([`git worktree remove --force ${ROOT}/releases/${OLD}`, `git worktree remove --force ${ROOT}/releases/${"c".repeat(40)}`]);
+    expect(removed(fake)).toEqual([`${ROOT}/releases/${STALE}`]);
     expect(record(fake)).toMatchObject({ outcome: "updated", target: NEW, served: OLD });
   });
 
-  it("keeps the old sha serving when the build fails, and raises the alarm", async () => {
-    const fake = fakePorts({ build: failed("vite: Could not resolve ./BuildFooter.js") });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+  it("rolls back to the previous release, still on disk, when /health does not report the new sha", async () => {
+    const fake = fakePorts({ afterRestart: [OLD, OLD] });
+
+    expect(await apply(fake)).toBe(EXIT.FAILED);
+
+    expect(fake.calls.filter((call) => call.startsWith("swap"))).toEqual([`swap ${RELEASE}`, `swap ${PREV}`]);
+    expect(served(fake)).toBe(PREV);
+    expect(removed(fake)).toEqual([]);
+    expect(fake.calls.filter((call) => call.startsWith("systemctl"))).toHaveLength(2);
+    expect(record(fake)).toMatchObject({ outcome: "rolled-back", stage: "restart", why: `/health on port 7500 answered build ${OLD}, not ${NEW}` });
+    expect(fake.alarms.map((alarm) => alarm.depositId)).toEqual(["console-update-bbbbbbb-restart"]);
+  });
+
+  it("accepts a rollback to a build from before the stamp that answers with no sha", async () => {
+    const fake = fakePorts({ serving: `${ROOT}/checkout`, afterRestart: [undefined, null] });
+
+    expect(await apply(fake)).toBe(EXIT.FAILED);
+
     expect(served(fake)).toBe(`${ROOT}/checkout`);
-    expect(fake.calls.some((call) => call.startsWith("systemctl") || call.startsWith("smoke"))).toBe(false);
-    expect(record(fake)).toMatchObject({ outcome: "failed", stage: "build", target: NEW });
-    expect(fake.alarms.map((alarm) => alarm.depositId)).toEqual(["console-update-bbbbbbb-build"]);
+    expect(record(fake)).toMatchObject({ outcome: "rolled-back", stage: "restart" });
+  });
+
+  it("says the console may be down when the rollback does not answer either", async () => {
+    const fake = fakePorts({ afterRestart: [undefined, undefined] });
+
+    expect(await apply(fake)).toBe(EXIT.FAILED);
+
+    expect(record(fake)).toMatchObject({ outcome: "rollback-failed", stage: "rollback" });
+    expect(fake.alarms[0]!.summary).toMatch(/^CONSOLE MAY BE DOWN/);
   });
 
   it("keeps the old sha serving when the smoke check fails, and raises the alarm", async () => {
     const fake = fakePorts({ releaseSmoke: verdict("the new build on spare port 40123 answered /health with nothing") });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
-    expect(served(fake)).toBe(`${ROOT}/checkout`);
+
+    expect(await apply(fake)).toBe(EXIT.FAILED);
+
+    expect(served(fake)).toBe(PREV);
     expect(fake.calls.some((call) => call.startsWith("systemctl"))).toBe(false);
     expect(fake.alarms).toHaveLength(1);
     expect(fake.alarms[0]).toMatchObject({ asker: "titan-console", kind: "do", keys: ["console-update"] });
     expect(fake.alarms[0]!.context).toContain("aaaaaaa keeps serving");
     expect(record(fake)?.why).toBe("the new build on spare port 40123 answered /health with nothing");
+    expect(removed(fake)).toEqual([RELEASE]);
   });
 
   // TP-3938: the installed updater's own smoke was broken, so the release carrying its fix never got past it.
-  it("runs the new release's smoke check, not the one in the updater that is running", async () => {
+  it("runs the new release's smoke check, not an in-process one", async () => {
     const fake = fakePorts({ smoke: "the old check bound a port the served console holds", releaseSmoke: verdict() });
 
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
+    expect(await apply(fake)).toBe(EXIT.OK);
 
     expect(served(fake)).toBe(RELEASE);
     expect(fake.calls.some((call) => call.startsWith("smoke "))).toBe(false);
   });
 
-  it("falls back to its own smoke check when the new release has no smoke verb", async () => {
+  it("falls back to its own smoke check when the release answers with its usage", async () => {
     const usage = ran({ code: 64, stderr: "usage: titan-console                    serve the console\n" });
     const fake = fakePorts({ releaseSmoke: usage, smoke: "the new build on spare port 40123 did not serve its page at /" });
 
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+    expect(await apply(fake)).toBe(EXIT.FAILED);
 
     expect(fake.calls).toContain(`smoke ${RELEASE}`);
     expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build on spare port 40123 did not serve its page at /" });
@@ -149,7 +178,7 @@ describe("the console self-update", () => {
     const crash = ran({ code: 1, stderr: `${noise}\nError: listen EADDRINUSE: address already in use 127.0.0.1:7501\n` });
     const fake = fakePorts({ releaseSmoke: crash });
 
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+    expect(await apply(fake)).toBe(EXIT.FAILED);
 
     const why = record(fake)?.why ?? "";
     expect(why).toMatch(/^the new build's smoke check exited 1 with no verdict; its stderr ended: /);
@@ -157,46 +186,24 @@ describe("the console self-update", () => {
     expect(why).toContain("noise line 11");
     expect(why).not.toContain("noise line 10");
     expect(fake.alarms[0]!.context).toContain("EADDRINUSE");
-    expect(served(fake)).toBe(`${ROOT}/checkout`);
+    expect(served(fake)).toBe(PREV);
   });
 
-  it("fails the smoke stage when the new release's check runs past its time, even with a late verdict", async () => {
+  it("fails the smoke stage when the release's check runs past its time, even with a late verdict", async () => {
     const fake = fakePorts({ releaseSmoke: ran({ ...verdict(), timedOut: true, stderr: "still waiting on /health" }) });
 
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+    expect(await apply(fake)).toBe(EXIT.FAILED);
 
     expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build's smoke check did not finish in time; its stderr ended: still waiting on /health" });
     expect(fake.calls.some((call) => call.startsWith("smoke ") || call.startsWith("systemctl"))).toBe(false);
   });
 
-  it("swaps the old build back when the restarted unit does not answer as the new sha", async () => {
-    const fake = fakePorts({ afterRestart: [undefined, null] });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
-    expect(served(fake)).toBe(`${ROOT}/checkout`);
-    expect(fake.calls.filter((call) => call.startsWith("systemctl"))).toHaveLength(2);
-    expect(record(fake)).toMatchObject({ outcome: "rolled-back", stage: "restart" });
-    expect(fake.alarms.map((alarm) => alarm.depositId)).toEqual(["console-update-bbbbbbb-restart"]);
-  });
-
-  it("says the console may be down when the rollback does not answer either", async () => {
-    const fake = fakePorts({ afterRestart: [undefined, undefined] });
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
-    expect(record(fake)).toMatchObject({ outcome: "rollback-failed", stage: "rollback" });
-    expect(fake.alarms[0]!.summary).toMatch(/^CONSOLE MAY BE DOWN/);
-  });
-
-  it("holds a failed target instead of rebuilding it on every tick", async () => {
-    const fake = fakePorts({ build: failed("boom") });
-    await selfUpdate(fake.ports, OPTIONS);
-    fake.calls.length = 0;
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
-    expect(fake.calls.some((call) => call.includes("build") || call.includes("worktree add"))).toBe(false);
-  });
-
   it("refuses a second run while another holds the lock", async () => {
     const fake = fakePorts({ liveHolder: 4242 });
     fake.files.set(lockPath(OPTIONS.stateDir), "4242");
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.LOCKED);
+
+    expect(await apply(fake)).toBe(EXIT.LOCKED);
+
     expect(fake.calls).toEqual([]);
     expect(fake.files.get(lockPath(OPTIONS.stateDir))).toBe("4242");
   });
@@ -204,28 +211,57 @@ describe("the console self-update", () => {
   it("takes over a lock whose holder is gone and releases it after", async () => {
     const fake = fakePorts({ changed: [] });
     fake.files.set(lockPath(OPTIONS.stateDir), "4242");
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
     expect(fake.files.has(lockPath(OPTIONS.stateDir))).toBe(false);
   });
 
-  it("is a no-op when the served sha is already origin/main", async () => {
-    const fake = fakePorts();
-    fake.links.set(`${ROOT}/current`, `${ROOT}/releases/${NEW}`);
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
-    expect(fake.calls.filter((call) => !call.startsWith("git fetch") && !call.startsWith("git rev-parse"))).toEqual([]);
+  it("is a no-op when the target already serves", async () => {
+    const fake = fakePorts({ serving: RELEASE });
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    expect(fake.calls.filter((call) => !call.startsWith("git rev-parse"))).toEqual([]);
   });
 
-  it("refuses until the current symlink exists", async () => {
+  it("refuses until the current symlink exists, and when the target was never built", async () => {
+    const unlinked = fakePorts();
+    unlinked.links.clear();
+    const unbuilt = fakePorts();
+    unbuilt.files.clear();
+
+    expect(await apply(unlinked)).toBe(EXIT.CONFIG);
+    expect(await apply(unbuilt)).toBe(EXIT.CONFIG);
+
+    expect([...unlinked.calls, ...unbuilt.calls]).toEqual([]);
+  });
+});
+
+describe("the bootstrap's failure report", () => {
+  it("files the owner-queue alarm for a build failure the bootstrap recorded", async () => {
     const fake = fakePorts();
-    fake.links.clear();
-    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.CONFIG);
-    expect(fake.calls).toEqual([]);
+    fake.files.set(recordPath(OPTIONS.stateDir), JSON.stringify({ outcome: "failed", target: NEW, served: OLD, at: "2031-03-05T12:00:00.000Z", stage: "build", why: "pnpm build failed: vite: Could not resolve ./Footer.js" }));
+
+    expect(await reportRecorded(fake.ports, OPTIONS.stateDir)).toBe(EXIT.OK);
+
+    expect(fake.alarms.map((alarm) => alarm.depositId)).toEqual(["console-update-bbbbbbb-build"]);
+    expect(fake.alarms[0]!.context).toContain("Could not resolve ./Footer.js");
+  });
+
+  it("files nothing when the last attempt did not fail", async () => {
+    const fake = fakePorts();
+    fake.files.set(recordPath(OPTIONS.stateDir), JSON.stringify({ outcome: "updated", target: NEW, served: OLD, at: "2031-03-05T12:00:00.000Z" }));
+
+    expect(await reportRecorded(fake.ports, OPTIONS.stateDir)).toBe(EXIT.CONFIG);
+
+    expect(fake.alarms).toEqual([]);
   });
 });
 
 describe("the console closure", () => {
-  it("reads pnpm's package paths relative to the checkout", () => {
-    expect(closureDirs(CLOSURE, `${ROOT}/checkout`)).toEqual(["apps/console", "packages/daemon"]);
+  it("reads pnpm's package paths relative to the release", () => {
+    expect(closureDirs(CLOSURE, RELEASE)).toEqual(["apps/console", "packages/daemon"]);
     expect(closureDirs("not json", ROOT)).toBeUndefined();
   });
 
