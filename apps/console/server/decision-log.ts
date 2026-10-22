@@ -69,7 +69,7 @@ export interface LiveViewedEntry {
   builds?: Record<string, string | null>;
 }
 
-export interface DecisionEntry {
+interface DecisionEntry {
   item: DecisionItem;
   answer: DecisionAnswer;
 }

@@ -344,7 +344,6 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
 /** One batch, so a round of N answers reads the human-only list once rather than N times (TP-4001). */
 async function logRound(decisionLog: RoundDecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
   const decisions = roundDecisions(round);
-  if (decisions.length === 0) return [];
   const results = await decisionLog.recordAll(decisions);
   return decisions.map(({ questionId }, index) => ({ questionId, ...results[index]! }));
 }
@@ -356,10 +355,7 @@ async function recordDecisions(decisionLog: RoundDecisionLog | undefined, { resu
   return { ...result, log, ...(live !== null && { liveViewedLog: await decisionLog.recordLiveViewed(live) }) };
 }
 
-/**
- * The listener starts after the answer is on disk and never changes what the owner is told, so the response does not
- * wait on its factory and seat calls, each allowed 10 s (TP-4001). A failure stays the sweep's to retry.
- */
+/** The listener never changes what the owner is told, so the response skips its 10 s factory and seat calls; the sweep retries a failure (TP-4001). */
 async function afterSubmit(hooks: SubmitHooks, id: string, submission: Submission): Promise<SubmitResult> {
   const result = await recordDecisions(hooks.decisionLog, submission);
   void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined);
