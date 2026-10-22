@@ -4,13 +4,14 @@
 // `inbox file` lets an agent file an owner item, `decisions file` lets a seat file a questions-only decision round,
 // `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
 // and proposes ones the decisions file cites as answered, `rounds nudge` prints each round waiting over six hours once,
-// `rounds subscribe` tells a seat of answers,
+// `rounds answer-rec` relays the owner's "rec" reply, `rounds subscribe` tells a seat of answers,
 // `storybooks gc` sweeps the Storybook store, `config import` / `config compare-tree` run the coordinator config
 // store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
+import { answerRecCli, roundsAnswerRecArgs } from "./cli-rounds-answer-rec.js";
 import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
 import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
 import { storybooksGcArgs, storybooksGcCli } from "./cli-storybooks.js";
@@ -47,6 +48,9 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console rounds nudge [--json]
                                         print one "reply rec" line for each round open over 6 h with
                                         no answer, once: a nudged.json marker keeps it from repeating
+       titan-console rounds answer-rec <id> [--json]
+                                        answer every question of an open round with its
+                                        recommendation, as the owner's "rec" reply, and print how many
        titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
                                         message the seat (default AGENT_CHAT_NAME) once for each answer
                                         to a matching round, imported now or later, from now on
@@ -109,6 +113,7 @@ const roundsImport = roundsImportArgs(argv);
 const roundsWithdraw = roundsWithdrawArgs(argv);
 const roundsSweep = roundsSweepArgs(argv);
 const roundsNudge = roundsNudgeArgs(argv);
+const roundsAnswerRec = roundsAnswerRecArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
@@ -123,6 +128,7 @@ else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImpo
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);
 else if (roundsSweep !== null) await sweepRoundsCli(resolveConfig(), roundsSweep);
 else if (roundsNudge !== null) await nudgeRoundsCli(resolveConfig(), roundsNudge);
+else if (roundsAnswerRec !== null) await answerRecCli(resolveConfig(), roundsAnswerRec);
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (storybooksGc !== null) await storybooksGcCli(resolveConfig(), storybooksGc);
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);

@@ -25,11 +25,18 @@ const answerRecArgs = z.strictObject({
 
 type AnswerRecArgs = z.infer<typeof answerRecArgs>;
 
+/** `answered` counts the questions the recommendations answered; `result` is `rounds.submit`'s own. */
+export interface RecAnswer {
+  answered: number;
+  result: SubmitResult;
+}
+
 const refuse = (message: string): never => {
   throw failure(message, EXIT.DATAERR);
 };
 
-async function answerWithRecommendations(dir: string, submit: SubmitPipeline, { id, manifestSha256 }: AnswerRecArgs, now = new Date()): Promise<SubmitResult> {
+/** The one answer-rec path: the RPC command and the `rounds answer-rec` verb (TP-4054) both run it. */
+export async function answerWithRecommendations(dir: string, submit: SubmitPipeline, { id, manifestSha256 }: AnswerRecArgs, now = new Date()): Promise<RecAnswer> {
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, id);
   const status = await statusOf(roundDir);
@@ -42,7 +49,8 @@ async function answerWithRecommendations(dir: string, submit: SubmitPipeline, { 
   if (parsed.manifest.recommendations === "after-answer") {
     for (const { questionId } of built.answers) await recordReveal(roundDir, questionId, now);
   }
-  return submit({ id, manifestSha256, answers: built.answers, general: ANSWERED_BY_REC });
+  const result = await submit({ id, manifestSha256, answers: built.answers, general: ANSWERED_BY_REC });
+  return { answered: built.answers.length, result };
 }
 
 export function roundsAnswerRecCommands({ dir }: RoundsSource, submit: SubmitPipeline) {
@@ -53,7 +61,7 @@ export function roundsAnswerRecCommands({ dir }: RoundsSource, submit: SubmitPip
       args: answerRecArgs,
       result: submitResult,
       ownerWrite: true,
-      run: (args) => answerWithRecommendations(dir, submit, args),
+      run: async (args) => (await answerWithRecommendations(dir, submit, args)).result,
     }),
   };
 }
