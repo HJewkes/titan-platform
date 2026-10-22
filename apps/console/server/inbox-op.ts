@@ -36,7 +36,7 @@ const short = (sha: string): string => sha.slice(0, 7);
 
 function holdOf(shepherd: PrFacts["shepherd"]): OpReadBack["hold"] {
   const reason = shepherd?.held === true ? shepherd.holdReason : (shepherd?.ownerHold ?? null);
-  return reason === null || reason === undefined ? undefined : { class: holdClassOf(reason) ?? "unclassed", reason };
+  return reason === null ? undefined : { class: holdClassOf(reason) ?? "unclassed", reason };
 }
 
 function factsOf(item: OwnerItem, pr: PrFacts & { head: string }, authority: string, effect: string): OpReadBack {
