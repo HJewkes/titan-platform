@@ -1,15 +1,14 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { octokitClient, sharedRateBudget, type GhExecOptions, type GitExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOT_CAPABILITY, BOT_LOGIN, BOT_TOKEN_PATH, botAccess, botTokenPathIn, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
+import { BOT_CAPABILITY, BOT_LOGIN, botAccess, botTokenPathIn, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
 import { runCommand } from "./service-ports.js";
 
 /** Built, not written out, so no source line carries a token-shaped literal. */
 const SENTINEL = `ghp_${"SYNTHETICsentinel".padEnd(36, "0")}`;
-const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const HOUR_S = 3600;
 const DAY_MS = 24 * HOUR_S * 1000;
 const dirs: string[] = [];
@@ -165,11 +164,6 @@ describe("bot identity: ls-remote as the bot (TP-3431)", () => {
 });
 
 describe("bot identity: an absent or refused file disables only the bot (V5)", () => {
-  it("reads the token from the owner's 0700 secrets dir under the passwd home, outside the repo", () => {
-    expect(BOT_TOKEN_PATH).toBe(join(userInfo().homedir, ".config", "titan-factory", "secrets", "github-bot.token"));
-    expect(relative(REPO_ROOT, BOT_TOKEN_PATH!).startsWith("..")).toBe(true);
-  });
-
   it("places the token under whatever home it is given, so a test never meets the real file", () => {
     expect(botTokenPathIn("/srv/synthetic-home")).toBe("/srv/synthetic-home/.config/titan-factory/secrets/github-bot.token");
   });

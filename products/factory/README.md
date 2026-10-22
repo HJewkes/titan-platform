@@ -1045,7 +1045,10 @@ serve reads the bot's token from `BOT_TOKEN_PATH` (`src/bot-identity.ts`):
 `$HOME`. No environment variable, flag or config moves it. The file is 0600 in a 0700 dir, both owned by serve's
 OS user (TP-3094 option B: serve runs as the owner's user), outside every worktree. A missing file leaves the bot
 `absent`; a symlink, a group or other bit, another owner or a non-token shape leaves it `refused`. Either way serve
-still starts.
+still starts. The constant lives alone in `src/bot-token-path.ts`. Under vitest, a setup file
+(`src/test-support/vitest-setup.ts`) gives `userInfo()` a fresh home under the run's temp root, and the forked serve
+child's resolve hook swaps the module for one with no path. So no test resolves the passwd home or reads the real
+token, even when it starts serve with no `bot` option.
 
 The owner writes the token; no agent reads, writes or prints it. Run one line at a time in the owner's own
 terminal, not in an agent session:
