@@ -19,6 +19,7 @@ import {
 } from "@titan-design/react-ui";
 import type { ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
+import { AutoresearchRoundPlanner } from "./AutoresearchRoundPlanner.js";
 import { keptMove, reasonLabel, shortId, signed } from "./autoresearch-format.js";
 import { formatCost } from "./SessionFormat.js";
 
@@ -43,6 +44,7 @@ export function AutoresearchDecisions({ run }: { run: ArRunView }): ReactNode {
             <AccordionItem key={round.round}>
               <AccordionButton>{roundTitle(round)}</AccordionButton>
               <AccordionPanel>
+                <AutoresearchRoundPlanner round={round} />
                 <RoundDecisions run={run} round={round} />
               </AccordionPanel>
             </AccordionItem>

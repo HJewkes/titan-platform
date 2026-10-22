@@ -201,8 +201,8 @@ The effective mode is what actually runs. It follows from the two switches:
 | `webhook` | `off` | polling | `kill-switch` | `pollingIntervalMs` |
 | `webhook` | `on` | webhook | `configured` | `backstopIntervalMs` |
 
-The cadence keys are `github.pollingIntervalMs` and `github.backstopIntervalMs`. The schedule does not read
-`reconciler.intervalMs` (TP-3431 decides its fate), so do not set it to change how often GitHub is read.
+The cadence keys are `github.pollingIntervalMs` and `github.backstopIntervalMs`, and they are the only ones. The reconciler has no
+interval of its own (see [Reconciler](#reconciler)).
 
 **The kill switch needs no restart.** Serve re-reads the config file whenever health or the schedule asks. To drop a webhook
 deployment back to polling, set `github.ingress` to `"off"` and save: the next ingress request gets `404 {"error":"ingress off"}`
@@ -237,14 +237,17 @@ what it sees to the event log with `source: backstop`. It only appends. It never
 back, never acts on a row, and never updates or deletes one.
 
 ```json
-{ "reconciler": { "enabled": false, "intervalMs": 300000, "fullEvery": 3, "repos": ["acme/widgets"] } }
+{ "reconciler": { "enabled": false, "fullEvery": 3, "repos": ["acme/widgets"] } }
 ```
 
 - `enabled` is off by default. Serve starts no reconciler until it is on and the bot's
   GitHub port is wired (TP-3431). Turning it off stops every tick and the start pass.
-- `intervalMs` is the tick period. The default is 300000 (5 minutes). Under
-  `github.sources: webhook` it must be between 300000 and 600000 (5 to 10 minutes), or the
-  config load fails. The polling-mode bound belongs to `github.pollingIntervalMs`.
+- The tick period comes from the [`github` block](#github-event-sources):
+  `pollingIntervalMs` under effective polling, `backstopIntervalMs` (5 to 10 minutes) under
+  effective webhook. `reconciler.intervalMs` is deprecated and ignored. For one release the
+  load still accepts it, so a config that sets it keeps starting, and serve logs
+  `config.deprecated reconciler.intervalMs ignored; use github.backstopIntervalMs` at start.
+  Remove it from the file.
 - `fullEvery` (default 3) caps how many ticks a quiet repo can go without a full GraphQL
   snapshot. A repo is quiet when its conditional gates all answer 304 and its last snapshot
   had no check or status still running.

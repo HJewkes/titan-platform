@@ -181,10 +181,27 @@ function withS3a(ladder: ArLadder): ArLadder {
   };
 }
 
+/** C-256 S4c's parent-chain length: the follow-up of the kept idea is one deep, every other idea a root. */
+const withDepth = (entry: Idea): Idea => ({ ...entry, lineageDepth: entry.parent === undefined ? 0 : 1 });
+
+const PLANNER_SESSION ="00000000-0000-4000-8000-00000000b001";
+
+/** C-256 S3e: round 1's planner spawns fresh and later rounds resume its session, so the cache reads grow. */
+const PLANNERS: Record<number, NonNullable<ArRunView["rounds"][number]["planner"]>> = {
+  1: { agent: "ar-plan-7c1e", sessionId: PLANNER_SESSION, mode: "spawn", usage: { usd: 0.42, cacheReadTokens: 0, cacheWrite1hTokens: 18_400, retries: 0 } },
+  2: { agent: "ar-plan-7c1e", sessionId: PLANNER_SESSION, mode: "resume", usage: { usd: 0.31, cacheReadTokens: 18_400, cacheWrite1hTokens: 6_200, retries: 1 } },
+  3: { agent: "ar-plan-7c1e", sessionId: PLANNER_SESSION, mode: "resume", usage: { usd: 0.19, cacheReadTokens: 24_600, cacheWrite1hTokens: 3_100, retries: 0 } },
+};
+
 /** The synthetic run as the engine records it from C-256 S3a on; every registry row names its idea and round. */
 export const AR_RUN_FIXTURE: ArRunView = {
   ...PRE_S3A_RUN,
-  rounds: PRE_S3A_RUN.rounds.map((round) => ({ ...round, ladders: round.ladders.map(withS3a) })),
+  rounds: PRE_S3A_RUN.rounds.map((round) => ({
+    ...round,
+    queue: round.queue.map(withDepth),
+    planner: PLANNERS[round.round],
+    ladders: round.ladders.map((ladder) => withS3a({ ...ladder, idea: withDepth(ladder.idea) })),
+  })),
   registries: {
     deadEnds: [
       { ideaId: SUPERSEDED.id, round: 1, ...PRE_S3A_RUN.registries.deadEnds[0]! },

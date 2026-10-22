@@ -59,6 +59,11 @@ describe("the run view schema", () => {
     expect(ArRunSummarySchema.safeParse(row).success).toBe(false);
   });
 
+  it("keeps an ended run's stop reason under the engine's name", () => {
+    const parsed = ArRunViewSchema.parse({ ...AR_RUN_FIXTURE, status: "completed", stopReason: "rounds-without-gain" });
+    expect(parsed.stopReason).toBe("rounds-without-gain");
+  });
+
   it("strips a field the page does not show", () => {
     const parsed = ArRunViewSchema.parse({ ...AR_RUN_FIXTURE, owner: "someone" });
     expect(parsed).not.toHaveProperty("owner");
