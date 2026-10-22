@@ -46,7 +46,7 @@ const MOVE = {
 
 /** One route call as the runtime makes it after a restart: the first attempt's start time survives. */
 async function routeOutcome(name: ArDispatchStep, input: object, ports: ArPorts = answeringPorts()) {
-  const route = arRoutes(ports).find((candidate) => candidate.match === arStepId(name))!;
+  const route = arRoutes(() => ports).find((candidate) => candidate.match === arStepId(name))!;
   const stepId = `${arStepId(name)}:x`;
   const timing = { attempt: 1, requestKey: `run-1/${stepId}`, firstStartedAt: "2026-10-20T08:00:00.000Z", restarts: 1 };
   return route.runner.run({ runId: "run-1", workflowName: "autoresearch", stepId, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, ...timing });
@@ -99,15 +99,31 @@ describe("autoresearch routes", () => {
     };
 
     expect(await retryable("[tree-live] /trees/a is the cwd of live agent ar-x")).toBe(true);
+    expect(await retryable("[pin-fetch] git fetch origin failed in /trees/clone: could not resolve host")).toBe(true);
+    expect(await retryable("[pin-not-on-main] ppp is not on origin/main")).toBe(false);
     expect(await retryable("[frozen-drift] frozen files in /trees/e no longer match the pin")).toBe(false);
     expect(await retryable("[no-pin] run run-1 has no evaluator checkout")).toBe(false);
     expect(await retryable("[release] [tree-live] quoted inside another code")).toBe(false);
   });
 });
 
+describe("autoresearch routes per run", () => {
+  it("calls the ports of the step's own run", async () => {
+    const seen: string[] = [];
+    const portsOf = (runId: string): ArPorts => ({ ...answeringPorts(), evalCase: async () => (seen.push(runId), RUN) });
+    const route = arRoutes(portsOf).find((candidate) => candidate.match === arStepId("eval"))!;
+    const input = (runId: string) => ({ runId, workflowName: "autoresearch", stepId: "ar-eval:x", iteration: 0, prompt: JSON.stringify({ ...RUN_PIN, runId, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" }), signal: new AbortController().signal, attempt: 1, requestKey: `${runId}/ar-eval:x` });
+
+    await route.runner.run(input("run-a"));
+    await route.runner.run(input("run-b"));
+
+    expect(seen).toEqual(["run-a", "run-b"]);
+  });
+});
+
 describe("autoresearch on the factory host", () => {
   it("routes every dispatch step of the package's workflow and fails the run on a port error", async () => {
-    const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(portsFailingAtPin()), gatePollMs: 5 });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [autoresearchWorkflow()], routes: arRoutes(portsFailingAtPin), gatePollMs: 5 });
     hosts.push(host);
 
     const run = await host.runtime.wait(host.runtime.start("autoresearch", { pin: "abc123" }));

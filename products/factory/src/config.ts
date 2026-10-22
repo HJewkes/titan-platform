@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
+import { ArConfigSchema } from "./autoresearch/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
@@ -199,6 +200,7 @@ export const FactoryConfigSchema = z.object({
   service: ServiceConfigSchema.optional(),
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
+  autoresearch: ArConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
