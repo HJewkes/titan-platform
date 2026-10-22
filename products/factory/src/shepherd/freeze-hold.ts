@@ -111,7 +111,7 @@ const pass = (reason: string): Hold => ({ hold: false, reason, episode: null });
 const failureOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** A freeze store that throws wakes the run as an unfrozen repo would, so a broken store never fails a PR's run. */
-async function decideHoldOrPass(deps: ShepherdDeps, freezes: (() => FreezeStore) | undefined, input: HoldInput): Promise<Hold> {
+export async function decideHoldOrPass(deps: ShepherdDeps, freezes: (() => FreezeStore) | undefined, input: HoldInput): Promise<Hold> {
   try {
     return await decideHold(deps, freezes?.(), input);
   } catch (error) {
