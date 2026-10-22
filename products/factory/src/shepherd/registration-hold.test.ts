@@ -147,6 +147,38 @@ describe("the G10 hold Shepherd places at registration", () => {
     },
   );
 
+  it("holds a replay of tp#2253's file list, which widened coordinator gate resolves, g10-adversary", async () => {
+    const r = rig([
+      file("products/factory/src/coordinator-evidence.ts", 40),
+      file("products/factory/src/coordinator-evidence-read.ts", 20),
+      file("products/factory/src/gate-resolve-evidence.test.ts", 60),
+      file("products/factory/README.md", 5),
+      file("site/guides/shepherd.md", 5),
+      file(".changeset/coordinator-sent-back-await.md", 5),
+    ]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each(["products/factory/src/coordinator-evidence.ts", "products/factory/src/coordinator-evidence-read.ts", "products/factory/src/coordinator-allowances.ts", "packages/hitl/src/resolver-policy.ts"])(
+    "holds a gate-resolve actor or evidence rule in %s g10-adversary",
+    async (path) => {
+      const r = rig([file(path, 10)]);
+
+      expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+    },
+  );
+
+  it("leaves a test-only change to the gate-resolve actor and evidence rules unheld", async () => {
+    const r = rig([
+      file("products/factory/src/coordinator-evidence.test.ts", 30),
+      file("products/factory/src/gate-resolve-evidence.test.ts", 30),
+      file("packages/hitl/src/resolver-policy.test.ts", 30),
+    ]);
+
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
   it("leaves a small plain-source PR of an unknown kind unheld", async () => {
     const r = rig([file("packages/x/src/a.ts", 50)], "unknown");
 

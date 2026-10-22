@@ -10,12 +10,18 @@ export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts"
  */
 export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts"];
 
+/**
+ * Who may resolve a gate: the factory's coordinator evidence and answer allowances, and hitl's actor-class refusal.
+ * A diff here can widen gate resolves past the owner as surely as an authority table edit (TP-4052, tp#2253).
+ */
+const GATE_RESOLVE_ACTOR_FILES = ["products/factory/src/**/coordinator-evidence*.ts", "products/factory/src/**/coordinator-allowances*.ts", "packages/hitl/src/resolver-policy*.ts"];
+
 /** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5), and its agent profiles (458 E1); test files stay exempt in the panel. */
 const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
