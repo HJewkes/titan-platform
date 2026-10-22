@@ -7,7 +7,7 @@ import { behindMain, type BehindMain } from "./behind-main.js";
 import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
-import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
+import type { DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
@@ -22,6 +22,7 @@ import { startUnlessLive, type HealthProbe } from "./serve-beside-live.js";
 import { startLoopDelayWatch } from "./serve-loop-delay.js";
 import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
 import { untilStopped } from "./serve-signal.js";
+import { startDeployWatch, sweepFixers } from "./serve-sweeps.js";
 import { logAgentChatCalls } from "./serve-agent-chat-timing.js";
 import type { ServeReconciler } from "./reconciler/bot-ports.js";
 import { startServeReconciler, type ReconcilerHealth } from "./serve-reconciler.js";
@@ -44,8 +45,7 @@ import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
 import { startRoundShipSweep } from "./shepherd/round-ship-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
-import type { FreezeStoreRef } from "./shepherd/freeze.js";
-import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
+import { FIXER_RETIRE_MS, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
@@ -364,19 +364,4 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
   const onError = (path: string, error: unknown): void =>
     log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
   for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
-}
-
-export async function sweepFixers(ports: FixerRetirePorts, freeze: FreezeStoreRef, log: Logger): Promise<void> {
-  for (const note of await retireEndedFixers(ports, freeze.get().activeFreezes())) {
-    if (note.outcome === "retired") log.info({ ...note }, "retired an ended main-red fixer");
-    else log.warn({ ...note }, "left an ended main-red fixer");
-  }
-}
-
-/** The first tick is not awaited: its redeploy.log read and index.lock probe (lsof, pgrep) must not hold up the start. */
-function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | undefined {
-  if (watch?.startupWarning) log.warn({}, watch.startupWarning);
-  const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
-  void sweep?.tick();
-  return sweep;
 }

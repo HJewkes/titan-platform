@@ -240,7 +240,7 @@ export function hasPending(snapshot: BackstopSnapshot): boolean {
   return commits.some((commit) => commit.contexts.some((context) => (context.kind === "check" ? context.status !== "COMPLETED" : !TERMINAL_STATUS.has(context.state))));
 }
 
-export interface ReconcilerServeOptions {
+interface ReconcilerServeOptions {
   config: ReconcilerConfig;
   bot: BotPorts;
 }
