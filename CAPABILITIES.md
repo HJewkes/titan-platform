@@ -772,7 +772,7 @@ Key exports:
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
 - `snapshot`: `cadence`, `CadenceSchema`, `snapshotLog`, `SnapshotSettingsSchema`, `SyncGateAnswerSchema`
-- +145 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- +148 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
