@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import {
   Caption,
   EmptyState,
+  Link,
   Section,
   SectionContent,
   SectionHeader,
@@ -18,7 +19,9 @@ import {
   VStack,
 } from "@titan-design/react-ui";
 import type { ArRegistries, ArRunView } from "../../server/autoresearch-view.js";
-import { signed } from "./autoresearch-format.js";
+import { href, open } from "../router.js";
+import { shortId, signed } from "./autoresearch-format.js";
+import { ideaRoute } from "./autoresearch-lanes.js";
 import { bugRepeatRates, REGISTRY_TAIL, registryTails, type RoundRepeats } from "./autoresearch-registries.js";
 
 const PERCENT = 100;
@@ -42,15 +45,14 @@ export function AutoresearchRegistries({ run }: { run: ArRunView }): ReactNode {
               <Tab>Bug-repeat rate</Tab>
             </TabList>
           </Tabs>
-          {tab === 0 ? <DeadEnds rows={tails.deadEnds} /> : tab === 1 ? <Bugs rows={tails.bugs} /> : <RepeatRate rounds={bugRepeatRates(run)} />}
+          {tab === 0 ? <DeadEnds runId={run.runId} rows={tails.deadEnds} /> : tab === 1 ? <Bugs runId={run.runId} rows={tails.bugs} /> : <RepeatRate rounds={bugRepeatRates(run)} />}
         </VStack>
       </SectionContent>
     </Section>
   );
 }
 
-/** The registry row names no idea yet, so the design's link to the idea that produced it waits on the engine. */
-function DeadEnds({ rows }: { rows: ArRegistries["deadEnds"] }): ReactNode {
+function DeadEnds({ runId, rows }: { runId: string; rows: ArRegistries["deadEnds"] }): ReactNode {
   if (rows.length === 0) return <EmptyState title="No idea has failed past L0 yet" />;
   return (
     <Table density="dense" contentMinWidth={REGISTRY_MIN_WIDTH} testID="autoresearch-dead-ends">
@@ -66,6 +68,7 @@ function DeadEnds({ rows }: { rows: ArRegistries["deadEnds"] }): ReactNode {
       <TableBody>
         {rows.map((row, index) => (
           <TableRow key={index}>
+            <ProducedBy runId={runId} row={row} />
             <TableCell>{row.cell}</TableCell>
             <TableCell>{row.targets.join(", ") || "—"}</TableCell>
             <TableCell>{row.rungFailed}</TableCell>
@@ -78,7 +81,7 @@ function DeadEnds({ rows }: { rows: ArRegistries["deadEnds"] }): ReactNode {
   );
 }
 
-function Bugs({ rows }: { rows: ArRegistries["bugs"] }): ReactNode {
+function Bugs({ runId, rows }: { runId: string; rows: ArRegistries["bugs"] }): ReactNode {
   if (rows.length === 0) return <EmptyState title="No L0 failure or planner analysis has logged a bug yet" />;
   return (
     <Table density="dense" contentMinWidth={REGISTRY_MIN_WIDTH} testID="autoresearch-bugs">
@@ -92,6 +95,7 @@ function Bugs({ rows }: { rows: ArRegistries["bugs"] }): ReactNode {
       <TableBody>
         {rows.map((row, index) => (
           <TableRow key={index}>
+            <ProducedBy runId={runId} row={row} />
             <TableCell>{row.symptom}</TableCell>
             <TableCell>{row.fix || "—"}</TableCell>
             <TableCell>{row.source}</TableCell>
@@ -99,6 +103,28 @@ function Bugs({ rows }: { rows: ArRegistries["bugs"] }): ReactNode {
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * TP-3867: the idea that produced the row, linked to its drawer, and its round. A planner analysis bug names no idea, and a
+ * row recorded before the engine kept either shows a dash.
+ */
+function ProducedBy({ runId, row }: { runId: string; row: { ideaId?: string; round?: number } }): ReactNode {
+  return (
+    <>
+      <TableCell>{row.ideaId === undefined ? "—" : <IdeaLink runId={runId} ideaId={row.ideaId} />}</TableCell>
+      <TableCell>{row.round === undefined ? "—" : `r${row.round}`}</TableCell>
+    </>
+  );
+}
+
+function IdeaLink({ runId, ideaId }: { runId: string; ideaId: string }): ReactNode {
+  const target = ideaRoute(runId, ideaId);
+  return (
+    <Link color="primary" href={href(target)} onPress={() => open(target)} testID={`autoresearch-registry-idea-${ideaId}`}>
+      {shortId(ideaId)}
+    </Link>
   );
 }
 

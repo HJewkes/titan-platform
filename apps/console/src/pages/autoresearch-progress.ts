@@ -54,6 +54,20 @@ export function bandFor(noise: NoiseConfig, reading: NoiseReading): Band {
   return { halfWidth: Math.max(noise.bandSigmas * (sigma ?? 0), noise.defaultBandPp), locked: false };
 }
 
+/** G7's snapshot names the case σ was measured on and the band the engine itself used, which wins over the recomputed one. */
+interface NoiseSnapshot extends NoiseReading {
+  case?: string;
+  bandWidth?: number;
+}
+
+/** σ's pairs, case, lock and band, as one caption: "5 pairs on seed-a · locked: band ±1.24". */
+export function noiseText(noise: NoiseConfig, snapshot: NoiseSnapshot): string {
+  const band = bandFor(noise, snapshot);
+  const width = (snapshot.bandWidth ?? band.halfWidth).toFixed(2);
+  const pairs = snapshot.pairs === undefined ? [] : [`${snapshot.pairs} pairs${snapshot.case === undefined ? "" : ` on ${snapshot.case}`}`];
+  return [...pairs, `${band.locked ? "locked" : "unlocked"}: band ±${width}`].join(" · ");
+}
+
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);

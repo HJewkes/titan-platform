@@ -102,7 +102,8 @@ const ROUNDS: ArRunView["rounds"] = [
   },
 ];
 
-export const AR_RUN_FIXTURE: ArRunView = {
+/** The run as a factory before C-256 S3a records it: no noise snapshot, lane, fork, usage, L0 rows or registry links. */
+const PRE_S3A_RUN: ArRunView = {
   runId: "ar-7c1e", status: "running", startedAt: at(420), completedAt: null, error: null,
   target: {
     name: "fixture-target", pin: PIN, ratchetRef: "refs/heads/ar/ratchet/ar-7c1e", phases: ["p1"], repo: "example-org/example-target", ratchetPrefix: "ar/ratchet",
@@ -130,8 +131,77 @@ export const AR_RUN_FIXTURE: ArRunView = {
   ],
 };
 
-/** The fixture's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
-export const AR_RUN_SUMMARY: ArRunSummary = {
-  runId: AR_RUN_FIXTURE.runId, target: AR_RUN_FIXTURE.target.name, phase: AR_RUN_FIXTURE.target.phases[0]!, round: 3, rounds: AR_RUN_FIXTURE.settings.rounds, status: AR_RUN_FIXTURE.status,
-  startedAt: AR_RUN_FIXTURE.startedAt, completedAt: AR_RUN_FIXTURE.completedAt, best: AR_RUN_FIXTURE.best, spend: 9.9,
+type Outcome = NonNullable<ArLadder["outcome"]>;
+
+/** What C-256 S3a adds to one ladder: the implementer's mode and account, the L0 rows and the outcome's noise, lane and spend. */
+interface S3aFields {
+  implementer: NonNullable<ArLadder["implementer"]>;
+  checks?: NonNullable<NonNullable<ArLadder["l0"]>["checks"]>;
+  outcome?: Pick<Outcome, "against" | "lane" | "fork" | "usage">;
+}
+
+const ACCOUNT = "fixture-account";
+const passed = (name: string) => ({ name, ok: true, ms: 1800 });
+const L0_PASSED = [passed("bounds-post"), passed("unit"), passed("test-proof")];
+
+/** Round 1 is judged on four pairs, so σ is unlocked on the default band; the fifth pair locks it for round 2. */
+const AGAINST_R1 = { case: "seed-a", head: PIN, bandWidth: 1.5, sigma: 0.62, pairs: 4, locked: false };
+const AGAINST_R2 = { case: "seed-a", head: KEPT_HEAD, bandWidth: 1.24, sigma: 0.62, pairs: 5, locked: true };
+
+const S3A: Record<string, S3aFields> = {
+  [KEPT.id]: {
+    implementer: { ...keptLadder.implementer!, mode: "spawn", account: ACCOUNT }, checks: L0_PASSED,
+    outcome: { against: AGAINST_R1, lane: 1, fork: "explore", usage: { implementUsd: 1.6, evalUsd: 1.5, microUsd: 0.2 } },
+  },
+  [SUPERSEDED.id]: {
+    implementer: { ...supersededLadder.implementer!, mode: "spawn", account: ACCOUNT }, checks: L0_PASSED,
+    outcome: { against: AGAINST_R1, lane: 2, fork: "explore", usage: { implementUsd: 1.1, evalUsd: 0.9, microUsd: 0.2 } },
+  },
+  [L0_STOP.id]: {
+    implementer: { agent: "ar-impl-7c1e-1", sessionId: "00000000-0000-4000-8000-00000000a001", resumedFrom: "ar-impl-7c1e-1", mode: "resume", account: ACCOUNT },
+    checks: [passed("bounds-post"), { name: "unit", ok: false, code: "unit", ms: 4200 }, passed("test-proof")],
+    outcome: { against: AGAINST_R2, lane: 1, fork: "exploit", usage: { implementUsd: 0.8, evalUsd: 0, microUsd: 0 } },
+  },
+  [L2_REJECT.id]: {
+    implementer: { ...l2Ladder.implementer!, mode: "spawn", account: ACCOUNT }, checks: L0_PASSED,
+    outcome: { against: AGAINST_R2, lane: 2, fork: "explore", usage: { implementUsd: 1.3, evalUsd: 0.3, microUsd: 0.2 } },
+  },
+  [RUNNING.id]: { implementer: { ...runningLadder.implementer!, resumedFrom: "ar-impl-7c1e-1", mode: "resume", account: ACCOUNT } },
+  [EVALUATING.id]: { implementer: { ...evaluatingLadder.implementer!, mode: "spawn", account: ACCOUNT }, checks: L0_PASSED },
 };
+
+function withS3a(ladder: ArLadder): ArLadder {
+  const added = S3A[ladder.idea.id];
+  if (added === undefined) return ladder;
+  return {
+    ...ladder,
+    implementer: added.implementer,
+    l0: ladder.l0 === null || added.checks === undefined ? ladder.l0 : { ...ladder.l0, checks: added.checks },
+    outcome: ladder.outcome === null ? null : { ...ladder.outcome, ...added.outcome },
+  };
+}
+
+/** The synthetic run as the engine records it from C-256 S3a on; every registry row names its idea and round. */
+export const AR_RUN_FIXTURE: ArRunView = {
+  ...PRE_S3A_RUN,
+  rounds: PRE_S3A_RUN.rounds.map((round) => ({ ...round, ladders: round.ladders.map(withS3a) })),
+  registries: {
+    deadEnds: [
+      { ideaId: SUPERSEDED.id, round: 1, ...PRE_S3A_RUN.registries.deadEnds[0]! },
+      { ideaId: L2_REJECT.id, round: 2, ...PRE_S3A_RUN.registries.deadEnds[1]! },
+    ],
+    bugs: [{ ideaId: L0_STOP.id, round: 2, ...PRE_S3A_RUN.registries.bugs[0]! }, { round: 2, ...PRE_S3A_RUN.registries.bugs[1]! }],
+  },
+};
+
+/** The same run under another id, recorded before S3a, so the page proves it still renders a run without those fields. */
+export const AR_RUN_PRE_S3A: ArRunView = { ...PRE_S3A_RUN, runId: "ar-2b90" };
+
+const summaryOf = (run: ArRunView): ArRunSummary => ({
+  runId: run.runId, target: run.target.name, phase: run.target.phases[0]!, round: run.rounds.at(-1)?.round ?? 0, rounds: run.settings.rounds, status: run.status,
+  startedAt: run.startedAt, completedAt: run.completedAt, best: run.best, spend: 9.9,
+});
+
+/** Each run's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
+export const AR_RUN_SUMMARY: ArRunSummary = summaryOf(AR_RUN_FIXTURE);
+export const AR_RUN_PRE_S3A_SUMMARY: ArRunSummary = summaryOf(AR_RUN_PRE_S3A);

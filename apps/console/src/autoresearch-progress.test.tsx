@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { RpcProvider } from "@titan-design/react-app";
 import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
-import { AR_RUN_FIXTURE } from "../server/twin/autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
 
@@ -24,6 +24,9 @@ function renderRun(snapshot: Snapshot = twin): void {
     </RpcProvider>,
   );
 }
+
+/** The pre-S3a run under the route's id, so a test can add one noise record to a run that has none. */
+const PRE_S3A: ArRunView = { ...AR_RUN_PRE_S3A, runId: AR_RUN_FIXTURE.runId };
 
 const withRun = (run: ArRunView): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey("autoresearch.run", { runId: run.runId })]: { ok: true, data: run } } });
 
@@ -57,7 +60,7 @@ describe("the autoresearch wins and losses section", () => {
   });
 
   it("reads σ as unlocked when the run carries no G7 noise record", async () => {
-    renderRun();
+    renderRun(withRun(PRE_S3A));
 
     const summary = await screen.findByTestId("autoresearch-progress-summary");
 
@@ -65,10 +68,10 @@ describe("the autoresearch wins and losses section", () => {
   });
 
   it("switches to the locked band once an outcome was judged against five pairs", async () => {
-    const [first, ...rest] = AR_RUN_FIXTURE.rounds;
+    const [first, ...rest] = PRE_S3A.rounds;
     const [kept, ...others] = first!.ladders;
     const lockedKept = { ...kept!, outcome: { ...kept!.outcome!, against: { sigma: 0.4, pairs: 5 } } };
-    renderRun(withRun({ ...AR_RUN_FIXTURE, rounds: [{ ...first!, ladders: [lockedKept, ...others] }, ...rest] }));
+    renderRun(withRun({ ...PRE_S3A, rounds: [{ ...first!, ladders: [lockedKept, ...others] }, ...rest] }));
 
     const summary = await screen.findByTestId("autoresearch-progress-summary");
 

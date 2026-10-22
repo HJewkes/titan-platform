@@ -1,7 +1,7 @@
 // Hand-written twin answers for the sources with no file fixture: the broker, the session graph, Shepherd, autoresearch,
 // the inbox, repo reviews, the theater and the config reads. Every value is synthetic; each is typed by the command the page calls.
 import type { ServedCommands } from "../../src/data/rpc.js";
-import { AR_RUN_FIXTURE, AR_RUN_SUMMARY } from "./autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
 
 type Served = ServedCommands;
@@ -279,8 +279,9 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("shepherd.list", { state: "active" }, WATCHED),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),
   answer("shepherd.timeline", { repo: "orbit/relay", pr: 12 }, { row: WATCHED[0]!, entries: TIMELINE_ENTRIES }),
-  answer("autoresearch.runs", {}, [AR_RUN_SUMMARY]),
+  answer("autoresearch.runs", {}, [AR_RUN_SUMMARY, AR_RUN_PRE_S3A_SUMMARY]),
   answer("autoresearch.run", { runId: AR_RUN_FIXTURE.runId }, AR_RUN_FIXTURE),
+  answer("autoresearch.run", { runId: AR_RUN_PRE_S3A.runId }, AR_RUN_PRE_S3A),
   answer("reviews.list", {}, { reviews: [review("widget-kit"), review("orbit-cli", { state: "pinned", label: null, cost: null })], gaps: [], readAt: new Date(TWIN_NOW).toISOString() }),
   answer("reviews.get", { name: "widget-kit" }, {
     review: review("widget-kit"),

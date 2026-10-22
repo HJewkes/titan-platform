@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { ArRunSummarySchema, ArRunViewSchema, type ArRunView } from "./autoresearch-view.js";
-import { AR_RUN_FIXTURE, AR_RUN_SUMMARY } from "./twin/autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_SUMMARY } from "./twin/autoresearch.js";
 
 const outcomes = (run: ArRunView) => run.rounds.flatMap((round) => round.ladders.map((ladder) => ladder.outcome));
 
 describe("the autoresearch run fixture", () => {
-  it("parses against the run view schema unchanged", () => {
+  it("parses against the run view schema unchanged, S3a fields included", () => {
     expect(ArRunViewSchema.parse(AR_RUN_FIXTURE)).toEqual(AR_RUN_FIXTURE);
+  });
+
+  it("still parses a run recorded before S3a, which has none of its fields", () => {
+    expect(ArRunViewSchema.parse(AR_RUN_PRE_S3A)).toEqual(AR_RUN_PRE_S3A);
   });
 
   it("holds three rounds with one idea kept, one superseded, one stopped at L0, one rejected at L2 and two running", () => {
