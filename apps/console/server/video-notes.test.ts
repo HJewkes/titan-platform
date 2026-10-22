@@ -191,6 +191,15 @@ describe("where videos.note sends a comment", () => {
     expect((await readNotes(video)).notes).toHaveLength(1);
   });
 
+  it("stores the comment and reports it undelivered when no notifier is wired", async () => {
+    await sidecar({ owner: "lantern-coord" });
+
+    const { envelope } = await invokeCommand(videoNotesCommands(videoCatalog({ roots: [root] }))["videos.note"], { videoId: cutId(), ...comment("tighten the outro") }, ownerContext());
+
+    expect(envelope).toMatchObject({ ok: true, data: { about: "content", routedTo: { seat: "lantern-coord", delivered: false } } });
+    expect((await readNotes(video)).notes).toHaveLength(1);
+  });
+
   it("tells nobody about a verdict", async () => {
     const { sent, notify } = recordingNotifier();
 
