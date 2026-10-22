@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
-import { ReconcilerConfigSchema } from "./reconciler/config.js";
+import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
@@ -304,6 +304,11 @@ function parseJson(path: string, text: string): unknown {
 
 export function loadConfig(path: string): FactoryConfig {
   return readConfig(path) ?? {};
+}
+
+/** The deprecation lines serve logs at start for keys the config file at `env`'s path still sets. */
+export function configDeprecations(env: NodeJS.ProcessEnv): string[] {
+  return reconcilerDeprecations(loadConfig(configPath(env)));
 }
 
 /** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */

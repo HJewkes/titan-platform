@@ -18,9 +18,9 @@ export type ReconcilerConfig = z.output<typeof ReconcilerConfigSchema>;
 
 export const DEPRECATED_INTERVAL = "config.deprecated reconciler.intervalMs ignored; use github.backstopIntervalMs";
 
-/** The log lines serve writes at start for reconciler keys it accepts but ignores. */
-export function reconcilerDeprecations(config: ReconcilerConfig | undefined): string[] {
-  return config?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];
+/** The log lines serve writes at start for reconciler keys the factory config sets but nothing reads. */
+export function reconcilerDeprecations(config: { reconciler?: { intervalMs?: number } }): string[] {
+  return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];
 }
 
 export function reconcilerConfig(config: { reconciler?: z.input<typeof ReconcilerConfigSchema> }): ReconcilerConfig {

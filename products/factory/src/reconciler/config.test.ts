@@ -10,14 +10,14 @@ const issues = (config: object) => {
 describe("reconciler config (I8)", () => {
   it("defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own", () => {
     expect(reconcilerConfig({})).toEqual({ enabled: false, fullEvery: 3, repos: [] });
-    expect(reconcilerDeprecations(reconcilerConfig({}))).toEqual([]);
+    expect(reconcilerDeprecations({})).toEqual([]);
   });
 
   it("loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated", () => {
     const config = { github: { sources: "webhook" }, reconciler: { intervalMs: 900_000 } };
 
     expect(issues(config)).toEqual([]);
-    expect(reconcilerDeprecations(reconcilerConfig(config))).toEqual([DEPRECATED_INTERVAL]);
+    expect(reconcilerDeprecations(config)).toEqual([DEPRECATED_INTERVAL]);
     expect(DEPRECATED_INTERVAL).toBe("config.deprecated reconciler.intervalMs ignored; use github.backstopIntervalMs");
   });
 
