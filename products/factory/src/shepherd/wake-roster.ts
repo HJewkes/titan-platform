@@ -46,11 +46,13 @@ export function successorName(lineage: Lineage, roster: readonly AgentRow[]): st
   return `${lineage.implementer}-s${highest + 1}`;
 }
 
+type ExitedCheck = (name: string, signal: AbortSignal) => Promise<boolean>;
+
 /**
  * A name the roster no longer shows live, or never shows, is not working; a failed read says nothing and reads as live.
  * `onExit` sees the exited row before the wait ends, so what the session ended on is read once it can no longer change.
  */
-export function exitedOn(agents: { roster(): Promise<readonly AgentRow[]> } | undefined, onExit?: (row: AgentRow) => Promise<void>): ((name: string, signal: AbortSignal) => Promise<boolean>) | undefined {
+export function exitedOn(agents: { roster(): Promise<readonly AgentRow[]> } | undefined, onExit?: (row: AgentRow) => Promise<void>): ExitedCheck | undefined {
   if (agents === undefined) return undefined;
   return async (name) => {
     const rows = await agents.roster().catch((error: unknown): undefined => {
