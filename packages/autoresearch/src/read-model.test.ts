@@ -73,7 +73,7 @@ describe("the run read model on a two-round fixture run", () => {
 
   it("names the planner that answered each round", async () => {
     const { run, view } = await finished();
-    const { ops: _ops, ...planner } = PlannedSchema.parse(dispatchedOf(run, "ar-plan:2"));
+    const planner = PlannedSchema.omit({ ops: true }).parse(dispatchedOf(run, "ar-plan:2"));
 
     expect(view.rounds[1]!.planner).toEqual(planner);
     expect(planner).toMatchObject({ agent: expect.any(String), mode: "resume", usage: { usd: 0.25 } });

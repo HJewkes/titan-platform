@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, BoundsSchema, TargetSchema } from "@titan-design/autoresearch";
 import { EXIT, invokeCommand } from "@titan-design/registry";
+import { partialFake } from "@titan-design/test-kit";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -76,7 +77,7 @@ function recordedRun(base: string, head: string, params: Record<string, string> 
 function contextOver(runs: readonly WorkflowRun[], clones: Record<string, string> = {}) {
   const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: () => [...runs] };
   const autoresearchClone = vi.fn((target: string) => clones[target]);
-  const ctx: FactoryContext = { warnings: [], format: "json", host: { runtime } as unknown as FactoryHost, autoresearchClone };
+  const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearchClone };
   return { ctx, autoresearchClone };
 }
 
