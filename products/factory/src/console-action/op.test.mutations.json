@@ -7,7 +7,7 @@
       "find": "\"close-pr\": \"pr-close\",",
       "replace": "\"close-pr\": \"destructive-remote\",",
       "kills": [
-        "opAuthority gates a close-pr op on its own owner-remote row"
+        "opAuthority gates close-pr, factory-config-set and deploy-pause-clear each on its own owner-remote row"
       ]
     }
   ]

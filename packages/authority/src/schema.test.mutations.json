@@ -7,7 +7,7 @@
       "find": "  for (const action of ACTION_CLASSES) {",
       "replace": "  for (const action of ACTION_CLASSES.filter((candidate) => candidate !== \"pr-close\")) {",
       "kills": [
-        "policyTableSchema rejects a table missing the owner-op row PRC-WK"
+        "policyTableSchema rejects a table missing any one owner-op row"
       ]
     }
   ]

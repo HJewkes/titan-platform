@@ -29,14 +29,13 @@ describe("policyTableSchema", () => {
     expect(issues(table)).toContain("no rule for secret-read by worker");
   });
 
-  it.each([
-    ["PRC-WK", "pr-close by worker"],
-    ["DPR-CO", "deploy-resume by coordinator"],
-    ["FLC-DC", "fleet-config by decider"],
-  ])("rejects a table missing the owner-op row %s", (id, pair) => {
-    const table = copyOfDefault();
-    table.rules = table.rules.filter((rule) => rule.id !== id);
-    expect(issues(table)).toContain(`no rule for ${pair}`);
+  it("rejects a table missing any one owner-op row", () => {
+    const missing = { "PRC-WK": "pr-close by worker", "DPR-CO": "deploy-resume by coordinator", "FLC-DC": "fleet-config by decider" };
+    for (const [id, pair] of Object.entries(missing)) {
+      const table = copyOfDefault();
+      table.rules = table.rules.filter((rule) => rule.id !== id);
+      expect(issues(table)).toContain(`no rule for ${pair}`);
+    }
   });
 
   it("rejects a table with a duplicate pair", () => {

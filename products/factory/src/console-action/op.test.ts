@@ -20,12 +20,20 @@ const CONTEXT = undefined;
 const act = (op: OwnerOp, effect: OpEffect<undefined>, ledger = memoryLedger()) => actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: { [op.kind]: effect }, ledger, now: () => 0 }, CONTEXT);
 
 describe("opAuthority", () => {
-  it.each([
-    ["close-pr", { kind: "close-pr", repo: REPO, pr: 7, headSha: H }, "PRC-OR"],
-    ["factory-config-set", { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on" }, "FLC-OR"],
-    ["deploy-pause-clear", { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" }, "DPR-OR"],
-  ] satisfies Array<[string, OwnerOp, string]>)("gates a %s op on its own owner-remote row", (_kind, op, ruleId) => {
-    expect(opAuthority(op)).toMatchObject({ verdict: "gate", ruleId, resolvers: ["owner-remote"] });
+  it("gates close-pr, factory-config-set and deploy-pause-clear each on its own owner-remote row", () => {
+    const ops: OwnerOp[] = [
+      { kind: "close-pr", repo: REPO, pr: 7, headSha: H },
+      { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on" },
+      { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
+    ];
+
+    const decisions = ops.map((op) => opAuthority(op));
+
+    expect(decisions).toMatchObject([
+      { verdict: "gate", ruleId: "PRC-OR", resolvers: ["owner-remote"] },
+      { verdict: "gate", ruleId: "FLC-OR", resolvers: ["owner-remote"] },
+      { verdict: "gate", ruleId: "DPR-OR", resolvers: ["owner-remote"] },
+    ]);
   });
 });
 
