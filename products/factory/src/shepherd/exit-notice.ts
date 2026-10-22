@@ -42,13 +42,13 @@ export interface ExitNoticePorts {
 }
 
 /** `from` names the config key the seat came from, so a rerouted notice's record says which one it reached. */
-export interface FallbackSeat {
+interface FallbackSeat {
   seat: string;
   from: string;
 }
 
 /** Where a notice goes: the seat, the fallback that stands in for it with why, or why none can take it. */
-export type LiveRoute = { seat: string; rerouted?: string } | { none: string };
+type LiveRoute = { seat: string; rerouted?: string } | { none: string };
 
 const liveOrUnread = (live: NonNullable<ExitNoticePorts["live"]>, seat: string): Promise<boolean> => live(seat).catch(() => true);
 
@@ -251,7 +251,7 @@ export interface NoticeFallbacks {
 }
 
 /** The repo's red seat entry (keys match in any case, as for red events), the red seat fallback, then the hub seat. */
-export function fallbackSeats({ hubSeat, redSeat }: NoticeFallbacks, repo: string): FallbackSeat[] {
+function fallbackSeats({ hubSeat, redSeat }: NoticeFallbacks, repo: string): FallbackSeat[] {
   const entry = Object.entries(redSeat?.repos ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
   const candidates = [
     { seat: entry, from: "shepherd.redSeat.repos" },

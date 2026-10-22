@@ -128,22 +128,12 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   return successorChoice(deps, wiring, task, newest.name, roster);
 }
 
-/** A successor starts in the repo's own checkout, never its predecessor's tree, so it needs no roster row of the predecessor. */
 function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, predecessor: string, roster: readonly AgentRow[]): Choice | string {
   if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
   return { mode: "successor", agent, predecessor, message: successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
-}
-
-/**
- * A lineage the roster no longer shows, as once agent-chat drops a finished agent's rows, takes over from the registered
- * implementer (TP-4045); a live newest agent is messaged, and an exited one is resumed or succeeded.
- */
-async function nextChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow | undefined, roster: readonly AgentRow[], refused: ReadonlySet<string>): Promise<Choice | string> {
-  if (newest === undefined) return successorChoice(deps, wiring, task, task.implementer, roster);
-  return newest.presence !== "exited" ? liveChoice(task, newest) : choose(deps, wiring, task, newest, roster, refused);
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -265,7 +255,8 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 
 /**
  * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
- * ask a poll under its own deadline, so the ask deadline restarts after it.
+ * ask a poll under its own deadline, so the ask deadline restarts after it. A lineage gone from the roster still has the
+ * repo's checkout, so a successor takes over from the registered implementer (TP-4045).
  */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
   let asked: Asked | undefined, waiting: Waiting | undefined;
@@ -286,7 +277,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     }
     unreadable.read();
     if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
-    const choice = await nextChoice(deps, wiring, task, newest, roster, refused);
+    const choice = newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) : live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
     asked = { choice, at: deps.now() };
