@@ -32,7 +32,7 @@ import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
-import { roundBuildId } from "./round-live.js";
+import { viewedBuilds } from "./round-live.js";
 import { refuseUnrevealedSeen } from "./round-reveal.js";
 import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
@@ -332,7 +332,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
-  const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, buildId: await roundBuildId(roundDir) };
+  const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, ...(await viewedBuilds(roundDir, manifest, liveKeys)) };
   return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps }, round, live };
 }
 
