@@ -31,6 +31,15 @@ export function reviewAccounts(review: ReviewConfig, fallbacks: () => readonly s
 }
 
 /**
+ * A successor bills the review rotation (decision 514), read per wake: `shepherd.fixer.configDir`, when set, takes the place
+ * of `review.configDir`, and `review.fallbackConfigDirs` follow. No review wired leaves the successor on `fixer.configDir`.
+ */
+export function successorAccounts(fixerConfigDir: string | undefined, accounts: Pick<ReviewAccounts, "dirs"> | undefined): (() => readonly string[]) | undefined {
+  if (!accounts) return undefined;
+  return () => (fixerConfigDir === undefined ? accounts.dirs : [...new Set([fixerConfigDir, ...accounts.dirs.slice(1)])]);
+}
+
+/**
  * Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or
  * absent. The mode and the profile are read per use; `adversaryConfigDir` is a restart key, so its dispatch is built once.
  */

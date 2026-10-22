@@ -95,6 +95,18 @@ export function accountWithHeadroom(deps: ShepherdDeps, dirs: readonly string[],
   }
 }
 
+/**
+ * The account a successor spawns under: the first of `dirs` with headroom, picked as a review picks. A successor never
+ * holds, so with none left or the limits unreadable it takes the first, the account it spawned under before rotation.
+ */
+export function spawnAccount(deps: ShepherdDeps, dirs: readonly [string, ...string[]]): string {
+  try {
+    return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];
+  } catch {
+    return dirs[0];
+  }
+}
+
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
   if (input.notice === undefined) return limits.exhausted(input.account);
