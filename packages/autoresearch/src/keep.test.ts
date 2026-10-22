@@ -66,6 +66,21 @@ describe("keep rule", () => {
     expect(keepRule(BEST, idea(6), BAND, settings).decision).toBe("accept");
   });
 
+  it("lets a min-direction guard metric rise by exactly its slack but not past it", () => {
+    const idea = (delta: number) => [-5, -5, -5].map((cc) => result(cc, { single_caller_delta: delta }));
+
+    expect(keepRule(BEST, idea(1), BAND, SETTINGS).decision).toBe("accept");
+    expect(keepRule(BEST, idea(1.5), BAND, SETTINGS).reason).toBe("guard:single_caller_delta");
+  });
+
+  it("lets a max-direction guard metric fall by exactly its slack but not past it", () => {
+    const settings: KeepSettings = { ...SETTINGS, guards: { accepted_tasks: { slack: 1, direction: "max" } }, noOp: undefined };
+    const idea = (served: number) => [-5, -5, -5].map((cc) => result(cc, { accepted_tasks: served }));
+
+    expect(keepRule(BEST, idea(4), BAND, settings).decision).toBe("accept");
+    expect(keepRule(BEST, idea(3.5), BAND, settings).reason).toBe("guard:accepted_tasks");
+  });
+
   it("accepts a strict all-gate gain within one σ of the best", () => {
     const best = [result(0, { all_gate: false }), result(0), result(0)];
 

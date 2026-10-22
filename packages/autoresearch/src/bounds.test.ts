@@ -40,6 +40,11 @@ describe("bounds post-check on a real diff", () => {
     expect((await check("accept-gate", { write: { "src/gate/helpers.py": "def helper():\n    return 1\n", ...GATE_TEST } })).code).toBe("new-file-outside-tests");
   });
 
+  it("refuses a rename of a source file outside the class's test globs, but not one into a test glob", async () => {
+    expect((await check("accept-gate", { rename: { [GATE]: "src/gate/accept.py" }, write: GATE_TEST })).code).toBe("new-file-outside-tests");
+    expect((await check("accept-gate", { rename: { [GATE]: "tests/test_gate_accept.py" } })).code).toBeUndefined();
+  });
+
   it("refuses a gate change with no test change, but not a config-param change", async () => {
     expect((await check("accept-gate", { write: gateLine("# stricter") })).code).toBe("no-test");
     expect((await check("config-param", { write: { [CONFIG]: config({ hot_cc: 12 }) } }, { params: true })).code).toBeUndefined();
