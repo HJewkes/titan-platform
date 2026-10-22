@@ -5,8 +5,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { runRewriteCli } from "./rewrite-cli.js";
 import { choppy, fakeRewriter } from "./rewrite-fixtures.test-helpers.js";
+import type { MeasureSummary } from "./rewrite-measure.js";
 import type { RewriteResult } from "./rewrite-pass.js";
 import type { ScriptV1 } from "./script-schema.js";
+
+type MeasureFile = MeasureSummary & { spend: { total_usd: number }; stopped?: string };
 
 let dir: string;
 const write = (name: string, value: unknown): string => {
@@ -15,7 +18,7 @@ const write = (name: string, value: unknown): string => {
   return path;
 };
 const outDir = (): string => join(dir, "measure");
-const readOut = (path: string): unknown => JSON.parse(readFileSync(join(outDir(), path), "utf8"));
+const readMeasure = (): MeasureFile => JSON.parse(readFileSync(join(outDir(), "measure.json"), "utf8"));
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "explainer-measure-"));
@@ -50,9 +53,9 @@ describe("explainer rewrite measure", () => {
     expect(runner.calls()).toBe(6);
     expect(existsSync(join(outDir(), "beta", "before.l0.json"))).toBe(true);
     expect(["s3.rewrite.json", "s3.report.json", "s3.l0.json"].every((file) => existsSync(join(outDir(), "alpha", file)))).toBe(true);
-    const summary = readOut("measure.json") as { cells: { input: string; n: number; sd: number }[]; rows: unknown[]; spend: { total_usd: number } };
+    const summary = readMeasure();
     expect(summary.cells).toHaveLength(10);
-    expect(summary.cells.every((cell) => cell.n === 3 && cell.sd < 1e-9)).toBe(true);
+    expect(summary.cells.every((cell) => cell.n === 3 && cell.sd! < 1e-9)).toBe(true);
     expect(summary.rows).toHaveLength(5);
     expect(summary.spend.total_usd).toBe(3);
     expect(lines.at(-1)).toMatchObject({ runs: 6, failed_runs: 0, total_usd: 3 });
@@ -68,7 +71,7 @@ describe("explainer rewrite measure", () => {
     expect(code).toBe(1);
     expect(err).toContain("spend cap");
     expect(lines.at(-1)).toMatchObject({ runs: 2, total_usd: 1 });
-    expect(readOut("measure.json")).toMatchObject({ stopped: expect.stringContaining("would pass $1.2") });
+    expect(readMeasure()).toMatchObject({ stopped: expect.stringContaining("would pass $1.2") });
   });
 
   it("reuses samples a previous measure wrote and pays only for the missing ones", async () => {
@@ -87,7 +90,7 @@ describe("explainer rewrite measure", () => {
 
     expect(code).toBe(1);
     expect(err).toContain("beta sample 1: model_error: offline");
-    const cells = (readOut("measure.json") as { cells: { input: string; n: number }[] }).cells;
+    const cells = readMeasure().cells;
     expect(cells.filter((cell) => cell.input === "beta").every((cell) => cell.n === 1)).toBe(true);
   });
 
@@ -103,7 +106,7 @@ describe("explainer rewrite measure", () => {
 
     expect(code).toBe(0);
     expect(built).toBe(1);
-    expect((readOut("measure.json") as { spend: { total_usd: number } }).spend.total_usd).toBeCloseTo(0.08);
+    expect(readMeasure().spend.total_usd).toBeCloseTo(0.08);
   });
 
   it("exits 2 when a report-only cell names no input or target row", async () => {

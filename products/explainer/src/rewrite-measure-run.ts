@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { z } from "zod";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { measureTable, summarizeMeasure, type MeasureInput, type MeasureSummary } from "./rewrite-measure.js";
 import type { RewriteResult, TargetRow } from "./rewrite-pass.js";
@@ -8,7 +9,7 @@ import type { ScriptV1 } from "./script-schema.js";
 
 const EXIT = { OK: 0, RED: 1 } as const;
 
-export interface MeasureOptions {
+interface MeasureOptions {
   outDir: string;
   samples: number;
   /** Stops before a run whose cost, estimated as the dearest run so far, would take the total past it. */
@@ -18,7 +19,7 @@ export interface MeasureOptions {
 }
 
 /** How a measure reads an input and runs one rewrite of it; a test passes a fake runner, so no model is called. */
-export interface MeasureEnv {
+interface MeasureEnv {
   read: (file: string) => ScriptV1;
   run: (script: ScriptV1) => Promise<RewriteResult>;
   out: (text: string) => void;
@@ -63,27 +64,36 @@ function loadInput(file: string, outDir: string, env: MeasureEnv): Input {
 
 const samplePath = (input: Input, sample: number, kind: "rewrite" | "report" | "l0"): string => join(input.dir, `s${sample}.${kind}.json`);
 
-/** A sample a previous measure already wrote, so a rerun after a stop pays only for what is missing. */
-function storedRun(input: Input, sample: number): { usd: number; rows: L0Result[] } | undefined {
-  const [report, l0] = [samplePath(input, sample, "report"), samplePath(input, sample, "l0")];
-  if (!existsSync(report) || !existsSync(l0)) return undefined;
-  return { usd: (readJson(report) as { usd: number }).usd, rows: readJson(l0) as L0Result[] };
+const StoredSpendSchema = z.object({ usd: z.number() });
+const StoredRowsSchema = z.array(z.object({ check_id: z.string(), value: z.number(), threshold: z.number(), pass: z.boolean() }));
+
+interface Scored {
+  usd: number;
+  rows: TargetRow[];
 }
 
-async function freshRun(input: Input, sample: number, env: MeasureEnv): Promise<{ usd: number; rows: L0Result[] }> {
+/** A sample a previous measure already wrote, so a rerun after a stop pays only for what is missing. */
+function storedRun(input: Input, sample: number): Scored | undefined {
+  const [report, l0] = [samplePath(input, sample, "report"), samplePath(input, sample, "l0")];
+  if (!existsSync(report) || !existsSync(l0)) return undefined;
+  const rows = StoredRowsSchema.parse(readJson(l0)).filter((row) => TARGETS.has(row.check_id));
+  return { usd: StoredSpendSchema.parse(readJson(report)).usd, rows };
+}
+
+async function freshRun(input: Input, sample: number, env: MeasureEnv): Promise<Scored> {
   const { script, report } = await env.run(input.script);
   const rows = runL0(script);
   writeJson(samplePath(input, sample, "rewrite"), script);
   writeJson(samplePath(input, sample, "report"), report);
   writeJson(samplePath(input, sample, "l0"), rows);
-  return { usd: report.usd, rows };
+  return { usd: report.usd, rows: targetRows(rows) };
 }
 
 async function runSample(input: Input, sample: number, env: MeasureEnv): Promise<Run> {
   const stored = storedRun(input, sample);
   try {
     const { usd, rows } = stored ?? (await freshRun(input, sample, env));
-    input.samples.push(targetRows(rows));
+    input.samples.push(rows);
     return { input: input.name, sample, usd, reused: stored !== undefined };
   } catch (error) {
     return { input: input.name, sample, usd: 0, reused: false, error: errorText(error) };
@@ -138,6 +148,8 @@ export async function measureRewrite(files: readonly string[], options: MeasureO
   if (stopped) env.err(`${stopped}\n`);
   const summary = summarizeMeasure(measureInputs(inputs), options.reportOnly);
   writeSummary(options.outDir, summary, runs, stopped);
-  env.out(`${JSON.stringify({ out_dir: options.outDir, pass: summary.pass, runs: runs.length, failed_runs: runs.filter((run) => run.error).length, total_usd: money(spent(runs)), ...(stopped ? { stopped } : {}) })}\n`);
-  return summary.pass && !stopped && runs.every((run) => !run.error) ? EXIT.OK : EXIT.RED;
+  const failedRuns = runs.filter((run) => run.error).length;
+  const line = { out_dir: options.outDir, pass: summary.pass, runs: runs.length, failed_runs: failedRuns, total_usd: money(spent(runs)) };
+  env.out(`${JSON.stringify({ ...line, ...(stopped ? { stopped } : {}) })}\n`);
+  return summary.pass && !stopped && failedRuns === 0 ? EXIT.OK : EXIT.RED;
 }
