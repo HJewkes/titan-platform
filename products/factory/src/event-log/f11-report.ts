@@ -211,6 +211,15 @@ export function f11Report(input: F11Input, engines: F11Engines): F11Report {
   };
 }
 
+/**
+ * serve.err.log as systemd appends it carries no timestamps, so none of its records can be placed in the window and
+ * clock 2 would call every due webhook row webhookOnly. A report built on such a log is refused, not printed.
+ */
+export function unplacedLog(report: F11Report): string | undefined {
+  if (report.log.untimed === 0 || report.log.lines > 0) return undefined;
+  return `f11: none of the serve log's ${report.log.untimed} records carries a leading ISO timestamp, so none can be placed in the window; stamp them (journalctl -o short-iso, or pipe through ts) and run again`;
+}
+
 const list = (values: readonly (string | number)[]): string => (values.length === 0 ? "none" : values.join(", "));
 
 function sourceSection(report: F11Report): string[] {

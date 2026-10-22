@@ -163,6 +163,20 @@
       "kills": ["counts cost lines and webhook deliveries, redeliveries apart"]
     },
     {
+      "name": "an unstamped log is reported on",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "if (report.log.untimed === 0 || report.log.lines > 0) return undefined;",
+      "replace": "return undefined;",
+      "kills": ["refuses a log none of whose records can be placed in the window, and accepts one with any placed record"]
+    },
+    {
+      "name": "one unstamped record refuses an otherwise placed log",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "if (report.log.untimed === 0 || report.log.lines > 0) return undefined;",
+      "replace": "if (report.log.untimed === 0) return undefined;",
+      "kills": ["refuses a log none of whose records can be placed in the window, and accepts one with any placed record"]
+    },
+    {
       "name": "the markdown reads every peak as under the bound",
       "file": "products/factory/src/event-log/f11-report.ts",
       "find": "${peak.underBound ? \"under\" : \"AT OR OVER\"}",

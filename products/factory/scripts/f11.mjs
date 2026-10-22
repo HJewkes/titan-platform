@@ -3,11 +3,12 @@
 // rate sample. Nothing here runs in serve.
 // usage: f11.mjs --db <factory.db> --log <serve log> --since <iso> --until <iso> --clock polling|webhook
 //                [--rate <jsonl>] [--within-ms <n>] [--out <json>]
-// The serve log is `journalctl --user -u titan-factory -o short-iso` output; the report's markdown goes to stdout.
+// Each serve-log record must lead with an ISO timestamp (`journalctl -o short-iso`, or serve.err.log piped through
+// `ts`); a log with none is refused. The report's markdown goes to stdout.
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { agreement, kindCensus } from "../src/event-log/agreement.ts";
-import { f11Markdown, f11Report } from "../src/event-log/f11-report.ts";
+import { f11Markdown, f11Report, unplacedLog } from "../src/event-log/f11-report.ts";
 import { f11Window, readF11Window } from "../src/event-log/f11-window.ts";
 import { ratePeaks } from "../src/github-api/rate-sample.ts";
 
@@ -42,5 +43,10 @@ const report = f11Report(
   },
   { kindCensus, agreement, ratePeaks },
 );
+const problem = unplacedLog(report);
+if (problem !== undefined) {
+  console.error(problem);
+  process.exit(1);
+}
 if (values.out) writeFileSync(values.out, `${JSON.stringify(report, null, 2)}\n`);
 console.log(f11Markdown(report));

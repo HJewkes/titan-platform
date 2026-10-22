@@ -3,7 +3,7 @@ import { ratePeaks, type RateRecord } from "../github-api/rate-sample.js";
 import { DUE_CHECK_TICK_MS } from "../github-sources/schedule.js";
 import { INGRESS_KINDS } from "../ingress/kinds.js";
 import { agreement, kindCensus, type CensusRow } from "./agreement.js";
-import { F11_KINDS, F11_WITHIN_MS, f11Markdown, f11Report, type F11Input } from "./f11-report.js";
+import { F11_KINDS, F11_WITHIN_MS, f11Markdown, f11Report, unplacedLog, type F11Input } from "./f11-report.js";
 import { f11Window } from "./f11-window.js";
 
 const engines = { kindCensus, agreement, ratePeaks };
@@ -161,6 +161,15 @@ describe("f11Report log counts and markdown", () => {
     ].join("\n");
 
     expect(report({ log }).log).toEqual({ lines: 3, untimed: 0, confirmed: 0, costLines: 1, deliveries: 2, redeliveries: 1 });
+  });
+
+  it("refuses a log none of whose records can be placed in the window, and accepts one with any placed record", () => {
+    const bare = "[info] reconciler.confirmed " + JSON.stringify({ seq: 1, by: "occurrence" });
+    const placed = line("2026-10-21T10:00:00+0000", "reconciler.cost", { repo: "acme/widget" });
+
+    expect(unplacedLog(report({ log: bare }))).toMatch(/none of the serve log's 1 records/);
+    expect(unplacedLog(report({ log: [bare, placed].join("\n") }))).toBeUndefined();
+    expect(unplacedLog(report({ log: "" }))).toBeUndefined();
   });
 
   it("renders the clock's own fields, the epoch counts and each peak against the bound", () => {
