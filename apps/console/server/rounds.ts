@@ -363,10 +363,7 @@ async function readWithdrawal(roundDir: string): Promise<Withdrawal | null> {
   return parsed?.success ? { reason: parsed.data.reason, at: parsed.data.at } : { reason: "unreadable", at: null };
 }
 
-/**
- * A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked.
- * A withdrawn round whose round.json fails to parse is no gap: nobody is waiting on it.
- */
+/** An unreadable feedback.json is a gap and the round stays open; a withdrawn round's bad round.json is none, as nobody waits on it. */
 async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound; gap?: string }> {
   const roundDir = path.join(dir, id);
   const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
