@@ -1,7 +1,8 @@
 /**
  * A round's static Storybook build (TP-3793): the storybook@1 sidecar a round carries at
  * `storybook/storybook.json`, the content-hash id the store files it under, and the checks that
- * decide which of the round's story variants may show live. Everything here is pure; the copy is
+ * decide which of the round's story variants may show live. A multi-PR round carries a storybook-set@1
+ * sidecar instead, one build per PR group, and each variant shows its own group's. Everything here is pure; the copy is
  * `storybook-store.ts` and the reads are `round-live.ts`.
  *
  * `storyUrl` and `urlParamProblems` are ported from review-harness `src/round.ts` (titan-design
@@ -46,6 +47,51 @@ export const StorybookBuildSchema = z.object({
 });
 export type StorybookBuild = z.infer<typeof StorybookBuildSchema>;
 export type BuildFile = z.infer<typeof BuildFileSchema>;
+
+/** A multi-PR round's builds sit at `storybook/builds/<sha>/`, one per PR group head (TP-3896). */
+export const STORYBOOK_BUILDS = "builds";
+const MAX_SET_BUILDS = 20;
+
+/** storybook-set@1: one storybook@1 build per PR group, each keyed by its `sha`. */
+const StorybookSetSchema = z.object({
+  schema: z.literal("titan-review/storybook-set@1"),
+  builds: z.array(StorybookBuildSchema).min(1).max(MAX_SET_BUILDS),
+});
+
+export interface SidecarBuild {
+  build: StorybookBuild;
+  buildId: string;
+  /** The dir holding the build's files, relative to the round's `storybook/`. */
+  staticRel: string;
+}
+
+/** `set` is false for a single storybook@1 sidecar, whose files sit at `storybook/static/` as before TP-3896. */
+export interface Sidecar {
+  set: boolean;
+  builds: SidecarBuild[];
+}
+
+const sidecarBuild = (build: StorybookBuild, staticRel: string): SidecarBuild => ({ build, buildId: buildIdOf(build.files), staticRel });
+
+/** The builds a parsed `storybook.json` names, or null when it is neither a storybook@1 nor a storybook-set@1 sidecar. */
+export function sidecarOf(json: unknown): Sidecar | null {
+  const single = StorybookBuildSchema.safeParse(json);
+  if (single.success) return { set: false, builds: [sidecarBuild(single.data, STORYBOOK_STATIC)] };
+  const set = StorybookSetSchema.safeParse(json);
+  if (!set.success) return null;
+  return { set: true, builds: set.data.builds.map((build) => sidecarBuild(build, `${STORYBOOK_BUILDS}/${build.sha}`)) };
+}
+
+/** Why a storybook-set@1 sidecar does not fit its round: every build is one PR group's head, and no head has two. */
+export function buildSetProblems(manifest: Manifest, builds: readonly { build: { sha: string } }[]): string[] {
+  const heads = new Set((manifest.prGroups ?? []).map((group) => group.headSha));
+  const shas = builds.map(({ build }) => build.sha);
+  return [
+    ...(heads.size === 0 ? ["a storybook-set@1 sidecar needs a round with prGroups"] : []),
+    ...(new Set(shas).size === shas.length ? [] : ["the storybook-set@1 sidecar lists one sha twice"]),
+    ...shas.filter((sha) => heads.size > 0 && !heads.has(sha)).map((sha) => `build ${sha7(sha)} is no PR group's head`),
+  ];
+}
 
 /** Storybook's static `index.json`: only the entry ids and types are read. */
 const StoryIndexSchema = z.object({ entries: z.record(z.string(), z.object({ type: z.string() })) });
@@ -103,11 +149,27 @@ function pinnedHeads(manifest: Manifest, key: string): string[] {
   return manifest.questions.flatMap((question) => (question.kind === "pick-one" && question.merge ? [question.merge.headSha] : []));
 }
 
+type Pinned<B> = { pinned: B } | { reason: string };
+
 /** CI builds the merge ref, so a round that records its build also accepts that merge sha. */
-export function pinReason(manifest: Manifest, key: string, buildSha: string): string | undefined {
+function pinOnly<B extends { build: { sha: string } }>(manifest: Manifest, heads: string[], only: B): Pinned<B> {
+  const { sha } = only.build;
+  if (heads.length === 0 || heads.includes(sha) || sha === manifest.build?.mergeSha) return { pinned: only };
+  return { reason: `Live build is for ${sha7(sha)}; this round is at ${heads.map(sha7).join(", ")}` };
+}
+
+/**
+ * The build a variant shows live. A round with one build keeps the single-build rule. With several, a variant takes
+ * only the build at its own group's head: `build.mergeSha` is one round-wide sha, so it pins no group's build.
+ */
+export function pinnedBuild<B extends { build: { sha: string } }>(manifest: Manifest, key: string, builds: readonly B[]): Pinned<B> {
   const heads = pinnedHeads(manifest, key);
-  if (heads.length === 0 || heads.includes(buildSha) || buildSha === manifest.build?.mergeSha) return undefined;
-  return `Live build is for ${sha7(buildSha)}; this round is at ${heads.map(sha7).join(", ")}`;
+  const [only, ...others] = builds;
+  if (only !== undefined && others.length === 0) return pinOnly(manifest, heads, only);
+  const own = builds.find(({ build }) => heads.includes(build.sha));
+  if (own !== undefined) return { pinned: own };
+  if (heads.length === 0) return { reason: `This round carries ${builds.length} Storybook builds and this variant is in no PR group` };
+  return { reason: `No live build for ${heads.map(sha7).join(", ")}; this round's builds are for ${builds.map(({ build }) => sha7(build.sha)).join(", ")}` };
 }
 
 type ArgMap = Record<string, string | number | boolean>;
@@ -155,17 +217,24 @@ function storyUrl(base: string, variant: StoryVariant): string {
 const withTheme = (globals: ArgMap | undefined, theme: Theme | undefined): ArgMap | undefined =>
   theme === undefined || globals?.theme !== undefined ? globals : { ...globals, theme };
 
-interface LiveInput {
-  manifest: Manifest;
+/** `stories` is the build's indexed story ids, or why its stored `index.json` could not be read. */
+export interface LiveBuild {
   build: StorybookBuild;
   buildId: string;
-  stories: ReadonlySet<string>;
+  stories: ReadonlySet<string> | string;
+}
+
+interface LiveInput {
+  manifest: Manifest;
+  builds: readonly LiveBuild[];
   themes: ReadonlyMap<string, Theme>;
 }
 
-function liveFrameOf({ manifest, build, buildId, stories, themes }: LiveInput, variant: Manifest["variants"][number] & StoryVariant): LiveFrame {
-  const pinned = pinReason(manifest, variant.key, build.sha);
-  if (pinned !== undefined) return { reason: pinned };
+function liveFrameOf({ manifest, builds, themes }: LiveInput, variant: Manifest["variants"][number] & StoryVariant): LiveFrame {
+  const pin = pinnedBuild(manifest, variant.key, builds);
+  if ("reason" in pin) return { reason: pin.reason };
+  const { build, buildId, stories } = pin.pinned;
+  if (typeof stories === "string") return { reason: stories };
   if (!stories.has(variant.storyId)) return { reason: `unknown story ${variant.storyId}: the build's index.json does not list it` };
   const unsafe = urlParamProblems(variant);
   if (unsafe.length > 0) return { reason: `unsafe args: ${unsafe.join("; ")}` };
