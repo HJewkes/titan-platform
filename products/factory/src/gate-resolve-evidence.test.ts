@@ -64,7 +64,7 @@ const shepherdPr = defineWorkflow({
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
     }
     if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
-    if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
+    if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", `The review of PR #1 in ${REPO} at head ${HEAD} said FIX_FIRST. Await a new head or abandon?`, sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");
     const reason = scenario.reason ?? MECHANICAL;
@@ -374,6 +374,73 @@ describe("coordinator abandon of a gate whose PR is gone", () => {
     expectFellBack(await resolveAs(merge, "merge", MERGE));
     expectFellBack(await resolveAs(sentBack, "sent-back", { decision: "await-new-head" }));
     expectFellBack(await resolveAs(frozen, "main-frozen", { decision: "unfreeze", mergeSha: MERGE_SHA }));
+  });
+});
+
+describe("coordinator resolve of a sent-back gate (owner decision 529)", () => {
+  const AWAIT = { decision: "await-new-head" };
+
+  it("waits for a new head while the PR is open at the gate's head, storing the PR read", async () => {
+    const world = await paused({ gate: "sent-back" });
+
+    const result = await resolveAs(world, "sent-back", AWAIT);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("as coordinator tc-synthetic on pr-at-head evidence");
+    expect(result.gate).toMatchObject({
+      status: "resolved",
+      payload: AWAIT,
+      resolvedBy: { class: "coordinator", id: "tc-synthetic" },
+      resolvedEvidence: { kind: "pr-at-head", repo: REPO, pr: 1, state: "open", headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" },
+    });
+  });
+
+  it("falls back on await-new-head once the PR moved off the gate's head", async () => {
+    const world = await paused({ gate: "sent-back" });
+    world.gh.pushHead(1, fakeSha("pushed"));
+
+    expectFellBack(await resolveAs(world, "sent-back", AWAIT));
+  });
+
+  it("falls back on await-new-head once the PR closed unmerged", async () => {
+    const world = await paused({ gate: "sent-back" });
+    world.gh.pr(1).state = "closed";
+
+    expectFellBack(await resolveAs(world, "sent-back", AWAIT));
+  });
+
+  it("falls back on await-new-head carrying anything beside the decision", async () => {
+    const world = await paused({ gate: "sent-back" });
+
+    expectFellBack(await resolveAs(world, "sent-back", { decision: "await-new-head", headSha: HEAD }));
+  });
+
+  it("abandons once the PR closed unmerged, and falls back on an abandon while it is open", async () => {
+    const closed = await paused({ gate: "sent-back" });
+    closed.gh.pr(1).state = "closed";
+    const open = await paused({ gate: "sent-back" });
+
+    expect((await resolveAs(closed, "sent-back", { decision: "abandon" })).gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "closed" } });
+    expectFellBack(await resolveAs(open, "sent-back", { decision: "abandon" }));
+  });
+
+  it("still refuses a coordinator's approve-merge whose evidence fails, and every other gate's await-style answer", async () => {
+    const merge = await paused({ gate: "merge" });
+    merge.gh.pushHead(1, fakeSha("pushed"));
+    const ciFailed = await paused({ gate: "ci-failed" });
+
+    expectFellBack(await resolveAs(merge, "merge", MERGE));
+    expectFellBack(await resolveAs(ciFailed, "ci-failed", { decision: "await-fix", headSha: HEAD }));
+  });
+
+  it("refuses pr-at-head evidence on an approve-merge gate written straight to the store", async () => {
+    const world = await paused({ gate: "merge" });
+    const gateId = `${world.runId}/approve-merge`;
+    const evidence = { kind: "pr-at-head", gateId, repo: REPO, pr: 1, state: "open", headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" };
+
+    expect(() => world.host.gates.resolve(gateId, MERGE, { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" }, evidence)).toThrow(GateResolverRefused);
+    expect(world.host.gates.get(gateId)?.status).toBe("pending");
   });
 });
 
