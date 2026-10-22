@@ -49,8 +49,7 @@ describe("owner-op.preview", () => {
   });
 
   it("shows the authority table's deny for an op owner-remote may not run yet", async () => {
-    const { fixture, preview } = world();
-    const { number } = fixture.fake.addPr({ headSha: H });
+    const { preview } = world();
 
     const answer = await preview({ kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true });
 
