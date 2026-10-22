@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a correctness registration is never test-only for proof",
+      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
+      "find": "new Set([\"test-only\", \"correctness\"])",
+      "replace": "new Set([\"test-only\"])",
+      "kills": [
+        "proceedsOnNoRepro on a diff of tests and a changeset lets a correctness registration proceed, since its diff makes it test-only for proof"
+      ]
+    },
+    {
+      "name": "the diff classification is skipped",
+      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
+      "find": "return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === \"test-only\";",
+      "replace": "return true;",
+      "kills": [
+        "proceedsOnNoRepro on a diff of tests and a changeset keeps a correctness registration gated once the diff also changes source"
+      ]
+    },
+    {
+      "name": "a line carrying mutants proceeds",
+      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
+      "find": "|| parsed.result.mutants !== undefined) return false;",
+      "replace": ") return false;",
+      "kills": [
+        "proceedsOnNoRepro on a diff of tests and a changeset keeps a correctness registration gated when its mutation spec is refused"
+      ]
+    },
+    {
+      "name": "security proceeds too",
+      "file": "products/factory/src/shepherd/no-repro-test-only.ts",
+      "find": "if (gate.flag !== \"on\" || !TEST_ONLY_PROOF_KINDS.has(gate.kind)) return false;",
+      "replace": "if (gate.flag !== \"on\") return false;",
+      "kills": [
+        "proceedsOnNoRepro on a diff of tests and a changeset keeps a security registration gated"
+      ]
+    }
+  ]
+}
