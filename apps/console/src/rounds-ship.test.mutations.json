@@ -18,6 +18,15 @@
       "kills": [
         "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order"
       ]
+    },
+    {
+      "name": "a Send back note goes out untrimmed",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "const comment = note.trim();",
+      "replace": "const comment = note;",
+      "kills": [
+        "answering a Ship round sends Send back as the other option, with the owner's note as its comment and no head sha"
+      ]
     }
   ]
 }

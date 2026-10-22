@@ -45,6 +45,15 @@
       "kills": [
         "an A/B question sends Neither as a revision request, once the comment says what to change"
       ]
+    },
+    {
+      "name": "only the first option note is sent",
+      "file": "apps/console/src/pages/RoundAnswers.ts",
+      "find": "return options.flatMap((option) => (notes[option]?.trim()",
+      "replace": "return options.slice(0, 1).flatMap((option) => (notes[option]?.trim()",
+      "kills": [
+        "an A/B question sends a note per side in optionNotes, and typing a digit in a note picks nothing"
+      ]
     }
   ]
 }
