@@ -236,6 +236,26 @@ function targetView(run: WorkflowRun, pinned: Pinned, baseline: readonly ArResul
   return { name: targetName(run, pinned), pin, ratchetRef, metric: projectMetric(target.metric, baseline), phases: target.phases.map((phase) => phase.id), ...where };
 }
 
+/**
+ * Where an idea's latest ladder forked and what it built, for its diff: the outcome's `against.head`, else the best the
+ * round started from. Undefined when the run never picked the idea or its implementer has not answered.
+ */
+export function ideaRefs(run: WorkflowRun, ideaId: string): { base: string; head: string } | undefined {
+  const steps = indexSteps(run);
+  const pinned = pinnedOf(steps);
+  if (!pinned) return undefined;
+  let start = pinned.ratchetHead;
+  let refs: { base: string; head: string } | undefined;
+  for (const { round, selection, summary } of replayRounds(steps)) {
+    const scope = `${round}/${ideaId}`;
+    const stop = selection.picks.some((idea) => idea.id === ideaId) ? seeded(steps, `${arStepId("stop")}:${scope}`, OutcomeSchema) : undefined;
+    const head = stop?.head ?? dispatched(steps, `${arStepId("implement")}:${scope}`, ImplementedSchema)?.head;
+    if (head) refs = { base: stop?.against?.head ?? start, head };
+    if (summary) start = summary.best.head;
+  }
+  return refs;
+}
+
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
 export function arRunView(run: WorkflowRun, looks: readonly WorkflowRun[] = []) {
   const steps = indexSteps(run);

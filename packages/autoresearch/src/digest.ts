@@ -17,7 +17,7 @@ export interface EvidenceRow {
   source: "training" | "validator";
 }
 
-interface CellRow {
+export interface CellRow {
   cell: string;
   trials: number;
   meanAbsDeltaOverSigma: number;

@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { cellTable } from "./digest.js";
 import { PlannedSchema, RoundSummarySchema } from "./ports.js";
-import { arRunSummary, arRunView, projectMetric, type ArRunView } from "./read-model.js";
-import { ArResultSchema, ideaId, type Proposal } from "./schemas.js";
+import { arRunSummary, arRunView, ideaRefs, projectMetric, type ArRunView } from "./read-model.js";
+import { ArResultSchema, ideaId, OutcomeSchema, type Proposal } from "./schemas.js";
 import { ArRunSummarySchema, ArRunViewSchema } from "./test-support/console-schemas.js";
 import { FIXTURE_POLICY, THROUGHPUT_TARGET, fakeArPorts, fixtureRepo, proposal, removeFixture, scriptedPlanner, type FakeOptions, type FixtureRepo, type Policy } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
@@ -179,6 +179,15 @@ describe("ideas, looks and why a run stopped", () => {
     expect(validator!.maxLooks).toBe(2);
     expect(validator!.looks.map((entry) => Object.keys(entry).sort())).toEqual([["aggregate", "at", "look", "provenance", "sha", "usd"]]);
     expect(ArRunViewSchema.parse({ ...view, validator }).validator!.looks[0]!.sha).toBe(head);
+  });
+
+  it("diffs a requeued idea's latest ladder against the head its round started from", async () => {
+    const { run } = await finished();
+    const [superseded] = summaryOf(run, 1).superseded;
+    const latest = OutcomeSchema.parse(JSON.parse(run.stepResults[`ar-stop:2/${superseded}`]!.output!));
+
+    expect(ideaRefs(run, superseded!)).toEqual({ base: summaryOf(run, 1).best.head, head: latest.head });
+    expect(ideaRefs(run, "i-ffffffffffff")).toBeUndefined();
   });
 
   it("names a thrown run's stop by its error code", async () => {

@@ -5,6 +5,7 @@ import type { GateQuestion } from "@titan-design/hitl";
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
+import { AR_READ_COMMANDS } from "./autoresearch/commands.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
@@ -26,6 +27,8 @@ export interface FactoryContext extends BaseContext {
   aud?: string;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
   needsSources?: NeedsSources;
+  /** The local clone of an autoresearch target, from factory config; `autoresearch.diff` refuses a target with none. */
+  autoresearchClone?: (target: string) => string | undefined;
 }
 
 export interface PrRef {
@@ -182,6 +185,6 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
+  for (const cmd of [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }
