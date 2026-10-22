@@ -6,7 +6,8 @@ import { inProcessCaller } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
+import { z } from "zod";
+import { openFactoryHost, type FactoryHost } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { arConfigFixture } from "../test-support/autoresearch.js";
 import { portsForRun, targetPorts, withAutoresearch } from "./configured.js";
@@ -55,9 +56,9 @@ async function originWithSideBranch() {
 describe("portsForRun", () => {
   it("builds each run's ports from its own target, once per target", () => {
     const config = arConfigFixture("/tmp/ar-fixture", { fixture: { clone: "/tmp/ar-fixture/a" }, other: { clone: "/tmp/ar-fixture/b" } });
-    const runs: Record<string, Partial<WorkflowRun>> = { "run-a": { params: { target: "other" } }, "run-b": { params: { target: "fixture" } }, "run-c": { params: { target: "other" } } };
+    const targets: Record<string, string> = { "run-a": "other", "run-b": "fixture", "run-c": "other" };
     const build = vi.fn((_config: unknown, name: string) => partialFake<ArPorts>({ now: () => name.length }));
-    const portsFor = portsForRun(config, (runId) => runs[runId] as WorkflowRun | undefined, build);
+    const portsFor = portsForRun(config, (runId) => partialFake<WorkflowRun>({ params: { target: targets[runId]! } }), build);
 
     const [a, b, c] = [portsFor("run-a"), portsFor("run-b"), portsFor("run-c")];
 
@@ -78,13 +79,13 @@ describe("portsForRun", () => {
 describe("a configured factory", () => {
   it("fails a run pinned off main at its pin step, through the configured ports", async () => {
     const { root, clone, side } = await originWithSideBranch();
-    const routes = withAutoresearch(Object.assign([], {}) as FactoryRoutes, arConfigFixture(root, { fixture: { clone } }));
+    const routes = withAutoresearch([], arConfigFixture(root, { fixture: { clone } }));
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [], routes, gatePollMs: 5 });
     hosts.push(host);
     const call = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes));
 
     const started = await call("autoresearch.start", { target: "fixture", pin: side });
-    const run = await host.runtime.wait(started.ok ? (started.data as { runId: string }).runId : "");
+    const run = await host.runtime.wait(z.object({ runId: z.string() }).parse(started.ok && started.data).runId);
 
     expect(run.status).toBe("failed");
     expect(run.error).toContain(`[pin-not-on-main] ${side}`);

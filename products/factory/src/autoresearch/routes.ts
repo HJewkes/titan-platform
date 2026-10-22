@@ -58,8 +58,11 @@ function arRoute({ name, onRestart }: ArStepHandler, handlersFor: HandlersFor): 
   return { match: arStepId(name), onRestart, runner: { run } };
 }
 
+const unbound = () => Promise.reject(new Error("[unbound] autoresearch ports are resolved per run"));
 /** Handlers read their ports only when called, so the route list is built once from ports that are never reached. */
-const UNBOUND = new Proxy({}, { get: () => () => Promise.reject(new Error("[unbound] autoresearch ports are resolved per run")) }) as ArPorts;
+const UNBOUND: ArPorts = {
+  pin: unbound, plan: unbound, allocTree: unbound, implement: unbound, staticCheck: unbound, micro: unbound, evalCase: unbound, ratchet: unbound, releaseTree: unbound, now: Date.now,
+};
 
 /**
  * Ports belong to a target, so each step resolves its run's own; a missing target throws inside the route and fails

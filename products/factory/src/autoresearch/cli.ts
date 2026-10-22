@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { AUTORESEARCH_WORKFLOW, type ArRunSummary, type ArRunView } from "@titan-design/autoresearch";
 import { EXIT as RPC_EXIT, inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError, type Command } from "commander";
+import { z } from "zod";
 import type { Verbs } from "../cli.js";
 import { formatResume } from "../cli-host-verbs.js";
 import { parsePort } from "../cli-options.js";
@@ -13,6 +14,12 @@ import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
 
 const RUNGS = ["none", "L0", "L1", "L2", "L3"] as const;
+
+/** The answers this group prints; the read models are the commands' own types, which serve and in-process share. */
+const Started = z.object({ runId: z.string(), status: z.string() });
+const LookStarted = z.object({ runId: z.string(), look: z.number(), head: z.string() });
+const Summaries = z.custom<ArRunSummary[]>(Array.isArray);
+const View = z.custom<ArRunView>((value) => typeof value === "object" && value !== null && "rounds" in value);
 
 type Where = { at: "serve" } | { at: "local" } | { at: "unavailable"; reason: string };
 
@@ -30,23 +37,23 @@ async function whereTo(verbs: Verbs, port: number, need: { serve?: string; db?: 
 }
 
 /** `after` runs on the same host before it closes, so a run started here can be driven here. */
-type After<T> = (data: T, host: FactoryHost) => Promise<void>;
+type After = (data: unknown, host: FactoryHost) => Promise<void>;
 
-async function inProcess<T>(verbs: Verbs, name: string, args: object, after?: After<T>): Promise<JsonEnvelope<T>> {
-  let envelope: JsonEnvelope<unknown> | undefined;
+async function inProcess(verbs: Verbs, name: string, args: object, after?: After): Promise<JsonEnvelope<unknown>> {
+  let envelope: JsonEnvelope<unknown> = { ok: false, error: `${name} did not run`, code: RPC_EXIT.SOFTWARE };
   await verbs.withHost(async (host, routes) => {
     envelope = await inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes))(name, args);
-    if (envelope.ok && after) await after(envelope.data as T, host);
+    if (envelope.ok && after) await after(envelope.data, host);
     return EXIT.OK;
   });
-  return envelope as JsonEnvelope<T>;
+  return envelope;
 }
 
 /** Answers the command's data, or undefined after setting the exit code: bad arguments are usage, any other refusal a failure. */
-async function call<T>(verbs: Verbs, port: number, name: string, args: object, need: { serve?: string; db?: boolean } = {}, after?: After<T>): Promise<T | undefined> {
+async function call(verbs: Verbs, port: number, name: string, args: object, need: { serve?: string; db?: boolean } = {}, after?: After): Promise<unknown> {
   const where = await whereTo(verbs, port, need);
   if (where.at === "unavailable") return void (verbs.io.stderr(`error: ${where.reason}\n`), verbs.setExit(EXIT.UNAVAILABLE));
-  const envelope = where.at === "serve" ? await postRpc<T>(port, name, args) : await inProcess<T>(verbs, name, args, after);
+  const envelope = where.at === "serve" ? await postRpc<unknown>(port, name, args) : await inProcess(verbs, name, args, after);
   if (envelope.ok) return envelope.data;
   verbs.io.stderr(`error: ${envelope.error}\n`);
   verbs.setExit(envelope.code === RPC_EXIT.USAGE ? EXIT.USAGE : EXIT.FAILURE);
@@ -89,13 +96,15 @@ export function formatSummaries(runs: readonly ArRunSummary[]): string {
 async function startVerb(verbs: Verbs, target: string, opts: { pin: string; lanes?: number; rounds?: number; port: number }): Promise<void> {
   const config = { ...(opts.lanes ? { lanes: opts.lanes } : {}), ...(opts.rounds ? { rounds: opts.rounds } : {}) };
   let ended: { status: string; error: string | null } | undefined;
-  const drive: After<{ runId: string }> = async ({ runId }, host) => {
+  const drive: After = async (data, host) => {
+    const { runId } = Started.parse(data);
     await untilSettledOrGated(host.runtime, host.pendingGates, runId, verbs.deps.host?.gatePollMs ?? 250);
     const run = host.runtime.status(runId);
     ended = { status: run?.status ?? "unknown", error: run?.error ?? null };
   };
-  const started = await call<{ runId: string; status: string }>(verbs, opts.port, "autoresearch.start", { target, pin: opts.pin, config }, {}, drive);
-  if (!started) return;
+  const answer = await call(verbs, opts.port, "autoresearch.start", { target, pin: opts.pin, config }, {}, drive);
+  if (answer === undefined) return;
+  const started = Started.parse(answer);
   if (ended === undefined) return verbs.io.stdout(`run ${started.runId} autoresearch ${target}: ${started.status} on titan-factory serve (port ${opts.port})\n`);
   const detail = ended.error ? ` (${ended.error})` : "";
   verbs.io.stdout(`run ${started.runId} autoresearch ${target}: ${ended.status}${detail}\nno titan-factory serve answered on port ${opts.port}, so this ran in-process; run titan-factory serve to keep it alive\n`);
@@ -133,12 +142,11 @@ function registerStatus(group: Command, verbs: Verbs): void {
     .option("--json", "print the read model as JSON")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action(async (runId: string | undefined, opts: { json?: boolean; port: number }) => {
-      const data = runId === undefined
-        ? await call<ArRunSummary[]>(verbs, opts.port, "autoresearch.runs", {}, { db: true })
-        : await call<ArRunView>(verbs, opts.port, "autoresearch.run", { runId }, { db: true });
+      const [name, args] = runId === undefined ? ["autoresearch.runs", {}] : ["autoresearch.run", { runId }];
+      const data = await call(verbs, opts.port, name, args, { db: true });
       if (data === undefined) return;
       if (opts.json) return verbs.io.stdout(`${JSON.stringify(data, null, 2)}\n`);
-      verbs.io.stdout(Array.isArray(data) ? formatSummaries(data) : formatView(data as ArRunView));
+      verbs.io.stdout(runId === undefined ? formatSummaries(Summaries.parse(data)) : formatView(View.parse(data)));
     });
 }
 
@@ -159,8 +167,8 @@ function registerAddIdea(group: Command, verbs: Verbs): void {
       } catch (error) {
         return usage(verbs, `cannot read ${opts.file} as JSON: ${error instanceof Error ? error.message : String(error)}`);
       }
-      const added = await call<{ runId: string }>(verbs, opts.port, "autoresearch.add-idea", { runId, proposal });
-      if (added) verbs.io.stdout(`queued an owner idea for run ${runId}; it is read at the next round\n`);
+      const added = await call(verbs, opts.port, "autoresearch.add-idea", { runId, proposal });
+      if (added !== undefined) verbs.io.stdout(`queued an owner idea for run ${runId}; it is read at the next round\n`);
     });
 }
 
@@ -171,8 +179,10 @@ function registerMilestone(group: Command, verbs: Verbs): void {
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action(async (runId: string, opts: { port: number }) => {
       const need = { serve: "milestone counts looks and starts one in a single turn, which only serve can do without racing another process" };
-      const look = await call<{ runId: string; look: number; head: string }>(verbs, opts.port, "autoresearch.milestone", { runId }, need);
-      if (look) verbs.io.stdout(`look ${look.look} at ${short(look.head)}: run ${look.runId}\n`);
+      const answer = await call(verbs, opts.port, "autoresearch.milestone", { runId }, need);
+      if (answer === undefined) return;
+      const look = LookStarted.parse(answer);
+      verbs.io.stdout(`look ${look.look} at ${short(look.head)}: run ${look.runId}\n`);
     });
 }
 
