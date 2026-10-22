@@ -47,6 +47,11 @@ export default defineConfig({
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    // Vitest's 5 s default is a wall budget, and a loaded runner stretches wall time 10x or more: CI puts 4 workers on
+    // 4 vCPUs beside the main thread's imports and every git, bash and node child the tests spawn. Tests that take
+    // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
+    // --testTimeout and still catches a hang.
+    testTimeout: 30_000,
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
