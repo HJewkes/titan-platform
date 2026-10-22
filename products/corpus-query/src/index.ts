@@ -15,6 +15,7 @@ export type { MatchTerms } from "./match.js";
 export { DEFAULT_WINDOW, passageId, readPassage, retrieve } from "./retrieve.js";
 export type { RetrieveOptions, RetrieveResult } from "./retrieve.js";
 export * from "./judge/index.js";
+export * from "./workflow/index.js";
 export { mergeRows, normalise } from "./merge/merge.js";
 export type { MergedRow, MergeOptions, MergeResult, NearDuplicate, SourcedRow } from "./merge/merge.js";
 export { DISCORD_LIMIT, renderDiscord, renderMarkdown } from "./render/render.js";

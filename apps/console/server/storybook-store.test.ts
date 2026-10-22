@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRound } from "./round-import.js";
-import { roundBuildId, storybookLiveReader } from "./round-live.js";
+import { storybookLiveReader, viewedBuilds, type ViewedBuilds } from "./round-live.js";
 import { getRound, parseManifest, type RoundDetail } from "./rounds.js";
 import { buildIdOf, pinnedBuild, type BuildFile, type LiveFrame } from "./storybook-build.js";
 
@@ -131,6 +131,12 @@ const urlOf = (frame: LiveFrame | undefined): URL => {
 };
 const reasonOf = (frame: LiveFrame | undefined): string | undefined => (frame && "reason" in frame ? frame.reason : undefined);
 
+async function viewedOf(keys: string[]): Promise<ViewedBuilds> {
+  const parsed = parseManifest(await readFile(path.join(roundsDir, ID, "round.json")));
+  if (!parsed.ok) throw new Error(parsed.reason);
+  return viewedBuilds(path.join(roundsDir, ID), parsed.manifest, keys);
+}
+
 describe("importing a round's Storybook build", () => {
   it("files the build once under its content id, and a second round shipping the same bytes adds no copy", async () => {
     const second = path.join(root, "harness", "round-2");
@@ -199,7 +205,7 @@ describe("importing a round's Storybook build", () => {
 
     expect(await readFile(path.join(roundsDir, ID, "storybook", "storybook.json"))).toEqual(await readFile(sidecar));
     expect(await stored()).toEqual([buildIdOf(listing(BUILD_FILES))]);
-    expect(await roundBuildId(path.join(roundsDir, ID))).toBe(buildIdOf(listing(BUILD_FILES)));
+    expect(await viewedOf(["compact"])).toEqual({ buildId: buildIdOf(listing(BUILD_FILES)) });
   });
 
   it("refuses a round with a build when the console has no store for it", async () => {
@@ -334,7 +340,7 @@ describe("a multi-PR round's builds", () => {
     expect(urlOf(frames.roomy).pathname).toBe(`/sb/${ids[OTHER_SHA]}/iframe.html`);
     expect(frames.roomy).toMatchObject({ buildSha: OTHER_SHA });
     expect((await stored()).sort()).toEqual([ids[BUILD_SHA], ids[OTHER_SHA]].sort());
-    expect(await roundBuildId(path.join(roundsDir, ID))).toBeNull();
+    expect(await viewedOf(["compact", "roomy"])).toEqual({ buildId: null, builds: { compact: ids[BUILD_SHA], roomy: ids[OTHER_SHA] } });
   });
 
   it("gives a group with no build of its own a reason, never another group's build", async () => {

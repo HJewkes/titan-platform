@@ -10,6 +10,7 @@ import { LAYOUTS } from "./layout.js";
 import type { MatchTerms } from "./match.js";
 import { DEFAULT_WINDOW, readPassage, retrieve } from "./retrieve.js";
 import { QuerySpecSchema } from "./types.js";
+import { addAskCommand, addResumeCommand, defaultHost } from "./workflow/index.js";
 
 const TermsFileSchema = QuerySpecSchema.pick({ termGroups: true, phrases: true, seedLexicon: true }).partial();
 
@@ -82,6 +83,8 @@ export async function runCli(argv: string[], write: Write = console.log): Promis
   const program = new Command("corpus-query").exitOverride().configureOutput({ writeOut: write, writeErr: write });
   addIndexCommand(program, write);
   addHitsCommand(program, write);
+  addAskCommand(program, write, defaultHost, defaultIndexPath);
+  addResumeCommand(program, write, defaultHost);
   registerCostCommand(program, write);
   try {
     await program.parseAsync(argv, { from: "user" });
