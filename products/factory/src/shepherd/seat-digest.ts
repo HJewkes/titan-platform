@@ -6,11 +6,13 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
+import { liveRoute, type ExitNoticePorts, type FallbackSeat } from "./exit-notice.js";
 import { registrantSeat, runLineage } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
 import type { WatchRow } from "./view.js";
+import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
@@ -19,11 +21,14 @@ const SEAT_DIGEST_FILE = "seat-digest.json";
 
 /**
  * Where a digest goes: the seat book read once per sweep, naming the one seat that owns a repo, the roster that names a
- * self-registered fixer's spawner, and the send. A run in a repo no single seat owns gets no digest, whoever registered it.
+ * self-registered fixer's spawner and which seats are live, the fallbacks for a seat that is not, and the send. A run in
+ * a repo no single seat owns gets no digest, whoever registered it.
  */
 export interface SeatDigestPorts {
   seatLookup(): (repo: string) => string | undefined;
   roster?(): Promise<readonly AgentRow[]>;
+  /** The seats a digest for `repo` goes to, in order, when its seat holds no live session, as for notices. */
+  fallbackSeats?(repo: string): readonly FallbackSeat[];
   send(seat: string, text: string): Promise<void>;
 }
 
@@ -147,18 +152,27 @@ export function digestReads(memory: SeatDigestMemory, seatOf: SeatOf): (run: { r
   };
 }
 
-/** One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again. */
+/**
+ * One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again, and so
+ * does a seat `unsendable` names, whose reason is its failure's cause.
+ */
 export async function sendSeatDigests(
   inputs: readonly DigestInput[],
   ports: SeatDigestPorts,
   memory: SeatDigestMemory,
   seatOf: SeatOf = repoSeats(ports.seatLookup()),
+  unsendable: ReadonlyMap<string, string> = new Map(),
 ): Promise<{ sent: string[]; failed: { seat: string; cause: string }[] }> {
   const sent: string[] = [];
   const failed: { seat: string; cause: string }[] = [];
   for (const [seat, view] of seatViews(inputs, seatOf)) {
     const last = memory.get(seat);
     const text = digestText(seat, view, last);
+    const why = text === undefined ? undefined : unsendable.get(seat);
+    if (why !== undefined) {
+      failed.push({ seat, cause: why });
+      continue;
+    }
     const state = stateOf(view, last);
     try {
       if (text !== undefined) await ports.send(seat, text);
@@ -171,28 +185,57 @@ export async function sendSeatDigests(
   return { sent, failed };
 }
 
+/** Where each run's digest goes, and why a seat neither live itself nor behind a live fallback is sent none. */
+interface DigestRoutes {
+  seatOf: SeatOf;
+  unsendable: ReadonlyMap<string, string>;
+}
+
 /**
  * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat, and none when the repo has no
- * single seat (`runSeat`). The seat book is read once, and the roster once, only when some run names a registrant, since
- * a registrant is named only while live.
+ * single seat (`runSeat`). The seat book is read once, and the roster once, which also says which seats are live.
  */
-async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
+async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<DigestRoutes> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
-  const roster = ports.roster && lineages.length > 0 ? await ports.roster().catch(() => undefined) : undefined;
+  const roster = ports.roster ? await ports.roster().catch(() => undefined) : undefined;
   const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster)]));
-  return (run) => {
+  const chosen: SeatOf = (run) => {
     const seat = seatFor(run.repo);
     return seat && (named.get(run.runId) ?? seat);
   };
+  const live = roster && { live: async (seat: string) => holdsLiveSession(seat, roster) };
+  return liveSeats(store.all(), chosen, { ...live, ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) });
+}
+
+/**
+ * The live-seat routing seat notices take (tp#2252): a chosen seat with no live session hands its runs to the first live
+ * fallback, and with none live it keeps them and is recorded as unsendable. No readable roster keeps every seat.
+ */
+async function liveSeats(runs: readonly { repo: string; runId: string }[], chosen: SeatOf, ports: Pick<ExitNoticePorts, "live" | "fallbackSeats">): Promise<DigestRoutes> {
+  const routed = new Map<string, string>();
+  const unsendable = new Map<string, string>();
+  const key = (repo: string, seat: string): string => `${repo}\n${seat}`;
+  for (const run of runs) {
+    const seat = chosen(run);
+    if (seat === undefined || routed.has(key(run.repo, seat))) continue;
+    const route = await liveRoute(ports, run.repo, seat);
+    if ("none" in route) unsendable.set(seat, route.none);
+    routed.set(key(run.repo, seat), "none" in route ? seat : route.seat);
+  }
+  const seatOf: SeatOf = (run) => {
+    const seat = chosen(run);
+    return seat && (routed.get(key(run.repo, seat)) ?? seat);
+  };
+  return { seatOf, unsendable };
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
 export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory): ReturnType<typeof sendSeatDigests> {
-  const seatOf = await runSeats(services.store.get(), ports);
+  const { seatOf, unsendable } = await runSeats(services.store.get(), ports);
   const reads = digestReads(memory, seatOf);
   const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, seatOf);
+  return sendSeatDigests(inputs, ports, memory, seatOf, unsendable);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

@@ -45,6 +45,34 @@
       ]
     },
     {
+      "name": "a digest goes to its seat whether or not the seat holds a live session",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    routed.set(key(run.repo, seat), \"none\" in route ? seat : route.seat);",
+      "replace": "    routed.set(key(run.repo, seat), seat);",
+      "kills": [
+        "a seat digest for a seat with no live session goes where its notice goes (TP-4050) a retired repo seat's digest goes to the repo's red seat",
+        "a seat digest for a seat with no live session goes where its notice goes (TP-4050) skips fallbacks with no live session, down to the hub seat"
+      ]
+    },
+    {
+      "name": "a digest no live seat can take is sent to its retired seat anyway",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    const why = text === undefined ? undefined : unsendable.get(seat);",
+      "replace": "    const why: string | undefined = undefined;",
+      "kills": [
+        "a seat digest for a seat with no live session goes where its notice goes (TP-4050) sends nothing and records why when neither the seat nor any fallback holds a live session"
+      ]
+    },
+    {
+      "name": "an unreadable roster reads every digest seat as retired",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "  const roster = ports.roster ? await ports.roster().catch(() => undefined) : undefined;",
+      "replace": "  const roster = ports.roster ? await ports.roster().catch(() => []) : undefined;",
+      "kills": [
+        "a seat digest for a seat with no live session goes where its notice goes (TP-4050) keeps the repo's seat when the roster cannot be read, as for notices"
+      ]
+    },
+    {
       "name": "a registrant stands in for a repo no single seat owns",
       "file": "products/factory/src/shepherd/exit-notice.ts",
       "find": "  if (seat === undefined) return undefined;",
