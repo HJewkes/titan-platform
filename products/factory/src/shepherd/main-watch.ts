@@ -63,6 +63,8 @@ export class MainCiReads {
 export interface MainWatchPorts {
   /** The config's shepherd.hubSeat: told about a red merge no seat can be found for. */
   hubSeat(): string | undefined;
+  /** The config's shepherd.redSeat for `repo`: when set, every red event on it goes there, whichever seat owns the merge. */
+  redSeat?(repo: string): string | undefined;
   send(seat: string, text: string): Promise<void>;
   /** The names a live agent-chat session holds now; absent, no red-event seat is checked for one. */
   liveNames?(): Promise<ReadonlySet<string>>;
@@ -118,13 +120,23 @@ interface DeadSeat {
   repos: string[];
 }
 
-/** Where each repo's red event goes when no run names another seat: the repo's one seat, else the hub seat, which also takes unmapped merges. */
-function redEventSeats(book: SeatBook, repos: readonly string[], hubSeat: string | undefined): Map<string, string[]> {
-  const seats = new Map<string, string[]>(hubSeat === undefined ? [] : [[hubSeat, []]]);
+/**
+ * Where each repo's red event goes when no run names another seat: its red seat, else its one seat, else the hub seat.
+ * The hub seat is listed whenever a repo has no red seat, as it also takes that repo's merges no seat can be mapped to.
+ */
+function redEventSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Map<string, string[]> {
+  const hubSeat = ports.hubSeat();
+  const seats = new Map<string, string[]>();
+  const add = (seat: string | undefined, owned: string[]) => seat !== undefined && seats.set(seat, [...(seats.get(seat) ?? []), ...owned]);
   for (const repo of repos) {
+    const redSeat = ports.redSeat?.(repo);
+    if (redSeat !== undefined) {
+      add(redSeat, [repo]);
+      continue;
+    }
     const found = lookupSeat(book, repo);
-    const seat = (found.kind === "seat" ? singleSeat(found.seat.name) : undefined) ?? hubSeat;
-    if (seat !== undefined) seats.set(seat, [...(seats.get(seat) ?? []), repo]);
+    add(hubSeat, []);
+    add((found.kind === "seat" ? singleSeat(found.seat.name) : undefined) ?? hubSeat, [repo]);
   }
   return seats;
 }
@@ -136,7 +148,7 @@ function redEventSeats(book: SeatBook, repos: readonly string[], hubSeat: string
 export async function deadRedSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<DeadSeat[]> {
   if (ports.liveNames === undefined) return [];
   const live = await ports.liveNames();
-  return [...redEventSeats(book, repos, ports.hubSeat())].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
+  return [...redEventSeats(book, repos, ports)].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
 }
 
 /**
@@ -229,10 +241,13 @@ export function prNumberOf(subject: string): number | undefined {
 }
 
 /**
- * A merge from a Shepherd run goes to the seat the run names, as its seat notices do. Any other merge goes to the seat
+ * A repo with a configured red seat sends every red event there. Otherwise a merge from a Shepherd run goes to the seat
+ * the run names, as its seat notices do. Any other merge goes to the seat
  * whose initials prefix the PR's agent branch (`agent-chat/tc-...` to a seat named `t...-c...`), else to the hub seat.
  */
 async function ownerSeat(deps: MainWatchDeps, repo: string, pr: number | undefined): Promise<string | undefined> {
+  const redSeat = deps.ports.redSeat?.(repo);
+  if (redSeat !== undefined) return redSeat;
   const registration = pr === undefined ? undefined : deps.store.byPr(repo, pr);
   const runSeat = singleSeat(registration?.policy.seat);
   if (runSeat !== undefined) return runSeat;

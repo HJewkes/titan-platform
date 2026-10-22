@@ -6,7 +6,7 @@ import { fakeSha, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { REPO } from "../test-support/land.js";
-import { shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
+import { callCommand, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import { openMainWatch, type MainWatchPorts } from "./main-watch.js";
 import type { SeatBook } from "./seats.js";
 
@@ -46,6 +46,30 @@ describe("serve's main CI watch", () => {
     await second.close();
 
     expect(sent).toEqual([{ seat: "alpha-coord", text: expect.stringContaining(`at ${sha} after PR #41. Failing: validate.`) }]);
+  });
+
+  it("sends a red merge to the repo's red seat while the run's merge policy keeps the seat file's seat", async () => {
+    const fixture = shepherdFixture({ seats: BOOK, frozen: true });
+    const sent: string[] = [];
+    const ports: MainWatchPorts = { hubSeat: () => undefined, redSeat: () => "factory-coord", send: async (seat) => void sent.push(seat) };
+    const head = fakeSha("head-42");
+    fixture.fake.addPr({ number: 42, headSha: head, headRef: "agent-chat/ac-fix-lexer" });
+    const server = await serve(fixture, tempDb(), ports);
+    const registered = await callCommand<{ runId: string }>(server.host, fixture.routes, "shepherd.register", { repo: REPO, pr: 42, task: "demo/T-1", implementer: "ac-fix-lexer" });
+    expect(registered.ok).toBe(true);
+    const sha = fakeSha("merge-42");
+    const at = new Date(Date.now() + 60_000).toISOString();
+    fixture.fake.history.push({ sha, message: "Fix the lexer (#42)", committedAt: at });
+    fixture.fake.setRuns(sha, [successRun("validate", 1, at, "failure")]);
+    const watch = openMainWatch(fixture.routes.shepherd!, ports, dirname(tempDb()), silentLogger);
+
+    await watch.tick();
+    const policySeat = fixture.routes.shepherd!.store.get().byPr(REPO, 42)?.policy.seat;
+    watch.close();
+    await server.close();
+
+    expect(sent).toEqual(["factory-coord"]);
+    expect(policySeat).toBe("alpha-coord");
   });
 
   it("alarms once per change in the dead seats, not on every sweep, and again once a seat that came back dies", async () => {

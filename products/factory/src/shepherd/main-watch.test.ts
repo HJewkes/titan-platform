@@ -41,7 +41,7 @@ function world(): World {
   return { fake: fakeGitHub({ repo: REPO }), sent: [], registrations: new Map(), clock: { now: T0 }, failSends: { count: 0 } };
 }
 
-function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined = "hub-coord"): MainWatchDeps {
+function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined = "hub-coord", redSeat?: (repo: string) => string | undefined): MainWatchDeps {
   return {
     port: githubPort(w.fake.wire),
     ledger,
@@ -49,6 +49,7 @@ function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined
     seats: () => BOOK,
     ports: {
       hubSeat: () => hubSeat,
+      ...(redSeat && { redSeat }),
       send: async (seat, text) => {
         if (w.failSends.count-- > 0) throw new Error("broker down");
         w.sent.push({ seat, text });
@@ -73,8 +74,8 @@ function merged(w: World, pr: number, at: number, conclusions: { validate: strin
   return sha;
 }
 
-async function sweep(w: World, ledger: MainWatchLedger, hubSeat?: string) {
-  return sweepMain(depsOver(w, ledger, hubSeat), [REPO]);
+async function sweep(w: World, ledger: MainWatchLedger, hubSeat?: string, redSeat?: (repo: string) => string | undefined) {
+  return sweepMain(depsOver(w, ledger, hubSeat, redSeat), [REPO]);
 }
 
 describe("main CI watch", () => {
@@ -133,6 +134,21 @@ describe("main CI watch", () => {
 
     expect(w.sent.map((sent) => sent.seat)).toEqual(["hub-coord"]);
     expect(w.sent[0]!.text).toContain("Failing: validate, dag-check.");
+  });
+
+  it("sends a red event to the repo's red seat ahead of the seat the run names", async () => {
+    const w = world();
+    const ledger = memoryLedger();
+    const redSeat = (repo: string) => (repo === REPO ? "factory-coord" : undefined);
+    await sweep(w, ledger, "hub-coord", redSeat);
+    merged(w, 2, T0 + MINUTE, { validate: "failure", "dag-check": "success" }, "agent-chat/ac-fix");
+    w.registrations.set(2, registration({ implementer: "ac-fix", policy: { merge: "auto", mergeMethod: "squash", fixer: false, seat: "beta-coord" } }));
+    w.clock.now = T0 + 5 * MINUTE;
+
+    const notes = await sweep(w, ledger, "hub-coord", redSeat);
+
+    expect(w.sent.map((sent) => sent.seat)).toEqual(["factory-coord"]);
+    expect(notes).toMatchObject([{ outcome: "sent", seat: "factory-coord" }]);
   });
 
   it("does not send a red event twice across a serve restart", async () => {
@@ -263,6 +279,12 @@ describe("red-event seats with no live session", () => {
 
   it("sends a remote two seats share to the hub seat, as a joined seat names no one agent", async () => {
     expect(await deadRedSeats(BOOK, [REPO], ports(["alpha-coord", "beta-coord"]))).toEqual([{ seat: "hub-coord", repos: [REPO] }]);
+  });
+
+  it("checks the repo's red seat instead of its seat, and leaves out a hub seat no red event can reach", async () => {
+    const red = { ...ports(["alpha-coord"]), redSeat: () => "factory-coord" };
+
+    expect(await deadRedSeats(book, [REPO, OTHER], red)).toEqual([{ seat: "factory-coord", repos: [REPO, OTHER] }]);
   });
 
   it("names nothing when every seat is live, or when the watch cannot read who is live", async () => {
