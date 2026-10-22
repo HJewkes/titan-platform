@@ -119,8 +119,9 @@ describe("autoresearch.diff", () => {
     expect(envelope).toMatchObject({ ok: false, code: EXIT.CONFIG, error: expect.stringContaining("[no-config]") });
   });
 
-  it("refuses a sha that is not a full hex sha before git runs", async () => {
+  it("refuses a base or a head that is not a full hex sha before git runs", async () => {
     await expect(ideaDiff("/nonexistent", "--output=/tmp/x", "b".repeat(40))).rejects.toThrow("[diff-sha]");
+    await expect(ideaDiff("/nonexistent", "a".repeat(40), "--output=/tmp/x")).rejects.toThrow("[diff-sha]");
   });
 });
 
@@ -136,6 +137,21 @@ describe("autoresearch.runs and autoresearch.run", () => {
 
     expect(listed.envelope.ok && listed.envelope.data).toEqual([expect.objectContaining({ runId: "run-1", target: "fixture", phase: "p1", round: 0 })]);
     expect(one.envelope.ok && one.envelope.data).toMatchObject({ runId: "run-1", rounds: [{ round: 1, ladders: [{ idea: { id: IDEA_ID, lineageDepth: 0 } }] }] });
+  });
+
+  it("shows only the looks whose parent is the run read", async () => {
+    const run = recordedRun("a".repeat(40), "b".repeat(40));
+    const lookOf = (id: string, parent: string, sha: string) => {
+      const aggregate = { look: 1, at: "2026-10-21T00:00:00.000Z", sha, aggregate: { metrics: { score: 1 }, gates: {} }, provenance: "fixture validator", usd: 0 };
+      return { ...run, id, workflowName: AUTORESEARCH_VALIDATE_WORKFLOW, params: { parent }, stepResults: dispatched("ar-validate:1", aggregate) };
+    };
+    const { ctx } = contextOver([run, lookOf("look-own", "run-1", "c".repeat(40)), lookOf("look-other", "run-2", "d".repeat(40))]);
+
+    const { envelope } = await call("autoresearch.run", { runId: "run-1" }, ctx);
+
+    expect(envelope.ok && envelope.data).toMatchObject({ validator: { looks: [{ sha: "c".repeat(40) }] } });
+    const shown = z.object({ validator: z.object({ looks: z.array(z.unknown()) }) }).parse(envelope.ok && envelope.data);
+    expect(shown.validator.looks).toHaveLength(1);
   });
 
   it("answers not_found for a run of another workflow", async () => {
