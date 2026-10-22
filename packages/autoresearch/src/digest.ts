@@ -51,7 +51,7 @@ function cellRow(cell: string, rows: readonly EvidenceRow[]): CellRow {
   return { cell, trials: rows.length, meanAbsDeltaOverSigma, keepRate, ...(flag ? { flag } : {}) };
 }
 
-function cellTable(rows: readonly EvidenceRow[]): CellRow[] {
+export function cellTable(rows: readonly EvidenceRow[]): CellRow[] {
   const byCell = new Map<string, EvidenceRow[]>();
   for (const row of rows) byCell.set(row.cell, [...(byCell.get(row.cell) ?? []), row]);
   return [...byCell.entries()].map(([cell, cellRows]) => cellRow(cell, cellRows)).sort((a, b) => a.cell.localeCompare(b.cell));

@@ -69,4 +69,5 @@ export { addPair, band, NO_NOISE, pooledSigma, sigmaOf, type NoiseSettings, type
 export { betaDraw, reward, seededRandom, select } from "./select.js";
 export { applyOps, quotaViolations, toIdea } from "./queue.js";
 export { EMPTY_REGISTRIES, inDeadEnd, recordAnalysis, recordOutcome, registryTails, REGISTRY_TAIL, type DeadEnd, type Registries } from "./registry.js";
-export { buildDigest, evidenceRow, implementerBrief, type Digest, type EvidenceRow } from "./digest.js";
+export { buildDigest, cellTable, evidenceRow, implementerBrief, type Digest, type EvidenceRow } from "./digest.js";
+export { arRunSummary, arRunView, projectMetric, type ArRunSummary, type ArRunView } from "./read-model.js";
