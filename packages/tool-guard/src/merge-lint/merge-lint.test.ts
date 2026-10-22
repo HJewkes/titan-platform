@@ -96,6 +96,42 @@ describe("each merge call shape in a scanned file warns at its starting line", (
   });
 });
 
+describe("a push that names its destination ref warns, since it writes a branch with no PR", () => {
+  it.each([
+    ["the ratchet's leased fast-forward", 'await git(["push", "--quiet", `--force-with-lease=${move.ratchetRef}:${move.from}`, "origin", `HEAD:${move.ratchetRef}`], move.tree);'],
+    ["the ratchet's seed", 'await git(["push", "--quiet", `--force-with-lease=${seed.ratchetRef}:`, "origin", `${seed.pin}:${seed.ratchetRef}`], seed.tree)'],
+    ["a call with argv spread as arguments", 'await git(tree, "push", "--quiet", "origin", `${to}:${ratchetRef}`);'],
+    ["a literal refs/heads destination in argv", "run(['push', 'origin', 'HEAD:refs/heads/x'])"],
+    ["a shell push to refs/heads", "git push origin HEAD:refs/heads/x"],
+    ["a shell push to a templated ref", "git push -q origin HEAD:${ref}"],
+    ["a shell push in other case", "GIT PUSH origin HEAD:REFS/HEADS/x"],
+  ])("%s", (_name, text) => {
+    expect(hitsIn(`first line\n${text}`)).toEqual([[2, "git-refspec-push"]]);
+  });
+
+  it.each([
+    ["a push of a named branch", 'git(["push", "-q", "origin", "main"], repo);'],
+    ["prose naming a plain push", "commit and push with a plain `git push`. Never rewrite history or force-push."],
+    ["a refspec to a short branch name", 'const WORST_CASE = { git: ["push", "origin", "HEAD:main"] };'],
+    ["a destination ref on the line after the array closes", '["push", "origin"]\nconst ref = `x:${y}`;'],
+    ["a shell push whose refspec is on the next line", "git push origin\nHEAD:refs/heads/x"],
+  ])("%s does not warn", (_name, text) => {
+    expect(hitsIn(text)).toEqual([]);
+  });
+
+  it.each([
+    ["argv", `["push", ${'"a", '.repeat(2000)}`],
+    ["shell", `git push ${"a ".repeat(2000)}`],
+  ])("a long %s push with no destination ref scans quickly", (_name, text) => {
+    const started = performance.now();
+
+    const hits = hitsIn(text);
+
+    expect(hits).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
 describe("a gh pr merge in an agent brief warns", () => {
   it("the agent-brief fixture warns at lines 1-7 and the clean fixture warns at none", () => {
     const brief = scan([{ path: "agent-brief.md", text: fixture("agent-brief.md") }], rulesWith(), { scoped: false });

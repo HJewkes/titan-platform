@@ -313,6 +313,10 @@ never call merge and the merge-lint warning are the **only guard on R27**: no co
 owner-intent moves can run before the walk (D-M3-11). The lint warns until D-M3-03 and is an
 error after; D-M8-07 narrows it. Run it with `pnpm merge:lint`.
 
+Autoresearch's `autoresearch-ratchet` is also a logged path: it fast-forwards only a run's
+own ratchet branch under the target's `ratchetPrefix`, never main or the default branch,
+records each move as evidence, and is not gated by Shepherd.
+
 ## Routing a reviewed head {#routing}
 
 After the review of a green head, the `sh-observe` step reads the pull request again, and one
