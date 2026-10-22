@@ -79,7 +79,8 @@ function expander(workdir: string, stage: z.infer<typeof BridgeStageSchema>): (t
   return (text) =>
     text.replace(/\{(workdir|in\.[\w-]+|out\.[\w-]+)\}/g, (token, name: string) => {
       if (name === "workdir") return path.resolve(workdir);
-      const [side, key] = name.split(".") as ["in" | "out", string];
+      const side = name.startsWith("in.") ? "in" : "out";
+      const key = name.slice(side.length + 1);
       const rel = side === "in" ? stage.inputs[key] : stage.outputs[key]?.path;
       if (rel === undefined) throw new Error(`bridge token ${token} names no declared ${side === "in" ? "input" : "output"}`);
       return at(rel);

@@ -15,6 +15,7 @@ export interface Provenance {
 /** A directory stored as the sorted list of its files' shas, hashed like ev's `tree` fixture. */
 const TreeSchema = z.object({ schema: z.literal("artifact-tree/v1"), entries: z.array(z.object({ path: z.string(), sha: z.string() })) });
 type Tree = z.infer<typeof TreeSchema>;
+const KindRowSchema = z.object({ kind: z.string() });
 
 export const artifactMigration = (version: number): Migration => ({
   version,
@@ -80,7 +81,7 @@ export class ArtifactStore {
   }
 
   private tree(sha: string): Tree | undefined {
-    const row = this.db.prepare("SELECT kind FROM explainer_artifacts WHERE sha = ?").get(sha) as { kind: string } | undefined;
+    const row = KindRowSchema.optional().parse(this.db.prepare("SELECT kind FROM explainer_artifacts WHERE sha = ?").get(sha));
     return row?.kind.endsWith("/tree") ? TreeSchema.parse(JSON.parse(this.readText(sha))) : undefined;
   }
 
