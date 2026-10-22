@@ -1,5 +1,5 @@
 /** A task as active-work stores it, with the fields `task.edit`'s guards read. */
-export interface FakeTask {
+interface FakeTask {
   id: string;
   status: string;
   done_when: string;
@@ -8,7 +8,7 @@ export interface FakeTask {
   done_at?: string;
 }
 
-export interface FakeActiveWork {
+interface FakeActiveWork {
   fetch: typeof fetch;
   tasks: Map<string, FakeTask>;
   /** Every rpc call in order, with its body. */
