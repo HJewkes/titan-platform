@@ -2,7 +2,17 @@ import type { RestartRule } from "@titan-design/workflow";
 import { z } from "zod";
 import type { Digest } from "./digest.js";
 import type { ArDispatchStep } from "./manifest.js";
-import { RatchetKindSchema, RegistryRowSchema, type ArPorts, type RoundRecord } from "./ports.js";
+import {
+  CadenceRoundSchema,
+  CadenceTriggerSchema,
+  RatchetKindSchema,
+  RegistryRowSchema,
+  SnapshotLogSchema,
+  type ArPorts,
+  type RoundRecord,
+  type SnapshotRequest,
+  type SyncRequest,
+} from "./ports.js";
 import { IdeaSchema } from "./schemas.js";
 
 /** What the runtime knows about this try of the step, which never goes in the step's input, so a replay sees the same input. */
@@ -43,6 +53,12 @@ const Inputs = {
     round, ideaId: text.optional(), kind: RatchetKindSchema, keepRung: text, delta: z.number(), sigma: z.number().nonnegative(), runDigests: z.array(text),
   }),
   integrate: RunInput.extend({ tree: text, base: text, head: text, message: text }),
+  snapshot: RunPinInput.extend({
+    k: z.number().int().positive(), trigger: CadenceTriggerSchema, round: CadenceRoundSchema, sha: text, ratchetRef: text, ratchetPrefix: text, log: SnapshotLogSchema,
+  }),
+  sync: RunPinInput.extend({
+    round: CadenceRoundSchema, pr: z.number().int().positive(), branch: text, head: text, ratchetRef: text, ratchetPrefix: text, tree: text, resolved: text.optional(),
+  }),
   release: z.object({ tree: text }),
   loadWait: z.object({ stage: text }),
   archive: RunInput.extend({ round, record: z.custom<RoundRecord>() }),
@@ -57,11 +73,33 @@ async function validateLook(ports: ArPorts, input: z.infer<typeof Inputs.validat
   return ports.validate(input, signal);
 }
 
+const at = (firstStartedAt: string | undefined) => (firstStartedAt === undefined ? {} : { at: firstStartedAt });
+
+/**
+ * A snapshot that fails answers `failed` rather than throwing, so the failure is recorded and a replay never cuts again
+ * where the first drive went on without a snapshot. A cancelled run still throws.
+ */
+async function cutSnapshot(ports: ArPorts, input: SnapshotRequest, signal: AbortSignal): Promise<object> {
+  if (!ports.snapshot) return { failed: "[no-snapshot] this host has no snapshot port" };
+  try {
+    return await ports.snapshot(input, signal);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return { failed: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function syncRatchet(ports: ArPorts, input: SyncRequest, signal: AbortSignal): Promise<object> {
+  if (!ports.sync) throw new Error("[no-sync] this host has no sync port");
+  return ports.sync(input, signal);
+}
+
 /**
  * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it;
  * a repeated registry row carries the same run and phase, so a host's reader keeps the last. An integrate re-checks-out its
- * base and merges with the step's first start as the date, so a repeat rebuilds the same commit.
- * A ratchet push cut off mid-way may have moved the remote, so a person decides.
+ * base and merges with the step's first start as the date, so a repeat rebuilds the same commit; so does a snapshot's
+ * log commit, and its tag, branch, PR and registration are each idempotent.
+ * A ratchet push or a sync cut off mid-way may have moved the remote, so a person decides.
  */
 export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
   return [
@@ -74,8 +112,10 @@ export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
     handler("l1", "repeat", Inputs.l1, (input, signal) => ports.micro(input, signal)),
     handler("ratchet", "park", Inputs.ratchet, (input, signal) => ports.ratchet(input, signal)),
     handler("integrate", "repeat", Inputs.integrate, async (input, signal, { firstStartedAt }) =>
-      ports.integrate ? ports.integrate({ ...input, ...(firstStartedAt === undefined ? {} : { at: firstStartedAt }) }, signal) : { skipped: "no-integrate" },
+      ports.integrate ? ports.integrate({ ...input, ...at(firstStartedAt) }, signal) : { skipped: "no-integrate" },
     ),
+    handler("snapshot", "repeat", Inputs.snapshot, (input, signal, { firstStartedAt }) => cutSnapshot(ports, { ...input, ...at(firstStartedAt) }, signal)),
+    handler("sync", "park", Inputs.sync, (input, signal, { firstStartedAt }) => syncRatchet(ports, { ...input, ...at(firstStartedAt) }, signal)),
     handler("release", "repeat", Inputs.release, async (input, signal) => (await ports.releaseTree(input, signal), { released: input.tree })),
     handler("load-wait", "repeat", Inputs.loadWait, async (input, signal, { firstStartedAt }) =>
       ports.loadWait ? ports.loadWait({ ...input, ...(firstStartedAt === undefined ? {} : { firstStartedAt }) }, signal) : { waitedMs: 0 },

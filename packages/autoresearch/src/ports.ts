@@ -170,6 +170,80 @@ export type RoundSummary = z.infer<typeof RoundSummarySchema>;
 export const StopReasonSchema = z.enum(["ideas-evaluated", "rounds-without-gain", "rounds-exhausted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
 
+export const CadenceTriggerSchema = z.enum(["phase-end", "kept", "spend"]);
+export type CadenceTrigger = z.infer<typeof CadenceTriggerSchema>;
+/** A cut or a sync after the last round is round `end`. */
+export const CadenceRoundSchema = z.union([z.number().int().positive(), z.literal("end")]);
+export type CadenceRound = z.infer<typeof CadenceRoundSchema>;
+
+const usd = z.number().nonnegative();
+/** What a snapshot PR's body is rendered from: aggregates only, so no case name or per-case number reaches the PR. */
+export const SnapshotLogSchema = z.object({
+  phase: z.string(),
+  trigger: CadenceTriggerSchema,
+  round: CadenceRoundSchema,
+  /** The ratchet head the previous cut tagged, or the run's starting head. */
+  from: z.string(),
+  to: z.string(),
+  kept: z.array(z.object({ ideaId: z.string(), delta: z.number().optional(), sigma: z.number().optional() })),
+  /** No cap is enforced: a round may overshoot the cadence's spend, and this shows by how much. */
+  spentSince: z.object({ agentUsd: usd, modelUsd: usd }),
+});
+export type SnapshotLog = z.infer<typeof SnapshotLogSchema>;
+
+/** Cuts snapshot `k` at a ratchet sha: tag, PR branch with one log commit, the PR, and its Shepherd registration. */
+export interface SnapshotRequest extends RunPin {
+  k: number;
+  trigger: CadenceTrigger;
+  round: CadenceRound;
+  sha: string;
+  ratchetRef: string;
+  ratchetPrefix: string;
+  log: SnapshotLog;
+  /** The step's first start, which the log commit is dated with, so a restart rebuilds the same sha. */
+  at?: string;
+}
+
+export const SnapshotCutSchema = z.object({
+  k: z.number().int().positive(),
+  tag: z.string(),
+  sha: z.string(),
+  branch: z.string(),
+  pr: z.number().int().positive(),
+  url: z.string().optional(),
+  shepherdRunId: z.string().optional(),
+  logSha: z.string(),
+});
+/** `failed` is the recorded answer of a port that threw, so a replay reads the same failure instead of cutting again. */
+export const SnapshotResultSchema = z.union([SnapshotCutSchema, z.object({ failed: z.string() })]);
+
+/** Reads the open snapshot PR and, once it merged, merges main into the ratchet; `resolved` is an owner's merge to move onto instead. */
+export interface SyncRequest extends RunPin {
+  round: CadenceRound;
+  pr: number;
+  branch: string;
+  /** The ratchet head the run holds as B. */
+  head: string;
+  ratchetRef: string;
+  ratchetPrefix: string;
+  tree: string;
+  resolved?: string;
+  at?: string;
+}
+
+/**
+ * `treeChanged` compares the tree outside the snapshot log dir, since the log commit alone would always change it.
+ * `conflict` and `frozen` leave the ratchet where it was.
+ */
+export const SyncResultSchema = z.object({
+  state: z.enum(["open", "merged", "closed"]),
+  merged: z.object({ from: z.string(), to: z.string(), main: z.string() }).optional(),
+  conflict: z.array(z.string()).optional(),
+  frozen: z.array(z.string()).optional(),
+  treeChanged: z.boolean().optional(),
+});
+export type SyncResult = z.infer<typeof SyncResultSchema>;
+
 export const InboxSchema = z.object({ ideas: z.array(ProposalSchema), cursor: z.number().int().nonnegative() });
 
 const nonnegative = z.number().nonnegative();
@@ -235,6 +309,10 @@ export interface ArPorts {
    * aborting; it never pushes. A host without it has every later winner requeued.
    */
   integrate?(input: IntegrateRequest, signal: AbortSignal): Promise<IntegrateResult>;
+  /** Cuts a snapshot PR; every sub-write is idempotent. A host with none never cuts, and its run sets no `snapshot` settings. */
+  snapshot?(input: SnapshotRequest, signal: AbortSignal): Promise<z.input<typeof SnapshotCutSchema>>;
+  /** Reads the open snapshot PR and syncs main back into the ratchet; never rebases or force-pushes. */
+  sync?(input: SyncRequest, signal: AbortSignal): Promise<z.input<typeof SyncResultSchema>>;
   /** Parks the tree: checkout removed, branch kept. */
   releaseTree(input: { tree: string }, signal: AbortSignal): Promise<void>;
   /**

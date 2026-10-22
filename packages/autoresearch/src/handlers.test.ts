@@ -38,6 +38,24 @@ describe("step handlers", () => {
     expect(result).toEqual({ ideas: [], cursor: 4 });
   });
 
+  it("answer a snapshot port that throws with a recorded failure, and hand it the step's first start", async () => {
+    const seen: unknown[] = [];
+    const ports = portsWith({ snapshot: async (input) => (seen.push(input.at), Promise.reject(new Error("[snapshot-fixture] refused"))) });
+    const log = { phase: "p1", trigger: "kept", round: 1, from: "a", to: "b", kept: [], spentSince: { agentUsd: 0, modelUsd: 0 } };
+    const input = { runId: "run-a", pin: "p", k: 1, trigger: "kept", round: 1, sha: "b", ratchetRef: "r", ratchetPrefix: "autoresearch/fixture", log };
+
+    const result = await handlerFor(ports, "snapshot").run(input, signal, { firstStartedAt: "2026-01-01T00:00:00.000Z" });
+
+    expect(result).toEqual({ failed: "[snapshot-fixture] refused" });
+    expect(seen).toEqual(["2026-01-01T00:00:00.000Z"]);
+  });
+
+  it("repeat a snapshot after a restart, and park a sync, which may already have moved the ratchet", () => {
+    const rules = Object.fromEntries(arStepHandlers(portsWith({})).map((handler) => [handler.name, handler.onRestart]));
+
+    expect([rules.snapshot, rules.sync, rules.ratchet]).toEqual(["repeat", "park", "park"]);
+  });
+
   it("refuse a look on a host with no validator rather than answer an empty aggregate", async () => {
     const look = handlerFor(portsWith({}), "validate").run({ runId: "run-a", pin: "p", look: 1, head: "h" }, signal);
 
