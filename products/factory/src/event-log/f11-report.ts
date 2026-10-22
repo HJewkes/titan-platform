@@ -76,11 +76,9 @@ const LEVELED = /\[(?:info|warn|error)\] (.*)$/;
 const REGRESSION = /(?:^|\s)head-regression repo=/;
 const STAMP = /^(\d{4}-\d{2}-\d{2}T\S+)/;
 
-/** journalctl writes `+0000`; Date.parse wants `+00:00`. */
 function stampOf(text: string): string | undefined {
   const token = STAMP.exec(text)?.[1];
-  if (token === undefined) return undefined;
-  const ms = Date.parse(token.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+  const ms = token === undefined ? Number.NaN : Date.parse(token);
   return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
 }
 
@@ -148,7 +146,7 @@ type IdentityWindow = UsageWindow & { identity: string };
 function loggedPeaks(lines: readonly LogLine[]): IdentityWindow[] {
   return lines.flatMap(({ message, fields: { identity, resource, used, limit, reset } }) => {
     if (message !== "github-api.peak" || typeof identity !== "string" || typeof resource !== "string") return [];
-    if (typeof used !== "number" || typeof limit !== "number" || limit <= 0 || typeof reset !== "string") return [];
+    if (typeof used !== "number" || typeof limit !== "number" || typeof reset !== "string") return [];
     return [{ identity, resource, used, limit, reset: Date.parse(reset) / 1000 }];
   });
 }

@@ -50,16 +50,17 @@ describe("f11Report clock 1 (polling)", () => {
 });
 
 describe("f11Report clock 2 (webhook)", () => {
-  it("matches a webhook row by a timestamped reconciler.confirmed line, and not by a delivery retry", () => {
-    const rows = [row(1), row(2)];
+  it("matches a webhook row by a timestamped reconciler.confirmed line, and not by a delivery retry or an unknown answer", () => {
+    const rows = [row(1), row(2), row(3)];
     const log = [
       line("2026-10-21T10:03:00+0000", "reconciler.confirmed", { repo: "acme/widget", kind: "HeadPushed", seq: 1, by: "occurrence" }),
       line("2026-10-21T10:03:00+0000", "reconciler.confirmed", { repo: "acme/widget", kind: "HeadPushed", seq: 2, by: "delivery" }),
+      line("2026-10-21T10:03:00+0000", "reconciler.confirmed", { repo: "acme/widget", kind: "HeadPushed", seq: 3, by: "inserted" }),
     ].join("\n");
 
     const result = report({ rows, log });
 
-    expect(result.agreement).toMatchObject({ matched: [1], webhookOnly: [2], pending: [] });
+    expect(result.agreement).toMatchObject({ matched: [1], webhookOnly: [2, 3], pending: [] });
     expect(result.census).toBeUndefined();
   });
 
@@ -73,14 +74,16 @@ describe("f11Report clock 2 (webhook)", () => {
     const log = [
       line("2026-10-22T00:00:00+0000", "reconciler.confirmed", { seq: 1, by: "occurrence" }),
       line("2026-10-19T23:59:59+0000", "reconciler.disagree", { class: "stale-read" }),
+      line("2026-10-20T00:00:00+0000", "reconciler.disagree", { class: "field-parity" }),
+      line("2026-10-22T01:00:00+0200", "reconciler.disagree", { class: "unconfirmed" }),
       "[info] reconciler.confirmed " + JSON.stringify({ seq: 1, by: "occurrence" }),
     ].join("\n");
 
     const result = report({ rows: [row(1, { observedAt: "2026-10-21T23:58:00.000Z" })], log });
 
     expect(result.agreement?.pending).toEqual([1]);
-    expect(result.epochs.disagree["stale-read"]).toBe(0);
-    expect(result.log).toMatchObject({ lines: 0, untimed: 1, confirmed: 0 });
+    expect(result.epochs.disagree).toMatchObject({ "stale-read": 0, "field-parity": 1, unconfirmed: 1 });
+    expect(result.log).toMatchObject({ lines: 2, untimed: 1, confirmed: 0 });
   });
 });
 
@@ -123,7 +126,7 @@ describe("f11Report peaks", () => {
     line(stamp, "github-api.peak", { identity: "bot", resource, used, limit: 5000, pct: Math.round(used / 50), reset: new Date(RESET * 1000).toISOString() });
 
   it("keeps the bot's highest window from serve's peak lines and the sampled side's from its records in the window", () => {
-    const log = [peak("2026-10-21T10:00:00+0000", 900), peak("2026-10-21T11:00:00+0000", 1400), peak("2026-10-21T11:00:00+0000", 10, "graphql")].join("\n");
+    const log = [peak("2026-10-21T10:00:00+0000", 1400), peak("2026-10-21T11:00:00+0000", 900), peak("2026-10-21T11:00:00+0000", 10, "graphql")].join("\n");
     const rate = [sample("2026-10-21T10:00:00.000Z", 2400), sample("2026-10-21T10:30:00.000Z", 2600), sample("2026-10-22T00:00:00.000Z", 4900)];
 
     const { peaks } = report({ log, rate });

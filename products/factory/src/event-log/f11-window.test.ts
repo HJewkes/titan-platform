@@ -67,9 +67,10 @@ describe("f11Window", () => {
   });
 
   it("refuses an unparseable or empty window", () => {
-    expect(() => f11Window("yesterday", UNTIL)).toThrow(RangeError);
-    expect(() => f11Window(SINCE, "tomorrow")).toThrow(RangeError);
-    expect(() => f11Window(UNTIL, UNTIL)).toThrow(RangeError);
+    expect(() => f11Window("yesterday", UNTIL)).toThrow(/needs two dates/);
+    expect(() => f11Window(SINCE, "tomorrow")).toThrow(/needs two dates/);
+    expect(() => f11Window(UNTIL, UNTIL)).toThrow(/is empty/);
+    expect(() => f11Window(UNTIL, SINCE)).toThrow(/is empty/);
   });
 });
 
