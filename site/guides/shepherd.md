@@ -52,13 +52,17 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
-A repeat starts a new run instead when the registration's run is dead: it failed, or it
-completed stopped `not-mergeable` or on a `conflict` while the pull request is still open,
-as when no agent took the conflict wake and a seat then pushed a fix. The new run starts at
-the pull request's current head, the registration and its recorded authors move to it, and
-the old run still reads. The verb prints `restarted after failed run <id>` or
-`restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
-reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
+A repeat starts a new run instead when the registration's run is dead: it failed, it
+completed stopped `not-mergeable`, on a `conflict` or `abandoned`, or it was cancelled, while
+the pull request is still open. Shepherd cancels a run only when its pull request read
+merged, closed or gone, so a cancelled run whose pull request is open again was ended on a
+read that no longer holds. The new run starts at the pull request's current head, or
+`--head`. The registration moves to it with its holds (an `owner-asked` hold included), kind
+and recorded authors, and the old run still reads. The verb prints
+`restarted after failed run <id>`, `restarted after run <id> stopped not-mergeable` or
+`restarted after run <id> stopped cancelled`. A run that merged, or stopped for any other
+reason (`closed`, `stuck-behind`, `merge-denied`), and a cancelled run whose pull request is
+closed, come back unchanged.
 
 A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
 

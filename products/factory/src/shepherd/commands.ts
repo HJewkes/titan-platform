@@ -236,7 +236,7 @@ type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict or abandoned, with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: registerWithHold,

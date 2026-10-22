@@ -35,6 +35,8 @@ export interface PrRef {
 
 export interface LandArgs extends PrRef {
   task?: string;
+  /** False starts a run that never updates the branch; only merge-at-head passes it, and `factory.land` never does. */
+  update?: false;
 }
 
 export interface LandStarted {
@@ -89,7 +91,7 @@ export function parsePrRef(ref: string): PrRef {
 export function startLand(host: FactoryHost, args: LandArgs): LandStarted {
   const existing = unfinishedLand(host, args);
   if (existing) return { runId: existing.id, created: false, status: existing.status };
-  const params = { repo: args.repo, pr: String(args.pr), ...(args.task ? { task: args.task } : {}) };
+  const params = { repo: args.repo, pr: String(args.pr), ...(args.task ? { task: args.task } : {}), ...(args.update === false && { update: "false" }) };
   const runId = host.runtime.start(LAND_WORKFLOW, params);
   return { runId, created: true, status: host.runtime.status(runId)?.status ?? "running" };
 }
