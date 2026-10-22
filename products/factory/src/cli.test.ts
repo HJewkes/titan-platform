@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,7 +7,9 @@ import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
+import { configDeprecations } from "./config.js";
 import { openFactoryHost } from "./host.js";
+import { DEPRECATED_INTERVAL } from "./reconciler/config.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
@@ -154,6 +156,29 @@ describe("the serve verb's exit", () => {
     await serving;
 
     expect(exitAfterServe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the serve verb's config deprecations", () => {
+  async function serveWarnings(reconciler: object): Promise<{ code: number; warnings: unknown[] }> {
+    const dbPath = dbFile();
+    const configHome = join(dirname(dirname(dbPath)), "config");
+    mkdirSync(join(configHome, "titan-factory"), { recursive: true });
+    writeFileSync(join(configHome, "titan-factory", "config.json"), JSON.stringify({ github: { sources: "webhook" }, reconciler }));
+    const warnings: unknown[] = [];
+    const logger = { ...silentLogger, warn: (_fields: unknown, msg?: unknown) => void warnings.push(msg) };
+    const stop = new AbortController();
+    let ended = false;
+    const serving = cli(["--db", dbPath, "serve", "--port", "0"], { ...landDeps("land-rules"), logger, stop: stop.signal, configDeprecations }, { XDG_CONFIG_HOME: configHome }).finally(() => (ended = true));
+    await vi.waitFor(async () => expect(ended || (await readPidFile(daemonPaths(dirname(dbPath)))) !== null).toBe(true));
+    stop.abort();
+    const { code } = await serving;
+    return { code, warnings: warnings.filter((msg) => msg === DEPRECATED_INTERVAL) };
+  }
+
+  it("logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not", async () => {
+    expect(await serveWarnings({ intervalMs: 900_000 })).toEqual({ code: EXIT.OK, warnings: [DEPRECATED_INTERVAL] });
+    expect(await serveWarnings({ enabled: false })).toEqual({ code: EXIT.OK, warnings: [] });
   });
 });
 

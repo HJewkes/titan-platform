@@ -547,6 +547,33 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
       expect(dispatch).not.toHaveBeenCalled();
     });
 
+    describe("when a non-strict base moved past the reviewed head's green (TP-3933)", () => {
+      const staleGreen = (headSha: string, extra: Partial<CiSnapshot>): CiSnapshot => ({ headSha, verdict: "behind", mergeableState: "blocked", checksGreen: true, ...extra });
+
+      it("asks with checks green, as land merges that head as it stands, and the route releases", async () => {
+        const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
+        const { store, route } = twoRig();
+
+        await releaseG10Hold({ ...run, lastCi: staleGreen(HEAD, { baseMoved: true }) }, ADVERSARY_HOLD);
+        const done = await runStep(route("on"), asked());
+
+        expect(asked()).toMatchObject({ checks: { head: HEAD, green: true } });
+        expect(done.released).toBe(true);
+        expect(store.byRun("run-1")?.held).toBe(false);
+      });
+
+      it.each([
+        ["a strict base reads it behind", {}],
+        ["the head's own checks are not green", { baseMoved: true, checksGreen: false }],
+      ])("asks with checks not green when %s", async (_case, extra) => {
+        const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
+
+        await releaseG10Hold({ ...run, lastCi: staleGreen(HEAD, extra) }, ADVERSARY_HOLD);
+
+        expect(asked()).toMatchObject({ checks: { head: HEAD, green: false } });
+      });
+    });
+
     it("asks once for a shadow would-release, as for a release", async () => {
       const { dispatch, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD, { released: false, wouldRelease: true, head: HEAD });
 
