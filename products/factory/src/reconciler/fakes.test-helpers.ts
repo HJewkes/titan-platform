@@ -1,12 +1,14 @@
 import type { Logger } from "@titan-design/daemon";
-import { GitHubRequestError, githubApiPool, memoryPoolStateStore, type BackstopCommit, type GitHubClient, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority } from "@titan-design/github";
+import { GitHubRequestError, githubApiPool, memoryPoolStateStore, type Ancestry, type BackstopCommit, type GitHubClient, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority, type RulesetList } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { partialFake } from "@titan-design/test-kit";
 import { botIntentMigration } from "../bot-intent.js";
 import { eventLogMigration } from "../event-log/event-log.js";
+import { headEpochMigration } from "../head-guard/epoch-store.js";
 import { mergeLogMigration } from "../merge-log.js";
 import { fakePoolClock, rateLimitAnswer, type FakePoolClock } from "../test-support/pool-clock.js";
 import { reconcilerCursorMigration, sqliteReconcilerCursor, type ReconcilerCursorStore } from "./cursor.js";
+import type { RemoteRef } from "./guard-verdicts.js";
 import type { BackstopAnswer, BackstopCall, BotPorts, Observation, Observe, ReconcilerDeps } from "./service.js";
 
 const BOT = "synthetic-bot[bot]";
@@ -26,25 +28,39 @@ class FakeGithub {
   /** Kinds answered 429 until cleared. */
   readonly limited = new Set<BackstopCall["kind"]>();
   gatesChanged = false;
+  gateEtag = "\"e1\"";
+  /** The ruleset list the gates carry when it changed. */
+  rulesets: RulesetList | undefined = undefined;
   readonly calls: BackstopCall[] = [];
   /** Holds every snapshot answer until released; for the non-blocking start pass. */
   hold: Promise<void> | null = null;
   /** Replaces the main-only answer with a whole repo, as TP-3099's kind scenario reads it. */
   snapshot: (() => BackstopSnapshot) | null = null;
+  /** GitHub's compare; by default every read head descends from the one before it. */
+  ancestry: (base: string, head: string) => Ancestry = () => "ahead";
+  /** What `ls-remote` answers; by default the ref as the next snapshot shows it. */
+  remote: ((ref: RemoteRef) => string | null) | null = null;
 
   async send(call: BackstopCall): Promise<BackstopAnswer> {
     this.calls.push(call);
     if (this.hold) await this.hold;
     if (this.limited.has(call.kind)) return { status: 429, headers: {} };
-    if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: "\"e1\"" } } };
+    if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: this.gateEtag }, ...(this.rulesets && { rulesets: this.rulesets }) } };
+    if (call.kind === "ancestry") return { status: 200, headers: {}, ancestry: this.ancestry(call.base, call.head) };
     if (this.snapshot) return { status: 200, headers: {}, snapshot: this.snapshot() };
     const stop = this.main.findIndex((c) => c.oid === call.request.mainCursor);
     const commits = stop >= 0 ? this.main.slice(0, stop) : this.main;
     return { status: 200, headers: {}, snapshot: snapshotOf(this.main[0]?.oid ?? "c0", commits) };
   }
 
+  lsRemote(ref: RemoteRef): string | null {
+    if (this.remote) return this.remote(ref);
+    const shown = this.snapshot?.() ?? snapshotOf(this.main[0]?.oid ?? "c0", []);
+    return "pr" in ref ? (shown.open.find((pr) => pr.number === ref.pr)?.headRefOid ?? null) : shown.main.tip;
+  }
+
   count(kind: BackstopCall["kind"], repo = REPO): number {
-    return this.calls.filter((call) => call.kind === kind && (call.kind === "gates" ? call.repo : call.request.repo) === repo).length;
+    return this.calls.filter((call) => call.kind === kind && (call.kind === "snapshot" ? call.request.repo : call.repo) === repo).length;
   }
 }
 
@@ -112,9 +128,10 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
   const poolState = memoryPoolStateStore();
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT, send: (call) => github.send(call), clock, state: poolState, probe: () => Promise.resolve(rateLimitAnswer(4999, 4999)) });
   const observe = options.observe ?? fakeObserve();
-  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, observe };
+  const lsRemote: BotPorts["lsRemote"] = (_repo, ref) => Promise.resolve(github.lsRemote(ref));
+  const bot: BotPorts = { identity: BOT, login: BOT_LOGIN, pool: recordingPool(pool, claims), poolState, conditionalGates: options.conditionalGates ?? false, lsRemote, observe };
   const db = openDatabase(":memory:");
-  runMigrations(db, [mergeLogMigration(), eventLogMigration(), reconcilerCursorMigration(), botIntentMigration()]);
+  runMigrations(db, [mergeLogMigration(), eventLogMigration(), headEpochMigration(), reconcilerCursorMigration(), botIntentMigration()]);
   const cursor = sqliteReconcilerCursor(db, clock.now);
   const lines: Rig["lines"] = [];
   const record = (level: "info" | "warn") => (fields: Record<string, unknown>, msg: string) => void lines.push({ level, msg, fields });
@@ -124,7 +141,7 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
 }
 
 /** The REST reads the gates send, and GraphQL; each gate read is named by the etag key it revalidates. */
-type BotRoute = "pulls" | "ref" | "rulesets" | "graphql" | "rate_limit";
+type BotRoute = "pulls" | "ref" | "rulesets" | "graphql" | "rate_limit" | "compare";
 
 interface FakeAnswer {
   status: number;
@@ -152,6 +169,8 @@ interface FakeBotGithub {
   fail: Map<BotRoute, FakeAnswer | "network">;
   /** Main's newest commit's check; `null` is a check still running. */
   conclusion: string | null;
+  /** The `status` GitHub's compare answers. */
+  compare: Ancestry;
   count(route: BotRoute): number;
 }
 
@@ -162,7 +181,7 @@ interface RequestOptions {
 }
 
 export function fakeBotGithub(): FakeBotGithub {
-  const state: Omit<FakeBotGithub, "client" | "count"> = { requests: [], versions: { pulls: 1, ref: 1, rulesets: 1 }, fail: new Map(), conclusion: "SUCCESS" };
+  const state: Omit<FakeBotGithub, "client" | "count"> = { requests: [], versions: { pulls: 1, ref: 1, rulesets: 1 }, fail: new Map(), conclusion: "SUCCESS", compare: "ahead" };
   const request = async (route: string | RequestOptions) => {
     const options = typeof route === "string" ? { method: route.split(" ")[0]!, url: route.split(" ")[1]! } : route;
     const sent = { route: routeOf(new URL(options.url, "https://api.github.com").pathname), method: options.method, ifNoneMatch: options.headers?.["if-none-match"] };
@@ -180,14 +199,16 @@ export function fakeBotGithub(): FakeBotGithub {
 function routeOf(path: string): BotRoute {
   if (path === "/graphql") return "graphql";
   if (path === "/rate_limit") return "rate_limit";
+  if (path.includes("/compare/")) return "compare";
   if (path.endsWith("/pulls")) return "pulls";
   if (path.endsWith("/git/ref/heads/main")) return "ref";
   if (path.endsWith("/rulesets")) return "rulesets";
   throw new Error(`the fake bot GitHub has no route for ${path}`);
 }
 
-function answer(fake: Pick<FakeBotGithub, "versions" | "conclusion">, request: BotRequest): FakeAnswer {
+function answer(fake: Pick<FakeBotGithub, "versions" | "conclusion" | "compare">, request: BotRequest): FakeAnswer {
   if (request.route === "rate_limit") return { status: 200, body: rateLimitAnswer(4999, 4999).body };
+  if (request.route === "compare") return { status: 200, body: { status: fake.compare } };
   if (request.route === "graphql") return { status: 200, body: { data: snapshotData(fake.conclusion) } };
   const etag = `"${request.route}-${fake.versions[request.route]}"`;
   if (request.ifNoneMatch === etag) return { status: 304, headers: { etag } };

@@ -13,14 +13,15 @@ interface BotPortsOptions {
   login: string;
   db: Db;
   clock: PoolClock;
+  lsRemote: BotPorts["lsRemote"];
   observe: Observe;
 }
 
 /** The production `BotPorts`: the bot's client behind a durable `github-api` pool, with S2's conditional gates on. */
-export function buildBotPorts({ client, login, db, clock, observe }: BotPortsOptions): BotPorts {
+export function buildBotPorts({ client, login, db, clock, lsRemote, observe }: BotPortsOptions): BotPorts {
   const poolState = sqlitePoolStateStore(db, clock.now);
   const pool = githubApiPool<BackstopCall, BackstopAnswer>({ identity: BOT_POOL_IDENTITY, send: botTransport(client), clock, state: poolState, probe: () => probeRateLimit(client) });
-  return { identity: BOT_POOL_IDENTITY, login, pool, poolState, conditionalGates: true, observe };
+  return { identity: BOT_POOL_IDENTITY, login, pool, poolState, conditionalGates: true, lsRemote, observe };
 }
 
 /** `GET /rate_limit` costs no point; a failure without an HTTP status is a network failure, which re-arms the probe. */

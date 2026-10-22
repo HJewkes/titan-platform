@@ -1,7 +1,9 @@
 import { POOL_PRIORITY } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { appendEvent } from "../event-log/event-log.js";
+import { advanceEpoch, readEpoch } from "../head-guard/epoch-store.js";
 import { commit, fakeObserve, OTHER_REPO, REPO, rig } from "./fakes.test-helpers.js";
+import { createObserve } from "./observe.js";
 import { createReconciler, hasPending, type Observe } from "./service.js";
 
 const ONE_REPO = { repos: [REPO], fullEvery: 3 };
@@ -86,9 +88,19 @@ describe("reconciler start pass", () => {
     await r.clock.advance(RESET_MS);
     await service.tick();
 
-    expect(r.github.count("gates")).toBe(0);
+    expect(r.github.count("gates")).toBe(2);
     expect(r.github.count("snapshot")).toBe(2);
     expect(r.cursor.read(REPO).main?.value).toBe("c1");
+  });
+
+  it("reads the gates on the start pass, so the next tick sends the ETags it answered", async () => {
+    const r = rig({ conditionalGates: true });
+    const service = createReconciler(ONE_REPO, r.deps);
+
+    await service.tick();
+    await service.tick();
+
+    expect(r.github.calls.filter((call) => call.kind === "gates").map((call) => call.etags)).toEqual([{}, { pulls: '"e1"' }]);
   });
 });
 
@@ -136,7 +148,7 @@ describe("reconciler conditional gates (I10)", () => {
   it("snapshots on every tick while a gate reports a change or a check is still running", async () => {
     const changed = rig({ conditionalGates: true });
     changed.github.gatesChanged = true;
-    const holdsCursor: Observe = (repo, snapshot, cursor) => ({ ...fakeObserve()(repo, snapshot, cursor), cursor: { main: "c0", done: "2027-01-15T07:30:00Z" } });
+    const holdsCursor: Observe = (...args) => ({ ...fakeObserve()(...args), cursor: { main: "c0", done: "2027-01-15T07:30:00Z" } });
     const pending = rig({ conditionalGates: true, observe: holdsCursor });
     pending.github.main = [commit("c1", null)];
 
@@ -145,6 +157,36 @@ describe("reconciler conditional gates (I10)", () => {
       for (let tick = 0; tick < 3; tick += 1) await service.tick();
       expect(r.github.count("snapshot")).toBe(3);
     }
+  });
+
+  it("keeps the last landed pass's ETags when a snapshot is refused, so the next gate read reports the change again", async () => {
+    const r = rig({ conditionalGates: true });
+    const service = createReconciler(ONE_REPO, r.deps);
+    await service.tick();
+    r.github.gateEtag = '"e2"';
+    r.github.gatesChanged = true;
+    r.github.limited.add("snapshot");
+    await service.tick();
+
+    r.github.limited.clear();
+    await r.clock.advance(RESET_MS);
+    await service.tick();
+
+    expect(r.github.calls.filter((call) => call.kind === "gates").map((call) => call.etags.pulls)).toEqual([undefined, '"e1"', '"e1"']);
+  });
+
+  it("hands observe the ruleset list the gates carried, and none on a pass whose gates carried none", async () => {
+    const seen: unknown[] = [];
+    const r = rig({ conditionalGates: true, observe: (...args) => (seen.push(args[3]), fakeObserve()(...args)) });
+    const list = { notModified: false, unreadable: false, rulesets: { 7: "2027-01-15T07:05:00Z" }, etag: '"r1"' } as const;
+    r.github.rulesets = list;
+    const service = createReconciler({ repos: [REPO], fullEvery: 1 }, r.deps);
+
+    await service.tick();
+    r.github.rulesets = undefined;
+    await service.tick();
+
+    expect(seen).toEqual([list, undefined]);
   });
 
   it("snapshots every tick when no conditional gate is wired yet", async () => {
@@ -184,9 +226,9 @@ describe("reconciler disagreement log (plan §3)", () => {
   });
 
   it("logs a failed unit and leaves its cursor, without stopping the other repos", async () => {
-    const observe: Observe = (repo, snapshot, cursor) => {
-      if (repo === REPO) throw new Error("synthetic observe failure");
-      return fakeObserve()(repo, snapshot, cursor);
+    const observe: Observe = (...args) => {
+      if (args[0] === REPO) throw new Error("synthetic observe failure");
+      return fakeObserve()(...args);
     };
     const r = rig({ observe });
     const service = createReconciler({ repos: [REPO, OTHER_REPO], fullEvery: 3 }, r.deps);
@@ -196,6 +238,52 @@ describe("reconciler disagreement log (plan §3)", () => {
     expect(messages(r.lines, "reconciler.unit-failed").map((line) => line.fields.repo)).toEqual([REPO]);
     expect(r.cursor.read(REPO)).toEqual({});
     expect(r.cursor.read(OTHER_REPO).main?.value).toBe("c1");
+  });
+});
+
+describe("reconciler head guard (TP-3097 through TP-3431)", () => {
+  const [STALE, STORED] = ["a1", "a2"].map((sha) => sha.padEnd(40, "0")) as [string, string];
+  const at = "2027-01-15T07:00:00.000Z";
+
+  function openPr(head: string) {
+    const r = rig({ observe: createObserve({ now: () => Date.parse("2027-01-15T08:00:00Z") }) });
+    advanceEpoch(r.db, { repo: REPO, pr: 7, expectedEpoch: 0, head: STORED, by: "bootstrap", at });
+    const pr = { number: 7, headRefOid: head, baseRefName: "main", updatedAt: at, head: null, reviews: [] };
+    r.github.snapshot = () => ({ open: [pr], done: [], main: { tip: "c1", commits: [] }, trains: [], rateLimit: { cost: 1, remaining: 4999, resetAt: at, queries: 1 } });
+    r.github.remote = (ref) => ("pr" in ref ? STORED : "c1");
+    return r;
+  }
+  const headRows = (r: ReturnType<typeof rig>) => r.db.prepare<[], { n: number }>(`SELECT COUNT(*) AS n FROM factory_event WHERE kind = 'HeadPushed' AND subject = '${REPO}#7'`).get()?.n;
+
+  it("appends no head row for a stale read, an ancestor of the stored head, and logs one stale-read", async () => {
+    const r = openPr(STALE);
+    r.github.ancestry = () => "behind";
+
+    await createReconciler(ONE_REPO, r.deps).tick();
+
+    expect(headRows(r)).toBe(0);
+    expect(messages(r.lines, "reconciler.disagree").map((line) => line.fields)).toEqual([{ repo: REPO, class: "stale-read", subject: `${REPO}#7`, detail: STALE }]);
+    expect(r.claims.filter((claim) => claim.kind === "ancestry").map((claim) => [claim.callClass, claim.priority])).toEqual([["core-read", POOL_PRIORITY.backstop]]);
+  });
+
+  it("appends the head row once the guard confirms a fast-forward, and moves the epoch", async () => {
+    const r = openPr("a3".padEnd(40, "0"));
+
+    await createReconciler(ONE_REPO, r.deps).tick();
+
+    expect(headRows(r)).toBe(1);
+    expect(readEpoch(r.db, { repo: REPO, pr: 7 })?.epoch).toBe(2);
+    expect(messages(r.lines, "reconciler.disagree")).toEqual([]);
+  });
+
+  it("leaves a head unconfirmed when the pool refuses its compare", async () => {
+    const r = openPr(STALE);
+    r.github.limited.add("ancestry");
+
+    await createReconciler(ONE_REPO, r.deps).tick();
+
+    expect(headRows(r)).toBe(0);
+    expect(messages(r.lines, "reconciler.disagree").map((line) => line.fields.class)).toEqual(["unconfirmed"]);
   });
 });
 
