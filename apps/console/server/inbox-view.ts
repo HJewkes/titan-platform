@@ -62,7 +62,7 @@ const HARDWARE_STEP = /device|hardware/;
 const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
-export const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head"]);
+const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head"]);
 /** A land run's approve-merge prompt, as the factory's `landGate` reads it; the factory re-checks the head against GitHub at the tap. */
 const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\b/;
 
