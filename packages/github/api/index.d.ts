@@ -381,7 +381,7 @@ interface GitHubWire {
     reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
     /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
     getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-    /** `all` asks for every attempt; without it GitHub's default filter hides a rerun's earlier attempts of a job. */
+    /** `all` keeps a rerun's earlier attempts, which GitHub's default filter hides. */
     listCheckRuns(repo: RepoSlug, sha: string, filter?: "all"): Promise<CheckRun[]>;
     /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
     createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{
@@ -471,12 +471,8 @@ interface GitHubPort {
     reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
     /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
     branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-    /**
-     * Every run on `sha` from every app, as GitHub's default `filter=latest` lists them: a separate workflow run of the
-     * same check stays listed, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts.
-     */
+    /** Every run on `sha` from every app under GitHub's default `filter=latest`: separate workflow runs stay, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts, which `checkRunAttempts` keeps (`filter=all`) for a reader of attempt order. */
     checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
-    /** Every run on `sha` with each rerun's earlier attempts kept (`filter=all`), for a reader of attempt order. */
     checkRunAttempts(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
     /** The latest run for each check name on `sha`. */
     latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
