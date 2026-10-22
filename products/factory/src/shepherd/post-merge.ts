@@ -11,8 +11,8 @@ import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
-import { MAIN_RERUN_STEP, RerunResult, rerunRedMain, type RerunInput } from "./main-rerun.js";
-import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
+import { RerunResult, rerunRedMain, type RerunInput } from "./main-rerun.js";
+import { FixTaskResult, FixerResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
@@ -33,12 +33,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   ...STACK_LAND_STEPS,
   { id: "sh-main-ci", kind: "dispatch" },
   { id: REDEPLOY_STEP, kind: "dispatch" },
-  { id: "sh-unfreeze", kind: "dispatch" },
-  { id: "sh-freeze", kind: "dispatch" },
-  { id: "sh-file-fix-task", kind: "dispatch" },
-  { id: MAIN_RERUN_STEP, kind: "dispatch" },
-  { id: "sh-spawn-fixer", kind: "dispatch" },
-  { id: "sh-thaw", kind: "dispatch" },
+  ...MAIN_RED_STEPS,
   { id: "main-red", kind: "assisted" },
   { id: "main-ci-timeout", kind: "assisted" },
   { id: "main-red-again", kind: "assisted" },

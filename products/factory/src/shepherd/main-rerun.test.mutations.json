@@ -17,7 +17,8 @@
       "replace": "  const marked = { value: fields };",
       "kills": [
         "sh-main-rerun thaws on Shepherd's own green rerun at the red sha and leaves the fix task open as the flake task",
-        "sh-main-rerun files the flake with both runs' ids and URLs, the job, the failing test, an error excerpt and a root-cause done_when"
+        "sh-main-rerun files the flake with both runs' ids and URLs, the job, the failing test, an error excerpt and a root-cause done_when",
+        "sh-main-rerun stays frozen when the flake task cannot be filed, so no flake thaws unrecorded"
       ]
     }
   ]

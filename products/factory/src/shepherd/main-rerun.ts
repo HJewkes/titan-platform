@@ -9,11 +9,10 @@ import type { ShepherdDeps } from "./phases.js";
 import { tailBytes } from "./wake-brief.js";
 
 /** How long Shepherd waits for its rerun of main's failed jobs before the episode goes on to a fixer. */
-export const SH_MAIN_RERUN_TIMEOUT_MS = 60 * 60_000;
+const SH_MAIN_RERUN_TIMEOUT_MS = 60 * 60_000;
 /** A failing test that thawed on a rerun within this window freezes the normal way: a known flake gets a fix, not a reroll. */
 export const FLAKE_REPEAT_MS = 24 * 60 * 60_000;
-export const FLAKE_TAG = "flake";
-export const MAIN_RERUN_STEP = "sh-main-rerun";
+const FLAKE_TAG = "flake";
 const EXCERPT_BYTES = 4_000;
 
 /** `thawed` means the episode is over, by this rerun or by anything else while the step ran. */
@@ -46,7 +45,7 @@ export async function rerunRedMain(deps: ShepherdDeps, wiring: MainRedWiring | u
   const newest = Math.max(0, ...all.map((run) => run.id));
   const red = await redToRerun(deps, wiring, input, all, newest);
   if ("thawed" in red) return red;
-  const claim = red.freezes.claimRerun(input.repo, red.episode, input.runId, newest);
+  const claim = red.freezes.episodes.claimRerun(input.repo, red.episode, input.runId, newest);
   if (claim === undefined) return red.freezes.live(input.repo, red.episode) ? stays("this episode's one rerun was already spent") : { thawed: true, detail: THAWED };
   if (claim.fresh) {
     const queued = await queueRerun(deps.port, input.repo, red.read.failing);
@@ -62,7 +61,7 @@ export async function rerunRedMain(deps: ShepherdDeps, wiring: MainRedWiring | u
  * so a restarted step still reads the red its own green rerun has since superseded.
  */
 async function redBefore(deps: ShepherdDeps, freezes: FreezeStore, input: RerunInput, all: readonly CheckRun[], newest: number): Promise<FailingRead> {
-  const bound = freezes.rerunClaim(input.repo, input.episode!)?.after ?? newest;
+  const bound = freezes.episodes.rerunClaim(input.repo, input.episode!)?.after ?? newest;
   return failingLogs(deps.port, input.repo, input.mergeSha, latestPerName(all.filter((run) => run.headSha === input.mergeSha && run.id <= bound)));
 }
 
@@ -81,7 +80,7 @@ async function redToRerun(deps: ShepherdDeps, wiring: MainRedWiring | undefined,
   if (tests.length === 0) return stays("the failing jobs name no failing test, so main is not rerun");
   if (read.failing.some((run) => run.workflowRunId === null)) return stays("a failing check has no Actions run to rerun");
   const since = new Date(deps.now() - FLAKE_REPEAT_MS).toISOString();
-  const repeats = new Set(freezes.rerunThawedTests(input.repo, since));
+  const repeats = new Set(freezes.episodes.rerunThawedTests(input.repo, since));
   const again = tests.filter((test) => repeats.has(test));
   if (again.length > 0) return stays(`${again.join(", ")} already thawed main on a rerun within 24 h, so it stays frozen for a real fix`);
   return { freezes, markFlake: (initiative, id, flake) => tasks.markFlake!(initiative, id, flake), episode: live.episode, read, tests };
@@ -92,7 +91,7 @@ async function queueRerun(port: GitHubPort, repo: RepoSlug, failing: readonly Ch
   try {
     for (const runId of new Set(failing.map((run) => run.workflowRunId!))) {
       const result = await port.rerunFailed(repo, runId);
-      if (!result.done) return `the rerun of Actions run ${runId} was not queued: ${result.skipped ?? "refused"}`;
+      if (!result.done) return `the rerun of Actions run ${runId} was not queued: ${result.skipped}`;
     }
     return undefined;
   } catch (error) {
@@ -130,13 +129,13 @@ async function thawOnFlake(deps: ShepherdDeps, red: Red, input: RerunInput, gree
   const fields = flakeFields(input, red, green);
   const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));
   if ("error" in marked) return stays(`active-work did not take the flake task: ${marked.error}`);
-  if (!red.freezes.thawOnRerun(input.repo, red.episode, red.tests)) return { thawed: true, detail: `${THAWED} after the flake was filed on ${input.task}` };
+  if (!red.freezes.episodes.thawOnRerun(input.repo, red.episode, red.tests)) return { thawed: true, detail: `${THAWED} after the flake was filed on ${input.task}` };
   return { thawed: true, detail: `thawed on Shepherd's green rerun at ${input.mergeSha}; flake filed on ${input.task}` };
 }
 
 const runLine = (run: CheckRun): string => `- ${run.name}: Actions run ${run.workflowRunId ?? "none"}, job ${run.id}, ${run.url}`;
 
-export function flakeFields(input: RerunInput, red: Pick<Red, "episode" | "read" | "tests">, green: readonly CheckRun[]): FlakeFields {
+function flakeFields(input: RerunInput, red: Pick<Red, "episode" | "read" | "tests">, green: readonly CheckRun[]): FlakeFields {
   const notes = [
     `Flake (episode ${red.episode}, ${input.mergeSha}): main CI on ${input.repo} went red, and Shepherd's own rerun of the failed jobs passed at the same sha, so the freeze thawed. The test still fails intermittently; this task stays open until its cause is fixed.`,
     ["Red run:", ...red.read.failing.map(runLine)].join("\n"),

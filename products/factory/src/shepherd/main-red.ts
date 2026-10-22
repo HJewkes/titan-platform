@@ -3,6 +3,7 @@ import { BrokerUnavailableError, DispatchTimeoutError, dataFence } from "@titan-
 import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js";
@@ -22,6 +23,12 @@ import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
+
+export const MAIN_RERUN_STEP = "sh-main-rerun";
+
+/** The dispatch steps of a red or green main, in the order a run reaches them. */
+const MAIN_RED_STEP_IDS = ["sh-unfreeze", "sh-freeze", "sh-file-fix-task", MAIN_RERUN_STEP, "sh-spawn-fixer", "sh-thaw"];
+export const MAIN_RED_STEPS: readonly StepDeclaration[] = MAIN_RED_STEP_IDS.map((id) => ({ id, kind: "dispatch" as const }));
 
 export interface FixTaskFields {
   title: string;
@@ -248,7 +255,7 @@ async function standingFix(deps: ShepherdDeps, wiring: MainRedWiring, input: Epi
  * fixer, task or fix PR the episode gained while the standing fixer was looked up is kept, so its exemption never moves.
  */
 function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> | undefined {
-  const linked = wiring.freezes().linkFix(input.repo, episode, standing.task, standing.fixer);
+  const linked = wiring.freezes().episodes.linkFix(input.repo, episode, standing.task, standing.fixer);
   if (linked === "not-live") return noTask(THAWED, true);
   if (linked === "kept") {
     const kept = wiring.freezes().live(input.repo, episode)?.fixTask ?? null;

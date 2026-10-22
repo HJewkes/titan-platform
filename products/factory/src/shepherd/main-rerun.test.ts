@@ -120,7 +120,7 @@ describe("sh-main-rerun", () => {
   it("resumes its own claim after a restart without queuing a second rerun", async () => {
     const r = rig("none");
     const input = frozen(r);
-    r.freezes.claimRerun(REPO, input.episode!, input.runId, 7);
+    r.freezes.episodes.claimRerun(REPO, input.episode!, input.runId, 7);
     r.fake.setRuns(RED, [successRun("validate", 7, undefined, "failure"), successRun("validate", 20, "2026-01-01T00:20:00Z")]);
 
     const result = await rerunRedMain(r.deps, r.wiring, input, signal);
@@ -188,7 +188,7 @@ describe("sh-main-rerun", () => {
 
   it("reruns nothing when no port can file the flake task", async () => {
     const r = rig();
-    const { markFlake: _, ...tasks } = r.wiring.tasks!;
+    const tasks: FixTasks = { findByTag: r.wiring.tasks!.findByTag, add: r.wiring.tasks!.add };
 
     const result = await rerunRedMain(r.deps, { ...r.wiring, tasks }, frozen(r), signal);
 
@@ -199,10 +199,10 @@ describe("sh-main-rerun", () => {
 
 describe("the active-work flake port", () => {
   it("appends the flake notes once, sets the root-cause done_when, tags it and reopens a done task, never closing it", async () => {
-    const calls: { command: string; body: Record<string, unknown> }[] = [];
+    const calls: { command: string; body: unknown }[] = [];
     const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const command = String(url).split("/rpc/")[1]!;
-      calls.push({ command, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+      calls.push({ command, body: JSON.parse(String(init?.body)) });
       const data = command === "task.list" ? { tasks: [{ id: "FX-1", status: "done", notes: "filed on red", tags: ["main-red"] }] } : {};
       return new Response(JSON.stringify({ ok: true, data }));
     });
