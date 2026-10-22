@@ -10,6 +10,41 @@
         "the fix-proof bounce cap wakes the fixer for two fix-proof bounces and leaves the third to the owner gate, asking no agent",
         "the fix-proof bounce cap keeps the count across a restart, so the third wake after replay is still the owner's"
       ]
+    },
+    {
+      "name": "a successor ignores the account rotation and spawns under the fixer config directory",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "  if (first === undefined) return deps.agentChatConfigDir;",
+      "replace": "  return deps.agentChatConfigDir;",
+      "kills": ["sh-wake-implementer: who is woken spawns a fix-round successor under the next account in the rotation when the first is exhausted"]
+    },
+    {
+      "name": "a successor passes the default account's key to agent-chat as a config directory",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "return account === DEFAULT_ACCOUNT ? undefined : account;",
+      "replace": "return account;",
+      "kills": ["sh-wake-implementer: who is woken skips agent-chat's exhausted default account, and spawns under no config directory while it has headroom"]
+    },
+    {
+      "name": "a successor skips the first account though it has headroom",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];",
+      "replace": "return usableAccount(accountLimitsOf(deps), dirs.slice(1)) ?? dirs[0];",
+      "kills": ["sh-wake-implementer: who is woken spawns a successor under the first account of the rotation while it has headroom"]
+    },
+    {
+      "name": "a successor with every account exhausted takes the last account, not the first",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];",
+      "replace": "return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[dirs.length - 1]!;",
+      "kills": ["sh-wake-implementer: who is woken spawns a successor under the first account when every account is exhausted, since a successor never holds"]
+    },
+    {
+      "name": "a successor with unreadable account limits takes the last account, not the first",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "  } catch {\n    return dirs[0];",
+      "replace": "  } catch {\n    return dirs[dirs.length - 1]!;",
+      "kills": ["sh-wake-implementer: who is woken spawns a successor under the first account when the account limits cannot be read, since a successor never holds"]
     }
   ]
 }
