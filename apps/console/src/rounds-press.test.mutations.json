@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the question card takes the press again",
+      "file": "apps/console/src/pages/RoundQuestion.tsx",
+      "find": "<Card variant={active ? \"outline\" : \"subtle\"} testID={`round-question-${question.id}`}>",
+      "replace": "<Card isInteractive variant={active ? \"outline\" : \"subtle\"} testID={`round-question-${question.id}`}>",
+      "kills": [
+        "pressing on the rounds screen selects a radio on the first click, and neither the question card nor the option moves",
+        "pressing on the rounds screen puts no press on anything while a space is typed in a question's own text field"
+      ]
+    }
+  ]
+}
