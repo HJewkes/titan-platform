@@ -346,6 +346,16 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
   deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
   authority.
+- **Typed ops.** A deposit may carry an `op` (owner-queue's `OwnerOp`) naming what a tap does
+  instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
+  `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
+  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`)
+  becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays on the
+  terminal until its factory effect lands.
+
+  ```sh
+  titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
+  ```
 
 ## Filing a decision round
 
@@ -662,13 +672,18 @@ blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic g
 ## The inbox and its actions
 
 `inbox.list` (`server/inbox-view.ts`) is a read: `approvals.flow`'s order joined to Shepherd's live rows, each item
-with the one action a tap takes, or the terminal command and why the console offers none. A write action comes only
-from a hitl gate joined to a live Shepherd row; a deposit never gets one.
+with the one action a tap takes, or the terminal command and why the console offers none. A write action's target
+comes only from a system of record: a hitl gate joined to a live Shepherd row, or a deposit's typed `op` (see "Owner
+inbox deposits"). A deposit with no `op` never gets one. While TP-3918 is open (a gate on a replay-diverged run is
+consumed with no merge), a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from
+Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
+behind look the same in the item.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
-owner-asked hold), `answer-chat` (an agent's chat_ask) and a `hold-release` of a `g10-review` or `g10-adversary`
-hold; any other item, a hold of another class included, answers `no-action` with its reason.
+owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a `hold-release` of a
+`g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers `no-action` with its
+reason.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
@@ -686,11 +701,17 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | Factory answer | Owner sees |
 | --- | --- |
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
 | 409 `moved` | "PR moved to `abc1234`, read again" |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
+
+After a landed tap on a PR (`resolved`, `released`, `accepted` or `already`), `inbox.act` reads the PR again and
+answers `next`: `merged` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
+Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
+sheet shows it as "Now: …" under the outcome.
 
 A settled outcome is written once as `<confirm>.outcome.json`. A landed resolve or release also writes one
 decision-log row (see "The decision log"), and a replay does not write it again. The factory's
@@ -706,6 +727,13 @@ broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per ca
 The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
 token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
 prompt never reaches this path: `inbox.list` gives it a terminal action.
+
+An `owner-op` tap (`server/inbox-op.ts`) takes its read-back from the factory's `owner-op.preview` on loopback,
+never from the deposit: GitHub's live head, title, base, behind and mergeable state, the Shepherd hold, and the
+authority row the factory evaluated for `owner-remote`. The deposit's summary is shown only as "Proposed by
+`<asker>`". A PR the preview reads as merged or closed, or an op the table denies, answers `no-action`. The digest
+covers the preview, so a head that moves between prepare and act refuses the confirm. The record names the `op`,
+pinned to the previewed head, and no `action`, which is how the factory tells an op record from an action record.
 
 A g10 `hold-release` tap (`server/g10-hold.ts`) is offered whether or not a reviewer MERGE is on record, since the
 owner may release one at the terminal. Its read-back adds every verdict the PR's Shepherd timeline recorded, each
