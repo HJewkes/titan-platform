@@ -944,6 +944,8 @@ interface SyncRequest extends RunPin {
     ratchetPrefix: string;
     tree: string;
     resolved?: string;
+    /** With `resolved`: the frozen paths the held gate showed the owner, the only ones the resolved merge may change. */
+    allowedFrozen?: string[];
     at?: string;
 }
 /**
