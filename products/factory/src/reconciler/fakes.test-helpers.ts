@@ -143,7 +143,7 @@ interface BotRequest {
  * `GitHubRequestError`, and a `network` failure throws a plain error. Each gate read answers 304 to the ETag of its
  * current version and 200 with that ETag otherwise.
  */
-export interface FakeBotGithub {
+interface FakeBotGithub {
   client: GitHubClient;
   requests: BotRequest[];
   /** Bump a read's version and its next conditional read answers 200 with a new ETag. */
