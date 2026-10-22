@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fixer-exit sent-back gate is never waivable",
+      "file": "products/factory/src/shepherd/flake-check.ts",
+      "find": "abandoned, prompt(unsent), kind === \"fix-proof\")",
+      "replace": "abandoned, prompt(unsent), false)",
+      "kills": [
+        "the sent-back gate after a fixer's exit, when the seat notice fails offers the owner's waive-proof, never recommended, after a fix-proof wake",
+        "the sent-back gate after a fixer's exit, when the seat notice fails records the waiver at that head and reviews it again when the owner waives"
+      ]
+    },
+    {
+      "name": "the fixer-exit sent-back gate is waivable after every wake kind",
+      "file": "products/factory/src/shepherd/flake-check.ts",
+      "find": "abandoned, prompt(unsent), kind === \"fix-proof\")",
+      "replace": "abandoned, prompt(unsent), true)",
+      "kills": [
+        "the sent-back gate after a fixer's exit, when the seat notice fails offers no waive-proof after a review wake"
+      ]
+    }
+  ]
+}
