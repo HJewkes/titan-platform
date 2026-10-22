@@ -20,7 +20,8 @@ import {
 import type { ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
 import { AutoresearchRoundPlanner } from "./AutoresearchRoundPlanner.js";
-import { keptMove, reasonLabel, shortId, signed } from "./autoresearch-format.js";
+import { AutoresearchRoundSettle } from "./AutoresearchRoundSettle.js";
+import { keptMove, reasonText, shortId, signed } from "./autoresearch-format.js";
 import { formatCost } from "./SessionFormat.js";
 
 type Decided = ArLadder & { outcome: ArOutcome };
@@ -46,6 +47,7 @@ export function AutoresearchDecisions({ run }: { run: ArRunView }): ReactNode {
               <AccordionPanel>
                 <AutoresearchRoundPlanner round={round} />
                 <RoundDecisions run={run} round={round} />
+                <AutoresearchRoundSettle run={run} round={round} />
               </AccordionPanel>
             </AccordionItem>
           ))}
@@ -112,11 +114,6 @@ function DecisionRow({ target, round, ladder }: { target: ArRunView["target"]; r
       <TableCell>{move === null ? "—" : <RatchetMove repo={target.repo} move={move} />}</TableCell>
     </TableRow>
   );
-}
-
-function reasonText(code: string): string {
-  const label = reasonLabel(code);
-  return label === undefined ? code : `${code}: ${label}`;
 }
 
 function deltaText(outcome: ArOutcome): string {
