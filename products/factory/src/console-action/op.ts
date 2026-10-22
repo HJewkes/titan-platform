@@ -6,7 +6,7 @@ import { refused, type Outcome } from "./outcome.js";
 import type { OpRead } from "./record.js";
 
 /** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, and the standing answers. */
-export type OpContext = MergeAtHeadDeps;
+type OpContext = MergeAtHeadDeps;
 export type OpEffect<C = OpContext> = (actionId: string, read: OpRead, context: C) => Promise<Outcome>;
 type OpEffects<C = OpContext> = Readonly<Partial<Record<OwnerOpKind, OpEffect<C>>>>;
 

@@ -11,7 +11,7 @@ import { LIVE, endRunsGoneElsewhere } from "../shepherd/gone-elsewhere.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import { startSweep, type Sweep } from "../sweep.js";
 
-export const STANDING_ANSWERS = "standing-answers.jsonl";
+const STANDING_ANSWERS = "standing-answers.jsonl";
 const STANDING_SWEEP_MS = 60_000;
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
@@ -94,7 +94,7 @@ export function mergeStop({ store, freeze }: StopReads, repo: string, pr: number
 export const pendingMergeGates = (host: Pick<FactoryHost, "pendingGates">, runId: string): PendingGate[] =>
   host.pendingGates().filter((pending) => pending.runId === runId && stepOf(pending.gate.id) === MERGE_GATE);
 
-export type StandingResult =
+type StandingResult =
   | { kind: "resolved"; actionId: string; runId: string; gateId: string }
   | { kind: "pending"; actionId: string; runId: string; reason: string };
 
