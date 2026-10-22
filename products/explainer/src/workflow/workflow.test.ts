@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { L0Check } from "../eval-l0.js";
+import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { sha256 } from "./artifacts.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
@@ -61,6 +63,29 @@ describe("explainer run", () => {
     expect(model.prompts[0]).toContain("Story spine: parcel-desk");
     expect(model.prompts[1]).toContain("Your previous reply was rejected");
     expect(row(result, "script")).toMatchObject({ retries: 1, calls: 2, usd: 0.1 });
+  });
+
+  it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
+    fx = fixture();
+    const draft = choppy();
+    const model = fakeScriptModel(draft, { repaired: { ...draft, id: `${draft.id}-repaired` } });
+    const passesOnceRepaired: L0Check = (input) => l0Check(input.script.id.endsWith("-repaired"))(input);
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge(), { evalChecks: [passesOnceRepaired] }));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "2 pass, 0 fail" });
+  });
+
+  it("makes no repair call for a draft that passes L0", async () => {
+    fx = fixture();
+    const model = fakeScriptModel();
+
+    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    expect(model.prompts).toHaveLength(1);
   });
 
   it("fails the script stage after one retry, keeping both calls' spend in the report", async () => {

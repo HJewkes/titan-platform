@@ -102,7 +102,10 @@ function runExportStage(input: ModelStageInput, file: BridgeFile): StageOutcome 
 
 async function runStage(stage: StageName, input: ModelStageInput, deps: StageDeps): Promise<StageOutcome> {
   const { plan } = deps;
-  if (stage === "script") return runScriptStage(input, { model: plan.scriptModel, ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.signal ? { signal: deps.signal } : {}) });
+  if (stage === "script") {
+    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+    return runScriptStage(input, { model: plan.scriptModel, ...seams });
+  }
   if (stage === "rewrite") return runRewriteStage(input, { judge: plan.judge, rounds: plan.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
   if (stage === "eval") return runEvalStage(input, deps.evalChecks);
   if (stage === "export") return runExportStage(input, deps.bridge());

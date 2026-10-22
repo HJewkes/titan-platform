@@ -10,7 +10,8 @@ import { rewriteScript } from "../rewrite-pass.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine } from "../spine-schema.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
-import { addUsage, NO_USAGE, type StageOutcome, type StageUsage } from "./records.js";
+import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
+import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
 
 export type RunnerFor = (options: AgentRunnerOptions) => LegacyStepRunner;
 export type HarnessFor = (config: JudgeConfig) => JudgeHarness;
@@ -110,27 +111,74 @@ export class StageFailure extends Error {
 export interface ScriptStageDeps {
   model: string;
   runnerFor?: RunnerFor;
+  /** The L0 checks the repair call answers; all of them by default. */
+  l0Checks?: readonly L0Check[];
   signal?: AbortSignal;
 }
 
-/** One model call from spine and facts to a script/v1 draft, plus one retry that names the schema issues. */
+type Call = (prompt: string) => Promise<StepRunOutcome>;
+
+interface Draft {
+  script?: ScriptV1;
+  error?: string;
+  usage: StageUsage;
+  retried: boolean;
+}
+
+/** The first call, and one retry naming the schema issues when its reply does not parse. */
+async function draftScript(call: Call, prompt: string): Promise<Draft> {
+  const first = await call(prompt);
+  const result = checked(first);
+  if (result.script || !isSchemaFailure(first)) return { ...result, usage: stageUsage(first.usage), retried: false };
+  const second = await call(retryPrompt(prompt, result.error ?? ""));
+  return { ...checked(second), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
+}
+
+const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
+
+function failureList(rows: readonly L0Result[], rules: RuleRegistry): string {
+  const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
+  const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
+  return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})`).join("\n");
+}
+
+const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>
+  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. Reply with the whole corrected object.\n`;
+
+interface Repair {
+  script: ScriptV1;
+  usage: StageUsage;
+  check: Check;
+}
+
+/** One call that answers the draft's failing error-severity L0 rows; its reply is kept only when it parses and fails fewer. */
+async function repairScript(call: Call, prompt: string, draft: ScriptV1, lint: (script: ScriptV1) => L0Result[]): Promise<Repair | undefined> {
+  const before = failingErrors(lint(draft));
+  if (before.length === 0) return undefined;
+  const outcome = await call(repairPrompt(prompt, draft, failureList(before, loadRuleRegistry())));
+  const repaired = checked(outcome).script;
+  const after = repaired ? failingErrors(lint(repaired)).length : before.length;
+  const kept = repaired !== undefined && after < before.length;
+  const detail = `${before.length} failing error checks before, ${kept ? after : before.length} after${kept ? "" : "; repair not kept"}`;
+  return { script: kept ? repaired : draft, usage: stageUsage(outcome.usage), check: { name: "l0-repair", pass: kept && after === 0, detail } };
+}
+
+/** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, and one L0 repair call. */
 export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDeps): Promise<StageOutcome> {
-  const prompt = scriptPrompt(input.store.readText(need(input, "spine")), input.store.readText(need(input, "facts")));
+  const spineText = input.store.readText(need(input, "spine"));
+  const prompt = scriptPrompt(spineText, input.store.readText(need(input, "facts")));
   const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
   const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
   const signal = deps.signal ?? new AbortController().signal;
-  const call = (text: string) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
-  let outcome = await call(prompt);
-  let usage = stageUsage(outcome.usage);
-  let result = checked(outcome);
-  const retried = result.script === undefined && isSchemaFailure(outcome);
-  if (retried) {
-    outcome = await call(retryPrompt(prompt, result.error ?? ""));
-    usage = addUsage(usage, stageUsage(outcome.usage));
-    result = checked(outcome);
-  }
-  if (!result.script) throw new StageFailure(`script: ${result.error}`, usage, retried ? 1 : 0);
-  return { outputs: { draft: putJson(input, result.script, "script") }, usage, retries: retried ? 1 : 0, checks: [{ name: "script-schema", pass: true }] };
+  const call: Call = (text) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
+  const draft = await draftScript(call, prompt);
+  const retries = draft.retried ? 1 : 0;
+  if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
+  const spine = parseSpine(spineText);
+  const repair = await repairScript(call, prompt, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
+  const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
+  const checks: Check[] = [{ name: "script-schema", pass: true }, ...(repair ? [repair.check] : [])];
+  return { outputs: { draft: putJson(input, repair?.script ?? draft.script, "script") }, usage, retries, checks };
 }
 
 export interface RewriteStageDeps {

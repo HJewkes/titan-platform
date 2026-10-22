@@ -136,7 +136,7 @@ export interface FakeScriptModel {
 }
 
 /** The script model: answers with `script`, after `invalid` replies that fail the schema, at `usd` a call. */
-export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?: number; usd?: number } = {}): FakeScriptModel {
+export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?: number; usd?: number; repaired?: ScriptV1 } = {}): FakeScriptModel {
   const prompts: string[] = [];
   const budgets: number[] = [];
   let bad = options.invalid ?? 0;
@@ -146,7 +146,8 @@ export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?
       prompts.push(input.prompt);
       budgets.push(runner.maxBudgetUsd);
       if (bad-- > 0) return { ok: true, output: JSON.stringify({ ...script, chapters: [] }), usage };
-      return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(script)}\n\`\`\`\n`, usage };
+      const reply = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(reply)}\n\`\`\`\n`, usage };
     },
   });
   return { runnerFor, prompts, budgets };
