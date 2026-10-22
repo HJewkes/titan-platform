@@ -25,6 +25,7 @@ import {
   WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
+import type { ConfigRef } from "./config.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { assertDistinctStepIds, dispatchStepIds, guardedContext, orphanSafe, type WorkflowDefinition } from "./definition.js";
 
@@ -39,6 +40,8 @@ export interface DatabaseTenant {
 export type FactoryRoutes = readonly StepRoute[] & {
   readonly database?: DatabaseTenant;
   readonly shepherd?: ShepherdServices;
+  /** The config file the routes read their live rows through; `/health` reports its stamp. */
+  readonly config?: ConfigRef;
   /** Hands routes that start or read other runs the host they run on; returns the unbind, called on close. */
   readonly bindHost?: (host: FactoryHost) => () => void;
 };
