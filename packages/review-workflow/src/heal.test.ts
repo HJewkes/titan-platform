@@ -16,10 +16,29 @@ interface Fakes {
   refreshes: () => number;
 }
 
+function snapshotAt(headSha: string): HeadSnapshot {
+  const pr: PullRequest = {
+    number: target.pr,
+    state: "open",
+    merged: false,
+    mergeSha: null,
+    mergedAt: null,
+    headRef: "feat/widgets",
+    headSha,
+    headRepo: null,
+    baseRef: "main",
+    draft: false,
+    mergeableState: "clean",
+    behind: false,
+    autoMerge: false,
+  };
+  return { pr, ci: "green", facts: { ...target, head: headSha, base: "c".repeat(40), changedFiles: [] } };
+}
+
 function fakePorts(opts: { refreshFixes?: boolean; liveHead?: string; headroom?: HeadroomRead } = {}): Fakes {
   let state: CheckoutState = { kind: "wrong-commit", at: NEXT_HEAD };
   let refreshes = 0;
-  const pr = { number: target.pr, headSha: opts.liveHead ?? HEAD } as PullRequest;
+  const snapshot = snapshotAt(opts.liveHead ?? HEAD);
   const ports: HealPorts = {
     checkout: {
       state: async () => state,
@@ -28,7 +47,7 @@ function fakePorts(opts: { refreshFixes?: boolean; liveHead?: string; headroom?:
         if (opts.refreshFixes ?? true) state = { kind: "ready" };
       },
     },
-    snapshot: { read: async () => ({ pr, ci: "green", facts: {} as HeadSnapshot["facts"] }) },
+    snapshot: { read: async () => snapshot },
     headroom: { read: async () => opts.headroom ?? { opus: true, account: "available" } },
   };
   return { ports, refreshes: () => refreshes };
