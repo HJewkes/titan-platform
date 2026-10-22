@@ -103,7 +103,8 @@ const execRun = (name: string, id: number, overrides: Partial<CheckRun> = {}): C
 const execRuns = (overrides: Partial<CheckRun> = {}): CheckRun[] => [execRun("fix-proof-base", 81, overrides), execRun("fix-proof-head", 82, overrides)];
 const execPending = (): CheckRun[] => execRuns({ status: "in_progress", conclusion: null });
 
-const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
+/** Each run is its own workflow run, as a fix-proof run per PR event is, so GitHub's default listing keeps them all. */
+const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, overrides.id ?? FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
 
 interface Scene {
   kind?: string;

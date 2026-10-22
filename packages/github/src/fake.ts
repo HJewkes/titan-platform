@@ -21,6 +21,15 @@ export class FakeHttpError extends Error {
   }
 }
 
+const attemptKey = (run: CheckRun): string => `${run.name}\u0000${run.appId}\u0000${run.workflowRunId}`;
+
+/** GitHub's default `filter=latest`: a rerun of a job in the same workflow run hides that job's earlier attempts. */
+function latestAttempts(runs: readonly CheckRun[]): CheckRun[] {
+  const newest = new Map<string, number>();
+  for (const run of runs) if (run.workflowRunId !== null) newest.set(attemptKey(run), Math.max(newest.get(attemptKey(run)) ?? run.id, run.id));
+  return runs.filter((run) => run.workflowRunId === null || newest.get(attemptKey(run)) === run.id);
+}
+
 /** A real-shaped commit sha, stable per tag, so tests can name heads. */
 export function fakeSha(tag: string): string {
   return createHash("sha1").update(tag).digest("hex");
@@ -139,7 +148,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getClassicRequiredChecks: async () => read("getClassicRequiredChecks", () => ({ ...fake.classicRules, contexts: [...fake.classicRules.contexts] })),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
-    listCheckRuns: async (_repo, sha) => read("listCheckRuns", () => [...(runs.get(sha) ?? [])]),
+    listCheckRuns: async (_repo, sha, filter) => read("listCheckRuns", () => (filter === "all" ? [...(runs.get(sha) ?? [])] : latestAttempts(runs.get(sha) ?? []))),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),

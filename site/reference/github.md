@@ -198,6 +198,10 @@ and exit 2.
 - One head can carry several runs per check name, for example a success and a later
   superseded `cancelled` run. `mergeReadiness` wants every run from `checkRuns`, so a
   superseded red run still blocks the merge.
+- `checkRuns` lists runs as GitHub's default `filter=latest` does: a rerun of a job in the
+  same workflow run hides that job's earlier attempts. A reader of attempt order, such as
+  "which run came after my rerun", uses `checkRunAttempts`, which asks for `filter=all`.
+  The fake hides superseded attempts of one workflow run the same way.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
