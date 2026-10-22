@@ -5,7 +5,7 @@ import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
-import { CHAIN, fakeJudges, fixture, SPEC, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
+import { CHAIN, fakeJudges, fixture, SPEC, verdictData, WINS, type Behave, type Fixture } from "./fake-judges.test-helpers.js";
 import { COMPILE_ROLE } from "./compile.js";
 import { ask, resume, type AskOptions, type HostOptions } from "./host.js";
 import { batchArtifactSchema, CostEntrySchema } from "./records.js";
@@ -215,6 +215,85 @@ describe("ask", () => {
     const confirms = judges.calls.filter((c) => c.stage === "confirm").map((c) => c.refs);
     expect(confirms).toEqual([["GR 1.1", "GR 1.2", "GR 1.3"], ["GR 2.1", "GR 2.2"]]);
     expect(result.answer!.rows.map((r) => `${r.ref}|${r.book}`)).toEqual(["GR 1.1|gull-rovers/book_01", "GR 1.2|gull-rovers/book_01", "GR 1.3|gull-rovers/book_01", "GR 2.1|gull-rovers/book_02", "GR 2.2|gull-rovers/book_02"]);
+  });
+});
+
+const costOf = (runId: string) => readJson(runPaths(fx.dataDir, runId).cost, z.array(CostEntrySchema))!;
+
+describe("exclusion", () => {
+  it("drops a confirm row the judge marks excluded, though its event is won", async () => {
+    fx = fixture(WINS);
+    const exclude: Behave = (call, input) => {
+      if (call.stage !== "confirm") return undefined;
+      const { judged, rows } = verdictData("confirm", input.prompt);
+      const marked = rows.map((row) => (row.period === "GR 1.2" ? { ...row, included: false, reason: "excluded" } : row));
+      return { ok: true, output: JSON.stringify({ judged, rows: marked }), usage: { costUsd: 0.01 } };
+    };
+
+    const result = await ask(options(), host(fakeJudges({ behave: exclude }).runnerFor));
+
+    expect(result.answer!.rows.map((r) => r.ref).sort()).toEqual(["GR 1.1", "GR 1.3", "GR 2.1", "GR 2.2"]);
+  });
+});
+
+describe("cost model", () => {
+  it("records the model id the call ran on, not the route alias", async () => {
+    fx = fixture(WINS);
+    const resolved: Behave = (call, input) => {
+      const { judged, candidates, rows } = verdictData(call.stage, input.prompt);
+      const output = call.stage === "screen" ? { judged, candidates } : { judged, rows };
+      return { ok: true, output: JSON.stringify(output), usage: { costUsd: 0.01, model: `resolved-${call.model}` } };
+    };
+
+    const result = await ask(options({ spec: undefined }), host(fakeJudges({ behave: (call, input) => (call.stage === "compile" ? undefined : resolved(call, input)) }).runnerFor));
+
+    expect(new Set(costOf(result.runId).filter((c) => c.stage !== "compile").map((c) => c.model))).toEqual(new Set(["resolved-sonnet", "resolved-haiku"]));
+  });
+});
+
+describe("canaries in a run", () => {
+  it("does not count a near-miss canary reported as lost as a screen miss, so no redo is paid for", async () => {
+    fx = fixture(WINS);
+    const quote = "lost the Reed Cup final";
+    let reported = 0;
+    const lostCanary: Behave = (call, input) => {
+      if (call.stage !== "screen") return undefined;
+      const { judged, candidates } = verdictData("screen", input.prompt);
+      const id = [...input.prompt.matchAll(/^=== PASSAGE (\S+) \(.*\) ===\n([^=]*)/gm)].find((m) => m[2]!.includes(quote))?.[1];
+      const extra = id ? [{ id, quote, entity: "Reed Cup", subject: "Marsh Town", event: "lost", names: [] }] : [];
+      reported += extra.length;
+      return { ok: true, output: JSON.stringify({ judged, candidates: [...candidates, ...extra] }), usage: { costUsd: 0.01 } };
+    };
+
+    const judges = fakeJudges({ behave: lostCanary });
+    const result = await ask(options({ concurrency: 1 }), host(judges.runnerFor));
+
+    expect(reported).toBeGreaterThan(0);
+    expect(result.answer!.coverage.screen.canaries.misses).toBe(0);
+    expect(screenCalls(judges.calls).every((c) => c.model === "haiku")).toBe(true);
+  });
+});
+
+describe("budget guard", () => {
+  const spendOf = (runId: string) => costOf(runId).reduce((sum, c) => sum + c.cliCostUsd, 0);
+
+  it("counts calls in flight, so the cap is not overshot by the concurrency", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges({ delayMs: 10 });
+
+    const result = await ask(options({ concurrency: 4, budgetUsd: 0.035, confirmShare: 0 }), host(judges.runnerFor));
+
+    expect(spendOf(result.runId)).toBeLessThanOrEqual(0.035 + 1e-9);
+  });
+
+  it("keeps confirm's share out of screen's reach, so confirm still runs when screening would spend everything", async () => {
+    fx = fixture(WINS);
+    const judges = fakeJudges();
+
+    const result = await ask(options({ concurrency: 1, budgetUsd: 0.05, confirmShare: 0.4 }), host(judges.runnerFor));
+
+    expect([screenCalls(judges.calls).length, judges.calls.some((c) => c.stage === "confirm")]).toEqual([3, true]);
+    expect(result.answer!.rows.length).toBeGreaterThan(0);
   });
 });
 

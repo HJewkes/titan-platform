@@ -165,6 +165,16 @@ declare const ImplementerSchema: z.ZodObject<{
     }>;
     account: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
+/** What re-evaluating a later winner on top of the round's new head decided; `vs` is that head. */
+declare const ReevalVerdictSchema: z.ZodObject<{
+    vs: z.ZodString;
+    decision: z.ZodEnum<{
+        kept: "kept";
+        rejected: "rejected";
+        requeued: "requeued";
+    }>;
+    reason: z.ZodString;
+}, z.core.$strip>;
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
 declare const OutcomeSchema: z.ZodObject<{
     ideaId: z.ZodString;
@@ -254,6 +264,15 @@ declare const OutcomeSchema: z.ZodObject<{
         implementUsd: z.ZodNumber;
         evalUsd: z.ZodNumber;
         microUsd: z.ZodNumber;
+    }, z.core.$strip>>;
+    reeval: z.ZodOptional<z.ZodObject<{
+        vs: z.ZodString;
+        decision: z.ZodEnum<{
+            kept: "kept";
+            rejected: "rejected";
+            requeued: "requeued";
+        }>;
+        reason: z.ZodString;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 type Outcome = z.infer<typeof OutcomeSchema>;
@@ -639,6 +658,12 @@ interface RunPin {
     pin: string;
     frozenHash?: string;
 }
+/** `ff` moves onto the round's first winner, `merge` onto a later winner merged on top of it, `sync` onto main merged in. */
+declare const RatchetKindSchema: z.ZodEnum<{
+    ff: "ff";
+    merge: "merge";
+    sync: "sync";
+}>;
 interface RatchetRequest extends RunPin {
     tree: string;
     ratchetRef: string;
@@ -646,8 +671,9 @@ interface RatchetRequest extends RunPin {
     from: string;
     to: string;
     round: number;
-    ideaId: string;
-    kind: "ff";
+    /** Absent only for a `sync`, which moves onto main rather than an idea. */
+    ideaId?: string;
+    kind: z.infer<typeof RatchetKindSchema>;
     keepRung: string;
     delta: number;
     sigma: number;
@@ -695,6 +721,74 @@ interface RoundRecord {
     /** Absent when the host's planner reports no agent. */
     planner?: Planner;
 }
+/** Merges a later winner onto the round's new head in the integration tree; never pushes. */
+interface IntegrateRequest {
+    runId: string;
+    tree: string;
+    base: string;
+    head: string;
+    message: string;
+    /** The step's first start, which the merge commit is dated with, so a restart rebuilds the same sha. */
+    at?: string;
+}
+/** `skipped` is the answer of a host with no integrate port: the winner is requeued, never kept on its solo run. */
+declare const IntegrateResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    merged: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    conflict: z.ZodArray<z.ZodString>;
+}, z.core.$strip>, z.ZodObject<{
+    skipped: z.ZodLiteral<"no-integrate">;
+}, z.core.$strip>]>;
+type IntegrateResult = z.infer<typeof IntegrateResultSchema>;
+/** One later winner's re-evaluation on top of the round's new head `vs`; `from` is the head its solo ladder ran against. */
+declare const ReevalSchema: z.ZodObject<{
+    ideaId: z.ZodString;
+    from: z.ZodString;
+    vs: z.ZodString;
+    merge: z.ZodNullable<z.ZodString>;
+    conflict: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    l0: z.ZodOptional<z.ZodObject<{
+        ok: z.ZodBoolean;
+        code: z.ZodOptional<z.ZodString>;
+        checks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            ok: z.ZodBoolean;
+            code: z.ZodOptional<z.ZodString>;
+            ms: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strip>>>;
+    }, z.core.$strip>>;
+    runs: z.ZodArray<z.ZodObject<{
+        schema: z.ZodLiteral<"ar-result/v2">;
+        case: z.ZodString;
+        repeat: z.ZodString;
+        metrics: z.ZodRecord<z.ZodString, z.ZodNumber>;
+        gates: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodBoolean>>;
+        violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        usd: z.ZodNumber;
+        wall_s: z.ZodNumber;
+        rung: z.ZodOptional<z.ZodString>;
+        evaluator_pin: z.ZodOptional<z.ZodString>;
+        artifact_dir: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    delta: z.ZodOptional<z.ZodNumber>;
+    decision: z.ZodEnum<{
+        kept: "kept";
+        rejected: "rejected";
+        requeued: "requeued";
+    }>;
+    reason: z.ZodString;
+}, z.core.$strip>;
+type Reeval = z.infer<typeof ReevalSchema>;
+declare const RatchetMoveSchema: z.ZodObject<{
+    from: z.ZodString;
+    to: z.ZodString;
+    kind: z.ZodEnum<{
+        ff: "ff";
+        merge: "merge";
+        sync: "sync";
+    }>;
+    ideaId: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
 /** G7 and G16: what a round decided, recorded after its ratchet so a reader never re-derives it. */
 declare const RoundSummarySchema: z.ZodObject<{
     round: z.ZodNumber;
@@ -718,6 +812,53 @@ declare const RoundSummarySchema: z.ZodObject<{
     }, z.core.$strip>>;
     quotaViolations: z.ZodArray<z.ZodString>;
     plannerRetried: z.ZodBoolean;
+    moves: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        from: z.ZodString;
+        to: z.ZodString;
+        kind: z.ZodEnum<{
+            ff: "ff";
+            merge: "merge";
+            sync: "sync";
+        }>;
+        ideaId: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>>;
+    reevals: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        ideaId: z.ZodString;
+        from: z.ZodString;
+        vs: z.ZodString;
+        merge: z.ZodNullable<z.ZodString>;
+        conflict: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        l0: z.ZodOptional<z.ZodObject<{
+            ok: z.ZodBoolean;
+            code: z.ZodOptional<z.ZodString>;
+            checks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                ok: z.ZodBoolean;
+                code: z.ZodOptional<z.ZodString>;
+                ms: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strip>>>;
+        }, z.core.$strip>>;
+        runs: z.ZodArray<z.ZodObject<{
+            schema: z.ZodLiteral<"ar-result/v2">;
+            case: z.ZodString;
+            repeat: z.ZodString;
+            metrics: z.ZodRecord<z.ZodString, z.ZodNumber>;
+            gates: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodBoolean>>;
+            violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            usd: z.ZodNumber;
+            wall_s: z.ZodNumber;
+            rung: z.ZodOptional<z.ZodString>;
+            evaluator_pin: z.ZodOptional<z.ZodString>;
+            artifact_dir: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
+        delta: z.ZodOptional<z.ZodNumber>;
+        decision: z.ZodEnum<{
+            kept: "kept";
+            rejected: "rejected";
+            requeued: "requeued";
+        }>;
+        reason: z.ZodString;
+    }, z.core.$strip>>>;
 }, z.core.$strip>;
 type RoundSummary = z.infer<typeof RoundSummarySchema>;
 declare const StopReasonSchema: z.ZodEnum<{
@@ -851,6 +992,11 @@ interface ArPorts {
     ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{
         head: string;
     }>;
+    /**
+     * Merges a later winner onto the round's new head in the integration tree, or names the conflicting files after
+     * aborting; it never pushes. A host without it has every later winner requeued.
+     */
+    integrate?(input: IntegrateRequest, signal: AbortSignal): Promise<IntegrateResult>;
     /** Parks the tree: checkout removed, branch kept. */
     releaseTree(input: {
         tree: string;
@@ -885,6 +1031,13 @@ interface ArPorts {
     now(): number;
 }
 
+/**
+ * The autoresearch recipe: pin, baseline, then rounds of plan, select and a pipelined ladder per idea,
+ * with the strongest winner moving the ratchet. Everything outside the run goes through `ArPorts`.
+ *
+ * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
+ */
+
 declare const AUTORESEARCH_WORKFLOW = "autoresearch";
 /** Plan 4.5: after a KEEP, this many follow-ups of the winner resume its implementer; every `basinEvery`th round all lanes explore. */
 declare const ForkScheduleSchema: z.ZodObject<{
@@ -906,24 +1059,28 @@ declare const RunSettingsSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strip>;
 type RunSettings = z.infer<typeof RunSettingsSchema>;
-/**
- * The outcomes a round settles on: each superseded winner stopped, every outcome stamped with the round's σ.
- * The recipe and any reader of the recorded stops share it, so they cannot disagree.
- */
-declare function finalOutcomes(stops: readonly Outcome[], { sigma, superseded }: {
+interface Settled {
     sigma: number;
     superseded: readonly string[];
-}): Outcome[];
+    /** Absent for a round recorded before concurrent winners. */
+    reevals?: readonly Reeval[];
+}
+/**
+ * The outcomes a round settles on: each requeued winner stopped as superseded, each winner the new head rejected
+ * rejected, every re-evaluated one carrying its `reeval`, and every outcome stamped with the round's σ.
+ * The recipe and any reader of the recorded stops share it, so they cannot disagree.
+ */
+declare function finalOutcomes(stops: readonly Outcome[], { sigma, superseded, reevals }: Settled): Outcome[];
 /** The workflow function; a host registers it under `AUTORESEARCH_WORKFLOW` with routes for every dispatch step. */
 declare function runAutoresearch(ctx: WorkflowContext): Promise<void>;
 
-declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "release", "load-wait", "archive", "inbox", "validate", "registry"];
+declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "integrate", "release", "load-wait", "archive", "inbox", "validate", "registry"];
 type ArDispatchStep = (typeof AR_DISPATCH_STEPS)[number];
 /**
  * Pure decisions recorded so a replay reads them back instead of recomputing: the queue, the draws, each ladder's
- * lane slot and stop, each round's summary and why the loop ended.
+ * lane slot and stop, each later winner's re-evaluation, each round's summary and why the loop ended.
  */
-declare const AR_SEED_STEPS: readonly ["queue", "select", "lane", "stop", "summary", "end"];
+declare const AR_SEED_STEPS: readonly ["queue", "select", "lane", "stop", "reeval", "summary", "end"];
 type ArSeedStep = (typeof AR_SEED_STEPS)[number];
 /** A step family and the context call that runs it; a host that guards step kinds reads this. */
 interface ArStepDeclaration {
@@ -958,7 +1115,8 @@ interface ArStepHandler {
 }
 /**
  * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it;
- * a repeated registry row carries the same run and phase, so a host's reader keeps the last.
+ * a repeated registry row carries the same run and phase, so a host's reader keeps the last. An integrate re-checks-out its
+ * base and merges with the step's first start as the date, so a repeat rebuilds the same commit.
  * A ratchet push cut off mid-way may have moved the remote, so a person decides.
  */
 declare function arStepHandlers(ports: ArPorts): ArStepHandler[];
@@ -1242,4 +1400,4 @@ declare function ideaRefs(run: WorkflowRun, ideaId: string): {
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
 declare function arRunView(run: WorkflowRun, looks?: readonly WorkflowRun[]): ArRunView | null;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArStepDeclaration, type ArStepHandler, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArStepDeclaration, type ArStepHandler, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };

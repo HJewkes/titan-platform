@@ -61,11 +61,14 @@ export interface CostEntry {
 
 const TOKEN_FIELDS = ["inputTokens", "cacheReadTokens", "cacheWrite5mTokens", "cacheWrite1hTokens", "outputTokens"] as const;
 
-/** Cache fields are copied when the runner reported them; a field it left out stays out rather than reading as zero. */
+/**
+ * Cache fields are copied when the runner reported them; a field it left out stays out rather than reading as zero.
+ * The model is the id the call ran on when the runner reported one, because a route alias such as "haiku" has no price.
+ */
 export function costEntry(stage: Stage, entry: UsageEntry): CostEntry {
-  const usage = entry.usage as StepUsage & Partial<Record<(typeof TOKEN_FIELDS)[number], number>>;
+  const usage = entry.usage as StepUsage & Partial<Record<(typeof TOKEN_FIELDS)[number], number>> & { model?: string };
   const tokens = Object.fromEntries(TOKEN_FIELDS.filter((f) => usage[f] !== undefined).map((f) => [f, usage[f]]));
-  return { stage, model: entry.model, ...tokens, cliCostUsd: usage.costUsd };
+  return { stage, model: usage.model ?? entry.model, ...tokens, cliCostUsd: usage.costUsd };
 }
 
 export interface RunPaths {

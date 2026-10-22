@@ -6,63 +6,63 @@
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "openDatabase(dbPath, { readonly: true })",
       "replace": "openDatabase(dbPath)",
-      "kills": ["opens the log read-only, so a missing database is an error and no file appears"]
+      "kills": ["readF11Window opens the log read-only, so a missing database is an error and no file appears"]
     },
     {
       "name": "the window includes its until instant",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "AND observed_at < ?",
       "replace": "AND observed_at <= ?",
-      "kills": ["returns the rows observed in [since, until), in seq order"]
+      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
       "name": "the window excludes its since instant",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "WHERE observed_at >= ?",
       "replace": "WHERE observed_at > ?",
-      "kills": ["returns the rows observed in [since, until), in seq order"]
+      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
       "name": "rows come back newest first",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "ORDER BY seq\"",
       "replace": "ORDER BY seq DESC\"",
-      "kills": ["returns the rows observed in [since, until), in seq order"]
+      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
       "name": "the window's ends are used as typed",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "return { since: new Date(from).toISOString(), until: new Date(to).toISOString() };",
       "replace": "return { since, until };",
-      "kills": ["normalises both ends so a bound without milliseconds still meets a stored row at that instant"]
+      "kills": ["f11Window normalises both ends so a bound without milliseconds still meets a stored row at that instant"]
     },
     {
       "name": "an unparseable bound is not refused by name",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "if (Number.isNaN(from) || Number.isNaN(to)) throw",
       "replace": "if (false) throw",
-      "kills": ["refuses an unparseable or empty window"]
+      "kills": ["f11Window refuses an unparseable or empty window"]
     },
     {
       "name": "an empty window is accepted",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "if (from >= to) throw",
       "replace": "if (from > to) throw",
-      "kills": ["refuses an unparseable or empty window"]
+      "kills": ["f11Window refuses an unparseable or empty window"]
     },
     {
       "name": "the occurrence key is not carried",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "occurrenceKey: row.occurrence_key,",
       "replace": "occurrenceKey: row.subject,",
-      "kills": ["returns the rows observed in [since, until), in seq order"]
+      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
       "name": "a webhook row past its withinMs is pending, not webhookOnly",
       "file": "products/factory/src/event-log/f11-report.ts",
       "find": "until: input.window.until })",
       "replace": "until: \"9999-12-31T00:00:00.000Z\" })",
-      "kills": ["reports an unconfirmed webhook row as webhookOnly and one whose withinMs runs past until as pending"]
+      "kills": ["F11 clock 2 over a stored window reports an unconfirmed webhook row as webhookOnly and one whose withinMs runs past until as pending"]
     }
   ]
 }

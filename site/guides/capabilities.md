@@ -771,8 +771,8 @@ Key exports:
 - `validate`: `runValidatorLook`
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
-- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `LoadWaitSchema`
-- +118 more in the [reference page](/reference/autoresearch)
+- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `IntegrateResultSchema`
+- +126 more in the [reference page](/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
@@ -1208,7 +1208,7 @@ Key exports:
 - `cli`: `runCli`, `defaultIndexPath`, `formatHit`, `formatStats`
 - `header`: `parseHeader`, `splitTitle`
 - `index-corpus`: `chapterOwnerRef`, `indexCorpus`, `listChapters`, `migrateIndex`, `openSpans`, `readSpanText`
-- +87 more in `products/corpus-query/src/index.ts`
+- +88 more in `products/corpus-query/src/index.ts`
 
 <a id="cap-evals"></a>
 

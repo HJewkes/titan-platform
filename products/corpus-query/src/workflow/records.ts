@@ -15,6 +15,7 @@ const StepUsageSchema = z.object({
   cacheReadTokens: z.number().optional(),
   cacheWrite5mTokens: z.number().optional(),
   cacheWrite1hTokens: z.number().optional(),
+  model: z.string().optional(),
   costUnknown: z.literal(true).optional(),
 });
 

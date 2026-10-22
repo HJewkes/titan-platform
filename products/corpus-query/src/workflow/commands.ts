@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { appDirs } from "@titan-design/app-paths";
 import { InvalidArgumentError, type Command } from "commander";
 import { QuerySpecSchema } from "../types.js";
-import type { Answer } from "./answer.js";
+import { DEFAULT_CONFIRM_SHARE, type Answer } from "./answer.js";
 import { ask, resume, type AskResult, type HostOptions } from "./host.js";
 
 type Write = (line: string) => void;
@@ -17,6 +17,7 @@ interface AskFlags {
   concurrency: number;
   rounds: number;
   budgetUsd: number;
+  confirmShare: number;
 }
 
 interface NumberRule {
@@ -31,6 +32,7 @@ export const RULES = {
   concurrency: { flag: "--concurrency", min: 1, max: 32, integer: true },
   rounds: { flag: "--rounds", min: 0, max: 10, integer: true },
   budgetUsd: { flag: "--budget-usd", min: 0.01, max: 1000, integer: false },
+  confirmShare: { flag: "--confirm-share", min: 0, max: 0.9, integer: false },
 } as const satisfies Record<string, NumberRule>;
 
 export function parseNumberFlag(rule: NumberRule, text: string): number {
@@ -81,13 +83,14 @@ export function addAskCommand(program: Command, write: Write, host: () => HostOp
     .option("--concurrency <n>", "judge calls in flight at once", numberFlag(RULES.concurrency), 4)
     .option("--rounds <n>", "grow rounds after the first screen", numberFlag(RULES.rounds), 2)
     .option("--budget-usd <usd>", "stop launching judge calls past this spend", numberFlag(RULES.budgetUsd), 3)
+    .option("--confirm-share <fraction>", "fraction of the budget screening may not spend, kept for confirm", numberFlag(RULES.confirmShare), DEFAULT_CONFIRM_SHARE)
     .action(async (question: string, flags: AskFlags) => {
       const result = await ask({
         question, corpus: flags.corpus, index: flags.index ?? indexFor(flags.corpus),
         ...(flags.rules ? { rules: readFileSync(flags.rules, "utf8") } : {}),
         ...(flags.spec ? { spec: QuerySpecSchema.parse(JSON.parse(readFileSync(flags.spec, "utf8"))) } : {}),
         models: { screen: flags.screenModel, confirm: flags.confirmModel },
-        concurrency: flags.concurrency, rounds: flags.rounds, budgetUsd: flags.budgetUsd,
+        concurrency: flags.concurrency, rounds: flags.rounds, budgetUsd: flags.budgetUsd, confirmShare: flags.confirmShare,
       }, host());
       report(result, write);
     });

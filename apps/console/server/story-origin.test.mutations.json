@@ -7,7 +7,7 @@
       "find": "if (forwarded.indexOf(event.key) === -1 || event.metaKey",
       "replace": "if (event.metaKey",
       "kills": [
-        "forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
+        "the story bridge forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": " || event.metaKey || event.ctrlKey || event.altKey",
       "replace": "",
       "kills": [
-        "forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
+        "the story bridge forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "find": "    if (argsOwed) {",
       "replace": "    if (argsOwed && false) {",
       "kills": [
-        "pushes the page's args to the story, and once more after the story next renders"
+        "the story bridge pushes the page's args to the story, and once more after the story next renders"
       ]
     },
     {
@@ -34,7 +34,7 @@
       "find": "    if (event.source !== window.parent || event.origin !== target) return;\n",
       "replace": "",
       "kills": [
-        "takes args only from the console page's own window and origin"
+        "the story bridge takes args only from the console page's own window and origin"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "find": "    postBoxes();\n    // Args sent",
       "replace": "    // Args sent",
       "kills": [
-        "reports each element a pin can name after every render, with its testId, role and text"
+        "the story bridge reports each element a pin can name after every render, with its testId, role and text"
       ]
     }
   ]

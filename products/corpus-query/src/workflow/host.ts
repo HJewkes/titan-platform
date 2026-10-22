@@ -5,7 +5,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type StepRunner, type WorkflowEvent } from "@titan-design/workflow";
 import { buildJudgePrefix, CONFIRM_ROLE, SCREEN_ROLE } from "../judge/index.js";
 import { QuerySpecSchema, type QuerySpec } from "../types.js";
-import { answerWorkflow, type Answer } from "./answer.js";
+import { answerWorkflow, DEFAULT_CONFIRM_SHARE, type Answer } from "./answer.js";
 import { COMPILE_ROLE, compileWorkflow } from "./compile.js";
 import { DEFAULT_MODELS, stageRoutes, type Models, type RunnerFor } from "./routes.js";
 import { AnswerSchema, CompileRecordSchema, ModelsSchema } from "./records.js";
@@ -37,6 +37,8 @@ export interface AskOptions {
   rounds?: number;
   concurrency?: number;
   budgetUsd?: number;
+  /** Fraction of the budget screening may not spend, kept for confirm. */
+  confirmShare?: number;
   batchTokens?: number;
   window?: number;
 }
@@ -85,6 +87,7 @@ function answerParams(options: AskOptions, specSha: string, rulesSha: string | u
     rounds: String(options.rounds ?? 2),
     concurrency: String(options.concurrency ?? 4),
     budgetUsd: String(options.budgetUsd ?? 3),
+    confirmShare: String(options.confirmShare ?? DEFAULT_CONFIRM_SHARE),
     batchTokens: String(options.batchTokens ?? 6000),
     window: String(options.window ?? 2),
   };
@@ -109,6 +112,7 @@ function answerHost(db: Db, host: HostOptions, params: Record<string, string>): 
     db: index, root: params.corpus!, dataDir: host.dataDir, spec, prefixes, models,
     ...(params.compileRunId ? { compileRunId: params.compileRunId } : {}),
     rounds: numeric("rounds"), concurrency: numeric("concurrency"), budgetUsd: numeric("budgetUsd"), batchTokens: numeric("batchTokens"), window: numeric("window"),
+    confirmShare: params.confirmShare === undefined ? DEFAULT_CONFIRM_SHARE : numeric("confirmShare"),
   }));
   return { runtime, close: () => index.close() };
 }

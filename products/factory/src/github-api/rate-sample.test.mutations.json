@@ -7,7 +7,7 @@
       "find": "if ((peaks.get(key)?.used ?? -1) < used) peaks.set",
       "replace": "peaks.set",
       "kills": [
-        "reports each window's max used before its reset, not the last sample in it"
+        "ratePeaks reports each window's max used before its reset, not the last sample in it"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "const key = `${resource}@${reset}`;",
       "replace": "const key = resource;",
       "kills": [
-        "reports each window's max used before its reset, not the last sample in it"
+        "ratePeaks reports each window's max used before its reset, not the last sample in it"
       ]
     },
     {
@@ -24,14 +24,14 @@
       "file": "products/factory/src/github-api/rate-sample.ts",
       "find": "if (!isCount(used) || !isCount(limit) || !isCount(reset)) throw",
       "replace": "if (false) throw",
-      "kills": ["refuses an answer missing a bucket"]
+      "kills": ["rateRecord refuses an answer missing a bucket"]
     },
     {
       "name": "the sampler does not wait between calls",
       "file": "products/factory/src/github-api/rate-sample.ts",
       "find": "if (round > 0) await deps.wait(RATE_SAMPLE_MS);",
       "replace": "",
-      "kills": ["appends one JSONL record per gh call, a minute apart"]
+      "kills": ["runRateSampler appends one JSONL record per gh call, a minute apart"]
     },
     {
       "name": "a failed call ends the sampler",
@@ -39,7 +39,7 @@
       "find": "      deps.warn(`f11-rate-sample",
       "replace": "      throw error;\n      deps.warn(`f11-rate-sample",
       "kills": [
-        "skips a failed or malformed call with a warning and keeps sampling"
+        "runRateSampler skips a failed or malformed call with a warning and keeps sampling"
       ]
     }
   ]
