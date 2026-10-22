@@ -210,6 +210,13 @@ function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, str
   return testGlob ? { ...edits, [testGlob.replaceAll("*", "")]: `# checks ${idea.mechanism}\n` } : edits;
 }
 
+/** An exploit lane resumes the agent it names; every other lane is a fresh spawn named for its idea and round. */
+function implementerOf({ idea, round, fork, resumeFrom }: Omit<ImplementRequest, "brief">) {
+  const resumed = fork === "exploit" && resumeFrom !== undefined;
+  const agent = resumed ? resumeFrom : `implementer-${idea.id}-r${round}`;
+  return { agent, sessionId: `session-${agent}`, mode: resumed ? ("resume" as const) : ("spawn" as const), resumedFrom: resumed ? agent : undefined, account: "fixture" };
+}
+
 function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, policy: Policy, options: FakeOptions) {
   return {
     async allocTree({ runId, ideaId, base }: { runId: string; ideaId: string; base: string }) {
@@ -231,10 +238,7 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       }
       await git(tree, "add", "--all");
       await git(tree, "commit", "--quiet", "-m", `apply ${idea.mechanism}`);
-      const head = await git(tree, "rev-parse", "HEAD");
-      const resumed = input.fork === "exploit" && input.resumeFrom !== undefined;
-      const agent = resumed ? input.resumeFrom! : `implementer-${idea.id}-r${input.round}`;
-      return { head, usd: 0, lesson: `${idea.mechanism} applied`, agent, sessionId: `session-${agent}`, mode: resumed ? "resume" : "spawn", resumedFrom: resumed ? agent : undefined, account: "fixture" } as const;
+      return { head: await git(tree, "rev-parse", "HEAD"), usd: 0, lesson: `${idea.mechanism} applied`, ...implementerOf(input) };
     },
     async releaseTree({ tree }: { tree: string }) {
       calls.released.push(tree);
@@ -266,6 +270,17 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
   };
 }
 
+/** A load gate that never waits and an archive that only records what it was given. */
+function recordPorts(repo: FixtureRepo, calls: FakeCalls): Pick<ArPorts, "loadWait" | "archive"> {
+  return {
+    loadWait: async () => ({ waitedMs: 0, load5: 0.5 }),
+    async archive({ runId, round, record }) {
+      calls.archives.push({ round, record });
+      return { path: join(repo.root, "archive", runId, `round-${round}.json`), sha256: "0".repeat(64) };
+    },
+  };
+}
+
 /** The winner fast-forwards the remote ref, refused if the ref moved since the round started. */
 async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Promise<{ head: string }> {
   await git(tree, "push", "--quiet", `--force-with-lease=${ratchetRef}:${from}`, "origin", `${to}:${ratchetRef}`);
@@ -293,13 +308,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.ratchet.push(input);
       return (options.ratchet ?? pushRatchet)(input);
     },
-    async loadWait() {
-      return { waitedMs: 0, load5: 0.5 };
-    },
-    async archive({ runId, round, record }) {
-      calls.archives.push({ round, record });
-      return { path: join(repo.root, "archive", runId, `round-${round}.json`), sha256: "0".repeat(64) };
-    },
+    ...recordPorts(repo, calls),
     ...treePorts(repo, calls, ideaOfTree, policy, options),
     ...rungPorts(repo, calls, ideaOfTree, target, options),
   };

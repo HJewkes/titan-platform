@@ -3,7 +3,7 @@
 # The tree's applied.txt names the mechanisms in it; policy.json gives the base metrics and each
 # mechanism's additive effect, which a `by_key` entry overrides for one run label (the key's last
 # `-` segment, so `r2` matches every idea's second repeat). The `noisy` metric
-# gets ±sigma with its sign drawn from a hash of the case, the key and the mechanisms, so its sd is
+# gets ±sigma with its sign drawn from a hash of the case, the label and the mechanisms, so its sd is
 # exactly sigma and every run is reproducible. Metric, gate and violation names are the policy's own.
 # The key is echoed as `repeat`, and the run's artifact dir is named after it, as a real target does.
 set -euo pipefail
@@ -17,7 +17,7 @@ const mechanisms = applied.map((name) => policy.mechanisms[name] ?? {});
 const label = key.split("-").at(-1);
 const at = (mechanism, field, name) => mechanism.by_key?.[label]?.[field]?.[name] ?? mechanism[field]?.[name] ?? 0;
 const sum = (field, name) => mechanisms.reduce((total, mechanism) => total + at(mechanism, field, name), 0);
-const sign = createHash("sha256").update([testCase, key, ...applied].join("\n")).digest()[0] & 1 ? 1 : -1;
+const sign = createHash("sha256").update([testCase, label, ...applied].join("\n")).digest()[0] & 1 ? 1 : -1;
 const metrics = Object.fromEntries(Object.entries(policy.metrics).map(([name, base]) => [name, base + sum("metrics", name) + (name === policy.noisy ? sign * policy.sigma : 0)]));
 process.stdout.write(JSON.stringify({
   schema: "ar-result/v2",

@@ -151,4 +151,13 @@ describe("a target adapter's own config", () => {
     expect(target.metric.guards).toEqual({ single_caller_delta: 1 });
     expect(frozenOverlap(BoundsSchema.parse(fixture("bounds.json")), target.frozen)).toEqual([]);
   });
+
+  it("keeps the repo, case sets, test commands and rung templates the ports read", () => {
+    const target = TargetSchema.parse(fixture("target.json"));
+    expect(target).toMatchObject({ repo: "example/target", runnerRoot: ".", caseSets: { "train-1": "suite-a" } });
+    expect(target.unitTests[0]).toBe("python3");
+    expect(target.testProof).toContain("{head}");
+    expect(Object.keys(target.rungs).sort()).toEqual(["L1-cluster", "L1-replay", "seed"]);
+    expect(target.rungs.seed).toMatchObject({ maxUsd: 1, timeoutMin: 45 });
+  });
 });

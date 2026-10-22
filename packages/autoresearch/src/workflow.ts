@@ -23,14 +23,19 @@ import { dispatch, recorded, step } from "./steps.js";
 
 export const AUTORESEARCH_WORKFLOW = "autoresearch";
 
+/** Plan 4.5: after a KEEP, this many follow-ups of the winner resume its implementer; every `basinEvery`th round all lanes explore. */
+const ForkScheduleSchema = z.object({
+  afterKeep: z.object({ exploit: z.number().int().nonnegative().default(1) }).default({ exploit: 1 }),
+  basinEvery: z.number().int().positive().default(3),
+});
+
 const RunSettingsSchema = z.object({
   lanes: z.number().int().positive().default(3),
   rounds: z.number().int().positive().default(50),
   minPool: z.number().int().nonnegative().default(12),
   /** Names of the target's cases; a proposal that mentions one is refused before any spawn. */
   caseNames: z.array(z.string()).default([]),
-  /** Plan 4.5: after a KEEP, this many follow-ups of the winner resume its implementer; every `basinEvery`th round all lanes explore. */
-  forkSchedule: z.object({ afterKeep: z.object({ exploit: z.number().int().nonnegative().default(1) }).default({ exploit: 1 }), basinEvery: z.number().int().positive().default(3) }).default({ afterKeep: { exploit: 1 }, basinEvery: 3 }),
+  forkSchedule: ForkScheduleSchema.default({ afterKeep: { exploit: 1 }, basinEvery: 3 }),
 });
 type RunSettings = z.infer<typeof RunSettingsSchema>;
 

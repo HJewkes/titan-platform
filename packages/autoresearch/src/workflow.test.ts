@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { ideaId, OutcomeSchema, type Outcome } from "./schemas.js";
 import {
@@ -21,6 +20,7 @@ import {
   type Policy,
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
+import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
 import { AUTORESEARCH_WORKFLOW, pickWinner } from "./workflow.js";
 
 /** σ is 0.2 and the default band 1.5 pp, so a 3 pp gain clears the band and a 0.8 pp gain sits inside it whatever the noise. */
@@ -62,34 +62,14 @@ function openHost(ports: FakeArPorts, dbPath = ":memory:"): TestHost {
 const CONFIG = { lanes: 3, rounds: 1, minPool: 0 };
 const start = (host: TestHost, repo: FixtureRepo, config: object = CONFIG) => host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify(config) });
 
-function outcomes(run: WorkflowRun | undefined): Map<string, Outcome> {
-  const stops = Object.entries(run?.stepResults ?? {}).filter(([key]) => key.startsWith("ar-stop:"));
-  return new Map(stops.map(([, result]) => OutcomeSchema.parse(JSON.parse(result.output!))).map((outcome) => [outcome.ideaId, outcome]));
-}
-
-/** A run key's repeat label: the key itself is unique per run and ladder. */
-const label = (key: string) => key.split("-").at(-1)!;
-const evalKeys = (ports: FakeArPorts, mechanism: string) => ports.calls.evals.filter((call) => call.ideaId === id(mechanism)).map((call) => label(call.key));
+const outcomes = stopOutcomes;
+const evalKeys = (ports: FakeArPorts, mechanism: string) => ports.calls.evals.filter((call) => call.ideaId === id(mechanism)).map((call) => runLabel(call.key));
 
 async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, config: object = CONFIG, policy: Policy = POLICY) {
   const { repo, ports } = await world(mechanisms, options, policy);
   const host = openHost(ports);
   const run = await host.runtime.wait(start(host, repo, config));
   return { repo, ports, run, outcomes: outcomes(run) };
-}
-
-async function until(done: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!done()) {
-    if (Date.now() > deadline) throw new Error(`${what} not reached within ${timeoutMs} ms`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
-
-function latch() {
-  let open!: () => void;
-  const opened = new Promise<void>((resolve) => (open = resolve));
-  return { opened, open };
 }
 
 describe("autoresearch on a fixture target at $0", () => {
@@ -130,7 +110,7 @@ describe("autoresearch on a fixture target at $0", () => {
     const held = latch();
     let killed = false;
     const beforeEval = async (ideaId: string | null, key: string) => {
-      if (killed || label(key) !== "r2") return;
+      if (killed || runLabel(key) !== "r2") return;
       killed = true;
       held.open();
       await new Promise(() => undefined);
