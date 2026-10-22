@@ -278,6 +278,11 @@ async function archive(run: Run, round: number, record: RoundRecord): Promise<st
   return (await step(run.ctx, `${arStepId("archive")}:${round}`, { runId: run.ctx.runId, round, record }, ArchivedSchema)).path;
 }
 
+function unpicked(queue: readonly Idea[], picks: readonly Idea[]): Idea[] {
+  const picked = new Set(picks.map((idea) => idea.id));
+  return queue.filter((idea) => !picked.has(idea.id));
+}
+
 async function runRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
   const { ops, planned, cursor } = await roundOps(run, state, round);
   const queue = await nextQueue(run, state, ops, round);
@@ -288,7 +293,6 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   const stops = await fanOut(run, rc, picks, round);
   const moved = await settleWinners(rc, ideas, stops);
   await summarize(run, round, rc, planned, moved);
-  const picked = new Set(picks.map((idea) => idea.id));
   const outcomes = finalOutcomes(stops, { sigma, superseded: moved.superseded, reevals: moved.reevals });
   const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome, round), recordAnalysis(state.registries, ops.analysis, round));
   const evidence = outcomes.map((outcome) => evidenceRow(round, outcome));
@@ -296,7 +300,7 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   return {
     best: moved.best,
     noise: withPairs(state.noise, outcomes, run),
-    queue: [...queue.filter((idea) => !picked.has(idea.id)), ...moved.requeue],
+    queue: [...unpicked(queue, picks), ...moved.requeue],
     ideas,
     outcomes: [...state.outcomes, ...outcomes],
     evidence: [...state.evidence, ...evidence],

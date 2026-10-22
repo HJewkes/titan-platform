@@ -139,7 +139,7 @@ describe("snapshot cuts in a run", () => {
     const { ports, run } = await loop([["a"], ["b"]], { rounds: 2, snapshot: { keptIdeas: 1 } }, { snapshot });
 
     expect(run.status).toBe("completed");
-    expect(resultsOf(run, "ar-snapshot:1").map((result) => SnapshotResultSchema.parse((result.data as { result: unknown }).result))).toEqual([
+    expect(resultsOf(run, "ar-snapshot:1").map((result) => z.object({ result: SnapshotResultSchema }).parse(result.data).result)).toEqual([
       { failed: "[snapshot-fixture] the push was refused" },
       expect.objectContaining({ k: 1, pr: 7 }),
     ]);

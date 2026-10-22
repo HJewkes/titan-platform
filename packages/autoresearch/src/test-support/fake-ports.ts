@@ -8,25 +8,10 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { z } from "zod";
-import type {
-  ArPorts,
-  ImplementRequest,
-  IntegrateRequest,
-  LookAggregate,
-  LookRequest,
-  MicroRequest,
-  RatchetRequest,
-  RegistryRow,
-  RoundRecord,
-  RunPin,
-  SnapshotCutSchema,
-  SnapshotRequest,
-  SyncRequest,
-  SyncResultSchema,
-} from "../ports.js";
+import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 import { fakeMergeOnto } from "./fake-integrate.js";
+import { fakeSnapshotPorts, type SnapshotCalls, type SnapshotOptions } from "./fake-snapshot.js";
 
 const run = promisify(execFile);
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
@@ -190,7 +175,7 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
       : { exempt: { bold: "script ends after round one", followup: "script ends after round one" } };
 }
 
-interface FakeCalls {
+interface FakeCalls extends SnapshotCalls {
   plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
   implement: string[];
   /** Every implement input but the brief, in call order. */
@@ -200,8 +185,6 @@ interface FakeCalls {
   microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
   integrate: IntegrateRequest[];
-  snapshot: SnapshotRequest[];
-  sync: SyncRequest[];
   released: string[];
   archives: { round: number; record: RoundRecord }[];
   /** The run pin every evaluator step named, by step. */
@@ -214,7 +197,7 @@ interface FakeCalls {
 const FIXTURE_FROZEN_HASH = "f".repeat(64);
 const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, frozenHash });
 
-export interface FakeOptions {
+export interface FakeOptions extends SnapshotOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
   target?: Target;
   bounds?: Bounds;
@@ -228,10 +211,6 @@ export interface FakeOptions {
   beforePlan?: (round: number) => Promise<void>;
   /** Awaited once a merge is built, before the step records it: a test simulates a kill with it. */
   afterIntegrate?: (call: number) => Promise<void>;
-  /** By default a cut at the requested sha with synthetic refs and PR number; a test throws or holds with it. */
-  snapshot?: (input: SnapshotRequest, call: number) => Promise<z.input<typeof SnapshotCutSchema>>;
-  /** By default the snapshot PR is still open. */
-  sync?: (input: SyncRequest, call: number) => Promise<z.input<typeof SyncResultSchema>>;
   /** The owner inbox, read live: a test pushes to it while the run is going. */
   inbox?: Proposal[];
   /** What a validator look answers; by default one aggregate with no per-case key. */
@@ -353,25 +332,6 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
   return { head: to };
 }
 
-/** The snapshot names the plan gives: a tag per cut and a `-snap` branch beside the ratchet namespace, never inside it. */
-export function fakeCut({ runId, k, sha, ratchetPrefix }: SnapshotRequest): Promise<z.input<typeof SnapshotCutSchema>> {
-  const tag = `refs/tags/ar/fixture/${runId}/m${k}`;
-  return Promise.resolve({ k, tag, sha, branch: `refs/heads/${ratchetPrefix}-snap/${runId}/m${k}`, pr: 100 + k, logSha: sha });
-}
-
-function snapshotPorts(calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "snapshot" | "sync"> {
-  return {
-    async snapshot(input) {
-      calls.snapshot.push(input);
-      return (options.snapshot ?? fakeCut)(input, calls.snapshot.length);
-    },
-    async sync(input) {
-      calls.sync.push(input);
-      return options.sync ? options.sync(input, calls.sync.length) : { state: "open" };
-    },
-  };
-}
-
 function movePorts(calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "ratchet" | "integrate"> {
   return {
     async ratchet(input) {
@@ -409,7 +369,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     ...movePorts(calls, options),
-    ...snapshotPorts(calls, options),
+    ...fakeSnapshotPorts(calls, options),
     ...recordPorts(repo, calls, options),
     ...validatePort(calls, options, now),
     ...treePorts(repo, calls, ideaOfTree, policy, options),

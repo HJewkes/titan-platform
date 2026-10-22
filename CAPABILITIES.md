@@ -771,8 +771,8 @@ Key exports:
 - `validate`: `runValidatorLook`
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
-- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `IntegrateResultSchema`
-- +126 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- `snapshot`: `cadence`, `CadenceSchema`, `snapshotLog`, `SnapshotSettingsSchema`, `SyncGateAnswerSchema`
+- +145 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
