@@ -46,8 +46,11 @@ type VideoEntry = z.infer<typeof videoEntry>;
 /** The owner's call on one render, from the theater's Ship and Needs changes buttons. */
 export const verdict = z.enum(["ship", "needs-changes"]);
 
-/** `openNoteCount` is the agent pickup rule's count: comments on this render made after its latest Ship. */
-const noteSummary = z.object({ noteCount: z.number().int(), openNoteCount: z.number().int(), verdict: verdict.nullable() });
+/**
+ * `videoNoteCount` is how many of the `noteCount` comments are about the video itself rather than its content.
+ * `openNoteCount` is the agent pickup rule's count: comments about the content on this render made after its latest Ship.
+ */
+const noteSummary = z.object({ noteCount: z.number().int(), videoNoteCount: z.number().int(), openNoteCount: z.number().int(), verdict: verdict.nullable() });
 
 /** What the notes beside one video say about its current render; the file is the video's real path. */
 export type NoteSummarizer = (file: string) => Promise<z.infer<typeof noteSummary>>;
@@ -64,7 +67,7 @@ const resolveArgs = z
     message: "Give an alias alone, or at least one of series, tag and subject",
   });
 
-const NO_NOTES = { noteCount: 0, openNoteCount: 0, verdict: null } as const;
+const NO_NOTES = { noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null } as const;
 
 /** Where one listed video sits; server-side only, so the client names a video by id and never by path. */
 interface Located {

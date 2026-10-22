@@ -152,6 +152,63 @@ describe("decision log", () => {
     expect(await decisions()).toBe(SEED);
   });
 
+  describe("a batch of answers (TP-4001)", () => {
+    const counted = (read: () => Promise<HumanOnly>) => {
+      const counter = {
+        calls: 0,
+        read: () => {
+          counter.calls += 1;
+          return read();
+        },
+      };
+      return counter;
+    };
+    const batch = [
+      { item: ship({ id: "q-garden", initiative: "garden-plan" }), answer: answer() },
+      { item: ship({ id: "q-orbit" }), answer: answer() },
+      { item: ship({ id: "q-mine", personal: true }), answer: answer() },
+    ];
+
+    it("reads the human-only list once and excludes exactly what one record at a time excludes", async () => {
+      const humanOnly = counted(known("garden-plan"));
+      const oneByOne = makeLog();
+      const singly = [];
+      for (const { item, answer: given } of batch) singly.push(await oneByOne.record(item, given));
+      await rm(ledgerPath());
+
+      const results = await makeLog({ humanOnly: humanOnly.read }).recordAll(batch);
+
+      expect(humanOnly.calls).toBe(1);
+      expect(results).toEqual(singly);
+      expect(results.map((each) => each.reason)).toEqual(["human-only-initiative", undefined, "personal"]);
+      expect((await ledgerLines()).map((line) => JSON.parse(line).item.id)).toEqual(["q-orbit"]);
+    });
+
+    it.each([
+      ["an unknown human-only list", async (): Promise<HumanOnly> => ({ known: false })],
+      ["a human-only reader that throws", () => Promise.reject(new Error("down"))],
+    ])("writes nothing for %s, asking once (fail closed)", async (_label, read) => {
+      const humanOnly = counted(read);
+
+      const results = await makeLog({ humanOnly: humanOnly.read }).recordAll(batch.slice(0, 2));
+
+      expect(results).toEqual([0, 1].map(() => ({ ledger: "excluded", decisions: "excluded", reason: "human-only unknown" })));
+      expect(humanOnly.calls).toBe(1);
+      expect(await ledgerLines()).toEqual([]);
+    });
+
+    it("reads the list afresh for each batch, so a newly human-only initiative is excluded on the next submit", async () => {
+      let initiatives: string[] = [];
+      const log = makeLog({ humanOnly: async () => ({ known: true, initiatives: new Set(initiatives) }) });
+
+      const before = await log.recordAll([{ item: ship({ initiative: "orbit-relay" }), answer: answer() }]);
+      initiatives = ["orbit-relay"];
+      const after = await log.recordAll([{ item: ship({ initiative: "orbit-relay" }), answer: answer() }]);
+
+      expect([before[0]?.ledger, after[0]?.reason]).toEqual(["written", "human-only-initiative"]);
+    });
+  });
+
   it("reports a missing decisions file without creating it, and never throws", async () => {
     await rm(decisionsFile);
     const warnings: unknown[] = [];
