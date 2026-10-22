@@ -90,6 +90,37 @@ describe("testOnlyDiff", () => {
     expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
   });
 
+  describe("a PR that changes only a mutation spec", () => {
+    const SPEC = "apps/console/src/frame.test.mutations.json";
+    const SIBLING = "apps/console/src/frame.test.tsx";
+
+    it("reads the spec beside a test at head as test-only", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+    });
+
+    it("flags the spec when no test sits beside it at head", async () => {
+      expect(await testOnlyDiff(scene([modified(SPEC)]), REPO, 1, HEAD)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
+    });
+
+    it("flags the spec when its sibling's read fails", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      const diff = await testOnlyDiff(gitlinkAt(githubPort(fake.wire), SIBLING, HEAD), REPO, 1, HEAD);
+
+      expect(diff).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
+    });
+
+    it("refuses to probe the siblings of more specs than the path cap allows", async () => {
+      const specs = Array.from({ length: MAX_PROBED_PATHS }, (_, n) => modified(`packages/x/src/t${n}.test.mutations.json`));
+
+      expect(await testOnlyDiff(scene(specs), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("sibling probes") });
+    });
+  });
+
   it("names the source path when a test PR also changes source", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), modified("packages/x/src/x.ts")]);
 

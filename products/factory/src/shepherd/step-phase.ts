@@ -100,6 +100,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "after-stages": "post-merge",
   "sh-freeze": "post-merge",
   "sh-file-fix-task": "post-merge",
+  "sh-main-rerun": "post-merge",
   "sh-spawn-fixer": "post-merge",
   "sh-cleanup": "post-merge",
   "sh-reverted": "post-merge",
