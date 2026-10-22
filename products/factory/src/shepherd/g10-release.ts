@@ -303,7 +303,7 @@ function takeG10Recheck(runId: string, head: string): boolean {
 }
 
 /** The merge wait's recheck for the run registered on `repo#pr`; an unregistered PR has no run to ask. */
-export const g10Recheck = (store: () => ShepherdStore): TakeRecheck => (repo, pr, sha) => {
+export const g10Recheck = (store: () => { byPr: (repo: RepoSlug, pr: number) => { runId: string } | undefined }): TakeRecheck => (repo, pr, sha) => {
   const runId = store().byPr(repo, pr)?.runId;
   return runId !== undefined && takeG10Recheck(runId, sha);
 };

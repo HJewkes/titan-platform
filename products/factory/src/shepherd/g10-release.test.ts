@@ -188,7 +188,7 @@ function workflowRun(reviewerProfile: string | undefined, released = true, histo
 
 /** The recorded release step a replay is about to read back. */
 const replaying = () => `${G10_RELEASE_STEP}:${HEAD}:0`;
-const recheck = g10Recheck(() => ({ byPr: () => ({ runId: "run-1" }) }) as never);
+const recheck = g10Recheck(() => ({ byPr: () => ({ runId: "run-1" }) }));
 
 describe("releaseG10Hold", () => {
   it("asks for a release once for a verdict, so a re-hold at the same head waits for a newer one", async () => {
