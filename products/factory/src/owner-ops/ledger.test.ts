@@ -47,7 +47,7 @@ describe("owner-ops ledger", () => {
     const result = await runLogged(ledger, { actionId: "act-1", op: OP, now: NOW }, async () => ({ outcome: "already", runId: "run-1" }));
 
     expect(result).toEqual({ outcome: "already", runId: "run-1" });
-    expect(lines(dir).map((line) => line as { actionId: string; phase: string })).toMatchObject([
+    expect(lines(dir)).toMatchObject([
       { actionId: "act-0", phase: "started" },
       { actionId: "act-0", phase: "done" },
       { actionId: "act-1", phase: "started" },

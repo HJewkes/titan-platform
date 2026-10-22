@@ -5,7 +5,7 @@ import { refused, type Outcome } from "./outcome.js";
 import type { OpRead } from "./record.js";
 
 export type OpEffect = (read: OpRead) => Promise<Outcome>;
-export type OpEffects = Readonly<Partial<Record<OwnerOpKind, OpEffect>>>;
+type OpEffects = Readonly<Partial<Record<OwnerOpKind, OpEffect>>>;
 
 /** The ops the console may run, as data: each later slice adds its kind's effect here, and a kind with none is refused. */
 export const OP_EFFECTS: OpEffects = Object.freeze({});

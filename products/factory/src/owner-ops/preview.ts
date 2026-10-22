@@ -10,7 +10,7 @@ import type { FactoryContext } from "../registry.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";
 
-export interface PrPreview {
+interface PrPreview {
   repo: string;
   pr: number;
   state: "open" | "merged" | "closed";
@@ -24,7 +24,7 @@ export interface PrPreview {
   shepherd: { runId: string; held: boolean; holdReason: string | null; ownerHold: string | null } | null;
 }
 
-export interface GatePreview {
+interface GatePreview {
   gateId: string;
   status: GateStatus | "missing";
   /** The PR and head the gate asks about, when it reads as an approve-merge gate. */
@@ -45,7 +45,7 @@ const isPrOp = (op: OwnerOp): op is PrOp => "pr" in op;
  * The live read-back for an op, built only from the systems of record: the authority table, GitHub and Shepherd for a PR, the
  * gate store for a gate. Nothing in it comes from the op but the target, so a deposit that names a stale head reads back the true one.
  */
-export async function previewOp(op: OwnerOp, ctx: FactoryContext): Promise<OpPreview> {
+async function previewOp(op: OwnerOp, ctx: FactoryContext): Promise<OpPreview> {
   const base = { kind: op.kind, authority: opAuthority(op) };
   if (op.kind === "resolve-gate") return { ...base, gate: gatePreview(ctx.host, op.gateId) };
   if (!isPrOp(op)) return base;

@@ -22,7 +22,7 @@ type Answer = { body: object; status: Status };
 
 const ActionBody = z.strictObject({ actionId: z.string().regex(ACTION_ID) });
 
-export interface ConsoleActionDeps {
+interface ConsoleActionDeps {
   host: FactoryHost;
   /** Fresh PR reads; absent without the shepherd routes, and then the route answers 503. */
   port: GitHubPort | undefined;

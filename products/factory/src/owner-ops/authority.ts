@@ -5,7 +5,7 @@ import type { OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
  * The authority action each op is, as data. Until the table gains `pr-close`, `fleet-config` and `deploy-resume` (TP-3939 S0),
  * those ops sit under the nearest existing class, each of which denies owner-remote, so the console can never run them early.
  */
-export const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
+const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "resolve-gate": "merge",
   "release-hold": "human-verb",
   "merge-at-head": "merge",

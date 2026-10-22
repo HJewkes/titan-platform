@@ -3,7 +3,7 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-export type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
+type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
 export type Outcome =
   | { outcome: "resolved"; gateId: string }
   | { outcome: "already"; gateId: string }
@@ -13,7 +13,7 @@ export type Outcome =
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
 
-export interface PrAt {
+interface PrAt {
   repo: string;
   pr: number;
   headSha: string;
