@@ -24,6 +24,8 @@ export {
   type Target,
 } from "./schemas.js";
 export { BoundsSchema, preCheck, type Bounds } from "./bounds.js";
+export { parseUnifiedDiff, type DiffFile } from "./diff.js";
+export { changedParams, frozenOverlap, postCheck, type CheckRow, type PostCheck, type PostCheckInput } from "./post-check.js";
 export { confirmRule, improvement, keepRule, median, zeroToleranceHit, type Band, type KeepSettings } from "./keep.js";
 export { addPair, band, NO_NOISE, pooledSigma, sigmaOf, type NoiseSettings, type NoiseState } from "./noise.js";
 export { betaDraw, reward, seededRandom, select } from "./select.js";

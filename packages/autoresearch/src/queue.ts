@@ -49,7 +49,7 @@ function admit(proposal: Proposal, context: QueueContext, queued: ReadonlySet<st
   if (queued.has(idea.id) || context.seen.has(idea.id)) return "duplicate";
   const bound = preCheck(proposal, context.bounds, context.caseNames);
   if (bound) return bound;
-  if (inDeadEnd(idea, context.deadEnds) && !proposal.differsFrom) return "dead-end";
+  if (inDeadEnd(idea, context.deadEnds) && !proposal.differsFrom?.trim()) return "dead-end";
   return idea;
 }
 

@@ -34,9 +34,15 @@ export function zeroToleranceHit(runs: readonly ArResult[], settings: KeepSettin
   return name === undefined ? undefined : `violation:${name}`;
 }
 
+/** A `min` guard is worse when it rises, a `max` guard when it falls. */
+function worse(guard: KeepSettings["guards"][string], ideaMedian: number, bestMedian: number): boolean {
+  const { slack, direction } = typeof guard === "number" ? { slack: guard, direction: "min" } : guard;
+  return direction === "min" ? ideaMedian > bestMedian + slack : ideaMedian < bestMedian - slack;
+}
+
 function guardHit(best: readonly ArResult[], idea: readonly ArResult[], settings: KeepSettings): string | undefined {
-  const rose = Object.entries(settings.guards).find(([name, slack]) => median(metricOf(idea, name)) > median(metricOf(best, name)) + slack);
-  return rose ? `guard:${rose[0]}` : undefined;
+  const hit = Object.entries(settings.guards).find(([name, guard]) => worse(guard, median(metricOf(idea, name)), median(metricOf(best, name))));
+  return hit ? `guard:${hit[0]}` : undefined;
 }
 
 /** Any one of these rejects whatever the band says. */

@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { Proposal } from "./schemas.js";
 
+/** A ban is prose (`"..."`), `true` or a data object; any of them turns it on. `false` turns it off. */
+const BanSchema = z.union([z.string(), z.boolean(), z.object({}).loose()]);
+const LiteralBanSchema = z.union([z.string(), z.boolean(), z.object({ allowed: z.array(z.number()).optional() }).loose()]);
+
 export const BoundsSchema = z.object({
   schema: z.literal("ar-bounds/v1"),
   classes: z.record(
@@ -9,10 +13,23 @@ export const BoundsSchema = z.object({
       paths: z.array(z.string()),
       tests: z.array(z.string()).default([]),
       params: z.record(z.string(), z.tuple([z.number(), z.number()])).optional(),
+      /** Param keys, exact or `prefix.*`, whose values must be whole numbers. */
+      integerParams: z.array(z.string()).default([]),
     }),
   ),
+  /** Implied by the class allowlist: an idea has exactly one class. */
+  diff: z.object({ oneClassPerIdea: z.boolean().default(true) }).default({ oneClassPerIdea: true }),
+  test: z
+    .object({ required: z.boolean().default(false), mustFailOnBase: z.boolean().default(false), exceptClasses: z.array(z.string()).default([]) })
+    .default({ required: false, mustFailOnBase: false, exceptClasses: [] }),
+  banned: z
+    .object({ frozenTouch: BanSchema.optional(), literalsOutsideConfig: LiteralBanSchema.optional(), newFiles: BanSchema.optional(), seedNames: BanSchema.optional() })
+    .default({}),
 });
 export type Bounds = z.infer<typeof BoundsSchema>;
+export type ClassBounds = Bounds["classes"][string];
+
+export const banOn = (ban: unknown): boolean => ban !== undefined && ban !== false;
 
 /** `**`, `*`, `?` and `{a,b}` only: the shapes `bounds.json` uses. */
 function globToRegExp(glob: string): RegExp {
@@ -35,20 +52,24 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${source}$`);
 }
 
-const matchesAny = (path: string, globs: readonly string[]): boolean => globs.some((glob) => globToRegExp(glob).test(path));
+export const matchesAny = (path: string, globs: readonly string[]): boolean => globs.some((glob) => globToRegExp(glob).test(path));
 
-/** An exact key wins over a `prefix.*` range. */
-function paramRange(ranges: Record<string, [number, number]>, key: string): [number, number] | undefined {
-  if (ranges[key]) return ranges[key];
-  const wildcard = Object.keys(ranges).find((pattern) => pattern.endsWith(".*") && key.startsWith(pattern.slice(0, -1)));
-  return wildcard ? ranges[wildcard] : undefined;
+/** An exact key wins over a `prefix.*` pattern. */
+function keyPattern(patterns: readonly string[], key: string): string | undefined {
+  if (patterns.includes(key)) return key;
+  return patterns.find((pattern) => pattern.endsWith(".*") && key.startsWith(pattern.slice(0, -1)));
 }
 
-function paramCode(ranges: Record<string, [number, number]> | undefined, params: Record<string, number>): string | undefined {
+/** `null` stands for a key the change removed. */
+export function paramCode(spec: ClassBounds, params: Record<string, unknown>): string | undefined {
+  const ranges = spec.params ?? {};
   for (const [key, value] of Object.entries(params)) {
-    const range = ranges ? paramRange(ranges, key) : undefined;
-    if (!range) return "param-unknown";
-    if (value < range[0] || value > range[1]) return "param-out-of-range";
+    if (value === null) return "param-removed";
+    const pattern = keyPattern(Object.keys(ranges), key);
+    if (!pattern || typeof value !== "number") return "param-unknown";
+    const [low, high] = ranges[pattern]!;
+    if (value < low || value > high) return "param-out-of-range";
+    if (keyPattern(spec.integerParams, key) && !Number.isInteger(value)) return "param-not-integer";
   }
   return undefined;
 }
@@ -58,7 +79,7 @@ export function preCheck(proposal: Proposal, bounds: Bounds, caseNames: readonly
   const spec = bounds.classes[proposal.class];
   if (!spec) return "unknown-class";
   if (proposal.targets.length === 0 || !proposal.targets.every((target) => matchesAny(target, spec.paths))) return "target-outside-class";
-  const params = paramCode(spec.params, proposal.params ?? {});
+  const params = paramCode(spec, proposal.params ?? {});
   if (params) return params;
   const text = JSON.stringify(proposal);
   if (caseNames.some((name) => text.includes(name))) return "case-name";

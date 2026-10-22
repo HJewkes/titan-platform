@@ -16,7 +16,14 @@ export type Pinned = z.infer<typeof PinnedSchema>;
 
 export const TreeSchema = z.object({ tree: z.string(), branch: z.string() });
 export const ImplementedSchema = z.object({ head: z.string(), usd: z.number().nonnegative(), lesson: z.string().optional(), diff: DiffSizeSchema.optional() });
-export const StaticCheckSchema = z.object({ ok: z.boolean(), code: z.string().optional() });
+export const StaticCheckSchema = z.object({
+  ok: z.boolean(),
+  code: z.string().optional(),
+  /** One row per L0 check, in the order they ran. */
+  checks: z.array(z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: z.number().nonnegative().optional() })).default([]),
+  /** Measured from the diff; it replaces the implementer's own count on the outcome. */
+  diff: DiffSizeSchema.optional(),
+});
 export const HeadSchema = z.object({ head: z.string() });
 export const ReleasedSchema = z.object({ released: z.string() });
 
@@ -37,7 +44,7 @@ export interface ArPorts {
   allocTree(input: { runId: string; ideaId: string; base: string }, signal: AbortSignal): Promise<z.infer<typeof TreeSchema>>;
   implement(input: { idea: Idea; tree: string; base: string; brief: string }, signal: AbortSignal): Promise<z.infer<typeof ImplementedSchema>>;
   /** L0: bounds post-check, unit suite and test proof; never a model call. */
-  staticCheck(input: { idea: Idea; tree: string; base: string; head: string }, signal: AbortSignal): Promise<z.infer<typeof StaticCheckSchema>>;
+  staticCheck(input: { idea: Idea; tree: string; base: string; head: string }, signal: AbortSignal): Promise<z.input<typeof StaticCheckSchema>>;
   micro(input: { idea: Idea; tree: string; rung: string }, signal: AbortSignal): Promise<ArMicro>;
   evalCase(input: { tree: string; case: string; key: string }, signal: AbortSignal): Promise<ArResult>;
   ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{ head: string }>;

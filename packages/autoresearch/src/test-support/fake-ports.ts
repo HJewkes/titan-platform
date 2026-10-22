@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { Bounds } from "../bounds.js";
+import { BoundsSchema, type Bounds } from "../bounds.js";
+import { parseUnifiedDiff } from "../diff.js";
+import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
 import type { ArPorts, RatchetRequest } from "../ports.js";
-import { ArMicroSchema, ArResultSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
+import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
@@ -21,7 +23,8 @@ interface Mechanism {
   violations?: Named;
   by_key?: Record<string, { metrics?: Named; violations?: Named }>;
   micro?: boolean;
-  l0?: string;
+  /** What the implementer appends, by path; by default a comment in the idea's first target and its class's test file. */
+  files?: Record<string, string>;
 }
 
 /** What `fake_eval.sh` reports: base metrics, which one carries ±sigma noise, and each mechanism's effect. */
@@ -45,14 +48,30 @@ export interface FixtureRepo {
 
 export const git = async (cwd: string, ...args: string[]) => (await run("git", [...IDENTITY, ...args], { cwd })).stdout.trim();
 
+/** The target's own tree at the pin, so an idea's edit is a modification, as it would be on a real repo. */
+export const SEED_FILES: Record<string, string> = {
+  "src/gate/gates.py": "def accept(task):\n    return True\n",
+  "src/gate/measure.py": "def measure(run):\n    return 0\n",
+  "src/planner/rank.py": "def rank(tasks):\n    return tasks\n",
+  "src/config.json": `${JSON.stringify({ hot_cc: 10, p5: { crossings: 1 } }, null, 2)}\n`,
+  "tests/test_gate.py": "def test_accept():\n    assert True\n",
+  "tests/test_planner.py": "def test_rank():\n    assert True\n",
+};
+
+export function writeFiles(dir: string, files: Record<string, string>): void {
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+}
+
 export async function fixtureRepo(policy: Policy): Promise<FixtureRepo> {
   const root = mkdtempSync(join(tmpdir(), "ar-fixture-"));
   const bare = join(root, "origin.git");
   const work = join(root, "work");
   mkdirSync(work);
   await git(work, "init", "--quiet", "-b", "main");
-  writeFileSync(join(work, "applied.txt"), "");
-  writeFileSync(join(work, "policy.json"), JSON.stringify(policy, null, 2));
+  writeFiles(work, { ...SEED_FILES, "applied.txt": "", "policy.json": JSON.stringify(policy, null, 2) });
   await git(work, "add", ".");
   await git(work, "commit", "--quiet", "-m", "fixture");
   await git(root, "clone", "--quiet", "--bare", work, bare);
@@ -67,7 +86,7 @@ const NOISE = { bandSigmas: 2, lockAfterPairs: 5, minPairs: 3, defaultBand: 1.5 
 const PHASES = [{ id: "p1", train: ["t-alpha"], baselineRuns: 6, stop: { ideasEvaluated: 16, roundsWithoutGain: 3 } }];
 
 /** A code-health target: lower is better, every gate must hold, and a micro rung per class. */
-const FIXTURE_TARGET: Target = {
+export const FIXTURE_TARGET: Target = TargetSchema.parse({
   schema: "ar-target/v1",
   ratchetPrefix: "autoresearch/fixture",
   metric: {
@@ -79,8 +98,9 @@ const FIXTURE_TARGET: Target = {
     noise: NOISE,
   },
   microRung: { "accept-gate": "L1-replay", "planner-ranking": "L1-cluster" },
+  frozen: ["src/gate/measure.py", "tests/test_ar_*.py"],
   phases: PHASES,
-};
+});
 
 export const FIXTURE_POLICY: Omit<Policy, "mechanisms"> = {
   sigma: 0.2,
@@ -90,14 +110,20 @@ export const FIXTURE_POLICY: Omit<Policy, "mechanisms"> = {
   violations: ["hidden_regressions"],
 };
 
-/** A second, unrelated target: higher is better, a tail-latency guard, crash counts, no gates and no micro rung. */
-export const THROUGHPUT_TARGET: Target = {
+/** A second, unrelated target: higher is better, a tail-latency guard and a served-count guard that may not fall, crash counts, no gates and no micro rung. */
+export const THROUGHPUT_TARGET: Target = TargetSchema.parse({
   schema: "ar-target/v1",
   ratchetPrefix: "autoresearch/throughput",
-  metric: { primary: { name: "throughput_rps", direction: "max" }, guards: { p99_ms: 5 }, zeroTolerance: ["crashes"], allGate: false, noOp: "requests_served", noise: NOISE },
-  microRung: {},
+  metric: {
+    primary: { name: "throughput_rps", direction: "max" },
+    guards: { p99_ms: 5, requests_served: { slack: 0, direction: "max" } },
+    zeroTolerance: ["crashes"],
+    allGate: false,
+    noOp: "requests_served",
+    noise: NOISE,
+  },
   phases: PHASES,
-};
+});
 
 export const THROUGHPUT_POLICY: Omit<Policy, "mechanisms"> = {
   sigma: 0.5,
@@ -106,14 +132,16 @@ export const THROUGHPUT_POLICY: Omit<Policy, "mechanisms"> = {
   violations: ["crashes"],
 };
 
-export const FIXTURE_BOUNDS: Bounds = {
+export const FIXTURE_BOUNDS: Bounds = BoundsSchema.parse({
   schema: "ar-bounds/v1",
   classes: {
     "accept-gate": { paths: ["src/gate/*.py"], tests: ["tests/test_gate*.py"] },
     "planner-ranking": { paths: ["src/planner/{rank,recipes}.py"], tests: ["tests/test_planner*.py"] },
-    "config-param": { paths: ["src/config.json"], tests: [], params: { hot_cc: [6, 15], "p5.*": [0, 0.2] } },
+    "config-param": { paths: ["src/config.json"], params: { hot_cc: [6, 15], "p5.*": [0, 0.2] }, integerParams: ["hot_cc"] },
   },
-};
+  test: { required: true, mustFailOnBase: true, exceptClasses: ["config-param"] },
+  banned: { frozenTouch: true, literalsOutsideConfig: "added source literals other than 0, 1, 2, -1", newFiles: "only under the class's test globs", seedNames: "the run's case names" },
+});
 
 export function proposal(mechanism: string, overrides: Partial<Proposal> = {}): Proposal {
   return {
@@ -152,6 +180,9 @@ interface FakeCalls {
 export interface FakeOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
   target?: Target;
+  bounds?: Bounds;
+  /** Case names the L0 post-check refuses in an added line. */
+  caseNames?: string[];
   /** Defaults to a fast-forward push from the integration tree; a host may pass its own ratchet. */
   ratchet?: (request: RatchetRequest) => Promise<{ head: string }>;
   /** Awaited before an implement or an eval runs: tests hold a lane open or simulate a kill with it. */
@@ -165,7 +196,16 @@ async function script(name: string, args: string[]): Promise<unknown> {
   return JSON.parse((await run("bash", [join(FIXTURES, name), ...args])).stdout);
 }
 
-function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, options: FakeOptions) {
+/** The idea's own edit; `applied.txt` is the fake evaluator's channel and stays out of the diff L0 checks. */
+function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, string> {
+  const files = policy.mechanisms[idea.mechanism]?.files;
+  if (files) return files;
+  const testGlob = bounds.classes[idea.class]?.tests[0];
+  const edits = { [idea.targets[0]!]: `# ${idea.mechanism}\n` };
+  return testGlob ? { ...edits, [testGlob.replaceAll("*", "")]: `# checks ${idea.mechanism}\n` } : edits;
+}
+
+function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, policy: Policy, options: FakeOptions) {
   return {
     async allocTree({ runId, ideaId, base }: { runId: string; ideaId: string; base: string }) {
       const tree = join(repo.root, "trees", `${ideaId}-${ideaOfTree.size}`);
@@ -178,7 +218,12 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.implement.push(idea.id);
       await options.beforeImplement?.(idea, calls.implement.length);
       appendFileSync(join(tree, "applied.txt"), `${idea.mechanism}\n`);
-      await git(tree, "commit", "--quiet", "-am", `apply ${idea.mechanism}`);
+      for (const [path, text] of Object.entries(editsOf(idea, policy, options.bounds ?? FIXTURE_BOUNDS))) {
+        mkdirSync(dirname(join(tree, path)), { recursive: true });
+        appendFileSync(join(tree, path), text);
+      }
+      await git(tree, "add", "--all");
+      await git(tree, "commit", "--quiet", "-m", `apply ${idea.mechanism}`);
       return { head: await git(tree, "rev-parse", "HEAD"), usd: 0, lesson: `${idea.mechanism} applied` };
     },
     async releaseTree({ tree }: { tree: string }) {
@@ -188,11 +233,13 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
   };
 }
 
-function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, policy: Policy, options: FakeOptions) {
+function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, target: Target, options: FakeOptions) {
   return {
-    async staticCheck({ idea }: { idea: Idea }) {
-      const code = policy.mechanisms[idea.mechanism]?.l0;
-      return code ? { ok: false, code } : { ok: true };
+    async staticCheck({ idea, tree, base, head }: { idea: Idea; tree: string; base: string; head: string }) {
+      const text = await git(tree, "diff", "--no-color", "--unified=0", "-M", base, head, "--", ".", ":(exclude)applied.txt");
+      const bounds = options.bounds ?? FIXTURE_BOUNDS;
+      const checked = postCheck({ idea, diff: parseUnifiedDiff(text), bounds, frozen: target.frozen, caseNames: options.caseNames ?? [] });
+      return { ok: checked.code === undefined, code: checked.code, checks: checked.checks, diff: checked.size };
     },
     async micro({ idea, tree, rung }: { idea: Idea; tree: string; rung: string }) {
       calls.micro.push(idea.id);
@@ -224,7 +271,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
     async pin({ runId, pin }) {
       const ratchetRef = `refs/heads/${target.ratchetPrefix}/${runId}`;
       await git(repo.work, "push", "--quiet", "origin", `${pin}:${ratchetRef}`);
-      return { pin, ratchetRef, ratchetHead: pin, integrationTree: repo.work, target, bounds: FIXTURE_BOUNDS };
+      return { pin, ratchetRef, ratchetHead: pin, integrationTree: repo.work, target, bounds: options.bounds ?? FIXTURE_BOUNDS };
     },
     async plan(input) {
       calls.plans.push(input);
@@ -234,7 +281,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.ratchet.push(input);
       return (options.ratchet ?? pushRatchet)(input);
     },
-    ...treePorts(repo, calls, ideaOfTree, options),
-    ...rungPorts(repo, calls, ideaOfTree, policy, options),
+    ...treePorts(repo, calls, ideaOfTree, policy, options),
+    ...rungPorts(repo, calls, ideaOfTree, target, options),
   };
 }

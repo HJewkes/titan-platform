@@ -50,6 +50,10 @@ export const ArResultSchema = z.object({
   violations: z.record(z.string(), z.number().int().nonnegative()).default({}),
   usd: z.number().nonnegative(),
   wall_s: z.number().nonnegative(),
+  rung: z.string().optional(),
+  evaluator_pin: z.string().optional(),
+  /** Where the run left its artifacts; a replay micro rung reads the best's as its baseline. */
+  artifact_dir: z.string().optional(),
 });
 export type ArResult = z.infer<typeof ArResultSchema>;
 
@@ -61,7 +65,9 @@ export const ArMicroSchema = z.object({
 });
 export type ArMicro = z.infer<typeof ArMicroSchema>;
 
-export const DiffSizeSchema = z.object({ files: z.number().int().nonnegative(), lines: z.number().int().nonnegative() });
+const count = z.number().int().nonnegative();
+/** `files` and `lines` count the whole diff; the `src` and `test` splits are measured by L0, never self-reported. */
+export const DiffSizeSchema = z.object({ files: count, lines: count, srcFiles: count.optional(), srcLines: count.optional(), testLines: count.optional() });
 export type DiffSize = z.infer<typeof DiffSizeSchema>;
 
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
@@ -104,11 +110,13 @@ const PhaseSchema = z.object({
   stop: z.object({ ideasEvaluated: z.number().int().positive(), roundsWithoutGain: z.number().int().positive() }),
 });
 
+const GuardSchema = z.object({ slack: z.number().nonnegative(), direction: z.enum(["min", "max"]) });
+
 /** The keep rule as data: which metric is judged, which may not get worse, and which counts must stay zero. */
 export const MetricSpecSchema = z.object({
   primary: z.object({ name: z.string(), direction: z.enum(["min", "max"]) }),
-  /** Largest allowed rise of a metric's median over the best's. */
-  guards: z.record(z.string(), z.number().nonnegative()).default({}),
+  /** How far a metric's median may get worse than the best's; a bare number is the slack of a `min` metric. */
+  guards: z.record(z.string(), z.union([z.number().nonnegative(), GuardSchema])).default({}),
   /** Violation names of which a single one in any run rejects. */
   zeroTolerance: z.array(z.string()).default([]),
   /** When set, a run passes only with every gate true, and an idea may not pass less often than the best. */
@@ -126,6 +134,8 @@ export const TargetSchema = z.object({
   metric: MetricSpecSchema,
   /** L1 rung name per change class; a class with none goes from L0 straight to L2. */
   microRung: z.record(z.string(), z.string()).default({}),
+  /** Globs no idea may touch and no class may allow: the evaluator and everything it reads. */
+  frozen: z.array(z.string()).default([]),
   phases: z.array(PhaseSchema).min(1),
 });
 export type Target = z.infer<typeof TargetSchema>;

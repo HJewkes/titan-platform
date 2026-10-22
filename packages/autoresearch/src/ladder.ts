@@ -64,8 +64,8 @@ async function climb(rc: RoundContext, idea: Idea, scope: string, tree: { tree: 
   const base = rc.best.head;
   const brief = implementerBrief(rc.digest, idea);
   const built = await step(rc.ctx, `${arStepId("implement")}:${scope}`, { idea, tree: tree.tree, base, brief }, ImplementedSchema);
-  const at: Built = { idea, tree: tree.tree, base, head: built.head, branch: tree.branch, lesson: built.lesson, diff: built.diff };
   const l0 = await step(rc.ctx, `${arStepId("l0")}:${scope}`, { idea, tree: tree.tree, base, head: built.head }, StaticCheckSchema);
+  const at: Built = { idea, tree: tree.tree, base, head: built.head, branch: tree.branch, lesson: built.lesson, diff: l0.diff ?? built.diff };
   if (!l0.ok) return finish(at, "L0", "rejected", `rejected:post:${l0.code ?? "unknown"}`);
   const rung = rc.pinned.target.microRung[idea.class];
   if (rung) {

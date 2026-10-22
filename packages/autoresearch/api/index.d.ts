@@ -1,30 +1,6 @@
 import { WorkflowContext, RestartRule } from '@titan-design/workflow';
 import { z } from 'zod';
 
-/**
- * The autoresearch recipe: pin, baseline, then rounds of plan, select and a pipelined ladder per idea,
- * with the strongest winner moving the ratchet. Everything outside the run goes through `ArPorts`.
- *
- * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
- */
-
-declare const AUTORESEARCH_WORKFLOW = "autoresearch";
-/** The workflow function; a host registers it under `AUTORESEARCH_WORKFLOW` with routes for every dispatch step. */
-declare function runAutoresearch(ctx: WorkflowContext): Promise<void>;
-
-declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "release"];
-type ArDispatchStep = (typeof AR_DISPATCH_STEPS)[number];
-/** Pure decisions recorded so a replay reads them back instead of recomputing: the queue, the draws, each idea's stop. */
-declare const AR_SEED_STEPS: readonly ["queue", "select", "stop"];
-type ArSeedStep = (typeof AR_SEED_STEPS)[number];
-/** A step family and the context call that runs it; a host that guards step kinds reads this. */
-interface ArStepDeclaration {
-    id: string;
-    kind: "dispatch" | "seed";
-}
-declare const arStepId: (name: ArDispatchStep | ArSeedStep) => string;
-declare const AUTORESEARCH_STEPS: readonly ArStepDeclaration[];
-
 /** What the planner proposes; the workflow derives `id`, `lineage` and `cell` from it. */
 declare const ProposalSchema: z.ZodObject<{
     hypothesis: z.ZodString;
@@ -142,6 +118,9 @@ declare const ArResultSchema: z.ZodObject<{
     violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
     usd: z.ZodNumber;
     wall_s: z.ZodNumber;
+    rung: z.ZodOptional<z.ZodString>;
+    evaluator_pin: z.ZodOptional<z.ZodString>;
+    artifact_dir: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type ArResult = z.infer<typeof ArResultSchema>;
 declare const ArMicroSchema: z.ZodObject<{
@@ -151,9 +130,13 @@ declare const ArMicroSchema: z.ZodObject<{
     usd: z.ZodNumber;
 }, z.core.$strip>;
 type ArMicro = z.infer<typeof ArMicroSchema>;
+/** `files` and `lines` count the whole diff; the `src` and `test` splits are measured by L0, never self-reported. */
 declare const DiffSizeSchema: z.ZodObject<{
     files: z.ZodNumber;
     lines: z.ZodNumber;
+    srcFiles: z.ZodOptional<z.ZodNumber>;
+    srcLines: z.ZodOptional<z.ZodNumber>;
+    testLines: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 type DiffSize = z.infer<typeof DiffSizeSchema>;
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
@@ -187,10 +170,16 @@ declare const OutcomeSchema: z.ZodObject<{
         violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
         usd: z.ZodNumber;
         wall_s: z.ZodNumber;
+        rung: z.ZodOptional<z.ZodString>;
+        evaluator_pin: z.ZodOptional<z.ZodString>;
+        artifact_dir: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>>;
     diff: z.ZodOptional<z.ZodObject<{
         files: z.ZodNumber;
         lines: z.ZodNumber;
+        srcFiles: z.ZodOptional<z.ZodNumber>;
+        srcLines: z.ZodOptional<z.ZodNumber>;
+        testLines: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
     lesson: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
@@ -205,7 +194,13 @@ declare const MetricSpecSchema: z.ZodObject<{
             max: "max";
         }>;
     }, z.core.$strip>;
-    guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
+        slack: z.ZodNumber;
+        direction: z.ZodEnum<{
+            min: "min";
+            max: "max";
+        }>;
+    }, z.core.$strip>]>>>;
     zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
     allGate: z.ZodDefault<z.ZodBoolean>;
     noOp: z.ZodOptional<z.ZodString>;
@@ -229,7 +224,13 @@ declare const TargetSchema: z.ZodObject<{
                 max: "max";
             }>;
         }, z.core.$strip>;
-        guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
+            slack: z.ZodNumber;
+            direction: z.ZodEnum<{
+                min: "min";
+                max: "max";
+            }>;
+        }, z.core.$strip>]>>>;
         zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
         allGate: z.ZodDefault<z.ZodBoolean>;
         noOp: z.ZodOptional<z.ZodString>;
@@ -241,6 +242,7 @@ declare const TargetSchema: z.ZodObject<{
         }, z.core.$strip>;
     }, z.core.$strip>;
     microRung: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>;
+    frozen: z.ZodDefault<z.ZodArray<z.ZodString>>;
     phases: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         train: z.ZodArray<z.ZodString>;
@@ -254,6 +256,30 @@ declare const TargetSchema: z.ZodObject<{
 type Target = z.infer<typeof TargetSchema>;
 /** A result schema that also requires every metric the keep rule reads, the gates of an allGate target and each zero-tolerance violation count, so a run missing one fails its eval step. */
 declare function resultSchemaFor(metric: MetricSpec): z.ZodType<ArResult>;
+
+/**
+ * The autoresearch recipe: pin, baseline, then rounds of plan, select and a pipelined ladder per idea,
+ * with the strongest winner moving the ratchet. Everything outside the run goes through `ArPorts`.
+ *
+ * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
+ */
+
+declare const AUTORESEARCH_WORKFLOW = "autoresearch";
+/** The workflow function; a host registers it under `AUTORESEARCH_WORKFLOW` with routes for every dispatch step. */
+declare function runAutoresearch(ctx: WorkflowContext): Promise<void>;
+
+declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "release"];
+type ArDispatchStep = (typeof AR_DISPATCH_STEPS)[number];
+/** Pure decisions recorded so a replay reads them back instead of recomputing: the queue, the draws, each idea's stop. */
+declare const AR_SEED_STEPS: readonly ["queue", "select", "stop"];
+type ArSeedStep = (typeof AR_SEED_STEPS)[number];
+/** A step family and the context call that runs it; a host that guards step kinds reads this. */
+interface ArStepDeclaration {
+    id: string;
+    kind: "dispatch" | "seed";
+}
+declare const arStepId: (name: ArDispatchStep | ArSeedStep) => string;
+declare const AUTORESEARCH_STEPS: readonly ArStepDeclaration[];
 
 declare const REGISTRY_TAIL = 40;
 /** A cell, targets and direction that already failed past L0, so a repeat must say how it differs. */
@@ -337,7 +363,13 @@ declare const PinnedSchema: z.ZodObject<{
                     max: "max";
                 }>;
             }, z.core.$strip>;
-            guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            guards: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodNumber, z.ZodObject<{
+                slack: z.ZodNumber;
+                direction: z.ZodEnum<{
+                    min: "min";
+                    max: "max";
+                }>;
+            }, z.core.$strip>]>>>;
             zeroTolerance: z.ZodDefault<z.ZodArray<z.ZodString>>;
             allGate: z.ZodDefault<z.ZodBoolean>;
             noOp: z.ZodOptional<z.ZodString>;
@@ -349,6 +381,7 @@ declare const PinnedSchema: z.ZodObject<{
             }, z.core.$strip>;
         }, z.core.$strip>;
         microRung: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>;
+        frozen: z.ZodDefault<z.ZodArray<z.ZodString>>;
         phases: z.ZodArray<z.ZodObject<{
             id: z.ZodString;
             train: z.ZodArray<z.ZodString>;
@@ -365,6 +398,23 @@ declare const PinnedSchema: z.ZodObject<{
             paths: z.ZodArray<z.ZodString>;
             tests: z.ZodDefault<z.ZodArray<z.ZodString>>;
             params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodTuple<[z.ZodNumber, z.ZodNumber], null>>>;
+            integerParams: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        }, z.core.$strip>>;
+        diff: z.ZodDefault<z.ZodObject<{
+            oneClassPerIdea: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strip>>;
+        test: z.ZodDefault<z.ZodObject<{
+            required: z.ZodDefault<z.ZodBoolean>;
+            mustFailOnBase: z.ZodDefault<z.ZodBoolean>;
+            exceptClasses: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        }, z.core.$strip>>;
+        banned: z.ZodDefault<z.ZodObject<{
+            frozenTouch: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+            literalsOutsideConfig: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{
+                allowed: z.ZodOptional<z.ZodArray<z.ZodNumber>>;
+            }, z.core.$loose>]>>;
+            newFiles: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+            seedNames: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
         }, z.core.$strip>>;
     }, z.core.$strip>;
 }, z.core.$strip>;
@@ -380,11 +430,27 @@ declare const ImplementedSchema: z.ZodObject<{
     diff: z.ZodOptional<z.ZodObject<{
         files: z.ZodNumber;
         lines: z.ZodNumber;
+        srcFiles: z.ZodOptional<z.ZodNumber>;
+        srcLines: z.ZodOptional<z.ZodNumber>;
+        testLines: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 declare const StaticCheckSchema: z.ZodObject<{
     ok: z.ZodBoolean;
     code: z.ZodOptional<z.ZodString>;
+    checks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        ok: z.ZodBoolean;
+        code: z.ZodOptional<z.ZodString>;
+        ms: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>>;
+    diff: z.ZodOptional<z.ZodObject<{
+        files: z.ZodNumber;
+        lines: z.ZodNumber;
+        srcFiles: z.ZodOptional<z.ZodNumber>;
+        srcLines: z.ZodOptional<z.ZodNumber>;
+        testLines: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 declare const HeadSchema: z.ZodObject<{
     head: z.ZodString;
@@ -430,7 +496,7 @@ interface ArPorts {
         tree: string;
         base: string;
         head: string;
-    }, signal: AbortSignal): Promise<z.infer<typeof StaticCheckSchema>>;
+    }, signal: AbortSignal): Promise<z.input<typeof StaticCheckSchema>>;
     micro(input: {
         idea: Idea;
         tree: string;
@@ -470,11 +536,70 @@ declare const BoundsSchema: z.ZodObject<{
         paths: z.ZodArray<z.ZodString>;
         tests: z.ZodDefault<z.ZodArray<z.ZodString>>;
         params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodTuple<[z.ZodNumber, z.ZodNumber], null>>>;
+        integerParams: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>>;
+    diff: z.ZodDefault<z.ZodObject<{
+        oneClassPerIdea: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strip>>;
+    test: z.ZodDefault<z.ZodObject<{
+        required: z.ZodDefault<z.ZodBoolean>;
+        mustFailOnBase: z.ZodDefault<z.ZodBoolean>;
+        exceptClasses: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>>;
+    banned: z.ZodDefault<z.ZodObject<{
+        frozenTouch: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+        literalsOutsideConfig: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{
+            allowed: z.ZodOptional<z.ZodArray<z.ZodNumber>>;
+        }, z.core.$loose>]>>;
+        newFiles: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+        seedNames: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 type Bounds = z.infer<typeof BoundsSchema>;
 /** `ar-bounds-pre`, run on every planner add before any spawn: a failure costs nothing but the planner's words. */
 declare function preCheck(proposal: Proposal, bounds: Bounds, caseNames: readonly string[]): string | undefined;
+
+interface DiffFile {
+    path: string;
+    /** The old path of a rename. */
+    from?: string;
+    status: "A" | "M" | "D" | "R";
+    added: string[];
+    removed: number;
+}
+/** Parses `git diff --no-color --unified=0 -M base head`; pure, so a host and a fixture feed it the same text. */
+declare function parseUnifiedDiff(text: string): DiffFile[];
+
+interface CheckRow {
+    name: string;
+    ok: boolean;
+    code?: string;
+}
+interface PostCheckInput {
+    idea: Pick<Idea, "class">;
+    diff: readonly DiffFile[];
+    bounds: Bounds;
+    /** The target's frozen globs: the evaluator and everything it reads. */
+    frozen: readonly string[];
+    /** The run's case names; the `seedNames` ban says where a host reads them from. */
+    caseNames: readonly string[];
+    /** `changedParams` over the class's params file, base against head. */
+    paramValues?: Record<string, unknown>;
+}
+interface PostCheck {
+    code?: string;
+    checks: CheckRow[];
+    size: DiffSize;
+}
+/** `ar-bounds-post` (L0) over a real diff: every check runs and is recorded, and the first failure is the code. */
+declare function postCheck(input: PostCheckInput): PostCheck;
+/** Dotted keys whose value changed, mapped to the new value; a removed key maps to `null`. */
+declare function changedParams(beforeJson: string, afterJson: string): Record<string, unknown>;
+/**
+ * Class globs an idea could use to edit a frozen path. With no file list only wildcard-free globs are
+ * tested; a host with `git ls-files` passes it so glob classes are tested file by file.
+ */
+declare function frozenOverlap(bounds: Bounds, frozen: readonly string[], files?: readonly string[]): string[];
 
 /** The target's metric spec; noise settings are read by the band, not by the rule. */
 type KeepSettings = Omit<MetricSpec, "noise">;
@@ -577,4 +702,4 @@ declare function quotaViolations(ops: QueueOps, quota: QuotaContext): string[];
 /** Applies the planner's ops mechanically: adds pass dedup, the bounds pre-check and the dead-end rule, at no model cost. */
 declare function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueContext): Applied;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_WORKFLOW, type ArDispatchStep, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArStepDeclaration, type ArStepHandler, type Band, type Bounds, BoundsSchema, type DeadEnd, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, HeadSchema, type Idea, IdeaSchema, ImplementedSchema, type KeepSettings, type MetricSpec, MetricSpecSchema, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type Proposal, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, type Registries, ReleasedSchema, StaticCheckSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arStepHandlers, arStepId, band, betaDraw, buildDigest, confirmRule, evidenceRow, ideaId, implementerBrief, improvement, inDeadEnd, keepRule, median, pooledSigma, preCheck, quotaViolations, recordAnalysis, recordOutcome, registryTails, resultSchemaFor, reward, runAutoresearch, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_WORKFLOW, type ArDispatchStep, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArStepDeclaration, type ArStepHandler, type Band, type Bounds, BoundsSchema, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, HeadSchema, type Idea, IdeaSchema, ImplementedSchema, type KeepSettings, type MetricSpec, MetricSpecSchema, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PostCheck, type PostCheckInput, type Proposal, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, type Registries, ReleasedSchema, StaticCheckSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arStepHandlers, arStepId, band, betaDraw, buildDigest, changedParams, confirmRule, evidenceRow, frozenOverlap, ideaId, implementerBrief, improvement, inDeadEnd, keepRule, median, parseUnifiedDiff, pooledSigma, postCheck, preCheck, quotaViolations, recordAnalysis, recordOutcome, registryTails, resultSchemaFor, reward, runAutoresearch, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };

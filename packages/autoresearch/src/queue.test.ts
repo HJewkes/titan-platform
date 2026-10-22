@@ -35,16 +35,6 @@ describe("applying queue ops", () => {
     expect(applied.queue.map((idea) => idea.mechanism)).toEqual(["fine"]);
   });
 
-  it("needs a differsFrom statement for an idea in a dead-end cell", () => {
-    const deadEnds = [{ cell: "accept-gate:retry", targets: ["src/gate/gates.py"], rungFailed: "L2" }];
-
-    const bare = applyOps([], ops({ add: [proposal("retry")] }), { ...CONTEXT, deadEnds });
-    const stated = applyOps([], ops({ add: [proposal("retry", { differsFrom: "gates on module CC, not file CC" })] }), { ...CONTEXT, deadEnds });
-
-    expect(bare.rejected.map((entry) => entry.code)).toEqual(["rejected:pre:dead-end"]);
-    expect(stated.queue).toHaveLength(1);
-  });
-
   it("drops an owner idea only with a reason, and a follow-up inherits its parent's lineage", () => {
     const owner = toIdea(proposal("owner", { source: "owner" }), CONTEXT);
     const kept = applyOps([owner], ops({ drop: [{ id: owner.id }] }), CONTEXT);

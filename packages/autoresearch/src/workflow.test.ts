@@ -5,6 +5,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { ideaId, OutcomeSchema, type Outcome } from "./schemas.js";
 import {
+  FIXTURE_BOUNDS,
   FIXTURE_POLICY,
   THROUGHPUT_POLICY,
   THROUGHPUT_TARGET,
@@ -20,7 +21,7 @@ import {
   type Policy,
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
-import { AUTORESEARCH_WORKFLOW } from "./workflow.js";
+import { AUTORESEARCH_WORKFLOW, pickWinner } from "./workflow.js";
 
 /** σ is 0.2 and the default band 1.5 pp, so a 3 pp gain clears the band and a 0.8 pp gain sits inside it whatever the noise. */
 const CC = "cc_total_delta_pct";
@@ -31,7 +32,7 @@ const POLICY: Policy = {
     "in-band-loses": { metrics: { [CC]: -0.8 }, by_key: { c2: { metrics: { [CC]: 1 } } } },
     flat: { micro: false },
     "hidden-once": { metrics: { [CC]: -3 }, by_key: { r3: { violations: { hidden_regressions: 1 } } } },
-    "no-test": { l0: "no-test" },
+    "no-test": { files: { "src/gate/gates.py": "# no-test\n" } },
   },
 };
 
@@ -178,6 +179,24 @@ describe("autoresearch on a fixture target at $0", () => {
     expect([...outcomes.values()].filter((outcome) => outcome.reason === "error:ar-implement:1/" + ports.calls.implement[0])).toHaveLength(1);
   });
 
+  it("records the diff size L0 measured and rejects a frozen-file edit at L0", async () => {
+    const policy: Policy = { ...POLICY, mechanisms: { ...POLICY.mechanisms, "edit-measure": { files: { "src/gate/measure.py": "# fixed\n", "tests/test_gate.py": "# fixed\n" } } } };
+    const { outcomes } = await loop(["better", "edit-measure"], {}, CONFIG, policy);
+
+    expect(outcomes.get(id("better"))!.diff).toEqual({ files: 2, lines: 2, srcFiles: 1, srcLines: 1, testLines: 1 });
+    expect(outcomes.get(id("edit-measure"))).toMatchObject({ verdict: "rejected", reason: "rejected:post:frozen-touch", rungReached: "L0" });
+  });
+
+  it("stops before the baseline when a class names a frozen file", async () => {
+    const bounds = structuredClone(FIXTURE_BOUNDS);
+    bounds.classes["accept-gate"]!.paths.push("src/gate/measure.py");
+    const { ports, run } = await loop(["better"], { bounds });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("[bounds-frozen] src/gate/measure.py");
+    expect(ports.calls.evals).toEqual([]);
+  });
+
   it("asks the planner once more, naming the quota, when its ops carry no bold idea", async () => {
     const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
     const { ports, run } = await loop([], { planner });
@@ -195,19 +214,34 @@ const THROUGHPUT: Policy = {
     "faster-slow-tail": { metrics: { [RPS]: 10, p99_ms: 20 } },
     crashy: { metrics: { [RPS]: 10 }, violations: { crashes: 1 } },
     slower: { metrics: { [RPS]: -10 } },
+    "faster-fewer-served": { metrics: { [RPS]: 10, requests_served: -10 } },
   },
 };
 
 describe("autoresearch on a second target with its own metric names", () => {
   it("keeps the idea that raises the max-direction metric and rejects by that target's guard and violation, with no micro rung", async () => {
-    const { repo, ports, run, outcomes } = await loop(["faster", "faster-slow-tail", "crashy", "slower"], { target: THROUGHPUT_TARGET }, { ...CONFIG, lanes: 2 }, THROUGHPUT);
+    const { repo, ports, run, outcomes } = await loop(["faster", "faster-slow-tail", "crashy", "slower", "faster-fewer-served"], { target: THROUGHPUT_TARGET }, CONFIG, THROUGHPUT);
 
     expect(run.status).toBe("completed");
     expect(outcomes.get(id("faster"))).toMatchObject({ verdict: "kept", reason: "beyond-band", rungReached: "L3", delta: 10 });
     expect(outcomes.get(id("faster-slow-tail"))).toMatchObject({ verdict: "rejected", reason: "guard:p99_ms" });
+    expect(outcomes.get(id("faster-fewer-served"))).toMatchObject({ verdict: "rejected", reason: "guard:requests_served" });
     expect(outcomes.get(id("crashy"))).toMatchObject({ verdict: "rejected", reason: "violation:crashes", rungReached: "L2" });
     expect(outcomes.get(id("slower"))).toMatchObject({ verdict: "rejected", reason: "clearly-worse", rungReached: "L2" });
     expect(ports.calls.micro).toEqual([]);
     expect(await git(repo.bare, "rev-parse", ports.calls.ratchet[0]!.ratchetRef)).toBe(outcomes.get(id("faster"))!.head);
+  });
+});
+
+describe("picking the winner that moves the ratchet", () => {
+  const winner = (ideaId: string, delta: number, srcLines: number): Outcome =>
+    OutcomeSchema.parse({ ideaId, lineage: ideaId, cell: "c", verdict: "kept", reason: "beyond-band", rungReached: "L3", delta, diff: { files: 1, lines: srcLines, srcFiles: 1, srcLines } });
+
+  it("takes the smaller diff among winners within one σ of the strongest", () => {
+    expect(pickWinner([winner("big", 3, 40), winner("small", 2.6, 5)], 0.5).map((outcome) => outcome.ideaId)).toEqual(["small", "big"]);
+  });
+
+  it("takes the larger Δ when the gap is more than one σ", () => {
+    expect(pickWinner([winner("small", 2, 5), winner("big", 3, 40)], 0.5).map((outcome) => outcome.ideaId)).toEqual(["big", "small"]);
   });
 });
