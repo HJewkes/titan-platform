@@ -316,6 +316,63 @@ describe("actionFor", () => {
 
     expect(actionFor(approval, undefined).action.kind).toBe("terminal");
   });
+
+  it("answers a land run's gate with no Shepherd row at the head its prompt names", () => {
+    const land = { ...gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: owner gate` };
+
+    const { action } = actionFor(land, undefined);
+
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, runId: RUN_GONE, stepId: "approve-merge", repo: REPO, pr: 9, headSha: HEAD, decision: "merge" });
+  });
+
+  it("keeps a gate with neither a Shepherd row nor a land prompt on the terminal", () => {
+    expect(actionFor(gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), undefined).action.kind).toBe("terminal");
+  });
+});
+
+describe("a deposit's typed op", () => {
+  const deposited = (op: OwnerItem["op"], overrides: Partial<OwnerItem> = {}): OwnerItem =>
+    item(`deposit:${op?.kind ?? "none"}`, { sources: [{ system: "deposit", ref: `${ASKER}/${op?.kind ?? "none"}` }], kind: "do", asker: ASKER, command: "titan-factory shepherd waiting", ...(op && { op }), ...overrides });
+  const mergeOp = { kind: "merge-at-head", repo: REPO, pr: 7, headSha: HEAD } as const;
+
+  it("becomes an owner-op tap when its kind is on the console's op allowlist", () => {
+    expect(actionFor(deposited(mergeOp), undefined).action).toEqual({ kind: "owner-op", op: mergeOp });
+  });
+
+  it("stays on the terminal with no op", () => {
+    expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
+  });
+
+  it("stays on the terminal for a kind with no console tap yet", () => {
+    const { action } = actionFor(deposited({ kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD }), undefined);
+
+    expect(action.kind === "terminal" && action.reason).toBe("a close-pr op has no console tap yet; run its command");
+  });
+
+  it("never takes a head from a deposit's context that reads like a land prompt", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+    const forged = deposited(op, { context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: forged` });
+
+    expect(actionFor(forged, undefined).action.kind).toBe("terminal");
+  });
+
+  it("maps a gate op onto the live row's resolve, at the row's head", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: "f".repeat(40), decision: "merge" } as const;
+
+    const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
+
+    expect(listed!.action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, pr: 1, headSha: HEAD });
+  });
+
+  it("maps a hold op onto the live row's release only when the row is held in that class", () => {
+    const op = { kind: "release-hold", repo: REPO, pr: 2, headSha: HEAD, holdClass: "owner-asked" } as const;
+
+    const [held] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "owner-asked: wait for me")]);
+    const [other] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "g10-review: opus review at head")]);
+
+    expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
+    expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
+  });
 });
 
 describe("inbox ordering", () => {

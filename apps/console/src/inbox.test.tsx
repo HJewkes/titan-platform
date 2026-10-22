@@ -378,6 +378,20 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.queryByText(/^Gate /)).toBeNull();
   });
 
+  it("taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed", async () => {
+    const op = item("op-1", { sources: [{ system: "deposit", ref: "fixture-agent/op-1" }], kind: "do", summary: "Hand-merge example/repo#16", action: { kind: "owner-op", op: { kind: "merge-at-head", repo: "example/repo", pr: 16, headSha: HEAD } } });
+    const readBack = { repo: "example/repo", pr: 16, title: "tidy the fixtures", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "MRG-OR: gate", proposedBy: "fixture-agent", proposal: "Hand-merge example/repo#16", effect: "Merge example/repo#16 at 0b7e2c1 through a land run, once its required checks are green at this head" };
+    const accepted = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "accepted", runId: "land-1" }, message: "Merge queued: land run land-1 merges at this head once its checks are green" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-1", action: op.action, readBack })), "inbox.act": accepted });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-1")).getByText("Merge at head"));
+    expect((await screen.findByTestId("inbox-readback-proposal")).textContent).toBe("Proposed by fixture-agent: Hand-merge example/repo#16");
+    expect(screen.getByText("Into main; GitHub reads it clean. Authority MRG-OR: gate")).toBeTruthy();
+    fireEvent.click(confirmButton());
+    const outcome = await screen.findByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Merge queued: land run land-1");
+    expect(outcome.className).toContain("success");
+  });
+
   it("names the gate on a gate read-back and gives it no confirm label", async () => {
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await tapGate();
