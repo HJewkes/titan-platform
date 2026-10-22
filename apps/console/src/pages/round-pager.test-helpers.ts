@@ -22,3 +22,12 @@ export async function toSection(id: string): Promise<void> {
   fireEvent.click(screen.getByTestId(`section-jump-${id}`));
   await onSection(id);
 }
+
+/** The send card's button, which opens the check screen. */
+export const checkButton = (): HTMLElement => screen.getByRole("button", { name: "Check and send" });
+
+/** Opens the check screen from the send card and sends from it, as the owner does. */
+export function checkAndSend(): void {
+  fireEvent.click(checkButton());
+  fireEvent.click(screen.getByTestId("round-check-send"));
+}

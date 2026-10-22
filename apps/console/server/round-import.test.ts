@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { getFrame } from "./round-frames.js";
+import { getFrame, getFrameTargets } from "./round-frames.js";
 import { importRound } from "./round-import.js";
 import { getRound, listRounds } from "./rounds.js";
 
@@ -49,7 +49,14 @@ async function editJson(rel: string, edit: (json: Record<string, unknown>) => vo
 
 const indexedFile = z.looseObject({ file: z.string(), sha256: z.string() });
 const frameRecords = z.array(
-  z.looseObject({ key: z.string(), file: z.string(), sha256: z.string(), base: z.looseObject({ file: z.string() }).optional(), after: indexedFile.optional() }),
+  z.looseObject({
+    key: z.string(),
+    file: z.string(),
+    sha256: z.string(),
+    base: z.looseObject({ file: z.string() }).optional(),
+    after: indexedFile.optional(),
+    targets: indexedFile.optional(),
+  }),
 );
 type FrameRecord = z.infer<typeof frameRecords>[number];
 
@@ -473,6 +480,77 @@ describe("importRound copies a CI packet's files", () => {
     await rebindPacket(Buffer.from(JSON.stringify({ ...SHIP, schema: "titan-review/ci-packet@2" })));
     await expectRefused(/packet\.json is not a ci-packet@1 packet/);
     expect(await entries()).toEqual([]);
+  });
+});
+
+describe("importRound copies a record's targets file beside its PNG (TP-3856)", () => {
+  const TARGETS = "frames/card-light.targets.json";
+  const targetsBytes = Buffer.from(
+    JSON.stringify({ schema: "titan-review/frame-targets@1", boxes: [{ x: 0, y: 0, width: 8, height: 6, target: { testId: "card" } }] }),
+  );
+
+  async function addTargets(sha256 = sha256Of(targetsBytes), file = TARGETS): Promise<void> {
+    await writeFile(path.join(source, TARGETS), targetsBytes);
+    await editFrames((_frames, light) => (light.targets = { file, sha256 }));
+  }
+
+  it("copies the targets file 0600 with the sha256 frames.json names, and rounds.frameTargets reads it", async () => {
+    await addTargets();
+
+    expect((await runImport()).frames).toBe(5);
+
+    const copied = await readFile(path.join(roundsDir, ID, TARGETS));
+    expect(copied).toEqual(targetsBytes);
+    expect(sha256Of(copied)).toBe(sha256Of(targetsBytes));
+    expect((await stat(path.join(roundsDir, ID, TARGETS))).mode & 0o777).toBe(0o600);
+    expect((await getFrameTargets({ dir: roundsDir }, ID, "card-light")).sha256).toBe(sha256Of(targetsBytes));
+  });
+
+  it("imports a round whose records name no targets as before, writing no targets file", async () => {
+    await writeFile(path.join(source, TARGETS), targetsBytes);
+
+    expect((await runImport()).frames).toBe(4);
+    await expect(stat(path.join(roundsDir, ID, TARGETS))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("refuses a targets file whose sha256 does not match and writes nothing", async () => {
+    await addTargets("0".repeat(64));
+
+    await expectRefused(/the targets file does not match the frames index sha256/);
+    expect(await entries()).toEqual([]);
+  });
+
+  it("refuses a symlinked targets file and writes nothing", async () => {
+    await addTargets();
+    const real = path.join(root, "real.json");
+    await writeFile(real, targetsBytes);
+    await rm(path.join(source, TARGETS));
+    await symlink(real, path.join(source, TARGETS));
+
+    await expectRefused(/the file is a symlink/);
+    expect(await entries()).toEqual([]);
+  });
+
+  it.each([
+    ["out of the source", "../targets.json", /its path is not a relative \.json path/],
+    ["out of the source through frames/", "frames/../../targets.json", /its path is not a relative \.json path/],
+    ["absolute", "/tmp/targets.json", /its path is not a relative \.json path/],
+    ["not a .json path", "frames/card-light.targets.png", /its path is not a relative \.json path/],
+  ])("refuses a targets path %s and writes nothing", async (_name, file, message) => {
+    await addTargets(sha256Of(targetsBytes), file);
+
+    await expectRefused(message);
+    expect(await entries()).toEqual([]);
+  });
+
+  it("refuses a destination targets file that differs from the index on re-import and overwrites nothing", async () => {
+    await addTargets();
+    await runImport();
+    const tampered = Buffer.from("{}");
+    await writeFile(path.join(roundsDir, ID, TARGETS), tampered);
+
+    await expectRefused(/not the frame frames\.json names/);
+    expect(await readFile(path.join(roundsDir, ID, TARGETS))).toEqual(tampered);
   });
 });
 

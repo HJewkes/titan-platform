@@ -2,7 +2,7 @@ import { NAMED_FD_RE } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 
 /** Long options that take the next word. */
-const BASH_LONG_VALUES = new Set(["--rcfile", "--init-file"]);
+export const BASH_LONG_VALUES: ReadonlySet<string> = new Set(["--rcfile", "--init-file"]);
 /** Paths that name a descriptor, matched on their tail: `/dev/stdin`, `/dev/fd/N`, `/proc/self/fd/N`. */
 const NAMED_FDS: Record<string, number> = { stdin: 0, stdout: 1, stderr: 2 };
 const FD_PATH_RE = /\/(?:dev\/(stdin|stdout|stderr)|(?:dev|proc\/(?:self|thread-self|\d+))\/fd\/(\d+))$/;
@@ -52,6 +52,10 @@ interface ShellOperands {
   positional: WordToken | null;
   /** Whether the shell runs its stdin: with no script file, under `-s`, and in dash after the `-c` string too. */
   readsStdin: boolean;
+  /** The words the script gets as `$0`, `$1`...: those after the `-c` string or script file, or under `-s` every operand. */
+  positionals: WordToken[];
+  /** bash's `--rcfile` or `--init-file` file, which an interactive bash, or one bash takes for a remote shell's, runs first. */
+  rcfile: WordToken | null;
 }
 
 /** What one lexer pass finds: `s` is the sign of the last `s` letter, `anyS` whether any was seen. */
@@ -60,6 +64,7 @@ interface Lexed {
   operand: WordToken | null;
   s: "-" | "+" | null;
   anyS: boolean;
+  rcfile?: WordToken | null;
 }
 
 /**
@@ -91,19 +96,36 @@ export function zshOptionWord(word: string, shLetters: boolean): ZshOptionWord |
  * dash read them. `+c` is `-c` in all three. `sh` and `ksh` may be either bash or dash, so both readings are joined.
  */
 export function shellOperands(args: WordToken[], shell: string | null): ShellOperands {
-  if (shell === "zsh") return reading(lexZsh(args), "zsh");
+  if (shell === "zsh") return reading(lexZsh(args), "zsh", args);
   const lexed = lexPosix(args);
-  if (shell === "bash" || shell === "dash") return reading(lexed, shell);
-  const [bash, dash] = [reading(lexed, "bash"), reading(lexed, "dash")];
-  return { hasC: lexed.hasC, positional: bash.positional ?? dash.positional, readsStdin: bash.readsStdin || dash.readsStdin };
+  if (shell === "bash" || shell === "dash") return reading(lexed, shell, args);
+  const [bash, dash] = [reading(lexed, "bash", args), reading(lexed, "dash", args)];
+  const positionals = bash.positionals.length >= dash.positionals.length ? bash.positionals : dash.positionals;
+  return { hasC: lexed.hasC, positional: bash.positional ?? dash.positional, readsStdin: bash.readsStdin || dash.readsStdin, positionals, rcfile: bash.rcfile };
 }
 
 /** bash's `s` holds under either sign; zsh's and dash's last one wins, and dash runs stdin after a `-c` string under it. */
-function reading({ hasC, operand, s, anyS }: Lexed, shell: "bash" | "dash" | "zsh"): ShellOperands {
+function reading({ hasC, operand, s, anyS, rcfile }: Lexed, shell: "bash" | "dash" | "zsh", args: WordToken[]): ShellOperands {
   const fromStdin = shell === "bash" ? anyS : s === "-";
-  if (hasC) return { hasC, positional: operand, readsStdin: shell === "dash" && fromStdin };
+  const at = operand === null ? args.length : args.indexOf(operand);
+  const own = { rcfile: shell === "bash" ? (rcfile ?? null) : null, positionals: args.slice(hasC || !fromStdin ? at + 1 : at) };
+  if (hasC) return { hasC, positional: operand, readsStdin: shell === "dash" && fromStdin, ...own };
   const positional = fromStdin ? null : operand;
-  return { hasC, positional, readsStdin: positional === null };
+  return { hasC, positional, readsStdin: positional === null, ...own };
+}
+
+/**
+ * The positionals a shell's script gets, once it runs one: a `-c` string or script file always does, while under `-s`
+ * the script is stdin, which runs only when something feeds it.
+ */
+export function scriptPositionals(operands: ShellOperands, stdinFed: boolean): WordToken[] {
+  return operands.hasC || operands.positional !== null || stdinFed ? operands.positionals : [];
+}
+
+/** Whether anything feeds a command's stdin: the pipe, a redirect, or what its parent's stdin held. */
+export function feedsStdin(redirects: RedirectToken[], piped: boolean, inherited: Descriptors = TOP_DESCRIPTORS): boolean {
+  const feeds = feedsOf(redirects, piped, inherited)(0, redirects.length);
+  return feeds.pipe || feeds.unknown || feeds.redirects.size > 0 || feeds.texts.length > 0;
 }
 
 /** bash and dash: `-` and `--` end the options, a lone `+` is an empty cluster, and each `o`, and bash's each `O`, takes the next word. */
@@ -112,7 +134,7 @@ function lexPosix(args: WordToken[]): Lexed {
   for (let i = 0; i < args.length; i++) {
     const v = args[i]?.value ?? "";
     if (v === "-" || v === "--") return { ...lexed, operand: args[i + 1] ?? null };
-    if (BASH_LONG_VALUES.has(v)) i++;
+    if (BASH_LONG_VALUES.has(v)) lexed.rcfile = args[++i] ?? null;
     else if (v.startsWith("--")) continue;
     else if (/^[-+]/.test(v)) {
       for (const letter of v.slice(1)) i += letterInto(lexed, letter, v[0]) ? 1 : 0;

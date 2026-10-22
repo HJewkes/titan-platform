@@ -1,11 +1,11 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent } from "@titan-design/review-panel";
+import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import type { FixProofUnverified } from "./fix-proof.js";
+import { noReproOfLine, type FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
@@ -68,7 +68,12 @@ export function panelReviewerNames({ repo, pr, reviewer, mode }: MemberNaming, p
 /** Under `on` the intent also names each member but correctness, so a repeat spawns the same names. */
 export type PanelOnPlan = IntentPlan & { panel: "on"; panelReviewers: Record<string, string> };
 
-interface PanelWiring {
+export interface ProfileCheck {
+  /** Whether an agent-chat profile is installed headless; absent means a member lowered to a missing profile is refused only at dispatch. */
+  profileInstalled?: (profile: string) => boolean;
+}
+
+interface PanelWiring extends ProfileCheck {
   panel?: PanelMode;
   panelPolicy?: PanelPolicy;
   roles?: ReviewerRoles;
@@ -91,13 +96,14 @@ function holdMemberOf(deps: Pick<ShepherdDeps, "store">, runId: string, holdMemb
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
  * Under `on`, or for a g10-adversary hold whatever the panel says, it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember, profileInstalled }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
   const held = holdMemberOf(deps, input.runId, holdMember);
   if ((panel === undefined || panel === "off") && held === undefined) return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
   const options = held === undefined ? {} : { holdMember: held, fullPanel: panel === "on" };
-  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules, options);
+  const policy = { ...(panelPolicy ?? panelPolicyFor(roles)), ...(profileInstalled && { installed: profileInstalled }) };
+  const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), policy, undefined, rules, options);
   return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
 }
 
@@ -108,6 +114,7 @@ export interface MemberBase extends ReviewTarget {
   fixProof?: string;
   fixProofUnverified?: FixProofUnverified;
   fixProofWaivedAt?: string;
+  workflowCiProof?: WorkflowCiProof;
 }
 
 interface DispatchedMember {
@@ -196,6 +203,7 @@ const PanelVerdictRead = z.looseObject({
   dissent: z.array(SHAPE),
   degraded: z.array(SHAPE),
   satisfiesG10: z.boolean(),
+  fixProofShortfall: z.literal(true).optional(),
 });
 type PanelVerdictRecord = z.infer<typeof PanelVerdictRead>;
 
@@ -239,6 +247,14 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
   return { kind: "FIX_FIRST", headSha: head, text: panelFindingsText(verdict), ...(verdict.closer !== undefined && { closer: verdict.closer }) };
 }
 
+/**
+ * No fresh reviewer fills the unplanned tests seat. A vacuous or test-less line goes back as Shepherd's own NO_REPRO, which the
+ * owner can waive and the fixer's brief explains (tp#2145); any other bad line keeps its unverified review, so this is undefined.
+ */
+function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string | undefined): Verdict | undefined {
+  return verdict.fixProofShortfall === true && line !== undefined ? noReproOfLine(line, head) : undefined;
+}
+
 const MemberVerdict = z.looseObject({
   kind: z.literal("verdict"),
   reviewer: z.object({ agentId: z.string(), sessionId: z.string() }),
@@ -278,6 +294,8 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
+  const shortfall = proofShortfall(verdict, target.head, base.fixProof);
+  if (shortfall) return shortfall;
   if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { kind: "none", cause: verdict.outcome === "timeout" ? "timeout" : "no-verdict", reason: "a blocking panel member gave no verdict" };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: panelMerge(verdict, results, memberProfiles(members)) } : decided;

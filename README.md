@@ -1,13 +1,35 @@
+<https://hjewkes.github.io/titan-platform/>
+
 # titan-platform
 
-Reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
-composed thinly on top of them. This is the destination monorepo for the Titan platform
-decomposition: shared concerns that grew independently in brain, active-work, codewatch,
-and the session-miner get extracted here one package at a time, and each old repo keeps
-running on the published packages until its capability is rebuilt here.
+A multi-agent software factory, and the shared packages it is built from. The repo holds
+<!-- generated:package-count start -->60<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
+composed thinly on top of them. Shared concerns that grew independently in brain, active-work,
+codewatch, and the session-miner get extracted here one package at a time, and each old repo
+keeps running on the published packages until its capability is rebuilt here.
 
-**Documentation: <https://hjewkes.github.io/titan-platform/>** — what each package does,
-when to reach for it, worked examples, the architecture, and the case studies.
+## The main products
+
+- **Factory and Shepherd** (`products/factory`): code-driven software-factory workflows.
+  Shepherd takes a registered pull request through CI to its merge. Guides:
+  [Factory](https://hjewkes.github.io/titan-platform/guides/factory) and
+  [Shepherd](https://hjewkes.github.io/titan-platform/guides/shepherd).
+- **Session miner** (`products/session-miner`): indexes every Claude Code transcript into a
+  session graph, searches it, and clusters its recurring failures. Guide:
+  [Session miner](https://hjewkes.github.io/titan-platform/guides/session-miner).
+- **codewatch** (`apps/codewatch`): a layered code report, from the big picture down to any
+  file or symbol. Guide: [Code report](https://hjewkes.github.io/titan-platform/guides/codewatch).
+- **Console** (`apps/console`): one read-only console over the local agent and work sources.
+  See [apps/console/README.md](apps/console/README.md).
+- **Retrieval eval** (`products/retrieval-eval`): the harness retrieval decisions are judged
+  against. Guide: [Retrieval eval](https://hjewkes.github.io/titan-platform/guides/retrieval-eval).
+- **Hub** (`deploy/hub`): the shared Matrix homeserver every area uses to reach the owner's
+  phone. Guide: [Matrix hub](https://hjewkes.github.io/titan-platform/guides/hub).
+
+More guides: [Architecture](https://hjewkes.github.io/titan-platform/guides/architecture),
+[the binding pattern](https://hjewkes.github.io/titan-platform/guides/binding-pattern),
+[Working in the repo](https://hjewkes.github.io/titan-platform/guides/contributing), and
+[where code goes](https://hjewkes.github.io/titan-platform/guides/where-code-goes).
 
 **Before you build anything, read [CAPABILITIES.md](CAPABILITIES.md).** It lists every
 package, product and app with its purpose, a "use this when" line, and its key exports. It

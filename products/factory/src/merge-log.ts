@@ -44,7 +44,8 @@ const MERGE_LOG_DDL = `
 /**
  * Every merge the system makes: an intent row committed before the call, then result rows after it, paired by trigger.
  * An `unknown` result may precede the one terminal result. Rows join the event log on `owner/name` repos, full 40-hex
- * shas and `nowIso()` times. Triggers refuse UPDATE and DELETE for any writer; nothing writes or reads it yet.
+ * shas and `nowIso()` times. Triggers refuse UPDATE and DELETE for any writer; nothing writes it yet, and only the reconciler's
+ * C7 check (`bot-intent.ts`) reads it.
  */
 export function mergeLogMigration(version = 29): Migration {
   return { version, name: `factory:${MERGE_LOG_TABLE}`, up: (db) => db.exec(MERGE_LOG_DDL) };

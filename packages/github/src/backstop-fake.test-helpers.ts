@@ -15,6 +15,8 @@ export interface FakeRepo {
   main: string[];
   contexts: Map<string, GhContext[]>;
   reviews: Map<number, GhReview[]>;
+  /** `shepherd-train/` branch names, relative to the prefix, to their heads. */
+  trains?: { name: string; oid: string }[];
   /** Answered beside the data on every query, as GitHub does for a partly failed one. */
   errors?: { message: string }[];
 }
@@ -76,6 +78,7 @@ function answer(repo: FakeRepo, variables: Record<string, unknown>): object {
   return {
     ...(variables.withOpen ? { open: forward(repo.open.map((pr) => openPr(repo, pr)), variables.openAfter, 50) } : {}),
     ...(variables.withDone ? { done: forward(repo.done, variables.doneAfter, 20) } : {}),
+    ...(variables.withTrains ? { trains: forward((repo.trains ?? []).map(({ name, oid }) => ({ name, target: { oid } })), variables.trainsAfter, 50) } : {}),
     ...(variables.withHistory ? { ref: { target: { oid: repo.main[0], history: forward(repo.main.map((oid) => commit(repo, oid)), variables.historyAfter, 50) } } } : {}),
   };
 }

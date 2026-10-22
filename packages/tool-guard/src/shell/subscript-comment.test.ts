@@ -4,6 +4,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import type { HookPort } from "../hook.js";
 import { handle } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { extractCommands } from "./commands.js";
 import { AliasDefinitionError } from "./alias-definitions.js";
 import { ParseError, tokenize } from "./lexer.js";
@@ -177,8 +178,8 @@ describe("backquote spans in a subscript bash may join", () => {
 });
 
 /**
- * Past this a hook timeout would let the command through. It is counted in this thread's CPU time, which a loaded runner
- * does not stretch; the work ratio below is what tells linear from quadratic.
+ * The thread CPU past which a hook timeout would let the command through; the work ratio below is what tells linear from
+ * quadratic.
  */
 const BUDGET_MS = 2500;
 
@@ -219,24 +220,21 @@ const SPAN_SHAPES: Array<[string, string]> = [
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
-async function timedScriptDecision(script: string): Promise<{ decision: string | null; cpuMs: number }> {
+async function scriptDecision(script: string): Promise<string | null> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
   const scriptPort: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: `${HOME}/app`, tool_input: { command: "bash a.sh; git push origin HEAD:main" } });
-  const start = process.threadCpuUsage();
   const { stdout } = await handle(input, { PATH: "/usr/bin" }, scriptPort);
-  const { user, system } = process.threadCpuUsage(start);
-  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, cpuMs: (user + system) / 1000 };
+  return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
 describe("a subscript holding many span openers", () => {
-  it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
+  cpuBudgetIt.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", BUDGET_MS, async (_name, span) => {
     const script = spanScript(span, Math.floor(64_000 / span.length));
 
-    const { decision, cpuMs } = await timedScriptDecision(script);
+    const decision = await scriptDecision(script);
 
     expect(decision).toBe("deny");
-    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {

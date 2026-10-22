@@ -60,17 +60,22 @@ const VERB: Record<InboxAction["kind"], string> = {
   "resolve-gate": "Approve merge",
   "owner-release": "Release hold",
   "hold-release": "Release hold",
+  "owner-op": "Confirm",
   "answer-chat": "Answer",
   "open-round": "Open round",
   open: "Open",
   terminal: "Run on terminal",
 };
 
+const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head" };
+
+const verbOf = (action: InboxAction): string => (action.kind === "owner-op" ? (OP_VERB[action.op.kind] ?? VERB[action.kind]) : VERB[action.kind]);
+
 /** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
 /** The writes the page taps through `inbox.act`; `answer-chat` waits on a sheet that takes the answer's text. */
-const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release"]);
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "owner-op"]);
 
 function followEvidence(evidence: string): void {
   if (evidence.startsWith("#")) open(parseRoute(evidence));
@@ -212,7 +217,7 @@ function RowAction({ item }: { item: InboxItem }): ReactNode {
   return live ? <ConsoleAction item={item} /> : <TerminalAction item={item} reason="This page is a snapshot: act from the live console, or run it on the terminal." />;
 }
 
-const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${VERB[action.kind]} from the console comes later; run it on the terminal for now.`);
+const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${verbOf(action)} from the console comes later; run it on the terminal for now.`);
 
 const inboxTap = (itemId: string): TapCommands => ({ prepare: "inbox.prepare", act: "inbox.act", args: { itemId }, invalidates: ["inbox.list"] });
 
@@ -220,7 +225,7 @@ const inboxTap = (itemId: string): TapCommands => ({ prepare: "inbox.prepare", a
 function ConsoleAction({ item }: { item: InboxItem }): ReactNode {
   const [confirming, setConfirming] = useState(false);
   const command = terminalCommandOf(item);
-  const verb = VERB[item.action.kind];
+  const verb = verbOf(item.action);
   return (
     <HStack gap={2} align="center" wrap>
       <Button size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}`}>

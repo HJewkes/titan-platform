@@ -1,7 +1,7 @@
 import type { TimedToken } from "./timestamps.js";
 
 // Kokoro's context holds 512 ids: the phonemes plus <bos> and <eos>.
-const MAX_PHONEMES = 510;
+export const MAX_PHONEMES = 510;
 // Split after the strongest punctuation that leaves the rest within the limit; a closer stays with its sentence.
 const WATERFALL = ["!.?…", ":;", ",—"].map((marks) => [...marks]);
 const BUMPS = [")", "”"];

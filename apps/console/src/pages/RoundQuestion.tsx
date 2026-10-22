@@ -1,16 +1,19 @@
 import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
-import { QuestionAB, type ABAnswering } from "./QuestionAB.js";
+import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
+import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
 import { QuestionFrameLinks, QuestionFrames, useABSides, useOptionFrame } from "./QuestionFrames.js";
 import { RecommendationBox, RevealControl, recommendedChoices, useRecommendation, useRevealTracking } from "./RoundReveal.js";
+import { ROUND_KEYS, pressed } from "./round-keys.js";
+import { typedInto } from "./typed-into.js";
 
 /** An answer as the page holds it; a page that submits turns it into a `rounds.submit` answer. */
 export type QuestionAnswer = { pick: string } | { picks: string[] } | { value: number } | { text: string } | { revisionRequested: true };
 
 /** Keys 1-9 reach the first nine choices; a longer list is answered by pointer. */
-const MAX_KEYED_CHOICES = 9;
+const MAX_KEYED_CHOICES = ROUND_KEYS.pick.keys.length;
 
 /** What a question offers to pick, in order: its options, or each step of its scale. */
 export function choicesOf(question: Question): string[] {
@@ -29,14 +32,8 @@ export function chooseIn(question: Question, answer: QuestionAnswer | undefined,
 
 /** The choice digit `key` names in this question, or null. */
 export function choiceForKey(question: Question, key: string): string | null {
-  const digit = Number(key);
-  if (!/^[1-9]$/.test(key) || digit > MAX_KEYED_CHOICES) return null;
-  return choicesOf(question)[digit - 1] ?? null;
-}
-
-function typedInto(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+  const at = ROUND_KEYS.pick.keys.findIndex((each) => each === key);
+  return at < 0 ? null : (choicesOf(question)[at] ?? null);
 }
 
 /** Digits 1-9 choose in the active question, unless a modifier is held or the owner is typing in a field. */
@@ -44,7 +41,7 @@ export function useChoiceKeys(question: Question | undefined, onChoose: (choice:
   useEffect(() => {
     if (!question) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey || typedInto(event.target)) return;
+      if (!pressed(ROUND_KEYS.pick, event) || typedInto(event.target)) return;
       const choice = choiceForKey(question, event.key);
       if (choice === null) return;
       event.preventDefault();
@@ -60,7 +57,7 @@ function useRevealKey(active: boolean, toggle: (() => void) | undefined): void {
   useEffect(() => {
     if (!active || toggle === undefined) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "r" || event.ctrlKey || event.metaKey || event.altKey || typedInto(event.target)) return;
+      if (!pressed(ROUND_KEYS.reveal, event) || typedInto(event.target)) return;
       event.preventDefault();
       toggle();
     };
@@ -80,7 +77,10 @@ interface RoundQuestionProps {
   onActivate: () => void;
   /** Present only where the page submits text answers; without it a text question shows a placeholder. */
   onText?: (text: string) => void;
-  /** Present where the page takes A/B notes; with it a pick-one whose options pick two frames lays them side by side. */
+  /**
+   * Present where the page takes A/B notes; with it a pick-one whose options pick two frames lays them side by side.
+   * Its `onNeither` is the page's revision request, which a plain pick-one offers too.
+   */
   ab?: ABAnswering;
 }
 
@@ -103,7 +103,7 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
           {ab && sides ? (
             <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
           ) : (
-            <Choices question={question} answer={answer} onChoose={choose} onText={onText} recommended={recommendedChoices(shown)} />
+            <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} noting={ab} recommended={recommendedChoices(shown)} />
           )}
           <QuestionFacts question={question} answer={answer} />
         </VStack>
@@ -118,7 +118,7 @@ function QuestionHeading({ question, position, active }: { question: Question; p
       <Typography variant="monoLabel" color="secondary">{`Q${position}`}</Typography>
       <Typography variant="subtitle1"><InlineMarkdown text={question.prompt} /></Typography>
       {question.required ? <Pill variant="subtle" size="xs">required</Pill> : null}
-      {active && choicesOf(question).length > 0 ? <Typography variant="caption" color="secondary">keys 1-9 answer</Typography> : null}
+      {active && choicesOf(question).length > 0 ? <Typography variant="caption" color="secondary">{`keys ${ROUND_KEYS.pick.label} answer`}</Typography> : null}
     </HStack>
   );
 }
@@ -146,11 +146,25 @@ interface ChoicesProps {
   answer: QuestionAnswer | undefined;
   onChoose: (choice: string) => void;
   onText?: (text: string) => void;
+  /** Present where the page takes a revision request; a question offering the built-in one lists it last. */
+  onRevise?: () => void;
   /** The options a shown recommendation picks, badged. */
   recommended: readonly string[];
+  /** Present where the page takes option notes; a decision packet's cards each carry one. */
+  noting?: OptionNoting;
 }
 
-function Choices({ question, answer, onChoose, onText, recommended }: ChoicesProps): ReactNode {
+/** A packet question wraps each option's control in its card; any other question draws the control alone. */
+function inCard(question: Question, noting: OptionNoting | undefined, choice: string, picked: boolean, control: ReactNode): ReactNode {
+  if (!hasOptionCards(question)) return control;
+  return (
+    <OptionCard key={choice} option={choice} detail={question.optionDetails?.[choice]} picked={picked} noting={noting}>
+      {control}
+    </OptionCard>
+  );
+}
+
+function Choices({ question, answer, onChoose, onText, onRevise, recommended, noting }: ChoicesProps): ReactNode {
   const choices = choicesOf(question);
   const frameOf = useOptionFrame(question);
   if (question.kind === "text" && onText === undefined) return <Typography variant="caption" color="secondary">Text answer</Typography>;
@@ -162,13 +176,13 @@ function Choices({ question, answer, onChoose, onText, recommended }: ChoicesPro
     const picks = answer && "picks" in answer ? answer.picks : [];
     return (
       <CheckboxGroup label="Pick any">
-        {choices.map((choice, index) => (
-          <Checkbox key={choice} value={choice} label={`${choiceLabel(index, plainText(choice), frameOf(choice))}${recommended.includes(choice) ? "  · Recommended" : ""}`} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />
-        ))}
+        {choices.map((choice, index) =>
+          inCard(question, noting, choice, picks.includes(choice), <Checkbox key={choice} value={choice} label={`${choiceLabel(index, plainText(choice), frameOf(choice))}${recommended.includes(choice) ? "  · Recommended" : ""}`} isChecked={picks.includes(choice)} aria-checked={picks.includes(choice)} onCheckedChange={() => onChoose(choice)} />),
+        )}
       </CheckboxGroup>
     );
   }
-  return <PickOne question={question} answer={answer} onChoose={onChoose} choices={choices} frameOf={frameOf} recommended={recommended} />;
+  return <PickOne question={question} answer={answer} onChoose={onChoose} onRevise={onRevise} noting={noting} choices={choices} frameOf={frameOf} recommended={recommended} />;
 }
 
 interface PickOneProps extends Omit<ChoicesProps, "onText"> {
@@ -176,18 +190,45 @@ interface PickOneProps extends Omit<ChoicesProps, "onText"> {
   frameOf: (choice: string) => string | undefined;
 }
 
-/** A pick-one or scale as radios; a sent revision request says so, as it picks none of them. */
-function PickOne({ question, answer, onChoose, choices, frameOf, recommended }: PickOneProps): ReactNode {
-  const value = answer && "pick" in answer ? answer.pick : answer && "value" in answer ? String(answer.value) : null;
+/** The built-in revision request's radio value, which no round's option text plausibly matches. */
+const REVISION = "titan-review:revision-request";
+
+/** The harness's wording for the built-in revision request (QuestionBlock). */
+const REVISION_LABEL = "None of these, request a revision";
+
+/** The radio the answer selects: its pick, its scale step, or the built-in revision request. */
+function selectedValue(answer: QuestionAnswer | undefined): string | null {
+  if (answer === undefined) return null;
+  if ("pick" in answer) return answer.pick;
+  if ("value" in answer) return String(answer.value);
+  return "revisionRequested" in answer ? REVISION : null;
+}
+
+/** A pick-one or scale as radios, with the built-in revision request last where the question offers it (G10). */
+function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameOf, recommended }: PickOneProps): ReactNode {
+  const value = selectedValue(answer);
+  const revisable = onRevise !== undefined && offersBuiltInRevision(question);
+  const change = (next: string): void => (next === REVISION ? onRevise?.() : onChoose(next));
   return (
     <VStack gap={1}>
-      {answer && "revisionRequested" in answer ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
-      <RadioGroup value={value} onChange={onChoose} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
-        {choices.map((choice, index) => (
-          <Radio key={choice} value={choice} aria-checked={value === choice}>
-            <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
+      {answer && "revisionRequested" in answer && !revisable ? <Typography variant="caption" color="secondary">You asked for a revision instead of an option.</Typography> : null}
+      <RadioGroup value={value} onChange={change} orientation={question.kind === "scale" ? "horizontal" : "vertical"} label={question.kind === "scale" ? `${question.min} to ${question.max}` : "Pick one"}>
+        {choices.map((choice, index) =>
+          inCard(
+            question,
+            noting,
+            choice,
+            value === choice,
+            <Radio key={choice} value={choice} aria-checked={value === choice}>
+              <ChoiceLabel index={index} choice={choice} frame={frameOf(choice)} recommended={recommended.includes(choice)} />
+            </Radio>,
+          ),
+        )}
+        {revisable ? (
+          <Radio value={REVISION} aria-checked={value === REVISION}>
+            {REVISION_LABEL}
           </Radio>
-        ))}
+        ) : null}
       </RadioGroup>
     </VStack>
   );

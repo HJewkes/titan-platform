@@ -212,6 +212,45 @@ declare const ownerItemSchema: z.ZodObject<{
         hidden: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     pins: z.ZodOptional<z.ZodObject<{
@@ -341,6 +380,45 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         }, z.core.$strict>]>>;
     }, z.core.$strict>>;
     command: z.ZodOptional<z.ZodString>;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     pins: z.ZodOptional<z.ZodObject<{
@@ -370,7 +448,10 @@ declare const DEPOSIT_LENS: {
 };
 /** The JSON pair keeps the input injective, so an asker containing "/" cannot collide with another. */
 declare function depositItemId(asker: string, depositId: string): string;
-/** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
+/**
+ * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
+ * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
+ */
 declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
 
 export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, type OnSilence as h, type OwnerItemDeposit as i, SOURCE_SYSTEMS as j, depositItemId as k, fromDeposit as l, locatorCiteSchema as m, ownerItemSchema as n, ownerItemDepositSchema as o, sourceRefSchema as s };

@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import type { ReviewTarget, ReviewerDispatch } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -171,7 +172,8 @@ async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: W
 /** Any read that fails keeps the hold and is read again; the PR is read only on a push to its branch or once per backstop. */
 async function awaitHeadroom(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput, signal: AbortSignal): Promise<Waited> {
   const startedAt = deps.now();
-  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.head, tickMs: PUSH_WATCH_TICK_MS, read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined) });
+  const read = () => deps.port.getPr(input.repo, input.pr).catch(() => undefined);
+  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.head, tickMs: PUSH_WATCH_TICK_MS, read, observe: headRegressionObserver(deps.port) });
   for (;;) {
     signal.throwIfAborted();
     const resumed = await resumeReason(deps, accounts, input, poll).catch(() => undefined);

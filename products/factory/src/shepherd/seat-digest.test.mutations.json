@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a run no seat is named for is read anyway",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    if (seat === undefined) return false;\n    return !finished",
+      "replace": "    return !finished",
+      "kills": [
+        "digest reads reads nothing for a repo no single seat owns"
+      ]
+    }
+  ]
+}

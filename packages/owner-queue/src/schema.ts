@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownerOpSchema } from "./op.js";
 
 export const SOURCE_SYSTEMS = ["agent-chat", "hitl", "morning", "active-work", "round", "plan", "deposit"] as const;
 export const ITEM_KINDS = ["decide", "approve", "do", "review", "know"] as const;
@@ -90,6 +91,8 @@ export const ownerItemSchema = z.object({
   options: z.array(optionSchema).min(2).max(8).optional(),
   recommended: recommendationSchema.optional(),
   command: z.string().min(1).optional(),
+  /** The typed owner action this item proposes; the console acts on it, never on `command`. */
+  op: ownerOpSchema.optional(),
   evidenceRef: z.string().min(1).optional(),
   anchors: anchorsSchema.optional(),
   /** The commits every anchor on the item and its options resolves against. */
