@@ -62,6 +62,8 @@ const idea = z.object({
   parent: z.string().optional(),
   differsFrom: z.string().optional(),
   expectedEffect: z.object({ metric: z.string(), direction: z.enum(["up", "down"]), microSignal: z.string() }),
+  /** C-256 S4c: the parent-chain length over the run's ideas, 0 for a root; absent on a run the read model did not count. */
+  lineageDepth: z.number().int().nonnegative().optional(),
 });
 
 /** A step still in flight; its timer runs from `firstStartedAt`, which survives a restart. */
@@ -207,6 +209,11 @@ export const ArRunViewSchema = z.object({
   startedAt: z.string(),
   completedAt: z.string().nullable(),
   error: z.string().nullable(),
+  /**
+   * C-256 S4c: why the run ended, the engine's `ar-end` code (`rounds-exhausted`, `rounds-without-gain`, `ideas-evaluated`)
+   * or a thrown run's error code. Absent while it runs and on a run recorded before S4c.
+   */
+  stopReason: z.string().optional(),
   target,
   settings,
   baseline: z.object({ runs: z.array(evalRun), b0: z.number() }),

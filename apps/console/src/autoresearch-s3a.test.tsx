@@ -175,6 +175,30 @@ describe("the round's planner from C-256 S3e", () => {
   });
 });
 
+const RUNNING_FOLLOWUP = "i-77aa2b4c6d8e";
+const REQUEUED = "i-0d4e8f2a6b1c";
+
+describe("C-256 S4c's stop reason and lineage depth", () => {
+  it("names why an ended run stopped under the Round stat", async () => {
+    renderConsole(RUN_ROUTE, withRun({ ...AR_RUN_FIXTURE, status: "completed", completedAt: AR_RUN_FIXTURE.startedAt, stopReason: "rounds-without-gain" }));
+
+    expect((await screen.findByTestId("autoresearch-stat-round")).textContent).toContain("ended: rounds-without-gain");
+  });
+
+  it("names no stop reason on a run still going", async () => {
+    renderConsole(RUN_ROUTE);
+
+    expect((await screen.findByTestId("autoresearch-stat-round")).textContent).not.toContain("ended");
+  });
+
+  it("shows a follow-up's depth in its drawer and a root's in the backlog", async () => {
+    renderConsole(`${RUN_ROUTE}?idea=${RUNNING_FOLLOWUP}`);
+
+    expect(await drawerRow("lineage")).toMatch(/\(parent i-3f9a0c1d2e4b\) · depth 1$/);
+    expect(screen.getByTestId(`autoresearch-backlog-${REQUEUED}`).textContent).toContain("i-0d4e · depth 0");
+  });
+});
+
 describe("a run recorded before S3a", () => {
   it("renders its header, registries and idea drawer, saying what it did not record", async () => {
     renderConsole(`${PRE_S3A_ROUTE}?idea=${KEPT}`);
@@ -183,6 +207,7 @@ describe("a run recorded before S3a", () => {
     expect(within(screen.getByTestId("autoresearch-dead-ends")).queryByTestId(/autoresearch-registry-idea-/)).toBeNull();
     for (const name of ["mode", "lane", "against", "usage"]) expect(await drawerRow(name)).toContain("not recorded for this idea");
     expect(await drawerRow("l0")).toContain("passed (no per-check rows recorded)");
+    expect(await drawerRow("lineage")).not.toContain("depth");
   });
 
   it("renders its rounds without a planner, saying it was not recorded", async () => {

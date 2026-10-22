@@ -1,4 +1,4 @@
-import type { ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
+import type { ArIdea, ArLadder, ArOutcome, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 
 const SHORT_SHA = 7;
 const SHORT_ID = 6;
@@ -22,7 +22,10 @@ export function keptMove(round: ArRound, outcome: ArOutcome | null): ArRound["ra
 /** Idea ids share the `i-` prefix, so the short form keeps it and the first hex digits. */
 export const shortId = (id: string): string => id.slice(0, SHORT_ID);
 
-export const ladders = (run: ArRunView): ArLadder[] => run.rounds.flatMap((round) => round.ladders);
+/** How many parents deep the idea sits, once the read model counts it; nothing before then. */
+export const depthSuffix = ({ lineageDepth }: ArIdea): string => (lineageDepth === undefined ? "" : ` · depth ${lineageDepth}`);
+
+export const ladders =(run: ArRunView): ArLadder[] => run.rounds.flatMap((round) => round.ladders);
 
 export const signed = (value: number, digits = 1): string => `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(digits)}`;
 
