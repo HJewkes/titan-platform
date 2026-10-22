@@ -51,7 +51,7 @@ async function fixture(onMain: Record<string, string> = { "other.txt": "unrelate
   const main = Object.keys(onMain).length === 0 ? squash : await commitOn(work, squash, onMain);
   await pushTo(work, main, "refs/heads/main");
   const fake = fakeGitHub({ repo: REPO });
-  const pr = fake.addPr({ state: "closed", merged: true, headRef: `${PREFIX}-snap/run-1/m1` });
+  const pr = fake.addPr({ state: "closed", merged: true, headRef: `${PREFIX}-snap/run-1/m1`, headSha: main });
   const input = { repo: REPO, pr: pr.number, tree: work, head: kept, ratchetRef: RATCHET, ratchetPrefix: PREFIX, defaultBranch: "main", frozen: ["eval/**"], logDir: "ar-log", at: AT };
   return { bare, work, kept, main, fake, port: githubPort(fake.wire), input };
 }
@@ -84,8 +84,8 @@ describe("syncing the ratchet after its snapshot PR merges", () => {
 
   it("returns an open or closed PR's state at once and touches nothing", async () => {
     const { bare, kept, fake, port, input } = await fixture();
-    const open = fake.addPr({ headRef: `${PREFIX}-snap/run-1/m2` });
-    const closed = fake.addPr({ state: "closed", headRef: `${PREFIX}-snap/run-1/m3` });
+    const open = fake.addPr({ headRef: `${PREFIX}-snap/run-1/m2`, headSha: kept });
+    const closed = fake.addPr({ state: "closed", headRef: `${PREFIX}-snap/run-1/m3`, headSha: kept });
 
     expect(await syncRatchet(execDatedGit, port, { ...input, pr: open.number })).toEqual({ state: "open" });
     expect(await syncRatchet(execDatedGit, port, { ...input, pr: closed.number })).toEqual({ state: "closed" });

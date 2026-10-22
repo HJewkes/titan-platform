@@ -24,7 +24,7 @@ interface SyncInput {
   resolved?: string;
 }
 
-export type SyncResult =
+type SyncResult =
   | { state: "open" | "closed" }
   | { state: "merged"; merged: { from: string; to: string; main: string }; treeChanged: boolean }
   | { state: "merged"; conflict: string[] }
@@ -76,6 +76,7 @@ export async function syncRatchet(git: DatedGit, port: Pick<GitHubPort, "getPr">
   else {
     const result = await mergeOnto(git, { tree: input.tree, base: input.head, head: main, message: `ar: merge ${input.defaultBranch} into ${input.ratchetRef}`, at: input.at });
     if ("conflict" in result) return { state: "merged", conflict: result.conflict };
+    if (!("merged" in result)) throw new Error(`[sync-merge] merging ${main} into ${input.head} made no commit`);
     to = result.merged;
     const frozen = await frozenChanges(git, input, to);
     if (frozen.length > 0) return { state: "merged", frozen };

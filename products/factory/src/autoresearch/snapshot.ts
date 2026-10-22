@@ -21,7 +21,7 @@ interface SnapshotName {
   defaultBranch: string;
 }
 
-export interface SnapshotRefs {
+interface SnapshotRefs {
   tag: string;
   branch: string;
 }
@@ -56,7 +56,7 @@ export async function isAncestor(git: DatedGit, tree: string, ancestor: string, 
   );
 }
 
-export const remoteHead = async (git: DatedGit, tree: string, ref: string) => (await git(["ls-remote", "origin", ref], tree)).split(/\s/)[0] ?? "";
+const remoteHead = async (git: DatedGit, tree: string, ref: string) => (await git(["ls-remote", "origin", ref], tree)).split(/\s/)[0] ?? "";
 
 interface CutSnapshot extends SnapshotName {
   /** The integration tree: a checkout of the target repo whose `origin` holds the ratchet. */
@@ -74,7 +74,7 @@ interface CutSnapshot extends SnapshotName {
   at: string;
 }
 
-export interface Cut extends SnapshotRefs {
+interface Cut extends SnapshotRefs {
   sha: string;
   logSha: string;
 }
@@ -171,7 +171,7 @@ export async function openSnapshotPr(port: Pick<GitHubPort, "openPr">, request: 
   return { pr: pr.number };
 }
 
-export interface SnapshotRegistration {
+interface SnapshotRegistration {
   repo: RepoSlug;
   pr: number;
   task: string;
@@ -182,7 +182,7 @@ export interface SnapshotRegistration {
 }
 
 /** The in-process `shepherd.register`; a repeat for the same PR returns the registered run. */
-export type SnapshotRegister = (request: SnapshotRegistration) => Promise<{ runId: string; created: boolean }>;
+type SnapshotRegister = (request: SnapshotRegistration) => Promise<{ runId: string; created: boolean }>;
 
 interface RegisterSnapshot extends Omit<SnapshotRegistration, "slice"> {
   phase: string;
