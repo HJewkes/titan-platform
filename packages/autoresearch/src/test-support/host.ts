@@ -4,6 +4,7 @@ import { routedRunner, WorkflowRuntime, workflowMigration, workflowOwnershipMigr
 import { arStepHandlers, type ArStepHandler } from "../handlers.js";
 import { arStepId } from "../manifest.js";
 import type { ArPorts } from "../ports.js";
+import { AUTORESEARCH_VALIDATE_WORKFLOW, runValidatorLook } from "../validate.js";
 import { AUTORESEARCH_WORKFLOW, runAutoresearch } from "../workflow.js";
 
 export interface TestHost {
@@ -31,5 +32,6 @@ export function openTestHost(ports: ArPorts, dbPath = ":memory:"): TestHost {
   const runner = routedRunner(arStepHandlers(ports).map(route));
   const runtime = new WorkflowRuntime({ db, gates: new SqliteGateStore(db, { migrate: false }), runner, gatePollMs: 5 });
   runtime.register(AUTORESEARCH_WORKFLOW, runAutoresearch, { strictReplay: true });
+  runtime.register(AUTORESEARCH_VALIDATE_WORKFLOW, runValidatorLook, { strictReplay: true });
   return { runtime, adopt: () => runtime.hydrate(), close: () => void (runtime.shutdown(), db.close()) };
 }
