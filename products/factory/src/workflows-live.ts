@@ -8,19 +8,14 @@ import type { SpawnLimits } from "./shepherd/spawn-gate.js";
 
 /** The parts of the route wiring that read a live config row per use instead of once at start. */
 
-/** Like `{ ...base, ...extra }`, but a getter on either stays a getter, so a live config value is not read once here and kept. */
-export function withGetters<A extends object, B extends object>(base: A, extra: B): A & B {
-  return Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(base), ...Object.getOwnPropertyDescriptors(extra) }) as A & B;
-}
+type DispatchUnder = (configDir: string | undefined) => AgentChatReviewerDispatch;
+
+type Accounts = { primary: AgentChatReviewerDispatch; accounts: ReviewAccounts };
 
 /**
  * `review.configDir` first, then each fallback, read per use; every account gets its own dispatch over the one roster and
  * spawn gate, built the first time it is asked for and kept, so a fallback dropped and re-added keeps its dispatch.
  */
-type DispatchUnder = (configDir: string | undefined) => AgentChatReviewerDispatch;
-
-type Accounts = { primary: AgentChatReviewerDispatch; accounts: ReviewAccounts };
-
 export function reviewAccounts(review: ReviewConfig, fallbacks: () => readonly string[] | undefined, under: DispatchUnder, alert: ReviewAccounts["alert"]): Accounts {
   const first = review.configDir ?? DEFAULT_ACCOUNT;
   const primary = under(review.configDir);
@@ -58,6 +53,22 @@ export function holdAdversary(review: ReviewConfig, config: ConfigRef, under: Di
     },
     get adversaryDispatch() {
       return mode() && dispatch;
+    },
+  };
+}
+
+/** `wiring` with the hold adversary's keys as getters over `adversary`, so a spread copy of the wiring does not fix them. */
+export function withHoldAdversary<W extends object>(wiring: W, adversary: HoldAdversary): W & HoldAdversary {
+  return {
+    ...wiring,
+    get twoMergeRelease() {
+      return adversary.twoMergeRelease;
+    },
+    get holdMember() {
+      return adversary.holdMember;
+    },
+    get adversaryDispatch() {
+      return adversary.adversaryDispatch;
     },
   };
 }

@@ -117,9 +117,10 @@ function vacuousTestOnly(): FakeGitHub {
 async function readFixProofStep(routes: FactoryRoutes, runId: string): Promise<unknown> {
   const route = routes.find((candidate) => candidate.match === "sh-fix-proof");
   if (!route) throw new Error("no sh-fix-proof route");
-  const result = await route.runner.run({ prompt: JSON.stringify({ repo: REPO, head: H, runId }), signal: new AbortController().signal } as never);
-  if (!result.ok) throw new Error(result.error);
-  return (JSON.parse(result.output) as { result: unknown }).result;
+  const prompt = JSON.stringify({ repo: REPO, head: H, runId });
+  const outcome = await route.runner.run({ runId, workflowName: "shepherd-pr", stepId: `sh-fix-proof:${H}`, iteration: 0, prompt, signal: new AbortController().signal, attempt: 1, requestKey: "k" });
+  const { output } = z.object({ ok: z.literal(true), output: z.string() }).parse(outcome);
+  return z.object({ result: z.unknown() }).parse(JSON.parse(output)).result;
 }
 
 describe("configuredRoutes after a config reload", () => {

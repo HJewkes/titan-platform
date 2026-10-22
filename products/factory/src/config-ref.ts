@@ -42,19 +42,15 @@ export function configRef(path: string, now: () => number = Date.now): ConfigRef
 }
 
 /** A config value read through a getter on every use, or a value fixed by the caller. */
-export type Live<T> = T | (() => T);
+export type Live<T extends string | undefined> = T | (() => T);
 
-export function current<T>(value: Live<T>): T {
-  return typeof value === "function" ? (value as () => T)() : value;
+export function current<T extends string | undefined>(value: Live<T>): T {
+  return typeof value === "function" ? value() : value;
 }
 
 type Shepherd = NonNullable<FactoryConfig["shepherd"]>;
 
-/**
- * One reader per `live` factory row of `EDITABLE_FIELDS`, keyed by the row's pattern. A consumer of a live row takes
- * `liveField(ref, pattern)`; a row with no reader here cannot be marked live, which the structure test enforces.
- */
-export const LIVE_FIELDS = {
+const READERS = {
   "shepherd.spawnGate.load5": (s: Shepherd) => s.spawnGate?.load5,
   "shepherd.spawnGate.buildLoad5": (s: Shepherd) => s.spawnGate?.buildLoad5,
   "shepherd.gateReset.noReproProceed": (s: Shepherd) => s.gateReset?.noReproProceed,
@@ -63,11 +59,17 @@ export const LIVE_FIELDS = {
   "shepherd.review.adversaryProfile": (s: Shepherd) => s.review?.adversaryProfile,
   "shepherd.review.fallbackConfigDirs": (s: Shepherd) => s.review?.fallbackConfigDirs,
   "shepherd.review.maxConcurrent": (s: Shepherd) => s.review?.maxConcurrent,
-} as const;
+};
 
-type LiveFieldPath = keyof typeof LIVE_FIELDS;
+type LiveValues = { [P in keyof typeof READERS]: ReturnType<(typeof READERS)[P]> };
 
-export function liveField<P extends LiveFieldPath>(ref: ConfigRef, path: P): () => ReturnType<(typeof LIVE_FIELDS)[P]> {
-  const read = LIVE_FIELDS[path] as (s: Shepherd) => ReturnType<(typeof LIVE_FIELDS)[P]>;
+/**
+ * One reader per `live` factory row of `EDITABLE_FIELDS`, keyed by the row's pattern. A consumer of a live row takes
+ * `liveField(ref, pattern)`; a row with no reader here cannot be marked live, which the structure test enforces.
+ */
+export const LIVE_FIELDS: { readonly [P in keyof LiveValues]: (s: Shepherd) => LiveValues[P] } = READERS;
+
+export function liveField<P extends keyof LiveValues>(ref: ConfigRef, path: P): () => LiveValues[P] {
+  const read = LIVE_FIELDS[path];
   return () => read(ref.get().shepherd ?? {});
 }
