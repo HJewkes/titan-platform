@@ -12,6 +12,7 @@ import { ideaLadder, type RoundContext } from "./ladder.js";
 import { arStepId } from "./manifest.js";
 import { addPair, band, NO_NOISE, sigmaOf, type NoiseState } from "./noise.js";
 import { HeadSchema, PinnedSchema, type Pinned } from "./ports.js";
+import { frozenOverlap } from "./post-check.js";
 import { applyOps, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { IdeaSchema, OutcomeSchema, QueueOpsSchema, resultSchemaFor, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
@@ -120,10 +121,23 @@ async function fanOut(run: Run, rc: RoundContext, picks: readonly Idea[], round:
 
 /** One σ per round, so ordering by Δ is ordering by σ-normalized Δ. */
 const byStrength = (a: Outcome, b: Outcome) => (b.delta ?? 0) - (a.delta ?? 0) || a.ideaId.localeCompare(b.ideaId);
+const smaller = (a: Outcome, b: Outcome) =>
+  (a.diff?.srcLines ?? Infinity) - (b.diff?.srcLines ?? Infinity) || (a.diff?.srcFiles ?? Infinity) - (b.diff?.srcFiles ?? Infinity) || a.ideaId.localeCompare(b.ideaId);
 
-/** The strongest winner moves the ratchet; any other winner goes back in the queue on its lineage until S5 re-evaluates it against the new head. */
-async function ratchet(run: Run, state: LoopState, outcomes: Outcome[], round: number) {
-  const winners = outcomes.filter((outcome) => outcome.verdict === "kept").sort(byStrength);
+/**
+ * Winners within σ of the strongest are a tie, and the smallest source diff of those goes first; the rest
+ * stay in Δ order. A pick over a fixed set, not a tolerance comparator, which would not be transitive.
+ */
+export function pickWinner(winners: readonly Outcome[], sigma: number): Outcome[] {
+  if (winners.length === 0) return [];
+  const top = Math.max(...winners.map((outcome) => outcome.delta ?? 0));
+  const [first] = winners.filter((outcome) => (outcome.delta ?? 0) >= top - sigma).sort(smaller);
+  return [first!, ...[...winners].sort(byStrength).filter((outcome) => outcome !== first)];
+}
+
+/** The picked winner moves the ratchet; any other winner goes back in the queue on its lineage until S5 re-evaluates it against the new head. */
+async function ratchet(run: Run, state: LoopState, outcomes: Outcome[], round: number, sigma: number) {
+  const winners = pickWinner(outcomes.filter((outcome) => outcome.verdict === "kept"), sigma);
   const [first, ...rest] = winners;
   if (!first) return { best: state.best, kept: [], outcomes, requeue: [] };
   const { ratchetRef, integrationTree: tree, target } = run.pinned;
@@ -150,9 +164,9 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   const picks = await pick(run, queue, state, round);
   const ideas = new Map([...state.ideas, ...queue.map((idea) => [idea.id, idea] as const)]);
   const rc = roundContext(run, state, round);
-  const moved = await ratchet(run, { ...state, ideas }, await fanOut(run, rc, picks, round), round);
-  const picked = new Set(picks.map((idea) => idea.id));
   const sigma = rc.band.sigma;
+  const moved = await ratchet(run, { ...state, ideas }, await fanOut(run, rc, picks, round), round, sigma);
+  const picked = new Set(picks.map((idea) => idea.id));
   const outcomes = moved.outcomes.map((outcome) => ({ ...outcome, sigma }));
   const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome), recordAnalysis(state.registries, ops.analysis));
   return {
@@ -178,6 +192,8 @@ function stopped(run: Run, state: LoopState): boolean {
 export async function runAutoresearch(ctx: WorkflowContext): Promise<void> {
   const { pin, settings } = runParams(ctx);
   const pinned = await step(ctx, arStepId("pin"), { runId: ctx.runId, pin }, PinnedSchema);
+  const overlap = frozenOverlap(pinned.bounds, pinned.target.frozen);
+  if (overlap.length > 0) throw new Error(`[bounds-frozen] ${overlap.join(", ")}`);
   const run: Run = { ctx, pinned, settings, keep: pinned.target.metric, result: resultSchemaFor(pinned.target.metric) };
   let state: LoopState = { ...(await baseline(run)), queue: [], ideas: new Map(), outcomes: [], evidence: [], registries: EMPTY_REGISTRIES, keptLastRound: [], roundsWithoutGain: 0 };
   for (let round = 1; round <= settings.rounds && !stopped(run, state); round++) state = await runRound(run, state, round);

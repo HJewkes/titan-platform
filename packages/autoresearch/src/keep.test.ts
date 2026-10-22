@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { confirmRule, keepRule, median, type KeepSettings } from "./keep.js";
-import { resultSchemaFor, type ArResult } from "./schemas.js";
+import { ArResultSchema, resultSchemaFor, type ArResult } from "./schemas.js";
 
 const SETTINGS: KeepSettings = {
   primary: { name: "cc_total_delta_pct", direction: "min" },
@@ -58,6 +58,14 @@ describe("keep rule", () => {
     expect(keepRule(BEST, idea, BAND, SETTINGS).reason).toBe("guard:single_caller_delta");
   });
 
+  it("rejects a gain whose max-direction guard metric falls, and keeps one where it holds", () => {
+    const settings: KeepSettings = { ...SETTINGS, guards: { accepted_tasks: { slack: 0, direction: "max" } }, noOp: undefined };
+    const idea = (served: number) => [-5, -5, -5].map((cc) => result(cc, { accepted_tasks: served }));
+
+    expect(keepRule(BEST, idea(4), BAND, settings).reason).toBe("guard:accepted_tasks");
+    expect(keepRule(BEST, idea(6), BAND, settings).decision).toBe("accept");
+  });
+
   it("accepts a strict all-gate gain within one σ of the best", () => {
     const best = [result(0, { all_gate: false }), result(0), result(0)];
 
@@ -88,6 +96,12 @@ describe("result schema for a target", () => {
     const parsed = parse({ zeroTolerance: ["x"] }, result(0));
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues.map((issue) => issue.path)).toContainEqual(["violations", "x"]);
+  });
+
+  it("keeps the scorer's rung, evaluator pin and artifact dir", () => {
+    const line = { ...result(0), rung: "seed", evaluator_pin: "0123abc", artifact_dir: "runs/r1" };
+
+    expect(ArResultSchema.parse(line)).toMatchObject({ rung: "seed", evaluator_pin: "0123abc", artifact_dir: "runs/r1" });
   });
 
   it("accepts a result that carries the gates and violations the target names", () => {

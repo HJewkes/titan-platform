@@ -27,6 +27,23 @@ host turns those into `ArPorts`; the recipe reads only the parsed `Target` and `
 - **`microRung`** names an L1 rung per change class. A class with none goes from L0 to L2.
 - **`bounds.json`** lists the change classes, their path globs and parameter ranges. There is no
   diff-size cap. Diff size is recorded on each outcome and in the planner digest instead.
+- **`target.json` `frozen`** lists the evaluator's globs. A class glob that names one stops the
+  run before the baseline (`[bounds-frozen]`).
+
+## L0 bounds, guards and the tie-break
+
+L0 is pure engine code over the real diff. A host runs `git diff --no-color --unified=0 -M base
+head`, feeds it to `parseUnifiedDiff`, and passes the files to `postCheck`. For a params class it
+also passes `changedParams` of the params file at base and head. `postCheck` records one row per
+check and returns the first failure as the code. The checks are `frozen-touch`, `outside-class`,
+`new-file-outside-tests`, `no-test` (unless the class is in `test.exceptClasses`), `case-name`,
+`stray-literal`, and the param range, integer and removal checks. A `banned` entry is on when it
+is present and not `false`, whether it is prose or data. A data-form `literalsOutsideConfig`
+replaces the default allowed literals `{0, 1, 2, -1}` with its `allowed` list. L0 also measures the
+diff size `{files, lines, srcFiles, srcLines, testLines}`, which replaces the implementer's own
+count. A guard is a slack (a `min` metric that may not rise) or `{slack, direction}`. A `max` guard
+may not fall. Winners within one σ of the strongest Δ count as a tie. The one with the smallest
+source diff moves the ratchet.
 
 ## Usage
 
