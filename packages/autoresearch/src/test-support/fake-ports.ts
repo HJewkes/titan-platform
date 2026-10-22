@@ -8,7 +8,7 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, RatchetRequest } from "../ports.js";
+import type { ArPorts, ImplementRequest, MicroRequest, RatchetRequest, RoundRecord } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
@@ -35,6 +35,8 @@ export interface Policy {
   gates?: string[];
   violations?: string[];
   mechanisms: Record<string, Mechanism>;
+  /** What each eval run, micro run and implement reports spending; 0 when absent. */
+  usd?: { eval?: number; micro?: number; implement?: number };
 }
 
 /** A synthetic target repo: a bare `origin` and one checkout that serves as the integration tree. */
@@ -151,6 +153,7 @@ export function proposal(mechanism: string, overrides: Partial<Proposal> = {}): 
     direction: mechanism,
     targets: ["src/gate/gates.py"],
     expectedEffect: { metric: "primary", direction: "down", microSignal: "fewer accepts" },
+    microArgs: {},
     testPlan: "assert the new accept decision",
     bold: false,
     priority: 0,
@@ -169,12 +172,16 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
 }
 
 interface FakeCalls {
-  plans: { round: number; violations: string[]; digest: Digest }[];
+  plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
   implement: string[];
+  /** Every implement input but the brief, in call order. */
+  implementInputs: Omit<ImplementRequest, "brief">[];
   evals: { ideaId: string | null; key: string }[];
   micro: string[];
+  microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
   released: string[];
+  archives: { round: number; record: RoundRecord }[];
 }
 
 export interface FakeOptions {
@@ -205,6 +212,13 @@ function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, str
   return testGlob ? { ...edits, [testGlob.replaceAll("*", "")]: `# checks ${idea.mechanism}\n` } : edits;
 }
 
+/** An exploit lane resumes the agent it names; every other lane is a fresh spawn named for its idea and round. */
+function implementerOf({ idea, round, fork, resumeFrom }: Omit<ImplementRequest, "brief">) {
+  const resumed = fork === "exploit" && resumeFrom !== undefined;
+  const agent = resumed ? resumeFrom : `implementer-${idea.id}-r${round}`;
+  return { agent, sessionId: `session-${agent}`, mode: resumed ? ("resume" as const) : ("spawn" as const), resumedFrom: resumed ? agent : undefined, account: "fixture" };
+}
+
 function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, policy: Policy, options: FakeOptions) {
   return {
     async allocTree({ runId, ideaId, base }: { runId: string; ideaId: string; base: string }) {
@@ -214,8 +228,10 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       ideaOfTree.set(tree, ideaId);
       return { tree, branch };
     },
-    async implement({ idea, tree }: { idea: Idea; tree: string }) {
+    async implement({ brief: _brief, ...input }: ImplementRequest) {
+      const { idea, tree } = input;
       calls.implement.push(idea.id);
+      calls.implementInputs.push(input);
       await options.beforeImplement?.(idea, calls.implement.length);
       appendFileSync(join(tree, "applied.txt"), `${idea.mechanism}\n`);
       for (const [path, text] of Object.entries(editsOf(idea, policy, options.bounds ?? FIXTURE_BOUNDS))) {
@@ -224,7 +240,7 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       }
       await git(tree, "add", "--all");
       await git(tree, "commit", "--quiet", "-m", `apply ${idea.mechanism}`);
-      return { head: await git(tree, "rev-parse", "HEAD"), usd: 0, lesson: `${idea.mechanism} applied` };
+      return { head: await git(tree, "rev-parse", "HEAD"), usd: policy.usd?.implement ?? 0, lesson: `${idea.mechanism} applied`, ...implementerOf(input) };
     },
     async releaseTree({ tree }: { tree: string }) {
       calls.released.push(tree);
@@ -241,8 +257,10 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       const checked = postCheck({ idea, diff: parseUnifiedDiff(text), bounds, frozen: target.frozen, caseNames: options.caseNames ?? [] });
       return { ok: checked.code === undefined, code: checked.code, checks: checked.checks, diff: checked.size };
     },
-    async micro({ idea, tree, rung }: { idea: Idea; tree: string; rung: string }) {
+    async micro(input: MicroRequest) {
+      const { idea, tree, rung } = input;
       calls.micro.push(idea.id);
+      calls.microInputs.push(input);
       return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung]));
     },
     async evalCase({ tree, case: testCase, key }: { tree: string; case: string; key: string }) {
@@ -250,6 +268,17 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.evals.push({ ideaId, key });
       await options.beforeEval?.(ideaId, key);
       return ArResultSchema.parse(await script("fake_eval.sh", [repo.policyPath, tree, testCase, key]));
+    },
+  };
+}
+
+/** A load gate that never waits and an archive that only records what it was given. */
+function recordPorts(repo: FixtureRepo, calls: FakeCalls): Pick<ArPorts, "loadWait" | "archive"> {
+  return {
+    loadWait: async () => ({ waitedMs: 0, load5: 0.5 }),
+    async archive({ runId, round, record }) {
+      calls.archives.push({ round, record });
+      return { path: join(repo.root, "archive", runId, `round-${round}.json`), sha256: "0".repeat(64) };
     },
   };
 }
@@ -262,7 +291,7 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], evals: [], micro: [], ratchet: [], released: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   return {
@@ -281,6 +310,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.ratchet.push(input);
       return (options.ratchet ?? pushRatchet)(input);
     },
+    ...recordPorts(repo, calls),
     ...treePorts(repo, calls, ideaOfTree, policy, options),
     ...rungPorts(repo, calls, ideaOfTree, target, options),
   };

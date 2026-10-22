@@ -4,6 +4,8 @@ export const REGISTRY_TAIL = 40;
 
 /** A cell, targets and direction that already failed past L0, so a repeat must say how it differs. */
 export interface DeadEnd {
+  ideaId: string;
+  round: number;
   cell: string;
   targets: string[];
   rungFailed: string;
@@ -13,6 +15,9 @@ export interface DeadEnd {
 
 /** "Fails here, do this instead", from L0 failures and planner analysis. */
 interface Bug {
+  /** Absent on a planner's analysis line, which names no single idea. */
+  ideaId?: string;
+  round: number;
   symptom: string;
   fix: string;
   source: "L0" | "planner";
@@ -31,29 +36,29 @@ export function inDeadEnd(idea: Pick<Idea, "cell" | "targets">, deadEnds: readon
   return deadEnds.some((entry) => entry.cell === idea.cell && sameTargets(entry.targets, idea.targets));
 }
 
-function deadEndOf(idea: Idea, outcome: Outcome): DeadEnd | undefined {
+function deadEndOf(idea: Idea, outcome: Outcome, round: number): DeadEnd | undefined {
   const pastL0 = outcome.rungReached === "L1" || outcome.rungReached === "L2" || outcome.rungReached === "L3";
   if (outcome.verdict === "kept" || !pastL0) return undefined;
   const deltaOverSigma = outcome.delta !== undefined && outcome.sigma ? outcome.delta / outcome.sigma : undefined;
-  return { cell: idea.cell, targets: idea.targets, rungFailed: outcome.rungReached, deltaOverSigma, lesson: outcome.lesson };
+  return { ideaId: idea.id, round, cell: idea.cell, targets: idea.targets, rungFailed: outcome.rungReached, deltaOverSigma, lesson: outcome.lesson };
 }
 
-function bugOf(outcome: Outcome): Bug | undefined {
+function bugOf(outcome: Outcome, round: number): Bug | undefined {
   if (outcome.rungReached !== "L0" || outcome.verdict === "kept") return undefined;
-  return { symptom: outcome.reason, fix: outcome.lesson ?? "", source: "L0" };
+  return { ideaId: outcome.ideaId, round, symptom: outcome.reason, fix: outcome.lesson ?? "", source: "L0" };
 }
 
-export function recordOutcome(registries: Registries, idea: Idea, outcome: Outcome): Registries {
-  const deadEnd = deadEndOf(idea, outcome);
-  const bug = bugOf(outcome);
+export function recordOutcome(registries: Registries, idea: Idea, outcome: Outcome, round: number): Registries {
+  const deadEnd = deadEndOf(idea, outcome, round);
+  const bug = bugOf(outcome, round);
   return {
     deadEnds: deadEnd ? [...registries.deadEnds, deadEnd] : registries.deadEnds,
     bugs: bug ? [...registries.bugs, bug] : registries.bugs,
   };
 }
 
-export function recordAnalysis(registries: Registries, analysis: readonly string[]): Registries {
-  return { ...registries, bugs: [...registries.bugs, ...analysis.map((line) => ({ symptom: line, fix: "", source: "planner" as const }))] };
+export function recordAnalysis(registries: Registries, analysis: readonly string[], round: number): Registries {
+  return { ...registries, bugs: [...registries.bugs, ...analysis.map((line) => ({ round, symptom: line, fix: "", source: "planner" as const }))] };
 }
 
 /** The tails every implementer brief and planner digest carry, capped so the brief stays bounded. */
