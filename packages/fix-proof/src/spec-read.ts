@@ -28,16 +28,32 @@ async function readSpecAtHead(ctx: Context, head: string, path: string): Promise
   return parsed.spec;
 }
 
+/** Reads one spec at head and pairs it with its test file, without the merge-base check. */
+async function readPairedSpec(ctx: Context, plan: FixProofPlan, head: string, path: string): Promise<SpecUnderTest> {
+  const spec = await readSpecAtHead(ctx, head, path);
+  const testFile = testFileOfSpec(path, await headFilesBeside(ctx, head, path), compileGlobs(plan.config.tests));
+  if (testFile === null) throw new SpecError(`${path}: no single test file sits beside it`);
+  return { path, testFile, mutations: spec.mutations };
+}
+
 /** Reads one spec at head, pairs it with its test file and checks every mutation against the merge base. */
 async function readSpec(ctx: Context, plan: FixProofPlan, shas: Shas, path: string): Promise<SpecUnderTest> {
-  const spec = await readSpecAtHead(ctx, shas.head, path);
-  const testFile = testFileOfSpec(path, await headFilesBeside(ctx, shas.head, path), compileGlobs(plan.config.tests));
-  if (testFile === null) throw new SpecError(`${path}: no single test file sits beside it`);
+  const spec = await readPairedSpec(ctx, plan, shas.head, path);
   for (const mutation of spec.mutations) {
     const checked = checkMutation(mutation, await readBlob(ctx, shas.base, mutation.file), plan.config);
     if (!checked.ok) throw new SpecError(`${path}: ${checked.error}`);
   }
-  return { path, testFile, mutations: spec.mutations };
+  return spec;
+}
+
+/**
+ * Every spec the plan names, parsed and paired at head only. A diff with source in it may mutate code the merge base
+ * lacks, so the merge-base check would refuse a sound spec there; parsing still catches one no test-only diff could run.
+ */
+export async function readSpecsAtHead(ctx: Context, plan: FixProofPlan, head: string): Promise<SpecUnderTest[]> {
+  const specs: SpecUnderTest[] = [];
+  for (const path of plan.mutations) specs.push(await readPairedSpec(ctx, plan, head, path));
+  return specs;
 }
 
 /** Every spec the plan names, read and checked in plan order; the judge and the mutants side share this one reading. */
