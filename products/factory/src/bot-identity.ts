@@ -1,15 +1,19 @@
 import { TokenFileError, trackSecretFile, type Logger, type TokenFileProblem } from "@titan-design/daemon";
-import { octokitClient, parseGitHubToken, rateBudget, type GitHubClient } from "@titan-design/github";
+import { octokitClient, parseGitHubToken, rateBudget, type GitExec, type GitHubClient } from "@titan-design/github";
 import type { WorkflowCapability } from "@titan-design/workflow";
 import { botTokenExpiryWatch, observingFetch } from "./bot-token-expiry.js";
 import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js";
 import { usageMeter, type UsageMeter } from "./github-api/usage-meter.js";
+import { botLsRemote, type BotLsRemote } from "./bot-ls-remote.js";
 
 /**
  * The bot's token file. Fixed in code like `OWNER_KEYS_DIR`: no environment variable, flag or config can point serve
  * elsewhere. Undefined until the owner ratifies a path (TP-3094 A-4 or B-1), so until then serve looks nowhere.
  */
 export const BOT_TOKEN_PATH: string | undefined = undefined;
+
+/** The bot's GitHub login, fixed in code beside its token path, so C7 can tell its writes apart. Undefined until ratified. */
+export const BOT_LOGIN: string | undefined = undefined;
 
 /** The name a workflow step passes to `ctx.capability` to reach the bot. */
 export const BOT_CAPABILITY = "github-bot";
@@ -23,13 +27,13 @@ type BotTokenProblem = TokenFileProblem | "unreadable";
 export type BotHealth = { state: "ok"; expiresAt: string | null } | { state: "absent" } | { state: "refused"; problem: BotTokenProblem };
 
 /** Blocked carries no client: a bot step has nothing to fall back on, least of all the user login's identity. */
-export type BotAccess = { state: "ok"; client: GitHubClient } | { state: "blocked"; reason: "absent" | "refused" };
+export type BotAccess = { state: "ok"; client: GitHubClient; login: string | undefined; lsRemote: BotLsRemote } | { state: "blocked"; reason: "absent" | "refused" };
 
 export interface BotHandle {
   access(): BotAccess;
 }
 
-export interface BotIdentity {
+export interface BotIdentity extends BotHandle {
   /** For `/health.bot`; never holds the token. */
   health(): BotHealth;
   /** The token's SHA-256, for the A17 scan; set only when the token was read. */
@@ -42,6 +46,9 @@ export interface BotIdentity {
 
 interface BotIdentityOptions {
   path?: string | undefined;
+  login?: string | undefined;
+  /** Runs the bot's `git ls-remote`; defaults to `execGit`. */
+  git?: GitExec;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
   /** Where the 14-day expiry alarm's ops-alarm line goes. */
@@ -80,7 +87,7 @@ type TokenRead = { state: "ok"; token: string } | Exclude<BotHealth, { state: "o
  * Read once at start, like the owner keys: the capability vault's secret list is fixed when the runtime is built, so a
  * rotated token would escape its redaction. A rotation therefore needs a restart. Nothing here throws, so serve starts.
  */
-export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_PATH }): BotIdentity {
+export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_PATH, login: BOT_LOGIN }): BotIdentity {
   const read = readToken(options.path);
   if (read.state !== "ok") return disabled(read);
   const fingerprint = tokenFingerprint(read.token);
@@ -90,14 +97,17 @@ export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_
     expiry.observe(headers);
     usage.observe(headers);
   });
-  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch, now: options.now });
-  const access = (): BotAccess => ({ state: "ok", client });
-  return { health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, usage, capabilities: capabilitiesOf({ access }, [read.token]) };
+  // The reconciler's github-api pool owns every rate-limit wait, so Octokit's throttle must not sleep under it.
+  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch, now: options.now, poolOwnsWaits: true });
+  const ok: BotAccess = { state: "ok", client, login: options.login, lsRemote: botLsRemote(read.token, options.git) };
+  const access = (): BotAccess => ok;
+  return { access, health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, usage, capabilities: capabilitiesOf({ access }, [read.token]) };
 }
 
 function disabled(health: Exclude<BotHealth, { state: "ok" }>): BotIdentity {
   const blocked: BotAccess = { state: "blocked", reason: health.state };
-  return { health: () => health, capabilities: capabilitiesOf({ access: () => blocked }, []) };
+  const access = (): BotAccess => blocked;
+  return { access, health: () => health, capabilities: capabilitiesOf({ access }, []) };
 }
 
 function readToken(path: string | undefined): TokenRead {

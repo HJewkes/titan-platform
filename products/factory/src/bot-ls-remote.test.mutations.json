@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "git reads the user's global config",
+      "file": "products/factory/src/bot-ls-remote.ts",
+      "find": "    GIT_CONFIG_GLOBAL: \"/dev/null\",\n",
+      "replace": "",
+      "kills": [
+        "botGitEnv: no route back to the user login's credential (I13) shuts out the global, system and -c config, every credential helper and askpass, and every transport but https"
+      ]
+    },
+    {
+      "name": "the user's credential helper stays on",
+      "file": "products/factory/src/bot-ls-remote.ts",
+      "find": "    GIT_CONFIG_COUNT: \"2\",",
+      "replace": "    GIT_CONFIG_COUNT: \"1\",",
+      "kills": [
+        "botGitEnv: no route back to the user login's credential (I13) shuts out the global, system and -c config, every credential helper and askpass, and every transport but https"
+      ]
+    },
+    {
+      "name": "an insteadOf can turn the read into ssh with the user's key",
+      "file": "products/factory/src/bot-ls-remote.ts",
+      "find": "    GIT_ALLOW_PROTOCOL: \"https\",\n",
+      "replace": "",
+      "kills": [
+        "botGitEnv: no route back to the user login's credential (I13) shuts out the global, system and -c config, every credential helper and askpass, and every transport but https"
+      ]
+    },
+    {
+      "name": "a failed read passes for a sha-less answer",
+      "file": "products/factory/src/bot-ls-remote.ts",
+      "find": "if (error instanceof LsRemoteError) return UNAVAILABLE;",
+      "replace": "if (error instanceof LsRemoteError) return null;",
+      "kills": [
+        "botLsRemote: git ls-remote as the bot (TP-3431) answers unavailable, never a sha, when git fails, with the token in no argument"
+      ]
+    }
+  ]
+}

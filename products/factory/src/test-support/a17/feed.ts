@@ -99,7 +99,7 @@ interface Github {
 
 /** The gates always answer a change, so every pass snapshots; the ruleset list is the world's, as GitHub's read returns it. */
 function gatesOf(world: World, repo: string): BackstopAnswer {
-  return { status: 200, headers: {}, gates: { changed: true, etags: {}, rulesets: { notModified: false, unreadable: false, rulesets: world.rulesets(repo), etag: null } } };
+  return { status: 200, headers: {}, gates: { changed: true, etags: {}, reads: 3, notModified: 0, rulesets: { notModified: false, unreadable: false, rulesets: world.rulesets(repo), etag: null } } };
 }
 
 /**

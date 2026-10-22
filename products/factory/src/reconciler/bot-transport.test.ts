@@ -21,7 +21,7 @@ describe("bot transport gates (TP-3431)", () => {
 
     const answer = await botTransport(github.client)(gates(CURRENT));
 
-    expect(answer.gates).toEqual({ changed: false, etags: CURRENT });
+    expect(answer.gates).toEqual({ changed: false, etags: CURRENT, reads: 3, notModified: 3 });
     expect(github.requests.map((sent) => sent.ifNoneMatch)).toEqual(Object.values(CURRENT));
   });
 
@@ -31,7 +31,7 @@ describe("bot transport gates (TP-3431)", () => {
 
     const answer = await botTransport(github.client)(gates(CURRENT));
 
-    expect(answer.gates).toEqual({ changed: true, etags: { ...CURRENT, [GATE_KEYS.ref]: '"ref-2"' } });
+    expect(answer.gates).toEqual({ changed: true, etags: { ...CURRENT, [GATE_KEYS.ref]: '"ref-2"' }, reads: 3, notModified: 2 });
   });
 
   it("reads a free-plan repo's refused rulesets as unchanged, with no ETag to send next time", async () => {
@@ -40,7 +40,7 @@ describe("bot transport gates (TP-3431)", () => {
 
     const answer = await botTransport(github.client)(gates(CURRENT));
 
-    expect(answer.gates).toEqual({ changed: false, etags: { ...CURRENT, [GATE_KEYS.rulesets]: null } });
+    expect(answer.gates).toEqual({ changed: false, etags: { ...CURRENT, [GATE_KEYS.rulesets]: null }, reads: 3, notModified: 2 });
   });
 
   it("carries the ruleset list when it changed, for observe to diff", async () => {
@@ -52,6 +52,8 @@ describe("bot transport gates (TP-3431)", () => {
     expect(answer.gates).toEqual({
       changed: true,
       etags: { ...CURRENT, [GATE_KEYS.rulesets]: '"rulesets-2"' },
+      reads: 3,
+      notModified: 2,
       rulesets: { notModified: false, unreadable: false, rulesets: { 7: "2027-01-15T07:02:00Z" }, etag: '"rulesets-2"' },
     });
   });

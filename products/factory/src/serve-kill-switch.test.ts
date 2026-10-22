@@ -9,7 +9,7 @@ import { configPath } from "./config.js";
 import { sourcesReader } from "./github-sources/mode.js";
 import { DUE_CHECK_TICK_MS } from "./github-sources/schedule.js";
 import { webhookSecretPath } from "./ingress/paths.js";
-import { REPO, rig } from "./reconciler/fakes.test-helpers.js";
+import { REPO, fakeBotIdentity, rig } from "./reconciler/fakes.test-helpers.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { landScenario } from "./test-support/land.js";
@@ -91,7 +91,8 @@ async function startServe(env: NodeJS.ProcessEnv): Promise<Running> {
     github: { status: () => "ok", refresh: async () => undefined },
     sources: sourcesReader(env),
     ingress: { port: 0, secretPath: webhookSecretPath(env) },
-    reconciler: { config: { enabled: true, intervalMs: 5 * MINUTE, fullEvery: 3, repos: [REPO] }, bot: r.bot },
+    bot: () => fakeBotIdentity(),
+    reconciler: { config: { enabled: true, intervalMs: 5 * MINUTE, fullEvery: 3, repos: [REPO] }, ports: () => r.bot },
   }));
   const advance = async (ms: number) => {
     for (let step = 0; step < ms / DUE_CHECK_TICK_MS; step += 1) {

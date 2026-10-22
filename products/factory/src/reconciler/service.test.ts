@@ -288,6 +288,67 @@ describe("reconciler head guard (TP-3097 through TP-3431)", () => {
   });
 });
 
+describe("reconciler cost line (F11)", () => {
+  const costs = (r: ReturnType<typeof rig>) => messages(r.lines, "reconciler.cost").map((line) => line.fields);
+
+  it("logs one reconciler.cost per repo per pass: GraphQL points, gate reads, their 304s and the kinds appended", async () => {
+    const r = rig({ conditionalGates: true });
+    r.github.main = [commit("c2"), commit("c1")];
+    const service = createReconciler(ONE_REPO, r.deps);
+
+    await service.tick();
+    await service.tick();
+
+    expect(costs(r)).toEqual([
+      { repo: REPO, graphqlCost: 1, restCalls: 3, notModified: 3, appended: { CIConcluded: 2 } },
+      { repo: REPO, graphqlCost: 0, restCalls: 3, notModified: 3, appended: {} },
+    ]);
+  });
+
+  it("counts a row a webhook already holds as no append", async () => {
+    const r = rig();
+    appendEvent(r.db, { rule: "identity", source: "webhook", deliveryId: "webhook:synthetic-1", kind: "CIConcluded", subject: `${REPO}@c1`, keys: {}, occurrenceKey: `v1|CIConcluded|${REPO}|check|1001`, observedAt: "2027-01-15T07:00:00Z", payload: {} });
+
+    await createReconciler(ONE_REPO, r.deps).tick();
+
+    expect(costs(r)).toEqual([{ repo: REPO, graphqlCost: 1, restCalls: 0, notModified: 0, appended: {} }]);
+  });
+
+  it("still logs a pass the pool refused, and one whose unit failed, each as spending what it sent", async () => {
+    const observe: Observe = (...args) => {
+      if (args[0] === OTHER_REPO) throw new Error("synthetic observe failure");
+      return fakeObserve()(...args);
+    };
+    const r = rig({ observe });
+    r.github.limited.add("snapshot");
+    const service = createReconciler({ repos: [REPO, OTHER_REPO], fullEvery: 3 }, r.deps);
+    await service.tick();
+    r.github.limited.clear();
+    await r.clock.advance(RESET_MS);
+
+    await service.tick();
+
+    expect(costs(r).map(({ repo, graphqlCost }) => [repo, graphqlCost])).toEqual([
+      [REPO, 0],
+      [OTHER_REPO, 0],
+      [REPO, 1],
+      [OTHER_REPO, 1],
+    ]);
+  });
+
+  it("counts the head guard's compare as a REST read", async () => {
+    const at = "2027-01-15T07:00:00.000Z";
+    const r = rig({ observe: createObserve({ now: () => Date.parse("2027-01-15T08:00:00Z") }) });
+    advanceEpoch(r.db, { repo: REPO, pr: 7, expectedEpoch: 0, head: "a2".padEnd(40, "0"), by: "bootstrap", at });
+    const pr = { number: 7, headRefOid: "a3".padEnd(40, "0"), baseRefName: "main", updatedAt: at, head: null, reviews: [] };
+    r.github.snapshot = () => ({ open: [pr], done: [], main: { tip: "c1", commits: [] }, trains: [], rateLimit: { cost: 4, remaining: 4990, resetAt: at, queries: 2 } });
+
+    await createReconciler(ONE_REPO, r.deps).tick();
+
+    expect(costs(r)).toEqual([{ repo: REPO, graphqlCost: 4, restCalls: 1, notModified: 0, appended: { BaseChanged: 1, HeadPushed: 1, MainMoved: 1 } }]);
+  });
+});
+
 describe("hasPending", () => {
   it("counts a running check or a pending status, never a finished one", () => {
     const snapshot = (contexts: Parameters<typeof hasPending>[0]["main"]["commits"][number]["contexts"]) => ({ open: [], done: [], main: { tip: "c1", commits: [{ oid: "c1", contexts }] }, trains: [], rateLimit: { cost: 1, remaining: 1, resetAt: "", queries: 1 } });

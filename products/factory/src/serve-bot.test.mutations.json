@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the bot access hands out the user login's client (I13 security mutant)",
+      "file": "products/factory/src/bot-identity.ts",
+      "find": "const ok: BotAccess = { state: \"ok\", client, login",
+      "replace": "const ok: BotAccess = { state: \"ok\", client: octokitClient(), login",
+      "kills": [
+        "serve's reconciler runs as the bot (TP-3431 I13) serve with reconciler.enabled and a readable bot token starts a reconciler whose pool sends through the bot client"
+      ]
+    },
+    {
+      "name": "serve starts the reconciler for a blocked bot",
+      "file": "products/factory/src/serve-reconciler.ts",
+      "find": "  if (access.state !== \"ok\") return access.reason;\n",
+      "replace": "",
+      "kills": [
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for an absent token, says no-bot, and never falls back on the user login's client",
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a refused token, says no-bot, and never falls back on the user login's client"
+      ]
+    },
+    {
+      "name": "serve starts the reconciler for a bot with no login",
+      "file": "products/factory/src/serve-reconciler.ts",
+      "find": "if (access.login === undefined) return \"no-login\";",
+      "replace": "if (access.login === undefined) return { ...access, login: \"\" };",
+      "kills": [
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a bot with no login, says no-bot, and never falls back on the user login's client"
+      ]
+    },
+    {
+      "name": "health never learns the reconciler started",
+      "file": "products/factory/src/serve.ts",
+      "find": "  reconcilerRef.health = reconciler.health;\n",
+      "replace": "",
+      "kills": [
+        "serve's reconciler runs as the bot (TP-3431 I13) serve with reconciler.enabled and a readable bot token starts a reconciler whose pool sends through the bot client",
+        "serve's reconciler runs as the bot (TP-3431 I13) hands the reconciler the bot capability's client, never the user login's"
+      ]
+    },
+    {
+      "name": "the serve verb drops the reconciler dep",
+      "file": "products/factory/src/cli-host-verbs.ts",
+      "find": "reconciler: deps.reconciler?.(io.env), ",
+      "replace": "",
+      "kills": [
+        "serve's reconciler runs as the bot (TP-3431 I13) serve with reconciler.enabled and a readable bot token starts a reconciler whose pool sends through the bot client"
+      ]
+    }
+  ]
+}

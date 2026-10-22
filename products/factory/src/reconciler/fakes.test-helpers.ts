@@ -2,6 +2,7 @@ import type { Logger } from "@titan-design/daemon";
 import { GitHubRequestError, githubApiPool, memoryPoolStateStore, type Ancestry, type BackstopCommit, type GitHubClient, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority, type RulesetList } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { partialFake } from "@titan-design/test-kit";
+import type { BotAccess, BotIdentity } from "../bot-identity.js";
 import { botIntentMigration } from "../bot-intent.js";
 import { eventLogMigration } from "../event-log/event-log.js";
 import { headEpochMigration } from "../head-guard/epoch-store.js";
@@ -45,7 +46,7 @@ class FakeGithub {
     this.calls.push(call);
     if (this.hold) await this.hold;
     if (this.limited.has(call.kind)) return { status: 429, headers: {} };
-    if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: this.gateEtag }, ...(this.rulesets && { rulesets: this.rulesets }) } };
+    if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: this.gateEtag }, reads: 3, notModified: this.gatesChanged ? 0 : 3, ...(this.rulesets && { rulesets: this.rulesets }) } };
     if (call.kind === "ancestry") return { status: 200, headers: {}, ancestry: this.ancestry(call.base, call.head) };
     if (this.snapshot) return { status: 200, headers: {}, snapshot: this.snapshot() };
     const stop = this.main.findIndex((c) => c.oid === call.request.mainCursor);
@@ -232,4 +233,32 @@ function snapshotData(conclusion: string | null) {
       trains: { pageInfo: NO_MORE, nodes: [] },
     },
   };
+}
+
+/** A capability fake: serve's bot identity, open, with a synthetic client and login; it holds no token. */
+export function fakeBotIdentity(client: GitHubClient = fakeBotGithub().client, lsRemote: BotPorts["lsRemote"] = () => Promise.resolve(null)): BotIdentity {
+  const access: BotAccess = { state: "ok", client, login: BOT_LOGIN, lsRemote };
+  return { access: () => access, health: () => ({ state: "ok", expiresAt: null }), capabilities: {} };
+}
+
+interface FetchedRequest {
+  route: BotRoute;
+  method: string;
+  authorization: string | null;
+}
+
+/** `fakeBotGithub`'s answers as a `fetch`, for a real `octokitClient` such as the bot identity's; records the credential each request carried. */
+export function fakeBotFetch(): { fetch: typeof fetch; requests: FetchedRequest[] } {
+  const fake = { versions: { pulls: 1, ref: 1, rulesets: 1 }, conclusion: "SUCCESS", compare: "ahead" as Ancestry };
+  const requests: FetchedRequest[] = [];
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    const route = routeOf(new URL(input instanceof Request ? input.url : String(input)).pathname);
+    const method = init?.method ?? "GET";
+    requests.push({ route, method, authorization: headers.get("authorization") });
+    const answered = answer(fake, { route, method, ifNoneMatch: headers.get("if-none-match") ?? undefined });
+    const body = answered.status === 304 ? null : JSON.stringify(answered.body ?? {});
+    return new Response(body, { status: answered.status, headers: { "content-type": "application/json", ...answered.headers } });
+  };
+  return { fetch, requests };
 }
