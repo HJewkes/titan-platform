@@ -597,14 +597,15 @@ each one beside the video, in `<name>.notes.jsonl` (`cut.mp4` gets `cut.notes.js
 is the store of record: an agent re-rendering a video reads it in place, and nothing is copied into
 the state dir.
 
-- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", text }` or
+- **`videos.note`** (owner-write) appends one line: `{ videoId, atS, kind: "comment", about?, text }` or
   `{ videoId, atS, kind: "verdict", verdict: "ship" | "needs-changes" }`. Like `rounds.submit`, it
   runs only for the owner's session cookie on the LAN listener with `TITAN_CONSOLE_OWNER_WRITES=1`,
-  so loopback and bearer calls are refused.
+  so loopback and bearer calls are refused. It returns the stored note with `routedTo` (below).
 - **`videos.notes`** (read) returns `{ video, notes, verdict, gaps }` for one video id. Each note
   carries `current`, and `verdict` is the latest verdict on the current render or null.
-- **`videos.list`** gives each video a `noteCount` (comments on the current render), an
-  `openNoteCount` (the open notes under the pickup rule below) and its `verdict`.
+- **`videos.list`** gives each video a `noteCount` (comments on the current render), a
+  `videoNoteCount` (how many of those are about the video itself), an `openNoteCount` (the open
+  notes under the pickup rule below) and its `verdict`.
 
 Each line is a strict `titan-console/video-note@1` object:
 
@@ -616,7 +617,24 @@ Each line is a strict `titan-console/video-note@1` object:
 | `renderSha256` | sha256 of the video's bytes when the note was made |
 | `atS` | playback time in seconds, at or above 0, rounded to 0.001 |
 | `kind` | `"comment"` with `text` (1-2000 characters), or `"verdict"` with `verdict` |
+| `about` | comments only: `"content"` (the default) or `"video"`; a line without it reads as `"content"` |
 | `createdAt` | ISO time |
+
+**Two kinds of comment.** The comment box asks whether a comment is about the content (the work the
+video shows) or about the video itself (how the system made it: what works, what to improve).
+`videos.note` tells one seat about each comment:
+
+| `about` | Goes to |
+| --- | --- |
+| `content` | the video's `owner` (sidecar, else folder manifest); `video-coord` when none is set |
+| `video` | `video-coord`, always |
+
+The notice is fixed text naming the video id, the time and the note id, sent through the same
+`agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
+human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
+either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
+a failed send. Verdicts are not routed (`routedTo: null`).
 
 The file is opened with O_APPEND and O_NOFOLLOW, mode 0600, and each note is one write of at most
 4 KB, so concurrent appends never interleave. A reader skips a line it cannot parse and reports the
@@ -624,7 +642,8 @@ count as a gap, and refuses a file over 1 MB.
 
 **Agent pickup rule.** Read `<name>.notes.jsonl`. A note is on the current render when its
 `renderSha256` equals the video's sha256 now. The open notes are the current render's comments
-written after its latest `ship` verdict, in file order: `openNotes(notes, currentSha)` in
+about the content written after its latest `ship` verdict, in file order (a comment about the video
+is video-coord's, never open): `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
 
@@ -650,6 +669,7 @@ row. A video with neither file lists with only what its file and folder give (be
 | `alias` | lowercase `[a-z0-9._-]`, up to 80: a stable name that survives a file move, unlike the id |
 | `series`, `take` | 1-200 characters each |
 | `status` | the agent's claim: `draft`, `review`, `final` or `superseded` (the owner's call is the verdict) |
+| `owner` | the agent-chat seat that owns the work shown (lowercase letters, digits, dashes); comments about the content go there |
 
 The folder manifest carries `schema: "titan-console/video-folder@1"`, any of the fields above
 except `title` and `alias` as defaults for every video directly in that folder, and `items`, a

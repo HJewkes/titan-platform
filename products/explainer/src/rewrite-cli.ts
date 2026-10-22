@@ -5,7 +5,7 @@ import { createJudgeHarness, JudgeConfigSchema, type JudgeCall, type JudgeConfig
 import { sentencesOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, needsSpeechVet, type SpeechVerdict } from "./lint-voice.js";
 import { migrateSpike } from "./migrate.js";
-import { measureRewrite } from "./rewrite-measure-run.js";
+import { l0Scorer, measureRewrite } from "./rewrite-measure-run.js";
 import { rewriteScript, type ChapterVerdict, type RewriteReport, type RewriteResult } from "./rewrite-pass.js";
 import { MAX_REWRITE_ROUNDS } from "./rewrite-plan.js";
 import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
@@ -175,6 +175,7 @@ async function measure(files: string[], flags: MeasureFlags, deps: RewriteCliDep
   }, {
     read: (file) => readScript(file, flags.format),
     run: deps.rewriteRun ?? ((script) => runPass(script, options, shared, io)),
+    score: l0Scorer(options.speechVet ? shared.speechVet : undefined, io.err),
     ...io,
   });
 }

@@ -49,6 +49,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
     "@eslint/js": "^9.39.0",
+    "@testing-library/dom": "^10.4.2",
     "@titan-design/egress-scan": "workspace:*",
     "@titan-design/eslint-plugin": "workspace:*",
     "@types/node": "^25.3.2",
