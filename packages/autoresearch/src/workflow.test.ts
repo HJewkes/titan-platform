@@ -258,7 +258,7 @@ describe("picking the winner that moves the ratchet", () => {
 });
 
 const seedOf = <T>(run: WorkflowRun, key: string, schema: z.ZodType<T>): T => schema.parse(JSON.parse(run.stepResults[key]!.output!));
-const dispatchedOf = (run: WorkflowRun, stepId: string) => (run.stepResults[`${stepId}:0`]!.data as { result: unknown }).result;
+const dispatchedOf = (run: WorkflowRun, stepId: string) => z.object({ result: z.unknown() }).parse(run.stepResults[`${stepId}:0`]!.data).result;
 const summaryOf = (run: WorkflowRun, round: number) => seedOf(run, `ar-summary:${round}`, RoundSummarySchema);
 const queueOf = (run: WorkflowRun, round: number) => seedOf(run, `ar-queue:${round}`, z.object({ queue: z.array(IdeaSchema) })).queue;
 const endOf = (run: WorkflowRun) => seedOf(run, "ar-end", z.object({ stopReason: z.string() })).stopReason;

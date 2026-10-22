@@ -36,11 +36,14 @@ describe("a validator look", () => {
   });
 
   it("fails the step when the validator answers with a per-case key", async () => {
-    const validate: FakeOptions["validate"] = (input) => ({
-      look: input.look, at: "2026-10-21T00:00:00.000Z", sha: input.head, provenance: "fixture", usd: 0,
-      aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: { all_gate: 3 } },
-      perCase: { "val-1": { cc_total_delta_pct: -1 } },
-    });
+    const validate: FakeOptions["validate"] = (input) => {
+      const answer = {
+        look: input.look, at: "2026-10-21T00:00:00.000Z", sha: input.head, provenance: "fixture", usd: 0,
+        aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: { all_gate: 3 } },
+        perCase: { "val-1": { cc_total_delta_pct: -1 } },
+      };
+      return answer;
+    };
     const { repo, host } = await world({ validate });
 
     const look = await host.runtime.wait(host.runtime.start(AUTORESEARCH_VALIDATE_WORKFLOW, lookParams("run-parent", repo.pin)));

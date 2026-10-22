@@ -207,7 +207,7 @@ export interface FakeOptions {
   /** The owner inbox, read live: a test pushes to it while the run is going. */
   inbox?: Proposal[];
   /** What a validator look answers; by default one aggregate with no per-case key. */
-  validate?: (input: LookRequest) => unknown;
+  validate?: (input: LookRequest) => LookAggregate;
 }
 
 const FIXTURE_LOOK = { aggregate: { metrics: { cc_total_delta_pct: -1 }, gates: { all_gate: 3 } }, provenance: "fixture validator", usd: 0 };
@@ -314,8 +314,7 @@ function validatePort(calls: FakeCalls, options: FakeOptions, now: () => number)
   return {
     async validate(input) {
       calls.looks.push(input);
-      const answer = options.validate?.(input) ?? { look: input.look, at: new Date(now()).toISOString(), sha: input.head, ...FIXTURE_LOOK };
-      return answer as LookAggregate;
+      return options.validate?.(input) ?? { look: input.look, at: new Date(now()).toISOString(), sha: input.head, ...FIXTURE_LOOK };
     },
   };
 }
