@@ -967,6 +967,13 @@ with no fresh review and no seat release. A head reached by any other move, or c
 remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
 seat releases it.
 
+A restart replays each recorded `sh-g10-release` answer rather than asking again. When the newest
+answer at the head being merged was no, the merge waiting on the hold ends once at its first
+poll, with no merge. Land reads CI again and the run asks `sh-g10-release` live, so a deploy that
+changed the release rule judges the run under the new rule. Every check of the rule still applies.
+If the live ask also says no, the merge waits again and asks nothing more until the next restart
+(`products/factory/src/shepherd/g10-release.ts`, TP-3956).
+
 `release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
 when the pull request is at another head, or with exit 69 when the head cannot be read: a seat
 that reviewed one head must not release a later one. It also refuses, with exit 65, a run that is
