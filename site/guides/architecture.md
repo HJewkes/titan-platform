@@ -143,6 +143,7 @@ graph TD
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
+  reviewWorkflow --> agentDispatch
   reviewWorkflow --> evidence
   reviewWorkflow --> github
   reviewWorkflow --> reviewPanel

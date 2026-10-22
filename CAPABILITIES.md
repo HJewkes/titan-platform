@@ -978,11 +978,11 @@ Tier 2, `@titan-design/review-workflow@0.0.0`. PR review as a resumable workflow
 
 Key exports:
 
-- `types`: `DEFAULT_REVIEW_STEP_IDS`, `FAILURE_CLASSES`, `FailureClass`, `MemberNamer`, `ReviewHeadInput`, `ReviewOutcome`, `ReviewOutcomeKind`, `ReviewStepIds`
-- `ports`: `CarryPort`
+- `types`: `DEFAULT_REVIEW_STEP_IDS`, `FAILURE_CLASSES`
 - `heal`: `applyHeal`, `healOnce`
-- `retry-policy`: `DEFAULT_RETRY_POLICY`
-- +22 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
+- `fixer`: `fixerBrief`, `fixerFingerprint`, `fixerName`, `requestFixer`, `resolveFingerprint`
+- `fixer-report`: `FIXER_FIXES`, `FIXER_REPORT_END`, `readFixerReport`
+- +44 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
 <a id="cap-session-analytics"></a>
 

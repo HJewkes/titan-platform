@@ -271,4 +271,127 @@ declare function healOnce<D extends {
     kind: string;
 }>(decision: D | HealRequest, subject: HealSubject, ports: HealPorts, decide: (subject: HealSubject) => Promise<D | HealRequest>): Promise<HealPassResult<D>>;
 
-export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, type FailureClass, type FixerKey, type FixerPort, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type MemberNamer, type ProofRead, type ProofReaderPort, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, applyHeal, healOnce };
+/** One hard error: the policy row's fixer key plus the class's own detail (a profile name, a shape, a step id). */
+interface FixerCase {
+    failure: FailureClass;
+    key: FixerKey;
+    detail?: readonly string[];
+}
+/** `<key>:<detail>…`, for example `profile:reviewer`; whitespace inside a detail becomes `-`, so it stays one argv word. */
+declare function fixerFingerprint(fixerCase: FixerCase): string;
+/**
+ * A pure function of the fingerprint and how often it was resolved, never of the PR, so a second run with the same
+ * fingerprint finds the first fixer's roster row. A run that fails again after a resolve gets a fresh fixer.
+ */
+declare function fixerName(fingerprint: string, round?: number): string;
+/** One review run waiting on a fingerprint's fix. */
+interface ParkedRun {
+    runId: string;
+    target: ReviewTarget;
+    fingerprint: string;
+    failure: FailureClass;
+}
+/** Where parked runs wait; the host stores them, so a parked run outlives the process that parked it. */
+interface ParkingPort {
+    /** Idempotent per `runId`. */
+    park(run: ParkedRun): Promise<void>;
+    parked(fingerprint: string): Promise<readonly ParkedRun[]>;
+    /** Clears every run parked on the fingerprint, advances its round, and returns the runs it cleared. */
+    release(fingerprint: string): Promise<readonly ParkedRun[]>;
+    /** How many times the fingerprint was released; 0 before its first resolve. */
+    round(fingerprint: string): Promise<number>;
+}
+/**
+ * What the fixer may do. Only `propose` exists: it files a task or writes a patch into its report, and the coordinator
+ * applies it. An apply mode is a new key here plus its rules (owner question TP-3916 Q1).
+ */
+type FixerMode = "propose";
+interface FixerMember {
+    name: string;
+    agentId?: string;
+    sessionId?: string;
+    transcriptPath?: string;
+    /** Why the member never started, when its dispatch was refused. */
+    refused?: string;
+}
+/** What the failed attempts left behind; every field is quoted to the fixer as data. */
+interface FixerEvidence {
+    /** The recorded steps of the failed attempts, one `stepId: summary` line each. */
+    steps: readonly string[];
+    members: readonly FixerMember[];
+    /** The tail of the host's error log; only lines naming a member are quoted. */
+    log?: string;
+}
+interface FixerRequest {
+    runId: string;
+    target: ReviewTarget;
+    fixerCase: FixerCase;
+    evidence: FixerEvidence;
+    /** The seat the fixer reports to; absent means its spawner. */
+    reportTo?: string;
+    mode?: FixerMode;
+}
+/** The record a run keeps under its fixer step: `spawned` is false when the fingerprint's fixer already existed or was refused. */
+interface FixerRecord {
+    fingerprint: string;
+    agent: string;
+    spawned: boolean;
+    reason?: string;
+}
+/** Generalizes Shepherd's no-verdict diagnosis brief from one PR to every run parked on one fingerprint. */
+declare function fixerBrief(request: FixerRequest, fingerprint: string, parked: readonly ParkedRun[]): string;
+/**
+ * Parks the run on its fingerprint and spawns that fingerprint's fixer unless the roster already holds it. A refused
+ * spawn is recorded, not thrown: the run stays parked and the record's `reason` tells the host.
+ */
+declare function requestFixer(ports: {
+    fixer: FixerPort;
+    parking: ParkingPort;
+}, request: FixerRequest): Promise<{
+    record: FixerRecord;
+    outcome: ReviewOutcome;
+}>;
+type Resumed = {
+    run: ParkedRun;
+    outcome: ReviewOutcome;
+} | {
+    run: ParkedRun;
+    error: string;
+};
+/**
+ * Re-runs every run parked on the fingerprint, one at a time, once the coordinator has applied the fix. A resume that
+ * throws parks its run again, so no run is lost; a run that fails on the same cause parks itself with a fresh fixer.
+ */
+declare function resolveFingerprint(parking: ParkingPort, fingerprint: string, resume: (run: ParkedRun) => Promise<ReviewOutcome>): Promise<Resumed[]>;
+
+declare const FIXER_REPORT_START = "FIXER-REPORT";
+declare const FIXER_REPORT_END = "END-FIXER-REPORT";
+/** What the fixer proposes; it applies none of them itself (propose-only, plan TP-3916 §(c) phase 1). */
+declare const FIXER_FIXES: readonly ["config", "profile-field", "code-task", "none"];
+type FixerFix = (typeof FIXER_FIXES)[number];
+/** The parsed block. `patch` is set exactly when `fix` is config or profile-field, `task` exactly when it is code-task. */
+interface FixerReport {
+    fingerprint: string;
+    failure: FailureClass;
+    rootCause: string;
+    evidence: readonly string[];
+    fix: FixerFix;
+    patch?: string;
+    task?: string;
+    resolves: boolean;
+}
+type FixerReportRefusal = "no_block" | "multiple_blocks" | "unknown_line" | "duplicate_field" | "missing_fingerprint" | "missing_root_cause" | "missing_evidence" | "bad_class" | "bad_fix" | "bad_resolves" | "fix_detail_mismatch" | "wrong_fingerprint";
+type FixerReportRead = {
+    ok: true;
+    report: FixerReport;
+} | {
+    ok: false;
+    refusal: FixerReportRefusal;
+};
+/**
+ * The one FIXER-REPORT block in a fixer's final message. With `expectedFingerprint` set, a report about another
+ * fingerprint is refused, so one fixer's report can never resume runs parked on a different cause.
+ */
+declare function readFixerReport(text: string, expectedFingerprint?: string): FixerReportRead;
+
+export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type MemberNamer, type ParkedRun, type ParkingPort, type ProofRead, type ProofReaderPort, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, applyHeal, fixerBrief, fixerFingerprint, fixerName, healOnce, readFixerReport, requestFixer, resolveFingerprint };

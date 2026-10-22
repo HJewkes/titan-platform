@@ -35,6 +35,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/agent-dispatch": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/review-panel": "workspace:^"
