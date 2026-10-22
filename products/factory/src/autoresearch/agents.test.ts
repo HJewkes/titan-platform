@@ -234,6 +234,8 @@ describe("implementers", () => {
 
     appendFileSync(join(dir, `t-${first}.jsonl`), assistantLine("r0", "looking", { read: 0, w5m: 0, w1h: 0 }) + "\n");
     await vi.waitFor(() => expect(spawns()).toHaveLength(2), WAIT);
+    // The fake rewrites the whole roster when lane 2's spawn finishes, so lane 1's exit is written only after that.
+    await vi.waitFor(() => expect(roster().map((r) => r.name)).toContain(nameFor(two.tree, 1, "i-two")), WAIT);
     appendFileSync(join(dir, `t-${first}.jsonl`), implemented().replace("{HEAD}", git(one.tree, "rev-parse", "HEAD")) + "\n");
     setRoster(roster().map((r) => (r.name === first ? { ...r, presence: "exited" } : r)));
 
