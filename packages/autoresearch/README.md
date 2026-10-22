@@ -45,6 +45,32 @@ count. A guard is a slack (a `min` metric that may not rise) or `{slack, directi
 may not fall. Winners within one σ of the strongest Δ count as a tie. The one with the smallest
 source diff moves the ratchet.
 
+## The contract real ports read
+
+- **Commands.** `target.json` carries `rungs` (argv templates per rung, with `maxUsd` and
+  `timeoutMin`), `caseSets`, `runnerRoot`, `unitTests` and `testProof`. `renderCommand` fills
+  their `{name}` tokens and throws `[template] {name}` on a token it has no value for.
+  `microSignalArg` turns an idea's expected effect into the micro rung's `<count>:<up|down>`, and
+  `microArgs` on a proposal carries extra tokens such as `{cluster}`.
+- **Keys.** Every eval key is `<runId>-<scope>-<label>`, unique per run, ladder and repeat, because
+  a target may use it as a cache directory. σ pairs are read from L3's second and third runs by
+  position, so a target that echoes the key as `repeat` still feeds them.
+- **Lanes and forks.** Each ladder takes the lowest free lane slot, records it with `ar-lane`
+  (so a replay holds the same slot), and frees it when it stops. After a KEEP, the winner's
+  follow-up resumes the winner's implementer (`fork: "exploit"`); every other pick, and every pick
+  in each `basinEvery`th round, is a fresh `explore` spawn. The planner is spawned in round 1
+  and resumed after that (`plan` input `mode`).
+- **Recorded fields.** Each `ar-stop` outcome carries `against {case, head, bandWidth, sigma,
+  pairs, locked}`, the `implementer {agent, sessionId?, resumedFrom?, mode, account?}`, `lane`,
+  `fork`, the `l0` rows, the `micro` counts and `usage {implementUsd, evalUsd, microUsd}`.
+  The micro input names the best's first run's `artifact_dir` as `baselineDir`. With no
+  `baselineDir`, the idea stops with `no-baseline-dir`. The ratchet input carries the move record:
+  round, idea, Δ, σ, the kept runs' digests and the pin. Dead-end and bug rows name their idea and
+  round.
+- **Optional ports.** `ar-load-wait` runs before each implement and `ar-archive` at each round's
+  end, with `{outcomes, digest, ops, draws, registries, evidence}`. A host without `loadWait` or
+  `archive` gets an immediate empty answer.
+
 ## Usage
 
 ```ts

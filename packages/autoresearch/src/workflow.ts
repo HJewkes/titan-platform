@@ -4,14 +4,16 @@
  *
  * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
  */
+import { createHash } from "node:crypto";
+import { canonicalArgs } from "@titan-design/rpc-client";
 import { mapItems, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { buildDigest, evidenceRow, type EvidenceRow } from "./digest.js";
 import type { KeepSettings } from "./keep.js";
-import { ideaLadder, type RoundContext } from "./ladder.js";
+import { ideaLadder, LaneSlots, runKey, type ForkAssignment, type RoundContext } from "./ladder.js";
 import { arStepId } from "./manifest.js";
 import { addPair, band, NO_NOISE, sigmaOf, type NoiseState } from "./noise.js";
-import { HeadSchema, PinnedSchema, type Pinned } from "./ports.js";
+import { ArchivedSchema, HeadSchema, PinnedSchema, type Pinned, type RatchetRequest, type RoundRecord } from "./ports.js";
 import { frozenOverlap } from "./post-check.js";
 import { applyOps, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
@@ -21,12 +23,19 @@ import { dispatch, recorded, step } from "./steps.js";
 
 export const AUTORESEARCH_WORKFLOW = "autoresearch";
 
+/** Plan 4.5: after a KEEP, this many follow-ups of the winner resume its implementer; every `basinEvery`th round all lanes explore. */
+const ForkScheduleSchema = z.object({
+  afterKeep: z.object({ exploit: z.number().int().nonnegative().default(1) }).default({ exploit: 1 }),
+  basinEvery: z.number().int().positive().default(3),
+});
+
 const RunSettingsSchema = z.object({
   lanes: z.number().int().positive().default(3),
   rounds: z.number().int().positive().default(50),
   minPool: z.number().int().nonnegative().default(12),
   /** Names of the target's cases; a proposal that mentions one is refused before any spawn. */
   caseNames: z.array(z.string()).default([]),
+  forkSchedule: ForkScheduleSchema.default({ afterKeep: { exploit: 1 }, basinEvery: 3 }),
 });
 type RunSettings = z.infer<typeof RunSettingsSchema>;
 
@@ -63,7 +72,8 @@ function runParams(ctx: WorkflowContext): { pin: string; settings: RunSettings }
 async function baseline(run: Run): Promise<Pick<LoopState, "best" | "noise">> {
   const { ctx, pinned } = run;
   const keys = Array.from({ length: phaseOf(run).baselineRuns }, (_, index) => `b${index + 1}`);
-  const evalBase = (key: string) => dispatch(ctx, `${arStepId("eval")}:base:${key}`, { tree: pinned.integrationTree, case: phaseOf(run).train[0], key }, run.result);
+  const input = (label: string) => ({ tree: pinned.integrationTree, case: phaseOf(run).train[0], key: runKey(ctx.runId, "base", label), rung: "seed" });
+  const evalBase = (label: string) => dispatch(ctx, `${arStepId("eval")}:base:${label}`, input(label), run.result);
   const mapped = await mapItems(ctx, "ar-baseline", keys, (key) => evalBase(key), { key: (key) => key, concurrency: 2 });
   if (mapped.failed.length > 0 || mapped.skipped.length > 0) throw new Error(`[baseline] ${mapped.failed.map((failure) => `${failure.key}: ${failure.error}`).join("; ")}`);
   const runs = mapped.results.map(({ result }) => z.object({ result: run.result }).parse(result.data).result);
@@ -80,7 +90,7 @@ async function planRound(run: Run, state: LoopState, round: number): Promise<Que
   const quota = { keptLastRound: state.keptLastRound, minPool: run.settings.minPool, queuedBefore: state.queue.length };
   let violations: string[] = [];
   for (const attempt of ["", ".retry"]) {
-    const input = { runId: run.ctx.runId, round, digest, violations };
+    const input = { runId: run.ctx.runId, round, digest, violations, mode: round === 1 ? "spawn" : "resume" };
     const { ops } = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, z.object({ ops: QueueOpsSchema }));
     violations = quotaViolations(ops, quota);
     if (violations.length === 0) return ops;
@@ -97,18 +107,39 @@ async function nextQueue(run: Run, state: LoopState, ops: QueueOps, round: numbe
   return applied.queue;
 }
 
-async function pick(run: Run, queue: readonly Idea[], state: LoopState, round: number): Promise<Idea[]> {
-  const schema = z.object({ picks: z.array(IdeaSchema), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) });
-  const selection = await recorded(run.ctx, `${arStepId("select")}:${round}`, schema, () => select(queue, state.outcomes, { runId: run.ctx.runId, round, k: 2 * run.settings.lanes }));
-  return selection.picks;
+const SelectionSchema = z.object({ picks: z.array(IdeaSchema), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) });
+
+async function pick(run: Run, queue: readonly Idea[], state: LoopState, round: number): Promise<z.infer<typeof SelectionSchema>> {
+  return recorded(run.ctx, `${arStepId("select")}:${round}`, SelectionSchema, () => select(queue, state.outcomes, { runId: run.ctx.runId, round, k: 2 * run.settings.lanes }));
 }
 
-function roundContext(run: Run, state: LoopState, round: number): RoundContext {
+/**
+ * Plan 4.5's fixed schedule: after a KEEP, the winner's follow-ups (up to `afterKeep.exploit`) resume its implementer;
+ * every other pick, and every pick in a basin-escape round, is a fresh explore spawn.
+ */
+export function forkPlan(picks: readonly Idea[], round: number, winners: ReadonlyMap<string, string>, schedule: RunSettings["forkSchedule"]): Map<string, ForkAssignment> {
+  const plan = new Map<string, ForkAssignment>(picks.map((idea) => [idea.id, { fork: "explore" }]));
+  if (round % schedule.basinEvery === 0) return plan;
+  const followups = picks.filter((idea) => idea.parent !== undefined && winners.has(idea.parent));
+  for (const idea of followups.slice(0, schedule.afterKeep.exploit)) plan.set(idea.id, { fork: "exploit", resumeFrom: winners.get(idea.parent!)! });
+  return plan;
+}
+
+/** Last round's winners and the agent that wrote each, for the exploit lanes. */
+function winnerAgents(state: LoopState): Map<string, string> {
+  const kept = state.outcomes.filter((outcome) => state.keptLastRound.includes(outcome.ideaId) && outcome.implementer);
+  return new Map(kept.map((outcome) => [outcome.ideaId, outcome.implementer!.agent]));
+}
+
+function roundContext(run: Run, state: LoopState, round: number, picks: readonly Idea[]): RoundContext {
   const noise = run.pinned.target.metric.noise;
   const width = band(state.noise, noise);
   const sigma = sigmaOf(state.noise) ?? width / noise.bandSigmas;
   const digest = buildDigest({ round, evidence: state.evidence, registries: state.registries, queue: state.queue });
-  return { ctx: run.ctx, pinned: run.pinned, case: phaseOf(run).train[0]!, result: run.result, best: state.best, band: { width, sigma }, keep: run.keep, digest };
+  const testCase = phaseOf(run).train[0]!;
+  const against = { case: testCase, head: state.best.head, bandWidth: width, sigma, pairs: state.noise.pairs.length, locked: state.noise.locked !== undefined };
+  const forks = forkPlan(picks, round, winnerAgents(state), run.settings.forkSchedule);
+  return { ctx: run.ctx, pinned: run.pinned, case: testCase, result: run.result, best: state.best, band: { width, sigma }, keep: run.keep, digest, round, against, forks, slots: new LaneSlots() };
 }
 
 /** Lanes are a concurrency cap, not waves: an early stop frees its lane for the next pick at once. */
@@ -135,13 +166,21 @@ export function pickWinner(winners: readonly Outcome[], sigma: number): Outcome[
   return [first!, ...[...winners].sort(byStrength).filter((outcome) => outcome !== first)];
 }
 
+const runDigest = (result: ArResult) => createHash("sha256").update(canonicalArgs(result)).digest("hex");
+
+/** The G12 move record: which idea moved the ratchet, on what evidence, against which pin. */
+function ratchetMove(run: Run, state: LoopState, first: Outcome, round: number, sigma: number): RatchetRequest {
+  const { ratchetRef, integrationTree: tree, target, pin } = run.pinned;
+  const evidence = { round, ideaId: first.ideaId, kind: "ff" as const, keepRung: first.rungReached, delta: first.delta ?? 0, sigma, runDigests: first.runs.map(runDigest), pin };
+  return { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, from: state.best.head, to: first.head!, ...evidence };
+}
+
 /** The picked winner moves the ratchet; any other winner goes back in the queue on its lineage until S5 re-evaluates it against the new head. */
 async function ratchet(run: Run, state: LoopState, outcomes: Outcome[], round: number, sigma: number) {
   const winners = pickWinner(outcomes.filter((outcome) => outcome.verdict === "kept"), sigma);
   const [first, ...rest] = winners;
   if (!first) return { best: state.best, kept: [], outcomes, requeue: [] };
-  const { ratchetRef, integrationTree: tree, target } = run.pinned;
-  const move = { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, from: state.best.head, to: first.head! };
+  const move = ratchetMove(run, state, first, round, sigma);
   const { head } = await step(run.ctx, `${arStepId("ratchet")}:${round}`, move, HeadSchema);
   const superseded = new Set(rest.map((outcome) => outcome.ideaId));
   const marked = outcomes.map((outcome) => (superseded.has(outcome.ideaId) ? { ...outcome, verdict: "stopped" as const, reason: "superseded" } : outcome));
@@ -149,33 +188,42 @@ async function ratchet(run: Run, state: LoopState, outcomes: Outcome[], round: n
   return { best: { head, runs: first.runs }, kept: [first.ideaId], outcomes: marked, requeue };
 }
 
-/** L3 repeats r2 and r3 are two runs of the same code on the same case: a free σ pair. */
+/**
+ * L3's repeats r2 and r3 (`runs[1]`, `runs[2]`) are two runs of the same code on the same case: a free σ pair.
+ * Matched by position, since a target echoes the unique run key as `repeat`.
+ */
 function withPairs(noise: NoiseState, outcomes: readonly Outcome[], run: Run): NoiseState {
   return outcomes.reduce((state, outcome) => {
-    const r2 = outcome.runs.find((entry) => entry.repeat === "r2");
-    const r3 = outcome.runs.find((entry) => entry.repeat === "r3");
-    return r2 && r3 ? addPair(state, { a: primaryOf(run, r2), b: primaryOf(run, r3) }, run.pinned.target.metric.noise) : state;
+    const [, r2, r3] = outcome.runs;
+    return outcome.rungReached === "L3" && r2 && r3 ? addPair(state, { a: primaryOf(run, r2), b: primaryOf(run, r3) }, run.pinned.target.metric.noise) : state;
   }, noise);
+}
+
+/** G11: the round's record goes to the host's archive once the ratchet has moved. */
+async function archive(run: Run, round: number, record: RoundRecord): Promise<void> {
+  await step(run.ctx, `${arStepId("archive")}:${round}`, { runId: run.ctx.runId, round, record }, ArchivedSchema);
 }
 
 async function runRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
   const ops = await planRound(run, state, round);
   const queue = await nextQueue(run, state, ops, round);
-  const picks = await pick(run, queue, state, round);
+  const { picks, draws } = await pick(run, queue, state, round);
   const ideas = new Map([...state.ideas, ...queue.map((idea) => [idea.id, idea] as const)]);
-  const rc = roundContext(run, state, round);
+  const rc = roundContext(run, state, round, picks);
   const sigma = rc.band.sigma;
   const moved = await ratchet(run, { ...state, ideas }, await fanOut(run, rc, picks, round), round, sigma);
   const picked = new Set(picks.map((idea) => idea.id));
   const outcomes = moved.outcomes.map((outcome) => ({ ...outcome, sigma }));
-  const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome), recordAnalysis(state.registries, ops.analysis));
+  const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome, round), recordAnalysis(state.registries, ops.analysis, round));
+  const evidence = outcomes.map((outcome) => evidenceRow(round, outcome));
+  await archive(run, round, { outcomes, digest: rc.digest, ops, draws, registries, evidence });
   return {
     best: moved.best,
     noise: withPairs(state.noise, outcomes, run),
     queue: [...queue.filter((idea) => !picked.has(idea.id)), ...moved.requeue],
     ideas,
     outcomes: [...state.outcomes, ...outcomes],
-    evidence: [...state.evidence, ...outcomes.map((outcome) => evidenceRow(round, outcome))],
+    evidence: [...state.evidence, ...evidence],
     registries,
     keptLastRound: moved.kept,
     roundsWithoutGain: moved.kept.length > 0 ? 0 : state.roundsWithoutGain + 1,

@@ -125,7 +125,7 @@ describe("frozen overlap", () => {
 
 describe("dead ends", () => {
   it("needs a non-blank differsFrom for an idea in a dead-end cell", () => {
-    const deadEnds = [{ cell: "accept-gate:retry", targets: ["src/gate/gates.py"], rungFailed: "L2" }];
+    const deadEnds = [{ ideaId: "i-earlier", round: 1, cell: "accept-gate:retry", targets: ["src/gate/gates.py"], rungFailed: "L2" }];
     const context = { round: 2, bounds: FIXTURE_BOUNDS, caseNames: [], deadEnds, seen: new Set<string>(), lineageOf: new Map<string, string>() };
     const codes = (differsFrom?: string) => applyOps([], QueueOpsSchema.parse({ add: [proposal("retry", { differsFrom })] }), context).rejected.map((entry) => entry.code);
     expect(codes()).toEqual(["rejected:pre:dead-end"]);
@@ -150,5 +150,14 @@ describe("a target adapter's own config", () => {
     expect(target.frozen).toContain("bench/suite/gate/measure.py");
     expect(target.metric.guards).toEqual({ single_caller_delta: 1 });
     expect(frozenOverlap(BoundsSchema.parse(fixture("bounds.json")), target.frozen)).toEqual([]);
+  });
+
+  it("keeps the repo, case sets, test commands and rung templates the ports read", () => {
+    const target = TargetSchema.parse(fixture("target.json"));
+    expect(target).toMatchObject({ repo: "example/target", runnerRoot: ".", caseSets: { "train-1": "suite-a" } });
+    expect(target.unitTests[0]).toBe("python3");
+    expect(target.testProof).toContain("{head}");
+    expect(Object.keys(target.rungs).sort()).toEqual(["L1-cluster", "L1-replay", "seed"]);
+    expect(target.rungs.seed).toMatchObject({ maxUsd: 1, timeoutMin: 45 });
   });
 });

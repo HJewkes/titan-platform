@@ -13,6 +13,8 @@ const ProposalSchema = z.object({
   targets: z.array(z.string()),
   params: z.record(z.string(), z.number()).optional(),
   expectedEffect: z.object({ metric: z.string(), direction: z.enum(["up", "down"]), microSignal: z.string() }),
+  /** Extra micro-rung template arguments, such as the `cluster` an L1-cluster rung replays. */
+  microArgs: z.record(z.string(), z.string()).default({}),
   testPlan: z.string(),
   bold: z.boolean(),
   differsFrom: z.string().optional(),
@@ -62,6 +64,10 @@ export const ArMicroSchema = z.object({
   rung: z.string(),
   predicted_direction_met: z.boolean(),
   usd: z.number().nonnegative(),
+  /** The count the rung judged, and its value per name on the best and on the idea. */
+  signal: z.string().optional(),
+  base: z.record(z.string(), z.number()).optional(),
+  idea: z.record(z.string(), z.number()).optional(),
 });
 export type ArMicro = z.infer<typeof ArMicroSchema>;
 
@@ -69,6 +75,23 @@ const count = z.number().int().nonnegative();
 /** `files` and `lines` count the whole diff; the `src` and `test` splits are measured by L0, never self-reported. */
 export const DiffSizeSchema = z.object({ files: count, lines: count, srcFiles: count.optional(), srcLines: count.optional(), testLines: count.optional() });
 export type DiffSize = z.infer<typeof DiffSizeSchema>;
+
+const nonnegative = z.number().nonnegative();
+
+/** The noise an idea was judged against, fixed at round start; `locked` is the engine's own call, not a pair count. */
+const AgainstSchema = z.object({ case: z.string(), head: z.string(), bandWidth: nonnegative, sigma: nonnegative, pairs: count, locked: z.boolean() });
+
+/** The agent that wrote the idea; `account` names whose spend it was. */
+export const ImplementerSchema = z.object({
+  agent: z.string(),
+  sessionId: z.string().optional(),
+  resumedFrom: z.string().optional(),
+  mode: z.enum(["spawn", "resume"]),
+  account: z.string().optional(),
+});
+
+const CheckRowSchema = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: nonnegative.optional() });
+export const L0RecordSchema = z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(CheckRowSchema).default([]) });
 
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
 export const OutcomeSchema = z.object({
@@ -86,6 +109,14 @@ export const OutcomeSchema = z.object({
   /** Recorded, never capped: the ledger and the planner digest read it. */
   diff: DiffSizeSchema.optional(),
   lesson: z.string().optional(),
+  against: AgainstSchema.optional(),
+  implementer: ImplementerSchema.optional(),
+  /** The lane slot, 1 to `lanes`, the ladder held while it ran. */
+  lane: z.number().int().positive().optional(),
+  fork: z.enum(["exploit", "explore"]).optional(),
+  l0: L0RecordSchema.optional(),
+  micro: ArMicroSchema.optional(),
+  usage: z.object({ implementUsd: nonnegative, evalUsd: nonnegative, microUsd: nonnegative }).optional(),
 });
 export type Outcome = z.infer<typeof OutcomeSchema>;
 
@@ -127,18 +158,45 @@ export const MetricSpecSchema = z.object({
 });
 export type MetricSpec = z.infer<typeof MetricSpecSchema>;
 
-/** The subset of `ar-target/v1` the recipe reads; the rung commands belong to the ports. */
+/** One rung's argv template; `renderCommand` fills its `{name}` tokens. */
+const RungSchema = z.object({ cmd: z.array(z.string()).min(1), maxUsd: nonnegative.optional(), timeoutMin: z.number().positive().optional() });
+
+/** The subset of `ar-target/v1` the recipe and the ports read. */
 export const TargetSchema = z.object({
   schema: z.literal("ar-target/v1"),
+  repo: z.string().optional(),
   ratchetPrefix: z.string(),
   metric: MetricSpecSchema,
   /** L1 rung name per change class; a class with none goes from L0 straight to L2. */
   microRung: z.record(z.string(), z.string()).default({}),
   /** Globs no idea may touch and no class may allow: the evaluator and everything it reads. */
   frozen: z.array(z.string()).default([]),
+  /** Case alias to the case set it belongs to, the `{caseSet}` argument. */
+  caseSets: z.record(z.string(), z.string()).default({}),
+  /** The `{runnerRoot}` argument, relative to the evaluator checkout. */
+  runnerRoot: z.string().default("."),
+  unitTests: z.array(z.string()).default([]),
+  testProof: z.array(z.string()).default([]),
+  rungs: z.record(z.string(), RungSchema).default({}),
   phases: z.array(PhaseSchema).min(1),
 });
 export type Target = z.infer<typeof TargetSchema>;
+
+/** Fills each `{name}` token of an argv template; a token with no value throws, so a rung never runs with a literal brace. */
+export function renderCommand(cmd: readonly string[], vars: Readonly<Record<string, string>>): string[] {
+  return cmd.map((arg) =>
+    arg.replace(/\{(\w+)\}/g, (_, name: string) => {
+      if (vars[name] === undefined) throw new Error(`[template] {${name}}`);
+      return vars[name];
+    }),
+  );
+}
+
+/** The micro rung's `<count>:<up|down>` argument: a planner signal that already names its direction is kept as it is. */
+export function microSignalArg(idea: Pick<Proposal, "expectedEffect">): string {
+  const { microSignal, direction } = idea.expectedEffect;
+  return microSignal.includes(":") ? microSignal : `${microSignal}:${direction}`;
+}
 
 /** A result schema that also requires every metric the keep rule reads, the gates of an allGate target and each zero-tolerance violation count, so a run missing one fails its eval step. */
 export function resultSchemaFor(metric: MetricSpec): z.ZodType<ArResult> {

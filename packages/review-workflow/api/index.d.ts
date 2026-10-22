@@ -1,4 +1,4 @@
-import { ReviewTarget, ReviewShape, PanelVerdict, ReviewRequest, PanelMember, ReviewerAgent, PrFacts, Headroom, ReviewerDispatch, ReviewerReader, ReviewClock } from '@titan-design/review-panel';
+import { PanelVerdict, ReviewTarget, ReviewShape, ReviewRequest, PanelMember, ReviewerAgent, PrFacts, Headroom, ReviewerDispatch, ReviewerReader, ReviewClock } from '@titan-design/review-panel';
 import { LineSource } from '@titan-design/evidence';
 import { PullRequest } from '@titan-design/github';
 
@@ -224,6 +224,53 @@ type RetryPolicy = readonly RetryRule[];
 /** One row per failure class (plan TP-3916 §(b)); a hill-climbing variant replaces rows, never code. */
 declare const DEFAULT_RETRY_POLICY: RetryPolicy;
 
+type HealPorts = Pick<ReviewWorkflowPorts, "checkout" | "snapshot" | "headroom">;
+/** What a heal acts on: the head under review and, for a headroom refusal, the member the spawn gate refused. */
+interface HealSubject {
+    target: ReviewTarget;
+    member?: PanelMember;
+    /** The plan's premium-to-sonnet table; absent means review-panel's `DEFAULT_SONNET_FOR`. */
+    sonnetFor?: Record<string, string>;
+}
+/** The decision shape that asks for heals; every other decision passes through `healOnce` untouched. */
+interface HealRequest {
+    kind: "heal";
+    heals: readonly HealKind[];
+}
+type HealEffect = {
+    kind: "healed";
+    subject: HealSubject;
+} | {
+    kind: "stop";
+    outcome: ReviewOutcome;
+}
+/** The heal has nothing to act on, such as a refused member with no sonnet fallback. */
+ | {
+    kind: "ineffective";
+    heal: HealKind;
+};
+/** `heals` names what was still asked for after the one pass, or the heal that could not act. */
+type HealPassResult<D> = {
+    kind: "decided";
+    decision: D;
+    subject: HealSubject;
+} | {
+    kind: "stop";
+    outcome: ReviewOutcome;
+} | {
+    kind: "fixer";
+    key: "heal-ineffective";
+    heals: readonly HealKind[];
+};
+declare function applyHeal(heal: HealKind, subject: HealSubject, ports: HealPorts): Promise<HealEffect>;
+/**
+ * Runs the heals a decision asks for, each once and in order, then re-decides once. A heal that cannot act, or a
+ * re-decision that still asks for a heal, goes to the fixer: a second pass would repeat a heal that already failed.
+ */
+declare function healOnce<D extends {
+    kind: string;
+}>(decision: D | HealRequest, subject: HealSubject, ports: HealPorts, decide: (subject: HealSubject) => Promise<D | HealRequest>): Promise<HealPassResult<D>>;
+
 /** One hard error: the policy row's fixer key plus the class's own detail (a profile name, a shape, a step id). */
 interface FixerCase {
     failure: FailureClass;
@@ -347,4 +394,4 @@ type FixerReportRead = {
  */
 declare function readFixerReport(text: string, expectedFingerprint?: string): FixerReportRead;
 
-export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealKind, type MemberNamer, type ParkedRun, type ParkingPort, type ProofRead, type ProofReaderPort, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, fixerBrief, fixerFingerprint, fixerName, readFixerReport, requestFixer, resolveFingerprint };
+export { type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type MemberNamer, type ParkedRun, type ParkingPort, type ProofRead, type ProofReaderPort, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewHeadInput, type ReviewOutcome, type ReviewOutcomeKind, type ReviewStepIds, type ReviewWorkflowPorts, type SnapshotPort, applyHeal, fixerBrief, fixerFingerprint, fixerName, healOnce, readFixerReport, requestFixer, resolveFingerprint };

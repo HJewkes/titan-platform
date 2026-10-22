@@ -29,7 +29,7 @@ describe("planner digest", () => {
   it("caps each registry tail in the brief and puts the idea after the stable prefix", () => {
     const idea = toIdea(proposal("tail"), { round: 1, lineageOf: new Map() });
     const outcome = { ideaId: idea.id, lineage: idea.lineage, cell: idea.cell, verdict: "rejected" as const, reason: "rejected:post:no-test", rungReached: "L0" as const, runs: [] };
-    const registries = Array.from({ length: REGISTRY_TAIL + 5 }, () => outcome).reduce((acc, entry) => recordOutcome(acc, idea, entry), EMPTY_REGISTRIES);
+    const registries = Array.from({ length: REGISTRY_TAIL + 5 }, () => outcome).reduce((acc, entry) => recordOutcome(acc, idea, entry, 1), EMPTY_REGISTRIES);
 
     const digest = buildDigest({ round: 2, evidence: [], registries, queue: [idea] });
     const brief = implementerBrief(digest, idea);
