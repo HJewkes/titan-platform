@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "serve drops the deprecation log at start",
+      "file": "products/factory/src/serve.ts",
+      "find": "for (const deprecated of reconcilerDeprecations(options.reconciler?.config)) log.warn({}, deprecated);",
+      "replace": "",
+      "kills": [
+        "logs reconciler.intervalMs as deprecated at start when the config still sets it, and is silent when it does not"
+      ]
+    },
+    {
+      "name": "serve logs the deprecation whether or not the config sets intervalMs",
+      "file": "products/factory/src/serve.ts",
+      "find": "for (const deprecated of reconcilerDeprecations(options.reconciler?.config)) log.warn({}, deprecated);",
+      "replace": "for (const deprecated of reconcilerDeprecations({ enabled: false, fullEvery: 3, repos: [], intervalMs: 1 })) log.warn({}, deprecated);",
+      "kills": [
+        "logs reconciler.intervalMs as deprecated at start when the config still sets it, and is silent when it does not"
+      ]
+    }
+  ]
+}
