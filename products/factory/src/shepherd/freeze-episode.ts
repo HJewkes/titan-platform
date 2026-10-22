@@ -7,14 +7,20 @@ import { appendEvent, SHEPHERD_ACTOR } from "./events.js";
 const rerunPrefix = (episode: number): string => `main rerun: episode ${episode} after `;
 /** The thaw-event reason of a thaw on Shepherd's own green rerun; the failing tests follow as JSON. */
 const RERUN_THAW = "rerun-green (flake suspected):";
+/** The thaw-event reason of `shepherd thaw`; the caller's own reason follows. */
+const HAND_THAW = "hand thaw:";
 
 const ReasonRow = z.object({ run_id: z.string().nullable(), reason: z.string() });
 
-/** What the episode records need of their freeze store: the live episode's red sha, and the one thaw path. */
+/** What the episode records need of their freeze store: the live episode and its red sha, and the one thaw path. */
 interface EpisodeFreezes {
   live(repo: RepoSlug, episode: number): { redSha: string } | undefined;
+  get(repo: RepoSlug): { redSha: string; episode: number; fixTask: string | null } | undefined;
   release(repo: RepoSlug, episode: number, actor: string, reason: string): boolean;
 }
+
+/** A hand thaw's outcome: `red-moved` names the red sha the episode holds now, which the caller did not name. */
+export type HandThaw = { outcome: "thawed"; episode: number; fixTask: string | null } | { outcome: "red-moved"; episode: number; redSha: string } | { outcome: "not-frozen" };
 
 /**
  * Episode writes past the freeze row's own setters: who may be linked as its fixer, and Shepherd's one rerun per episode
@@ -41,6 +47,11 @@ export interface EpisodeRecords {
   thawOnRerun(repo: RepoSlug, episode: number, redSha: string, tests: readonly string[]): "thawed" | "red-moved" | "not-live";
   /** The failing tests of each rerun thaw of `repo` at or after `since` (ISO time). */
   rerunThawedTests(repo: RepoSlug, since: string): string[];
+  /**
+   * Thaws `repo`'s live episode by hand, only while its red sha is still `redSha`, so a red that moved since the caller
+   * read it is never thawed blind. The thaw event names `actor` and `reason`; the episode's fix task is left as it is.
+   */
+  thawByHand(repo: RepoSlug, redSha: string, actor: string, reason: string): HandThaw;
 }
 
 /** An unreadable list names no test, which leaves the 24 h guard as if no thaw had happened. */
@@ -95,6 +106,15 @@ function thawOnRerun({ db, freezes }: Records, repo: RepoSlug, episode: number, 
   }).immediate();
 }
 
+function thawByHand({ db, freezes }: Records, repo: RepoSlug, redSha: string, actor: string, reason: string): HandThaw {
+  return db.transaction((): HandThaw => {
+    const live = freezes.get(repo);
+    if (!live) return { outcome: "not-frozen" };
+    if (live.redSha.toLowerCase() !== redSha.toLowerCase()) return { outcome: "red-moved", episode: live.episode, redSha: live.redSha };
+    return freezes.release(repo, live.episode, actor, `${HAND_THAW} ${reason}`) ? { outcome: "thawed", episode: live.episode, fixTask: live.fixTask } : { outcome: "not-frozen" };
+  }).immediate();
+}
+
 function rerunThawedTests({ db, repoKey }: Records, repo: RepoSlug, since: string): string[] {
   const rows = db.prepare("SELECT run_id, reason FROM shepherd_event WHERE repo = ? AND kind = 'thaw' AND at >= ? AND reason LIKE ?").all(repoKey(repo), since, `${RERUN_THAW} %`);
   return rows.flatMap((row) => testsOf(ReasonRow.parse(row).reason));
@@ -108,5 +128,6 @@ export function episodeRecords(db: Db, now: () => number, freezes: EpisodeFreeze
     claimRerun: (repo, episode, runId, after) => claimRerun(records, repo, episode, runId, after),
     thawOnRerun: (repo, episode, redSha, tests) => thawOnRerun(records, repo, episode, redSha, tests),
     rerunThawedTests: (repo, since) => rerunThawedTests(records, repo, since),
+    thawByHand: (repo, redSha, actor, reason) => thawByHand(records, repo, redSha, actor, reason),
   };
 }
