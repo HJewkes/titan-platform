@@ -8,8 +8,7 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
-import { spawnAccount } from "./account-hold.js";
-import { DEFAULT_ACCOUNT } from "./account-limit.js";
+import { successorConfigDir } from "./account-hold.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -296,14 +295,6 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
   return { input, pr, ...(await describeWake(deps.port, input, pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors };
-}
-
-/** The rotation's account with headroom when one is wired; agent-chat's default account is spawned under no config directory. */
-function successorConfigDir(deps: ShepherdDeps): string | undefined {
-  const [first, ...rest] = deps.successorAccounts?.() ?? [];
-  if (first === undefined) return deps.agentChatConfigDir;
-  const account = spawnAccount(deps, [first, ...rest]);
-  return account === DEFAULT_ACCOUNT ? undefined : account;
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
