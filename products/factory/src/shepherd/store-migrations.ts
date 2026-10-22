@@ -116,6 +116,15 @@ export function registrationFactsMigration(version = 24): Migration {
   return { version, name: "factory:shepherd_registration_head_base", up: (db) => db.exec(TP2556_DDL) };
 }
 
+const TP3653_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN registrant TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN registrant_fixer INTEGER;`;
+
+/** The agent-chat session that first registered the run, and whether it was the run's implementer, so notices follow the run rather than the repo's seat. */
+export function registrantMigration(version = 38): Migration {
+  return { version, name: "factory:shepherd_registration_registrant", up: (db) => db.exec(TP3653_DDL) };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,

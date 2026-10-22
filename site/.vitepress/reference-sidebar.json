@@ -164,6 +164,10 @@
     "collapsed": false,
     "items": [
       {
+        "text": "autoresearch",
+        "link": "/reference/autoresearch"
+      },
+      {
         "text": "code-graph",
         "link": "/reference/code-graph"
       },
@@ -206,6 +210,10 @@
       {
         "text": "review-panel",
         "link": "/reference/review-panel"
+      },
+      {
+        "text": "review-workflow",
+        "link": "/reference/review-workflow"
       },
       {
         "text": "session-analytics",

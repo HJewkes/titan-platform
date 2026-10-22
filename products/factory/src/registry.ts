@@ -9,6 +9,7 @@ import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
+import { ownerOpPreview } from "./owner-ops/preview.js";
 import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
 import { GH_GATEWAY_COMMANDS } from "./shepherd/gh-gateway.js";
@@ -34,6 +35,8 @@ export interface PrRef {
 
 export interface LandArgs extends PrRef {
   task?: string;
+  /** False starts a run that never updates the branch; only merge-at-head passes it, and `factory.land` never does. */
+  update?: false;
 }
 
 export interface LandStarted {
@@ -88,7 +91,7 @@ export function parsePrRef(ref: string): PrRef {
 export function startLand(host: FactoryHost, args: LandArgs): LandStarted {
   const existing = unfinishedLand(host, args);
   if (existing) return { runId: existing.id, created: false, status: existing.status };
-  const params = { repo: args.repo, pr: String(args.pr), ...(args.task ? { task: args.task } : {}) };
+  const params = { repo: args.repo, pr: String(args.pr), ...(args.task ? { task: args.task } : {}), ...(args.update === false && { update: "false" }) };
   const runId = host.runtime.start(LAND_WORKFLOW, params);
   return { runId, created: true, status: host.runtime.status(runId)?.status ?? "running" };
 }
@@ -179,6 +182,6 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, gatesReview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
+  for (const cmd of [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

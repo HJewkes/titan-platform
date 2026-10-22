@@ -44,10 +44,16 @@ function beatNamed(golden: Golden, role: string): Beat {
   return found;
 }
 
+// Python's double advance past a null-phoneme token skips the next word's first id, so every later
+// sum is one id late and its last token goes untimed. joinTimestamps deliberately does not (TP-3833),
+// so Python's recording is compared only up to this token index; the recording itself is kept as made.
+const COMPARABLE_BEFORE: Record<string, number> = { "r3-1-nouns+null1": 2 };
+
 function maxBoundaryErrorSeconds(beat: Beat): number {
   const times = joinTimestamps(beat.tokens, beat.pred_dur);
   let worst = 0;
   beat.tokens.forEach((token, k) => {
+    if (k >= (COMPARABLE_BEFORE[beat.beat] ?? Infinity)) return;
     const time = times[k];
     for (const [actual, expected] of [
       [time?.start, token.start_ts],
@@ -122,6 +128,19 @@ describe("what each beat was chosen to exercise", () => {
     expect(nulled?.phonemes).toBe("");
     expect(nulled?.start_ts).toBeNull();
     expect(times[later]?.start).toBeCloseTo(beat.tokens[later]?.start_ts ?? Number.NaN, 3);
+  });
+
+  // Mutation caught: restoring Python's second `i += 1` leaves the final "." untimed again.
+  it("times every token after the null-phoneme word, back to back and inside the audio", () => {
+    const beat = beatNamed(golden, "null-phoneme");
+
+    const times = joinTimestamps(beat.tokens, beat.pred_dur);
+
+    expect(beat.tokens.at(-1)?.end_ts).toBeNull();
+    const after = times.slice(2);
+    expect(after.every((t) => t.start !== null && t.end !== null && t.end > t.start)).toBe(true);
+    expect(times.at(-1)?.end).toBeLessThan(beat.audio_samples / SAMPLE_RATE);
+    expect(times.at(-1)?.start).toBeCloseTo(times.at(-2)?.end ?? Number.NaN, 10);
   });
 
   it("is the longest beat, over 200 phonemes", () => {

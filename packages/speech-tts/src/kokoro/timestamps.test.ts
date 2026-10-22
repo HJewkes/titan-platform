@@ -68,14 +68,32 @@ describe("joinTimestamps edge cases", () => {
     expect(joinTimestamps([], [5, 5, 5])).toEqual([]);
   });
 
-  // Python consumes a null-phoneme token's whitespace frame (taking it twice) and gives the token no time.
-  it("skips a null-phoneme token but spends its whitespace frame", () => {
+  // Deliberately unlike Python, which takes the frame twice and skips the next word's first id.
+  it("skips a null-phoneme token but spends its one whitespace frame", () => {
     const tokens = [{ phonemes: null, whitespace: " " }, word];
 
-    const times = joinTimestamps(tokens, [5, 99, 2, 4, 6, 1, 1]);
+    const times = joinTimestamps(tokens, [5, 2, 4, 6, 1, 1]);
 
     expect(times[0]).toEqual({ start: null, end: null });
     expect(times[1]?.start).toBeCloseTo((4 + 2) / 80, 10);
+  });
+
+  // Mutation caught: restoring Python's second `i += 1` drifts one id per null word and drops the last word.
+  it("times the word after a null token and the last word, one id per phoneme", () => {
+    const tokens = [
+      { phonemes: "ab", whitespace: " " },
+      { phonemes: null, whitespace: " " },
+      { phonemes: "c", whitespace: " " },
+      { phonemes: "de", whitespace: "" },
+    ];
+    // bos, a b, space, (null's) space, c, space, d e, eos: one frame per id.
+    const frames = [3, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+
+    const times = joinTimestamps(tokens, frames);
+
+    expect(times[1]).toEqual({ start: null, end: null });
+    expect(times[2]?.start).toBeCloseTo(7 / 80, 10);
+    expect(times[3]).toEqual({ start: 11 / 80, end: 16 / 80 });
   });
 
   it("subtracts 3 bos frames and splits a trailing space between neighbours", () => {

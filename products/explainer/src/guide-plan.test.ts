@@ -18,6 +18,33 @@ describe("guidePlan", () => {
     expect(guide).not.toContain("Show only a few new on-screen items");
     expect(guide).not.toContain("owner-FB3");
   });
+
+  it("tells every stage to write for the ear: contractions, varied length, you, and we but never I", () => {
+    const guide = guidePlan("script");
+
+    expect(guide).toContain("## Write it to be spoken");
+    expect(guide).toContain("Contract as people talk");
+    expect(guide).toContain("Put a short sentence beside a long one");
+    expect(guide).toContain("let some sentences run");
+    expect(guide).toContain('Talk to the viewer as "you"');
+    expect(guide).toContain('never as "I"');
+    expect(guidePlan("plan")).toContain("## Write it to be spoken");
+  });
+
+  it("gives the script stage, and only it, the contrast-as-a-sentence craft line", () => {
+    expect(guidePlan("script")).toContain("**register-N6**: Narration, a FENCE beat above all, states a contrast as its own sentence");
+    expect(guidePlan("plan")).not.toContain("register-N6");
+  });
+
+  it("states spoken register as direction, with none of the Q-V11 bands", () => {
+    const guide = guidePlan("script");
+    const register = guide.split("## Write it to be spoken")[1]?.split("## Rules for")[0] ?? "";
+    const craftLine = /\*\*register-N6\*\*: (.*)/.exec(guide)?.[1] ?? "";
+
+    expect(register).not.toBe("");
+    expect(craftLine).not.toBe("");
+    expect(`${register}${craftLine}`).not.toMatch(/\d/);
+  });
 });
 
 const SPINE = `# Story spine: parcel-desk-v1

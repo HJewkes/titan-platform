@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a replayed ladder takes a fresh lane slot instead of the recorded one",
+      "file": "packages/autoresearch/src/ladder.ts",
+      "find": "const lane = await recorded(",
+      "replace": "const lane = rc.slots.take() + 0 * await recorded(",
+      "kills": [
+        "the fork schedule and lane slots never hands out a slot past the lane count and reuses a freed slot",
+        "the fork schedule and lane slots replays the lane slot each ladder first held, though siblings finish in another order on replay"
+      ]
+    }
+  ]
+}

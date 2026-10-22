@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The M1a guard (TP-3099 I8): the effective mode is emitted, not consumed. Only serve wiring, health and the ingress
- * kill switch (TP-3802) may read it now; the reconciler (TP-3402) joins this list when it lands. A recipe or service that
- * imports github-sources/ fails here.
+ * kill switch (TP-3802), its listener on serve (TP-3830) and the reconciler's start, for its cadence (TP-3402), may read it
+ * now, with serve's bot-only reconciler start (TP-3431). A recipe or service that imports github-sources/ fails here.
  */
-const ALLOWED = ["cli.ts", "ingress/answer.ts", "serve-health.ts", "serve.ts"];
+const ALLOWED = ["cli.ts", "ingress/answer.ts", "ingress/listen.ts", "reconciler/service.ts", "serve-health.ts", "serve-ingress.ts", "serve-reconciler.ts", "serve.ts"];
 
 /** Test support is not a service: the A17 harness builds its feed from the mode resolver. */
 const isTestSupport = (path: string): boolean => path.startsWith("test-support/");

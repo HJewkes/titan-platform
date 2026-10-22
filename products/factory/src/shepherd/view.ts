@@ -12,6 +12,7 @@ import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -29,6 +30,17 @@ const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+
+const RiskTierSchema = z.object({ tier: z.enum(["low", "medium", "high"]), reasons: z.array(z.string()) });
+const RiskTierRecord = z.looseObject({ result: z.looseObject({ record: z.looseObject({ riskTier: RiskTierSchema }) }) });
+
+/** The tier the newest merge evidence at `head` recorded; evidence from before the field, or at another head, gives none. */
+function riskTierAt(steps: readonly StepResult[], head: string | null): { riskTier?: z.infer<typeof RiskTierSchema> } {
+  if (head === null) return {};
+  const evidence = steps.filter((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${head}`).at(-1);
+  const parsed = RiskTierRecord.safeParse(evidence?.data);
+  return parsed.success ? { riskTier: parsed.data.result.record.riskTier } : {};
+}
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const WatchRowSchema = z.object({
@@ -61,6 +73,8 @@ export const WatchRowSchema = z.object({
   lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
   repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
   autoPassed: AutoPassedSchema.optional(),
+  /** The risk tier the newest merge evidence at the row's head recorded (TP-3734 r1, shadow); absent before any evidence there. */
+  riskTier: RiskTierSchema.optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -283,7 +297,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
-    lastNone: liveLastNone(run, steps), ...autoPassField(steps),
+    lastNone: liveLastNone(run, steps), ...autoPassField(steps), ...riskTierAt(steps, headSha),
   };
 }
 

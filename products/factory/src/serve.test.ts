@@ -1,16 +1,25 @@
+import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AnswersPage, AskRequest } from "@titan-design/agent-dispatch";
+import { memoryPoolStateStore } from "@titan-design/github";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toJSONSchema } from "zod";
+import { toJSONSchema, z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { approveMergeDecision } from "./gate-brief.js";
-import { sourcesReader } from "./github-sources/mode.js";
+import { configPath } from "./config.js";
+import { githubApiStatus } from "./github-api/status.js";
+import { resolveSources, sourcesReader } from "./github-sources/mode.js";
+import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
+import { sqliteReconcilerCursor } from "./reconciler/cursor.js";
+import { OTHER_REPO, REPO, fakeBotIdentity, rig } from "./reconciler/fakes.test-helpers.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
+import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
@@ -162,14 +171,80 @@ describe("titan-factory serve", () => {
     writeFileSync(file, '{ "github": ');
     const after = await healthOf(server);
 
-    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000 });
-    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, configError: expect.stringMatching(/^invalid config /) });
+    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, reconciler: "disabled" });
+    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, reconciler: "disabled", configError: expect.stringMatching(/^invalid config /) });
   });
 
   it("health has no sources field when serve was given no reader", async () => {
     const server = await serve(dbFile(), landScenario());
 
     expect(await healthOf(server)).not.toHaveProperty("sources");
+  });
+
+  it("health shows the github-api pool's state per call class once the bot pool binds it, and no field before", async () => {
+    const store = memoryPoolStateStore();
+    store.set("example-bot[bot]", "mutation", { state: "closed", resetAt: T0 + 60_000, streak: 1 });
+    const bound = await serve(dbFile(), landScenario(), { githubApi: githubApiStatus({ identity: "example-bot[bot]", store, log: () => undefined }).health });
+    const unbound = await serve(dbFile(), landScenario());
+
+    expect(await healthOf(bound)).toHaveProperty("githubApi.mutation", { state: "closed", resetAt: new Date(T0 + 60_000).toISOString() });
+    expect(await healthOf(unbound)).not.toHaveProperty("githubApi");
+  });
+
+  describe("webhook ingress", () => {
+    const SECRET = "5e".repeat(32);
+    const ingressPort = async (server: FactoryServer) => z.object({ ingress: z.object({ port: z.number() }) }).parse(await healthOf(server)).ingress.port;
+
+    function deliver(port: number): Promise<Response> {
+      const body = JSON.stringify(statusDelivery({ type: "status", repo: "acme/widgets", head: "e".repeat(40), context: "ci", outcome: "success", at: "2026-10-20T12:00:00Z" }));
+      const signature = `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
+      const headers = { "content-type": "application/json", "x-github-event": "status", "x-github-delivery": "3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b", "x-hub-signature-256": signature };
+      return fetch(`http://127.0.0.1:${port}/ingress/github`, { method: "POST", headers, body });
+    }
+
+    function tempXdg(): NodeJS.ProcessEnv {
+      const env = { XDG_CONFIG_HOME: dirname(dirname(dbFile())) };
+      mkdirSync(dirname(webhookSecretPath(env)), { recursive: true, mode: 0o700 });
+      writeFileSync(webhookSecretPath(env), `${SECRET}\n`, { mode: 0o600 });
+      return env;
+    }
+
+    // Mutation killed: the sources read once at listener start instead of on each request.
+    it("answers ingress off under the default config, then takes the next signed delivery once the config turns webhook on, with no restart", async () => {
+      const env = tempXdg();
+      const server = await serve(dbFile(), landScenario(), { sources: sourcesReader(env), ingress: { port: 0, secretPath: webhookSecretPath(env) } });
+      const port = await ingressPort(server);
+
+      const off = await deliver(port);
+      writeFileSync(configPath(env), JSON.stringify({ github: { sources: "webhook", ingress: "on" } }));
+      const on = await deliver(port);
+
+      expect([off.status, await off.json()]).toEqual([404, { error: "ingress off" }]);
+      expect([on.status, await on.json()]).toEqual([200, { seq: 1, inserted: true }]);
+      expect(await healthOf(server)).toHaveProperty("ingress", expect.objectContaining({ path: "/ingress/github", listening: true, secret: "present", counts: { stored: 1, duplicate: 0, ignored: 0, refused: 1 } }));
+    });
+
+    // Mutation killed: the EADDRINUSE let out of startFactoryServer.
+    it("keeps serving with the ingress shown as not listening when its port is already taken", async () => {
+      const taken = createNetServer();
+      await new Promise<void>((resolve) => taken.listen(0, "127.0.0.1", resolve));
+      cleanups.push(() => new Promise<void>((resolve) => taken.close(() => resolve())));
+      const address = taken.address();
+      if (address === null || typeof address === "string") throw new Error("not bound to a TCP port");
+      const port = address.port;
+
+      const server = await serve(dbFile(), landScenario(), { ingress: { port, secretPath: webhookSecretPath(tempXdg()) } });
+      const health = await fetch(`http://127.0.0.1:${server.port}/health`);
+
+      expect(health.status).toBe(200);
+      expect(await health.json()).toHaveProperty("ingress", expect.objectContaining({ port, listening: false, error: expect.stringContaining("EADDRINUSE") }));
+    });
+
+    it("health has no ingress field when serve was given no ingress", async () => {
+      const server = await serve(dbFile(), landScenario());
+
+      expect(await healthOf(server)).not.toHaveProperty("ingress");
+    });
   });
 
   it("health reports an unknown build when none was baked in", async () => {
@@ -311,6 +386,50 @@ describe("serve's start-up warnings", () => {
     await serve(dbFile(), landScenario(), { logger, deployWatch: { tick: async () => undefined, status: () => null, startupWarning } });
 
     expect(warnings).toContain(startupWarning);
+  });
+});
+
+describe("serve's reconciler (I9)", () => {
+  const config = { enabled: true, intervalMs: 300_000, fullEvery: 3, repos: [REPO, OTHER_REPO] };
+
+  it("returns from start before the forced start pass's first read answers, then snapshots every repo once", async () => {
+    const r = rig();
+    let release = (): void => undefined;
+    r.github.hold = new Promise<void>((resolve) => (release = resolve));
+
+    const server = await serve(dbFile(), landScenario(), { bot: () => fakeBotIdentity(), reconciler: { config, ports: () => r.bot } });
+    expect(r.github.calls.length).toBe(1);
+
+    release();
+    const cursor = sqliteReconcilerCursor(server.host.db);
+    await vi.waitFor(() => expect(cursor.read(OTHER_REPO).main?.value).toBe("c1"));
+    expect([r.github.count("snapshot", REPO), r.github.count("snapshot", OTHER_REPO)]).toEqual([1, 1]);
+  });
+
+  it("reads serve's sources for its cadence, so a kill-switched webhook deployment runs at the polling interval", async () => {
+    const started: unknown[] = [];
+    const logger = { ...silentLogger, info: (fields: unknown, msg?: unknown) => void (msg === "reconciler.started" && started.push(fields)) };
+    const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
+
+    await serve(dbFile(), landScenario(), { logger, sources, bot: () => fakeBotIdentity(), reconciler: { config, ports: () => rig().bot } });
+
+    expect(started).toEqual([{ repos: [REPO, OTHER_REPO], effective: "polling", reason: "kill-switch", intervalMs: 45_000 }]);
+  });
+
+  it("health shows the start pass in sources.lastPassAt, with the interval the schedule runs at", async () => {
+    const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
+    const server = await serve(dbFile(), landScenario(), { sources, bot: () => fakeBotIdentity(), reconciler: { config, ports: () => rig().bot } });
+
+    await vi.waitFor(async () => expect(await healthOf(server)).toHaveProperty("sources", expect.objectContaining({ intervalMs: 45_000, lastPassAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) })));
+  });
+
+  it("starts no reconciler while reconciler.enabled is off", async () => {
+    const r = rig();
+
+    await serve(dbFile(), landScenario(), { bot: () => fakeBotIdentity(), reconciler: { config: { ...config, enabled: false }, ports: () => r.bot } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(r.github.calls).toEqual([]);
   });
 });
 

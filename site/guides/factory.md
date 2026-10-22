@@ -123,7 +123,10 @@ stays out of the repo.
 - `shepherd.fixer` tunes the fixer a red main spawns (see
   [After the merge](/guides/shepherd#after-the-merge)). Its one key, `configDir`, is optional
   and follows the same rules as `review.configDir`. A `fixer` block without `agentChatBin`
-  fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it.
+  fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it. A
+  fix-round successor starts on `configDir` (or `review.configDir` when it is absent) and moves
+  through `review.fallbackConfigDirs` while that account is out of usage. There is no
+  `fixer.fallbackConfigDirs` (see [Shepherd](/guides/shepherd)).
 - `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
   and successors share it. It refuses above `load5` (28), `buildLoad5` (20, with `reviewLoad`
   4 added per review started in the last five minutes), at memory `pressureLevel` 2, and under
@@ -170,9 +173,118 @@ stays out of the repo.
   and keeps the branch with a caveat while any of them is still based on it.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
+### GitHub event sources {#github-event-sources}
+
+The `github` block, at the top level of the file and not under `shepherd`, chooses where GitHub events come from. Every key is
+optional, and an unknown key fails the load.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default | What it does |
+| --- | --- | --- | --- |
+| `sources` | `"polling"`, `"webhook"` | `"polling"` | The mode the deployment is configured for |
+| `ingress` | `"on"`, `"off"` | `"off"` | The kill switch for the [webhook ingress](#webhook-ingress) |
+| `pollingIntervalMs` | integer, 30000 to 600000 | 60000 | The reconciler's cadence while the effective mode is polling |
+| `backstopIntervalMs` | integer, 300000 to 600000 | 300000 | The reconciler's cadence while the effective mode is webhook |
+
+The load fails when `pollingIntervalMs` exceeds `backstopIntervalMs`, and when `ingress` is `"on"` with `sources` `"polling"`
+(under polling the route answers 404, so the combination can only be a mistake).
+
+**Polling is a permanent, supported configuration.** It is the right choice for a deployment that does not want to expose a
+webhook route, and it is the default. It is not a fallback that webhooks are meant to replace (389(6)). Webhook mode adds a
+low-latency path for deployments that want one, and the reconciler stays on as its backstop.
+
+The effective mode is what actually runs. It follows from the two switches:
+
+| `sources` | `ingress` | Effective mode | Reason | Reconciler cadence |
+| --- | --- | --- | --- | --- |
+| `polling` | `off` | polling | `configured` | `pollingIntervalMs` |
+| `webhook` | `off` | polling | `kill-switch` | `pollingIntervalMs` |
+| `webhook` | `on` | webhook | `configured` | `backstopIntervalMs` |
+
+The cadence keys are `github.pollingIntervalMs` and `github.backstopIntervalMs`, and they are the only ones. The reconciler has no
+interval of its own (see [Reconciler](#reconciler)).
+
+**The kill switch needs no restart.** Serve re-reads the config file whenever health or the schedule asks. To drop a webhook
+deployment back to polling, set `github.ingress` to `"off"` and save: the next ingress request gets `404 {"error":"ingress off"}`
+and the next tick runs at `pollingIntervalMs`. Set it back to `"on"` to return. A half-saved or invalid edit keeps the last good
+value and reports the error in `health.sources.configError`, so a typo never turns a webhook deployment into a polling one. A file
+that is invalid at start fails the start.
+
+**What health reports.** `GET /health` carries a `sources` object:
+
+| Field | Meaning |
+| --- | --- |
+| `configured` | `sources` as written in the file |
+| `effective` | `polling` or `webhook`, as the table above resolves it |
+| `reason` | `configured`, or `kill-switch` when a webhook deployment runs as polling |
+| `intervalMs` | The cadence in force for the effective mode |
+| `lastPassAt` | ISO time the reconciler last completed a pass, or `null` before the first completed pass (tp#2090). A pass that threw never stamps, so a stamp that keeps ageing is the sign of a stalled reconciler |
+| `configError` | Present only while the file on disk is invalid |
+
+**Going live with webhooks.** The polling-first gate (F11, TP-3103) is the order webhooks go live in: run on polling for the
+48 hours first, then register the webhooks and flip `ingress`. It sequences a move to webhook mode and is not a reason polling
+exists. The clocks are in [F11 gate](#f11-gate); the owner steps, Funnel route and rollback are in
+[Webhook ingress](#webhook-ingress).
+
 A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
 (`products/factory/src/bad-config.test.ts`).
+
+## Reconciler
+
+The reconciler is the GitHub backstop (`products/factory/src/reconciler/`). Webhooks get
+lost and GitHub does not redeliver them, so on a timer it reads each watched repo and appends
+what it sees to the event log with `source: backstop`. It only appends. It never reads the log
+back, never acts on a row, and never updates or deletes one.
+
+```json
+{ "reconciler": { "enabled": false, "fullEvery": 3, "repos": ["acme/widgets"] } }
+```
+
+- `enabled` is off by default. Serve starts no reconciler until it is on and the bot's
+  GitHub port is wired (TP-3431). Turning it off stops every tick and the start pass.
+- The tick period comes from the [`github` block](#github-event-sources):
+  `pollingIntervalMs` under effective polling, `backstopIntervalMs` (5 to 10 minutes) under
+  effective webhook. `reconciler.intervalMs` is deprecated and ignored. For one release the
+  load still accepts it, so a config that sets it keeps starting, and serve logs
+  `config.deprecated reconciler.intervalMs ignored; use github.backstopIntervalMs` at start.
+  Remove it from the file.
+- `fullEvery` (default 3) caps how many ticks a quiet repo can go without a full GraphQL
+  snapshot. A repo is quiet when its conditional gates all answer 304 and its last snapshot
+  had no check or status still running.
+- `repos` lists the `owner/name` repos to watch.
+
+Every GitHub read is a claim on the bot's `github-api` pool at backstop priority, the lowest.
+While the pool holds any call class closed, the reconciler skips the repo on that tick, and a
+claim the pool answers as unavailable is skipped the same way. A skipped repo writes no row and
+moves no cursor. The next granted tick reads the whole range from the cursor, so nothing is
+lost. When a repo is skipped on more than 2 ticks in a row, serve logs `reconciler.starved`
+once, with the time the first skip happened.
+
+On serve start, the first tick is a forced full pass over every repo. Serve does not wait for
+it. A repo the pool skips during that pass is forced again on the next tick. With no cursor,
+main and closed PRs are read back 24 hours.
+
+The cursor lives in the factory database (migration 36, `factory_reconciler_cursor`), with one
+row per repo and stream (`main`, `done`, `rulesets`). Appends come before the cursor write. A
+crash between the two re-reads the same range on the next tick, and every row it sees again
+comes back as a duplicate.
+
+Each tick writes one serve-log line per outcome:
+
+| Line | Meaning |
+|---|---|
+| `reconciler.filled` | a row no webhook had written was appended |
+| `reconciler.confirmed` | a webhook row already held the occurrence; nothing was written |
+| `reconciler.disagree class=stale-read` | the read was behind the log; nothing was written |
+| `reconciler.disagree class=field-parity` | the same occurrence came with a field that differs |
+| `reconciler.disagree class=main-ancestry-lost` | main lost ancestry between cursor and tip; the cursor resets to the tip |
+| `reconciler.disagree class=unconfirmed` | the head guard was pending or unknown; the next tick reads again |
+| `reconciler.skipped` / `reconciler.starved` | the pool refused the repo's claim |
+| `reconciler.unit-failed` | the read or a step threw; the repo's cursor stays where it was |
 
 ## A17 invariant tests: both event-source modes
 
@@ -200,6 +312,10 @@ nothing that names the mode, so a case cannot skip one by branching.
 - `feed.pick({ webhook, polling })` is the one way a case states an expectation that differs by mode; both answers are
   required.
 - `feed.advance(ms?)` moves the fake clock, by one reconciler interval of the mode when `ms` is omitted.
+- `feed.limit(answer, reads?)` makes GitHub answer the bot's next reads with a limit or failure. The reads go through the
+  bot's `github-api` pool, whose state is the factory's own pool-state table and whose clock is the feed's, so a closed
+  pair reopens when `advance` passes its `resetAt`. `feed.reads()` counts the reads GitHub answered.
+- `feed.head(repo, pr)` is the head GitHub shows for an open PR, for a case that drives the head guard's live reads.
 
 `test-support/a17/structure.test.ts` runs inside `pnpm test` and fails when, anywhere under `products/factory/src`:
 
@@ -211,6 +327,204 @@ A case with no GitHub input, such as the M0 deploy probe cases, stays single-mod
 (`test-support/a17/not-event.ts`) with the file, the title as written and a reason. The guard also fails on an entry whose
 file no longer carries its title. CI reruns the whole factory package when anything in it changes, so the guard runs on
 every factory change.
+
+## Webhook ingress {#webhook-ingress}
+
+`serve` owns a second loopback listener that takes GitHub webhook deliveries. It is a separate listener so the daemon's Host and
+Origin guards on 7410 stay as they are, and a Funnel typo cannot expose `/rpc` or `/mcp`.
+
+| What | Value |
+| --- | --- |
+| Path | `/ingress/github` (POST only) |
+| Local listener | `127.0.0.1:7411` |
+| Public route | `https://<host>.<tailnet>.ts.net/ingress/github`, forwarded to `http://127.0.0.1:7411/ingress/github` |
+| Secret file | `$XDG_CONFIG_HOME/titan-factory/secrets/github-webhook.token`; on the serve host `~/.config/titan-factory/secrets/github-webhook.token` (directory 0700, file 0600) |
+| Kill switch | `github.ingress` (`"on"` or `"off"`, default `"off"`) in `~/.config/titan-factory/config.json` |
+
+`<host>.<tailnet>.ts.net` stands for the serve host's Funnel name, shown by `tailscale status --json | jq -r .Self.DNSName`.
+
+The route is live only when `github.sources` is `"webhook"` **and** `github.ingress` is `"on"`. Otherwise every request gets
+`404 {"error":"ingress off"}` before the body or the secret is read. The listener binds even when the switch is off, so a flip
+takes effect on the next request with no restart.
+
+**The switch stays off until the polling-only 48 h has passed.** Register the webhooks and flip the switch only after that. The
+two clocks, what resets them and the commands for each are in [F11 gate](#f11-gate).
+
+**Parse-only (R28).** The ingress verifies the signature, stores a capped projection of the delivery as one `source='webhook'`
+event, and acts on nothing. No recipe or service reads what it writes at M1a.
+
+### Owner steps
+
+D1 and D2 (the tailnet ACL `funnel` nodeAttr, scoped to the serve host and never `"*"`) are separate and can run now. D6 needs no code
+and can run now. D3 to D5 wait until the ingress listener is deployed on the serve host: before that, 7411 has no listener and Funnel
+answers 502.
+
+**D3. Check that serve's ingress listener is up** (on the serve host):
+
+```sh
+ss -ltn 'sport = :7411'
+curl -sS -X POST http://127.0.0.1:7411/ingress/github
+```
+
+The first line must list `127.0.0.1:7411`. The curl must print `{"error":"ingress off"}`.
+
+**D4. Add the one Funnel route** (on the serve host):
+
+```sh
+sudo tailscale funnel --bg --set-path /ingress/github http://127.0.0.1:7411/ingress/github
+```
+
+Never run `tailscale funnel 7410`, and never run `tailscale funnel` without `--set-path`.
+
+**D5. Check that only that route is public:**
+
+```sh
+tailscale funnel status
+curl -sS -X POST https://<host>.<tailnet>.ts.net/ingress/github
+curl -sS -o /dev/null -w '%{http_code}\n' https://<host>.<tailnet>.ts.net/health
+```
+
+- `funnel status` must list exactly one entry: `https://<host>.<tailnet>.ts.net/ingress/github`, proxying to
+  `http://127.0.0.1:7411/ingress/github`.
+- The first curl must print `{"error":"ingress off"}`.
+- The second curl must print `404`. That 404 comes from Tailscale and shows serve's `/health` is not public.
+- If the first curl prints `{"error":"not found"}` instead, Tailscale appended the mount path twice. Run
+  `sudo tailscale funnel --set-path /ingress/github off`, then re-run D4 with the target `http://127.0.0.1:7411`, then re-run D5.
+
+**D6. Make the webhook secret straight into its file** (on the serve host, as the serve user):
+
+```sh
+umask 077
+mkdir -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+openssl rand -hex 32 > ~/.config/titan-factory/secrets/github-webhook.token
+chmod 600 ~/.config/titan-factory/secrets/github-webhook.token
+ls -l ~/.config/titan-factory/secrets/github-webhook.token
+```
+
+The last line must start with `-rw-------`. The secret is never printed, pasted or sent in chat. Serve picks it up on the next
+delivery, with no restart.
+
+### F11 gate {#f11-gate}
+
+F11 (TP-3103) is the order webhooks go live in: 48 hours on polling alone, then the ingress, then 48 hours of webhook plus
+backstop. Each clock passes on its own report, and the M1a exit cites both.
+
+**Before clock 1 starts**, all of these hold:
+
+1. The deployed sha carries the reconciler wired to serve as the bot (TP-3431), the meter below, and the bot token path
+   (TP-3419). Write the sha down.
+2. The bot token is on disk, mode 0600. `curl -s http://127.0.0.1:7410/health | jq .bot` shows `state: "ok"`, and
+   `titan-factory bot-token scan` prints `bot-token scan: clean`.
+3. `~/.config/titan-factory/config.json` sets polling with the switch off and the reconciler on, over the four repos:
+
+   ```json
+   {
+     "github": { "sources": "polling", "ingress": "off" },
+     "reconciler": { "enabled": true, "repos": ["HJewkes/titan-platform", "HJewkes/titan-design", "HJewkes/agent-chat", "HJewkes/voltras-mcp"] }
+   }
+   ```
+
+   `curl -s http://127.0.0.1:7410/health | jq .sources` shows `effective: "polling"`, `reason: "configured"` and a
+   `lastPassAt` that advances. `sources.reconciler: "running"` lands with TP-3431's serve wiring.
+4. The first pass read each repo's rulesets with status 200, not the 403 `unreadable`. A repo that answers 403 stops the
+   gate: its ruleset changes can never pass the census.
+5. Both meters run, and the old pollers keep running: nothing in Shepherd retires at M1a.
+
+**The meters.** The bot side is inside serve, so its token never leaves it. Serve logs a `github-api.usage` line every 5
+minutes and a `github-api.peak` line every hour, each with `identity`, `resource` (`core`, `graphql`), `used`, `limit`,
+`pct` and `reset`. A peak line carries the highest `used` per reset window, not the last read. They go to
+`serve.err.log` with the rest of serve's lines:
+
+```sh
+grep 'github-api.peak' "$XDG_STATE_HOME/titan-factory/serve.err.log"
+```
+
+The HJewkes side is a sampler run as HJewkes from the service checkout. It calls `gh api rate_limit` once a minute, which
+costs no rate-limit points, and appends one JSONL record per sample. `--peaks` prints the highest `used` per resource and
+reset window:
+
+```sh
+node products/factory/scripts/f11-rate-sample.mjs --out <jsonl>
+node products/factory/scripts/f11-rate-sample.mjs --peaks <jsonl>
+```
+
+**Clock 1: polling only, 48 h.**
+
+- It starts when the five conditions above hold.
+- Make one planned restart near the 24 h mark with `titan-factory service restart`, so the peaks cover a restart and its
+  forced start pass.
+- The reconciler's own record (TP-3098) comes from the first 24 h.
+- It passes when the census shows no `missing` kind against the kinds that occurred in the window, no unexplained
+  `reconciler.disagree class=field-parity` line, and a bot peak under 50% of the limit in both buckets.
+
+**Boundary.** Run [Go-live](#go-live) G1 to G3. Re-check D5 first: `tailscale funnel status` lists exactly one route.
+
+**Clock 2: webhook plus backstop, 48 h.** The backstop runs at `github.backstopIntervalMs` (default 5 minutes). Write down
+each of three deliberate probes:
+
+- Redeliver one real `pull_request` delivery from the GitHub UI. It must append no new row (a duplicate `by: delivery`).
+- Re-run one check on a scratch PR, and record whether the re-run gets a new `checkRunId`.
+- Set `github.ingress` to `"off"` for one backstop interval, then back to `"on"`. The backstop catches up what the switch
+  dropped.
+
+Stale reads are counted from `reconciler.disagree class=stale-read` and `head-regression` lines. Clock 2 passes when no
+row is webhook-only past the pending window, each backstop-only row is explained, no key diverges (dedupe holds), and no
+`head-regression` line shows an epoch going backward. The A17 report on the deployed sha must list every case as ok in
+both modes:
+
+```sh
+pnpm --filter @titan-design/factory a17 --out <file>
+```
+
+**What resets a clock.**
+
+- A deploy that changes `reconciler/`, `github-sources/`, `event-log/`, `ingress/`, `head-guard/` or `bot-identity.ts`
+  under `products/factory/src/`. Note any other deploy, but it does not reset the clock.
+- A `reconciler.unit-failed` streak of more than 3 ticks on one repo.
+- A `missing` kind that did occur in the window.
+
+**The report.** `products/factory/scripts/f11.mjs` lands with F6. It reads the database and the serve log over a window
+and writes the census (clock 1) or the agreement (clock 2), the stale-read counts and both identities' peaks:
+
+```sh
+node products/factory/scripts/f11.mjs --db <db> --log <serve.err.log> --since <iso> --until <iso> \
+  --clock polling|webhook --rate <jsonl> --out <file>
+```
+
+### Go-live
+
+After [clock 1](#f11-gate) has passed:
+
+**G1. Register the webhook on each of the four repos** (titan-platform, titan-design, agent-chat, voltras-mcp). This needs repo
+admin, so it runs as HJewkes. The secret goes from the file through stdin, never through argv:
+
+```sh
+for repo in titan-platform titan-design agent-chat voltras-mcp; do
+  jq -n --rawfile s ~/.config/titan-factory/secrets/github-webhook.token '{name:"web",active:true,
+    events:["check_run","status","pull_request","pull_request_review","push","repository_ruleset"],
+    config:{url:"https://<host>.<tailnet>.ts.net/ingress/github",content_type:"json",insecure_ssl:"0",secret:($s|rtrimstr("\n"))}}' \
+  | gh api -X POST "repos/HJewkes/$repo/hooks" --input - --jq '.id'
+done
+```
+
+Each repo's ping delivery reaches a switch that is still off, so it gets 404. That is expected.
+
+**G2. Flip the kill switch.** In `~/.config/titan-factory/config.json`, set `"github": {"sources": "webhook", "ingress": "on"}`.
+No restart is needed. Check with `curl -s http://127.0.0.1:7410/health | jq '.sources, .ingress'`: it must show
+`effective: "webhook"` and `listening: true`.
+
+**G3. Redeliver one ping per repo** from Settings, Webhooks, Recent Deliveries, Redeliver. Each must show 200, and
+`health.ingress.lastDelivery.event` must be `ping`.
+
+### Rollback
+
+- **Operational, with no deploy:** set `"ingress": "off"` (or remove the `github` block). The next delivery gets 404 and polling
+  takes over. To close the public route: `sudo tailscale funnel --set-path /ingress/github off`.
+- **Code:** each slice is one revertable commit. Reverting the listener removes it; the projections and the core are then dead
+  code, so revert them too. There is no migration and no stored state outside the event log, and rows already written stay valid.
+- **Secret leak:** rotate with D6 (overwrite the file), then `gh api -X PATCH repos/HJewkes/<repo>/hooks/<id>/config` with the
+  same jq-from-file form. Serve re-reads the file on change.
 
 ## `serve`
 

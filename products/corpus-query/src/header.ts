@@ -1,6 +1,6 @@
 export interface ParsedHeader {
   fields: Record<string, string>;
-  /** Character index where the body begins, past the header block and its blank line. */
+  /** Character index where the body begins: just past the header block, at the blank line that ends it. */
   bodyStart: number;
 }
 

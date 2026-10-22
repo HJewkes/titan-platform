@@ -2,7 +2,8 @@
  * The client of titan-factory's `POST /owner/console-action`: the body names an action id, and the factory reads what to do from
  * the console's own record file `<actionsDir>/<id>.json`. The console depends on the factory only across this HTTP call, so the
  * response shapes are pinned here, not imported: `resolved` and `already` for a gate, `released` and `already` for an owner-asked
- * hold, `moved`, `gone` and `refused` for either.
+ * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, and `moved`,
+ * `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -12,6 +13,7 @@ const POST_TIMEOUT_MS = 10_000;
 export type ActionOutcome =
   | { status: "resolved"; gateId: string }
   | { status: "released"; runId: string; stillHeld: string | null }
+  | { status: "accepted"; runId: string }
   | { status: "already"; gateId?: string; runId?: string }
   | { status: "moved"; currentHead: string | null }
   | { status: "gone"; reason: string }
@@ -42,6 +44,7 @@ const unreachable = (detail: string): Unreachable => ({ status: "unreachable", d
 function settledOutcome({ outcome, gateId, runId, stillHeld }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
+  if (outcome === "accepted" && runId) return { status: "accepted", runId };
   if (outcome === "already" && (gateId || runId)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }) };
   return undefined;
 }

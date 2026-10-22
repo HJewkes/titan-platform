@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import type { ReviewTarget, ReviewerDispatch } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -94,6 +95,26 @@ export function accountWithHeadroom(deps: ShepherdDeps, dirs: readonly string[],
   }
 }
 
+/** A successor never holds, so with no account left or the limits unreadable it takes the first, as it did before rotation. */
+function headroomOrFirst(deps: ShepherdDeps, dirs: readonly [string, ...string[]]): string {
+  try {
+    return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];
+  } catch {
+    return dirs[0];
+  }
+}
+
+/**
+ * The config directory a successor spawns under: the rotation's first account with headroom, picked as a review picks, with
+ * agent-chat's default account spawned under none. No rotation wired leaves `agentChatConfigDir`.
+ */
+export function successorConfigDir(deps: ShepherdDeps): string | undefined {
+  const [first, ...rest] = deps.successorAccounts?.() ?? [];
+  if (first === undefined) return deps.agentChatConfigDir;
+  const account = headroomOrFirst(deps, [first, ...rest]);
+  return account === DEFAULT_ACCOUNT ? undefined : account;
+}
+
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
   if (input.notice === undefined) return limits.exhausted(input.account);
@@ -171,7 +192,8 @@ async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: W
 /** Any read that fails keeps the hold and is read again; the PR is read only on a push to its branch or once per backstop. */
 async function awaitHeadroom(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput, signal: AbortSignal): Promise<Waited> {
   const startedAt = deps.now();
-  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.head, tickMs: PUSH_WATCH_TICK_MS, read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined) });
+  const read = () => deps.port.getPr(input.repo, input.pr).catch(() => undefined);
+  const poll = headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.head, tickMs: PUSH_WATCH_TICK_MS, read, observe: headRegressionObserver(deps.port) });
   for (;;) {
     signal.throwIfAborted();
     const resumed = await resumeReason(deps, accounts, input, poll).catch(() => undefined);

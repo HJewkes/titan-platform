@@ -5,7 +5,8 @@ import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { headWaits } from "./freeze-wait.js";
+import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { CiPolicySchema } from "./review-schemas.js";
@@ -161,7 +162,8 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
 /**
  * The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries.
  * Every gate names why the owner is asked: the escalation at that head, else a policy that did not allow the merge. An
- * unsettled mergeability re-reads the evidence at the same head, and later decisions about that review judge the re-read.
+ * unsettled mergeability, a freeze alone or missing facts waits and re-reads the evidence at the same head (freeze-wait.ts),
+ * and later decisions about that review judge the re-read.
  */
 export function shepherdLandOptions(
   effective: () => EffectivePolicy,
@@ -190,7 +192,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
 }
 
 /**
