@@ -159,7 +159,7 @@ async function settledSync(run: SnapshotRun, stepId: string, input: SyncRequest)
     const { prompt, brief } = gateText(input, result);
     const answer = await run.ctx.assisted(`${arStepId("sync-gate")}:${input.round}`, prompt, { schema: SyncGateAnswerSchema, brief });
     const { resolved } = SyncGateAnswerSchema.parse(answer.data);
-    result = await step(run.ctx, `${stepId}.resolved`, { ...input, resolved }, SyncResultSchema);
+    result = await step(run.ctx, `${stepId}.resolved`, { ...input, resolved, allowedFrozen: result.frozen ?? [] }, SyncResultSchema);
   }
   return result;
 }

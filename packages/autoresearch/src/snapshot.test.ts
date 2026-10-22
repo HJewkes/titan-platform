@@ -236,7 +236,7 @@ describe("ar-sync", () => {
 
   it("holds the next round at a gate on a conflict, then runs it from the owner's resolved merge", async () => {
     const sync = async (input: SyncRequest) => {
-      if (!input.resolved) return { state: "merged" as const, conflict: ["src/config.json"] };
+      if (!input.resolved) return { state: "merged" as const, conflict: ["src/config.json"], frozen: ["src/gate/measure.py"] };
       return { state: "merged" as const, merged: { from: input.head, to: input.resolved, main: input.resolved }, treeChanged: false };
     };
     const { repo, ports } = await world([["a"]], { sync });
@@ -251,7 +251,7 @@ describe("ar-sync", () => {
     const run = await host.runtime.wait(runId);
 
     expect(run.status).toBe("completed");
-    expect(ports.calls.sync.map((input) => input.resolved)).toEqual([undefined, resolved]);
+    expect(ports.calls.sync.map((input) => [input.resolved, input.allowedFrozen])).toEqual([[undefined, undefined], [resolved, ["src/gate/measure.py"]]]);
     expect(summaryOf(run, 2).against.head).toBe(resolved);
   });
 });
