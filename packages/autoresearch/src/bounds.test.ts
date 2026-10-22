@@ -125,7 +125,7 @@ describe("frozen overlap", () => {
 
 describe("dead ends", () => {
   it("needs a non-blank differsFrom for an idea in a dead-end cell", () => {
-    const deadEnds = [{ cell: "accept-gate:retry", targets: ["src/gate/gates.py"], rungFailed: "L2" }];
+    const deadEnds = [{ ideaId: "i-earlier", round: 1, cell: "accept-gate:retry", targets: ["src/gate/gates.py"], rungFailed: "L2" }];
     const context = { round: 2, bounds: FIXTURE_BOUNDS, caseNames: [], deadEnds, seen: new Set<string>(), lineageOf: new Map<string, string>() };
     const codes = (differsFrom?: string) => applyOps([], QueueOpsSchema.parse({ add: [proposal("retry", { differsFrom })] }), context).rejected.map((entry) => entry.code);
     expect(codes()).toEqual(["rejected:pre:dead-end"]);

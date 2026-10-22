@@ -67,7 +67,9 @@ function outcomes(run: WorkflowRun | undefined): Map<string, Outcome> {
   return new Map(stops.map(([, result]) => OutcomeSchema.parse(JSON.parse(result.output!))).map((outcome) => [outcome.ideaId, outcome]));
 }
 
-const evalKeys = (ports: FakeArPorts, mechanism: string) => ports.calls.evals.filter((call) => call.ideaId === id(mechanism)).map((call) => call.key);
+/** A run key's repeat label: the key itself is unique per run and ladder. */
+const label = (key: string) => key.split("-").at(-1)!;
+const evalKeys = (ports: FakeArPorts, mechanism: string) => ports.calls.evals.filter((call) => call.ideaId === id(mechanism)).map((call) => label(call.key));
 
 async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, config: object = CONFIG, policy: Policy = POLICY) {
   const { repo, ports } = await world(mechanisms, options, policy);
@@ -128,7 +130,7 @@ describe("autoresearch on a fixture target at $0", () => {
     const held = latch();
     let killed = false;
     const beforeEval = async (ideaId: string | null, key: string) => {
-      if (killed || key !== "r2") return;
+      if (killed || label(key) !== "r2") return;
       killed = true;
       held.open();
       await new Promise(() => undefined);

@@ -8,7 +8,7 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, RatchetRequest } from "../ports.js";
+import type { ArPorts, ImplementRequest, MicroRequest, RatchetRequest, RoundRecord } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
@@ -151,6 +151,7 @@ export function proposal(mechanism: string, overrides: Partial<Proposal> = {}): 
     direction: mechanism,
     targets: ["src/gate/gates.py"],
     expectedEffect: { metric: "primary", direction: "down", microSignal: "fewer accepts" },
+    microArgs: {},
     testPlan: "assert the new accept decision",
     bold: false,
     priority: 0,
@@ -169,12 +170,16 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
 }
 
 interface FakeCalls {
-  plans: { round: number; violations: string[]; digest: Digest }[];
+  plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
   implement: string[];
+  /** Every implement input but the brief, in call order. */
+  implementInputs: Omit<ImplementRequest, "brief">[];
   evals: { ideaId: string | null; key: string }[];
   micro: string[];
+  microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
   released: string[];
+  archives: { round: number; record: RoundRecord }[];
 }
 
 export interface FakeOptions {
@@ -214,8 +219,10 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       ideaOfTree.set(tree, ideaId);
       return { tree, branch };
     },
-    async implement({ idea, tree }: { idea: Idea; tree: string }) {
+    async implement({ brief: _brief, ...input }: ImplementRequest) {
+      const { idea, tree } = input;
       calls.implement.push(idea.id);
+      calls.implementInputs.push(input);
       await options.beforeImplement?.(idea, calls.implement.length);
       appendFileSync(join(tree, "applied.txt"), `${idea.mechanism}\n`);
       for (const [path, text] of Object.entries(editsOf(idea, policy, options.bounds ?? FIXTURE_BOUNDS))) {
@@ -224,7 +231,10 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       }
       await git(tree, "add", "--all");
       await git(tree, "commit", "--quiet", "-m", `apply ${idea.mechanism}`);
-      return { head: await git(tree, "rev-parse", "HEAD"), usd: 0, lesson: `${idea.mechanism} applied` };
+      const head = await git(tree, "rev-parse", "HEAD");
+      const resumed = input.fork === "exploit" && input.resumeFrom !== undefined;
+      const agent = resumed ? input.resumeFrom! : `implementer-${idea.id}-r${input.round}`;
+      return { head, usd: 0, lesson: `${idea.mechanism} applied`, agent, sessionId: `session-${agent}`, mode: resumed ? "resume" : "spawn", resumedFrom: resumed ? agent : undefined, account: "fixture" } as const;
     },
     async releaseTree({ tree }: { tree: string }) {
       calls.released.push(tree);
@@ -241,8 +251,10 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       const checked = postCheck({ idea, diff: parseUnifiedDiff(text), bounds, frozen: target.frozen, caseNames: options.caseNames ?? [] });
       return { ok: checked.code === undefined, code: checked.code, checks: checked.checks, diff: checked.size };
     },
-    async micro({ idea, tree, rung }: { idea: Idea; tree: string; rung: string }) {
+    async micro(input: MicroRequest) {
+      const { idea, tree, rung } = input;
       calls.micro.push(idea.id);
+      calls.microInputs.push(input);
       return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung]));
     },
     async evalCase({ tree, case: testCase, key }: { tree: string; case: string; key: string }) {
@@ -262,7 +274,7 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], evals: [], micro: [], ratchet: [], released: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   return {
@@ -280,6 +292,13 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
     async ratchet(input) {
       calls.ratchet.push(input);
       return (options.ratchet ?? pushRatchet)(input);
+    },
+    async loadWait() {
+      return { waitedMs: 0, load5: 0.5 };
+    },
+    async archive({ runId, round, record }) {
+      calls.archives.push({ round, record });
+      return { path: join(repo.root, "archive", runId, `round-${round}.json`), sha256: "0".repeat(64) };
     },
     ...treePorts(repo, calls, ideaOfTree, policy, options),
     ...rungPorts(repo, calls, ideaOfTree, target, options),
