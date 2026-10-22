@@ -2,13 +2,15 @@
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
 // `inbox file` lets an agent file an owner item, `decisions file` lets a seat file a questions-only decision round,
-// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds subscribe` tells a seat of answers,
+// `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
+// and proposes ones the decisions file cites as answered, `rounds subscribe` tells a seat of answers,
 // `storybooks gc` sweeps the Storybook store, `config import` / `config compare-tree` run the coordinator config
 // store's shadow steps, and `self-update` (run by a systemd timer) rebuilds and swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
+import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
 import { storybooksGcArgs, storybooksGcCli } from "./cli-storybooks.js";
 import { subscriptionArgs, subscriptionCli } from "./cli-subscriptions.js";
 import { CONFIG_USAGE, configArgs, configCli } from "./config-store/cli.js";
@@ -34,8 +36,12 @@ const USAGE = `usage: titan-console                    serve the console
                                         copy a review-harness round dir into the rounds dir and
                                         print its id, frame count, feedback outcome and console URL;
                                         with --seat, that seat is messaged once the owner answers
-       titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere> [--json]
+       titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere|superseded-by:<id>> [--json]
                                         mark an unanswered round withdrawn; an answered round is kept
+       titan-console rounds sweep [--dry-run|--apply] [--json] [--decisions <path>]
+                                        list the open rounds a round's supersedes names and the open
+                                        rounds the decisions file cites as answered or resolved;
+                                        writes nothing unless --apply, which withdraws them all
        titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
                                         message the seat (default AGENT_CHAT_NAME) once for each answer
                                         to a matching round, imported now or later, from now on
@@ -95,6 +101,7 @@ const argv = process.argv.slice(2);
 const args = argv.join(" ");
 const roundsImport = roundsImportArgs(argv);
 const roundsWithdraw = roundsWithdrawArgs(argv);
+const roundsSweep = roundsSweepArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
@@ -107,6 +114,7 @@ else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fi
 else if (decisionsFile !== null) await fileDecisionCli(resolveConfig(), decisionsFile, readSource);
 else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);
+else if (roundsSweep !== null) await sweepRoundsCli(resolveConfig(), roundsSweep);
 else if (subscription !== null) await subscriptionCli(resolveConfig(), subscription);
 else if (storybooksGc !== null) await storybooksGcCli(resolveConfig(), storybooksGc);
 else if (configVerb !== null) await configCli(configStoreOf(resolveConfig()), configVerb);
