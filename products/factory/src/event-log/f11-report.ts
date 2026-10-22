@@ -17,7 +17,7 @@ const DUPLICATE_BY: readonly unknown[] = ["delivery", "occurrence", "unchanged"]
 /** The HJewkes side is sampled outside serve (scripts/f11-rate-sample.mjs); serve's own lines name the bot. */
 const SAMPLED_IDENTITY = "hjewkes";
 
-export type F11Clock = "polling" | "webhook";
+type F11Clock = "polling" | "webhook";
 
 export interface F11Input {
   clock: F11Clock;
@@ -30,7 +30,7 @@ export interface F11Input {
   withinMs?: number;
 }
 
-export interface F11Engines {
+interface F11Engines {
   kindCensus: typeof kindCensus;
   agreement: typeof agreement;
   ratePeaks: typeof ratePeaks;
@@ -59,7 +59,7 @@ interface CheckRunGroup {
   checkRunIds: number[];
 }
 
-export interface F11Report {
+interface F11Report {
   clock: F11Clock;
   window: F11Window;
   withinMs: number;
