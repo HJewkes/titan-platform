@@ -5,7 +5,7 @@ import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import type { DataSource } from "@titan-design/rpc-client";
 import type { ReactNode } from "react";
-import { RoundSchema, type Question } from "../../server/round-schema.js";
+import { RoundSchema, type Manifest, type Question } from "../../server/round-schema.js";
 import { BRIDGE_TAG } from "../../server/story-bridge.js";
 import type { RoundLive } from "../../server/storybook-build.js";
 import { LiveViewedProvider } from "../data/live-viewed.js";
@@ -30,7 +30,7 @@ const ROUND = "lantern-cards-r1";
 const STORY_ORIGIN = "http://127.0.0.1:7501";
 const KEYS = ["compact", "roomy"];
 const notes = { changed: "Two densities replace the single card.", context: "Card colours are out of scope." };
-const manifest = RoundSchema.parse({
+const manifest: Manifest = RoundSchema.parse({
   schema: "titan-review/round@2",
   unit: "lantern-cards",
   round: 1,
@@ -40,7 +40,9 @@ const manifest = RoundSchema.parse({
   sections: [{ id: "density", title: "Card density", deciding: "Which density the cards use.", ...notes, kind: "CHOICE", variantKeys: KEYS, questionIds: ["density-pick"] }],
   questions: [{ id: "density-pick", kind: "pick-one", prompt: "Which density?", options: KEYS, frames: KEYS, signsOff: "card-density" }],
 });
-const question = manifest.questions[0] as Question;
+const found: Question | undefined = manifest.questions.find((each) => each.id === "density-pick");
+if (found === undefined) throw new Error("no question density-pick");
+const question: Question = found;
 const live: RoundLive = { origin: STORY_ORIGIN, frames: Object.fromEntries(KEYS.map((key) => [key, { url: `/sb/${"b".repeat(64)}/iframe.html?id=lantern-card--${key}&viewMode=story`, buildSha: "a".repeat(40) }])) };
 
 function recordingSource(): { source: DataSource; submits: unknown[] } {
