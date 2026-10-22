@@ -4,7 +4,7 @@ import type { BehindMain } from "./behind-main.js";
 import type { BotHealth } from "./bot-identity.js";
 import { factoryStateDir } from "./config.js";
 import { deployPendingHealth } from "./deploy-pacer-sweep.js";
-import { deployPausedHealth } from "./deploy-pause.js";
+import { deployHeldHealth, deployPausedHealth } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import type { GateNotifyWatch } from "./gate-notify-sweep.js";
@@ -22,6 +22,8 @@ import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { divergedPrClosed, divergedRestarts, type DivergedRestart } from "./shepherd/diverged-sweep.js";
 import { isReplayDiverged } from "./shepherd/restart.js";
 import { visualDeliveryHealth } from "./shepherd/visual-delivery-sweep.js";
+
+const fsPauseReads = { exists: existsSync, readFile: (path: string) => readFileSync(path, "utf8") };
 
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 
@@ -63,7 +65,8 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: H
     build: { sha: build.sha, behindMain: build.status() },
     ...(options.routes.config && { config: options.routes.config.stamp() }),
     lastDeploy: readLastDeploy(deployStateDir),
-    deployPaused: deployPausedHealth({ exists: existsSync, readFile: (path) => readFileSync(path, "utf8") }, deployStateDir),
+    deployPaused: deployPausedHealth(fsPauseReads, deployStateDir),
+    deployHeld: deployHeldHealth(fsPauseReads, deployStateDir),
     ...(options.deployWatch && { deploy: options.deployWatch.status() }),
     ...(options.routes.shepherd?.reviewSlots && { reviewSlots: options.routes.shepherd.reviewSlots() }),
     ...deployPendingHealth(options.deployPacer),
