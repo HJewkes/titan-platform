@@ -92,7 +92,7 @@ function refuseBusy(host: FactoryHost, target: string): void {
 
 const SettingsOverride = z.strictObject({ lanes: z.number().int().positive(), rounds: z.number().int().positive(), minPool: z.number().int().nonnegative() }).partial();
 type StartArgs = { target: string; pin: string; config?: z.infer<typeof SettingsOverride> };
-export interface ArStarted {
+interface ArStarted {
   runId: string;
   status: WorkflowStatus;
 }
@@ -133,7 +133,7 @@ function pinnedOf(found: WorkflowRun): Pinned {
   return z.object({ result: PinnedSchema }).parse(recorded.data).result;
 }
 
-export interface ArLookStarted {
+interface ArLookStarted {
   runId: string;
   look: number;
   head: string;

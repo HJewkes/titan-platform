@@ -70,7 +70,7 @@ const usage = (verbs: Verbs, message: string) => (verbs.io.stderr(`error: ${mess
 const short = (sha: string) => sha.slice(0, 12);
 
 /** One line per rung from none to L3, each naming the ideas whose ladder stopped there; ladders still running are listed apart. */
-export function formatRungs(view: ArRunView): string[] {
+function formatRungs(view: ArRunView): string[] {
   const ladders = view.rounds.flatMap((round) => round.ladders);
   const at = (rung: string) => ladders.filter((ladder) => ladder.outcome?.rungReached === rung).map((ladder) => ladder.idea.id);
   const running = ladders.filter((ladder) => ladder.outcome === null).map((ladder) => ladder.idea.id);
@@ -85,7 +85,7 @@ export function formatView(view: ArRunView): string {
   return `${[head, ...formatRungs(view), ...tail].join("\n")}\n`;
 }
 
-export function formatSummaries(runs: readonly ArRunSummary[]): string {
+function formatSummaries(runs: readonly ArRunSummary[]): string {
   if (runs.length === 0) return "no autoresearch runs\n";
   const line = (run: ArRunSummary) =>
     `${run.runId} ${run.target} ${run.phase || "-"}: ${run.status}, round ${run.round}/${run.rounds}, best ${run.best ? `${short(run.best.head)} ${run.best.primary}` : "-"}, $${run.spend.toFixed(2)}`;

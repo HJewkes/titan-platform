@@ -58,13 +58,13 @@ export function portsForRun(config: ArConfig, status: Status, build: (config: Ar
   };
 }
 
-export interface ArWiring {
+interface ArWiring {
   routes: StepRoute[];
   host: Pick<FactoryRoutes, "bindHost" | "workflows" | "autoresearch">;
 }
 
 /** The routes, workflows and config a configured host adds; the routes read run params through the host once it is bound. */
-export function autoresearchWiring(config: ArConfig, build?: (config: ArConfig, name: string) => ArPorts): ArWiring {
+function autoresearchWiring(config: ArConfig, build?: (config: ArConfig, name: string) => ArPorts): ArWiring {
   let bound: FactoryHost | undefined;
   const status: Status = (runId) => {
     if (!bound) throw new Error("[no-host] autoresearch routes ran before a host was bound");

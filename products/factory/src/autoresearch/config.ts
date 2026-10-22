@@ -7,7 +7,7 @@ const localPath = z.string().min(1).refine(isAbsolute, "must be an absolute path
 const profile = z.string().regex(/^[A-Za-z0-9._-]+$/, "must be a profile name");
 
 /** One target's local bindings. Validator cases and case names live here, never in the target repo. */
-export const ArTargetConfigSchema = z.strictObject({
+const ArTargetConfigSchema = z.strictObject({
   clone: localPath,
   /** Where `target.json` and `bounds.json` sit, relative to the target repo's root. */
   adapterDir: z
@@ -19,7 +19,6 @@ export const ArTargetConfigSchema = z.strictObject({
   /** One held-out case per line, `<case>` or `<case>\t<caseSet>`; milestone looks run these and nothing else. */
   validatorCasesFile: localPath.optional(),
 });
-export type ArTargetConfig = z.infer<typeof ArTargetConfigSchema>;
 
 /** The model per stage is chosen by profile; there is no per-stage cache TTL, since no spawn path reads one yet. */
 const StageSchema = z.strictObject({ profile });
