@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 /**
- * Whether this run asserts CPU and wall budgets: `pnpm --filter @titan-design/tool-guard bench` sets it. A budget in
+ * Whether this run asserts CPU and wall budgets: `TOOL_GUARD_BENCH=1 pnpm exec vitest run packages/tool-guard` sets it. A budget in
  * milliseconds holds only on a machine with cores to spare. Under `pnpm test` the same tests count work instead, which
  * no load changes (TP-4047).
  */

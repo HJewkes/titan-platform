@@ -34,10 +34,10 @@
       ]
     },
     {
-      "name": "a secret match reads twenty million characters, past the parse work budget",
+      "name": "a secret match spends 600 ms of CPU, past the 500 ms parse budget",
       "file": "packages/tool-guard/src/families/secret.ts",
       "find": "  const keys = actions.map((a) => JSON.stringify(a));",
-      "replace": "  if (actions.length > 0) \"x\".repeat(20_000_000).indexOf(\"y\");\n  const keys = actions.map((a) => JSON.stringify(a));",
+      "replace": "  const t0 = process.threadCpuUsage();\n  while (actions.length > 0 && process.threadCpuUsage(t0).user < 600_000);\n  const keys = actions.map((a) => JSON.stringify(a));",
       "kills": [
         "every guarded family's sentinel secret denies on its own",
         "the parse budget at depth 8, padded to the size cap secret inside cmd-subst denies under budget",

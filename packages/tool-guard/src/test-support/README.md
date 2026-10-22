@@ -12,7 +12,7 @@ No assertion under `pnpm test` compares a time reading with a constant. A cost i
 - **Fake timers** for the deadline itself: `deadline.test.ts` and `built-hook.test.ts` advance the hook's own timer.
 
 Absolute budgets in milliseconds, which do matter (the hook's 3.5 s deadline on a real machine), run only under the
-bench: `pnpm --filter @titan-design/tool-guard bench` sets `TOOL_GUARD_BENCH=1`. There `cpuBudgetIt` checks each
+bench, `TOOL_GUARD_BENCH=1 pnpm exec vitest run packages/tool-guard` from the repository root. There `cpuBudgetIt` checks each
 budget test's thread CPU, `withinParseBudget` its parse budget, and `withinWallBudget` the built binary's wall time.
 The bench is not part of `pnpm test` or CI: run it on a quiet machine after a change to the classifier's hot paths.
 

@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "reading a 64 KB script scans it to the end twenty thousand times",
+      "name": "reading a 64 KB script costs three seconds of CPU",
       "file": "packages/tool-guard/src/line-writes.ts",
       "find": "    return ctx.readScript(path);",
-      "replace": "    const text = ctx.readScript(path);\n    for (let i = 0; text !== null && text.length > 60_000 && i < 20_000; i++) text.indexOf(\"\\u0000\");\n    return text;",
+      "replace": "    const text = ctx.readScript(path);\n    for (const start = process.threadCpuUsage(); text !== null && text.length > 60_000 && process.threadCpuUsage(start).user < 3e6; );\n    return text;",
       "kills": [
         "a subscript holding many span openers the hook denies a push after a 64 KB script of $${ openers, each a bare { to bash, within the budget",
         "a subscript holding many span openers the hook denies a push after a 64 KB script of nested ${ openers, within the budget",
