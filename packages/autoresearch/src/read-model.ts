@@ -116,7 +116,8 @@ export function arRunSummary(run: WorkflowRun): ArRunSummary {
   const { id: runId, status, startedAt, completedAt } = run;
   const { open } = snapshotTimeline(steps);
   const openSnapshot = open && { k: open.k, pr: open.pr };
-  return { runId, target: targetName(run, pinned), phase: phase?.id ?? "", round: currentRound(run), rounds: settingsOf(run).rounds, status, startedAt, completedAt, best, spend: spendOf(run), openSnapshot };
+  const progress = { phase: phase?.id ?? "", round: currentRound(run), rounds: settingsOf(run).rounds };
+  return { runId, target: targetName(run, pinned), ...progress, status, startedAt, completedAt, best, spend: spendOf(run), openSnapshot };
 }
 
 const inScope = (stepId: string, scope: string) => stepId.split(":")[1] === scope;
@@ -149,8 +150,8 @@ function cutAt(steps: Steps, round: CadenceRound, k: number): ArSnapshotView | u
   if (!decided?.due || decided.blockedBy !== null || steps.has(`${cadence}:${round}.failed`)) return undefined;
   const result = dispatched(steps, `${arStepId("snapshot")}:${k}`, SnapshotResultSchema);
   if (!result || "failed" in result) return undefined;
-  const { shepherdRunId: _shepherd, ...cut } = result;
-  return { ...cut, trigger: decided.trigger!, round };
+  const { tag, sha, branch, pr, url, logSha } = result;
+  return { k: result.k, tag, sha, branch, pr, ...(url === undefined ? {} : { url }), trigger: decided.trigger!, round, logSha };
 }
 
 const holds = (result: SyncResult) => result.conflict !== undefined || result.frozen !== undefined;
