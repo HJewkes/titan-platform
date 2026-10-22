@@ -2,6 +2,15 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a one-PR round's Ship button reads Ship it",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "<ButtonText>Ship</ButtonText>",
+      "replace": "<ButtonText>Ship it</ButtonText>",
+      "kills": [
+        "a question round shows a ship question with no images as the Ship view, its recommendation shown and no image section"
+      ]
+    },
+    {
       "name": "the round keys fire with a modifier held",
       "file": "apps/console/src/pages/round-keys.ts",
       "find": "return (event.metaKey || event.ctrlKey) === (binding.command === true);",
