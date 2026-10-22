@@ -727,6 +727,9 @@ importers:
 
   packages/review-workflow:
     dependencies:
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../agent-dispatch
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
