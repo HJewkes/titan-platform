@@ -5,7 +5,8 @@ frozen evaluator. A central planner proposes ideas, each idea climbs a ladder of
 checks in its own worktree, and only a winner that beats the best by more than the measured
 run-to-run noise moves a ratchet branch. The engine is
 [`@titan-design/autoresearch`](/reference/autoresearch); the factory supplies the real ports, the
-logged ratchet route, the CLI and the config. This guide covers running a run and adding a target.
+logged ratchet route and the read commands. This guide covers the run lifecycle and adding a
+target.
 
 Inspired by Andrej Karpathy's [autoresearch](https://github.com/karpathy/autoresearch) (MIT), the
 source of the pattern: `program.md`, one mutable file, a frozen evaluator and a keep-if-better
@@ -39,69 +40,6 @@ The package README has the table of deviations from Karpathy's loop.
 5. **Milestone.** On request, the best head is scored on held-out cases that only the local
    factory config knows. Only medians and gate pass counts come back, and the number of looks per
    run is capped by the target's `validator.maxLooks`.
-
-## The CLI
-
-<!-- CLI surface: from the S4d plan; check against the merged S4d PR -->
-
-The `autoresearch` group of `titan-factory`:
-
-```sh
-titan-factory autoresearch start fixture --pin 0123abc --lanes 2 --rounds 6
-titan-factory autoresearch status [run-id] [--json]
-titan-factory autoresearch add-idea run-1 --file proposal.json
-titan-factory autoresearch milestone run-1
-titan-factory autoresearch resume run-1
-```
-
-- `start <target> --pin <sha>` refuses with `[target-busy]` while an unfinished run holds the
-  target, so one target has one live run.
-- `status` without a run id lists runs. With one, it prints a line per rung from `none` to `L3`
-  with the idea ids that stopped there.
-- `add-idea` appends an owner proposal to the run's inbox. The planner reads it at its next
-  round. The run must be unfinished.
-- `milestone` requires `titan-factory serve` to be running. It refuses with `[max-looks]` once the
-  cap is reached, and while the run has no best yet.
-- `resume` checks that the run is an autoresearch run, then uses the factory's resume verb.
-- A refusal exits with the failure code. Bad arguments exit with the usage code. A read that needs
-  `serve` while it is down exits `69`.
-- There is no time limit per stage in the config. A rung's own `timeoutMin` in `target.json` still
-  applies.
-
-## Config
-
-An `autoresearch` section in the factory config switches the workflow on. Every path is local to
-the machine and never lives in a target repo. All values here are synthetic:
-
-```json
-{
-  "autoresearch": {
-    "agentChatBin": "/srv/factory/bin/agent-chat",
-    "configDir": "/srv/factory/agents",
-    "account": "agents",
-    "workRoot": "/srv/factory/work",
-    "archiveDir": "/srv/factory/archive",
-    "registryPath": "/srv/factory/registry.jsonl",
-    "inboxDir": "/srv/factory/inbox",
-    "stages": { "planner": { "profile": "planner" }, "implementer": { "profile": "implementer" } },
-    "load": { "ceiling": 8, "pollMs": 30000 },
-    "limits": { "pool": "agents", "path": "/srv/factory/limits.json" },
-    "targets": {
-      "fixture": {
-        "clone": "/srv/factory/clones/fixture",
-        "adapterDir": "autoresearch/fixture",
-        "caseNamesFile": "/srv/factory/fixture-cases.txt",
-        "validatorCasesFile": "/srv/factory/fixture-validator-cases.txt"
-      }
-    }
-  }
-}
-```
-
-`stages` chooses the model per stage by agent profile. `run` may override the run defaults, such as
-the lane count and the fork schedule. `validatorCasesFile` is the held-out case list the
-milestone reads; `caseNamesFile` is the list of case names the bounds check refuses to see
-hard-coded in a diff.
 
 ## The ratchet is a logged merge path
 

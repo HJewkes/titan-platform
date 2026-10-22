@@ -56,11 +56,10 @@ every command with an invocation, where state and logs live, and how it fails.
 - **[Case study: adopting registry and daemon](/guides/adopting-a-package)** — active-work
   replacing two hand-written modules with packages: about a thousand lines deleted, 1,321
   tests unchanged, and the two regressions that nearly slipped through.
+- **[Autoresearch](/guides/autoresearch)** — the ratcheted improvement loop: the run
+  lifecycle, the logged ratchet path, and how to add a target.
 
 ## Working here
-
-- **[Autoresearch](/guides/autoresearch)** — the ratcheted improvement loop: the run
-  lifecycle, the CLI and config, and how to add a target.
 
 - **[Working in the repo](/guides/contributing)** — the scaffold, the DAG check, changesets,
   and how a release happens.
