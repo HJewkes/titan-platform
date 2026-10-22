@@ -4,9 +4,24 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { RoundListeners } from "./listeners.js";
 import type { RoundsSource } from "./rounds.js";
 
 export const FIXTURE_ROUNDS: RoundsSource = { dir: path.join(import.meta.dirname, "..", "fixtures", "rounds") };
+
+/** `rounds.submit` responds without waiting on its listener (TP-4001); `settled` waits for every run it started. */
+export function settledListeners(listeners: RoundListeners): RoundListeners & { settled: () => Promise<void> } {
+  const runs: Promise<void>[] = [];
+  return {
+    afterRoundSubmit: (roundId, result) => {
+      const run = listeners.afterRoundSubmit(roundId, result);
+      runs.push(run);
+      return run;
+    },
+    sweep: () => listeners.sweep(),
+    settled: async () => void (await Promise.allSettled(runs)),
+  };
+}
 
 export interface StagedRound {
   source: RoundsSource;
