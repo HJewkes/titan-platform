@@ -43,9 +43,9 @@ function withNewestAgainst(against: NonNullable<NonNullable<ArRunView["rounds"][
   return { ...AR_RUN_FIXTURE, rounds };
 }
 
-const noiseStat = async (): Promise<string> => (await screen.findByTestId("autoresearch-stat-noise")).textContent ?? "";
+const noiseStat = async (): Promise<string> => (await screen.findByTestId("autoresearch-stat-noise")).textContent;
 
-const drawerRow = async (name: string): Promise<string> => (await screen.findByTestId(`autoresearch-drawer-${name}`)).textContent ?? "";
+const drawerRow = async (name: string): Promise<string> => (await screen.findByTestId(`autoresearch-drawer-${name}`)).textContent;
 
 describe("the header's σ from the engine's noise record", () => {
   it("names the case σ was measured on and reads the engine's lock", async () => {
