@@ -34,7 +34,16 @@ The updater keeps the serving release and the one before it, and removes older o
    `$TITAN_CONSOLE_STATE/self-update-build.log` and removes the release.
 6. Smoke check: starts the new bin on a spare loopback port with a scratch state dir and no
    `TITAN_CONSOLE_*` settings, so it binds no LAN listener and shares no pid file. It must answer
-   `/health` with `build.sha` equal to the new sha within 60 s, and serve its page at `/`.
+   `/health` with `build.sha` equal to the new sha within 60 s, and serve its page at `/`. When
+   the bin exits first, the check stops at once, and the reason ends with the last 20 lines of its
+   stderr (at most 1000 characters), which also reach the owner-queue item.
+
+   The check that runs is the new release's, not the running updater's: the updater runs
+   `node releases/<sha>/apps/console/dist/cli.js self-update --smoke <release> <sha>`, which prints
+   one JSON verdict line. So a fix to the smoke check takes effect on the pass that builds it.
+   The run is stopped with SIGTERM after 2 minutes (SIGKILL 10 s later) and counts as a failure. A
+   release from before the verb exits 64 with its usage, and only then does the updater fall back
+   to its own check. A run that exits with no verdict fails with the tail of its stderr.
 7. Swaps `current` to the new release by renaming a fresh symlink over it.
 8. `systemctl --user restart titan-console.service`, then polls `/health` on
    `TITAN_CONSOLE_PORT` until it reports the new sha, for up to 60 s. When it does not, `current`
