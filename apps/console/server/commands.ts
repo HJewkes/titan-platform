@@ -24,7 +24,8 @@ import { reviewsCommands, type ReviewsSource } from "./reviews.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
 import type { RoundsSource } from "./rounds.js";
-import { roundsSubmitCommands } from "./rounds-submit.js";
+import { roundsAnswerRecCommands } from "./round-rec-answer.js";
+import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
@@ -139,6 +140,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundFramesCommands(rounds),
     ...roundsRevealCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
+    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),

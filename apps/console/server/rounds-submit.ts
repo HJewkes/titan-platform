@@ -97,7 +97,8 @@ const submitResult = z.discriminatedUnion("status", [
   z.object({ status: z.literal("already-submitted") }),
 ]);
 
-type SubmitResult = z.infer<typeof submitResult>;
+export type SubmitResult = z.infer<typeof submitResult>;
+export { submitResult };
 type LogEntry = NonNullable<Extract<SubmitResult, { status: "submitted" }>["log"]>[number];
 
 interface Submission {
@@ -373,7 +374,18 @@ interface SubmitHooks {
   listeners?: RoundListeners;
 }
 
+/** The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044). */
+export type SubmitPipeline = (posted: z.input<typeof submitArgs>) => Promise<SubmitResult>;
+
+export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string): SubmitPipeline {
+  return async (posted) => {
+    const args = submitArgs.parse(posted);
+    return afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
+  };
+}
+
 export function roundsSubmitCommands(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string) {
+  const submit = submitPipeline(source, decisionLog, listeners, inboxDir);
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -381,7 +393,7 @@ export function roundsSubmitCommands(source: RoundsSource, decisionLog?: RoundDe
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: async (args) => afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args)),
+      run: (args) => submit(args),
     }),
   };
 }

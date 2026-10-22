@@ -297,6 +297,8 @@ export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
+  /** The sha256 of round.json as read, which an answer built from this read binds to. */
+  manifestSha256: string;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;
   /** The questions its feedback filed as follow-ups; empty while unsent. */
@@ -369,7 +371,7 @@ async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound
   if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
   const feedback = read.ok ? read.feedback : null;
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
+  const round = { id, updatedAt, manifest: parsed.manifest, manifestSha256: parsed.sha256, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 
