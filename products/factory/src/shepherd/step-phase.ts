@@ -15,6 +15,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-await-pr": "awaiting-pr",
   "land-rules": "ci",
   "ci-wait": "ci",
+  "ci-orphan-rerun": "ci",
   "update-branch": "ci",
   rerun: "ci",
   "sh-freeze-hold": "ci",

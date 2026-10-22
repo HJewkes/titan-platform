@@ -2,6 +2,7 @@ import type { RoutedStepInput } from "@titan-design/workflow";
 import { z } from "zod";
 import { TRACE_DATA_KEYS, traceRef } from "../evidence.js";
 import { policyTraceGate, type GateDecision } from "../gate-policy.js";
+import { OrphanedCheckRecord } from "./land-orphan.js";
 
 /*
  * One schema per land code step. Each names only the fields its branch reads and lets the rest of the
@@ -29,6 +30,7 @@ export const CiSnapshotResult = z.looseObject({
   baseMoved: z.boolean().optional(),
   readAt: z.number().optional(),
   contexts: z.array(z.string()).optional(),
+  orphaned: z.array(OrphanedCheckRecord).optional(),
 });
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), unmoved: z.boolean().optional(), at: z.number().optional() });

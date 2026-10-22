@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
-import { merge, rerunFailed } from "./merge-writes.js";
+import { merge, rerunFailed, rerunJob } from "./merge-writes.js";
 import { closePr, closedSkip, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
 import { findPr, openPr } from "./pr-open.js";
@@ -151,6 +151,8 @@ export interface GitHubWire {
   mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+  /** `POST actions/jobs/{jobId}/rerun`, what `gh run rerun <run> --job <job>` sends. */
+  rerunJob(repo: RepoSlug, jobId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
   /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
@@ -232,6 +234,10 @@ export interface GitHubPort {
   mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+  /** An Actions workflow run's `status`: `queued`, `in_progress`, `completed` and the like. */
+  workflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+  /** Reruns one job (its check run id) of workflow run `runId`; a run that is not completed skips as `in-progress`, since a rerun is already under way or none is allowed yet. */
+  rerunJob(repo: RepoSlug, runId: number, jobId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
   /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
@@ -311,6 +317,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     mergeIntoBranch: async (repo, request) => wire.mergeIntoBranch(repoOf(repo), { ...request, branch: checkRef("branch", request.branch), head: checkSha("head", request.head) }),
     getSquashSource: async (repo, number) => wire.getSquashSource(repoOf(repo), pr(number)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
+    workflowRunStatus: async (repo, runId) => wire.getWorkflowRunStatus(repoOf(repo), checkPositiveInt("runId", runId)),
+    rerunJob: async (repo, runId, jobId) => rerunJob(wire, repoOf(repo), checkPositiveInt("runId", runId), checkPositiveInt("jobId", jobId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     listDefaultBranchCommits: async (repo, since) => wire.listCommits(repoOf(repo), checkTimestamp("since", since)),

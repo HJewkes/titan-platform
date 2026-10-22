@@ -1301,6 +1301,15 @@ minutes). Past that ceiling the step fails with a reason that names the CI backl
 wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
 repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
 
+GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
+never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
+ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow
+run. If the run has completed and the job is still open 5 minutes later, `ci-wait` returns, and the run
+reruns that one job (`gh run rerun <run> --job <job>`) in a `ci-orphan-rerun` step. That step shows on
+the run's timeline. A job inside a run that is still going is left alone. Each head gets one such rerun.
+If the head orphans again, the run fails as a `ci-timeout`, the same stuck-CI failure a 45-minute
+timeout gives, so it does not wait for the ceiling.
+
 ## Resolving a gate is CLI-only
 
 `gate resolve` is not a registry command. No `/rpc` route and no MCP tool can answer a gate
