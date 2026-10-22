@@ -6,14 +6,18 @@
       "file": "products/factory/src/github-api/rate-sample.ts",
       "find": "if ((peaks.get(key)?.used ?? -1) < used) peaks.set",
       "replace": "peaks.set",
-      "kills": ["reports each window's max used before its reset, not the last sample in it"]
+      "kills": [
+        "reports each window's max used before its reset, not the last sample in it"
+      ]
     },
     {
       "name": "peaks are kept per resource, not per reset window",
       "file": "products/factory/src/github-api/rate-sample.ts",
       "find": "const key = `${resource}@${reset}`;",
       "replace": "const key = resource;",
-      "kills": ["reports each window's max used before its reset, not the last sample in it"]
+      "kills": [
+        "reports each window's max used before its reset, not the last sample in it"
+      ]
     },
     {
       "name": "a bucket missing its fields is written",
@@ -34,7 +38,9 @@
       "file": "products/factory/src/github-api/rate-sample.ts",
       "find": "      deps.warn(`f11-rate-sample",
       "replace": "      throw error;\n      deps.warn(`f11-rate-sample",
-      "kills": ["skips a failed or malformed call with a warning and keeps sampling"]
+      "kills": [
+        "skips a failed or malformed call with a warning and keeps sampling"
+      ]
     }
   ]
 }

@@ -27,6 +27,15 @@ describe("usageMeter", () => {
     ]);
   });
 
+  it("keeps a window's max when a slower concurrent answer arrives later with a lower used", () => {
+    const meter = usageMeter();
+
+    meter.observe(rate(3100, R1));
+    meter.observe(rate(2900, R1));
+
+    expect(meter.takePeaks()).toEqual([{ resource: "core", used: 3100, limit: 5000, reset: R1 }]);
+  });
+
   it("keeps core and graphql apart and reports each resource's latest window as current", () => {
     const meter = usageMeter();
 
