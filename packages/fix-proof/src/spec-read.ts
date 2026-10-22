@@ -1,4 +1,4 @@
-import { git, type Context, type Shas } from "./context.js";
+import { git, headFilesBeside, type Context, type Shas } from "./context.js";
 import { compileGlobs } from "./glob.js";
 import { testFileOfSpec, type SpecUnderTest } from "./mutant-classify.js";
 import { checkMutation, parseMutationSpec, type MutationSpec } from "./mutation.js";
@@ -12,12 +12,6 @@ export async function readBlob(ctx: Context, sha: string, file: string): Promise
   const listed = await git(ctx, ["ls-tree", sha, "--", file], `listing ${file}`);
   if (!/^100(?:644|755) blob /.test(listed)) return null;
   return git(ctx, ["show", `${sha}:${file}`], `reading ${file}`);
-}
-
-async function headFilesBeside(ctx: Context, head: string, spec: string): Promise<string[]> {
-  const dir = spec.includes("/") ? spec.slice(0, spec.lastIndexOf("/")) : "";
-  const pathspec = dir === "" ? [] : ["--", dir];
-  return (await git(ctx, ["ls-tree", "-r", "--name-only", head, ...pathspec], "listing the spec's directory")).split("\n").filter(Boolean);
 }
 
 async function readSpecAtHead(ctx: Context, head: string, path: string): Promise<MutationSpec> {

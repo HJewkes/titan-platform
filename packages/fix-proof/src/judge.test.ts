@@ -167,6 +167,39 @@ describe("judge with mutation specs", () => {
     expect(provedByMutants(result)).toBe(true);
   });
 
+  describe("a diff that changes only the spec beside an unchanged test", () => {
+    const judgeSpecOnly = async (baseFiles: Record<string, string>, mutants: string) => {
+      const repo = makeRepo({}, undefined, baseFiles);
+      const head = repo.commit({ [SPEC]: specText(), ".changeset/x.md": "---\n---\n" });
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: reports(mutants) }));
+    };
+
+    it("runs the sibling test and judges the spec's mutants", async () => {
+      const result = await judgeSpecOnly({ "src/math.test.ts": VACUOUS_TEST }, killedMutants);
+
+      expect(result.verdict).toBe("vacuous");
+      expect(result.tests).toMatchObject([{ file: "src/math.test.ts", name: "adds zero" }]);
+      expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
+      expect(provedByMutants(result)).toBe(true);
+    });
+
+    it("a surviving mutant leaves the spec-only diff unproved", async () => {
+      const survived = encodeMutantsReport({ baseline: zeroReport("passed"), runs: [{ spec: SPEC, name: "zero", built: true, report: zeroReport("passed") }] });
+
+      const result = await judgeSpecOnly({ "src/math.test.ts": VACUOUS_TEST }, survived);
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", results: [{ spec: SPEC, name: "zero", outcome: "survived" }] });
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("with no sibling test at head stays a no-tests verdict with no mutants", async () => {
+      const result = await judgeSpecOnly({}, killedMutants);
+
+      expect(result.verdict).toBe("no-tests");
+      expect(result.mutants).toBeUndefined();
+    });
+  });
+
   describe("a changed test file with no spec of its own", () => {
     const GUARD = "src/guard.test.ts";
     const guardTest = (body: string) => `test("denies", () => { ${body} });\n`;
