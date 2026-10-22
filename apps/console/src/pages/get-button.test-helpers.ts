@@ -6,7 +6,7 @@ const ROLES = {
   checkbox: "input[type='checkbox'], [role='checkbox']",
 } as const;
 
-export type FastRole = keyof typeof ROLES;
+type FastRole = keyof typeof ROLES;
 
 // getByRole's hidden check without its style pass: a control inside a closed tab panel or an aria-hidden subtree is not there.
 const HIDDEN = "[hidden], [aria-hidden='true']";
