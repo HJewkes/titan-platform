@@ -4,8 +4,10 @@ import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import { ownerOpsLedger } from "../owner-ops/ledger.js";
+import { standingAnswers, type StandingAnswers } from "../owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "../resolve-proof.js";
-import type { ShepherdStore, ShepherdStoreRef } from "../shepherd/store.js";
+import type { FreezeStoreRef } from "../shepherd/freeze.js";
+import type { ShepherdStoreRef } from "../shepherd/store.js";
 import { resolveGate } from "./gate.js";
 import { actOnOp, OP_EFFECTS, type OpDeps } from "./op.js";
 import { statusOf, type Outcome, type Status } from "./outcome.js";
@@ -28,6 +30,8 @@ interface ConsoleActionDeps {
   port: GitHubPort | undefined;
   /** Shepherd's registrations, for an owner-release; absent without the shepherd routes, as `port` is. */
   store: ShepherdStoreRef | undefined;
+  /** Shepherd's freezes, which stop a merge-at-head; absent means no repo is ever frozen. */
+  freeze: FreezeStoreRef | undefined;
   /** The console's owner-written action records; each request reads its own record from here and nowhere else. */
   actionsDir: string;
   /** Serve's state directory, which holds the owner-ops ledger. */
@@ -45,21 +49,22 @@ interface ConsoleActionDeps {
  */
 export function mountConsoleAction(app: App, deps: ConsoleActionDeps): void {
   const ops: OpDeps = { effects: OP_EFFECTS, ledger: ownerOpsLedger(deps.stateDir), now: deps.now };
+  const answers = standingAnswers(deps.stateDir);
   app.post(CONSOLE_ACTION_PATH, async (c) => {
-    const answer = await consoleAction(c.req.raw, deps, ops);
+    const answer = await consoleAction(c.req.raw, deps, ops, answers);
     if (answer.status === 413) c.header("connection", "close");
     return c.json(answer.body, answer.status);
   });
 }
 
-async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps): Promise<Answer> {
+async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps, answers: StandingAnswers): Promise<Answer> {
   const text = await readCapped(raw, MAX_ACTION_BODY_BYTES);
   if (text === TOO_LARGE) return failure(413, `action body over ${MAX_ACTION_BODY_BYTES} bytes`);
   const actionId = parseBody(text);
   if (actionId === undefined) return failure(400, "body must be {actionId}");
   if (deps.port === undefined || deps.store === undefined) return failure(503, "shepherd routes not mounted");
   try {
-    const outcome = await acted(actionId, deps.port, deps.store.get(), deps, ops);
+    const outcome = await acted(actionId, { ...deps, port: deps.port, store: deps.store }, ops, answers);
     deps.log.info({ actionId, ...outcome }, "answered a console action");
     return { body: outcome, status: statusOf(outcome) };
   } catch (error) {
@@ -68,12 +73,15 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps)
   }
 }
 
-async function acted(actionId: string, port: GitHubPort, store: ShepherdStore, deps: ConsoleActionDeps, ops: OpDeps): Promise<Outcome> {
+type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
+
+async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
+  const { host, port, store, freeze, now } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops);
+  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, now });
   const { action, confirmEvent } = read;
-  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store) : resolveGate({ action, confirmEvent }, port, deps.host);
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get()) : resolveGate({ action, confirmEvent }, port, host);
 }
 
 function failure(status: Status, message: string): Answer {
