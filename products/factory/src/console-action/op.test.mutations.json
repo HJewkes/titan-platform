@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close-pr keeps its deny-only stand-in",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"close-pr\": \"pr-close\",",
+      "replace": "\"close-pr\": \"destructive-remote\",",
+      "kills": [
+        "opAuthority gates a close-pr op on its own owner-remote row"
+      ]
+    }
+  ]
+}

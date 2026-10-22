@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close-pr maps onto the merge row",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"close-pr\": \"pr-close\",",
+      "replace": "\"close-pr\": \"merge\",",
+      "kills": [
+        "owner-op.preview shows the owner-remote gate for closing a PR, with the PR read back"
+      ]
+    }
+  ]
+}

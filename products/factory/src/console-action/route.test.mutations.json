@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "retire-agent maps to a class owner-remote may run",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"retire-agent\": \"destructive-local\",",
+      "replace": "\"retire-agent\": \"spawn\",",
+      "kills": [
+        "POST /owner/console-action owner ops refuses with 403 class an op whose authority row denies owner-remote, logging nothing"
+      ]
+    }
+  ]
+}
