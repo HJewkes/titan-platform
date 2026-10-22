@@ -156,6 +156,15 @@ The fix-proof wake brief says the same to a fixer woken on a NO_REPRO: a flaky-t
 changes only tests registers `--kind test-only` and leaves out any mutation spec, since
 `shepherd.gateReset.noReproProceed` lets only a spec-free test-only pull request past a vacuous proof.
 
+The re-register is no longer needed (TP-3261). With `noReproProceed` on, the gate also lets a
+spec-free `correctness` run past a vacuous or test-less proof when the same diff classifier reads
+its diff at that head as test material alone: tests, carried test files, `*.mutations.json` sidecars
+and `.changeset/*.md`. The diff decides here, not the label, so the run goes to review marked
+`no-repro-test-only` and needs no owner waiver. The gate stays strict. A diff that also touches
+source still needs `REPRO`, and so does a diff the classifier cannot read in full. A `security`
+run keeps its gate. A line that carries `mutants` still passes only through `provedByMutants`, so a
+surviving mutation or a refused spec ends the round as `NO_REPRO`.
+
 ## Phases
 
 ```mermaid
