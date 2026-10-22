@@ -8,6 +8,7 @@ import type { ExitNoticePorts } from "./exit-notice.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import { MAX_REPAIRS } from "./route-table.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 
@@ -48,14 +49,20 @@ function jobsFailLint(fake: FakeGitHub, firstId: number): void {
   }
 }
 
+/** Answers each wake; it may push a head, which `red` marks red as HEAD is. */
+type Wake = (fake: FakeGitHub, red: Set<string>) => WakeOutcome;
+
+const unhandled: Wake = () => ({ kind: "unhandled", reason: "no agent in this test" });
+
 /**
  * Main's head is MAIN_RED with its `validate` still running when HEAD's CI reads red on `headFailing`; every head an
  * update makes passes. The seat owns the repo, so an unhandled wake is the seat's and the run waits for a new head.
  */
-function world(headFailing: readonly string[], wake: WakeOutcome = { kind: "unhandled", reason: "no agent in this test" }): World {
+function world(headFailing: readonly string[], wake: Wake = unhandled): World {
   const fake = fakeGitHub();
+  const red = new Set([HEAD]);
   fake.rules.strict = false;
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, pr.headSha === HEAD ? runs(headFailing, HEAD_JOBS, at("2026-10-15T16:20:00Z")) : runs([], 301));
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, red.has(pr.headSha) ? runs(headFailing, HEAD_JOBS, at("2026-10-15T16:20:00Z")) : runs([], 301));
   fake.setRuns(MAIN_PARENT, runs([], 201));
   fake.setRuns(MAIN_RED, [{ ...runs([], MAIN_JOBS)[0]!, status: "in_progress", conclusion: null }, runs([], MAIN_JOBS)[1]!]);
   fake.commits.set(MAIN_PARENT, { sha: MAIN_PARENT, parents: [], committedAt: at("2026-10-15T15:40:00Z") });
@@ -67,7 +74,7 @@ function world(headFailing: readonly string[], wake: WakeOutcome = { kind: "unha
   const ref = shepherdStoreRef();
   const wakes: WakeRequest[] = [];
   const told: string[] = [];
-  const phases: ShepherdPhases = { wake: async (_ctx, request) => (wakes.push(request), wake), review: async () => ({ kind: "none" }) };
+  const phases: ShepherdPhases = { wake: async (_ctx, request) => (wakes.push(request), wake(fake, red)), review: async () => ({ kind: "none" }) };
   const exitNotice: ExitNoticePorts = { seatFor: () => SEAT, lastReport: async () => undefined, send: async (seat, text) => void told.push(`${seat}: ${text}`) };
   let clock = CI_STARTED;
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, freeze: freezeStoreRef(() => clock), exitNotice, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
@@ -94,21 +101,22 @@ const results = (w: World, runId: string) => Object.values(w.host.runtime.status
 const stepIds = (w: World, runId: string) => results(w, runId).map((result) => result.stepId);
 const resultOf = (w: World, runId: string, stepId: string) => results(w, runId).find((result) => result.stepId === stepId)?.data;
 
-async function waitingForNewHead(w: World, runId: string): Promise<void> {
-  await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("await-new-head:0"));
+async function waitingForNewHead(w: World, runId: string, timeout?: number): Promise<void> {
+  await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("await-new-head:0"), { timeout });
 }
 
-/** The run left the wait on its own, merged the red head up once and reached its merge gate on a single repair. */
-async function expectMergedUp(w: World, runId: string): Promise<void> {
+/** The run left the wait on its own, merged the red head up once and reached its merge gate on `repairs` repairs. */
+async function expectMergedUp(w: World, runId: string, repairs = 1, headSha = HEAD): Promise<void> {
   await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-  expect(resultOf(w, runId, "await-new-head:0")).toMatchObject({ result: { headSha: HEAD, baseRed: true } });
+  expect(resultOf(w, runId, "await-new-head:0")).toMatchObject({ result: { headSha, baseRed: true } });
   const holds = stepIds(w, runId).filter((id) => id.startsWith("sh-freeze-hold:"));
   expect(resultOf(w, runId, holds.at(-1)!)).toMatchObject({ result: { hold: true, baseRed: { baseRef: "main", baseSha: MAIN_RED, stale: true } } });
   expect(stepIds(w, runId).filter((id) => id.startsWith("update-branch:sh-freeze-hold:"))).toHaveLength(1);
   expect(w.fake.effects.updateBranch).toBe(1);
-  expect(stepIds(w, runId).filter((id) => id === "sh-repair")).toHaveLength(1);
-  expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", HEAD]]);
+  expect(stepIds(w, runId).filter((id) => id === "sh-repair")).toHaveLength(repairs);
+  expect(w.wakes).toHaveLength(repairs);
+  expect(w.wakes.every((wake) => wake.kind === "ci-red")).toBe(true);
 }
 
 describe("a ci-red wait whose red main fixed while no fixer was live (tp#1499)", () => {
@@ -126,7 +134,7 @@ describe("a ci-red wait whose red main fixed while no fixer was live (tp#1499)",
   });
 
   it("leaves the wait the same way after a woken fixer exited with no push", async () => {
-    const w = world(["validate"], { kind: "unhandled", reason: "the fixer exited", exited: true, wake: { agent: "impl-a" } });
+    const w = world(["validate"], () => ({ kind: "unhandled", reason: "the fixer exited", exited: true, wake: { agent: "impl-a" } }));
     const runId = start(w);
     await waitingForNewHead(w, runId);
 
@@ -135,6 +143,26 @@ describe("a ci-red wait whose red main fixed while no fixer was live (tp#1499)",
     mainFixed(w);
 
     await expectMergedUp(w, runId);
+  });
+
+  it("leaves the wait the same way after the repair budget ran out at a red head", async () => {
+    let pushed = 0;
+    const w = world(["validate"], (fake, red) => {
+      const head = fakeSha(`refixed-${++pushed}`);
+      red.add(head);
+      fake.pushHead(1, head);
+      return { kind: "woken", agent: "impl-a" };
+    });
+    const runId = start(w);
+    await waitingForNewHead(w, runId, 20_000);
+    const last = fakeSha(`refixed-${MAX_REPAIRS}`);
+
+    expect(resultOf(w, runId, "await-new-head:0")).toBeUndefined();
+    expect(w.told.some((text) => text.includes("repair budget"))).toBe(true);
+
+    mainFixed(w);
+
+    await expectMergedUp(w, runId, MAX_REPAIRS, last);
   });
 
   it("still waits for a new head when the head fails a check main never failed", async () => {
