@@ -8,6 +8,7 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
+import { successorConfigDir } from "./account-hold.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -15,7 +16,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief, wantsFreshFixer } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
@@ -37,11 +38,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
-/** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
-const BRANCH = /^[A-Za-z0-9._/-]+$/;
-/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
-const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
-const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
 
 /** How the wake step reaches agent-chat. A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface ImplementerAgents {
@@ -297,7 +293,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
-  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster, gate: deps.spawnGate })) : undefined);
+  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: successorConfigDir(deps), roster: deps.roster, gate: deps.spawnGate })) : undefined);
 }
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */

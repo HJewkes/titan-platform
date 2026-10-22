@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a set fixer config directory is ignored, so the successor bills the review account",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "fixerConfigDir === undefined ? accounts.dirs :",
+      "replace": "true ? accounts.dirs :",
+      "kills": ["successorAccounts puts the fixer config directory in the review account's place, ahead of the review fallbacks"]
+    },
+    {
+      "name": "the fixer config directory is put ahead of the review account instead of in its place",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "...accounts.dirs.slice(1)",
+      "replace": "...accounts.dirs",
+      "kills": ["successorAccounts puts the fixer config directory in the review account's place, ahead of the review fallbacks"]
+    },
+    {
+      "name": "the review rotation is read once at wiring, so a live fallback edit never reaches a successor",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "  return () => (fixerConfigDir === undefined ? accounts.dirs :",
+      "replace": "  const dirs = accounts.dirs;\n  return () => (fixerConfigDir === undefined ? dirs :",
+      "kills": ["successorAccounts reads the review rotation per call, so a fallback added to the live config reaches the next successor"]
+    },
+    {
+      "name": "no review wired still wires an empty rotation",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "if (!accounts) return undefined;",
+      "replace": "if (!accounts) return () => [];",
+      "kills": ["successorAccounts wires no rotation when no review is wired, so a successor keeps the fixer config directory"]
+    }
+  ]
+}

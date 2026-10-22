@@ -475,6 +475,15 @@ is resumed or replaced by a successor. If no turn starts, one fallback goes out:
 the agent has ended by then, else a second message. If there is still no turn, the wake is
 unhandled.
 
+A successor bills the review account rotation (TP-3961). Its first account is
+`shepherd.fixer.configDir`, or `shepherd.review.configDir` when no fixer directory is set, and
+`shepherd.review.fallbackConfigDirs` follow in order. The spawn takes the first account the
+account-limit store does not mark exhausted, as a review does. Fixers have no fallback key of
+their own: the store records exhaustion per account for reviews and fixers alike, so one list is
+kept. A successor never holds for an account. When every account is exhausted, or the store
+cannot be read, it spawns under the first. A resume keeps the agent's own account, and a red
+main's fixer still spawns under `fixer.configDir` alone.
+
 A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
