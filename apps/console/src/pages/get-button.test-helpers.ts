@@ -1,6 +1,6 @@
 const BUTTON = "button, [role='button']";
 
-const nameOf = (button: Element): string => (button.getAttribute("aria-label") ?? button.textContent ?? "").replace(/\s+/g, " ").trim();
+const nameOf = (button: Element): string => (button.getAttribute("aria-label") ?? button.textContent).replace(/\s+/g, " ").trim();
 
 /**
  * The one button in `container` named `name`, by its aria-label or else its text.
@@ -11,6 +11,7 @@ export function getButton(name: string | RegExp, container: ParentNode = documen
   const matches = (button: Element): boolean => (typeof name === "string" ? nameOf(button) === name : name.test(nameOf(button)));
   const named = [...container.querySelectorAll<HTMLElement>(BUTTON)].filter(matches);
   const outermost = named.filter((button) => !named.some((other) => other !== button && other.contains(button)));
-  if (outermost.length !== 1) throw new Error(`expected one button named "${name}", found ${outermost.length}`);
-  return outermost[0];
+  const [only, ...rest] = outermost;
+  if (only === undefined || rest.length > 0) throw new Error(`expected one button named "${String(name)}", found ${outermost.length}`);
+  return only;
 }
