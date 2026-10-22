@@ -144,7 +144,7 @@ describe("a MERGE at a head whose repo is frozen", () => {
     const host = open(w, mergePhases([]));
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     expect(host.gates.get(gateId(runId, "approve-merge"))!.prompt).toContain("repo-not-frozen");
     expect(stepCount(host, runId, "merge-settle")).toBe(0);
@@ -158,7 +158,7 @@ describe("a MERGE whose merge facts are missing at the head", () => {
     const host = open(w, noFactsPhases);
     const runId = start(host, w);
 
-    await vi.waitFor(() => expect(w.notices).toHaveLength(1), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.notices).toHaveLength(1));
 
     expect(settleRecords(host, runId).slice(0, 2)).toEqual([expect.objectContaining({ spent: false }), expect.objectContaining({ spent: true })]);
     expect(w.notices[0]!.seat).toBe(SEAT);
@@ -173,7 +173,7 @@ describe("a MERGE whose merge facts are missing at the head", () => {
     const host = open(w, noFactsPhases);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     expect(stepCount(host, runId, "merge-policy")).toBe(2);
     expect(host.gates.get(gateId(runId, "approve-merge"))!.prompt).toContain("still so after one re-read");
