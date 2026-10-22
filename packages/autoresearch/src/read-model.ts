@@ -17,7 +17,7 @@ import {
   SnapshotResultSchema,
   StaticCheckSchema,
   StopReasonSchema,
-  SyncResultSchema,
+  SyncStepSchema,
   type CadenceRound,
   type Pinned,
   type RoundSummary,
@@ -25,7 +25,7 @@ import {
 } from "./ports.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { ArMicroSchema, ArResultSchema, IdeaSchema, OutcomeSchema, QueueOpsSchema, type ArResult, type Idea, type MetricSpec, type Outcome } from "./schemas.js";
-import { CadenceSchema, SyncGateAnswerSchema } from "./snapshot.js";
+import { CadenceSchema, FailedSyncSchema, SyncGateAnswerSchema } from "./snapshot.js";
 import { finalOutcomes, RunSettingsSchema } from "./workflow.js";
 import type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArReevalView, ArRoundView, ArRunSummary, ArRunView, ArSnapshotView, ArSyncView, ArTargetView } from "./read-model-types.js";
 
@@ -165,14 +165,23 @@ function gateOf(steps: Steps, round: CadenceRound, held: SyncResult): Pick<ArSyn
   return { gate: { answered: true, ...(parsed.success ? { resolved: parsed.data.resolved } : {}) } };
 }
 
-/** A round's sync of the open PR: where it settled, why a gate held it, and B's re-measure when main changed the tree. */
+const STILL_OPEN: SyncResult = { state: "open" };
+
+/**
+ * A round's sync of the open PR: where it settled, why a gate held it, and B's re-measure when main changed the tree. A
+ * failed sync, held or not, leaves the PR open with the failure beside it.
+ */
 function syncAt(steps: Steps, round: CadenceRound, pr: number): { view: ArSyncView; settled: SyncResult } | undefined {
   const stepId = `${arStepId("sync")}:${round}`;
-  const held = dispatched(steps, stepId, SyncResultSchema);
-  if (!held) return undefined;
-  const settled = dispatched(steps, `${stepId}.resolved`, SyncResultSchema) ?? held;
+  const first = dispatched(steps, stepId, SyncStepSchema);
+  if (!first) return undefined;
+  const failed = seeded(steps, `${stepId}.failed`, FailedSyncSchema);
+  const held = "failed" in first ? STILL_OPEN : first;
+  const resolved = dispatched(steps, `${stepId}.resolved`, SyncStepSchema);
+  const settled = failed ? STILL_OPEN : resolved && !("failed" in resolved) ? resolved : held;
   const runs = evalsIn(steps, `sync-${round}`);
-  return { view: { round, pr, ...held, ...settled, ...gateOf(steps, round, held), ...(runs.length > 0 ? { runs } : {}) }, settled };
+  const view = { round, pr, ...held, ...settled, ...gateOf(steps, round, held), ...(runs.length > 0 ? { runs } : {}), ...(failed ? { failed: failed.error } : {}) };
+  return { view, settled };
 }
 
 /** Cuts and syncs replayed in run order: each round syncs the open PR before its cadence may cut the next. */
