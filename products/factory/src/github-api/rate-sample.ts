@@ -8,7 +8,7 @@ export const RATE_SAMPLE_MS = 60_000;
 const RESOURCES = ["core", "graphql"] as const;
 type Resource = (typeof RESOURCES)[number];
 
-export interface RateBucket {
+interface RateBucket {
   used: number;
   limit: number;
   reset: number;
@@ -42,7 +42,7 @@ export function ratePeaks(records: readonly RateRecord[]): UsageWindow[] {
   return [...peaks.values()];
 }
 
-export interface SamplerDeps {
+interface SamplerDeps {
   /** `gh api rate_limit`'s stdout, run as the identity being measured. */
   gh(): Promise<string>;
   append(line: string): void;
