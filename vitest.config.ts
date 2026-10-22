@@ -3,6 +3,7 @@ import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
 import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { WAIT_BUDGET_MS } from "./scripts/wait-budget.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -52,6 +53,9 @@ export default defineConfig({
     // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
     // --testTimeout and still catches a hang.
     testTimeout: 30_000,
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: ["scripts/vitest-wait-budget.mjs"],
+    expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
