@@ -55,6 +55,7 @@ ${CONFIG_USAGE}
 ${SELF_UPDATE_USAGE}`;
 
 async function serve(config: ConsoleConfig): Promise<void> {
+  for (const warning of config.startupWarnings ?? []) console.warn(warning);
   if (!existsSync(PAGE_FILE)) console.warn(`${PAGE_FILE} is missing; run \`pnpm --filter titan-console build\` (the daemon serves a "not built" page until then)`);
   const handle = await startConsoleDaemon({ config, staticRoot: PAGE_FILE });
   console.log(`titan console: http://127.0.0.1:${handle.port}/ (pid ${process.pid})`);
