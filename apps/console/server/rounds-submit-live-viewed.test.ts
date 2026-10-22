@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { LIVE_VIEWED_FILE, createDecisionLog } from "./decision-log.js";
@@ -41,7 +42,8 @@ type Storybook = "single" | "none" | { set: string[] };
 
 async function splitIntoGroups(roundDir: string): Promise<void> {
   const file = path.join(roundDir, "round.json");
-  const round = JSON.parse(await readFile(file, "utf8")) as { sections: Record<string, unknown>[]; questions: Record<string, unknown>[] } & Record<string, unknown>;
+  const objects = z.array(z.record(z.string(), z.unknown()));
+  const round = z.looseObject({ sections: objects, questions: objects }).parse(JSON.parse(await readFile(file, "utf8")));
   const [density] = round.sections;
   round.sections = [
     { ...density, kind: "STATES", variantKeys: ["compact"] },
