@@ -65,7 +65,7 @@ async function readListed(staticDir: string, file: BuildFile): Promise<Buffer> {
   }
 }
 
-export interface SourceBuild {
+interface SourceBuild {
   build: StorybookBuild;
   buildId: string;
   staticDir: string;

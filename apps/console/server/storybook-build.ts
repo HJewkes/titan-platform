@@ -17,7 +17,7 @@ import type { Manifest } from "./round-schema.js";
 export const STORYBOOK_DIR = "storybook";
 export const STORYBOOK_FILE = "storybook.json";
 /** The build's files, relative to the round dir; `files[].path` is relative to this. */
-export const STORYBOOK_STATIC = "static";
+const STORYBOOK_STATIC = "static";
 const MAX_BUILD_FILES = 5000;
 const MAX_BUILD_BYTES = 100 * 1024 * 1024;
 export const MAX_SIDECAR_BYTES = 2 * 1024 * 1024;
@@ -35,7 +35,7 @@ const sha40 = z.string().regex(/^[0-9a-f]{40}$/);
 const BuildFileSchema = z.object({ path: z.string().min(1).max(MAX_PATH), sha256: sha256Hex, bytes: z.number().int().nonnegative() });
 
 /** storybook@1 as TD-a's `titan-review --storybook-build` writes it. TD-c moves it into review-schema. */
-export const StorybookBuildSchema = z.object({
+const StorybookBuildSchema = z.object({
   schema: z.literal("titan-review/storybook@1"),
   repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
   sha: sha40,
@@ -49,7 +49,7 @@ export type StorybookBuild = z.infer<typeof StorybookBuildSchema>;
 export type BuildFile = z.infer<typeof BuildFileSchema>;
 
 /** A multi-PR round's builds sit at `storybook/builds/<sha>/`, one per PR group head (TP-3896). */
-export const STORYBOOK_BUILDS = "builds";
+const STORYBOOK_BUILDS = "builds";
 const MAX_SET_BUILDS = 20;
 
 /** storybook-set@1: one storybook@1 build per PR group, each keyed by its `sha`. */

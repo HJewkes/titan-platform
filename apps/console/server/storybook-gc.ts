@@ -33,7 +33,7 @@ interface RoundRef {
   buildIds: readonly string[];
 }
 
-export interface GcEntry {
+interface GcEntry {
   buildId: string;
   bytes: number;
   storedAt: string;
@@ -131,7 +131,7 @@ function planSweep(builds: readonly StoredBuild[], refs: readonly RoundRef[], no
 const keepAll = (builds: readonly StoredBuild[], blocked: string): GcEntry[] =>
   oldestFirst(builds).map((build) => entryOf(build, { action: "kept", reason: `nothing is removed: ${blocked}` }));
 
-export interface SweepOptions {
+interface SweepOptions {
   storybooksDir: string;
   roundsDir: string;
   dryRun: boolean;
