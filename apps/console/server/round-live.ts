@@ -52,6 +52,16 @@ export async function readRoundSidecar(roundDir: string): Promise<Sidecar | { re
   return sidecarOf(parseJson(bytes)) ?? { reason: `the round's ${STORYBOOK_FILE} is not a storybook@1 or storybook-set@1 sidecar` };
 }
 
+/**
+ * The round's one Storybook build id; null when it carries no build, its sidecar does not parse, or it is a
+ * storybook-set@1 round, whose builds are per PR group and so are not one id.
+ */
+export async function roundBuildId(roundDir: string): Promise<string | null> {
+  const sidecar = await readRoundSidecar(roundDir);
+  if (sidecar === null || "reason" in sidecar || sidecar.set) return null;
+  return sidecar.builds[0]?.buildId ?? null;
+}
+
 async function readStories(storybooksDir: string, { build, buildId }: SidecarBuild): Promise<Set<string> | string> {
   const listed = build.files.find((file) => file.path === INDEX_FILE);
   if (listed === undefined) return `the build lists no ${INDEX_FILE}`;

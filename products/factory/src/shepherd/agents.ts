@@ -25,6 +25,8 @@ export interface SpawnRequest {
   runningReviews?: readonly number[];
   /** Set for a reviewer's spawn only, so the gate can put a red main's fix ahead of other reviews. */
   review?: ReviewAsk;
+  /** This spawn's Claude config directory, picked per spawn; absent means the adapter's own `configDir`. */
+  configDir?: string;
 }
 
 /** Shepherd's one adapter over the `agent-chat` CLI; each caller picks its profile per spawn. */
@@ -49,10 +51,10 @@ export function installedHeadless(profile: string, dir?: string): boolean {
 
 /** Every mutation invalidates `roster`, so the read that checks whether it took effect is never a cached one. */
 export function agentChatAgents(agentChatBin: string, options: AgentChatOptions = {}): AgentChatAgents {
-  const { configDir, timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
+  const { timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd, runningReviews, review }) =>
+    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir }) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
         await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);

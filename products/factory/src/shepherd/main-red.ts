@@ -9,6 +9,7 @@ import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { recordAutoPass } from "./auto-pass.js";
+import { successorConfigDir } from "./account-hold.js";
 import { failureOf } from "./error-class.js";
 import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -40,7 +41,8 @@ export interface FixTasks {
 export interface FixerAgents {
   /** `presence` is `live` while a session holds the name. */
   roster(): Promise<readonly { name: string; presence?: string }[]>;
-  spawn(name: string, brief: string, cwd: string): Promise<void>;
+  /** `configDir` is the account picked for this spawn; absent means agent-chat's default. */
+  spawn(name: string, brief: string, cwd: string, configDir?: string): Promise<void>;
 }
 
 /** Absent ports leave the red main with the owner: the repo still freezes, and nothing is filed or spawned. */
@@ -56,7 +58,7 @@ export interface MainRedWiring {
 /** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
 export const fixersOver = (agents: AgentChatAgents): FixerAgents => ({
   roster: () => agents.roster(),
-  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
+  spawn: (name, brief, cwd, configDir) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd, ...(configDir !== undefined && { configDir }) }),
 });
 
 const slug = (part: string | undefined): string => (part ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
@@ -316,7 +318,7 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
   const brief = fixerBrief(name, input, failing, log);
   const spawned = await patiently(deps, signal, async () => {
     if (!wiring.freezes().live(input.repo, input.episode)) return false;
-    if (!(await fixers.roster()).some((row) => row.name === name)) await fixers.spawn(name, brief, checkout.dir);
+    if (!(await fixers.roster()).some((row) => row.name === name)) await fixers.spawn(name, brief, checkout.dir, successorConfigDir(deps));
     return true;
   }, brokerDown);
   if ("error" in spawned) return noFixer(`spawning ${name} failed: ${spawned.error}`);

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRound } from "./round-import.js";
-import { storybookLiveReader } from "./round-live.js";
+import { roundBuildId, storybookLiveReader } from "./round-live.js";
 import { getRound, parseManifest, type RoundDetail } from "./rounds.js";
 import { buildIdOf, pinnedBuild, type BuildFile, type LiveFrame } from "./storybook-build.js";
 
@@ -199,6 +199,7 @@ describe("importing a round's Storybook build", () => {
 
     expect(await readFile(path.join(roundsDir, ID, "storybook", "storybook.json"))).toEqual(await readFile(sidecar));
     expect(await stored()).toEqual([buildIdOf(listing(BUILD_FILES))]);
+    expect(await roundBuildId(path.join(roundsDir, ID))).toBe(buildIdOf(listing(BUILD_FILES)));
   });
 
   it("refuses a round with a build when the console has no store for it", async () => {
@@ -333,6 +334,7 @@ describe("a multi-PR round's builds", () => {
     expect(urlOf(frames.roomy).pathname).toBe(`/sb/${ids[OTHER_SHA]}/iframe.html`);
     expect(frames.roomy).toMatchObject({ buildSha: OTHER_SHA });
     expect((await stored()).sort()).toEqual([ids[BUILD_SHA], ids[OTHER_SHA]].sort());
+    expect(await roundBuildId(path.join(roundsDir, ID))).toBeNull();
   });
 
   it("gives a group with no build of its own a reason, never another group's build", async () => {
