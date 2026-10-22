@@ -15,7 +15,7 @@ import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { closedPort, send, sessionCookie, startFakeBroker, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
+import { STORY_ROUND_ID, closedPort, importStoryRound, send, sessionCookie, startFakeBroker, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The one seam for the LAN suite: the daemon refuses all of 127/8 as a remote host through a
@@ -473,6 +473,54 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `${NAME}:${port}` });
 
     expect([health.status, shell.status, lanName.status]).toEqual([200, 200, 403]);
+  });
+
+  /** LAN mode with the story origin on an ephemeral port and the synthetic story round imported. */
+  async function startStoryLan(): Promise<{ lanConfig: ConsoleConfig; buildId: string; storyPort: number }> {
+    const storybooksDir = path.join(dir, "state", "storybooks");
+    const buildId = await importStoryRound({ scratch: dir, roundsDir: config.roundsDir, storybooksDir });
+    const lanConfig = await startLan({ storyPort: 0, storybooksDir });
+    return { lanConfig, buildId, storyPort: handle!.contentPort! };
+  }
+
+  const storyLan = (storyPort: number, route: string, headers: Record<string, string> = {}): Promise<Reply> =>
+    sendLan(storyPort, "GET", route, { host: `${NAME}:${storyPort}`, ...headers });
+
+  it("serves the LAN story origin only with the cookie the console's own sign-in set, framed only by the console's pages", async () => {
+    const { lanConfig, buildId, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+
+    const anonymous = await storyLan(storyPort, `/sb/${buildId}/iframe.html`);
+    const signedIn = await storyLan(storyPort, `/sb/${buildId}/iframe.html`, credential);
+
+    expect([anonymous.status, signedIn.status]).toEqual([401, 200]);
+    const csp = String(signedIn.headers["content-security-policy"]);
+    expect(csp.endsWith(`; frame-ancestors http://127.0.0.1:${port} http://localhost:${port} https://${NAME}:${port} https://${LAN}:${port}`)).toBe(true);
+    expect(csp).not.toContain(`:${storyPort}`);
+  });
+
+  it("refuses an rpc call that carries the story origin's Origin, on the LAN and on loopback", async () => {
+    const { lanConfig, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+    const loopbackRpc = (origin: string) => send("127.0.0.1", port, "POST", "/rpc/rounds.list", { ...json, origin }, "{}");
+
+    const fromStoryLan = await rpc("rounds.list", { ...credential, origin: `https://${NAME}:${storyPort}` });
+    const fromStoryLoopback = await loopbackRpc(`http://127.0.0.1:${storyPort}`);
+    const fromConsole = await loopbackRpc(`http://127.0.0.1:${port}`);
+
+    expect([fromStoryLan.status, fromStoryLoopback.status, fromConsole.status]).toEqual([403, 403, 200]);
+  });
+
+  it("names the LAN story origin to a signed-in LAN rounds.get, and the loopback one on loopback", async () => {
+    const { lanConfig, storyPort } = await startStoryLan();
+    const credential = await signIn(lanConfig);
+    const args = { id: STORY_ROUND_ID };
+
+    const viaLan = await rpc("rounds.get", credential, args);
+    const viaLoopback = await send("127.0.0.1", port, "POST", "/rpc/rounds.get", { ...json, "x-titan-client": "test" }, JSON.stringify(args));
+
+    expect(JSON.parse(viaLan.body)).toMatchObject({ ok: true, data: { live: { origin: `https://${NAME}:${storyPort}` } } });
+    expect(JSON.parse(viaLoopback.body)).toMatchObject({ ok: true, data: { live: { origin: `http://127.0.0.1:${storyPort}` } } });
   });
 
   it("logs out with a JSON POST, which clears the cookie, and refuses a form-encoded or cross-site one", async () => {

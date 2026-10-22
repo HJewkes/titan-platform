@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a changed open-PR list does not count as a change",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "changed: !pulls.notModified || !ref.notModified",
+      "replace": "changed: !ref.notModified",
+      "kills": ["production bot ports: conditional gates (TP-3431) snapshots on the quiet tick where the pulls read changes"]
+    },
+    {
+      "name": "a free-plan repo's refused rulesets count as a change",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "(!rulesets.notModified && !rulesets.unreadable)",
+      "replace": "!rulesets.notModified",
+      "kills": [
+        "bot transport gates (TP-3431) reads a free-plan repo's refused rulesets as unchanged, with no ETag to send next time",
+        "production bot ports: conditional gates (TP-3431) does not snapshot for a free-plan repo's rulesets, which answer 403 on every read"
+      ]
+    },
+    {
+      "name": "a 304 drops the ETag it answered",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "(read.notModified ? (etags[key] ?? null) :",
+      "replace": "(read.notModified ? null :",
+      "kills": [
+        "bot transport gates (TP-3431) answers unchanged and keeps the ETags when all three reads answer 304",
+        "production bot ports: conditional gates (TP-3431) sends no GraphQL on two quiet ticks of an unchanged repo and exactly one on the third"
+      ]
+    },
+    {
+      "name": "a failure answers without GitHub's headers",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "return { status: seen.status, headers: seen.headers, message };",
+      "replace": "return { status: seen.status, headers: {}, message };",
+      "kills": ["bot transport failures, for the pool to classify (TP-3431) answers GitHub's status, lower-cased headers and message, and no read"]
+    },
+    {
+      "name": "GraphQL's primary limit throws instead of answering 403",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "if (RATE_LIMIT_PHRASES.some((phrase) => phrase.test(message))) return { status: 403, headers: seen.headers, message };",
+      "replace": "",
+      "kills": [
+        "bot transport failures, for the pool to classify (TP-3431) answers GraphQL's primary limit, a 200 naming it, as the 403 it stands for, with the response's headers",
+        "production bot ports: the durable pool (TP-3431) closes the graphql pair on GraphQL's primary limit, which GitHub answers as a 200 naming it"
+      ]
+    },
+    {
+      "name": "a network failure throws instead of answering networkError",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "if (seen.networkError) return { headers: {}, message, networkError: true };",
+      "replace": "",
+      "kills": ["bot transport failures, for the pool to classify (TP-3431) answers a network failure as one, with no status"]
+    },
+    {
+      "name": "every GraphQL error answers as a limit",
+      "file": "products/factory/src/reconciler/bot-transport.ts",
+      "find": "  throw error;\n}\n\n/** `client` with",
+      "replace": "  return { status: 403, headers: seen.headers, message };\n}\n\n/** `client` with",
+      "kills": ["bot transport snapshot (TP-3431) throws on a GraphQL error that names no limit, so the unit fails rather than the pool tripping"]
+    }
+  ]
+}

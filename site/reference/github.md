@@ -291,6 +291,12 @@ cannot run, exits non-zero or prints no object id throws `LsRemoteError`, with t
 and token-shaped strings cut from the message; a failed read is never a sha. Only an exact
 `refs/pull/<n>/head` line counts, because git matches the pattern against the tail of each ref.
 
+`lsRemoteBranchHead(exec, remoteUrl, branch, { env, timeoutMs })` reads `refs/heads/<branch>`
+the same way, with the same URL, credential and failure rules, so a branch tip has the same
+second source. `branch` must be a plain branch name (no glob, `..`, `//`, leading dash or
+slash, trailing dot or slash, or `.lock` suffix) and is refused with `GitHubInputError` before
+git runs otherwise.
+
 The fake answers both from its own history: `compareAncestry` walks `fake.commits` parents
 (ref names resolve to their tips, and PR heads count as known), and `fake.gitExec` answers each
 PR's current head. `readFaults.compareAncestry` and `readFaults.lsRemote` fail the next read.

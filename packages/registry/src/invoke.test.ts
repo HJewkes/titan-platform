@@ -57,6 +57,55 @@ describe("invokeCommand", () => {
     expect(cli.exitCode).toBe(EXIT.USAGE);
   });
 
+  it("lets a product format invalid arguments without running the command", async () => {
+    let runs = 0;
+    const command = defineCommand({
+      ...echo,
+      async run(args: { n: number }, c: Ctx) {
+        runs += 1;
+        return echo.run(args, c);
+      },
+    });
+    const result = await invokeCommand(command, { n: "wrong" }, ctx(), {
+      invalidArgsCode: EXIT.USAGE,
+      formatInvalidArgs: (issues) => `Expected ${issues[0]?.path.join(".")}`,
+    });
+    expect(result).toEqual({ envelope: { ok: false, error: "Expected n", code: EXIT.USAGE }, exitCode: EXIT.USAGE });
+    expect(runs).toBe(0);
+    const valid = await invokeCommand(command, { n: 2 }, ctx(), {
+      formatInvalidArgs: () => {
+        throw new Error("valid inputs must skip this formatter");
+      },
+    });
+    expect(valid.exitCode).toBe(EXIT.OK);
+    expect(runs).toBe(1);
+  });
+
+  it("envelopes an invalid-argument formatter failure through the error formatter", async () => {
+    const result = await invokeCommand(echo, { n: "wrong" }, ctx(), {
+      formatInvalidArgs: () => {
+        throw new Error("formatter failed");
+      },
+      formatError: () => ({ message: "safe formatter failure", code: EXIT.SOFTWARE }),
+    });
+    expect(result).toEqual({
+      envelope: { ok: false, error: "safe formatter failure", code: EXIT.SOFTWARE },
+      exitCode: EXIT.SOFTWARE,
+    });
+  });
+
+  it("envelopes an invalid-argument formatter failure with the default error formatter instead of throwing", async () => {
+    const result = await invokeCommand(echo, { n: "wrong" }, ctx(), {
+      formatInvalidArgs: () => {
+        throw new Error("formatter failed");
+      },
+    });
+    expect(result).toEqual({
+      envelope: { ok: false, error: "formatter failed", code: EXIT.GENERIC },
+      exitCode: EXIT.GENERIC,
+    });
+  });
+
   it("treats null or undefined raw args as an empty object", async () => {
     const { envelope } = await invokeCommand(failing, undefined, ctx());
     expect(envelope).toMatchObject({ ok: false, error: "no such thing" });

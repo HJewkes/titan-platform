@@ -242,7 +242,8 @@ export interface SpawnGate {
 }
 
 interface SpawnGateOptions {
-  limits?: Partial<SpawnLimits>;
+  /** A function is read at every ask, so a reloaded config moves the limits without dropping the window or the queue. */
+  limits?: Partial<SpawnLimits> | (() => Partial<SpawnLimits>);
   read?: () => MachineReadings;
   /** Read only for a review spawn; absent means unread, so no floor applies. */
   disk?: () => CheckoutDisk;
@@ -268,11 +269,12 @@ function verdictFor(machine: Admission, review: Admission, queue: readonly Waiti
 }
 
 /** The newest reviewer reading of this process, stamped with when it was read. */
-function reviewSlotMemory(cap: number, now: () => number): Pick<SpawnGate, "noteReviewers" | "reviewSlots"> {
+function reviewSlotMemory(capOf: () => number, now: () => number): Pick<SpawnGate, "noteReviewers" | "reviewSlots"> {
   let slots: ReviewSlots | undefined;
   return {
     noteReviewers(reading) {
       const readAt = new Date(now()).toISOString();
+      const cap = capOf();
       slots = "running" in reading ? { running: [...reading.running], cap, readAt } : { cap, readAt, rosterError: reading.rosterError };
     },
     reviewSlots: () => slots && { ...slots },
@@ -281,14 +283,15 @@ function reviewSlotMemory(cap: number, now: () => number): Pick<SpawnGate, "note
 
 /** Remembers the admissions and the waiting reviews of this process, so every spawn site shares one window and one queue. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
-  const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
+  const limitsNow = (): SpawnLimits => ({ ...DEFAULT_SPAWN_LIMITS, ...(typeof options.limits === "function" ? options.limits() : options.limits) });
   const { read = () => readMachine(), disk = () => ({}), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
   const reviews = reviewWaitList(options.reviewStaleMs ?? REVIEW_STALE_MS);
   return {
-    ...reviewSlotMemory(limits.maxConcurrentReviews, now),
+    ...reviewSlotMemory(() => limitsNow().maxConcurrentReviews, now),
     admit(name, runningReviews = [], review) {
       const at = now();
+      const limits = limitsNow();
       const readings = read();
       const stop = stopReason(readings, limits);
       if (stop !== undefined) options.onStop?.(at, stop);

@@ -72,6 +72,29 @@ export function waivedLines(head: string, waivedAt: string | undefined): string[
   return waivedAt === head ? [WAIVED_READING] : [];
 }
 
+/** The commits a workflow-only diff's CI proof read: a required check failed at `mergeBase` and every one passed at `head`. */
+export interface WorkflowCiProof {
+  mergeBase: string;
+  head: string;
+}
+
+/** The field a brief input carries it in. */
+export interface WorkflowCiInput {
+  /** Set by Shepherd when CI proved a workflow-only diff at this head; the brief then names CI as its proof. */
+  workflowCiProof?: WorkflowCiProof;
+}
+
+const SHA = /^[0-9a-f]{40}$/;
+
+/** Only the two shas reach the prompt, each checked; a proof read at any other head yields nothing. */
+export function workflowCiLines(head: string, proof: WorkflowCiProof | undefined): string[] {
+  if (proof === undefined || proof.head !== head || !SHA.test(proof.mergeBase) || !SHA.test(proof.head)) return [];
+  return [
+    `Shepherd's fix-proof for this head is CI: the PR changes only .github/workflows/, a required check concluded failure at the merge base ${proof.mergeBase}, and every required check concluded success at this head.`,
+    "That is the proof for this change. No unit test can cover a workflow edit, so do not ask for one; check that the edit fixes the cause of the base's failure rather than weakening, skipping or renaming a check.",
+  ];
+}
+
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];

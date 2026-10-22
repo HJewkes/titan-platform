@@ -2,6 +2,7 @@ import { createElement, type ReactNode } from "react";
 import { VIEW_KEYS, type Route, type ViewKey } from "../router.js";
 import { viewFor } from "../views.js";
 import { AgentsRoute } from "./AgentsPage.js";
+import { AutoresearchView } from "./AutoresearchPage.js";
 import { ConfigPage } from "./ConfigPage.js";
 import { HomePage } from "./HomePage.js";
 import { InboxPage } from "./InboxPage.js";
@@ -61,6 +62,7 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   reviews: { list: WIDE, detail: NARROW, render: ReviewsView },
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },
   shepherd: { list: WIDE, detail: WIDE, render: ShepherdView },
+  autoresearch: { list: WIDE, detail: WIDE, render: AutoresearchView },
   config: { list: WIDE, render: ConfigPage },
 };
 

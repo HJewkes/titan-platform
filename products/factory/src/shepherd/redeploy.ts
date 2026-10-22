@@ -20,6 +20,11 @@ export interface RedeployInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
+  /**
+   * The green main commit sh-main-ci read when it was not the merge sha: a burst whose own runs were cancelled is
+   * acknowledged on one tip, and queueing each merge sha would let the oldest overwrite that tip.
+   */
+  greenSha?: string;
 }
 
 /** Starts `service deploy` for a sha and returns at once; the deployer outlives the service that started it. */
@@ -42,17 +47,18 @@ export async function redeployStep(ctx: WorkflowContext, input: RedeployInput): 
 /** A service already built from the sha is the restart this step caused, so it spawns nothing. Never throws, so a failed spawn cannot stop unfreeze and cleanup. */
 export function redeploy(deployer: Deployer | undefined, input: RedeployInput): Redeploy {
   if (!deployer) return { spawned: false, detail: "no deployer wired" };
-  if (deployer.runningSha() === input.mergeSha) return { spawned: false, detail: `the service already runs ${input.mergeSha}` };
-  if (deployer.request) return requestDeploy(deployer.request, input.mergeSha);
+  const sha = input.greenSha ?? input.mergeSha;
+  if (deployer.runningSha() === sha) return { spawned: false, detail: `the service already runs ${sha}` };
+  if (deployer.request) return requestDeploy(deployer.request, sha);
   let started: ReturnType<Deployer["spawn"]>;
   try {
-    started = deployer.spawn(input.mergeSha);
+    started = deployer.spawn(sha);
   } catch (error) {
     return { spawned: false, detail: `the deployer did not start: ${failureOf(error)}` };
   }
   const { pid, log } = started;
   if (pid === undefined) return { spawned: false, log, detail: `the deployer did not start; see ${log}` };
-  return { spawned: true, pid, log, detail: `deployer pid ${pid} deploys ${input.mergeSha}, logging to ${log}` };
+  return { spawned: true, pid, log, detail: `deployer pid ${pid} deploys ${sha}, logging to ${log}` };
 }
 
 function requestDeploy(request: NonNullable<Deployer["request"]>, mergeSha: string): Redeploy {

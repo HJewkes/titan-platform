@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "timestamps are hashed as written",
+      "file": "products/factory/src/planner/fingerprint.ts",
+      "find": "return text.replace(VOLATILE_KEY, \"\").replace(DATETIME, \"<t>\").replace(EPOCH_MS, \"<t>\").replace(AGE, \"<age>\");",
+      "replace": "return text;",
+      "kills": ["titan-factory planner wake The fingerprint ignores timestamps-only churn"]
+    },
+    {
+      "name": "every wake reads as changed",
+      "file": "products/factory/src/planner/wake.ts",
+      "find": "if (!last?.fingerprint) return false;",
+      "replace": "return false;",
+      "kills": [
+        "titan-factory planner wake Unchanged inputs skip the run",
+        "titan-factory planner wake The fingerprint ignores timestamps-only churn",
+        "titan-factory planner wake the planner's own plan edits after a spawn do not run it again, but a later plan edit does"
+      ]
+    },
+    {
+      "name": "the planner's own edits after a spawn read as news",
+      "file": "products/factory/src/planner/wake.ts",
+      "find": "if (last.outcome === \"spawned\") for",
+      "replace": "if (last.outcome === \"skipped\") for",
+      "kills": ["titan-factory planner wake the planner's own plan edits after a spawn do not run it again, but a later plan edit does"]
+    },
+    {
+      "name": "the task queue directory is read as empty",
+      "file": "products/factory/src/planner/inputs.ts",
+      "find": ".filter((entry) => entry.isFile() && entry.name.endsWith(suffix))",
+      "replace": ".filter(() => false)",
+      "kills": ["titan-factory planner wake A changed task queue runs it"]
+    },
+    {
+      "name": "--profile is ignored",
+      "file": "products/factory/src/planner/command.ts",
+      "find": "profile: opts.profile ?? config.profile",
+      "replace": "profile: config.profile",
+      "kills": ["titan-factory planner wake spawns on the configured profile in the configured checkout, and --profile overrides it"]
+    }
+  ]
+}

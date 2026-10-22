@@ -6,7 +6,9 @@ import { mayBeWritten } from "./line-writes.js";
 import { isNativeProgram, parseShebang, resolvesShellViaPath } from "./shebang.js";
 import type { ClassifyContext } from "./types.js";
 import { resolvePath, resolveValue } from "./shell/path.js";
-import { shellOperands, shellStdin } from "./shell/shell-options.js";
+import { hasProcsubOperand, procsubTargets, withoutProcsubOperands } from "./shell/procsub-operand.js";
+import { feedsStdin, scriptPositionals, shellOperands, shellStdin } from "./shell/shell-options.js";
+import { sourcedFiles, SOURCERS } from "./shell/sourced.js";
 import { ReadingLimitError, UnknownStdinError, UnreadableScriptError } from "./shell/unsure-readings.js";
 
 /** A script a command runs by path: shell scripts are classified in full, others get the mention rule. */
@@ -15,6 +17,8 @@ export interface ScriptTarget {
   kind: "shell" | "interpreter";
   /** A `-c` shell's stdin file, which only a command in the string may run (`bash -c 'cat | bash' < x.sh`), so it is read as far as it reads. */
   relayed?: true;
+  /** A file that may not be there to run (a word after a run-time first word of `source`, a bash rcfile): no regular file there runs nothing. */
+  optional?: true;
   /** Run as `./x.sh`, so the kernel reads its `#!` line and the interpreter's options and operands decide what runs. */
   byPath?: true;
 }
@@ -80,19 +84,38 @@ export function runsNatively(target: ScriptTarget, ctx: ClassifyContext): boolea
   }
 }
 
-export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 
 /** The scripts a command runs by path; a shell runs every file on the descriptor it reads, as zsh's MULTIOS joins them. */
 export function scriptTargets(cmd: SimpleCommand, home: string): ScriptTarget[] {
   const name = cmd.name;
-  if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);
+  const fed = feedsStdin(cmd.redirects, cmd.prev === "|" || cmd.prev === "|&", cmd.inherited);
+  if (hasProcsubOperand(cmd, fed)) return [...procsubTargets(cmd, fed, home), ...scriptTargets(withoutProcsubOperands(cmd), home)];
+  if (name !== null && SHELLS.has(name)) return [...shellTargets(cmd, home), ...shellOptionTargets(cmd, fed, home)];
+  if (name !== null && SOURCERS.has(name)) return sourcedFiles(cmd.args).flatMap(({ word, optional }) => withFlag(target(cmd, word, home, "shell"), optional ? { optional } : {}));
   const one = name === null ? null : scriptTarget(cmd, name, home);
   return one === null ? [] : [one];
 }
 
+/**
+ * Files a shell runs besides its script: bash's rcfile, and under `-c` or a fed `-s` each operand the script may run by
+ * its positional (`bash -c 'bash "$1"' _ ./x.sh`). Which strings do cannot be told, so each is read as far as a relayed
+ * stdin file is, and a word that names no file adds nothing.
+ */
+function shellOptionTargets(cmd: SimpleCommand, fed: boolean, home: string): ScriptTarget[] {
+  const operands = shellOperands(cmd.args, cmd.name);
+  const relayed = operands.hasC || operands.positional === null ? scriptPositionals(operands, fed) : [];
+  return [
+    ...withFlag(target(cmd, operands.rcfile, home, "shell"), { optional: true }),
+    ...relayed.flatMap((word) => withFlag(target(cmd, word, home, "shell"), { relayed: true })),
+  ];
+}
+
+function withFlag(one: ScriptTarget | null, flag: Pick<ScriptTarget, "optional" | "relayed">): ScriptTarget[] {
+  return one === null ? [] : [{ ...one, ...flag }];
+}
+
 function scriptTarget(cmd: SimpleCommand, name: string, home: string): ScriptTarget | null {
-  if (SOURCERS.has(name)) return target(cmd, cmd.args[0], home, "shell");
   if (INTERPRETERS.has(name)) return target(cmd, firstOperand(cmd.args, INLINE_FLAG_RE, new Set()), home, "interpreter");
   return runsByPath(cmd.path) ? typedTarget(cmd, cmd.path, home) : null;
 }

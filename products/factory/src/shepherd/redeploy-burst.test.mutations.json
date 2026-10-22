@@ -1,0 +1,71 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "post-merge redeploys the merge sha, not the green sha it read",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });",
+      "replace": "mergeSha: target.mergeSha });",
+      "kills": [
+        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "does not clear the wanted tip because the running build already holds the older merge",
+        "queues nothing when the service already runs the green tip"
+      ]
+    },
+    {
+      "name": "only an acknowledged green sha is passed, not one read at a newer push",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "...(result.readSha !== undefined && { greenSha: result.readSha })",
+      "replace": "...(result.acknowledgedSha !== undefined && { greenSha: result.acknowledgedSha })",
+      "kills": [
+        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "does not clear the wanted tip because the running build already holds the older merge",
+        "queues nothing when the service already runs the green tip"
+      ]
+    },
+    {
+      "name": "redeploy ignores the green sha",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "const sha = input.greenSha ?? input.mergeSha;",
+      "replace": "const sha = input.mergeSha;",
+      "kills": [
+        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "does not clear the wanted tip because the running build already holds the older merge",
+        "queues nothing when the service already runs the green tip",
+        "spawns the green tip, not the merge sha, when no pacer queue is wired"
+      ]
+    },
+    {
+      "name": "the pacer queue gets the merge sha",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "return requestDeploy(deployer.request, sha);",
+      "replace": "return requestDeploy(deployer.request, input.mergeSha);",
+      "kills": [
+        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "does not clear the wanted tip because the running build already holds the older merge"
+      ]
+    },
+    {
+      "name": "the already-running check compares the merge sha",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "if (deployer.runningSha() === sha)",
+      "replace": "if (deployer.runningSha() === input.mergeSha)",
+      "kills": [
+        "queues nothing when the service already runs the green tip"
+      ]
+    },
+    {
+      "name": "the spawn-only deployer gets the merge sha",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "started = deployer.spawn(sha);",
+      "replace": "started = deployer.spawn(input.mergeSha);",
+      "kills": [
+        "spawns the green tip, not the merge sha, when no pacer queue is wired"
+      ]
+    }
+  ]
+}

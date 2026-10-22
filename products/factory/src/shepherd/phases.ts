@@ -16,6 +16,7 @@ import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { VisualPacketPorts } from "./visual-packet-trigger.js";
+import type { DiagnosisPorts } from "./no-verdict-diagnosis.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -117,6 +118,8 @@ export interface ShepherdDeps {
   agentChatBin: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
+  /** The accounts a successor may spawn under, preferred first, read per wake; the first with headroom wins. Absent means `agentChatConfigDir`. */
+  successorAccounts?: () => readonly string[];
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** Admits a successor spawn; absent means it is not gated. */
@@ -149,6 +152,8 @@ export interface ShepherdDeps {
   noReproProceed?: "off" | "on";
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
+  /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */
+  diagnosis?: DiagnosisPorts;
   /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */
   consoleAnswers?: boolean;
   /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */

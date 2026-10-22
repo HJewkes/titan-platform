@@ -21,6 +21,32 @@
       "logs": false,
       "reason": "the branch-merge POST for sh-merge-up into a PR head branch, never the default branch"
     },
+    {
+      "path": "products/factory/src/autoresearch/ratchet.ts",
+      "kind": "wrapper",
+      "mergePath": "autoresearch-ratchet",
+      "logs": true,
+      "reason": "the only writer of refs/heads/<ratchetPrefix>/*: ff-only, leased, never main or the default branch; each move is an autoresearch.ratchet evidence record (fac/routes.ts)"
+    },
+    {
+      "path": "products/factory/src/shepherd/stack-land.ts",
+      "text": "--porcelain",
+      "kind": "wrapper",
+      "mergePath": "stack-land",
+      "logs": true,
+      "reason": "Shepherd's restack: fast-forwards a stacked child PR's own head branch after its parent lands, read back after the push; never the default branch; each restack is a recorded step outcome"
+    },
+    {
+      "path": "packages/autoresearch/src/test-support/fake-ports.ts",
+      "kind": "detector",
+      "reason": "test double: pushes to a temp bare remote"
+    },
+    {
+      "path": "scripts/smoke-fix-proof.mjs",
+      "text": "refs/heads/${branch}",
+      "kind": "detector",
+      "reason": "smoke script: pushes a never-merge fixture branch that it opens as a draft PR and closes"
+    },
     { "path": "packages/tool-guard/src/**", "kind": "detector", "reason": "classifies merge calls; never makes one" },
     { "path": "packages/tool-guard/scripts/**", "kind": "detector", "reason": "benchmarks the classifier on merge-shaped commands" },
     { "path": "packages/session-analytics/src/**", "kind": "detector", "reason": "recognizes merge calls in recorded sessions" },

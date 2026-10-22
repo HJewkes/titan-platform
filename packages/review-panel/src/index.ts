@@ -22,6 +22,7 @@ export {
   DEFAULT_SHAPE_ROLES,
   DEFAULT_SONNET_FOR,
   planPanel,
+  UninstalledProfileError,
 } from "./plan.js";
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {
@@ -82,7 +83,7 @@ export { aggregate } from "./aggregate.js";
 export type { AggregateInput, MemberResult } from "./aggregate.js";
 export { OVERLAY_SHAPES, SHAPE_BRIEFS, shapeBrief } from "./briefs/shape-brief.js";
 export type { OverlayShape, ShapeBrief, ShapeBriefInput } from "./briefs/shape-brief.js";
-export type { FixProofUnverified } from "./briefs/tests.js";
+export type { FixProofUnverified, WorkflowCiInput, WorkflowCiProof } from "./briefs/tests.js";
 export { PROBES_HEADING, hasProbesLine } from "./briefs/adversary.js";
 export type { AdversaryHoldContext } from "./briefs/adversary.js";
 export { SPAWN_REFUSED_REASON, memberName, reviewPullRequest } from "./review-pull-request.js";

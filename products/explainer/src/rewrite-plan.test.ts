@@ -1,0 +1,153 @@
+import { describe, expect, it } from "vitest";
+import { runL0 } from "./eval-l0.js";
+import { REGISTER_BANDS, registerCheck, spokenText } from "./lint-register.js";
+import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
+import { MAX_REWRITE_ROUNDS, planRegisterEdits, type BeatDirective } from "./rewrite-plan.js";
+import type { ScriptV1 } from "./script-schema.js";
+import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+
+// Short, number-free, list-free sentences about an invented parcel desk: the raw stuff of a choppy script.
+const CHOPPY = [
+  "The desk reads each scan first.",
+  "It asks the ledger for a row.",
+  "The row says where the parcel is.",
+  "A missing row stops the label.",
+  "The courier sees that refusal at once.",
+  "Nothing prints before the ledger answers.",
+];
+
+// The tour's thesis_refs name h1, w4 and c1, so the first three beats carry those ids.
+const ids = (n: number): string[] => ["h1", "w4", "c1", ...Array.from({ length: n - 3 }, (_, i) => `b${i}`)];
+const script = (lines: readonly string[]): ScriptV1 =>
+  tour(lines.map((spoken, i): BeatSpec => [ids(lines.length)[i]!, `ch${1 + (i % 4)}`, "WHAT", spoken]));
+
+const choppyLines = (beats: number): string[] =>
+  Array.from({ length: beats }, (_, i) => Array.from({ length: 2 + (i % 4) }, (_, j) => CHOPPY[(i + j) % CHOPPY.length]).join(" "));
+
+const plan = (s: ScriptV1, round: 1 | 2 = 1) => planRegisterEdits(s, runL0(s, undefined, [registerCheck]), { round });
+const failing = (s: ScriptV1): string[] => runL0(s, undefined, [registerCheck]).filter((r) => !r.pass).map((r) => r.check_id);
+const lengths = (spoken: string): number[] => spokenText([spoken]).sentences.map((sentence) => spokenText([sentence]).words.length);
+const directiveFor = (directives: readonly BeatDirective[], beat: string) => directives.find((d) => d.beat === beat);
+
+function shapeAfter(s: ScriptV1, directives: readonly BeatDirective[]): { mean: number; cv: number } {
+  const all = s.beats.flatMap((beat) => directiveFor(directives, beat.id)?.shape ?? lengths(beat.spoken));
+  const mean = all.reduce((sum, n) => sum + n, 0) / all.length;
+  const sd = Math.sqrt(all.reduce((sum, n) => sum + (n - mean) ** 2, 0) / all.length);
+  return { mean, cv: sd / mean };
+}
+
+describe("planRegisterEdits: sentence shape", () => {
+  const choppy = script(choppyLines(24));
+
+  it("tells a short choppy beat to speak fewer sentences", () => {
+    const { directives } = plan(choppy);
+    const fourSentences = choppy.beats.find((beat) => lengths(beat.spoken).length === 5)!;
+
+    expect(failing(choppy)).toEqual(expect.arrayContaining(["register:sentence-mean"]));
+    expect(directiveFor(directives, fourSentences.id)?.shape?.length).toBeLessThan(5);
+  });
+
+  it("plans a shape that lands the script inside both sentence bands, under the vetted cap", () => {
+    const { directives, projected } = plan(choppy);
+    const after = shapeAfter(choppy, directives);
+
+    expect(after.mean).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-mean"].min!);
+    expect(after.cv).toBeGreaterThanOrEqual(REGISTER_BANDS["sentence-cv"].min!);
+    expect(after.cv).toBeLessThanOrEqual(REGISTER_BANDS["sentence-cv"].max);
+    expect(Math.max(...directives.flatMap((d) => d.shape ?? []))).toBeLessThanOrEqual(MAX_VETTED_SENTENCE_WORDS);
+    expect(projected).toEqual(after);
+  });
+
+  it("plans no shape for a script already inside both sentence bands", () => {
+    const long = "Then the desk asks the ledger for the parcel row and waits until the answer comes back before it prints anything.";
+    const inBand = script(Array.from({ length: 12 }, () => `The desk reads it first. ${long}`));
+
+    expect(failing(inBand)).not.toEqual(expect.arrayContaining(["register:sentence-mean"]));
+    expect(failing(inBand)).not.toEqual(expect.arrayContaining(["register:sentence-cv"]));
+    expect(plan(inBand)).toEqual({ round: 1, directives: [] });
+  });
+});
+
+describe("planRegisterEdits: numbers and triads", () => {
+  const CROWDED = "The desk held 12 parcels, sent 3 back and lost two.";
+  const LIST = "It checks the scan, the row and the label.";
+  // Crowded beats beyond the capped share, so the numbers-per-beat row fails and the planner acts.
+  const MORE_CROWDED = Array.from({ length: 5 }, () => CROWDED);
+
+  it("lists every number a crowded beat speaks, and the list of three it holds", () => {
+    const s = script([CROWDED, LIST, ...MORE_CROWDED, ...choppyLines(15)]);
+    const crowded = directiveFor(plan(s).directives, "h1");
+
+    expect(crowded?.numbers).toEqual(["12", "3", "two"]);
+    expect(crowded?.triads).toEqual(["held 12 parcels, sent 3 back and lost two."]);
+    expect(directiveFor(plan(s).directives, "w4")?.triads).toEqual(["checks the scan, the row and the label."]);
+  });
+
+  it("leaves a beat that speaks one number alone", () => {
+    const s = script(["The desk held 12 parcels overnight.", CROWDED, ...MORE_CROWDED, ...choppyLines(14)]);
+
+    expect(directiveFor(plan(s).directives, "h1")?.numbers).toBeUndefined();
+  });
+});
+
+describe("planRegisterEdits: round 2", () => {
+  const LIST = "It checks the scan, the row and the label.";
+
+  it("directs the beats that still hold a triad or crowded numbers", () => {
+    const moved = "The desk held 12 parcels and 3 of them moved.";
+    const roundOneText = script([LIST, moved, moved, moved, moved, ...choppyLines(10)]);
+    const { directives } = plan(roundOneText, 2);
+
+    expect(directiveFor(directives, "h1")?.triads).toEqual(["checks the scan, the row and the label."]);
+    expect(directiveFor(directives, "w4")?.numbers).toEqual(["12", "3"]);
+  });
+
+  describe("shape for beats still under the mean floor", () => {
+    const long = "Then the desk asks the ledger for the parcel row and waits until the answer comes back before it prints anything.";
+    const longBeat = `The desk reads it first. ${long}`;
+    // One 24-word sentence is over the floor on its own, but a script-wide plan would still split it.
+    const steady = "The desk asks the ledger for the parcel row and waits patiently until the answer comes back before it prints a label.";
+    const mixed = script([...Array.from({ length: 6 }, () => steady), ...choppyLines(18)]);
+
+    it("gives a choppy beat a shape line and a beat already long enough none", () => {
+      const { directives, projected } = plan(mixed, 2);
+
+      expect(failing(mixed)).toEqual(expect.arrayContaining(["register:sentence-mean"]));
+      expect(directiveFor(directives, "b17")?.shape).toBeDefined();
+      expect(["h1", "w4", "c1", "b0", "b1", "b2"].map((id) => directiveFor(directives, id))).toEqual(Array(6).fill(undefined));
+      expect(projected).toBeDefined();
+    });
+
+    it("plans fewer sentences than the beat speaks now", () => {
+      const { directives } = plan(mixed, 2);
+      const beat = mixed.beats.find((b) => b.id === "b17")!;
+
+      expect(directiveFor(directives, "b17")!.shape!.length).toBeLessThan(lengths(beat.spoken).length);
+    });
+
+    it("plans no shape once the shape rows pass", () => {
+      const inBand = script(Array.from({ length: 12 }, () => longBeat));
+
+      expect(plan(inBand, 2)).toEqual({ round: 2, directives: [] });
+    });
+
+    it("carries a previous round's refusal only on a beat it directs, each rule once", () => {
+      const refused = new Map([
+        ["b17", ["sentence-cap", "number-lost", "sentence-cap"] as const],
+        ["h1", ["list-emptied"] as const],
+      ]);
+
+      const { directives } = planRegisterEdits(mixed, runL0(mixed, undefined, [registerCheck]), { round: 2, refused });
+
+      expect(directiveFor(directives, "b17")?.refused).toEqual(["sentence-cap", "number-lost"]);
+      expect(directiveFor(directives, "h1")).toBeUndefined();
+      expect(directives.filter((d) => d.refused).map((d) => d.beat)).toEqual(["b17"]);
+    });
+  });
+
+  it("refuses a round past the last", () => {
+    const s = script(choppyLines(20));
+
+    expect(() => planRegisterEdits(s, [], { round: MAX_REWRITE_ROUNDS + 1 })).toThrow(RangeError);
+  });
+});
