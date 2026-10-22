@@ -8,8 +8,9 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, ImplementRequest, IntegrateRequest, IntegrateResult, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
+import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
+import { fakeMergeOnto } from "./fake-integrate.js";
 
 const run = promisify(execFile);
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
@@ -324,24 +325,26 @@ function validatePort(calls: FakeCalls, options: FakeOptions, now: () => number)
   };
 }
 
-/** The date a merge gets when the test host passes no step timing. */
-const FIXTURE_AT = "2026-10-21T00:00:00Z";
-
-/** A later winner merged onto the base in a detached checkout, never pushed; a conflict is aborted and named. */
-async function mergeOnto({ tree, base, head, message, at = FIXTURE_AT }: IntegrateRequest): Promise<IntegrateResult> {
-  await git(tree, "checkout", "--quiet", "--detach", base);
-  const env = { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at };
-  const merged = await run("git", [...IDENTITY, "merge", "--no-ff", "--no-edit", "-m", message, head], { cwd: tree, env }).then(() => true, () => false);
-  if (merged) return { merged: await git(tree, "rev-parse", "HEAD") };
-  const conflict = (await git(tree, "diff", "--name-only", "--diff-filter=U")).split("\n").filter(Boolean);
-  await git(tree, "merge", "--abort");
-  return { conflict };
-}
-
 /** The winner fast-forwards the remote ref, refused if the ref moved since the round started. */
 async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Promise<{ head: string }> {
   await git(tree, "push", "--quiet", `--force-with-lease=${ratchetRef}:${from}`, "origin", `${to}:${ratchetRef}`);
   return { head: to };
+}
+
+function movePorts(calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "ratchet" | "integrate"> {
+  return {
+    async ratchet(input) {
+      calls.ratchet.push(input);
+      calls.runPins.push({ step: "ratchet", runPin: runPinIn(input) });
+      return (options.ratchet ?? pushRatchet)(input);
+    },
+    async integrate(input) {
+      calls.integrate.push(input);
+      const result = await fakeMergeOnto(input);
+      await options.afterIntegrate?.(calls.integrate.length);
+      return result;
+    },
+  };
 }
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
@@ -364,17 +367,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       const agent = `planner-${input.runId}`;
       return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
-    async ratchet(input) {
-      calls.ratchet.push(input);
-      calls.runPins.push({ step: "ratchet", runPin: runPinIn(input) });
-      return (options.ratchet ?? pushRatchet)(input);
-    },
-    async integrate(input) {
-      calls.integrate.push(input);
-      const result = await mergeOnto(input);
-      await options.afterIntegrate?.(calls.integrate.length);
-      return result;
-    },
+    ...movePorts(calls, options),
     ...recordPorts(repo, calls, options),
     ...validatePort(calls, options, now),
     ...treePorts(repo, calls, ideaOfTree, policy, options),

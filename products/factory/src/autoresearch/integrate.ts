@@ -11,7 +11,7 @@ export const execDatedGit: DatedGit = async (args, cwd, env = {}) => (await run(
 const SHA = /^[0-9a-f]{40}$/;
 const IDENTITY = ["-c", "user.name=autoresearch", "-c", "user.email=autoresearch@example.invalid"];
 
-export interface MergeOnto {
+interface MergeOnto {
   /** The run's integration tree; its HEAD is left detached at the merge, or at `base` after a conflict. */
   tree: string;
   base: string;
