@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no round ever repeats the last one",
+      "file": "products/factory/src/shepherd/no-verdict-round.ts",
+      "find": "  return now.head === last.head && now.outcome === last.outcome && now.missing === last.missing;",
+      "replace": "  return false;",
+      "kills": [
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) routes tp#2145's round 2, both members MERGE behind the same unplanned missing seat, to the planner with no third review",
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) still retries a repeated round where a member failed to start or timed out",
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) retries a round 2 whose missing seats differ from round 1's once, then diagnoses round 3 that repeats it",
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) replays a run recorded before TP-3910 that reviewed the repeated head again, without diverging"
+      ]
+    },
+    {
+      "name": "a member that failed to start or timed out no longer keeps the retry",
+      "file": "products/factory/src/shepherd/no-verdict-round.ts",
+      "find": "  if (now === undefined || last === undefined || now.infra || last.infra) return false;",
+      "replace": "  if (now === undefined || last === undefined) return false;",
+      "kills": [
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) still retries a repeated round where a member failed to start or timed out"
+      ]
+    },
+    {
+      "name": "the missing seats are not compared",
+      "file": "products/factory/src/shepherd/no-verdict-round.ts",
+      "find": "  return now.head === last.head && now.outcome === last.outcome && now.missing === last.missing;",
+      "replace": "  return now.head === last.head && now.outcome === last.outcome;",
+      "kills": [
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) retries a round 2 whose missing seats differ from round 1's once, then diagnoses round 3 that repeats it"
+      ]
+    },
+    {
+      "name": "a replay ignores the extra review an older record took",
+      "file": "products/factory/src/shepherd/routed.ts",
+      "find": "  return next !== undefined && next !== autoPassStepId(DIAGNOSIS_RULE, headSha);",
+      "replace": "  return false;",
+      "kills": [
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) replays a run recorded before TP-3910 that reviewed the repeated head again, without diverging"
+      ]
+    },
+    {
+      "name": "D7 sends a repeated round's fallback reviewer instead of the planner",
+      "file": "products/factory/src/shepherd/failed-rounds-demotion.ts",
+      "find": "(escalated.neverVerdict === true || escalated.repeatedNoVerdict === true)",
+      "replace": "escalated.neverVerdict === true",
+      "kills": [
+        "a no-verdict panel round that repeats the last one at the same head goes to the diagnosis planner (TP-3910) routes tp#2145's round 2, both members MERGE behind the same unplanned missing seat, to the planner with no third review"
+      ]
+    }
+  ]
+}

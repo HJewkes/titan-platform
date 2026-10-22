@@ -8,7 +8,8 @@ import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_RO
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
-import { countFailedReviewers, type NoVerdictState } from "./no-verdict-round.js";
+import { countFailedReviewers, repeatsLastPanel, type NoVerdictState } from "./no-verdict-round.js";
+import { DIAGNOSIS_RULE, autoPassStepId } from "./auto-pass.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -63,16 +64,32 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
   run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : outcome);
-  countFailedReviewers(run);
+  const repeated = outcome === "no-verdict" && route === "fresh-reviewer" && repeatsLastPanel(run, headSha) && !recordedAnotherReview(run.ctx, headSha);
+  countFailedReviewers(run, headSha);
+  if (repeated) return repeatedNoVerdictEscalation(routed);
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
   return failedRoundsEscalation(run, routed);
 }
 
-function failedRoundsEscalation(run: RoundCounts, { verdict, outcome, headSha }: Routed): Escalated {
+/** A record from before TP-3910 reviewed a repeated head again rather than diagnosing it, and its replay does too. */
+function recordedAnotherReview(ctx: WorkflowContext, headSha: string): boolean {
+  const next = ctx.historyNext();
+  return next !== undefined && next !== autoPassStepId(DIAGNOSIS_RULE, headSha);
+}
+
+function lastRoundDetail({ verdict, outcome, headSha }: Routed): string {
   const ended = (verdict.kind === "none" && verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
+  return `the last at ${headSha} ended with ${ended}`;
+}
+
+function repeatedNoVerdictEscalation(routed: Routed): Escalated {
+  return { escalation: "failed-rounds", detail: lastRoundDetail(routed), infraOnly: true, repeatedNoVerdict: true };
+}
+
+function failedRoundsEscalation(run: RoundCounts, routed: Routed): Escalated {
   const infra = run.failedOutcomes.every((failed) => INFRA_FAILURES.has(failed));
   const never = infra && !run.adversaryHeard;
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
+  return { escalation: "failed-rounds", detail: lastRoundDetail(routed), ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
 }
 
 /** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
