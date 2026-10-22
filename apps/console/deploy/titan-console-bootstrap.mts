@@ -1,5 +1,5 @@
-// The fixed trigger titan-console-update.service runs (TP-4043). The owner copies it outside the app once, so no
-// release can break it. It only locks, fetches, builds origin/main into releases/<sha> and hands off to that
+// The fixed trigger titan-console-update.service runs (TP-4043). An older unit's bare `self-update` runs the serving
+// release's copy; the owner may copy it outside the app, so no release can break it. It only locks, fetches, builds origin/main into releases/<sha> and hands off to that
 // build's own `self-update --apply`, so a fix to the updater applies itself. Everything else lives in the versioned
 // updater; keep this file small, because a bug here takes an owner step to fix.
 // Node runs it as is (type stripping), so it imports only node builtins and uses only erasable syntax.

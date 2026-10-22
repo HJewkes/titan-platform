@@ -82,7 +82,7 @@ The served console updates itself: a systemd user timer runs a small fixed boots
 minutes, which builds origin/main into a new release and hands off to that release's own
 `titan-console self-update --apply <sha>`. It swaps the release in only when a console change
 landed, and rolls back when `/health` does not report the new sha within 60 s. The layout, each
-step, the alarm and the owner install commands are in [docs/self-update.md](docs/self-update.md);
+step, the alarm and the optional owner install commands are in [docs/self-update.md](docs/self-update.md);
 the bootstrap and units are in `deploy/`.
 
 ## LAN mode

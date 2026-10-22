@@ -12,7 +12,7 @@ Everything lives under `~/.local/share/titan-console` (`TITAN_CONSOLE_UPDATE_ROO
 
 | Path | What it is |
 | --- | --- |
-| `bin/titan-console-bootstrap.mts` | A copy of `apps/console/deploy/titan-console-bootstrap.mts`, made once by the owner. It sits outside every release, so no release can break it |
+| `bin/titan-console-bootstrap.mts` | A copy of `apps/console/deploy/titan-console-bootstrap.mts`, made once by the owner if they take the optional step below. It sits outside every release, so no release can break it |
 | `checkout/` | The clone the bootstrap fetches in. It is never built into again once `current` leaves it |
 | `releases/<sha>/` | One `git worktree` of `checkout/` per build, installed and built in place |
 | `current` | Symlink to the release being served. `titan-console.service` starts `current/apps/console/dist/cli.js` |
@@ -74,11 +74,20 @@ A held sha files nothing more: its item was filed when it failed.
 `dist/build-info.json`, which `build` writes last. The footer shows the same through
 `console.build`.
 
-## Owner step: install
+## Without an owner step
 
-Installing the bootstrap is an owner step, once, after this change is on main. Nothing else
-installs or enables a unit. Run it as the user that runs `titan-console.service`, on
-`<host>.<tailnet>.ts.net`:
+A timer unit installed before TP-4043 runs `current/apps/console/dist/cli.js self-update` with no
+flags. That bare verb still works: it runs `node current/apps/console/deploy/titan-console-bootstrap.mts`,
+the serving release's own copy of the bootstrap, with the same `TITAN_CONSOLE_UPDATE_ROOT` and
+`TITAN_CONSOLE_STATE`, and exits with its code. The old updater deploys this change, and from the
+next timer run on the old unit updates through the bootstrap. Nothing needs installing.
+
+## Optional owner step: pin the bootstrap
+
+Optional hardening. With the old unit, the bootstrap comes from the serving release, so a release
+that breaks its own bootstrap file stops further updates until a fixed one is swapped in by hand.
+Installing the bootstrap outside every release removes that case. Run it once, as the user that runs
+`titan-console.service`, on `<host>.<tailnet>.ts.net`; nothing else installs or enables a unit:
 
 ```sh
 ssh <host>.<tailnet>.ts.net
@@ -113,8 +122,8 @@ The console's port and state dir come from the same `TITAN_CONSOLE_PORT` and
 `TITAN_CONSOLE_STATE` defaults as the service. If the service sets either in a drop-in, set the
 same in a `titan-console-update.service.d/` drop-in.
 
-After this, a change to the updater needs no owner step. A change to the bootstrap itself does:
-repeat step 2's `git show … > bin/titan-console-bootstrap.mts` line.
+A change to the updater never needs an owner step. With the bootstrap pinned, a change to the
+bootstrap itself does: repeat step 2's `git show … > bin/titan-console-bootstrap.mts` line.
 
 ## Operating it
 

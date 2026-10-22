@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import path from "node:path";
 import type { ConsoleConfig } from "../config.js";
+import { legacySelfUpdate, spawnNode, type SpawnNode } from "./legacy.js";
 import { nodeUpdatePorts, smokeRelease } from "./node-ports.js";
 import { SMOKE_FLAG, verdictLine } from "./release-smoke.js";
 import { applyRelease, EXIT, reportRecorded, type UpdateOptions } from "./update.js";
@@ -24,16 +25,17 @@ function updateOptions(config: ConsoleConfig, env: NodeJS.ProcessEnv = process.e
   };
 }
 
-type SelfUpdateArgs = { kind: "moved" } | { kind: "apply"; sha: string } | { kind: "report" } | { kind: "smoke"; release: string; sha: string };
+type SelfUpdateArgs = { kind: "legacy" } | { kind: "apply"; sha: string } | { kind: "report" } | { kind: "smoke"; release: string; sha: string };
 
 /**
  * `--apply <sha>` and `--report` are what the bootstrap runs, in the new release and the serving one. `--smoke` is the
- * verb an updater from before the bootstrap runs inside the release it built, so it stays.
+ * verb an updater from before the bootstrap runs inside the release it built, so it stays. The bare verb is what a
+ * timer unit from before the bootstrap runs; it runs the serving release's copy of the bootstrap.
  */
 export function selfUpdateArgs(argv: readonly string[]): SelfUpdateArgs | null {
   if (argv[0] !== "self-update") return null;
   const [, flag, first, second] = argv;
-  if (argv.length === 1) return { kind: "moved" };
+  if (argv.length === 1) return { kind: "legacy" };
   if (argv.length === 2 && flag === REPORT_FLAG) return { kind: "report" };
   if (argv.length === 3 && flag === APPLY_FLAG && first !== undefined && /^[0-9a-f]{40}$/.test(first)) return { kind: "apply", sha: first };
   return argv.length === 4 && flag === SMOKE_FLAG && first !== undefined && second !== undefined ? { kind: "smoke", release: first, sha: second } : null;
@@ -48,16 +50,10 @@ async function smokeCli(release: string, sha: string): Promise<number> {
   return why === undefined ? EXIT.OK : EXIT.FAILED;
 }
 
-/** A timer unit from before the bootstrap still runs the bare verb; it says what to install rather than update itself. */
-function moved(): Promise<number> {
-  console.error("titan-console self-update now runs from the bootstrap (deploy/titan-console-bootstrap.mts); install it with the owner step in apps/console/docs/self-update.md");
-  return Promise.resolve(EXIT.CONFIG);
-}
-
-export function selfUpdateVerb(config: () => ConsoleConfig, args: SelfUpdateArgs): Promise<number> {
+export function selfUpdateVerb(config: () => ConsoleConfig, args: SelfUpdateArgs, spawn: SpawnNode = spawnNode): Promise<number> {
   if (args.kind === "smoke") return smokeCli(args.release, args.sha);
-  if (args.kind === "moved") return moved();
   const resolved = config();
+  if (args.kind === "legacy") return legacySelfUpdate(spawn, updateOptions(resolved));
   const ports = nodeUpdatePorts(resolved.inboxDir);
   return args.kind === "report" ? reportRecorded(ports, resolved.stateDir) : applyRelease(ports, updateOptions(resolved), args.sha);
 }
