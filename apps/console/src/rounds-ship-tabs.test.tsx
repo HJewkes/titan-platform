@@ -9,7 +9,7 @@ import type { Manifest } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { getButton } from "./pages/get-button.test-helpers.js";
+import { getButton, getByRoleFast, queryAllByRoleFast } from "./pages/get-button.test-helpers.js";
 
 // Each test renders the whole App and presses through it; see rounds-ship.test.tsx (TP-3866).
 const RENDER_TIMEOUT_MS = 30_000;
@@ -70,7 +70,7 @@ const renderTwoPr = async (change?: (manifest: Manifest) => Manifest, extra: Par
 
 const scope = (pr?: string) => (pr === undefined ? screen : within(screen.getByTestId(`pr-${pr}`)));
 const prRoot = (pr?: string): ParentNode => (pr === undefined ? document.body : screen.getByTestId(`pr-${pr}`));
-const openTab = (label: string, pr?: string): void => void fireEvent.click(scope(pr).getByRole("tab", { name: label }));
+const openTab = (label: string, pr?: string): void => void fireEvent.click(getByRoleFast("tab", label, prRoot(pr)));
 const panel = (key: string, pr?: string): HTMLElement => (pr === undefined ? screen.getByTestId(`pr-tab-${key}`) : within(screen.getByTestId(`pr-tabs-${pr}`)).getByTestId(`pr-tab-${key}`));
 const shown = (element: HTMLElement): boolean => !element.hidden;
 
@@ -206,7 +206,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
         { round: 1, submittedAt: at, comment: "Narrow the panel.", pr: "example/panels#2" },
       ],
     });
-    const cards = (pr: string) => within(panel("review", pr)).getAllByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const cards = (pr: string) => queryAllByRoleFast("checkbox", "Round 1 feedback addressed", panel("review", pr));
 
     expect(cards("example/tiles#1")).toHaveLength(1);
     expect(cards("example/panels#2")).toHaveLength(1);
@@ -222,7 +222,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
       { round: 1, submittedAt: at, comment: "Lift the stripe.", pr: "example/tiles#1" },
       { round: 1, submittedAt: at, comment: "Narrow the panel.", pr: "example/panels#2" },
     ];
-    const card = (pr: string) => within(panel("review", pr)).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const card = (pr: string) => getByRoleFast("checkbox", "Round 1 feedback addressed", panel("review", pr));
     const shipOff = (pr: string) => getButton(`Ship ${pr}`, prRoot(pr)).getAttribute("aria-disabled") === "true";
     await renderTwoPr(undefined, { priorFeedback });
 
