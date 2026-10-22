@@ -91,7 +91,7 @@ describe("shepherd-pr follows a merged Version Packages PR to npm", () => {
     const w = world({ main: "failure" });
     const runId = startRelease(w);
 
-    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("paused"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("paused"));
 
     expect(mainCiOf(w, runId)).toMatchObject({ verdict: "red" });
     expect(followOf(w, runId)).toBeUndefined();

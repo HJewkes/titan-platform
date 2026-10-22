@@ -60,14 +60,7 @@ export function gateId(runId: string, stepId: string, iteration = 0): string {
   return iteration === 0 ? `${runId}/${stepId}` : `${runId}/${stepId}:${iteration}`;
 }
 
-/**
- * How long a test waits for a run to reach a state. vi.waitFor's 1000 ms default is shorter than a
- * gated run takes to reach its gate on a loaded CI runner (TP-3973 saw 1024 ms); a passing wait
- * returns as soon as the state holds, so the size costs only a failing test's time.
- */
-export const SETTLE_TIMEOUT_MS = 10_000;
-
-export async function gateOpened(host: FactoryHost, id: string, timeout = SETTLE_TIMEOUT_MS): Promise<void> {
+export async function gateOpened(host: FactoryHost, id: string, timeout?: number): Promise<void> {
   await vi.waitFor(() => expect(host.gates.get(id)?.status).toBe("pending"), { timeout });
 }
 
@@ -84,7 +77,7 @@ export async function approveUntilSettled(host: FactoryHost, runId: string, fake
       answerPendingGate(host, runId, fake);
       expect(host.runtime.status(runId)?.status).toMatch(/completed|failed|recovery_required/);
     },
-    { timeout: SETTLE_TIMEOUT_MS, interval: 10 },
+    { interval: 10 },
   );
 }
 

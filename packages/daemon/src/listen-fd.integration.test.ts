@@ -182,12 +182,12 @@ function pollHealth(port: number): { seen: Set<number>; stop: () => Promise<Outc
 /** Start A, load it, stop A, start B, and keep loading until B has answered for 500 ms. */
 async function restartUnderLoad(holder: Holder, mode: "fd" | "port", port: number): Promise<{ pids: number[]; outcomes: Outcome[] }> {
   const a = await holder.start(mode, port);
-  await vi.waitFor(async () => expect((await probe(port)).status).toBe(200), { timeout: 10_000, interval: 50 });
+  await vi.waitFor(async () => expect((await probe(port)).status).toBe(200), { interval: 50 });
   const load = pollHealth(port);
   await delay(200);
   await holder.stop();
   const b = await holder.start(mode, port);
-  await vi.waitFor(() => expect(load.seen.has(b)).toBe(true), { timeout: 10_000, interval: 20 });
+  await vi.waitFor(() => expect(load.seen.has(b)).toBe(true), { interval: 20 });
   await delay(500);
   const outcomes = await load.stop();
   await holder.stop();

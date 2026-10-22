@@ -9,6 +9,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const ROUND = "tiles-and-panels-r1";
@@ -85,7 +86,7 @@ async function withRequiredSide(): Promise<Partial<RoundDetail>> {
 }
 
 const pr = (key: string) => within(screen.getByTestId(`pr-${key}`));
-const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+const button = (label: string): HTMLElement => getButton(label);
 const disabled = (label: string): boolean => button(label).getAttribute("aria-disabled") === "true";
 const submits = (calls: { name: string; args: unknown }[]) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
 
@@ -210,7 +211,7 @@ describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, 
 describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const verdict = (key: string, frame: string, label: string): HTMLElement => {
     fireEvent.click(pr(key).getByRole("tab", { name: "Diff" }));
-    return within(pr(key).getByTestId(`montage-${frame}`)).getByRole("button", { name: label });
+    return getButton(label, pr(key).getByTestId(`montage-${frame}`));
   };
 
   it("turns Ship off only for the PR whose own frame is Rejected, and sends the verdict", async () => {
