@@ -41,7 +41,7 @@ const ownerContext = (): ConsoleContext => ({ warnings: [], format: "json", surf
 const comment = (text: string, atS = 1) => ({ kind: "comment" as const, atS, text });
 
 let sequence = 0;
-function note(renderSha256: string, body: { kind: "comment"; text: string } | { kind: "verdict"; verdict: "ship" | "needs-changes" }): VideoNote {
+function note(renderSha256: string, body: { kind: "comment"; about: "content" | "video"; text: string } | { kind: "verdict"; verdict: "ship" | "needs-changes" }): VideoNote {
   sequence += 1;
   const head = { schema: VIDEO_NOTE_SCHEMA, id: sequence.toString(16).padStart(16, "0"), videoId: "v_0", video: "cut.mp4", renderSha256, atS: sequence, createdAt: new Date(sequence * 1000).toISOString() } as const;
   return { ...head, ...body };
@@ -95,15 +95,121 @@ describe("the notes sidecar", () => {
   });
 });
 
+describe("what a comment is about", () => {
+  it("reads a comment written before comments had two kinds as one about the content", async () => {
+    const head = { schema: VIDEO_NOTE_SCHEMA, id: "00000000000000aa", videoId: "v_0", video: "cut.mp4", renderSha256: await renderSha256(video), atS: 3, createdAt: "2031-03-05T10:00:00.000Z" };
+    await writeFile(notesFileOf(video), `${JSON.stringify({ ...head, kind: "comment", text: "an older note" })}\n`);
+
+    const { notes, skipped } = await readNotes(video);
+
+    expect(skipped).toBe(0);
+    expect(notes).toMatchObject([{ kind: "comment", about: "content", text: "an older note" }]);
+  });
+
+  it("stores a comment about the video as one, and reads it back so", async () => {
+    await appendNote(video, "v_0", { ...comment("the captions lag the voice"), about: "video" });
+    await appendNote(video, "v_0", comment("tighten the outro"));
+
+    const line = JSON.parse((await readFile(notesFileOf(video), "utf8")).split("\n")[0]!) as unknown;
+    const { notes } = await readNotes(video);
+
+    expect(line).toMatchObject({ kind: "comment", about: "video" });
+    expect(notes.map((each) => each.kind === "comment" && each.about)).toEqual(["video", "content"]);
+  });
+
+  it("leaves comments about the video out of the open notes, and counts them apart", async () => {
+    await appendNote(video, "v_0", { ...comment("the captions lag the voice"), about: "video" });
+    await appendNote(video, "v_0", comment("tighten the outro"));
+
+    const { notes } = await readNotes(video);
+
+    expect(openNotes(notes, await renderSha256(video)).map((each) => each.kind === "comment" && each.text)).toEqual(["tighten the outro"]);
+    expect(await summarizeNotes(video)).toEqual({ noteCount: 2, videoNoteCount: 1, openNoteCount: 1, verdict: null });
+  });
+
+  it("refuses a verdict that says what it is about, and writes nothing", async () => {
+    await expect(appendNote(video, "v_0", { kind: "verdict", atS: 0, verdict: "ship", about: "video" })).rejects.toThrow("only a comment is about the content or the video");
+    await expect(stat(notesFileOf(video))).rejects.toThrow();
+  });
+});
+
+describe("where videos.note sends a comment", () => {
+  const cutId = () => videoId(root, path.join("orbit", "cut.mp4"));
+  const sidecar = (fields: object) => writeFile(path.join(root, "orbit", "cut.video.json"), JSON.stringify({ schema: "titan-console/video-meta@1", ...fields }));
+
+  function recordingNotifier(fail = false) {
+    const sent: { seat: string; text: string }[] = [];
+    const notify = async (seat: string, text: string) => {
+      if (fail) throw new Error("seat is not live");
+      sent.push({ seat, text });
+    };
+    return { sent, notify };
+  }
+
+  async function send(notify: (seat: string, text: string) => Promise<void>, input: object) {
+    const { envelope } = await invokeCommand(videoNotesCommands(videoCatalog({ roots: [root] }), notify)["videos.note"], { videoId: cutId(), atS: 4, ...input }, ownerContext());
+    return envelope;
+  }
+
+  it("sends a comment about the content to the owner the sidecar names", async () => {
+    await sidecar({ owner: "lantern-coord" });
+    const { sent, notify } = recordingNotifier();
+
+    const envelope = await send(notify, { kind: "comment", text: "tighten the outro" });
+
+    expect(envelope).toMatchObject({ ok: true, data: { about: "content", routedTo: { seat: "lantern-coord", delivered: true } } });
+    expect(sent.map(({ seat }) => seat)).toEqual(["lantern-coord"]);
+    expect(sent[0]!.text).toContain(notesFileOf(video));
+    expect(sent[0]!.text).not.toContain("tighten the outro");
+  });
+
+  it("sends a comment about the content to video-coord when the video names no owner", async () => {
+    const { sent, notify } = recordingNotifier();
+
+    const envelope = await send(notify, { kind: "comment", about: "content", text: "tighten the outro" });
+
+    expect(envelope).toMatchObject({ ok: true, data: { routedTo: { seat: "video-coord", delivered: true } } });
+    expect(sent[0]!.text).toContain("the video names no owner");
+  });
+
+  it("sends a comment about the video to video-coord even when the video has an owner", async () => {
+    await sidecar({ owner: "lantern-coord" });
+    const { sent, notify } = recordingNotifier();
+
+    const envelope = await send(notify, { kind: "comment", about: "video", text: "the captions lag the voice" });
+
+    expect(envelope).toMatchObject({ ok: true, data: { about: "video", routedTo: { seat: "video-coord", delivered: true } } });
+    expect(sent.map(({ seat }) => seat)).toEqual(["video-coord"]);
+  });
+
+  it("keeps the comment when the seat cannot be told, and says it was not delivered", async () => {
+    const { notify } = recordingNotifier(true);
+
+    const envelope = await send(notify, { kind: "comment", text: "tighten the outro" });
+
+    expect(envelope).toMatchObject({ ok: true, data: { routedTo: { seat: "video-coord", delivered: false } } });
+    expect((await readNotes(video)).notes).toHaveLength(1);
+  });
+
+  it("tells nobody about a verdict", async () => {
+    const { sent, notify } = recordingNotifier();
+
+    const envelope = await send(notify, { kind: "verdict", verdict: "ship" });
+
+    expect(envelope).toMatchObject({ ok: true, data: { kind: "verdict", routedTo: null } });
+    expect(sent).toEqual([]);
+  });
+});
+
 describe("the agent pickup rule", () => {
   it("opens current-render comments after the latest current-render Ship, whatever an earlier render's verdicts say", () => {
     const notes = [
-      note(SHA_B, { kind: "comment", text: "closed by the ship" }),
+      note(SHA_B, { kind: "comment", about: "content", text: "closed by the ship" }),
       note(SHA_B, { kind: "verdict", verdict: "ship" }),
-      note(SHA_B, { kind: "comment", text: "after the ship" }),
+      note(SHA_B, { kind: "comment", about: "content", text: "after the ship" }),
       note(SHA_A, { kind: "verdict", verdict: "ship" }),
-      note(SHA_A, { kind: "comment", text: "on the earlier render" }),
-      note(SHA_B, { kind: "comment", text: "later still" }),
+      note(SHA_A, { kind: "comment", about: "content", text: "on the earlier render" }),
+      note(SHA_B, { kind: "comment", about: "content", text: "later still" }),
     ];
 
     expect(openNotes(notes, SHA_B).map((each) => each.kind === "comment" && each.text)).toEqual(["after the ship", "later still"]);
@@ -138,7 +244,7 @@ describe("videos.note and videos.notes", () => {
     await appendNote(video, "v_0", { kind: "verdict", verdict: "ship", atS: 2 });
     await appendNote(video, "v_0", comment("after the ship"));
 
-    expect(await summarizeNotes(video)).toEqual({ noteCount: 2, openNoteCount: 1, verdict: "ship" });
+    expect(await summarizeNotes(video)).toEqual({ noteCount: 2, videoNoteCount: 0, openNoteCount: 1, verdict: "ship" });
   });
 
   it(`refuses text over ${MAX_NOTE_TEXT} characters and writes nothing`, async () => {

@@ -17,7 +17,9 @@ import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
 import { OPEN_FLAGS, readCapped } from "./rounds.js";
+import { NOTE_ABOUT, deliverNote, type NoteAbout } from "./video-note-routing.js";
 import { locateVideo, verdict, videoCatalog, type NoteSummarizer, type VideoCatalog } from "./videos.js";
 
 export const VIDEO_NOTE_SCHEMA = "titan-console/video-note@1";
@@ -40,7 +42,8 @@ const noteHead = {
   createdAt: z.iso.datetime(),
 };
 
-const commentNote = z.strictObject({ ...noteHead, kind: z.literal("comment"), text: z.string().min(1).max(MAX_NOTE_TEXT) });
+/** A line written before comments had two kinds reads as one about the content. */
+const commentNote = z.strictObject({ ...noteHead, kind: z.literal("comment"), about: z.enum(NOTE_ABOUT).default("content"), text: z.string().min(1).max(MAX_NOTE_TEXT) });
 const verdictNote = z.strictObject({ ...noteHead, kind: z.literal("verdict"), verdict });
 
 const videoNote = z.discriminatedUnion("kind", [commentNote, verdictNote]);
@@ -57,6 +60,7 @@ const noteArgs = z.strictObject({
   videoId: z.string(),
   atS: z.number().min(0),
   kind: z.enum(["comment", "verdict"]),
+  about: z.enum(NOTE_ABOUT).optional(),
   text: z.string().trim().min(1).max(MAX_NOTE_TEXT).optional(),
   verdict: verdict.optional(),
 });
@@ -106,13 +110,14 @@ function remember(key: string, sha: string): string {
   return sha;
 }
 
-/** A comment carries text and no verdict; a verdict carries a verdict and no text. */
-function noteBody(input: NoteInput): { kind: "comment"; text: string } | { kind: "verdict"; verdict: Verdict } {
+/** A comment carries text and no verdict, about the content unless it says so; a verdict carries a verdict and no text. */
+function noteBody(input: NoteInput): { kind: "comment"; about: NoteAbout; text: string } | { kind: "verdict"; verdict: Verdict } {
   if (input.kind === "comment") {
     if (input.verdict !== undefined || input.text === undefined) return refuse("a comment carries text and no verdict");
-    return { kind: "comment", text: input.text };
+    return { kind: "comment", about: input.about ?? "content", text: input.text };
   }
   if (input.text !== undefined || input.verdict === undefined) return refuse("a verdict carries a verdict and no text");
+  if (input.about !== undefined) return refuse("only a comment is about the content or the video");
   return { kind: "verdict", verdict: input.verdict };
 }
 
@@ -204,20 +209,23 @@ export function currentVerdict(notes: readonly VideoNote[], currentSha: string):
 }
 
 /**
- * The agent pickup rule: comments on the current render made after its latest Ship, in the order
- * they were written. A Ship on an earlier render closes nothing, and re-rendering leaves every
- * earlier note behind as history.
+ * The agent pickup rule: comments about the content on the current render made after its latest
+ * Ship, in the order they were written. A Ship on an earlier render closes nothing, and re-rendering
+ * leaves every earlier note behind as history. A comment about the video itself is video-coord's
+ * to act on, not the rendering agent's, so it is never open.
  */
 export function openNotes<Note extends VideoNote>(notes: readonly Note[], currentSha: string): Note[] {
   const current = notes.filter((note) => note.renderSha256 === currentSha);
   const afterShip = current.reduce((start, note, index) => (note.kind === "verdict" && note.verdict === "ship" ? index + 1 : start), 0);
-  return current.slice(afterShip).filter((note) => note.kind === "comment");
+  return current.slice(afterShip).filter((note) => note.kind === "comment" && note.about === "content");
 }
 
 export const summarizeNotes: NoteSummarizer = async (videoFile) => {
   const { notes, verdict: latest } = await readNotes(videoFile);
   const openNoteCount = notes.length === 0 ? 0 : openNotes(notes, await renderSha256(videoFile)).length;
-  return { noteCount: notes.filter((note) => note.current && note.kind === "comment").length, openNoteCount, verdict: latest };
+  const comments = notes.filter((note) => note.current && note.kind === "comment");
+  const videoNoteCount = comments.filter((note) => note.kind === "comment" && note.about === "video").length;
+  return { noteCount: comments.length, videoNoteCount, openNoteCount, verdict: latest };
 };
 
 async function locate(catalog: VideoCatalog, id: string): Promise<string> {
@@ -226,7 +234,23 @@ async function locate(catalog: VideoCatalog, id: string): Promise<string> {
   return file;
 }
 
-export function videoNotesCommands(catalog: VideoCatalog = videoCatalog({ roots: [] })) {
+/** The seat a comment went to; `delivered` is false when no transport is wired or the send failed. */
+const routedTo = z.object({ seat: z.string(), delivered: z.boolean() });
+const storedNote = z.discriminatedUnion("kind", [commentNote.extend({ routedTo }), verdictNote.extend({ routedTo: z.null() })]);
+
+async function ownerOf(catalog: VideoCatalog, id: string): Promise<string | undefined> {
+  return (await catalog.current()).videos.find((video) => video.id === id)?.owner;
+}
+
+async function storeAndRoute(catalog: VideoCatalog, notify: SeatNotifier | undefined, videoId: string, input: NoteInput): Promise<z.infer<typeof storedNote>> {
+  const file = await locate(catalog, videoId);
+  const note = await appendNote(file, videoId, input);
+  if (note.kind === "verdict") return { ...note, routedTo: null };
+  return { ...note, routedTo: await deliverNote(notify, note, await ownerOf(catalog, videoId), notesFileOf(file)) };
+}
+
+/** `notify` tells the seat a comment is routed to; absent, comments are stored and nobody is told. */
+export function videoNotesCommands(catalog: VideoCatalog = videoCatalog({ roots: [] }), notify?: SeatNotifier) {
   return {
     "videos.notes": readCommand({
       name: "videos.notes",
@@ -241,11 +265,12 @@ export function videoNotesCommands(catalog: VideoCatalog = videoCatalog({ roots:
     }),
     "videos.note": ownerWriteCommand({
       name: "videos.note",
-      description: "Append one owner comment or verdict, stamped with the playback time and the render's sha256, to the notes file beside a video",
+      description:
+        "Append one owner comment or verdict, stamped with the playback time and the render's sha256, to the notes file beside a video; a comment about the content goes to the video's owner seat (else video-coord), one about the video itself to video-coord",
       args: noteArgs,
-      result: videoNote,
+      result: storedNote,
       ownerWrite: true,
-      run: async ({ videoId, ...input }) => appendNote(await locate(catalog, videoId), videoId, input),
+      run: async ({ videoId, ...input }) => storeAndRoute(catalog, notify, videoId, input),
     }),
   };
 }
