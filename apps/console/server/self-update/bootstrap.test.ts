@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { bootstrap, EXIT, recordFile, type BootstrapOptions, type BootstrapPorts, type CommandResult } from "../../deploy/titan-console-bootstrap.mts";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import { bootstrap, EXIT, isMainModule, recordFile, type BootstrapOptions, type BootstrapPorts, type CommandResult } from "../../deploy/titan-console-bootstrap.mts";
 
 const ROOT = "/srv/console";
 const OLD = "a".repeat(40);
@@ -139,5 +143,35 @@ describe("the console update bootstrap", () => {
     expect(locked.calls).toEqual([]);
     expect(handOffs(unlinked)).toEqual([]);
     expect(unlinked.files.has("/state/self-update-bootstrap.lock")).toBe(false);
+  });
+});
+
+describe("the bootstrap's entry guard", () => {
+  let scratch: string | undefined;
+  afterEach(() => {
+    if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+    scratch = undefined;
+  });
+
+  it("runs when launched through the current symlink, as the legacy bare self-update does", () => {
+    scratch = mkdtempSync(path.join(tmpdir(), "bootstrap-guard-"));
+    const deploy = path.join(scratch, "releases", NEW, "apps/console/deploy");
+    mkdirSync(deploy, { recursive: true });
+    const script = path.join(deploy, "titan-console-bootstrap.mts");
+    writeFileSync(script, "");
+    symlinkSync(path.join(scratch, "releases", NEW), path.join(scratch, "current"));
+
+    const viaCurrent = path.join(scratch, "current/apps/console/deploy/titan-console-bootstrap.mts");
+
+    expect(isMainModule(pathToFileURL(script).href, viaCurrent)).toBe(true);
+    expect(isMainModule(pathToFileURL(script).href, script)).toBe(true);
+  });
+
+  it("does not run when imported by another entry, or with no script argument", () => {
+    const resolve = (file: string): string => file.replace("/current/", `/releases/${NEW}/`);
+    const url = pathToFileURL(`${RELEASE}/apps/console/deploy/titan-console-bootstrap.mts`).href;
+
+    expect(isMainModule(url, "/srv/tester/node_modules/vitest/vitest.mjs", resolve)).toBe(false);
+    expect(isMainModule(url, undefined, resolve)).toBe(false);
   });
 });

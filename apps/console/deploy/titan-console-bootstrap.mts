@@ -4,10 +4,10 @@
 // updater; keep this file small, because a bug here takes an owner step to fix.
 // Node runs it as is (type stripping), so it imports only node builtins and uses only erasable syntax.
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export interface CommandResult {
   code: number;
@@ -226,4 +226,17 @@ export function optionsFrom(env: NodeJS.ProcessEnv): BootstrapOptions {
   };
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await bootstrap(nodePorts(), optionsFrom(process.env));
+/**
+ * Node resolves symlinks for the main module but leaves argv[1] as given, so a launch through `current/` (the legacy
+ * bare `self-update`) or a symlinked home would never match a plain comparison and the pass would silently not run.
+ */
+export function isMainModule(moduleUrl: string, argv1: string | undefined, realpath: (file: string) => string = realpathSync): boolean {
+  if (argv1 === undefined) return false;
+  try {
+    return realpath(fileURLToPath(moduleUrl)) === realpath(argv1);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) process.exitCode = await bootstrap(nodePorts(), optionsFrom(process.env));
