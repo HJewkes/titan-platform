@@ -4,8 +4,8 @@
     {
       "name": "the host never applies the registrant migration",
       "file": "products/factory/src/workflows.ts",
-      "find": "repoFreezeMigration(33), registrantMigration(38)];",
-      "replace": "repoFreezeMigration(33)];",
+      "find": "registrantMigration(38), gateCancelKindMigration(39)];",
+      "replace": "gateCancelKindMigration(39)];",
       "kills": [
         "the freeze migration creates the freeze table in a database that already has migrations 1 to 5"
       ]

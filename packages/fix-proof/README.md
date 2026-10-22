@@ -46,7 +46,10 @@ the `fix-proof` bin does the git and vitest work.
   mutation alone to the merge-base text of its file, rebuilds the package that owns it, reruns the
   spec's test file, and restores and rebuilds again. With `--sandbox-user`, every build and vitest
   call after the overlay runs in the sandbox. No spec, or source in the diff, writes a skipped
-  marker. `execMutants()` is the same as a function.
+  marker, but a source diff's specs are still parsed and paired at head. A spec refused either
+  way also writes its reason to `mutants.refused`, and `scripts/fix-proof-run.sh` fails the
+  mutants job on it, since the judge never reads a source diff's specs. `execMutants()` is the
+  same as a function.
 - `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>]
   [--mutants-report <file>] --base <mergeBase> --head <sha>` derives the plan from git, decodes
   the reports under a byte cap and prints one result line, with `mutants` read from
