@@ -10,7 +10,7 @@ import type { BridgeExec, BridgeFile, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
-export const SPINE = `# Story spine: parcel-desk
+const SPINE = `# Story spine: parcel-desk
 
 ## 3. Journey
 | # | Step | What | Why | Invariant | Today |
@@ -32,7 +32,7 @@ export const SPINE = `# Story spine: parcel-desk
 | desk server | part | ch2 | — |
 `;
 
-export const FACTS = "# Facts\n\n| Id | Claim |\n|---|---|\n| F1 | Every scan passes the desk server. |\n";
+const FACTS = "# Facts\n\n| Id | Claim |\n|---|---|\n| F1 | Every scan passes the desk server. |\n";
 
 export interface Fixture {
   dataDir: string;
@@ -74,7 +74,7 @@ export function fixture(): Fixture {
   return { ...dirs, spine, facts, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-export interface FakeBridge {
+interface FakeBridge {
   exec: BridgeExec;
   /** Each command's script name, in order. */
   calls: string[];
@@ -129,7 +129,7 @@ export function fakeBridge(options: { qaFails?: boolean } = {}): FakeBridge {
   return { exec, calls, ttsInputs };
 }
 
-export interface FakeScriptModel {
+interface FakeScriptModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
   prompts: string[];
   budgets: number[];
