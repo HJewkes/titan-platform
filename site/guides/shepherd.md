@@ -1134,13 +1134,25 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
-Policy paths include every file on the route that decides who may resolve a gate, not only the
-owner's rule file. In the factory: the answer entry points `gate-resolve*.ts`,
-`gate-answer-rpc.ts`, `gate-answer-check.ts` and `resolve-proof.ts`; the store wiring in
-`host.ts`; `coordinator-evidence*.ts`, `coordinator-allowances*.ts`, `device-gates.ts` and
-`shepherd/stale-gates.ts`. In hitl: `resolver-policy.ts` and the stores that apply it,
-`base-store.ts`, `sqlite-store.ts` and `memory-store.ts`. A change to any of them can widen gate
-resolves past the owner, so it takes `g10-adversary`. A change to their test files alone does not.
+Policy paths also cover who may resolve a gate, not only the owner's rule file. A file is on
+that route when it builds a `GateResolver` or hands one to a resolve sink (`gates.resolve`,
+`runtime.signal`, `resolveGate`), or holds a check such a file leans on: hitl's whole source,
+the workflow runtime and its gate authorize step, the Matrix answer path and its owner fold, the
+factory's answer entry points (`gate-resolve*`, `gate-answer-*`, `gate-batch*`, `gate-notify*`,
+`console-action/`, `owner-ops/`, the round-ship sweep), the owner presence and proof files, the
+store wiring in `host.ts`, and the coordinator evidence, allowance and device-gate rules. The list
+is `GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`. A change to
+any of them takes `g10-adversary`; a change to their test files alone does not.
+
+The list is not trusted to stay complete by hand. `gate-resolve-sites.test.ts` scans every
+non-test source file for a resolver-shaped object, a `class` written beside `GateResolver`, or a
+call into a resolve sink, and fails when such a file is not held. A new resolve path therefore
+fails CI until it joins the list.
+
+**Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
+answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value
+as `ResolverClass`, which admits only the owner classes, so a widened enum fails typecheck; and
+hitl's default refusal rejects any other class at run time. Both checks sit in held files.
 
 **Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
 edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
