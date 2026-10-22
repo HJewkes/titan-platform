@@ -16,7 +16,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief, wantsFreshFixer } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
@@ -38,11 +38,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
-/** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
-const BRANCH = /^[A-Za-z0-9._/-]+$/;
-/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
-const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
-const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
 
 /** How the wake step reaches agent-chat. A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface ImplementerAgents {
