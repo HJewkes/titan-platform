@@ -35,8 +35,16 @@ export type FixerReportRefusal =
 
 export type FixerReportRead = { ok: true; report: FixerReport } | { ok: false; refusal: FixerReportRefusal };
 
-const FIELDS = { Fingerprint: "fingerprint", Class: "class", "Root-cause": "rootCause", Fix: "fix", Patch: "patch", Task: "task", Resolves: "resolves" } as const;
-type Field = (typeof FIELDS)[keyof typeof FIELDS];
+type Field = "fingerprint" | "class" | "rootCause" | "fix" | "patch" | "task" | "resolves";
+const FIELDS: ReadonlyMap<string, Field> = new Map([
+  ["Fingerprint", "fingerprint"],
+  ["Class", "class"],
+  ["Root-cause", "rootCause"],
+  ["Fix", "fix"],
+  ["Patch", "patch"],
+  ["Task", "task"],
+  ["Resolves", "resolves"],
+] as const);
 type Draft = Partial<Record<Field, string>> & { evidence: string[] };
 
 /** Folds one body line into the draft; `Evidence` alone may repeat, one line per cited place. */
@@ -45,15 +53,15 @@ function takeLine(draft: Draft, line: string): FixerReportRefusal | null {
   const match = /^([A-Za-z-]+): (.+)$/.exec(line);
   if (!match) return "unknown_line";
   if (match[1] === "Evidence") return draft.evidence.push(match[2]!), null;
-  const field = Object.hasOwn(FIELDS, match[1]!) ? FIELDS[match[1] as keyof typeof FIELDS] : undefined;
+  const field = FIELDS.get(match[1]!);
   if (field === undefined) return "unknown_line";
   if (draft[field] !== undefined) return "duplicate_field";
   draft[field] = match[2]!;
   return null;
 }
 
-const isFix = (value: string | undefined): value is FixerFix => (FIXER_FIXES as readonly string[]).includes(value ?? "");
-const isClass = (value: string | undefined): value is FailureClass => (FAILURE_CLASSES as readonly string[]).includes(value ?? "");
+const isFix = (value: string | undefined): value is FixerFix => FIXER_FIXES.some((fix) => fix === value);
+const isClass = (value: string | undefined): value is FailureClass => FAILURE_CLASSES.some((failure) => failure === value);
 
 /** A config or profile-field fix carries the proposed patch, a code-task fix the filed task, and `none` neither. */
 function detailFits(fix: FixerFix, draft: Draft): boolean {
@@ -61,25 +69,19 @@ function detailFits(fix: FixerFix, draft: Draft): boolean {
   return wantsPatch === (draft.patch !== undefined) && (fix === "code-task") === (draft.task !== undefined);
 }
 
-function refusalOf(draft: Draft, expected: string | undefined): FixerReportRefusal | null {
-  if (draft.fingerprint === undefined) return "missing_fingerprint";
-  if (expected !== undefined && draft.fingerprint !== expected) return "wrong_fingerprint";
-  if (!isClass(draft.class)) return "bad_class";
-  if (draft.rootCause === undefined) return "missing_root_cause";
-  if (draft.evidence.length === 0) return "missing_evidence";
-  if (!isFix(draft.fix)) return "bad_fix";
-  if (!detailFits(draft.fix, draft)) return "fix_detail_mismatch";
-  if (draft.resolves !== "yes" && draft.resolves !== "no") return "bad_resolves";
-  return null;
-}
-
-function reportOf(draft: Draft): FixerReport {
-  return {
-    ...{ fingerprint: draft.fingerprint!, failure: draft.class as FailureClass, rootCause: draft.rootCause!, evidence: draft.evidence },
-    ...{ fix: draft.fix as FixerFix, resolves: draft.resolves === "yes" },
-    ...(draft.patch !== undefined && { patch: draft.patch }),
-    ...(draft.task !== undefined && { task: draft.task }),
-  };
+function readDraft(draft: Draft, expected: string | undefined): FixerReportRead {
+  const { fingerprint, class: failure, rootCause, fix, patch, task, resolves } = draft;
+  const refuse = (refusal: FixerReportRefusal): FixerReportRead => ({ ok: false, refusal });
+  if (fingerprint === undefined) return refuse("missing_fingerprint");
+  if (expected !== undefined && fingerprint !== expected) return refuse("wrong_fingerprint");
+  if (!isClass(failure)) return refuse("bad_class");
+  if (rootCause === undefined) return refuse("missing_root_cause");
+  if (draft.evidence.length === 0) return refuse("missing_evidence");
+  if (!isFix(fix)) return refuse("bad_fix");
+  if (!detailFits(fix, draft)) return refuse("fix_detail_mismatch");
+  if (resolves !== "yes" && resolves !== "no") return refuse("bad_resolves");
+  const report: FixerReport = { fingerprint, failure, rootCause, evidence: draft.evidence, fix, resolves: resolves === "yes" };
+  return { ok: true, report: { ...report, ...(patch !== undefined && { patch }), ...(task !== undefined && { task }) } };
 }
 
 /**
@@ -97,6 +99,5 @@ export function readFixerReport(text: string, expectedFingerprint?: string): Fix
     const refusal = takeLine(draft, line);
     if (refusal !== null) return { ok: false, refusal };
   }
-  const refusal = refusalOf(draft, expectedFingerprint);
-  return refusal === null ? { ok: true, report: reportOf(draft) } : { ok: false, refusal };
+  return readDraft(draft, expectedFingerprint);
 }
