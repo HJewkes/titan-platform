@@ -121,7 +121,7 @@ describe("the fork schedule and lane slots", () => {
 
   it("has every lane explore in a basin-escape round, even after a KEEP", () => {
     const schedule = { afterKeep: { exploit: 1 }, basinEvery: 3 };
-    const followup = { id: "i-follow", parent: "i-won" } as Idea;
+    const followup: Idea = { ...proposal("follow", { source: "followup", parent: "i-won" }), id: "i-follow", lineage: "i-won", cell: "accept-gate:follow", round: 2 };
     const winners = new Map([["i-won", "implementer-a"]]);
 
     expect(forkPlan([followup], 2, winners, schedule).get("i-follow")).toEqual({ fork: "exploit", resumeFrom: "implementer-a" });
