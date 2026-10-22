@@ -39,7 +39,7 @@ const unwoken: ShepherdPhases = { wake: async () => ({ kind: "unhandled", reason
 const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success")), successRun("dag-check", 2)]));
 
 /** `successor` registers first on a run that died, which Shepherd restarts as this one; the successor then registers the PR again. */
-export type Registrant = Pick<RegistrationInput, "registrant"> & { successor?: string };
+type Registrant =Pick<RegistrationInput, "registrant"> & { successor?: string };
 
 function register(store: ShepherdStoreRef, runId: string, { registrant, successor }: Registrant): void {
   const first = successor === undefined ? runId : `${runId}-died`;
