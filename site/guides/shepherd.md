@@ -336,7 +336,8 @@ with the owner's release on offer:
 The answer is `{"decision":"stay-frozen"|"unfreeze","mergeSha":"<merge sha>"}`. `unfreeze`
 thaws only the episode the gate opened for. If the repo has thawed and frozen again since,
 the answer changes nothing. Each run opens its own gate, so one episode can leave several
-open; answer any one with `unfreeze` and the rest go stale.
+open; answer any one with `unfreeze` and the rest go stale. Outside a gate, the owner or a
+seat thaws the episode with [`shepherd thaw`](#thaw).
 
 A stale gate does not wait for the owner. Once the episode it opened for has thawed, by a
 green head, an `unfreeze` on another gate or a hand thaw, the gone sweep (every 5 minutes
@@ -1153,6 +1154,35 @@ serve. Every merge goes through the same check as the main-red freeze (`freezeGu
 `products/factory/src/shepherd/freeze.ts`), which reads this freeze first. The two freezes are
 independent. `unfreeze` never thaws a red main, and a green main never lifts this freeze. This
 freeze holds the main-red fixer's pull request too.
+
+### Thaw a red main by hand {#thaw}
+
+```sh
+titan-factory shepherd thaw owner/repo --red-sha <full red sha> --reason "flaky timer test, rerun green"
+```
+
+`thaw` is the manual way out of a [main-red freeze](#after-the-merge) when no green is coming
+soon, for example a flake whose fix is still in review. It does not need a `main-red-again` or
+`main-frozen` gate. `shepherd unfreeze` lifts only a coordinator's freeze, so it is no help here.
+
+It refuses, and changes nothing, when:
+
+- the repo has no open main-red episode;
+- `--red-sha` is not the episode's red sha as it stands now. A later red in the same episode
+  moves that sha, so read `status` or `timeline` again and thaw the red you actually looked at;
+- `--reason` is missing or blank.
+
+A thaw goes through the same `FreezeStore.release` the gates' `unfreeze` answer uses. It
+writes a `thaw` event naming the caller (the agent-chat seat, else the OS user) with the reason
+`hand thaw: <reason>`. It also cancels the episode's pending `main-red-again` and `main-frozen`
+gates, as the [stale-gate sweep](#after-the-merge) does. The episode's fix task stays open,
+because main may still be red; the next red starts a new episode.
+
+Every thaw alerts the repo's red seat, by the route the [main CI watch](#main-ci-watch) uses:
+`shepherd.redSeat`, else the seat a run registered on the repo records, else
+`shepherd.hubSeat`. The alert names the repo, the red sha, the caller and the reason. When no
+seat can be found or the send fails, the thaw logs an error line and still stands. The
+command prints which seat it told, or why it told none.
 
 ### Ask for Shepherd's own review {#own-review}
 

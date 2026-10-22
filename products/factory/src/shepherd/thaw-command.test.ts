@@ -1,6 +1,7 @@
 import { tmpdir } from "node:os";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
@@ -58,7 +59,7 @@ function redMainWorld(thawAlert?: ThawAlertPorts) {
   const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal.throwIfAborted(), void (clock += ms)), mainRed, ...(thawAlert && { thawAlert }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  const ctx = { host, shepherd: routes.shepherd! } as FactoryContext;
+  const ctx = partialFake<FactoryContext>({ host, shepherd: routes.shepherd! });
   return { host, store, ctx, freezes: () => freeze.get() };
 }
 

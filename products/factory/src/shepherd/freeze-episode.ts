@@ -20,7 +20,7 @@ interface EpisodeFreezes {
 }
 
 /** A hand thaw's outcome: `red-moved` names the red sha the episode holds now, which the caller did not name. */
-export type HandThaw = { outcome: "thawed"; episode: number; fixTask: string | null } | { outcome: "red-moved"; episode: number; redSha: string } | { outcome: "not-frozen" };
+type HandThaw = { outcome: "thawed"; episode: number; fixTask: string | null } | { outcome: "red-moved"; episode: number; redSha: string } | { outcome: "not-frozen" };
 
 /**
  * Episode writes past the freeze row's own setters: who may be linked as its fixer, and Shepherd's one rerun per episode

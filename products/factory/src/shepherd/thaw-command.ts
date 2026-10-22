@@ -16,7 +16,7 @@ const ThawArgs = z.object({
 type ThawArgs = z.infer<typeof ThawArgs>;
 
 /** Whether the thaw's alert reached a seat; a failed alert never undoes the thaw. */
-export interface ThawAlert {
+interface ThawAlert {
   seat: string | null;
   sent: boolean;
   detail: string;
