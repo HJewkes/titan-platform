@@ -129,14 +129,11 @@ const INBOX_DERIVED: Served["inbox.list"]["result"]["derived"] = [
 const INBOX_NUDGES: Served["inbox.list"]["result"]["nudges"] = [
   {
     roundId: "kiln-schedule-r2", unit: "kiln-schedule", round: 2, openedAt: at(7 * HOUR), manifestSha256: "ab".repeat(32), oneTap: true, nudgedAt: at(HOUR),
-    recommendations: [
-      { questionId: "ramp-default", prompt: "Which ramp should the calculator propose by default?", answer: "Staged climb" },
-      { questionId: "hold-clarity", prompt: "How clearly does the top hold step read?", answer: "4" },
-    ],
-    line: "kiln-schedule-r2 has waited 7 h: reply rec to answer all 2 with the recommendation (ramp-default: Staged climb; hold-clarity: 4)",
+    recommendations: [], recommendationsHidden: true,
+    line: "kiln-schedule-r2 has waited 7 h: 2 questions; recommendations hidden until you answer",
   },
   {
-    roundId: "lantern-cards-r1", unit: "lantern-cards", round: 1, openedAt: at(9 * HOUR), manifestSha256: "cd".repeat(32), oneTap: false, nudgedAt: null,
+    roundId: "lantern-cards-r1", unit: "lantern-cards", round: 1, openedAt: at(9 * HOUR), manifestSha256: "cd".repeat(32), oneTap: false, nudgedAt: null, recommendationsHidden: false,
     withoutTap: 'question "card-notes" has no recommendation that answers it',
     recommendations: [{ questionId: "card-density", prompt: "How dense should a card be?", answer: "Compact" }],
     line: "lantern-cards-r1 has waited 9 h; open it to answer (recommended: card-density: Compact)",
