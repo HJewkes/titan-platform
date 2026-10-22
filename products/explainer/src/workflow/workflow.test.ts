@@ -57,6 +57,8 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[0]).toContain("## The script/v1 JSON Schema");
+    expect(model.prompts[0]).toContain("Story spine: parcel-desk");
     expect(model.prompts[1]).toContain("Your previous reply was rejected");
     expect(row(result, "script")).toMatchObject({ retries: 1, calls: 2, usd: 0.1 });
   });

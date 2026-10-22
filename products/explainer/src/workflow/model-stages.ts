@@ -1,4 +1,5 @@
 import { tmpdir } from "node:os";
+import { z } from "zod";
 import { agentRunner, type AgentRunnerOptions, type LegacyStepRunner, type StepRunOutcome, type StepUsage } from "@titan-design/workflow";
 import { L0_CHECKS, l0HardPass, failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
@@ -53,13 +54,23 @@ Write the whole script/v1 for this video as one JSON object, and reply with that
 - Cite only fact ids from the facts pack, and state no number the facts pack does not hold.
 - Set "facts_pack" to "facts.md".`;
 
+/** The guide names the fields in prose only, so the model also gets the exact shape the reply is parsed with. */
+const scriptShape = (): string => `## The script/v1 JSON Schema\n\n\`\`\`json\n${JSON.stringify(z.toJSONSchema(ScriptSchema, { io: "input", unrepresentable: "any" }))}\n\`\`\``;
+
 export function scriptPrompt(spine: string, facts: string): string {
   const guide = guidePlan("script", { spine: parseSpine(spine) });
-  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, SCRIPT_TASK].join("\n\n") + "\n";
+  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, scriptShape(), SCRIPT_TASK].join("\n\n") + "\n";
 }
 
 const retryPrompt = (prompt: string, error: string): string =>
   `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
+
+/** Enough issues to fix the reply by, few enough that a reply in the wrong shape does not flood the run error. */
+const MAX_ISSUES = 25;
+const issueText = (issues: readonly z.core.$ZodIssue[]): string => {
+  const shown = issues.slice(0, MAX_ISSUES).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
+  return [...shown, ...(issues.length > MAX_ISSUES ? [`and ${issues.length - MAX_ISSUES} more`] : [])].join("; ");
+};
 
 /** The reply's outermost JSON object, so a reply wrapped in a code fence or a sentence still parses. */
 function replyObject(text: string): unknown {
@@ -83,7 +94,7 @@ function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string }
   }
   const parsed = ScriptSchema.safeParse(raw);
   if (parsed.success) return { script: parsed.data };
-  return { error: parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ") };
+  return { error: issueText(parsed.error.issues) };
 }
 
 const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outcome.code === "schema_invalid";
