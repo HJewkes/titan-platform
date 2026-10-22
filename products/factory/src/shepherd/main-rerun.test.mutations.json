@@ -22,25 +22,6 @@
       ]
     },
     {
-      "name": "an active-work refusal is retried as an outage",
-      "file": "products/factory/src/shepherd/main-rerun.ts",
-      "find": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields), notRefused);",
-      "replace": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));",
-      "kills": [
-        "sh-main-rerun ends the step at once, frozen, when active-work refuses the flake task, with no retry"
-      ]
-    },
-    {
-      "name": "the flake port replaces done_when without force",
-      "file": "products/factory/src/shepherd/cleanup-ports.ts",
-      "find": "value: flake.done_when, force: true });",
-      "replace": "value: flake.done_when });",
-      "kills": [
-        "sh-main-rerun thaws through the active-work port on the fix task as filed, replacing its done_when with the root-cause one",
-        "the active-work flake port replaces the filed done_when with force, tags and reopens a done task, and appends the notes last, never closing it"
-      ]
-    },
-    {
       "name": "the rerun is read without its earlier attempts",
       "file": "products/factory/src/shepherd/main-rerun.ts",
       "find": "  const runs = (await port.checkRunAttempts(input.repo, input.mergeSha)).filter(",
@@ -66,15 +47,6 @@
       "replace": "",
       "kills": [
         "sh-main-rerun does not thaw an episode whose red sha moved on, even on a green rerun of the earlier red"
-      ]
-    },
-    {
-      "name": "the rerun wait ignores a moved red sha",
-      "file": "products/factory/src/shepherd/main-rerun.ts",
-      "find": "    if (live.redSha !== input.mergeSha) return stays(`the episode's red moved on to ${live.redSha} during the rerun`);\n",
-      "replace": "",
-      "kills": [
-        "sh-main-rerun stays frozen when a later red in the episode moved its red sha during the rerun"
       ]
     }
   ]

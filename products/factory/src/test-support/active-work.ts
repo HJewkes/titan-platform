@@ -44,9 +44,9 @@ function edit(task: FakeTask, body: Record<string, unknown>): FakeTask {
 
 function answer(fake: FakeActiveWork, command: string, body: Record<string, unknown>): unknown {
   if (command === "task.list") return { tasks: [...fake.tasks.values()].filter((task) => body.tag === undefined || task.tags.includes(String(body.tag))) };
+  if (command !== "task.edit") throw new Refused(`the fake has no ${command}`);
   const task = fake.tasks.get(String(body.id));
   if (task === undefined) throw new Refused(`Task not found: ${String(body.id)}`, 66);
-  if (command !== "task.edit") throw new Refused(`the fake has no ${command}`);
   const edited = edit(task, body);
   fake.tasks.set(task.id, edited);
   return edited;
