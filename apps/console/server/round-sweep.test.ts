@@ -196,6 +196,15 @@ describe("rounds sweep, decisions rule", () => {
     expect(await statuses()).toEqual({ [OPEN_A]: "open", [OPEN_B]: "withdrawn", [SENT]: "sent" });
   });
 
+  it("does not read an open round's id inside a longer name as a citation of it", async () => {
+    const decisionsFile = await writeDecisions([`- ${OPEN_B}0 answered`, `- x${OPEN_A} resolved`]);
+
+    const report = await sweep({ apply: true, decisionsFile });
+
+    expect(report.decisions?.candidates).toEqual([]);
+    expect(await statuses()).toEqual({ [OPEN_A]: "open", [OPEN_B]: "open", [SENT]: "sent" });
+  });
+
   it("refuses a decisions file it cannot read before writing anything", async () => {
     await writeRound(path.join(dir, NEWER), newer([OPEN_A]));
 
