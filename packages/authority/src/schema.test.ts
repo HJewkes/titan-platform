@@ -20,13 +20,23 @@ function issues(table: unknown): string[] {
 describe("policyTableSchema", () => {
   it("accepts the shipped table.json as is", () => {
     expect(issues(tableJson)).toEqual([]);
-    expect(DEFAULT_TABLE.rules).toHaveLength(117);
+    expect(DEFAULT_TABLE.rules).toHaveLength(138);
   });
 
   it("rejects a table missing one action by actor pair", () => {
     const table = copyOfDefault();
     table.rules = table.rules.filter((rule) => rule.id !== "SEC-WK");
     expect(issues(table)).toContain("no rule for secret-read by worker");
+  });
+
+  it.each([
+    ["PRC-WK", "pr-close by worker"],
+    ["DPR-CO", "deploy-resume by coordinator"],
+    ["FLC-DC", "fleet-config by decider"],
+  ])("rejects a table missing the owner-op row %s", (id, pair) => {
+    const table = copyOfDefault();
+    table.rules = table.rules.filter((rule) => rule.id !== id);
+    expect(issues(table)).toContain(`no rule for ${pair}`);
   });
 
   it("rejects a table with a duplicate pair", () => {

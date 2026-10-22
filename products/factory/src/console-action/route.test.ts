@@ -500,11 +500,11 @@ describe("POST /owner/console-action", () => {
 
     it("refuses with 403 class an op whose authority row denies owner-remote, leaving the PR open", async () => {
       const w = await world();
-      writeOp(w, { kind: "close-pr", repo: REPO, pr: w.pr, headSha: H });
+      writeOp(w, { kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true });
 
       const res = await post(w.server, { actionId: ACTION_ID });
 
-      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("DSR-OR denies") }]);
+      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("DSL-OR denies") }]);
       expect(w.github.pr(w.pr).state).toBe("open");
       expect(ledgerWritten(w)).toBe(false);
     });

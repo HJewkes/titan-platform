@@ -52,9 +52,18 @@ describe("owner-op.preview", () => {
     const { fixture, preview } = world();
     const { number } = fixture.fake.addPr({ headSha: H });
 
+    const answer = await preview({ kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true });
+
+    expect(answer.ok && answer.data.authority).toMatchObject({ verdict: "deny", ruleId: "DSL-OR" });
+  });
+
+  it("shows the owner-remote gate for closing a PR, with the PR read back", async () => {
+    const { fixture, preview } = world();
+    const { number } = fixture.fake.addPr({ headSha: H, title: "Synthetic change" });
+
     const answer = await preview({ kind: "close-pr", repo: REPO, pr: number, headSha: H });
 
-    expect(answer.ok && answer.data.authority).toMatchObject({ verdict: "deny", ruleId: "DSR-OR" });
+    expect(answer.ok && answer.data).toMatchObject({ authority: { verdict: "gate", ruleId: "PRC-OR" }, pr: { state: "open", head: H } });
   });
 
   it("reads a gate the store does not hold as missing", async () => {
