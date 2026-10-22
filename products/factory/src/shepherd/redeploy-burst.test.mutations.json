@@ -74,7 +74,8 @@
       "replace": "",
       "kills": [
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
-        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     },
     {
@@ -84,7 +85,8 @@
       "replace": "return undefined;",
       "kills": [
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
-        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     },
     {
@@ -95,7 +97,8 @@
       "kills": [
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge",
-        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) still replaces the queued sha with a newer merge that contains it"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) still replaces the queued sha with a newer merge that contains it",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     },
     {
@@ -105,6 +108,15 @@
       "replace": "queued)) !== false ? queued",
       "kills": [
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) replaces the queued sha when git cannot tell, as before the guard"
+      ]
+    },
+    {
+      "name": "the deploy checkout probe never fetches",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "cachedAncestry(fetchingAncestry(gitAncestry(checkout, run), gitFetchMain(checkout, run)))",
+      "replace": "cachedAncestry(gitAncestry(checkout, run))",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     }
   ]
