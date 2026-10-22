@@ -13,6 +13,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and requires `asker` and `depositId`. `fromDeposit(deposit, now)` parses one and returns the
   open item it files, with source `deposit:<asker>/<depositId>` and a lens taken from
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
+- `op` (`ownerOpSchema`, optional on an item and a deposit) is the typed target of an owner
+  action, a strict union by `kind`: `resolve-gate`, `release-hold` (`HOLD_CLASSES`),
+  `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear` and `retire-agent`.
+  It names a target and grants nothing: whoever acts re-reads the live state. `fromDeposit`
+  appends the keys `opKeys(op)` implies, `pr:<repo>#<n>@<head>` for a PR op, so the deposit
+  merges with that PR's item at the same head. No op yields a `gate:` key.
 - `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent
   means owner. It only selects a reader and grants no authority. `forAudience(items, audience)`
   keeps the matching items in input order and `audienceOf(item)` reads the default.
