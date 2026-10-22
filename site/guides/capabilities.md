@@ -912,9 +912,8 @@ Key exports:
 - `card`: `cardLint`, `ownerCardSchema`
 - `audience`: `audienceOf`, `forAudience`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
-- `consolidate`: `consolidate`
-- `influence`: `influenceEdges`
-- +76 more in the [reference page](/reference/owner-queue)
+- `op`: `opKeys`, `ownerOpSchema`
+- +81 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
