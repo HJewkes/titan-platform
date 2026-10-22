@@ -45,21 +45,33 @@ interface ConsoleWord {
   dynamic: boolean;
 }
 
-/** `titan-console login-link`, `token rotate` or `config import`, as the subject pattern; null for any other verb. */
+/**
+ * `titan-console login-link`, `token rotate` or `config import`, as the subject pattern; null for any other verb. A program
+ * only known at run time (`$C login-link`, `node $S token rotate`) may be the console, so a literal owner verb after it counts.
+ */
 export function consoleOwnerVerb(cmd: SimpleCommand, ctx: ClassifyContext): string | null {
-  for (const words of consoleArgs(cmd, ctx)) {
-    const verb = ownerVerb(asReceived(words));
-    if (verb !== null) return verb;
-  }
-  return null;
+  const readings = [
+    ...consoleArgs(cmd, ctx).map((words) => ownerVerb(asReceived(words), true)),
+    ...unknownProgramArgs(cmd).map((words) => ownerVerb(asReceived(words), false)),
+  ];
+  return readings.find((verb) => verb !== null) ?? null;
 }
 
-function ownerVerb([first, second]: ConsoleWord[]): string | null {
+/** A verb only known at run time is one only when the console surely runs; after an unknown program it must be typed. */
+function ownerVerb([first, second]: ConsoleWord[], console: boolean): string | null {
+  const matches = (word: ConsoleWord, verb: string) => (console && word.dynamic) || (!word.dynamic && word.value === verb);
   if (first === undefined) return null;
-  if (first.dynamic || first.value === "login-link") return "titan-console:login-link";
-  const verb = Object.hasOwn(GROUPED_OWNER_VERBS, first.value) ? GROUPED_OWNER_VERBS[first.value] : undefined;
+  if (matches(first, "login-link")) return "titan-console:login-link";
+  const verb = !first.dynamic && Object.hasOwn(GROUPED_OWNER_VERBS, first.value) ? GROUPED_OWNER_VERBS[first.value] : undefined;
   if (verb === undefined || second === undefined) return null;
-  return second.dynamic || second.value === verb ? `titan-console:${first.value}-${verb}` : null;
+  return matches(second, verb) ? `titan-console:${first.value}-${verb}` : null;
+}
+
+/** The words after a command word, or a runner's script operand, that is only known at run time. */
+function unknownProgramArgs(cmd: SimpleCommand): SimpleCommand["args"][] {
+  if (cmd.name === null) return cmd.args[0]?.dynamic ? [cmd.args.slice(1)] : [];
+  if (!SCRIPT_RUNNERS.has(cmd.name)) return [];
+  return cmd.args.flatMap((a, i) => (a.dynamic ? [cmd.args.slice(i + 1)] : []));
 }
 
 /** Each argument list the console may receive from this command; none when it does not run the console. */

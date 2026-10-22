@@ -160,6 +160,44 @@ export function containsGuarded(dir: string, list: GuardedList, home: string): G
   return list.paths.find((entry) => samplesOf(entry, home, null).some((s) => s.startsWith(prefix))) ?? null;
 }
 
+/**
+ * The first entry a relative `tail` may name under some directory: one with a sample ending in it, or, as a directory
+ * written whole, holding one. Leading `./` and `../` steps are dropped, since the base they move from is unknown.
+ */
+export function matchUnplaced(tail: string, list: GuardedList, home: string): GuardedPath | null {
+  const rest = tail.replace(/^(?:\.{0,2}\/+)+/, "").replace(/\/+$/, "");
+  if (rest === "" || rest === "." || rest === "..") return null;
+  const re = compiled(`(?:^|/)${globSource(rest)}(?:/|$)`, MATCH_ANY);
+  return list.paths.find((entry) => samplesOf(entry, home, null).concat(relativeSamples(entry)).some((s) => re.test(s))) ?? null;
+}
+
+/** Any-directory samples as written, which `samplesOf` drops without a path to graft them onto. */
+function relativeSamples(entry: GuardedPath): string[] {
+  return (entry.samples ?? []).filter((s) => !s.startsWith("~/") && !s.startsWith("/"));
+}
+
+const BRACE_LIST_RE = /\{([^{}]*,[^{}]*)\}/;
+const BRACE_GROUP_RE = /\{[^{}]*\}/g;
+/** Past this many words a brace list is matched as a glob over its alternatives instead. */
+const MAX_BRACE_WORDS = 64;
+
+/** The words a brace list such as `d/{a,b}` expands to; a sequence or a list past the cap reads as a `*` glob. */
+export function braceExpansions(value: string): string[] {
+  let words = [value];
+  while (words.some((w) => BRACE_LIST_RE.test(w))) {
+    words = words.flatMap(expandFirstList);
+    if (words.length > MAX_BRACE_WORDS) return [value.replace(BRACE_GROUP_RE, "*")];
+  }
+  return words.map((w) => (/\{[^{}]*\.\.[^{}]*\}/.test(w) ? w.replace(BRACE_GROUP_RE, "*") : w));
+}
+
+function expandFirstList(word: string): string[] {
+  const list = BRACE_LIST_RE.exec(word);
+  if (list === null) return [word];
+  const [before, after] = [word.slice(0, list.index), word.slice(list.index + list[0].length)];
+  return (list[1] as string).split(",").map((alternative) => before + alternative + after);
+}
+
 function covers(entry: GuardedPath, path: string, home: string): boolean {
   // Uncompilable configured patterns fail closed: a pattern covers, an exception does not except.
   if (!patternRegExp(entry.pattern, home, MATCH_ANY).test(path)) return false;
@@ -205,14 +243,22 @@ function absoluteGlob(pattern: string, home: string): string {
 
 /** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */
 function globRegExp(glob: string, onFail: RegExp): RegExp {
+  return compiled(`^${globSource(glob)}$`, onFail);
+}
+
+function globSource(glob: string): string {
   let src = "";
   for (let i = 0; i < glob.length; ) {
     const [piece, width] = globPiece(glob, i);
     src += piece;
     i += width;
   }
+  return src;
+}
+
+function compiled(src: string, onFail: RegExp): RegExp {
   try {
-    return new RegExp(`^${src}$`);
+    return new RegExp(src);
   } catch {
     return onFail;
   }

@@ -1,21 +1,58 @@
 import type { WordToken } from "./lexer.js";
+import type { SimpleCommand } from "./command-types.js";
+
+/** How one wrapper or runner names the directory it starts its command in: the option letters and long names taking it, and options that move it somewhere the line does not show. */
+interface ChdirSpec {
+  short?: RegExp;
+  long?: readonly string[];
+  elsewhere?: RegExp;
+}
 
 /**
- * Options with which a wrapper or package runner starts its command in another directory: `env -C`, `sudo -D`,
- * `pnpm --filter`/`-C`/`-r`, `npm --prefix`/`-w`, `yarn --cwd`, `bun --cwd`. A relative path the command names is then
- * relative to a directory the line does not show.
+ * `env -C`, `sudo -D`, `pnpm -C`/`--dir`, `npm --prefix`, `yarn --cwd` and `bun --cwd` name the directory; `pnpm
+ * --filter`/`-r`, `npm -w` and `bun --filter` pick a package by name, so the directory is only known at run time.
  */
-const CHDIR_OPTIONS: Readonly<Record<string, RegExp>> = {
-  env: /^(?:-[A-Za-z0-9]*C|--chdir(?:=|$))/,
-  sudo: /^(?:-[A-Za-z]*D|--chdir(?:=|$))/,
-  pnpm: /^(?:-[A-Za-z]*[FCrw]|--(?:filter|dir|recursive|workspace-root|filter-prod)(?:=|$))/,
-  npm: /^(?:-[A-Za-z]*[Cw]|-ws$|--(?:prefix|workspaces?)(?:=|$))/,
-  yarn: /^--cwd(?:=|$)/,
-  bun: /^(?:--(?:cwd|filter)(?:=|$)|-[A-Za-z]*F)/,
+const CHDIR: Readonly<Record<string, ChdirSpec>> = {
+  env: { short: /^-[A-Za-z0-9]*?C(.*)$/, long: ["--chdir"] },
+  sudo: { short: /^-[A-Za-z0-9]*?D(.*)$/, long: ["--chdir"] },
+  pnpm: { short: /^-[A-Za-z0-9]*?C(.*)$/, long: ["--dir"], elsewhere: /^(?:-[A-Za-z]*[Frw]|--(?:filter|recursive|workspace-root|filter-prod)(?:=|$))/ },
+  npm: { short: /^-[A-Za-z0-9]*?C(.*)$/, long: ["--prefix"], elsewhere: /^(?:-[A-Za-z]*w|-ws$|--workspaces?(?:=|$))/ },
+  yarn: { long: ["--cwd"] },
+  bun: { long: ["--cwd"], elsewhere: /^(?:--filter(?:=|$)|-[A-Za-z]*F)/ },
 };
 
-/** Whether `name`'s own options, read before the command it runs, move that command's working directory. */
-export function changesDir(name: string, options: readonly WordToken[]): boolean {
-  const option = Object.hasOwn(CHDIR_OPTIONS, name) ? CHDIR_OPTIONS[name] : undefined;
-  return option !== undefined && options.some((w) => w.dynamic || option.test(w.value));
+/**
+ * The directory `name`'s own options, read before the command it runs, start that command in: the word naming it, null
+ * when it is only known at run time, undefined when they leave the command where the line is.
+ */
+export function runDirWord(name: string, options: readonly WordToken[]): WordToken | null | undefined {
+  const spec = Object.hasOwn(CHDIR, name) ? CHDIR[name] : undefined;
+  if (spec === undefined) return undefined;
+  let dir: WordToken | null | undefined;
+  for (let i = 0; i < options.length; i++) {
+    const word = options[i] as WordToken;
+    const operand = word.dynamic ? undefined : chdirOperand(word.value, spec);
+    if (operand !== undefined) {
+      const named = operand === null ? options[++i] : { ...word, value: operand };
+      dir = dir === null || named === undefined || named.dynamic ? null : named;
+    } else if (word.dynamic || spec.elsewhere?.test(word.value)) dir = null;
+  }
+  return dir;
+}
+
+/** The directory an option word holds (`-Cdir`, `--chdir=dir`), null when it takes the next word, undefined when it names none. */
+function chdirOperand(value: string, spec: ChdirSpec): string | null | undefined {
+  for (const long of spec.long ?? []) {
+    if (value === long) return null;
+    if (value.startsWith(`${long}=`)) return value.slice(long.length + 1);
+  }
+  if (spec.short === undefined || value.startsWith("--")) return undefined;
+  const rest = spec.short.exec(value)?.[1];
+  if (rest === undefined) return undefined;
+  return rest === "" ? null : rest;
+}
+
+/** The directory a command's own arguments resolve from: where a wrapper started it, else where the line is. */
+export function argDir(cmd: Pick<SimpleCommand, "dir" | "runDir">): string | null {
+  return cmd.runDir === undefined ? cmd.dir : cmd.runDir;
 }

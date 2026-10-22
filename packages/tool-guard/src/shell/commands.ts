@@ -313,7 +313,8 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   const inherited = w.prev === "|" || w.prev === "|&" ? emptied(w.descriptors, 0) : w.descriptors;
-  const set = { ...(inherited === TOP_DESCRIPTORS ? {} : { inherited }), ...(cmd.movesDir ? { movesDir: true as const } : {}) };
+  const runDir = cmd.runDir === undefined ? undefined : resolvePath(w.scope.dir, cmd.runDir, w.home);
+  const set = { ...(inherited === TOP_DESCRIPTORS ? {} : { inherited }), ...(runDir === undefined ? {} : { runDir }) };
   const own = prefixPath(cmd.assigned, isPathName, w.scope.vars);
   const ownPath = own.unsafe;
   w.marks.pathDirs.push(...own.dirs);
@@ -325,9 +326,11 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const held = descriptorsAfter(redirects, piped, inherited, (target) => resolvePath(w.scope.dir, target, w.home));
   const fed = feedsStdin(redirects, piped.length > 0 || w.prev === "|" || w.prev === "|&", inherited);
   const script = procsubScript(cmd, fed, (plain) => inlineScript(plain, redirects, piped, w.unsure, inherited)) ?? inlineScript(cmd, redirects, piped, w.unsure, inherited);
-  if (script !== null) walkScript(script, w, wrapping, held, ownPath);
+  // What the command runs starts where it does; only its redirects are opened where the line is.
+  const at = runDir === undefined ? w : { ...w, scope: { ...w.scope, dir: runDir } };
+  if (script !== null) walkScript(script, at, wrapping, held, ownPath);
   if (cmd.name !== "find") return;
-  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(w, [...wrapping, "find-exec"], held), ownPath), null);
+  for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], underPrefix(child(at, [...wrapping, "find-exec"], held), ownPath), null);
 }
 
 /** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */

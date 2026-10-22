@@ -1,15 +1,19 @@
 import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken, WordToken } from "./shell/lexer.js";
-import { containsGuarded, expandHome, hasGlob, matchGlob, matchGuarded, toAbsolute } from "./paths.js";
+import { braceExpansions, containsGuarded, expandHome, hasGlob, matchGlob, matchGuarded, matchUnplaced, toAbsolute } from "./paths.js";
 import type { GuardedList } from "./paths.js";
 import { resolveFrom } from "./shell/path.js";
+import { argDir } from "./shell/run-dir.js";
 import type { ClassifyContext } from "./types.js";
 
 /** Where in a command a guarded path appeared. `inline` is program text an interpreter runs. */
 export type Site = "arg" | "assignment" | "redirect-in" | "redirect-out" | "here-string" | "inline";
 
-/** How the path matched: as typed, as a glob, through a symlink, by a distinctive file name, or as a directory holding one. */
-export type Via = "path" | "glob" | "symlink" | "basename" | "contains";
+/**
+ * How the path matched: as typed, as a glob, through a symlink, by a distinctive file name, as a directory holding one, or
+ * as the tail of a guarded path when the directory it is relative to is only known at run time.
+ */
+export type Via = "path" | "glob" | "symlink" | "basename" | "contains" | "unplaced";
 
 export interface Mention {
   /** The guarded entry id, or `basename:<name>`. */
@@ -38,22 +42,27 @@ interface Scan {
   list: GuardedList;
   /** Also match a directory that holds a guarded path, for commands that read recursively. */
   contains: boolean;
+  /** Match a path whose base is only known at run time (`cd "$D"`, `$X/f`) by its literal tail, so a write there fails closed. */
+  unplaced: boolean;
 }
 
-/** Every guarded path `cmd` names in its arguments, literal assignments and redirections. */
-export function commandMentions(cmd: SimpleCommand, ctx: ClassifyContext, list: GuardedList, contains = false): Mention[] {
-  const scan: Scan = { dir: cmd.dir, ctx, list, contains };
+/**
+ * Every guarded path `cmd` names in its arguments, literal assignments and redirections. Its arguments resolve from where
+ * a wrapper started it, its redirects from where the line is.
+ */
+export function commandMentions(cmd: SimpleCommand, ctx: ClassifyContext, list: GuardedList, contains = false, unplaced = false): Mention[] {
+  const scan: Scan = { dir: argDir(cmd), ctx, list, contains, unplaced };
   const argSite: Site = cmd.name !== null && INTERPRETERS.has(cmd.name) ? "inline" : "arg";
   const out: Mention[] = [];
-  for (const word of cmd.args) out.push(...wordMentions(word.value, scan).map((m) => ({ ...m, site: argSite, word })));
+  for (const word of cmd.args) out.push(...wordMentions(word.value, scan, word).map((m) => ({ ...m, site: argSite, word })));
   for (const value of Object.values(cmd.env)) out.push(...at(wordMentions(value, scan), "assignment"));
-  for (const r of cmd.redirects) out.push(...redirectMentions(cmd.name, r, scan));
+  for (const r of cmd.redirects) out.push(...redirectMentions(cmd.name, r, { ...scan, dir: cmd.dir }));
   return out;
 }
 
 /** Guarded paths a tool's path argument names; a Grep also matches a directory holding one. */
 export function pathMentions(path: string, cwd: string | null, ctx: ClassifyContext, list: GuardedList, contains: boolean): Mention[] {
-  const scan: Scan = { dir: cwd, ctx, list, contains };
+  const scan: Scan = { dir: cwd, ctx, list, contains, unplaced: false };
   return at(uniqueById(toAbsolute(path, cwd, ctx.home).map((p) => matchLiteralOrLink(p, scan))), "arg");
 }
 
@@ -66,23 +75,36 @@ function redirectMentions(name: string | null, r: RedirectToken, scan: Scan): Me
     if (shell) return [];
     return at(wordMentions(r.target.value, scan), interpreter ? "inline" : "here-string");
   }
-  return at(wordMentions(r.target.value, scan), INPUT_OPS.has(r.op) ? "redirect-in" : "redirect-out");
+  return at(wordMentions(r.target.value, scan, r.target), INPUT_OPS.has(r.op) ? "redirect-in" : "redirect-out");
 }
 
 function at(found: Found[], site: Site): Mention[] {
   return found.map((m) => ({ ...m, site, word: null }));
 }
 
-/** Mentions in one word: the word as a path, an `--opt=value` value, and paths embedded in its text. */
-function wordMentions(raw: string, scan: Scan): Found[] {
+/** Mentions in one word: the word as a path, each path a brace list in it names, an `--opt=value` value, and paths embedded in its text. */
+function wordMentions(raw: string, scan: Scan, word?: WordToken): Found[] {
   const value = raw.replace(FILE_URL_RE, "");
   if (value === "" || REMOTE_URL_RE.test(value)) return [];
   const candidates = new Set<string>();
-  if (!value.startsWith("-")) for (const p of toAbsolute(value, scan.dir, scan.ctx.home)) candidates.add(p);
   const eq = /^--[\w-]+=(.+)$/.exec(value);
-  if (eq) for (const p of toAbsolute(eq[1] as string, scan.dir, scan.ctx.home)) candidates.add(p);
-  const found = [...candidates].map((p) => matchPath(p, scan));
+  const paths = [...(value.startsWith("-") ? [] : [value]), ...(eq ? [eq[1] as string] : [])].flatMap(braceExpansions);
+  for (const path of paths) for (const p of toAbsolute(path, scan.dir, scan.ctx.home)) candidates.add(p);
+  const found = [...[...candidates].map((p) => matchPath(p, scan)), ...unplacedMentions(paths, scan, word)];
   return withBasenames(found, value, scan);
+}
+
+/** With no known base, a relative path may sit under any directory, a guarded one included; so may what follows an expansion. */
+function unplacedMentions(paths: string[], scan: Scan, word: WordToken | undefined): Array<Found | null> {
+  if (!scan.unplaced) return [];
+  const tails = word?.dynamic ? [literalTail(word)] : scan.dir === null ? paths.filter((p) => !/^(?:\/|~|\$HOME|\$\{HOME\})/.test(p)) : [];
+  return tails.flatMap(braceExpansions).map((tail) => found(matchUnplaced(tail, scan.list, scan.ctx.home), "unplaced"));
+}
+
+/** The text after a word's last expansion, which is all of it the line shows. */
+function literalTail(word: WordToken): string {
+  const ends = [...word.refs.map((r) => r.end), ...(word.cuts ?? []).map((c) => c.at)];
+  return word.value.slice(Math.max(0, ...ends));
 }
 
 /** Mentions in program text: embedded absolute or home paths, then distinctive file names. */

@@ -1,9 +1,8 @@
 import type { WriteEvent } from "../event.js";
 import { commandMentions, pathMentions } from "../mentions.js";
 import type { Mention } from "../mentions.js";
-import { GUARDED_PATHS } from "../paths.js";
+import { GUARDED_PATHS, hasGlob } from "../paths.js";
 import type { SimpleCommand } from "../shell/commands.js";
-import type { WordToken } from "../shell/lexer.js";
 import { parseGit } from "../shell/git.js";
 import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
@@ -11,6 +10,8 @@ import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { consoleOwnerVerb } from "./config-store.js";
 import { copyDestination } from "./copy-destination.js";
+import { findReaches } from "./find-names.js";
+import { lnSymbolic, symlinksMade, withLinks } from "./line-links.js";
 
 /** Config reads are allowed by the table; only edits are CFG. */
 const READ_ONLY = new Set(["cat", "head", "tail", "less", "grep", "rg", "jq", "ls", "stat", "diff", "wc", "test", "[", "[["]);
@@ -26,13 +27,35 @@ const CLAUDE_CLI: Record<string, Set<string>> = {
 const GIT_CONFIG_READS = new Set(["--get", "--get-all", "--get-regexp", "-l", "--list"]);
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  const special = namedWrite(cmd, ctx);
-  const mentions = [...commandMentions(cmd, ctx, GUARDED_PATHS.config), ...copyIntoMentions(cmd, ctx)];
+  const special = namedWrite(cmd, ctx) ?? unplacedLink(cmd, ctx);
+  const mentions = [...commandMentions(cmd, ctx, GUARDED_PATHS.config, false, true), ...copyIntoMentions(cmd, ctx), ...foundMentions(cmd, ctx)];
   const actions = mentions.flatMap((m) => {
     const spelling = spellingOf(cmd, m);
     return spelling ? [classified(spelling, { pattern: m.id })] : [];
   });
   return special ? [special, ...actions] : actions;
+}
+
+/** `find <dir> -name <name> -delete` reaches a guarded file by name from a directory above it. */
+function foundMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
+  const reached = findReaches(cmd, READ_ONLY);
+  if (reached.length === 0) return [];
+  const found = { ...cmd, args: reached, env: {}, redirects: [] };
+  return commandMentions(found, ctx, GUARDED_PATHS.config, true, true).map((m) => ({ ...m, word: null }));
+}
+
+/** A link to a guarded path made somewhere only known at run time cannot be followed, so later writes through it are unseen. */
+function unplacedLink(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction | null {
+  if (cmd.name !== "ln" || !lnSymbolic(cmd.args) || symlinksMade(cmd, ctx.home) !== null) return null;
+  const linked = commandMentions({ ...cmd, redirects: [] }, ctx, GUARDED_PATHS.config, true, true)[0];
+  return linked ? classified("bash.config.cp-mv-ln", { pattern: linked.id }) : null;
+}
+
+/** Links `ln -s` made earlier on the line, which later commands write through. */
+function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
+  if (cmd.name !== "ln" || !lnSymbolic(cmd.args)) return undefined;
+  const links = symlinksMade(cmd, ctx.home);
+  return links && links.length > 0 ? withLinks(ctx, links) : undefined;
 }
 
 function spellingOf(cmd: SimpleCommand, m: Mention): SpellingId | null {
@@ -74,38 +97,17 @@ function hardLinks(cmd: SimpleCommand): boolean {
 }
 
 /**
- * Whether ln makes a symbolic link, read by position: only from the options before its first operand and before `--`,
- * as BSD ln reads them, skipping the values of `-S` and `-t`. After that, `-s` is a file name (`ln -- doc -s` hard-links
- * `doc` to `./-s`). A GNU `-s` after an operand, or one only known at run time, reads as a hard link, which only adds a deny.
+ * `cp /tmp/settings.json ~/.claude/` writes `~/.claude/settings.json`: the destination joined with each source's name.
+ * A globbed destination (`~/.claude*\/`) may be any directory it matches, so anything under one counts.
  */
-function lnSymbolic(args: readonly WordToken[]): boolean {
-  for (let i = 0, word = args[0]; word !== undefined; word = args[++i]) {
-    const { value, dynamic } = word;
-    if (dynamic || value === "--" || value === "-" || !value.startsWith("-")) return false;
-    if (value.startsWith("--")) {
-      const name = value.split("=", 1)[0] ?? value;
-      if (name.length >= 4 && "--symbolic".startsWith(name)) return true;
-      const valued = (name.length >= 4 && "--suffix".startsWith(name)) || (name.length >= 3 && "--target-directory".startsWith(name));
-      if (valued && !value.includes("=")) i++;
-      continue;
-    }
-    const valueAt = value.search(/[St]/);
-    const flags = valueAt < 0 ? value : value.slice(0, valueAt);
-    if (flags.includes("s")) return true;
-    if (valueAt === value.length - 1) i++;
-  }
-  return false;
-}
-
-/** `cp /tmp/settings.json ~/.claude/` writes `~/.claude/settings.json`: the destination joined with each source's name. */
 function copyIntoMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
   const dest = copyDestination(cmd);
   if (!dest) return [];
   const into = dest.value.replace(/^--target-directory=/, "").replace(/\/+$/, "");
   const sources = cmd.args.filter((a) => a !== dest && !a.value.startsWith("-"));
-  const joined = sources.map((s) => ({ ...s, value: `${into}/${basename(s.value)}` }));
+  const joined = sources.map((s) => ({ ...s, value: `${into}/${hasGlob(into) ? "**" : basename(s.value)}` }));
   const copied = { ...cmd, args: joined, env: {}, redirects: [] };
-  return commandMentions(copied, ctx, GUARDED_PATHS.config).map((m) => ({ ...m, word: null }));
+  return commandMentions(copied, ctx, GUARDED_PATHS.config, false, true).map((m) => ({ ...m, word: null }));
 }
 
 function namedWrite(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction | null {
@@ -134,4 +136,4 @@ function write(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Editing permission config, hooks or home instructions: CFG rows of the authority table. */
-export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", "titan-console"]), bash, write };
+export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", "titan-console", "find"]), bash, write, after };

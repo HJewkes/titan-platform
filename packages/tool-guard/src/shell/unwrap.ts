@@ -6,7 +6,7 @@ import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
 import { EnvSplitError } from "./unsure-readings.js";
-import { changesDir } from "./run-dir.js";
+import { runDirWord } from "./run-dir.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions, spellOption } from "./wrapper-long.js";
@@ -149,8 +149,8 @@ export interface Unwrapped {
   unsure?: WordToken[];
   /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
   argv0?: Array<string | null>;
-  /** Set when a wrapper or runner option (`env -C`, `pnpm --filter`) starts the command in a directory the line does not show. */
-  movesDir?: true;
+  /** The directory a wrapper or runner option starts the command in (`env -C d`), null when it is only known at run time (`pnpm --filter p`). */
+  runDir?: WordToken | null;
 }
 
 /**
@@ -171,7 +171,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   let negated = false;
   const argv0: Array<string | null> = [];
   let wrapped = false;
-  let movesDir = false;
+  let runDir: WordToken | null | undefined;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -184,10 +184,10 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && commandName(w.value) === "env") {
-      movesDir ||= changesDir("env", envOptions(words, i + 1));
+      runDir = movedTo(runDir, runDirWord("env", envOptions(words, i + 1)));
       const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
       if (walked === null) throw new EnvSplitError();
-      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt) };
+      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt), ...ranIn(runDir) };
       ({ words, end: i } = walked);
       wrapped = true;
       argv0.push(...walked.argv0);
@@ -198,17 +198,17 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
+      const optionsEnd = skipWrapper(words, start, spec);
+      if (optionsEnd >= 0) runDir = movedTo(runDir, runDirWord(commandName(w.value), words.slice(i + 1, optionsEnd)));
       wrapped ||= !BUILTIN_RUNNERS.has(commandName(w.value));
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) {
         const named = [...argv0Values(commandName(w.value), words.slice(start)), ...splitStringArgv0(commandName(w.value), script), ...assignedArgv0(assigned)];
-        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}) };
+        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}), ...ranIn(runDir) };
       }
-      const at = i;
-      i = skipWrapper(words, start, spec);
+      i = optionsEnd;
       if (i < 0) return null;
-      movesDir ||= changesDir(commandName(w.value), words.slice(at + 1, i));
       argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
       loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
       if (commandName(w.value) === "xargs") xargs = { ...xargsOptions(words.slice(start, i), xargs), words: words.slice(i) };
@@ -220,19 +220,29 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   const bare = cmd.name === null && !wrapped && cmd.args.length > 0 ? { runtimeHead: true as const } : {};
-  const moved = movesDir ? { movesDir: true as const } : {};
-  return { ...cmd, ...named, ...bare, ...moved, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  return { ...cmd, ...named, ...bare, ...ranIn(runDir), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
-/** env's own options from `i`, each value word skipped, up to the first assignment or command word. */
+/** env's own options from `i` with their value words, up to the first assignment or command word. */
 function envOptions(words: WordToken[], i: number): WordToken[] {
-  const out: WordToken[] = [];
+  const start = i;
   for (let w = words[i]; w?.value.startsWith("-"); w = words[i]) {
-    out.push(w);
     i += takesNextWord(w.value, ENV) ? 2 : 1;
     if (w.value === "--") break;
   }
-  return out;
+  return words.slice(start, i);
+}
+
+/** A relative directory a nested wrapper names is relative to where the outer one started it, so an unknown outer one stays unknown. */
+function movedTo(outer: WordToken | null | undefined, inner: WordToken | null | undefined): WordToken | null | undefined {
+  if (inner === undefined) return outer;
+  if (outer === undefined || inner === null) return inner;
+  if (outer === null || outer.dynamic) return null;
+  return /^(?:\/|~(?:\/|$))/.test(inner.value) ? inner : { ...inner, value: `${outer.value.replace(/\/+$/, "")}/${inner.value}` };
+}
+
+function ranIn(runDir: WordToken | null | undefined): { runDir?: WordToken | null } {
+  return runDir === undefined ? {} : { runDir };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

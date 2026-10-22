@@ -1,6 +1,7 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import type { WordToken } from "../shell/lexer.js";
 import { resolveValue } from "../shell/path.js";
+import { argDir } from "../shell/run-dir.js";
 import type { ClassifyContext } from "../types.js";
 
 /** The console's own CLI script, run from a checkout or an installed package rather than through its bin. */
@@ -26,7 +27,7 @@ const VALUED = new Set(["-C", "--conditions", "--env-file", "--input-type", "--t
  * also read, since an option this parser does not know may have taken one of them.
  */
 export function runnerReadings(cmd: SimpleCommand, ctx: ClassifyContext): WordToken[][] {
-  const dir = cmd.movesDir ? null : cmd.dir;
+  const dir = argDir(cmd);
   const isConsole = (value: string) => isConsoleScript(value, dir, ctx);
   const readings = cmd.args.flatMap((a, i) => (!a.dynamic && isConsole(a.value) ? [cmd.args.slice(i + 1)] : []));
   const { loaded, rest } = optionRun(cmd.args, isConsole);

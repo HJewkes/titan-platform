@@ -194,6 +194,94 @@ describe("an agent session minting or resetting the owner's console login", () =
   });
 });
 
+describe("a write whose subject is only resolved indirectly", () => {
+  it.each([
+    ["env -C then sh -c", `env -C ~/.config/titan-coordinator sh -c 'echo "{}" > coordinator.json'`],
+    ["env --chdir= then bash -c", `env --chdir=/home/you/.config/titan-coordinator bash -c 'echo "{}" > coordinator.json'`],
+    ["env -C then tee", "env -C ~/.config/titan-coordinator tee coordinator.json < /tmp/new.json"],
+    ["env -C then sed -i", "env -C ~/.config/titan-coordinator sed -i s/6/60/ coordinator.json"],
+    ["env -C then cp", "env -C ~/.config/titan-coordinator cp /tmp/new.json coordinator.json"],
+    ["env -C then rm of the revision log", "env -C ~/.local/state/titan-console rm -rf config"],
+    ["sudo -D then sh -c", `sudo -D ~/.config/titan-coordinator sh -c 'echo "{}" > coordinator.json'`],
+    ["pnpm -C exec sh -c", `pnpm -C ~/.config/titan-coordinator exec sh -c 'echo "{}" > coordinator.json'`],
+    ["env -C to a dir only known at run time", `env -C "$D" sh -c 'echo x > coordinator.json'`],
+    ["cd to a dir only known at run time", `cd "$D" && echo '{}' > coordinator.json`],
+    ["cd to an unknown dir, the Claude settings", `cd "$D" && echo '{}' > settings.json`],
+    ["a path after a command substitution", `echo '{}' > "$(echo ~)/.config/titan-coordinator/coordinator.json"`],
+    ["the env -C dir of the Claude settings", "env -C ~/.claude sh -c 'echo {} > settings.json'"],
+  ])("refuses %s (finding 1)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a dir link then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2 && echo '{}' > ~/tc2/coordinator.json"],
+    ["a file link then a redirect", "ln -s ~/.config/titan-coordinator/coordinator.json ~/v2.json && echo '{}' > ~/v2.json"],
+    ["a dir link; then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2; echo '{}' > ~/tc2/coordinator.json"],
+    ["a dir link then sed -i", "ln -s ~/.config/titan-coordinator ~/tc2 && sed -i s/6/60/ ~/tc2/coordinator.json"],
+    ["a dir link; then cp", "ln -s ~/.config/titan-coordinator ~/tc2; cp /tmp/new.json ~/tc2/coordinator.json"],
+    ["a state dir link then the LAN secret", "ln -s ~/.local/state/titan-console ~/cs && echo new > ~/cs/lan.token"],
+    ["a link to the Claude dir then its settings", "ln -s ~/.claude ~/cl && echo '{}' > ~/cl/settings.json"],
+    ["a link into a directory, then a cd through it", "ln -s ~/.config/titan-coordinator ~/links/ && cd ~/links/titan-coordinator && echo x > coordinator.json"],
+    ["a link at a path only known at run time", `ln -s ~/.config/titan-coordinator "$L"`],
+  ])("refuses %s (finding 2)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "$C login-link",
+    '"$C" login-link',
+    "${C} login-link",
+    "$C token rotate",
+    "$C config import ./autonomy",
+    "$(echo titan-console) login-link",
+    "node $PWD/apps/console/dist/cli.js login-link",
+    'node "$(pwd)/apps/console/dist/cli.js" login-link',
+    "S=$PWD/apps/console/dist/cli.js; node $S login-link",
+    "node $(ls apps/console/dist/cli.js) login-link",
+    "cd apps/console && node $PWD/dist/cli.js login-link",
+    "node $X login-link",
+    "node $X token rotate",
+    "tsx $X login-link",
+  ])("refuses %s, an unknown program given an owner verb (finding 3)", async (command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a brace list under the state dir", "rm -rf ~/.local/state/titan-console/{lan.token,config}"],
+    ["a brace list under the Claude dir", "rm -rf ~/.claude/{settings.json,x}"],
+    ["a globbed destination directory", "cp /tmp/new.json ~/.config/titan-coordi*/"],
+  ])("refuses %s (finding 4)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["find -delete by name from a parent", "find ~/.local/state -name lan.token -delete"],
+    ["find -exec cp by name from a parent", "find ~/.config -name coordinator.json -exec cp /tmp/new.json {} \\;"],
+    ["find -exec sh -c by name from a parent", `find ~/.config -name coordinator.json -exec sh -c 'echo {} > "$1"' _ {} \\;`],
+    ["find -delete by name from home", "find ~ -name settings.json -delete"],
+  ])("refuses %s (finding 5)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "ln -s ~/.config/titan-coordinator ~/tc2 && cat ~/tc2/coordinator.json",
+    `cd "$D" && echo x > notes.md`,
+    'echo x > "$OUT/report.txt"',
+    "node $S build",
+    '"$EDITOR" README.md',
+    "find . -name '*.tmp' -delete",
+    "find ~/.config -name coordinator.json",
+    "find ~/.config -name coordinator.json -exec cat {} \\;",
+    "env -C /tmp sh -c 'echo x > coordinator.json'",
+    "env -C ~/.config/titan-coordinator cat coordinator.json",
+    "cd ~/.config/titan-coordinator && env -C /tmp sh -c 'echo x > coordinator.json'",
+    "rm -rf {a,b}/dist",
+    "cp x.json /tmp/out*/",
+  ])("still passes %s", async (command) => {
+    expect(await bash(command)).toEqual(PASSES);
+  });
+});
+
 describe("what keeps passing", () => {
   it.each([
     `cat ${DOC}`,

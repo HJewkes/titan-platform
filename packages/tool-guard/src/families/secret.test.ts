@@ -153,7 +153,7 @@ describe("one fixture per bash.secret spelling", () => {
   });
 
   it("bash.secret.link-then-read: a link created and read in one command", () => {
-    expect(spellings(bash("ln -s ~/.npmrc /tmp/y && cat /tmp/y"))).toEqual(["bash.secret.link-then-read"]);
+    expect(spellings(bash("ln -s ~/.npmrc /tmp/y && cat /tmp/y"))).toEqual(["bash.secret.link-then-read", "bash.secret.symlink"]);
   });
 });
 
