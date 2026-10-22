@@ -35,6 +35,8 @@ export interface Policy {
   gates?: string[];
   violations?: string[];
   mechanisms: Record<string, Mechanism>;
+  /** What each eval run, micro run and implement reports spending; 0 when absent. */
+  usd?: { eval?: number; micro?: number; implement?: number };
 }
 
 /** A synthetic target repo: a bare `origin` and one checkout that serves as the integration tree. */
@@ -238,7 +240,7 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       }
       await git(tree, "add", "--all");
       await git(tree, "commit", "--quiet", "-m", `apply ${idea.mechanism}`);
-      return { head: await git(tree, "rev-parse", "HEAD"), usd: 0, lesson: `${idea.mechanism} applied`, ...implementerOf(input) };
+      return { head: await git(tree, "rev-parse", "HEAD"), usd: policy.usd?.implement ?? 0, lesson: `${idea.mechanism} applied`, ...implementerOf(input) };
     },
     async releaseTree({ tree }: { tree: string }) {
       calls.released.push(tree);

@@ -26,7 +26,7 @@ process.stdout.write(JSON.stringify({
   metrics,
   gates: Object.fromEntries((policy.gates ?? []).map((name) => [name, true])),
   violations: Object.fromEntries((policy.violations ?? []).map((name) => [name, sum("violations", name)])),
-  usd: 0,
+  usd: policy.usd?.eval ?? 0,
   wall_s: 0,
   artifact_dir: `${tree}/.artifacts/${key}`,
 }));

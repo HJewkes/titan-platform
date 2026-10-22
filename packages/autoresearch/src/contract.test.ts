@@ -20,8 +20,10 @@ import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
 import { AUTORESEARCH_WORKFLOW, forkPlan } from "./workflow.js";
 
 const CC = "cc_total_delta_pct";
+/** Binary fractions, so a sum of runs compares exactly. */
 const POLICY: Policy = {
   ...FIXTURE_POLICY,
+  usd: { eval: 0.25, micro: 0.125, implement: 0.5 },
   mechanisms: {
     better: { metrics: { [CC]: -3 } },
     "in-band-loses": { metrics: { [CC]: -0.8 }, by_key: { c2: { metrics: { [CC]: 1 } } } },
@@ -104,6 +106,14 @@ describe("eval keys and the σ pairs they feed", () => {
     const { repo, outcomes } = await loop([ideas("flat")], CONFIG, { target: lockingTarget() });
 
     expect(outcomes.get(id("flat"))!.against).toEqual({ case: "t-alpha", head: repo.pin, bandWidth: expect.any(Number), sigma: expect.any(Number), pairs: 4, locked: true });
+  });
+
+  it("records the band the keep rule used, bandSigmas times the locked σ, not σ itself", async () => {
+    const { outcomes } = await loop([ideas("flat")], CONFIG, { target: lockingTarget() });
+
+    const { bandWidth, sigma } = outcomes.get(id("flat"))!.against!;
+    expect(sigma).toBeGreaterThan(0);
+    expect(bandWidth).toBeCloseTo(FIXTURE_TARGET.metric.noise.bandSigmas * sigma, 12);
   });
 });
 
@@ -203,7 +213,9 @@ describe("what each step receives and each round records", () => {
       fork: "explore",
       l0: { ok: true, checks: expect.arrayContaining([{ name: "frozen-touch", ok: true }]) },
       micro: { rung: "L1-replay", predicted_direction_met: true },
-      usage: { implementUsd: 0, evalUsd: 0, microUsd: 0 },
+      usage: { implementUsd: 0.5, evalUsd: 0.75, microUsd: 0.125 },
     });
+    const kept = outcomes.get(id("better"))!;
+    expect(kept.usage!.evalUsd).toBe(kept.runs.reduce((sum, run) => sum + run.usd, 0));
   });
 });
