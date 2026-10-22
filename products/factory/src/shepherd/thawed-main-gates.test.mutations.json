@@ -1,0 +1,61 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sweep closes a gate whose episode is still frozen",
+      "file": "products/factory/src/shepherd/thawed-main-gates.ts",
+      "find": "|| freezes.live(repo, episode)) continue;",
+      "replace": ") continue;",
+      "kills": [
+        "a main gate on a merged PR once its freeze episode thawed > keeps the gate while the episode it asked about is still frozen"
+      ]
+    },
+    {
+      "name": "the sweep writes no gate-cancel event",
+      "file": "products/factory/src/shepherd/thawed-main-gates.ts",
+      "find": "if (!dryRun) services.store.get().recordGateCancel(runId, reason, new Date(services.now?.() ?? Date.now()).toISOString());",
+      "replace": "",
+      "kills": [
+        "a main gate on a merged PR once its freeze episode thawed > cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed > cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
+      ]
+    },
+    {
+      "name": "a dry run cancels the gate",
+      "file": "products/factory/src/shepherd/thawed-main-gates.ts",
+      "find": "if (!dryRun && !cancelUnlessSettled(",
+      "replace": "if (!cancelUnlessSettled(",
+      "kills": [
+        "a main gate on a merged PR once its freeze episode thawed > a dry run lists the gate it would cancel and cancels nothing"
+      ]
+    },
+    {
+      "name": "resync never runs the sweep",
+      "file": "products/factory/src/shepherd/resync.ts",
+      "find": "report.closedMainGates = closeThawedMainGates(host, services, { dryRun });",
+      "replace": "report.closedMainGates = [];",
+      "kills": [
+        "a main gate on a merged PR once its freeze episode thawed > cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed > cancels an earlier episode's main-frozen gate once a later red froze the repo again, and leaves the new freeze"
+      ]
+    },
+    {
+      "name": "the run fails on the sweep's own cancel",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "if (reason.startsWith(EPISODE_THAWED)) return;",
+      "replace": "",
+      "kills": [
+        "a main gate on a merged PR once its freeze episode thawed > cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
+      ]
+    },
+    {
+      "name": "the run takes any cancel as a thaw",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "if (reason.startsWith(EPISODE_THAWED)) return;",
+      "replace": "return;",
+      "kills": [
+        "a main gate cancelled for another reason > still fails the run, and records no gate-cancel event"
+      ]
+    }
+  ]
+}

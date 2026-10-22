@@ -1,10 +1,12 @@
 import { tmpdir } from "node:os";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
+import { appendEvent, eventsSince, gateCancelKindMigration, reclassMarkMigration, shepherdEventMigration, widenEventKinds } from "./events.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -121,5 +123,33 @@ describe("a main gate on a merged PR once its freeze episode thawed", () => {
     expect(report.closedMainGates).toEqual([{ runId, gateId: gateId(runId, "main-frozen"), episode: 1 }]);
     expect(w.host.gates.get(gateId(runId, "main-frozen"))?.status).toBe("pending");
     expect(gateCancels(w, runId)).toEqual([]);
+  });
+});
+
+describe("a main gate cancelled for another reason", () => {
+  it("still fails the run, and records no gate-cancel event", async () => {
+    const w = redMainWorld();
+    const runId = await mergedOnto(w, OWNER_GATE_POLICY, "main-frozen");
+
+    w.host.gates.cancel(gateId(runId, "main-frozen"), "abandoned by hand");
+    await w.host.runtime.wait(runId).catch(() => undefined);
+
+    expect(w.host.runtime.status(runId)!.status).toBe("failed");
+    expect(stepIds(w, runId)).not.toContain("sh-cleanup");
+    expect(gateCancels(w, runId)).toEqual([]);
+  });
+});
+
+describe("gateCancelKindMigration", () => {
+  it("keeps every earlier event row and takes the gate-cancel kind", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdEventMigration(16), reclassMarkMigration(25), { version: 31, name: "repair-stop kinds", up: widenEventKinds }]);
+    appendEvent(db, { repo: REPO, kind: "repair-go", at: "2026-01-01T00:00:00.000Z" });
+
+    runMigrations(db, [gateCancelKindMigration(38)]);
+    appendEvent(db, { runId: "run-1", repo: REPO, pr: 1, kind: "gate-cancel", reason: "thawed: test", at: "2026-01-02T00:00:00.000Z" });
+
+    expect(eventsSince(db).map((event) => event.kind)).toEqual(["repair-go", "gate-cancel"]);
+    db.close();
   });
 });

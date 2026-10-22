@@ -182,10 +182,10 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   const ended = await phase("ended", () => endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed }));
   const orphans = orphanGates(host);
   if (!dryRun) for (const gateId of orphans) cancelUnlessSettled(host.gates, gateId, ORPHANED);
-  const closedMainGates = closeThawedMainGates(host, services, { dryRun });
   const { reverted, errors: revertErrors } = await phase("reverts", () => markRevertedRuns(host, services, { dryRun }));
-  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, closedMainGates, superseded: [], supersededReviews: [], supersededMerges: [], reverted, revertErrors, phaseMs };
+  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, closedMainGates: [], superseded: [], supersededReviews: [], supersededMerges: [], reverted, revertErrors, phaseMs };
   try {
+    report.closedMainGates = closeThawedMainGates(host, services, { dryRun });
     await phase("superseded", async () => {
       report.superseded = await supersedeMovedGates(host, services, { dryRun });
       report.superseded.push(...(await supersedeTransientGates(host, services, { dryRun })));
