@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const SHIP_RENDER_FILES = ["rounds-ship.test.tsx", "rounds-ship-tabs.test.tsx", "rounds-ship-prs.test.tsx"];
 const MIN_TIMEOUT_MS = 30_000;
 
-const source = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
+const source = (file: string): string => readFileSync(fileURLToPath(new URL(`../src/${file}`, import.meta.url)), "utf8");
 const describeLines = (text: string): string[] => text.split("\n").filter((line) => line.startsWith("describe("));
 
 describe("Ship round tests that render the whole App", () => {
