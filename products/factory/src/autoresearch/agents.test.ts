@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Idea, ImplementRequest } from "@titan-design/autoresearch";
 import { parseLimits } from "@titan-design/agent-dispatch/limits";
+import { priceRequest } from "@titan-design/session-analytics";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
 import { loadWaitPort } from "./load-wait.js";
@@ -51,7 +52,7 @@ function assistantLine(requestId: string, text: string, cache: { read: number; w
   const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: cache.read, cache_creation_input_tokens: cache.w5m + cache.w1h,
     cache_creation: { ephemeral_5m_input_tokens: cache.w5m, ephemeral_1h_input_tokens: cache.w1h } };
   return JSON.stringify({ type: "assistant", sessionId: "s", cwd: dir, timestamp: "2026-10-21T00:00:00Z", requestId,
-    message: { role: "assistant", id: `m-${requestId}`, model: "claude-opus-4-1", usage, content: [{ type: "text", text }] } });
+    message: { role: "assistant", id: `m-${requestId}`, model: "claude-sonnet-5-5", usage, content: [{ type: "text", text }] } });
 }
 
 const final = (requestId: string, body: string, cache = { read: 0, w5m: 0, w1h: 0 }) => assistantLine(requestId, "Done.\n```json\n" + body + "\n```", cache);
@@ -170,7 +171,10 @@ describe("implementers", () => {
     const built = await p.implement(request(tree, "i-aaa"), signal);
 
     expect(built.usage).toMatchObject({ cacheReadTokens: 300, cacheWrite5mTokens: 30, cacheWrite1hTokens: 3 });
-    expect(built.usd).toBe(built.usage?.usd);
+    const priced = (cache: typeof first) => priceRequest({ inputTokens: 10, outputTokens: 5, cacheReadTokens: cache.read, cacheCreation5mTokens: cache.w5m, cacheCreation1hTokens: cache.w1h }, "claude-sonnet-5-5", "2026-10-21T00:00:00Z").costUsd;
+    expect(built.usd).toBeGreaterThan(0);
+    expect(built.usd).toBeCloseTo(priced(first) + priced(last), 12);
+    expect(built.usage?.usd).toBe(built.usd);
   });
 
   it("refuse before any spawn when the limits close the pool", async () => {
