@@ -20,7 +20,9 @@
  * A round may carry a static Storybook build (TP-3793): `storybook/storybook.json`, a storybook@1 sidecar, and the
  * files it lists under `storybook/static/`. The build is copied once into the console's store by its content id
  * (`storybook-store.ts`), every file sha256-checked, before the round itself is written, and the sidecar is copied
- * beside round.json; a round imported again with a different sidecar is refused.
+ * beside round.json; a round imported again with a different sidecar is refused. A multi-PR round carries a
+ * storybook-set@1 sidecar instead, with each build's files under `storybook/builds/<sha>/`; every build must be one
+ * PR group's head, and each is stored the same way.
  */
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, open, rename, rm, type FileHandle } from "node:fs/promises";
@@ -33,8 +35,8 @@ import { mergeBindingProblems } from "./round-merge-binding.js";
 import { roundRuleRefusal } from "./round-rules.js";
 import { shipPackageProblems } from "./round-ship-package.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, parseFeedback, parseManifest, readCapped } from "./rounds.js";
-import { STORYBOOK_DIR, STORYBOOK_FILE } from "./storybook-build.js";
-import { readSourceBuild, storeBuild, type SourceBuild } from "./storybook-store.js";
+import { STORYBOOK_DIR, STORYBOOK_FILE, buildSetProblems } from "./storybook-build.js";
+import { readSourceStorybook, storeBuild, type SourceStorybook } from "./storybook-store.js";
 
 const MAX_FRAMES = 1000;
 const FRAMES_DIR = "frames";
@@ -69,7 +71,7 @@ interface SourceRound {
   /** `packet.json` and `prose.json` when frames.json names them, keyed by file name. */
   sidecars: Map<string, Buffer>;
   feedback: Buffer | null;
-  storybook: SourceBuild | null;
+  storybook: SourceStorybook | null;
 }
 
 type FramesIndex = z.infer<typeof FramesIndexSchema>;
@@ -224,7 +226,9 @@ async function readSource(dir: string): Promise<SourceRound> {
   if (broken !== null) refuse(broken);
   const frames = read ? await readFrameList(dir, read.index, binding) : new Map<string, ListedFile>();
   const sidecars = await readSidecars(dir, read?.index, questions.flatMap((question) => ("merge" in question && question.merge ? [question.merge] : [])));
-  const storybook = await readSourceBuild(dir);
+  const storybook = await readSourceStorybook(dir);
+  const misfit = storybook?.set ? buildSetProblems(parsed.manifest, storybook.builds) : [];
+  if (misfit.length > 0) refuse(`${STORYBOOK_PATH}: ${misfit.join("; ")}`);
   return { dir, id, round, roundBytes, index: read?.bytes ?? null, frames, sidecars, feedback: await readFeedbackFor(dir, binding), storybook };
 }
 
@@ -299,8 +303,7 @@ async function writeFrames(source: SourceRound, target: string): Promise<void> {
 async function storeSourceBuild(source: SourceRound, storybooksDir: string | undefined): Promise<void> {
   if (source.storybook === null) return;
   const store = storybooksDir ?? refuse("the round carries a Storybook build but this console has no store for it");
-  const { build, buildId, staticDir } = source.storybook;
-  await storeBuild({ storybooksDir: path.resolve(store), staticDir, build, buildId });
+  for (const { build, buildId, staticDir } of source.storybook.builds) await storeBuild({ storybooksDir: path.resolve(store), staticDir, build, buildId });
 }
 
 /** Null when another import renamed its own round into place first. */
