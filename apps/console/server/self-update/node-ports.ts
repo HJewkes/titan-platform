@@ -63,10 +63,13 @@ function sparePort(): Promise<number> {
   });
 }
 
-/** Only the port and a scratch state dir: no LAN listener, no owner writes, no pid file shared with the served console. */
-function smokeEnv(port: number, stateDir: string): NodeJS.ProcessEnv {
+/**
+ * Only the port and a scratch state dir: no LAN listener, no owner writes, no pid file shared with the served console.
+ * The story origin is off: its default port is the served console's, and a bind failure stops the smoke build before /health.
+ */
+export function smokeEnv(port: number, stateDir: string): NodeJS.ProcessEnv {
   const kept = Object.entries(process.env).filter(([key]) => !key.startsWith("TITAN_CONSOLE_"));
-  return { ...Object.fromEntries(kept), TITAN_CONSOLE_PORT: String(port), TITAN_CONSOLE_STATE: stateDir };
+  return { ...Object.fromEntries(kept), TITAN_CONSOLE_PORT: String(port), TITAN_CONSOLE_STORY_PORT: "0", TITAN_CONSOLE_STATE: stateDir };
 }
 
 async function pageAnswers(port: number): Promise<boolean> {
