@@ -8,7 +8,7 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, ImplementRequest, MicroRequest, RatchetRequest, RoundRecord } from "../ports.js";
+import type { ArPorts, ImplementRequest, MicroRequest, RatchetRequest, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
@@ -182,7 +182,12 @@ interface FakeCalls {
   ratchet: RatchetRequest[];
   released: string[];
   archives: { round: number; record: RoundRecord }[];
+  /** The run pin every evaluator step named, by step. */
+  runPins: { step: "eval" | "l0" | "l1" | "ratchet"; runPin: RunPin }[];
 }
+
+const FIXTURE_FROZEN_HASH = "f".repeat(64);
+const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, frozenHash });
 
 export interface FakeOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
@@ -251,7 +256,8 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
 
 function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, string>, target: Target, options: FakeOptions) {
   return {
-    async staticCheck({ idea, tree, base, head }: { idea: Idea; tree: string; base: string; head: string }) {
+    async staticCheck({ idea, tree, base, head, ...runPin }: RunPin & { idea: Idea; tree: string; base: string; head: string }) {
+      calls.runPins.push({ step: "l0", runPin: runPinIn(runPin) });
       const text = await git(tree, "diff", "--no-color", "--unified=0", "-M", base, head, "--", ".", ":(exclude)applied.txt");
       const bounds = options.bounds ?? FIXTURE_BOUNDS;
       const checked = postCheck({ idea, diff: parseUnifiedDiff(text), bounds, frozen: target.frozen, caseNames: options.caseNames ?? [] });
@@ -261,11 +267,13 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       const { idea, tree, rung } = input;
       calls.micro.push(idea.id);
       calls.microInputs.push(input);
+      calls.runPins.push({ step: "l1", runPin: runPinIn(input) });
       return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung]));
     },
-    async evalCase({ tree, case: testCase, key }: { tree: string; case: string; key: string }) {
+    async evalCase({ tree, case: testCase, key, ...runPin }: RunPin & { tree: string; case: string; key: string }) {
       const ideaId = ideaOfTree.get(tree) ?? null;
       calls.evals.push({ ideaId, key });
+      calls.runPins.push({ step: "eval", runPin: runPinIn(runPin) });
       await options.beforeEval?.(ideaId, key);
       return ArResultSchema.parse(await script("fake_eval.sh", [repo.policyPath, tree, testCase, key]));
     },
@@ -291,7 +299,7 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [], runPins: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   return {
@@ -300,14 +308,16 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
     async pin({ runId, pin }) {
       const ratchetRef = `refs/heads/${target.ratchetPrefix}/${runId}`;
       await git(repo.work, "push", "--quiet", "origin", `${pin}:${ratchetRef}`);
-      return { pin, ratchetRef, ratchetHead: pin, integrationTree: repo.work, target, bounds: options.bounds ?? FIXTURE_BOUNDS };
+      return { pin, ratchetRef, ratchetHead: pin, integrationTree: repo.work, target, bounds: options.bounds ?? FIXTURE_BOUNDS, frozenHash: FIXTURE_FROZEN_HASH };
     },
     async plan(input) {
       calls.plans.push(input);
-      return options.planner(input);
+      const agent = `planner-${input.runId}`;
+      return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     async ratchet(input) {
       calls.ratchet.push(input);
+      calls.runPins.push({ step: "ratchet", runPin: runPinIn(input) });
       return (options.ratchet ?? pushRatchet)(input);
     },
     ...recordPorts(repo, calls),

@@ -1,12 +1,14 @@
 export { AUTORESEARCH_WORKFLOW, runAutoresearch } from "./workflow.js";
 export { AUTORESEARCH_STEPS, arStepId, type ArDispatchStep, type ArStepDeclaration } from "./manifest.js";
-export { arStepHandlers, type ArStepHandler } from "./handlers.js";
+export { arStepHandlers, type ArStepHandler, type StepTiming } from "./handlers.js";
 export {
   ArchivedSchema,
   HeadSchema,
   ImplementedSchema,
   LoadWaitSchema,
   PinnedSchema,
+  PlannedSchema,
+  PlannerSchema,
   ReleasedSchema,
   StaticCheckSchema,
   TreeSchema,
@@ -15,9 +17,11 @@ export {
   type ImplementRequest,
   type MicroRequest,
   type Pinned,
+  type Planner,
   type PlanMode,
   type RatchetRequest,
   type RoundRecord,
+  type RunPin,
 } from "./ports.js";
 export {
   ArMicroSchema,
