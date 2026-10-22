@@ -5,7 +5,7 @@
 // `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
 // and proposes ones the decisions file cites as answered, `rounds subscribe` tells a seat of answers,
 // `storybooks gc` sweeps the Storybook store, `config import` / `config compare-tree` run the coordinator config
-// store's shadow steps, and `self-update` (run by a systemd timer) rebuilds and swaps in the served console.
+// store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";

@@ -1,6 +1,8 @@
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 
-export type FailureStage = "build" | "smoke" | "restart" | "rollback";
+/** `build` and `handoff` are recorded by the bootstrap (deploy/titan-console-bootstrap.mts), the rest by the updater. */
+export const FAILURE_STAGES = ["build", "handoff", "smoke", "restart", "rollback"] as const;
+export type FailureStage = (typeof FAILURE_STAGES)[number];
 
 interface UpdateFailure {
   stage: FailureStage;
@@ -23,6 +25,7 @@ const short = (sha: string): string => sha.slice(0, 7);
 function lead(failure: UpdateFailure): string {
   if (failure.stage === "rollback") return `ALERT: the console update to ${short(failure.target)} failed and the rollback to ${short(failure.serving)} did not answer /health; the console may be down.`;
   if (failure.stage === "restart") return `The console update to ${short(failure.target)} did not answer /health after its restart, so ${short(failure.serving)} was put back.`;
+  if (failure.stage === "handoff") return `The console update to ${short(failure.target)} built, but its own updater stopped without recording an outcome; check which build serves.`;
   return `The console update to ${short(failure.target)} failed its ${failure.stage}; ${short(failure.serving)} keeps serving.`;
 }
 
