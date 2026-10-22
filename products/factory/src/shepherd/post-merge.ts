@@ -90,7 +90,7 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
-    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha });
+    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail, demotions);
