@@ -69,7 +69,14 @@ export interface LiveViewedEntry {
   builds?: Record<string, string | null>;
 }
 
+export interface DecisionEntry {
+  item: DecisionItem;
+  answer: DecisionAnswer;
+}
+
 export interface RoundDecisionLog extends DecisionLog {
+  /** One result per entry, in order, from a single human-only read shared by the batch (TP-4001). */
+  recordAll(entries: readonly DecisionEntry[]): Promise<DecisionLogResult[]>;
   recordLiveViewed(entry: LiveViewedEntry): Promise<"written" | "failed">;
 }
 
@@ -252,16 +259,29 @@ function withReason(result: Omit<DecisionLogResult, "reason">, reason: Reason | 
   return reason === null ? result : { ...result, reason };
 }
 
+/** The first call reads; later calls share its promise, a rejection included, which each caller still reads as unknown. */
+function readOnce(humanOnly: DecisionLogOptions["humanOnly"]): DecisionLogOptions["humanOnly"] {
+  let read: Promise<HumanOnly> | undefined;
+  return () => (read ??= humanOnly());
+}
+
 export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = localDate, logger }: DecisionLogOptions): RoundDecisionLog {
   const writer: Writer = { ledgerFile: path.join(stateDir, ANSWERS_FILE), decisionsFile, today, ...(logger ? { logger } : {}) };
   const serialize = serializer();
-  const record = async (item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> => {
-    const excluded = await exclusionReason(item, answer, humanOnly).catch((): Reason => "human-only unknown");
+  const recordWith = (known: DecisionLogOptions["humanOnly"]) => async (item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> => {
+    const excluded = await exclusionReason(item, answer, known).catch((): Reason => "human-only unknown");
     if (excluded !== null) return { ledger: "excluded", decisions: "excluded", reason: excluded };
     return serialize(() => writeAnswer(writer, item, answer)).catch((error: unknown) => {
       logger?.warn({ error }, "decision log: record failed");
       return { ledger: "failed" as const, decisions: "failed" as const, reason: "ledger write failed" as const };
     });
+  };
+  const record = recordWith(humanOnly);
+  const recordAll = async (entries: readonly DecisionEntry[]): Promise<DecisionLogResult[]> => {
+    const recordInBatch = recordWith(readOnce(humanOnly));
+    const results: DecisionLogResult[] = [];
+    for (const { item, answer } of entries) results.push(await recordInBatch(item, answer));
+    return results;
   };
   const liveViewedFile = path.join(stateDir, LIVE_VIEWED_FILE);
   const recordLiveViewed = (entry: LiveViewedEntry): Promise<"written" | "failed"> =>
@@ -272,5 +292,5 @@ export function createDecisionLog({ stateDir, decisionsFile, humanOnly, today = 
         return "failed" as const;
       },
     );
-  return { record, recordLiveViewed };
+  return { record, recordAll, recordLiveViewed };
 }
