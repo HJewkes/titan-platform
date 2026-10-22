@@ -34,7 +34,7 @@ function start(world: LandScenario): { host: FactoryHost; runId: string } {
 }
 
 function stepData(host: FactoryHost, runId: string, stepId: string): { result?: Record<string, unknown> } | undefined {
-  return Object.values(host.runtime.status(runId)!.stepResults).find((step) => step.stepId === stepId)?.data as { result?: Record<string, unknown> } | undefined;
+  return Object.values(host.runtime.status(runId)!.stepResults).find((step) => step.stepId === stepId)?.data;
 }
 
 describe("ci-wait on a check whose workflow run completed while the check stayed open", () => {
