@@ -2,6 +2,24 @@
   "v": 1,
   "mutations": [
     {
+      "name": "register records no registrant",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "  const registrant = io.env.AGENT_CHAT_NAME || undefined;",
+      "replace": "  const registrant = undefined;",
+      "kills": [
+        "shepherd register with only a target records the agent-chat session that ran it as the run's registrant, so the run's notices follow that session"
+      ]
+    },
+    {
+      "name": "a registrant is always taken for the implementer",
+      "file": "products/factory/src/shepherd/registration-facts.ts",
+      "find": "registrant === implementer ? 1 : 0",
+      "replace": "1",
+      "kills": [
+        "shepherd register with only a target records the agent-chat session that ran it as the run's registrant, so the run's notices follow that session"
+      ]
+    },
+    {
       "name": "the serve verb drops the config deprecation log",
       "file": "products/factory/src/cli-host-verbs.ts",
       "find": "for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);",

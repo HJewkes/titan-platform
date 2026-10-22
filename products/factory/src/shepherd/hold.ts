@@ -158,7 +158,7 @@ export interface HoldTiming {
 export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked, reheld?: TakeRehold): StepRoute {
+export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked, reheld?: TakeRehold, recheck?: TakeRecheck): StepRoute {
   const afterHold = codeRoute(route.match, timing.now ?? Date.now, async () => AFTER_HOLD);
   return {
     ...route,
@@ -166,7 +166,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
       run: async (input) => {
         let waited: boolean;
         try {
-          waited = await untilReleased({ held, headNow, reviewAsked, reheld }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          waited = await untilReleased({ held, headNow, reviewAsked, reheld, recheck }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
@@ -188,11 +188,15 @@ type ReviewAsked = (repo: RepoSlug, pr: number, sha: string) => boolean;
 /** True once after the merge guard itself re-held the PR, which no CI read of the run has seen yet. */
 export type TakeRehold = (repo: RepoSlug, pr: number) => boolean;
 
+/** True once when the run's g10 release at `sha` must be asked again, which only the run's own CI read can do. */
+export type TakeRecheck = (repo: RepoSlug, pr: number, sha: string) => boolean;
+
 interface HoldReads {
   held: HeldCheck;
   headNow: OpenHeadRead;
   reviewAsked?: ReviewAsked;
   reheld?: TakeRehold;
+  recheck?: TakeRecheck;
 }
 
 /**
@@ -200,14 +204,15 @@ interface HoldReads {
  * moved past it, so a push ends the wait too: land then reads CI and the run reviews the new head, where the same hold
  * applies. A head that cannot be read counts as not moved. A seat's ask for Shepherd's own review at `sha` ends the wait
  * with no merge too, so the run reads CI again and reviews that head. So does a re-hold the merge guard just placed: the
- * run's next CI read reports it and tells the seat.
+ * run's next CI read reports it and tells the seat. So does a g10 release due a fresh ask at `sha`: the CI read asks it.
  */
-async function untilReleased({ held, headNow, reviewAsked, reheld }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+async function untilReleased({ held, headNow, reviewAsked, reheld, recheck }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if (target.sha !== undefined && reviewAsked?.(target.repo, target.pr, target.sha)) return true;
     if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
     if (reheld?.(target.repo, target.pr)) return true;
+    if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;
     if (await movedPast(headNow, target)) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }

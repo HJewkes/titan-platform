@@ -42,6 +42,43 @@ describe("bot transport gates (TP-3431)", () => {
 
     expect(answer.gates).toEqual({ changed: false, etags: { ...CURRENT, [GATE_KEYS.rulesets]: null } });
   });
+
+  it("carries the ruleset list when it changed, for observe to diff", async () => {
+    const github = fakeBotGithub();
+    github.versions.rulesets = 2;
+
+    const answer = await botTransport(github.client)(gates(CURRENT));
+
+    expect(answer.gates).toEqual({
+      changed: true,
+      etags: { ...CURRENT, [GATE_KEYS.rulesets]: '"rulesets-2"' },
+      rulesets: { notModified: false, unreadable: false, rulesets: { 7: "2027-01-15T07:02:00Z" }, etag: '"rulesets-2"' },
+    });
+  });
+});
+
+describe("bot transport ancestry (TP-3431)", () => {
+  const ancestry: BackstopCall = { kind: "ancestry", repo: REPO, base: "c0", head: "c1" };
+
+  it("answers the guard's compare with GitHub's status", async () => {
+    const github = fakeBotGithub();
+    github.compare = "behind";
+
+    const answer = await botTransport(github.client)(ancestry);
+
+    expect(answer).toMatchObject({ status: 200, ancestry: "behind" });
+    expect(github.requests.map((sent) => sent.route)).toEqual(["compare"]);
+  });
+
+  it("answers a limited compare's status for the pool, with no ancestry", async () => {
+    const github = fakeBotGithub();
+    github.fail.set("compare", { status: 403, body: { message: "You have exceeded a secondary rate limit." }, headers: { "retry-after": "60" } });
+
+    const answer = await botTransport(github.client)(ancestry);
+
+    expect(answer).toMatchObject({ status: 403, headers: { "retry-after": "60" } });
+    expect(answer.ancestry).toBeUndefined();
+  });
 });
 
 describe("bot transport snapshot (TP-3431)", () => {

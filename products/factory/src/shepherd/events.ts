@@ -55,7 +55,7 @@ export function widenEventKinds(db: Db): void {
 export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go", "gate-cancel"] as const;
 
 /** A main gate a sweep cancelled because the freeze episode it asked about had thawed (TP-3952). */
-export function gateCancelKindMigration(version = 38): Migration {
+export function gateCancelKindMigration(version = 39): Migration {
   return { version, name: "factory:shepherd_event_gate_cancel", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
 }
 

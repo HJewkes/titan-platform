@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { adversaryRehold } from "./adversary-anchor.js";
 import { shepherdEventMigration } from "./events.js";
-import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
+import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10Recheck, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
 import type { CiSnapshot } from "../workflows/land.js";
 import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -173,18 +173,22 @@ describe("which reviewer's verdict releases", () => {
 });
 
 /** A run whose CI read green at `ciHead` and whose release step answers `result`; only the fields releaseG10Hold reads are filled. */
-function stubRun(reviews: [string, Verdict][], ciHead: string, result: object) {
+function stubRun(reviews: [string, Verdict][], ciHead: string, result: object, historyNext: () => string | undefined = () => undefined) {
   const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result } }));
-  const ctx = { runId: "run-1", iteration: () => 0, historyNext: () => undefined, dispatch } as never;
+  const ctx = { runId: "run-1", iteration: () => 0, historyNext, dispatch } as never;
   const asked = (): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
   return { dispatch, asked, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map(reviews), lastCi: { headSha: ciHead, verdict: "green" } as never } };
 }
 
-function workflowRun(reviewerProfile: string | undefined, released = true) {
+function workflowRun(reviewerProfile: string | undefined, released = true, historyNext?: () => string | undefined) {
   const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
   const merge: Verdict = { kind: "MERGE", headSha: HEAD, evidence, ...(reviewerProfile && { reviewerProfile }) };
-  return stubRun([[HEAD, merge]], HEAD, { released, head: HEAD });
+  return stubRun([[HEAD, merge]], HEAD, { released, head: HEAD }, historyNext);
 }
+
+/** The recorded release step a replay is about to read back. */
+const replaying = () => `${G10_RELEASE_STEP}:${HEAD}:0`;
+const recheck = g10Recheck(() => ({ byPr: () => ({ runId: "run-1" }) }));
 
 describe("releaseG10Hold", () => {
   it("asks for a release once for a verdict, so a re-hold at the same head waits for a newer one", async () => {
@@ -209,6 +213,30 @@ describe("releaseG10Hold", () => {
     const adversary = workflowRun("bd-reviewer");
     await releaseG10Hold(adversary.run, "g10-adversary: x");
     expect([external.dispatch, sonnet.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("the merge wait's recheck after a replayed release answer (TP-3956)", () => {
+  it("ends the wait once, at the head of a replayed ask that released nothing", async () => {
+    await releaseG10Hold(workflowRun("bd-reviewer", false, replaying).run, "g10-review: x");
+
+    expect([recheck(REPO, 1, MOVED), recheck(REPO, 1, HEAD), recheck(REPO, 1, HEAD)]).toEqual([false, true, false]);
+  });
+
+  it.each([
+    ["a live ask released nothing", false, undefined],
+    ["a replayed ask released the hold", true, replaying],
+  ])("ends no wait when %s", async (_case, released, historyNext) => {
+    await releaseG10Hold(workflowRun("bd-reviewer", released, historyNext).run, "g10-review: x");
+
+    expect(recheck(REPO, 1, HEAD)).toBe(false);
+  });
+
+  it("drops a replayed refusal once the run asks live again", async () => {
+    await releaseG10Hold(workflowRun("bd-reviewer", false, replaying).run, "g10-review: x");
+    await releaseG10Hold(workflowRun("bd-reviewer", false).run, "g10-review: x");
+
+    expect(recheck(REPO, 1, HEAD)).toBe(false);
   });
 });
 
@@ -246,7 +274,7 @@ describe("a release at a clean merge-up of the reviewed head", () => {
     const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
     const reviewed = { kind: "MERGE" as const, headSha: HEAD, evidence, reviewerProfile: "bd-reviewer" };
     const carried = { kind: "MERGE" as const, headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, ...(mark && { mergeUpFrom: mark }) };
-    const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+    const ctx = { runId: "run-1", iteration: () => 0, historyNext: () => undefined, dispatch } as never;
     return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map<string, Verdict>([[HEAD, reviewed], [MOVED, carried]]), lastCi: { headSha: MOVED, verdict: "green" } as never } };
   }
 

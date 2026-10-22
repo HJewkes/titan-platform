@@ -11,7 +11,7 @@ import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } fr
 import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
-import { writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
+import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 import type { KindMove } from "./register-kind.js";
@@ -32,9 +32,11 @@ export interface RegistrationInput extends RegistrationFactsInput {
   kind?: string;
   /** Names the slice of a multi-slice task this PR delivers; landing then notes the task instead of closing it. */
   slice?: string;
+  /** The agent-chat session that registered the run; only the first one is kept. */
+  registrant?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base"> & Partial<KindMove>;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base" | "registrant"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -47,6 +49,8 @@ export interface Registration extends RegistrationFacts {
   policy: EffectivePolicy;
   kind: TaskKind;
   slice: string | null;
+  /** The session that first registered the run, and whether it was the implementer then; null or absent when none was recorded. */
+  registrant?: { name: string; fixer: boolean } | null;
   held: boolean;
   holdReason: string | null;
   /** The reviewer a hold waits on, set only by `hold --reviewer`; never read out of the reason. */
@@ -70,7 +74,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -105,6 +109,7 @@ export class ShepherdStore implements HoldLookup {
       )
       .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
     writeRegistrationFacts(this.db, input.runId, input);
+    writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -146,6 +151,7 @@ export class ShepherdStore implements HoldLookup {
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
       writeRegistrationFacts(this.db, runId, meta);
+      writeRegistrant(this.db, runId, meta.registrant, meta.implementer);
     });
     write.immediate();
     return this.changed(runId, this.byRun(runId)!);

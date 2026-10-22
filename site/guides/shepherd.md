@@ -52,13 +52,17 @@ reviewer, kind and policy on the existing registration and returns the same run:
 run ab0f9228-… shepherd-pr owner/repo (feat/example): already registered, metadata updated; policy never
 ```
 
-A repeat starts a new run instead when the registration's run is dead: it failed, or it
-completed stopped `not-mergeable` or on a `conflict` while the pull request is still open,
-as when no agent took the conflict wake and a seat then pushed a fix. The new run starts at
-the pull request's current head, the registration and its recorded authors move to it, and
-the old run still reads. The verb prints `restarted after failed run <id>` or
-`restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
-reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
+A repeat starts a new run instead when the registration's run is dead: it failed, it
+completed stopped `not-mergeable`, on a `conflict` or `abandoned`, or it was cancelled, while
+the pull request is still open. Shepherd cancels a run only when its pull request read
+merged, closed or gone, so a cancelled run whose pull request is open again was ended on a
+read that no longer holds. The new run starts at the pull request's current head, or
+`--head`. The registration moves to it with its holds (an `owner-asked` hold included), kind
+and recorded authors, and the old run still reads. The verb prints
+`restarted after failed run <id>`, `restarted after run <id> stopped not-mergeable` or
+`restarted after run <id> stopped cancelled`. A run that merged, or stopped for any other
+reason (`closed`, `stuck-behind`, `merge-denied`), and a cancelled run whose pull request is
+closed, come back unchanged.
 
 A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
 
@@ -496,6 +500,20 @@ takes the gate's default action:
 | `ci-failed` | a red head no fixer took (a transient red still reruns first) | wait for a new head: the seat starts a fix round or a successor |
 | `sh-sent-back` | a `FIX_FIRST` or `NO_REPRO` no agent took, a spent repair budget, or a fixer exit (the exit notice above) | wait for a new head |
 | `stuck-behind` | the update budget and its retries are spent | answer `retry`: `update-branch` runs again with a fresh budget |
+
+Who receives a seat notice, an exit notice and the seat digest follows the run, not the repo
+(TP-3653). `shepherd register` records the agent-chat session that ran it (`AGENT_CHAT_NAME`),
+and only the first registrant is kept, so a restarted run or a successor's repeat registration
+still reaches it. A session that registered a PR it does not implement, such as a coordinator,
+receives them. An implementer that registered its own PR exits at turn end, so the first
+session that spawned its lineage receives them. A run with no registrant, or whose lineage
+names no session, goes to the repo's seat as before. A held run naming no seat and a
+reviewer-infrastructure notice still go to the hub seat.
+
+A registrant stands in only for a repo that has one seat. A notice lets the gate take its
+default action, and the seat book is what authorises that, so a repo that is on a deny list
+or a charter hard stop, that no seat lists, or that several seats join (`+`) sends no notice
+and no digest line, whoever registered the run, and the owner gate opens.
 
 The gate opens only when no notice was sent: no single seat owns the repo, no notice is wired,
 or the send failed. Its prompt then names why. A run tells the seat once per gate and head, and
@@ -972,6 +990,13 @@ When Shepherd's own update-branch then moves the head by a clean merge-up of mai
 with no fresh review and no seat release. A head reached by any other move, or carried by the
 remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
 seat releases it.
+
+A restart replays each recorded `sh-g10-release` answer rather than asking again. When the newest
+answer at the head being merged was no, the merge waiting on the hold ends once at its first
+poll, with no merge. Land reads CI again and the run asks `sh-g10-release` live, so a deploy that
+changed the release rule judges the run under the new rule. Every check of the rule still applies.
+If the live ask also says no, the merge waits again and asks nothing more until the next restart
+(`products/factory/src/shepherd/g10-release.ts`, TP-3956).
 
 `release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
 when the pull request is at another head, or with exit 69 when the head cannot be read: a seat

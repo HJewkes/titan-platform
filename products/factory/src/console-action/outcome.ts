@@ -9,6 +9,8 @@ export type Outcome =
   | { outcome: "already"; gateId: string }
   | { outcome: "released"; runId: string; stillHeld: string | null }
   | { outcome: "already"; runId: string }
+  /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
+  | { outcome: "accepted"; runId: string }
   | { outcome: "moved"; currentHead: string | undefined }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
@@ -39,6 +41,7 @@ export function statusOf(outcome: Outcome): Status {
   switch (outcome.outcome) {
     case "resolved":
     case "released":
+    case "accepted":
     case "already":
       return 200;
     case "moved":

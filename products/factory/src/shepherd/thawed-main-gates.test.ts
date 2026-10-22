@@ -146,7 +146,7 @@ describe("gateCancelKindMigration", () => {
     runMigrations(db, [shepherdEventMigration(16), reclassMarkMigration(25), { version: 31, name: "repair-stop kinds", up: widenEventKinds }]);
     appendEvent(db, { repo: REPO, kind: "repair-go", at: "2026-01-01T00:00:00.000Z" });
 
-    runMigrations(db, [gateCancelKindMigration(38)]);
+    runMigrations(db, [gateCancelKindMigration(39)]);
     appendEvent(db, { runId: "run-1", repo: REPO, pr: 1, kind: "gate-cancel", reason: "thawed: test", at: "2026-01-02T00:00:00.000Z" });
 
     expect(eventsSince(db).map((event) => event.kind)).toEqual(["repair-go", "gate-cancel"]);

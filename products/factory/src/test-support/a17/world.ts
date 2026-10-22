@@ -17,6 +17,8 @@ interface RepoState {
   open: Map<number, OpenPr>;
   done: BackstopDonePr[];
   tip?: string;
+  /** Ruleset id to its `updated_at`, as GitHub's list read answers it. */
+  rulesets: Record<number, string>;
 }
 
 /** GitHub's state per repo, as the backstop's snapshot read answers it and as each fact's delivery describes it. */
@@ -26,6 +28,7 @@ export interface World {
   apply(fact: GithubFact): void;
   snapshot(repo: string): BackstopSnapshot;
   tip(repo: string): string | undefined;
+  rulesets(repo: string): Record<number, string>;
   /** The head of an open PR. */
   head(repo: string, pr: number): string | undefined;
 }
@@ -73,7 +76,7 @@ function applyEnded(state: RepoState, fact: Extract<RepoFact, { type: "ended" }>
   state.done.push({ number: fact.pr, merged: fact.merged, mergedBy: fact.mergedBy ?? null, mergeCommit: fact.mergeSha, closedAt, updatedAt: closedAt });
 }
 
-/** A ruleset changes nothing the snapshot read returns: S2's ruleset read is the reconciler's only view of one. */
+/** A ruleset changes nothing the snapshot read returns: S2's ruleset read, in the gates, is the reconciler's only view of one. */
 function applyFact(state: RepoState, fact: GithubFact): void {
   if (isCi(fact)) return applyCi(state, fact);
   if (fact.type === "pr") {
@@ -82,6 +85,7 @@ function applyFact(state: RepoState, fact: GithubFact): void {
   } else if (fact.type === "review") applyReview(openPr(state, fact), fact);
   else if (fact.type === "ended") applyEnded(state, fact);
   else if (fact.type === "push") state.tip = fact.sha;
+  else state.rulesets[fact.id] = fact.updatedAt;
 }
 
 function snapshotOf(state: RepoState | undefined): BackstopSnapshot {
@@ -98,7 +102,7 @@ function snapshotOf(state: RepoState | undefined): BackstopSnapshot {
 
 export function githubWorld(): World {
   const repos = new Map<string, RepoState>();
-  const stateOf = (repo: string): RepoState => repos.get(repo) ?? repos.set(repo, { open: new Map(), done: [] }).get(repo)!;
+  const stateOf = (repo: string): RepoState => repos.get(repo) ?? repos.set(repo, { open: new Map(), done: [], rulesets: {} }).get(repo)!;
   return {
     delivery: (fact) => {
       if (isCi(fact)) return fact.type === "check" ? { event: "check_run", body: checkRunDelivery(fact) } : { event: "status", body: statusDelivery(fact) };
@@ -107,6 +111,7 @@ export function githubWorld(): World {
     apply: (fact) => applyFact(stateOf(fact.repo), fact),
     snapshot: (repo) => snapshotOf(repos.get(repo)),
     tip: (repo) => repos.get(repo)?.tip,
+    rulesets: (repo) => ({ ...repos.get(repo)?.rulesets }),
     head: (repo, pr) => repos.get(repo)?.open.get(pr)?.head,
   };
 }
