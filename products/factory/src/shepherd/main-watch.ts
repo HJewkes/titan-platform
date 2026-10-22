@@ -113,13 +113,13 @@ function watchedRepos(book: SeatBook): string[] {
 }
 
 /** A red-event seat no live session holds, with the repos whose red merges it is sent; none means it stands in as the hub seat. */
-export interface DeadSeat {
+interface DeadSeat {
   seat: string;
   repos: string[];
 }
 
 /** Where each repo's red event goes when no run names another seat: the repo's one seat, else the hub seat, which also takes unmapped merges. */
-export function redEventSeats(book: SeatBook, repos: readonly string[], hubSeat: string | undefined): Map<string, string[]> {
+function redEventSeats(book: SeatBook, repos: readonly string[], hubSeat: string | undefined): Map<string, string[]> {
   const seats = new Map<string, string[]>(hubSeat === undefined ? [] : [[hubSeat, []]]);
   for (const repo of repos) {
     const found = lookupSeat(book, repo);
