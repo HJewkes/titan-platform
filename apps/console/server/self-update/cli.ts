@@ -24,7 +24,7 @@ function selfUpdateCli(config: ConsoleConfig): Promise<number> {
   return selfUpdate(nodeUpdatePorts(config.inboxDir), updateOptions(config));
 }
 
-export type SelfUpdateArgs = { kind: "update" } | { kind: "smoke"; release: string; sha: string };
+type SelfUpdateArgs = { kind: "update" } | { kind: "smoke"; release: string; sha: string };
 
 /** `self-update --smoke <release> <sha>` is the verb the updater runs inside the release it just built. */
 export function selfUpdateArgs(argv: readonly string[]): SelfUpdateArgs | null {
