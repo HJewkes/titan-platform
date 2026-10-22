@@ -21,6 +21,7 @@ import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
 import type { RoundsSource } from "./rounds.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
@@ -67,6 +68,8 @@ export interface ConsoleSources {
   hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
+  /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
+  videoNotify?: SeatNotifier;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
@@ -120,7 +123,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -143,7 +146,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
-    ...videoNotesCommands(videos),
+    ...videoNotesCommands(videos, videoNotify),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };

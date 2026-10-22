@@ -22,7 +22,7 @@ const CLIP = "v_0000000000000000clip";
 
 function video(id: string, title: string, group: string, captions: boolean, modifiedAt: string, extra: Partial<VideoRow> = {}): VideoRow {
   return {
-    id, title, group, bytes: 5_500_000, modifiedAt, captions, renderNotes: false, noteCount: 0, openNoteCount: 0, verdict: null,
+    id, title, group, bytes: 5_500_000, modifiedAt, captions, renderNotes: false, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null,
     durationS: 125, width: 1920, height: 1080, orientation: "landscape", audio: true, copies: 0, superseded: false, ...extra,
   };
 }
@@ -34,8 +34,9 @@ const VIDEOS = [
   video(CLIP, "kiln sting", "kiln/clips", false, "2031-03-04T08:00:00.000Z", { durationS: 4 }),
 ];
 
-function note(id: string, atS: number, text: string, current: boolean) {
+function note(id: string, atS: number, text: string, current: boolean, about: "content" | "video" = "content") {
   return {
+    about,
     schema: "titan-console/video-note@1" as const,
     id,
     videoId: WITH_CAPTIONS,
@@ -49,7 +50,7 @@ function note(id: string, atS: number, text: string, current: boolean) {
   };
 }
 
-const NOTES = [note("00000000000000a2", 42.5, "tighten the outro", true), note("00000000000000a1", 7.25, "the title card runs long", false)];
+const NOTES = [note("00000000000000a2", 42.5, "tighten the outro", true), note("00000000000000a1", 7.25, "the captions lag the voice", false, "video")];
 
 function snapshotOf(list: unknown): Snapshot {
   const notesOf = (videoId: string, notes: unknown[]) => [snapshotKey("videos.notes", { videoId }), successEnvelope({ video: "x.mp4", notes, verdict: null, gaps: [] })];
@@ -190,6 +191,16 @@ describe("the theater player", () => {
     expect(within(earlier).getByText("earlier render")).toBeTruthy();
     expect(earlier.className).toContain("opacity-60");
     expect(within(screen.getByTestId("theater-note-00000000000000a2")).queryByText("earlier render")).toBeNull();
+  });
+
+  it("shows what each comment is about, and filters the list by it", async () => {
+    renderConsole(`#/theater/${WITH_CAPTIONS}`);
+    expect((await screen.findByTestId("theater-about-00000000000000a1")).textContent).toBe("Video");
+    expect(screen.getByTestId("theater-about-00000000000000a2").textContent).toBe("Content");
+    fireEvent.click(screen.getByTestId("theater-notes-filter-video"));
+    expect(screen.getAllByTestId(/^theater-note-/).map((row) => row.getAttribute("data-testid"))).toEqual(["theater-note-00000000000000a1"]);
+    fireEvent.click(screen.getByTestId("theater-notes-filter-content"));
+    expect(screen.getAllByTestId(/^theater-note-/).map((row) => row.getAttribute("data-testid"))).toEqual(["theater-note-00000000000000a2"]);
   });
 
   it("marks the current render's notes on the scrub strip once the duration is known", async () => {

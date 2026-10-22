@@ -196,20 +196,20 @@ const DAY = 24 * HOUR;
 
 /** Enough of a feed to show every day name, purpose, flag and the hidden-clip, old-take and copy affordances. */
 const FEED_VIDEOS = [
-  { ...VIDEO, purpose: "explainer", copies: 1, noteCount: 1, openNoteCount: 1, verdict: null },
-  { ...VIDEO, id: "v-daily-digest", title: "Daily digest", group: "daily", modifiedAt: at(5 * HOUR), durationS: 312, purpose: "daily", captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: "ship" },
-  { ...VIDEO, id: "v-widget-review", title: "Widget kit repo review", group: "reviews", modifiedAt: at(DAY + 2 * HOUR), durationS: 488, purpose: "repo-review", subject: { kind: "repo", id: "widget-kit" }, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
-  { ...VIDEO, id: "v-relay-plan", title: "Relay retry plan", group: "orbit-relay", modifiedAt: at(DAY + 4 * HOUR), durationS: 201, purpose: "plan", captions: false, copies: 0, noteCount: 2, openNoteCount: 2, verdict: "needs-changes" },
-  { ...VIDEO, id: "v-tile-motion", title: "Tile motion study", group: "design", modifiedAt: at(DAY + 6 * HOUR), durationS: 58, purpose: "design", orientation: "portrait", width: 1080, height: 1920, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
-  { ...VIDEO, id: "v-tile-motion-v1", title: "Tile motion study (v1)", group: "design", modifiedAt: at(DAY + 7 * HOUR), durationS: 61, purpose: "design", superseded: true, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
-  { ...VIDEO, id: "v-sting", title: "Logo sting", group: "design/clips", modifiedAt: at(DAY + 8 * HOUR), durationS: 4, audio: false, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
-  { ...VIDEO, id: "v-voice-test", title: "Voice level test", group: "scratch", modifiedAt: at(3 * DAY), durationS: 22, purpose: "test", captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
-  { ...VIDEO, id: "v-backoff", title: "Backoff ceiling explainer", group: "orbit-relay", modifiedAt: at(9 * DAY), durationS: 264, captions: false, copies: 0, noteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, purpose: "explainer", copies: 1, noteCount: 1, videoNoteCount: 0, openNoteCount: 1, verdict: null },
+  { ...VIDEO, id: "v-daily-digest", title: "Daily digest", group: "daily", modifiedAt: at(5 * HOUR), durationS: 312, purpose: "daily", captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: "ship" },
+  { ...VIDEO, id: "v-widget-review", title: "Widget kit repo review", group: "reviews", modifiedAt: at(DAY + 2 * HOUR), durationS: 488, purpose: "repo-review", subject: { kind: "repo", id: "widget-kit" }, captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-relay-plan", title: "Relay retry plan", group: "orbit-relay", modifiedAt: at(DAY + 4 * HOUR), durationS: 201, purpose: "plan", captions: false, copies: 0, noteCount: 2, videoNoteCount: 1, openNoteCount: 1, verdict: "needs-changes" },
+  { ...VIDEO, id: "v-tile-motion", title: "Tile motion study", group: "design", modifiedAt: at(DAY + 6 * HOUR), durationS: 58, purpose: "design", orientation: "portrait", width: 1080, height: 1920, captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-tile-motion-v1", title: "Tile motion study (v1)", group: "design", modifiedAt: at(DAY + 7 * HOUR), durationS: 61, purpose: "design", superseded: true, captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-sting", title: "Logo sting", group: "design/clips", modifiedAt: at(DAY + 8 * HOUR), durationS: 4, audio: false, captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-voice-test", title: "Voice level test", group: "scratch", modifiedAt: at(3 * DAY), durationS: 22, purpose: "test", captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
+  { ...VIDEO, id: "v-backoff", title: "Backoff ceiling explainer", group: "orbit-relay", modifiedAt: at(9 * DAY), durationS: 264, captions: false, copies: 0, noteCount: 0, videoNoteCount: 0, openNoteCount: 0, verdict: null },
 ] as const;
 
 const VIDEO_NOTE = {
   schema: "titan-console/video-note@1", id: "0123456789abcdef", videoId: VIDEO.id, video: "relay-intro.mp4", renderSha256: "ab".repeat(32),
-  atS: 12.5, createdAt: at(2 * HOUR), kind: "comment", text: "Hold the title card a beat longer", current: true,
+  atS: 12.5, createdAt: at(2 * HOUR), kind: "comment", about: "content", text: "Hold the title card a beat longer", current: true,
 } as const;
 
 const SEAT_FILE = "/synthetic/autonomy/seats/relay-seat.md";
