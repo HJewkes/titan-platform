@@ -25,7 +25,7 @@ import {
   WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
-import type { ConfigRef } from "./config.js";
+import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { assertDistinctStepIds, dispatchStepIds, guardedContext, orphanSafe, type WorkflowDefinition } from "./definition.js";
 

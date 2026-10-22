@@ -7,7 +7,9 @@ import { systemAuditPorts } from "./audit/production.js";
 import { auditRoutes } from "./audit/routes.js";
 import { measurementAuditWorkflow } from "./audit/workflow.js";
 import { ownCheckout } from "./cli-service.js";
-import { configPath, configRef, current, factoryStateDir, liveField, loadConfig, readConfig, type ConfigRef, type FactoryConfig, type Live, type ShepherdRepoConfig } from "./config.js";
+import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
+import { configRef, current, liveField, type ConfigRef, type Live } from "./config-ref.js";
+import { holdAdversary, liveSpawnLimits, reviewAccounts, withGetters } from "./workflows-live.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
@@ -36,8 +38,7 @@ import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewTarget, ReviewWiring } from "./shepherd/review.js";
-import { agentChatReviewerDispatch, type AgentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
-import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
+import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
@@ -46,7 +47,6 @@ import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type Advi
 import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
-import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { proofWaiverMigration } from "./shepherd/proof-waiver.js";
 import { repoFreezeMigration } from "./shepherd/repo-freeze.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
@@ -178,11 +178,6 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
-/** Like `{ ...base, ...extra }`, but a getter on either stays a getter, so a live config value is not read once here and kept. */
-function withGetters<A extends object, B extends object>(base: A, extra: B): A & B {
-  return Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(base), ...Object.getOwnPropertyDescriptors(extra) }) as A & B;
-}
-
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
 function holdSatisfierFor(deps: FactoryRouteDeps): HoldSatisfier | undefined {
   const dispatch = deps.review?.dispatch;
@@ -217,8 +212,6 @@ function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
   };
 }
 
-type ReviewConfigured = NonNullable<NonNullable<FactoryConfig["shepherd"]>["review"]>;
-
 /** The check name the seat that owns `repo` declares for its visual baselines, if any. */
 function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
   const found = lookupSeat(book, repo);
@@ -235,24 +228,6 @@ function seatAlert(agentChatBin: string, seats: () => SeatBook, roster: RosterRe
   };
 }
 
-/**
- * `review.configDir` first, then each fallback, read per use; every account gets its own dispatch over the one roster and
- * spawn gate, built the first time it is asked for and kept, so a fallback dropped and re-added keeps its dispatch.
- */
-function reviewAccounts(review: ReviewConfigured, fallbacks: () => readonly string[] | undefined, under: (configDir: string | undefined) => AgentChatReviewerDispatch, alert: ReviewAccounts["alert"]): { primary: AgentChatReviewerDispatch; accounts: ReviewAccounts } {
-  const first = review.configDir ?? DEFAULT_ACCOUNT;
-  const primary = under(review.configDir);
-  const byDir = new Map([[first, primary]]);
-  const dirs = () => [...new Set([first, ...(fallbacks() ?? [])])];
-  const dispatchUnder = (dir: string): AgentChatReviewerDispatch => {
-    if (!dirs().includes(dir)) return primary;
-    const built = byDir.get(dir) ?? under(dir);
-    byDir.set(dir, built);
-    return built;
-  };
-  return { primary, accounts: { get dirs() { return dirs(); }, dispatchUnder, alert } };
-}
-
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
 function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef, seats: () => SeatBook, repos: UnseatedRepos, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean, machineStop: MachineStopWatch): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
@@ -262,33 +237,6 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
   const wiring = { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }) };
   return withGetters(wiring, holdAdversary(review, config, under));
-}
-
-/**
- * Decision 422(1)'s second reviewer: a g10-adversary hold gets its own adversary member unless `twoMergeRelease` is off or
- * absent. The mode and the profile are read per use; `adversaryConfigDir` is a restart key, so its dispatch is built once.
- */
-type HoldAdversary = Pick<NonNullable<FactoryRouteDeps["review"]>, "holdMember" | "adversaryDispatch" | "twoMergeRelease">;
-
-function holdAdversary(review: ReviewConfigured, config: ConfigRef, under: (configDir: string | undefined) => AgentChatReviewerDispatch): HoldAdversary {
-  const twoMerge = liveField(config, "shepherd.gateReset.twoMergeRelease");
-  const profile = liveField(config, "shepherd.review.adversaryProfile");
-  const mode = () => {
-    const value = twoMerge();
-    return value === "off" ? undefined : value;
-  };
-  const dispatch = review.adversaryConfigDir === undefined ? undefined : under(review.adversaryConfigDir);
-  return {
-    get twoMergeRelease() {
-      return mode();
-    },
-    get holdMember() {
-      return mode() && { profile: profile() ?? DEFAULT_ADVERSARY_PROFILE };
-    },
-    get adversaryDispatch() {
-      return mode() && dispatch;
-    },
-  };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
@@ -306,13 +254,6 @@ function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
 
 function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {
   return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
-}
-
-/** The live rows of the spawn limits; a row the reloaded file leaves out falls back to its default, not its startup value. */
-export function liveSpawnLimits(startup: FactoryConfig["shepherd"], config: ConfigRef): () => Partial<SpawnLimits> {
-  const reads = { load5: liveField(config, "shepherd.spawnGate.load5"), buildLoad5: liveField(config, "shepherd.spawnGate.buildLoad5"), maxConcurrentReviews: liveField(config, "shepherd.review.maxConcurrent") };
-  const fixed = Object.fromEntries(Object.entries(configuredSpawnLimits(startup)).filter(([key]) => !(key in reads)));
-  return () => ({ ...fixed, ...Object.fromEntries(Object.entries(reads).flatMap(([key, read]) => { const value = read(); return value === undefined ? [] : [[key, value]]; })) });
 }
 
 /** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`; a key left out keeps its default. */
@@ -339,7 +280,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const repos: UnseatedRepos = () => loadConfig(configPath(env)).shepherd?.repos ?? {};
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const limits = liveSpawnLimits(shepherd, config);
+  const limits = liveSpawnLimits(configuredSpawnLimits(shepherd), config);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
   const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note });
   const store = overrides.store ?? shepherdStoreRef();

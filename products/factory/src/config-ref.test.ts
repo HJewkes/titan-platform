@@ -7,14 +7,16 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PrFi
 import { silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { LIVE_FIELDS, configPath, configRef } from "./config.js";
+import { configPath } from "./config.js";
+import { LIVE_FIELDS, configRef } from "./config-ref.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
 import { FIX_PROOF_CHECK } from "./shepherd/fix-proof.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import { shepherdStoreRef } from "./shepherd/store.js";
 import { SpawnDeferred, spawnGate } from "./shepherd/spawn-gate.js";
-import { configuredRoutes, liveSpawnLimits } from "./workflows.js";
+import { configuredRoutes, configuredSpawnLimits } from "./workflows.js";
+import { liveSpawnLimits } from "./workflows-live.js";
 
 const REPO = "octo/demo";
 const H = fakeSha("config-ref-head");
@@ -147,7 +149,7 @@ describe("liveSpawnLimits", () => {
     const startup = { spawnGate: { load5: 10, buildLoad5: 12, windowMs: 1_000 }, agentChatBin: "/opt/agent-chat", review: { profile: "example-reviewer", maxConcurrent: 2 } };
     writeConfig(env, { shepherd: startup });
     const config = configRef(configPath(env));
-    const limits = liveSpawnLimits(startup, config);
+    const limits = liveSpawnLimits(configuredSpawnLimits(startup), config);
 
     writeConfig(env, { shepherd: { ...startup, spawnGate: { load5: 30, windowMs: 9_000 }, review: { ...startup.review, maxConcurrent: 5 } } });
     config.reload();
