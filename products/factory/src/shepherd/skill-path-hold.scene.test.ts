@@ -89,7 +89,9 @@ function selfGrantedRun(files: PrFile[]) {
 
 async function heldAtSkillGate() {
   const scene = selfGrantedRun([{ path: "src/x.ts", status: "modified" }, { path: SKILL_FILE, status: "added" }]);
-  await vi.waitFor(() => expect(scene.approveMerge()?.status).toBe("pending"), { timeout: 20_000 });
+  await vi.waitFor(() => expect(scene.approveMerge() !== undefined || scene.fake.effects.merge > 0).toBe(true), { timeout: 20_000 });
+  expect(scene.fake.effects.merge).toBe(0);
+  expect(scene.approveMerge()?.status).toBe("pending");
   return { ...scene, gate: scene.approveMerge()! };
 }
 
