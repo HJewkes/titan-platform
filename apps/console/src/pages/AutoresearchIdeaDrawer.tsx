@@ -3,6 +3,7 @@ import { Alert, Button, ButtonText, Card, CardContent, DataRow, Drawer, DrawerBo
 import type { ArLadder, ArRound, ArRunView } from "../../server/autoresearch-view.js";
 import { useQuery } from "../data/rpc.js";
 import { href, open } from "../router.js";
+import { AutoresearchIdeaRecord } from "./AutoresearchIdeaRecord.js";
 import { AutoresearchStageStepper } from "./AutoresearchStageStepper.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
 import { keptMove, reasonLabel } from "./autoresearch-format.js";
@@ -19,6 +20,7 @@ export function AutoresearchIdeaDrawer({ run, ideaId, now }: { run: ArRunView; i
       <DrawerBody scrollable>
         <VStack gap={4}>
           <IdeaFacts ladder={ladder} />
+          <AutoresearchIdeaRecord run={run} ladder={ladder} />
           <AutoresearchStageStepper spans={stageSpans(ladder, now)} testID="autoresearch-drawer-stages" />
           <Typography variant="caption" color="secondary">
             A finished stage's time runs from the previous stage's end, until the run records each stage's start.

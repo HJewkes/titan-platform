@@ -11,14 +11,15 @@ import {
   StatCardHeader,
   Typography,
 } from "@titan-design/react-ui";
-import type { ArRunSummary, ArRunView } from "../../server/autoresearch-view.js";
+import type { ArAgainst, ArRunSummary, ArRunView } from "../../server/autoresearch-view.js";
 import { ladders, shortSha, signed } from "./autoresearch-format.js";
+import { noiseText } from "./autoresearch-progress.js";
 import { formatCost } from "./SessionFormat.js";
 
 /**
  * Design §1.1: identity and status in the section header, then progress, best, noise, decisions, lanes, spend and the
  * pin as one react-ui StatCard each: the lead figure is the number, the caption the context it is read against.
- * Caps, σ pairs and load wait wait on engine fields (G4, G7, G9).
+ * Caps and load wait wait on engine fields (G4, G9).
  */
 export function AutoresearchHeader({ run }: { run: ArRunView }): ReactNode {
   const best = bestParts(run);
@@ -91,10 +92,16 @@ function bestParts(run: ArRunView): StatParts {
   return { figure: String(run.best.primary), caption: `${signed(gain)} vs B₀ ${run.baseline.b0}${inSigma}` };
 }
 
+/** Design G7: the newest decision's noise snapshot; absent on a run recorded before the engine kept one. */
+const latestAgainst = (run: ArRunView): ArAgainst | undefined => ladders(run).flatMap((ladder) => (ladder.outcome?.against === undefined ? [] : [ladder.outcome.against])).at(-1);
+
+/** A run without the snapshot shows the stamped σ, but with no pair count its band is the default, the progress chart's rule, so the two never disagree. */
 function noiseParts(run: ArRunView): StatParts {
-  const sigma = latestSigma(run);
-  const { bandSigmas, defaultBandPp } = run.target.metric.noise;
-  return sigma === undefined ? { figure: "σ not measured yet", caption: `band ±${defaultBandPp}pp` } : { figure: `σ ${sigma}`, caption: `band ±${(bandSigmas * sigma).toFixed(2)}` };
+  const against = latestAgainst(run);
+  const sigma = against?.sigma ?? latestSigma(run);
+  const { noise } = run.target.metric;
+  if (sigma === undefined) return { figure: "σ not measured yet", caption: `band ±${noise.defaultBandPp}pp` };
+  return { figure: `σ ${sigma}`, caption: noiseText(noise, against ?? { sigma }) };
 }
 
 /** A superseded winner counts apart from the other stops: it is back in the queue, not a loss. */

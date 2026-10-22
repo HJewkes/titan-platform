@@ -79,15 +79,39 @@ const outcome = z.object({
   /**
    * Design G7: the noise the idea was judged against. Absent until the engine records it, and then σ reads as unlocked.
    * `locked` is the engine's own call and can go back to false when a re-measured baseline re-opens the estimate.
+   * `case`, `head` and `bandWidth` arrive with C-256 S3a; a record from before it has only σ and pairs.
    */
-  against: z.object({ sigma: z.number().nonnegative(), pairs: z.number().int().nonnegative(), locked: z.boolean().optional() }).optional(),
+  against: z
+    .object({
+      sigma: z.number().nonnegative(),
+      pairs: z.number().int().nonnegative(),
+      locked: z.boolean().optional(),
+      case: z.string().optional(),
+      head: z.string().optional(),
+      bandWidth: z.number().nonnegative().optional(),
+    })
+    .optional(),
+  /** Design G3: the lane slot (1 to `lanes`) the ladder held, and whether it warm-resumed a winner or explored fresh. */
+  lane: z.number().int().positive().optional(),
+  fork: z.enum(["exploit", "explore"]).optional(),
+  /** Design G4: where the idea's dollars went. */
+  usage: z.object({ implementUsd: z.number().nonnegative(), evalUsd: z.number().nonnegative(), microUsd: z.number().nonnegative() }).optional(),
 });
 
 /**
  * Design gap G2: the agent the implement step ran, and its session once the result records one. Null until the factory
- * records either, so a read model without it still parses.
+ * records either, so a read model without it still parses. `mode` and `account` arrive with C-256 S3a.
  */
-const implementer = z.object({ agent: z.string(), sessionId: z.string().optional(), resumedFrom: z.string().optional() });
+const implementer = z.object({
+  agent: z.string(),
+  sessionId: z.string().optional(),
+  resumedFrom: z.string().optional(),
+  mode: z.enum(["spawn", "resume"]).optional(),
+  account: z.string().optional(),
+});
+
+/** Design G6: one L0 check's row (bounds-post, unit, test-proof); absent on a run recorded before C-256 S3a. */
+const l0Check = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: z.number().nonnegative().optional() });
 
 /** One picked idea's ladder: `outcome` is null while it runs. */
 const ladder = z.object({
@@ -96,7 +120,7 @@ const ladder = z.object({
   active: activeStep.nullable(),
   completed: z.array(z.object({ stepId: z.string(), completedAt: z.string() })),
   implementUsd: z.number().nonnegative().nullable(),
-  l0: z.object({ ok: z.boolean(), code: z.string().optional() }).nullable(),
+  l0: z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() }).nullable(),
   micro: z.object({ predictedDirectionMet: z.boolean() }).nullable(),
   evals: z.array(evalRun),
   outcome: outcome.nullable(),
@@ -117,9 +141,17 @@ const round = z.object({
   ratchet: z.object({ from: z.string(), to: z.string() }).nullable(),
 });
 
+/**
+ * TP-3867: each row names the idea and round that produced it from C-256 S3a on. A planner analysis bug never names an
+ * idea, and a row recorded before S3a names neither.
+ */
+const producedBy = { ideaId: z.string().optional(), round: z.number().int().positive().optional() };
+
 const registries = z.object({
-  deadEnds: z.array(z.object({ cell: z.string(), targets: z.array(z.string()), rungFailed: z.string(), deltaOverSigma: z.number().optional(), lesson: z.string().optional() })),
-  bugs: z.array(z.object({ symptom: z.string(), fix: z.string(), source: z.enum(["L0", "planner"]) })),
+  deadEnds: z.array(
+    z.object({ ...producedBy, cell: z.string(), targets: z.array(z.string()), rungFailed: z.string(), deltaOverSigma: z.number().optional(), lesson: z.string().optional() }),
+  ),
+  bugs: z.array(z.object({ ...producedBy, symptom: z.string(), fix: z.string(), source: z.enum(["L0", "planner"]) })),
 });
 
 /**
@@ -190,6 +222,8 @@ export type ArImplementer = z.infer<typeof implementer>;
 export type ArRound = z.infer<typeof round>;
 export type ArIdea = z.infer<typeof idea>;
 export type ArOutcome = z.infer<typeof outcome>;
+export type ArAgainst = NonNullable<ArOutcome["against"]>;
+export type ArL0Check = z.infer<typeof l0Check>;
 export type ArRunSummary = z.infer<typeof ArRunSummarySchema>;
 export type ArRegistries = z.infer<typeof registries>;
 export type ArValidator = z.infer<typeof validator>;
