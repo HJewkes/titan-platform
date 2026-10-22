@@ -316,6 +316,24 @@ and on each thaw) and `shepherd resync` cancel it. Each cancel writes a `gate-ca
 the run's timeline, and the run goes on to cleanup without thawing anything. A gate whose
 episode is still frozen stays open. A run that recorded no episode also keeps its gate.
 
+### Main CI watch {#main-ci-watch}
+
+Serve also reads each seat repo's main every 5 minutes, whoever merged, and sends one
+agent-chat event per red sha (`products/factory/src/shepherd/main-watch.ts`). The event goes
+to the repo's [`shepherd.redSeat`](/guides/factory#the-config-file) entry, else its
+`fallback`. With neither set, it goes to the seat the merge's run names, then the seat whose
+initials prefix the PR's agent branch, then `shepherd.hubSeat`. A failed send is retried each
+sweep until the sha is 6 hours old.
+
+The send reaches only a seat a connected agent-chat session holds: a roster row whose
+presence is `live` (agent-dispatch's `receivesMessages`). A `detached` or `exited` seat cannot
+take the event. At startup, and whenever the set changes, serve logs one `main CI watch ALARM`
+error for each such seat that the send's own route can pick, with the repos it covers. The
+route is checked for a run registered now and for a merge no seat can be mapped to; a
+branch-prefix seat is chosen per PR and is not checked ahead of time. A roster that cannot be
+read raises no alarm; serve warns once that it skipped the check, and again after the next
+successful read.
+
 ## Merges and the guard on R27 {#merge-guard}
 
 From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents

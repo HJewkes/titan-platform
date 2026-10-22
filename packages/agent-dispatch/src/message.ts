@@ -6,12 +6,20 @@
  * `resumeAgent`, the text is in argv, where `ps` shows it.
  */
 
-import { refusal, runAgentChatAsync } from "./agents.js";
+import { refusal, runAgentChatAsync, type AgentRow } from "./agents.js";
 import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
 
 /** `--` ends the options, so a text that begins with a dash stays one operand. */
 export function buildMessageArgs(name: string, text: string): string[] {
   return ["debug", "send", "--", name, text];
+}
+
+/**
+ * Whether `messageAgent` can reach the agent a roster row names. An unregistered sender reaches only a connected
+ * session, so a `detached` row (not exited, but nothing connected) is as unreachable as an `exited` one.
+ */
+export function receivesMessages(row: Pick<AgentRow, "presence">): boolean {
+  return row.presence === "live";
 }
 
 /** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
