@@ -421,7 +421,8 @@ type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 /**
  * Runs every declared mutation of a test-only diff against the merge base with the head's tests overlaid and writes one
  * `mutants.report`: a skipped marker with no spec or with source in the diff, an error marker on any failure, never a throw.
- * With a sandbox user, every build and vitest call after the overlay runs inside the sandbox, since head code ran there.
+ * A spec that does not read, pair or check, source diff or not, also writes its reason to `mutants.refused`, which fails
+ * the mutants job. With a sandbox user, every build and vitest call after the overlay runs inside the sandbox.
  */
 declare function execMutants(options: ExecMutantsOptions): Promise<void>;
 
