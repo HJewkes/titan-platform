@@ -147,7 +147,8 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const ingressRef: { listener?: IngressListener } = {};
   const reconcilerRef: { health: ReconcilerHealth } = { health: "disabled" };
   const passStamp = createPassStamp();
-  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health, reconciler: () => reconcilerRef.health }));
+  const extras: ServeExtras = { notify, ingress: () => ingressRef.listener?.status(), passStamp, bot: bot.health, reconciler: () => reconcilerRef.health };
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log, extras));
   const ingress = (ingressRef.listener = await startServeIngress(host, options, log));
   const loopDelay = startLoopDelayWatch({ log });
   const unbindCarry = bindCarryStateDir(stateDir);

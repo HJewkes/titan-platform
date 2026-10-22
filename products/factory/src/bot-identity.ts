@@ -98,7 +98,8 @@ export function openBotIdentity(options: BotIdentityOptions = { path: BOT_TOKEN_
     usage.observe(headers);
   });
   // The reconciler's github-api pool owns every rate-limit wait, so Octokit's throttle must not sleep under it.
-  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget: rateBudget({ now: options.now }), fetch, now: options.now, poolOwnsWaits: true });
+  const budget = rateBudget({ now: options.now });
+  const client = octokitClient({ token: async () => read.token, reauthOn401: false, throttleId: BOT_THROTTLE_ID, budget, fetch, now: options.now, poolOwnsWaits: true });
   const ok: BotAccess = { state: "ok", client, login: options.login, lsRemote: botLsRemote(read.token, options.git) };
   const access = (): BotAccess => ok;
   return { access, health: () => ({ state: "ok", expiresAt: expiry.expiresAt() }), fingerprint, usage, capabilities: capabilitiesOf({ access }, [read.token]) };

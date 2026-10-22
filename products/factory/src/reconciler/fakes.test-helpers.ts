@@ -46,7 +46,8 @@ class FakeGithub {
     this.calls.push(call);
     if (this.hold) await this.hold;
     if (this.limited.has(call.kind)) return { status: 429, headers: {} };
-    if (call.kind === "gates") return { status: 200, headers: {}, gates: { changed: this.gatesChanged, etags: { pulls: this.gateEtag }, reads: 3, notModified: this.gatesChanged ? 0 : 3, ...(this.rulesets && { rulesets: this.rulesets }) } };
+    const gates = { changed: this.gatesChanged, etags: { pulls: this.gateEtag }, reads: 3, notModified: this.gatesChanged ? 0 : 3 };
+    if (call.kind === "gates") return { status: 200, headers: {}, gates: { ...gates, ...(this.rulesets && { rulesets: this.rulesets }) } };
     if (call.kind === "ancestry") return { status: 200, headers: {}, ancestry: this.ancestry(call.base, call.head) };
     if (this.snapshot) return { status: 200, headers: {}, snapshot: this.snapshot() };
     const stop = this.main.findIndex((c) => c.oid === call.request.mainCursor);
@@ -248,7 +249,7 @@ interface FetchedRequest {
 }
 
 /** `fakeBotGithub`'s answers as a `fetch`, for a real `octokitClient` such as the bot identity's; records the credential each request carried. */
-export function fakeBotFetch(): { fetch: typeof fetch; requests: FetchedRequest[] } {
+export function fakeBotFetch(): { fetch: typeof globalThis.fetch; requests: FetchedRequest[] } {
   const fake = { versions: { pulls: 1, ref: 1, rulesets: 1 }, conclusion: "SUCCESS", compare: "ahead" as Ancestry };
   const requests: FetchedRequest[] = [];
   const fetch: typeof globalThis.fetch = async (input, init) => {

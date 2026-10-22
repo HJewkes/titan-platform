@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the bot access hands out the user login's client (I13 security mutant)",
+      "name": "the reconciler gets a client with another login's token (I13 security mutant)",
       "file": "products/factory/src/bot-identity.ts",
       "find": "const ok: BotAccess = { state: \"ok\", client, login",
-      "replace": "const ok: BotAccess = { state: \"ok\", client: octokitClient(), login",
+      "replace": "const ok: BotAccess = { state: \"ok\", client: octokitClient({ token: async () => \"user-fixture\", fetch }), login",
       "kills": [
         "serve's reconciler runs as the bot (TP-3431 I13) serve with reconciler.enabled and a readable bot token starts a reconciler whose pool sends through the bot client"
       ]
@@ -16,8 +16,8 @@
       "find": "  if (access.state !== \"ok\") return access.reason;\n",
       "replace": "",
       "kills": [
-        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for an absent token, says no-bot, and never falls back on the user login's client",
-        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a refused token, says no-bot, and never falls back on the user login's client"
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for an absent token and says no-bot",
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a refused token and says no-bot"
       ]
     },
     {
@@ -26,7 +26,7 @@
       "find": "if (access.login === undefined) return \"no-login\";",
       "replace": "if (access.login === undefined) return { ...access, login: \"\" };",
       "kills": [
-        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a bot with no login, says no-bot, and never falls back on the user login's client"
+        "serve's reconciler runs as the bot (TP-3431 I13) starts no reconciler for a bot with no login and says no-bot"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "replace": "",
       "kills": [
         "serve's reconciler runs as the bot (TP-3431 I13) serve with reconciler.enabled and a readable bot token starts a reconciler whose pool sends through the bot client",
-        "serve's reconciler runs as the bot (TP-3431 I13) hands the reconciler the bot capability's client, never the user login's"
+        "serve's reconciler runs as the bot (TP-3431 I13) hands the reconciler the bot capability's client, which carries every read"
       ]
     },
     {

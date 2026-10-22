@@ -48,7 +48,8 @@ interface HealthInputs {
   reconciler: ReconcilerHealth;
 }
 
-export function serveHealth(host: FactoryHost, options: HealthOptions, { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot, reconciler }: HealthInputs): Record<string, unknown> {
+export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: HealthInputs): Record<string, unknown> {
+  const { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot, reconciler } = inputs;
   return {
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd), divergedRestarts(options.routes.shepherd)),
     github: github.status(),
