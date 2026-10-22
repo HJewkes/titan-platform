@@ -56,8 +56,8 @@ function memoryMap(): SeatDigestMemory {
 }
 
 describe("digest reads", () => {
-  const seatFor = (repo: string): string | undefined => SEATS[repo];
-  const reads = (memory: SeatDigestMemory) => (input: DigestInput): boolean => digestReads(memory, seatFor)(input.row.repo, input.row.runId, input.run.status === "completed");
+  const seatOf = (run: { repo: string }): string | undefined => SEATS[run.repo];
+  const reads = (memory: SeatDigestMemory) => (input: DigestInput): boolean => digestReads(memory, seatOf)(input.row, input.run.status === "completed");
 
   it("reads every run of a seat with no memory, then only its unfinished runs and finished runs it has not heard of", async () => {
     const memory = memoryMap();
