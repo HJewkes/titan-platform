@@ -2,7 +2,7 @@ import type { RestartRule } from "@titan-design/workflow";
 import { z } from "zod";
 import type { Digest } from "./digest.js";
 import type { ArDispatchStep } from "./manifest.js";
-import type { ArPorts, RoundRecord } from "./ports.js";
+import { RegistryRowSchema, type ArPorts, type RoundRecord } from "./ports.js";
 import { IdeaSchema } from "./schemas.js";
 
 /** What the runtime knows about this try of the step, which never goes in the step's input, so a replay sees the same input. */
@@ -45,10 +45,20 @@ const Inputs = {
   release: z.object({ tree: text }),
   loadWait: z.object({ stage: text }),
   archive: RunInput.extend({ round, record: z.custom<RoundRecord>() }),
+  inbox: RunInput.extend({ round, after: z.number().int().nonnegative() }),
+  validate: RunPinInput.extend({ look: z.number().int().positive(), head: text }),
+  registry: RunInput.extend({ row: RegistryRowSchema }),
 };
 
+/** A look with no validator cannot be answered by an empty aggregate, which a reader would take for a result. */
+async function validateLook(ports: ArPorts, input: z.infer<typeof Inputs.validate>, signal: AbortSignal): Promise<object> {
+  if (!ports.validate) throw new Error("[no-validator] this host has no validator port");
+  return ports.validate(input, signal);
+}
+
 /**
- * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it.
+ * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it;
+ * a repeated registry row carries the same run and phase, so a host's reader keeps the last.
  * A ratchet push cut off mid-way may have moved the remote, so a person decides.
  */
 export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
@@ -66,5 +76,8 @@ export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
       ports.loadWait ? ports.loadWait({ ...input, ...(firstStartedAt === undefined ? {} : { firstStartedAt }) }, signal) : { waitedMs: 0 },
     ),
     handler("archive", "repeat", Inputs.archive, async (input, signal) => (ports.archive ? ports.archive(input, signal) : {})),
+    handler("inbox", "repeat", Inputs.inbox, async (input, signal) => (ports.ownerIdeas ? ports.ownerIdeas(input, signal) : { ideas: [], cursor: input.after })),
+    handler("validate", "repeat", Inputs.validate, (input, signal) => validateLook(ports, input, signal)),
+    handler("registry", "repeat", Inputs.registry, async (input, signal) => (ports.registry ? ports.registry(input, signal) : {})),
   ];
 }

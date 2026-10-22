@@ -31,4 +31,16 @@ describe("step handlers", () => {
 
     expect(result).toEqual(planned);
   });
+
+  it("answer the inbox step with no ideas and the cursor unmoved on a host with no inbox", async () => {
+    const result = await handlerFor(portsWith({}), "inbox").run({ runId: "run-a", round: 3, after: 4 }, signal);
+
+    expect(result).toEqual({ ideas: [], cursor: 4 });
+  });
+
+  it("refuse a look on a host with no validator rather than answer an empty aggregate", async () => {
+    const look = handlerFor(portsWith({}), "validate").run({ runId: "run-a", pin: "p", look: 1, head: "h" }, signal);
+
+    await expect(look).rejects.toThrow("[no-validator]");
+  });
 });
