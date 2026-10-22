@@ -23,7 +23,9 @@ the `fix-proof` bin does the git and vitest work.
 - `classifyMutants(specs, decoded)`: each declared mutation is `killed` only when its rebuild
   succeeded, its `kills` tests passed once in the baseline, and the tests failing under it,
   each an assertion failure, are exactly its `kills`. Otherwise it is `overkill`, `survived`,
-  `unbuilt`, `load-error`, `baseline` or `error`. `encodeMutantsReport` and
+  `unbuilt`, `load-error`, `baseline` or `error`. A kill must be the test's full name (describe
+  titles, then the test title); one that names no test in a baseline that loaded makes the whole
+  verdict `error`, naming the spec, mutation and kill. `encodeMutantsReport` and
   `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
 - `provedByMutants(result)`: true when a `vacuous` result's `mutants` verdict is `killed`, no
   changed test file lacks a spec of its own (`mutants.uncovered` present and empty), no test was
