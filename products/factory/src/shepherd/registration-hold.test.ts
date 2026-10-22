@@ -29,7 +29,7 @@ function rig(files: PrFile[], kind = "feature"): Rig {
   return { fake, port: githubPort(fake.wire), store };
 }
 
-const holdOf = (r: Rig) => g10HoldAt(r.port, { repo: REPO, pr: 1, kind: "feature" });
+const holdOf = (r: Rig) => g10HoldAt(r.port, { repo: REPO, pr: 1 });
 
 /** Lands a seat's hold just before Shepherd's first compare-and-swap, so that one loses. */
 function loseFirstSwap(store: ShepherdStore, competing: string): void {
@@ -45,18 +45,18 @@ function loseFirstSwap(store: ShepherdStore, competing: string): void {
 }
 
 describe("the G10 hold Shepherd places at registration", () => {
-  it("holds a PR over 400 changed lines g10-review and records the hold as Shepherd's", async () => {
-    const r = rig([file("packages/x/src/a.ts", 300), file("packages/x/src/a.test.ts", 150)]);
+  it("holds an adversarial-path PR g10-adversary and records the hold as Shepherd's", async () => {
+    const r = rig([file("packages/tool-guard/src/a.ts", 30)]);
 
     const reason = await applyRegistrationHold(r.port, r.store, "run-1");
 
-    expect(reason).toBe("g10-review: 450 changed lines");
+    expect(reason).toBe("g10-adversary: security touch");
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: reason });
     expect(r.store.eventsOf("run-1")).toEqual([expect.objectContaining({ kind: "hold", reason, actor: "shepherd" })]);
   });
 
-  it("leaves a PR of exactly 400 changed lines unheld", async () => {
-    const r = rig([file("packages/x/src/a.ts", 200, 100), file("packages/x/src/a.test.ts", 100)]);
+  it("leaves a 900-line correctness PR unheld, since one Opus reviewer covers its size", async () => {
+    const r = rig([file("packages/x/src/a.ts", 600, 150), file("packages/x/src/a.test.ts", 150)], "correctness");
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
     expect(r.store.byRun("run-1")?.held).toBe(false);
@@ -71,17 +71,11 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(large)).toBe("g10-adversary: authority touch");
   });
 
-  it("holds a security kind with no sensitive path g10-review", async () => {
-    const r = rig([file("packages/x/src/a.ts", 10)], "security");
+  it.each([10, 500])("leaves a %i-line security kind with no sensitive path unheld", async (lines) => {
+    const r = rig([file("packages/x/src/a.ts", lines)], "security");
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-review: security kind, no sensitive path");
-    expect(r.store.byRun("run-1")?.holdReason).toBe("g10-review: security kind, no sensitive path");
-  });
-
-  it("holds a large security kind with no sensitive path g10-review", async () => {
-    const r = rig([file("packages/x/src/a.ts", 500)], "security");
-
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toMatch(/^g10-review:/);
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+    expect(r.store.byRun("run-1")?.held).toBe(false);
   });
 
   it("keeps a security kind on a tool-guard path g10-adversary", async () => {
@@ -111,16 +105,37 @@ describe("the G10 hold Shepherd places at registration", () => {
     },
   );
 
-  it.each(["src/leak-guard/scan.test.ts", "src/broker/host-directory.test.ts"])("leaves a test file %s of an agent-chat security path unheld", async (path) => {
+  it.each(["src/leak-guard/scan.test.ts", "src/broker/host-directory.test.ts", "apps/console/server/owner-tap.test.ts", "products/factory/src/shepherd/owner-release.test.ts"])("leaves a test file %s of an agent-chat security path unheld", async (path) => {
     const r = rig([file(path, 10)]);
 
     expect(await holdOf(r)).toBeUndefined();
   });
 
-  it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("holds a factory store migration in %s g10-review", async (name) => {
+  it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("leaves a factory store migration in %s unheld", async (name) => {
     const r = rig([file(`products/factory/src/shepherd/${name}`, 30)]);
 
-    expect(await holdOf(r)).toBe("g10-review: store migration");
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
+  it.each([
+    ["apps/console/server/owner-tap.ts", "policy"],
+    ["apps/console/server/inbox-actions.ts", "policy"],
+    ["products/factory/src/gate-resolve.ts", "policy"],
+    ["products/factory/src/gate-resolve-evidence.ts", "policy"],
+    ["products/factory/src/cli-owner-release.ts", "policy"],
+    ["products/factory/src/shepherd/owner-release.ts", "policy"],
+    [".github/workflows/fix-proof.yml", "authority"],
+    ["profiles/bd-reviewer.json", "security"],
+    ["src/agents/profiles.ts", "security"],
+    ["src/agents/profile-baseline.ts", "security"],
+    ["apps/console/server/owner-tap-kernel.ts", "policy"],
+    ["apps/console/server/inbox-actions-render.ts", "policy"],
+    ["products/factory/src/shepherd/owner-release-proof.ts", "policy"],
+    ["products/factory/src/owner-release-cli.ts", "policy"],
+  ])("holds an owner-action or agent profile path %s g10-adversary", async (path, touch) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toBe(`g10-adversary: ${touch} touch`);
   });
 
   it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"])(
@@ -138,10 +153,10 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
   });
 
-  it("holds g10-review when a file carries no line counts", async () => {
+  it("leaves a PR unheld when a file carries no line counts", async () => {
     const r = rig([{ path: "packages/x/src/a.ts", status: "modified" }]);
 
-    expect(await holdOf(r)).toBe("g10-review: changed lines unread");
+    expect(await holdOf(r)).toBeUndefined();
   });
 
   it("fails closed to g10-adversary when the file list is cut short or cannot be read", async () => {
@@ -156,12 +171,12 @@ describe("the G10 hold Shepherd places at registration", () => {
   });
 
   it("classes the PR normally when the file read fails once and then succeeds", async () => {
-    const r = rig([file("packages/x/src/a.ts", 900)]);
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
     const listPrFiles = r.port.listPrFiles;
     let reads = 0;
     r.port = { ...r.port, listPrFiles: (repo, pr) => (++reads === 1 ? Promise.reject(new Error("server error")) : listPrFiles(repo, pr)) };
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-review: 900 changed lines");
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: authority touch");
     expect(reads).toBe(2);
   });
 
@@ -193,11 +208,11 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(r.store.release("run-1")).toMatchObject({ held: true, holdReason: "stalled: seat away; TP-1" });
   });
 
-  it("raises a g10-review hold to g10-adversary over another class, so neither hold is lost", async () => {
-    const r = rig([file("packages/x/src/a.ts", 900)]);
+  it("stacks a g10-adversary hold over another class, so neither hold is lost", async () => {
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
     r.store.hold("run-1", "visual-gate2: screenshots pending");
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: 900 changed lines, over a visual-gate2 hold");
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: authority touch");
     expect(r.store.release("run-1").holdReason).toBe("visual-gate2: screenshots pending");
   });
 
@@ -210,11 +225,11 @@ describe("the G10 hold Shepherd places at registration", () => {
   });
 
   it("places nothing when the hold that won the compare-and-swap is a G10 hold", async () => {
-    const r = rig([file("packages/x/src/a.ts", 900)]);
-    loseFirstSwap(r.store, "g10-review: seat's own hold");
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
+    loseFirstSwap(r.store, "g10-adversary: seat's own hold");
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
-    expect(r.store.byRun("run-1")?.holdReason).toBe("g10-review: seat's own hold");
+    expect(r.store.byRun("run-1")?.holdReason).toBe("g10-adversary: seat's own hold");
   });
 
   it("leaves a G10 hold the run inherited as strong as the one it needs", () => {
@@ -224,9 +239,9 @@ describe("the G10 hold Shepherd places at registration", () => {
   });
 
   it("does not re-hold a run whose G10 hold was already placed and released", async () => {
-    const r = rig([file("packages/x/src/a.ts", 900)]);
-    r.store.hold("run-1", "g10-review: 900 changed lines");
-    r.store.releaseIfHeld("run-1", "g10-review: 900 changed lines");
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
+    r.store.hold("run-1", "g10-adversary: authority touch");
+    r.store.releaseIfHeld("run-1", "g10-adversary: authority touch");
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
     expect(r.store.byRun("run-1")?.held).toBe(false);
@@ -325,11 +340,11 @@ describe("the G10 hold Shepherd places at registration", () => {
   });
 
   it("keeps a hold placed while the file list was read, under the G10 hold", async () => {
-    const r = rig([file("packages/x/src/a.ts", 900)]);
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
     const listPrFiles = r.port.listPrFiles;
     r.port = { ...r.port, listPrFiles: async (repo, pr) => (r.store.hold("run-1", "stalled: seat away; TP-1"), listPrFiles(repo, pr)) };
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: 900 changed lines, over a stalled hold");
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: authority touch");
     expect(r.store.release("run-1").holdReason).toBe("stalled: seat away; TP-1");
   });
 });

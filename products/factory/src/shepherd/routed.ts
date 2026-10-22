@@ -4,8 +4,11 @@ import { z } from "zod";
 import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
+import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
+import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
+import { countFailedReviewers, type NoVerdictState } from "./no-verdict-round.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -17,10 +20,12 @@ export interface Routed {
 }
 
 /** The run's round counters `countRound` advances; its FIX_FIRST count is the run's recorded `FIX_FIRST_STEP`s. */
-interface RoundCounts extends FixFirstTrail {
+interface RoundCounts extends FixFirstTrail, NoVerdictState {
   ctx: WorkflowContext;
   target: { repo: RepoSlug; pr: number };
   failedRounds: number;
+  /** The outcome of each round `failedRounds` counted, so a failed-rounds escalation knows whether only infrastructure failed. */
+  failedOutcomes: string[];
   throttledRounds: number;
   closer: CloserStreak;
   /** Rounds at each head that ended with Shepherd's own MERGE held by the seat. */
@@ -34,13 +39,22 @@ export async function recordFixFirst(ctx: WorkflowContext, at: { repo: RepoSlug;
   return (await step(ctx, FIX_FIRST_STEP, { ...at, fixFirst: fixFirstCount(ctx) + 1 }, FixFirstRecord)).fixFirst;
 }
 
+/**
+ * A NO_REPRO is no reviewer's FIX_FIRST, so it spends only the fix-proof wake cap (TP-3900). A record from before that
+ * counted it as one, and its replay reads that record so the run does not diverge.
+ */
+function recordedNoReproAsFixFirst(ctx: WorkflowContext): boolean {
+  return ctx.historyNext() === FIX_FIRST_STEP;
+}
+
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
 export async function countRound(run: RoundCounts, routed: Routed): Promise<Escalated | undefined> {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (kind === "fix-first" && routed.verdict.kind === "NO_REPRO" && !recordedNoReproAsFixFirst(run.ctx)) return undefined;
   if (kind === "fix-first") {
-    run.fixFirstTrail.push(fixFirstEntry(headSha, routed.verdict.kind === "FIX_FIRST" ? routed.verdict.text : ""));
+    run.fixFirstTrail.push(routed.verdict.kind === "FIX_FIRST" ? fixFirstEntry(headSha, routed.verdict.text) : { headSha, text: "", noRepro: true });
     return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
   }
   // A held MERGE is a verdict waiting on the seat, not a failed review, and its next round starts nobody.
@@ -48,9 +62,22 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
+  run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : outcome);
+  countFailedReviewers(run);
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
-  const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
+  return failedRoundsEscalation(run, routed);
+}
+
+function failedRoundsEscalation(run: RoundCounts, { verdict, outcome, headSha }: Routed): Escalated {
+  const ended = (verdict.kind === "none" && verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
+  const infra = run.failedOutcomes.every((failed) => INFRA_FAILURES.has(failed));
+  const never = infra && !run.adversaryHeard;
+  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}`, ...(infra && { infraOnly: true as const }), ...(never && { neverVerdict: true as const }) };
+}
+
+/** D8's convergence review answers a runaway first; any other escalation, or one D8 leaves, goes on to D7 and then the owner gate. */
+export async function routeEscalation(run: FailedRoundsRun & FixFirstDemotionRun, headSha: string, escalated: Escalated): Promise<boolean> {
+  return (await onFixFirstEscalated(run, headSha, escalated)) ?? onEscalated(run, headSha, escalated);
 }
 
 /** A seat that never settles, say one whose reviewer exited on a WAIT, still reaches the owner's failed-rounds gate. */

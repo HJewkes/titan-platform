@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
+import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
@@ -197,6 +198,7 @@ export const FactoryConfigSchema = z.object({
   digest: DigestConfigSchema.optional(),
   service: ServiceConfigSchema.optional(),
   github: GithubConfigSchema.optional(),
+  reconciler: ReconcilerConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -216,9 +218,12 @@ export const FactoryConfigSchema = z.object({
       /**
        * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
-       * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
+       * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
+       * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        */
-      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
+      gateReset: z
+        .strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional() })
+        .optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
@@ -235,6 +240,8 @@ export const FactoryConfigSchema = z.object({
       visualSetCarry: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
+      /** The profile of the planner failed review rounds with no adversary verdict spawn (TP-3796); absent means `bd-planner`. */
+      diagnosisProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
       titanReviewBin: absolutePath.optional(),
       /**
@@ -287,9 +294,9 @@ export function defaultDbPath(env: NodeJS.ProcessEnv): string {
   return join(factoryStateDir(env), "factory.sqlite3");
 }
 
-function parseJson(path: string): unknown {
+function parseJson(path: string, text: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(text);
   } catch (error) {
     throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -299,10 +306,20 @@ export function loadConfig(path: string): FactoryConfig {
   return readConfig(path) ?? {};
 }
 
+/** The deprecation lines serve logs at start for keys the config file at `env`'s path still sets. */
+export function configDeprecations(env: NodeJS.ProcessEnv): string[] {
+  return reconcilerDeprecations(loadConfig(configPath(env)));
+}
+
 /** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
 export function readConfig(path: string): FactoryConfig | undefined {
   if (!existsSync(path)) return undefined;
-  const raw = parseJson(path);
+  return parseConfig(path, readFileSync(path, "utf8"));
+}
+
+/** Parses and validates config file text; `path` only names the file in an error. */
+export function parseConfig(path: string, text: string): FactoryConfig {
+  const raw = parseJson(path, text);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
   const parsed = FactoryConfigSchema.safeParse(raw);

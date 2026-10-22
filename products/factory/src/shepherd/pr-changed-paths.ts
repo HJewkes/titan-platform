@@ -1,5 +1,6 @@
 import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { statusOf } from "../required-checks.js";
+import { prChangedLines } from "./reviewer-roles.js";
 
 /** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */
 function changedPaths(files: readonly PrFile[]): string[] {
@@ -8,6 +9,8 @@ function changedPaths(files: readonly PrFile[]): string[] {
 
 interface PathsRead {
   paths: string[];
+  /** Non-generated additions plus deletions; absent when a file carried no counts. */
+  changedLines?: number;
   /** Why the list could not be read whole. */
   unread?: string;
 }
@@ -23,7 +26,9 @@ export async function pinnedPaths(port: GitHubPort, { repo, pr, head }: { repo: 
   try {
     const files = await port.listPrFiles(repo, pr);
     const after = (await port.getPr(repo, pr)).headSha;
-    return after === head ? { paths: changedPaths(files) } : unread(`the head moved to ${after} during the read`);
+    if (after !== head) return unread(`the head moved to ${after} during the read`);
+    const changedLines = prChangedLines(files);
+    return { paths: changedPaths(files), ...(changedLines !== undefined && { changedLines }) };
   } catch (error) {
     return unread(error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`);
   }

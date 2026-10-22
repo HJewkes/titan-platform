@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sandboxCommand } from "./sandbox.js";
+import { sandboxCommand, sandboxEnv } from "./sandbox.js";
 
 const ENV = { PATH: "/usr/bin:/bin", HOME: "/tmp/tree", CI: "1" };
 
@@ -27,5 +27,20 @@ describe("sandboxCommand", () => {
 
   it.each(["root; rm", "-u", "", "a".repeat(33), "Root", "1abc"])("a user name outside the pattern is refused: %j", (user) => {
     expect(() => sandboxCommand(user, 1000, ENV, "true", [])).toThrow(/sandbox user must match/);
+  });
+});
+
+describe("sandboxEnv", () => {
+  it("points Playwright at the browser cache named in the parent env", () => {
+    const env = sandboxEnv("/tmp/tree", { PATH: "/usr/bin", HOME: "/home/runner", PLAYWRIGHT_BROWSERS_PATH: "/opt/browsers" });
+
+    expect(env).toEqual({ PATH: "/usr/bin", HOME: "/tmp/tree", CI: "1", PLAYWRIGHT_BROWSERS_PATH: "/opt/browsers" });
+  });
+
+  it("sets no browser path when the parent env names none", () => {
+    const env = sandboxEnv("/tmp/tree", { HOME: "/home/runner" });
+
+    expect(env).not.toHaveProperty("PLAYWRIGHT_BROWSERS_PATH");
+    expect(env.HOME).toBe("/tmp/tree");
   });
 });

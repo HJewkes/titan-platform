@@ -39,6 +39,7 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
 titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
+titan-factory bot-token scan [--json]                         # A17: name every place an agent can read the bot's token (never the token)
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -283,20 +284,30 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   three ways: update-branch fails with a 422, the head reads `dirty`, or the check that runs
   before a gate finds one. It then wakes the implementer once, with the files that likely
   conflict. The next round reads CI at the fixer's head. If that head is behind, it runs a
-  fresh update-branch first. If that head still conflicts, the gate opens and no second fixer
-  starts. The fixer already had the conflict and failed to settle it, so a second wake would
-  likely fail the same way. The count resets when a head reads green, so a later conflict gets
-  its own fixer. This is by design (TP-1753). Allowing a second fixer would change merge policy,
-  so it needs its own task.
+  fresh update-branch first. If that head still conflicts, `GATE_DEMOTIONS.conflict` (on, TP-3734)
+  wakes one fresh fixer: a successor, never the implementer whose attempt failed. If its head
+  still conflicts, the repo's seat gets a `conflict` notice and the run waits for a new head. The
+  gate opens only when that notice cannot go out, or with the flag off, which restores the
+  TP-1753 gate after one fixer. The count resets when a head reads green, so a later conflict
+  gets its own fixers.
 - `policy-denial`: the seat's authority policy does not allow an automated merge, so only the
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
-  timeout or an unanswered hold. Retrying again would only repeat the stall.
+  timeout or an unanswered hold. Retrying again would only repeat the stall. Rounds that all
+  failed on infrastructure get one fallback fresh reviewer first (`D7/fallback-reviewer`). If
+  it fails too, `GATE_DEMOTIONS.failedFallback` records `D7/ops-notice` and tells the hub seat,
+  naming the failed outcomes and the reviewer account; a seat-held run-out tells the seat under
+  `D7/seat-notice`. The run then waits for a new head, whose rounds count from zero. The gate
+  opens only when the notice cannot go out.
 - `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
   kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
   Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
   split it; coord or the owner acts on that, and Shepherd files no planner task itself
   (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
+  With `GATE_DEMOTIONS.fixFirstRunaway` on (the default, TP-3734 D8), neither this nor
+  `no-progress` opens approve-merge: one fresh convergence reviewer gets the FIX_FIRST trail. Its
+  MERGE lands at the PR's normal rules; its FIX_FIRST sends the seat a planner notice and the run
+  waits for a new head, which re-arms the review. The gate opens only when no seat can be told.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
   other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
@@ -744,7 +755,30 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
+| `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
+| `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
+| `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
+| `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+
+## GitHub event sources config
+
+The top-level `github` block in the config file picks where GitHub events come from. Every key is optional. Polling is a
+permanent, supported configuration, not a fallback.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `github.sources` | `"polling"`, `"webhook"` | `"polling"` |
+| `github.ingress` | `"on"`, `"off"` (the kill switch, applied with no restart) | `"off"` |
+| `github.pollingIntervalMs` | 30000 to 600000, not above `backstopIntervalMs` | 60000 |
+| `github.backstopIntervalMs` | 300000 to 600000 | 300000 |
+
+Health's `sources` field shows `configured`, `effective`, `reason`, `intervalMs` and `lastPassAt`. The effective-mode table and
+the rest are in the [factory guide](https://github.com/HJewkes/titan-platform/blob/main/site/guides/factory.md#github-event-sources).
 
 ## Shepherd reviewer config
 
@@ -955,6 +989,54 @@ Spell both the same way.
 The land core talks to GitHub through `@titan-design/github` (`githubPort` over `ghCliWire`,
 and `fakeGitHub` in tests). Its README documents the check-then-act writes and the argument
 validation.
+
+### The bot's github-api pool state: `src/github-api/`
+
+The bot identity's `githubApiPool` (from `@titan-design/github`) keeps its state in the factory
+database: `sqlitePoolStateStore` holds one row per (identity, call class) in migration 35
+(`factory:github_api_pool`), so a restart keeps a closed pair closed until its probe and canary
+reopen it. Each reopen appends one `ApiAvailable` to the event log (`source: store`, occurrence key
+`v1|ApiAvailable|<identity>|<class>|<resetAt epoch s>`), so a repeated `onAvailable` inserts
+nothing. A 401 logs one `factory: ops-alarm github-auth identity=<login>` line per transition and
+shows `auth` on every class of health's `githubApi` field; the pool sends no `GET /rate_limit`
+probe in that state, because the probe answers 401 under a rejected token too and cannot succeed,
+so only a token change or a restart clears it. At M1a nothing waits on `ApiAvailable` or reads the
+pool-state table (`github-api/no-consumer.test.ts`), and no bot client is bound to the pool yet.
+
+### The bot token's A17 leak scan: `bot-token scan`
+
+A17 says the bot's token is absent from every agent environment. When serve reads the bot token (TP-3094 C3), it
+writes the token's SHA-256 to `bot-token.sha256` in its state dir (the database's dir), mode 0600, through a rename.
+With no token, or a refused one, it writes none and removes a stale one.
+
+`titan-factory bot-token scan`, run as the agents' uid, finds every token-shaped string (`ghp_` classic and
+`github_pat_` fine-grained, including one run straight into more token characters) and compares its SHA-256 with that
+fingerprint. The scan never holds the token, and the report names a place and where in it, never the matched string:
+
+| Place | Read | Default |
+| --- | --- | --- |
+| `env` | `<proc>/<pid>/environ` of this uid's processes only | `/proc` |
+| `briefs` | every file under each dir | `$AGENT_CHAT_HOME/agents` |
+| `logs` | `*.log` and `*.log.<n>` files under each dir | the database's dir (serve's logs) and `$AGENT_CHAT_HOME` |
+| `transcripts` | every file under each dir | `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects` |
+| `store` | every row of every table, through a read-only connection | the `--db` database |
+
+`--fingerprint`, `--proc`, `--briefs`, `--logs`, `--transcripts` and `--store` override each place; tests point all of
+them at fixture dirs. The report prints `HIT <place> <where>` lines (a path, `pid <n>` or `table <name>`), a count of
+what each place scanned, and a `missing <place> <root>` line for a root that is not there, which is not counted clean.
+It exits 0 when clean and 1 on a hit; on a hit, revoke the token and rotate it. With no fingerprint it exits 69 and
+claims nothing: serve holds no bot token, so there is nothing to check. Files are read in 1 MiB chunks, so a large
+transcript is never held whole. The scan does not decode a token that was base64- or URL-encoded.
+
+### The bot token's expiry alarm
+
+The bot client's fetch reads GitHub's `github-authentication-token-expiration` header on every response,
+error answers included (`src/bot-token-expiry.ts`). `/health.bot.expiresAt` carries the last value as an ISO
+time; it is null before the bot's first response and for a token with no expiry. With 14 days or less left,
+serve logs one `factory: ops-alarm bot-token-expiry fingerprint=<12 hex> expiresAt=<iso> daysLeft=<n>` line per
+token fingerprint (the A17 fingerprint above, never the token). The set of alarmed fingerprints lives in
+memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
+follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
 
 ## Writing a gate brief
 

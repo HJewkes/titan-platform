@@ -20,10 +20,17 @@ export interface ApprovalQuestion {
 }
 
 /**
- * `merge` approves only the head asked about; `failed` names why a check outside CI found that head red; `sendBack` is
- * the owner's note for the implementer, and that head never merges.
+ * `merge` approves only the head asked about; `merge-by-set` approves it too, but on a set the owner accepted at an earlier
+ * head, so no head built on it inherits that approval; `failed` names why a check outside CI found that head red;
+ * `sendBack` is the owner's note for the implementer, and that head never merges.
  */
-export type ApprovalAnswer = "merge" | "abandon" | { failed: string } | { sendBack: string };
+export type ApprovalAnswer = "merge" | "merge-by-set" | "abandon" | { failed: string } | { sendBack: string };
+
+/** Marks a gate answer the approved-set carry gave, not the owner; land trusts it for its own head only. */
+export const SET_ANSWER_ORIGIN = "approved-set";
+
+/** Who an approval came from: a human at this head, or the approved set carried from an earlier one. */
+export type ApprovalSource = "human" | "set";
 
 /**
  * Replaces the approve-merge gate. It runs on every replay, so it must record its answer (a gate or a step) rather
@@ -76,12 +83,16 @@ export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}
     const sendBack = (await facts.sendBackOffered?.(ctx)) ?? false;
     const { prompt, schema, brief } = approveMergeAsk(rule, facts, question, sendBack);
     const stamp = tableGateRule(rule);
-    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief, ...(stamp && { rule: stamp }) })).data);
+    const data = (await ctx.assisted("approve-merge", prompt, { schema, brief, ...(stamp && { rule: stamp }) })).data;
+    const answer = schema.safeParse(data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${question.headSha}: ${answer.error.message}`);
     const { decision, note } = answer.data as { decision: typeof answer.data.decision; note?: unknown };
-    return decision === SEND_BACK ? { sendBack: String(note) } : decision;
+    if (decision === SEND_BACK) return { sendBack: String(note) };
+    return decision === "merge" && bySet(data) ? "merge-by-set" : decision;
   };
 }
+
+const bySet = (data: unknown): boolean => typeof data === "object" && data !== null && (data as { origin?: unknown }).origin === SET_ANSWER_ORIGIN;
 
 export const DEVICE_CHECK = "device-check";
 
@@ -90,13 +101,14 @@ type ApprovalStop =
   | { kind: "stopped"; reason: "abandoned" | "sent-back"; headSha: string; detail: string };
 
 /**
- * Calls `trustHead` only on `merge`; land then merges that head, or asks again if a different head turns up first. A
- * `sent-back` stop carries the owner's note as its detail, so the caller can hand it to a fixer.
+ * Calls `trustHead` only on a merge answer, naming its source; land then merges that head, or asks again if a different
+ * head turns up first. A `sent-back` stop carries the owner's note as its detail, so the caller can hand it to a fixer.
  */
-export async function askedApproval(ctx: WorkflowContext, ask: AskApproval, question: ApprovalQuestion, trustHead: () => void): Promise<ApprovalStop | undefined> {
+export async function askedApproval(ctx: WorkflowContext, ask: AskApproval, question: ApprovalQuestion, trustHead: (by: ApprovalSource) => void): Promise<ApprovalStop | undefined> {
   const answer = await ask(ctx, question);
   const { headSha } = question;
-  if (answer === "merge") return void trustHead();
+  if (answer === "merge") return void trustHead("human");
+  if (answer === "merge-by-set") return void trustHead("set");
   if (answer === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human declined the merge" };
   if (typeof answer === "object" && "sendBack" in answer && typeof answer.sendBack === "string") return { kind: "stopped", reason: "sent-back", headSha, detail: answer.sendBack };
   if (typeof answer === "object" && "failed" in answer && typeof answer.failed === "string") return { kind: "ci-failed", headSha, failing: [deviceCheck(question, answer.failed)] };

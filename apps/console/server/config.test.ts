@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONSOLE_PORT, resolveConfig, type Machine } from "./config.js";
+import { DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
 
 const HOME = "/srv/tester";
 
@@ -15,6 +15,19 @@ describe("console config", () => {
   it("refuses a port that belongs to an upstream daemon", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7400" }, HOME)).toThrow(/port of its own/);
     expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7700", TITAN_CONSOLE_AGENT_CHAT_PORT: "7700" }, HOME)).toThrow(/port of its own/);
+  });
+
+  it("serves the story origin on 7501 unless TITAN_CONSOLE_STORY_PORT moves it, and 0 turns it off", () => {
+    expect(resolveConfig({}, HOME)).toMatchObject({ storyPort: DEFAULT_STORY_PORT, storybooksDir: path.join(HOME, ".local/state/titan-console/storybooks") });
+    expect(resolveConfig({ TITAN_CONSOLE_STORY_PORT: "7511" }, HOME).storyPort).toBe(7511);
+    expect(resolveConfig({ TITAN_CONSOLE_STORY_PORT: "0" }, HOME).storyPort).toBeNull();
+    expect(() => resolveConfig({ TITAN_CONSOLE_STORY_PORT: "75o1" }, HOME)).toThrow(/TITAN_CONSOLE_STORY_PORT must be a port number/);
+  });
+
+  it("refuses a story port that is the console's own or an upstream's", () => {
+    expect(() => resolveConfig({ TITAN_CONSOLE_STORY_PORT: "7500" }, HOME)).toThrow(/story origin needs a port of its own/);
+    expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7501" }, HOME)).toThrow(/story origin needs a port of its own/);
+    expect(() => resolveConfig({ TITAN_CONSOLE_STORY_PORT: "7600" }, HOME)).toThrow(/story origin needs a port of its own/);
   });
 
   it("reaches the factory on 7410 unless TITAN_CONSOLE_FACTORY_PORT is given", () => {
@@ -80,6 +93,23 @@ describe("console config", () => {
     expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "" }, HOME).decisionsFile).toBeNull();
     expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "~/d.md" }, HOME).decisionsFile).toBe(path.join(HOME, "d.md"));
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
+  });
+
+  it("reads no autonomy tree unless one is named, and materializes into titan-coordinator's config dir", () => {
+    expect(resolveConfig({}, HOME, "linux").configStore).toEqual({ autonomyTree: null, coordinatorFile: path.join(HOME, ".config", "titan-coordinator", "coordinator.json") });
+    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "~/tree", TITAN_CONSOLE_COORDINATOR_FILE: "/cfg/c.json" }, HOME).configStore).toEqual({ autonomyTree: path.join(HOME, "tree"), coordinatorFile: "/cfg/c.json" });
+    expect(() => resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "tree" }, HOME)).toThrow(/TITAN_CONSOLE_AUTONOMY_DIR must be an absolute/);
+  });
+
+  it("compares the same autonomy tree that config.surfaces reads", () => {
+    const config = resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "~/autonomy" }, HOME);
+
+    expect(config.configStore?.autonomyTree).toBe(path.join(HOME, "autonomy"));
+    expect(config.configStore?.autonomyTree).toBe(config.coordinatorRoots?.autonomyDir);
+  });
+
+  it("ignores the retired TITAN_CONSOLE_AUTONOMY_TREE", () => {
+    expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_TREE: "/var/tree" }, HOME).configStore?.autonomyTree).toBeNull();
   });
 
   it("reads video roots as a path list, expanding ~, and refuses a relative entry", () => {

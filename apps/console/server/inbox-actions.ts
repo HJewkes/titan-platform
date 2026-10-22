@@ -24,7 +24,6 @@ import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-acti
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
-export { CONFIRM_TTL_MS } from "./owner-tap.js";
 export const ACTIONS_OFF = "inbox actions are off";
 const ACTOR = { class: "owner-remote", id: "titan-console", channel: "console:inbox" } as const;
 const MAX_ANSWER = 8000;

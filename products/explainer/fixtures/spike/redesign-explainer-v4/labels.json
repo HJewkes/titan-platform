@@ -23,7 +23,7 @@
     },
     {
       "check": "M3",
-      "check_ids": [],
+      "check_ids": ["Q-E14"],
       "level": "beat",
       "true": ["r2-1-jobs", "r10-7-followups", "r10-7b-research", "r7-3-caps"],
       "false": ["r1-5-seams", "r1-7-promise", "r3-7-simple", "r10-6b-q10-q11"],
@@ -41,7 +41,7 @@
     },
     {
       "check": "M5",
-      "check_ids": [],
+      "check_ids": ["Q-E11"],
       "level": "beat",
       "true": ["r2-2-inv"],
       "false": ["r2-4-measure"],

@@ -13,6 +13,9 @@ const CLEANUP_TIMEOUT_MS = 30_000;
 /** SIGTERM first so git can drop its lock files; SIGKILL follows for whatever ignores it. */
 const TERM_GRACE_MS = 1_000;
 
+/** CC-410: disable checkout hooks for this add only; later agent git commands keep their hooks. */
+const HOOKS_OFF = ["-c", "core.hooksPath=/dev/null"] as const;
+
 /** The tail of each repo's queue of `worktree add`s; it never rejects, so one failure does not jam the rest. */
 const addQueues = new Map<string, Promise<unknown>>();
 
@@ -22,14 +25,18 @@ export function addWorktree(
   args: readonly string[],
   run: WorktreeAddRunner = gitText
 ): Promise<string> {
-  const adding = (addQueues.get(gitRoot) ?? Promise.resolve()).then(() => run(args, gitRoot));
+  const pinned = [...HOOKS_OFF, ...args];
+  const adding = (addQueues.get(gitRoot) ?? Promise.resolve()).then(() => run(pinned, gitRoot));
   const tail = adding.catch(() => undefined);
   addQueues.set(gitRoot, tail);
   void tail.then(() => addQueues.get(gitRoot) === tail && addQueues.delete(gitRoot));
   return adding;
 }
 
-const addTarget = (args: readonly string[]): string | undefined => (args[2] === "-b" ? args[4] : args[2]);
+const addTarget = (args: readonly string[]): string | undefined => {
+  const rest = args.slice(args.indexOf("add") + 1);
+  return rest[0] === "-b" ? rest[2] : rest[0];
+};
 
 class AddTimedOut extends Error {}
 

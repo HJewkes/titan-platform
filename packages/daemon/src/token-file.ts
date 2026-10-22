@@ -33,7 +33,7 @@ export function ensureTokenFile(file: string): string {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
   }
-  return readTokenFile(file).secret;
+  return readSecretFile(file, parseBase64Secret).secret;
 }
 
 /** Replace the secret by writing a 0600 temp file and renaming it over the old one. */
@@ -54,12 +54,35 @@ export function rotateTokenFile(file: string): string {
  * reader that re-reads and re-checks it whenever its inode, size, times, mode or owner change.
  */
 export function trackTokenFile(file: string): () => string {
-  let snapshot = readTokenFile(file);
+  return trackSecretFile(file, parseBase64Secret);
+}
+
+/**
+ * The same tracked read for any secret shape. `parse` gets the file text and returns the
+ * secret or throws; a {@link SecretRejection} picks the problem, any other throw becomes
+ * "malformed". The thrown text is dropped, so a parser cannot leak the value into an error.
+ * The caller supplies the path: nothing here knows where a given secret lives.
+ */
+export function trackSecretFile(file: string, parse: SecretParser): () => string {
+  let snapshot = readSecretFile(file, parse);
   return () => {
     const changed = statIdentity(fs.lstatSync(file, { bigint: true })) !== snapshot.identity;
-    if (changed || snapshot.racy) snapshot = readTokenFile(file);
+    if (changed || snapshot.racy) snapshot = readSecretFile(file, parse);
     return snapshot.secret;
   };
+}
+
+export type SecretParser = (raw: string) => string;
+
+/** A parser's refusal with a stated problem; `detail` must never quote the file's text. */
+export class SecretRejection extends Error {
+  constructor(
+    readonly problem: TokenFileProblem,
+    detail: string,
+  ) {
+    super(detail);
+    this.name = "SecretRejection";
+  }
 }
 
 function writeNewSecret(file: string): string {
@@ -84,13 +107,13 @@ interface TokenSnapshot {
   racy: boolean;
 }
 
-function readTokenFile(file: string): TokenSnapshot {
+function readSecretFile(file: string, parse: SecretParser): TokenSnapshot {
   if (fs.lstatSync(file).isSymbolicLink()) throw new TokenFileError("symlink", file, "it is a symbolic link");
   const fd = openNoFollow(file);
   try {
     const stat = fs.fstatSync(fd, { bigint: true });
     checkTokenStat(file, stat);
-    const secret = parseSecret(file, fs.readFileSync(fd, "utf8"));
+    const secret = runParser(file, parse, fs.readFileSync(fd, "utf8"));
     return { secret, identity: statIdentity(stat), racy: isRacy(stat) };
   } finally {
     fs.closeSync(fd);
@@ -120,12 +143,22 @@ function checkTokenStat(file: string, stat: fs.BigIntStats): void {
   }
 }
 
-function parseSecret(file: string, raw: string): string {
+function runParser(file: string, parse: SecretParser, raw: string): string {
+  try {
+    return parse(raw);
+  } catch (err) {
+    if (err instanceof SecretRejection) throw new TokenFileError(err.problem, file, err.message);
+    throw new TokenFileError("malformed", file, "it does not have the expected shape");
+  }
+}
+
+/** The daemon's own secrets: at least 32 random bytes, base64url, one optional trailing newline. */
+export function parseBase64Secret(raw: string): string {
   const secret = raw.replace(/\r?\n$/, "");
-  if (secret === "") throw new TokenFileError("empty", file, "it is empty");
-  if (!BASE64URL.test(secret)) throw new TokenFileError("malformed", file, "it is not base64url");
+  if (secret === "") throw new SecretRejection("empty", "it is empty");
+  if (!BASE64URL.test(secret)) throw new SecretRejection("malformed", "it is not base64url");
   if (Buffer.from(secret, "base64url").length < SECRET_BYTES) {
-    throw new TokenFileError("short", file, `it holds fewer than ${SECRET_BYTES} bytes`);
+    throw new SecretRejection("short", `it holds fewer than ${SECRET_BYTES} bytes`);
   }
   return secret;
 }

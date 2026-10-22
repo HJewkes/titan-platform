@@ -131,6 +131,15 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
   });
 
+  it("spawns a successor for a fresh-fixer conflict wake though the implementer is warm, so the agent whose attempt failed does not repeat it", async () => {
+    const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+
+    const { result } = await run("conflict", { mergeableState: "dirty", freshFixer: true });
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["spawn", "impl-a-s1"]]);
+  });
+
   it("spawns a successor in the repo's main checkout, told to check out the PR branch at its head", async () => {
     const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
@@ -1113,7 +1122,7 @@ describe("the fix-proof bounce cap", () => {
     hosts.splice(0).forEach((host) => host.close());
     dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   });
-  const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
+  const capReason = `fix-proof did not reproduce: ${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
   const HOLD = "sh-test-hold";
   /** Stands in for the review steps a real run records before any fix-proof wake, so a replay reads a record there. */
   const REVIEWED = "sh-test-reviewed";

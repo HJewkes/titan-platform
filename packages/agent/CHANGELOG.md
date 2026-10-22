@@ -1,5 +1,28 @@
 # @titan-design/agent
 
+## 0.6.2
+
+### Patch Changes
+
+- cda3cbe: Add a pure caller-bound Codex pricing port and optional quote-service injection in the Codex exec adapter. Preserve legacy pricing behavior, quote captured turn usage once across success/failure paths, and keep unpriced usage distinct from priced zero.
+- Updated dependencies [cda3cbe]
+  - @titan-design/agent-protocol@0.9.1
+
+## 0.6.1
+
+### Patch Changes
+
+- 9914239: Extract SDK-free execution contracts into agent-protocol/harness with open harness identity parameters, preserving existing agent exports through compatibility aliases. This is the execution-only checkpoint of TP-3426; the remaining S01 ports are not implemented.
+- 9914239: Expose the existing dated catalog and pricing arithmetic through the pure agent-protocol/pricing subpath and replace higher-tier implementations with compatibility exports, preserving model matching, TTL and inclusive token accounting.
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+  - @titan-design/agent-protocol@0.9.0
+  - @titan-design/agent-lifecycle@0.1.9
+
 ## 0.6.0
 
 ### Minor Changes

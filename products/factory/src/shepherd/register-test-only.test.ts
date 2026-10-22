@@ -7,14 +7,7 @@ import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type ShepherdFixture } from "../test-support/shepherd.js";
 import type { Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { TEST_ONLY_HINT, type KindGuard } from "./register-kind.js";
-import { kindMoveRefusal, testOnlyMoveRefusal } from "./task-kind.js";
-
-/** The guard as it reads once TEST_ONLY_GATED is gone: a move into test-only meets the diff check the flag holds back. */
-const liveGuard: KindGuard = (from, to, diff) => {
-  const refusal = kindMoveRefusal(from, to, diff);
-  return refusal?.includes("cannot move to test-only yet") ? testOnlyMoveRefusal(from, diff) : refusal;
-};
+import { TEST_ONLY_HINT } from "./register-kind.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -32,12 +25,11 @@ interface World extends ShepherdFixture {
   storedKind: () => string | undefined;
 }
 
-function world(files: PrFile[], guard: KindGuard | null = liveGuard): World {
+function world(files: PrFile[]): World {
   const fixture = shepherdFixture({ frozen: true });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   hosts.push(host);
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
-  if (guard) fixture.routes.shepherd!.kindGuard = guard;
   fixture.fake.prFiles.set(1, files);
   fixture.fake.compares.set(`main...${H1}`, { mergeBaseSha: MERGE_BASE, files: [] });
   for (const ref of [MERGE_BASE, "main"]) fixture.fake.files.set(`${ref}:${CONFIG_PATH}`, { content: CONFIG, blobSha: fakeSha(ref) });
@@ -114,11 +106,5 @@ describe("shepherd register hints at test-only", () => {
     const w = world(WITH_SOURCE);
 
     expect(await registered(w, { ...pr1, kind: "correctness" })).not.toHaveProperty("kindHint");
-  });
-
-  it("gives no hint while the guard still refuses every move into test-only", async () => {
-    const w = world(TESTS_ONLY, null);
-
-    expect(await registered(w, pr1)).not.toHaveProperty("kindHint");
   });
 });

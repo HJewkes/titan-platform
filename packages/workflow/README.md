@@ -116,6 +116,18 @@ paused inside `assisted("x")` after a `dispatch("x")` is still waiting on
 `<runId>/x`, so `assisted` adopts a gate that is still pending there when the
 bare key holds no result.
 
+## Capabilities
+
+A runtime can hold handles a step body needs but the record must never see, such as a bot client:
+
+```ts
+const rt = new WorkflowRuntime({ ...options, capabilities: { "github-bot": { handle: client, secrets: [token] } } });
+// in a workflow
+const bot = ctx.capability("github-bot") as BotClient;
+```
+
+`handle` is opaque to the runtime. `secrets` lists the strings that must stay out of the run: the runtime refuses, with `CapabilityLeakError` (which names the step and place, never the value), a seed result, dispatch vars, a rendered prompt, a dispatch output or an assisted gate that holds one, so none of them reaches step output, the trace, the store or a prompt variable. A throw whose message holds a secret is redacted before it becomes the run error or an event. Matching is on the string and its JSON-escaped form; a transformed secret (base64, split) is not caught, so a handle should not hand out derived copies. `ctx.capability` throws for a name that is not configured.
+
 ## Authority steps
 
 `authorize(stepId, request, { prompt?, expiresAt?, brief? })` asks the authority table
@@ -221,6 +233,31 @@ It throws naming every dispatch step id that no route covers. Two routes with
 the same `match` throw when the runner is built. Route runners receive the
 step's `attempt` and `requestKey` with the usual input, and a step's `agentId`
 is its request key.
+
+### Code steps
+
+A code step runs a function instead of a model. `codeStep(ctx, stepId, input,
+schema)` dispatches the input as JSON and returns the stored record's
+`result`, parsed by `schema`. `codeRoute(match, fn, options)` is its route: it
+parses the input, stores `fn`'s answer as `{ result }`, and repeats on a
+restart, so a code step must read before it writes. A throw is recorded once
+as a non-retryable failure. `codeRecordRoute` is the same for a body that
+returns the whole record, with trace keys beside `result`.
+
+Two options let a host shape what is stored. `envelope(record, step)` wraps
+the record, for example in an evidence envelope with a kind, a time and trace
+ids. `errorText(message)` rewrites a thrown message before it is recorded, so
+a redactor can keep secrets out of the store.
+
+```ts
+const routes = [
+  codeRoute("ci-read", (input: { pr: number }) => readChecks(input.pr), {
+    envelope: (record, step) => ({ ...record, kind: "ci-read", span: step.requestKey }),
+    errorText: redact,
+  }),
+];
+const checks = await codeStep(ctx, "ci-read", { pr: 7 }, ChecksSchema);
+```
 
 ## Signals
 

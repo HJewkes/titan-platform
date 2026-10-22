@@ -64,6 +64,10 @@ export interface FakeGitHub {
   /** Errors the next calls of a read throw, one per call, before it answers. */
   readFaults: Partial<Record<FakeFaultyRead, Error[]>>;
   refs: Map<string, string>;
+  /** Ruleset id to its `updated_at`, for `revalidateRulesets`. */
+  rulesets: Map<number, string>;
+  /** When set, `revalidateRulesets` answers `unreadable`, as GitHub's free-plan 403 does for a private repo. */
+  rulesetsFreePlan?: boolean;
   /** Job id to full log text, for `getJobLog`. */
   jobLogs: Map<number, string>;
   /** Job id to its steps, for `getJobSteps`; a job with none seeded answers 404. */

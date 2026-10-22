@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a taken recheck stays due",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "  replayedRefusals.delete(runId);\n  return true;",
+      "replace": "  return true;",
+      "kills": [
+        "the merge wait's recheck after a replayed release answer (TP-3956) ends the wait once, at the head of a replayed ask that released nothing"
+      ]
+    },
+    {
+      "name": "a recheck is due at any head",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "if (replayedRefusals.get(runId) !== head) return false;",
+      "replace": "if (!replayedRefusals.has(runId)) return false;",
+      "kills": [
+        "the merge wait's recheck after a replayed release answer (TP-3956) ends the wait once, at the head of a replayed ask that released nothing"
+      ]
+    },
+    {
+      "name": "no replayed answer is ever seen",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "const replayed = run.ctx.historyNext() !== undefined;",
+      "replace": "const replayed = false;",
+      "kills": [
+        "the merge wait's recheck after a replayed release answer (TP-3956) ends the wait once, at the head of a replayed ask that released nothing"
+      ]
+    },
+    {
+      "name": "a replayed release still ends the wait",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "if (replayed && !done.released && !done.wouldRelease)",
+      "replace": "if (replayed && !done.wouldRelease)",
+      "kills": [
+        "the merge wait's recheck after a replayed release answer (TP-3956) ends no wait when a replayed ask released the hold"
+      ]
+    },
+    {
+      "name": "a live ask keeps an earlier replayed refusal due",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "  else replayedRefusals.delete(run.ctx.runId);\n",
+      "replace": "",
+      "kills": [
+        "the merge wait's recheck after a replayed release answer (TP-3956) drops a replayed refusal once the run asks live again"
+      ]
+    }
+  ]
+}

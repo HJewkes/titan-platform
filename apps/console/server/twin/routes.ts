@@ -25,9 +25,16 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "reviews", hash: "#/reviews" },
   { name: "review-detail", hash: "#/reviews/widget-kit" },
   { name: "theater", hash: "#/theater" },
+  { name: "theater-search", hash: "#/theater?q=relay" },
+  { name: "theater-empty", hash: "#/theater?q=zzz&tag=plan" },
   { name: "theater-player", hash: "#/theater/v-relay-intro" },
   { name: "shepherd", hash: "#/shepherd" },
   { name: "shepherd-detail", hash: `#/shepherd/${encodeURIComponent("orbit/relay#12")}` },
+  { name: "autoresearch", hash: "#/autoresearch" },
+  { name: "autoresearch-run", hash: "#/autoresearch/ar-7c1e" },
+  { name: "autoresearch-idea", hash: "#/autoresearch/ar-7c1e?idea=i-77aa2b4c6d8e" },
+  { name: "autoresearch-idea-decided", hash: "#/autoresearch/ar-7c1e?idea=i-5b3c7e9a1d0f" },
+  { name: "autoresearch-run-pre-s3a", hash: "#/autoresearch/ar-2b90" },
   { name: "config", hash: "#/config" },
 ];
 

@@ -1,4 +1,260 @@
-import { ConversationIdentity, UsageMeasurement, ExecutionIdentity } from '../index.js';
+import { ConversationIdentity, ExecutionIdentity, UsageMeasurement } from '../index.js';
+import { S as SessionSourceDescriptor, R as ReadSessionObservationOptions, a as SessionObservationReadResult, N as NormalizedSessionObservation, b as SourceTextLocator, c as ReadSessionSourceTextOptions } from '../pricing-port.js';
+export { C as CacheWriteSplit, d as ConversationItemKind, D as DecodeRequest, e as DecodeResult, f as DecodeResume, g as DecoderCheckpoint, E as EmitNormalizedObservation, H as HarnessPriceCatalogRef, h as HarnessPricePolicyRef, i as HarnessPriceQuote, j as HarnessPricingContext, k as HarnessPricingPort, L as LocatedSourceLine, l as NormalizedCompactionObservation, m as NormalizedLineageObservation, n as NormalizedMessageObservation, o as NormalizedMetadataObservation, p as NormalizedNativeExtension, q as NormalizedNativeTurnObservation, r as NormalizedObservationBase, s as NormalizedObservationKind, t as NormalizedObservationOf, u as NormalizedTextPart, v as NormalizedToolCallObservation, w as NormalizedToolResultObservation, x as NormalizedUnknownObservation, y as NormalizedUsageObservation, O as ObservationIdentity, z as ResumeBoundary, A as ScopedConversationItemId, B as SessionFormatDecoder, F as SessionSourceProvenance, G as SourceEvidence, I as SourceLineEvidence, J as SourceSubrecordEvidence } from '../pricing-port.js';
+
+/** Corpus/account roots are bound by the adapter; cwd is only an optional lookup hint. */
+interface HarnessSourceQuery {
+    conversation: ConversationIdentity;
+    cwd?: string;
+}
+/** not_written retains an expected location; absent or unreadable evidence is unavailable. */
+type HarnessSourceLookup = {
+    status: "found";
+    sources: readonly [SessionSourceDescriptor, ...SessionSourceDescriptor[]];
+} | {
+    status: "not_written";
+    expectedPaths: readonly [string, ...string[]];
+} | {
+    status: "unavailable";
+    reason: string;
+};
+interface HarnessSourceCapabilities {
+    discover: CapabilityAssessment;
+    locate: CapabilityAssessment;
+    observations: CapabilityAssessment;
+    text: CapabilityAssessment;
+    /** Assessment only; this port neither classifies finality nor proves a process finished. */
+    semanticFinality: CapabilityAssessment;
+}
+/** Required unsupported/unverified operations must be refused before invocation. */
+interface HarnessSourcePort {
+    readonly capabilities: HarnessSourceCapabilities;
+    discover(): Promise<readonly SessionSourceDescriptor[]>;
+    locate(query: HarnessSourceQuery): Promise<HarnessSourceLookup>;
+    readObservations(source: SessionSourceDescriptor, options?: ReadSessionObservationOptions, onDone?: (result: SessionObservationReadResult) => void): AsyncIterable<NormalizedSessionObservation>;
+    readText(locator: SourceTextLocator, options?: ReadSessionSourceTextOptions): Promise<string | null>;
+}
+
+/** Interface compatibility, independent of an adapter binary's own version. */
+declare const HARNESS_CONTRACT_VERSION: 1;
+/** Opaque references; producers keep native homes and credentials outside this contract. */
+interface HarnessAccountRef<H extends string = string> {
+    readonly harness: H;
+    readonly host: string;
+    readonly accountId: string;
+    readonly billingPoolId: string;
+}
+/** Intent resolved inside the selected adapter; consumers do not infer a provider from it. */
+interface HarnessModelIntent {
+    readonly model?: string;
+    readonly reasoningEffort?: string;
+}
+/** Persist the selected binding for resume; changing fallback creates a new execution. */
+interface HarnessExecutionBinding<H extends string = string> {
+    readonly profileRef: string;
+    readonly account: HarnessAccountRef<H>;
+    readonly model?: HarnessModelIntent;
+    readonly policyRevision: string;
+}
+type HarnessOutputIntent<T = string> = {
+    readonly kind: "text";
+} | {
+    readonly kind: "structured";
+    readonly jsonSchema: Readonly<Record<string, unknown>>;
+    /** Adapter validates output again after any native schema constraint. */
+    readonly parse: (value: unknown) => T;
+};
+/** Metadata and output intent only; native SDK options remain private to adapter modules. */
+interface HarnessExecutionRequest<H extends string = string, T = string> extends BoundedRunBase<H> {
+    readonly harness: H;
+    readonly binding: HarnessExecutionBinding<H>;
+    readonly output?: HarnessOutputIntent<T>;
+}
+/** In-process port; a conforming implementation still needs independently qualified runtime evidence. */
+interface HarnessExecutionPort<H extends string = string> {
+    readonly contractVersion: typeof HARNESS_CONTRACT_VERSION;
+    readonly descriptor: HarnessCapabilityDescriptor<H>;
+    run<T = string>(request: HarnessExecutionRequest<H, T>): Promise<HarnessRunResult<T, H>>;
+}
+/** A transport acknowledgment is not a terminal result or an authenticated authority grant. */
+type HarnessDispatchReceipt<H extends string = string> = {
+    readonly state: "accepted";
+    readonly harness: H;
+    readonly execution: ExecutionIdentity;
+    readonly binding: HarnessExecutionBinding<H>;
+} | {
+    readonly state: "running";
+    readonly harness: H;
+    readonly execution: ExecutionIdentity;
+    readonly binding: HarnessExecutionBinding<H>;
+    readonly observedAtMs: number;
+    readonly conversation?: ConversationIdentity;
+} | {
+    readonly state: "refused";
+    readonly harness: H;
+    readonly failure: HarnessRunFailure;
+};
+
+declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
+type ExecutionCapability = (typeof EXECUTION_CAPABILITIES)[number];
+type CapabilityAssessment = {
+    status: "supported";
+    evidence: string;
+} | {
+    status: "unsupported" | "unverified";
+    reason: string;
+};
+type LimitUnit = "milliseconds" | "usd" | "model_requests" | "agent_iterations" | "tokens";
+type OptionalLimitUnit = Exclude<LimitUnit, "milliseconds">;
+type LimitScope = "execution" | "conversation";
+type LimitEnforcement = "hard" | "advisory";
+interface ExecutionLimit {
+    unit: OptionalLimitUnit;
+    value: number;
+    scope: LimitScope;
+    enforcement: LimitEnforcement;
+}
+interface LimitCapability {
+    unit: LimitUnit;
+    scope: LimitScope;
+    enforcement: LimitEnforcement;
+    assessment: CapabilityAssessment;
+}
+/** A factual report supplied by an adapter implementation, not a promise made by the core. */
+interface HarnessCapabilityDescriptor<H extends string = string> {
+    harness: H;
+    adapter: {
+        name: string;
+        version: string;
+    };
+    capabilities: Record<ExecutionCapability, CapabilityAssessment>;
+    limits: readonly LimitCapability[];
+}
+type RunTarget = {
+    kind: "fresh";
+    namespace: string;
+} | {
+    kind: "resume";
+    conversation: ConversationIdentity;
+};
+interface BoundedRunBase<H extends string = string> {
+    prompt: string;
+    cwd: string;
+    target: RunTarget;
+    /** Required hard deadline for this execution. Must be positive and finite. */
+    wallTimeMs: number;
+    limits?: readonly ExecutionLimit[];
+    requires?: readonly ExecutionCapability[];
+    signal?: AbortSignal;
+    onProgress?: (progress: HarnessRunProgress<H>) => void;
+}
+type HarnessRunProgress<H extends string = string> = {
+    harness: H;
+    atMs: number;
+} & ({
+    kind: "execution_started";
+    execution: ExecutionIdentity;
+} | {
+    kind: "conversation_identified";
+    executionId: string;
+    conversation: ConversationIdentity;
+} | {
+    kind: "assistant_output";
+    executionId: string;
+    text: string;
+} | {
+    kind: "usage";
+    executionId: string;
+    measurement: UsageMeasurement;
+} | {
+    kind: "execution_finished";
+    executionId: string;
+    outcome: "succeeded" | "failed" | "cancelled";
+});
+type HarnessRunOutput<T> = {
+    kind: "text";
+    text: string;
+} | {
+    kind: "structured";
+    value: T;
+};
+interface TranscriptSourceHint {
+    format: string;
+    namespace: string;
+    path?: string;
+}
+type HarnessRunFailure = {
+    kind: "invalid_request";
+    reason: string;
+} | {
+    kind: "harness_mismatch";
+    reason: string;
+} | {
+    kind: "unsupported_requirement";
+    reason: string;
+    requirement: {
+        kind: "capability";
+        capability: ExecutionCapability;
+    } | {
+        kind: "limit";
+        limit: LimitCapability;
+    };
+    status: "unsupported" | "unverified";
+} | {
+    kind: "rate_limited";
+    reason: string;
+    retryAtMs?: number;
+    native?: unknown;
+} | {
+    kind: "limit_exceeded";
+    reason: string;
+    unit: LimitUnit;
+    native?: unknown;
+} | {
+    kind: "output_invalid";
+    reason: string;
+    native?: unknown;
+} | {
+    kind: "auth_misconfigured";
+    reason: string;
+    native?: unknown;
+} | {
+    kind: "aborted";
+    reason: string;
+} | {
+    kind: "wall_time_exceeded";
+    reason: string;
+    wallTimeMs: number;
+} | {
+    kind: "cancelled_unknown";
+    reason: string;
+    native?: unknown;
+} | {
+    kind: "runtime_error";
+    reason: string;
+    native?: unknown;
+};
+type HarnessRunResult<T = string, H extends string = string> = {
+    ok: true;
+    harness: H;
+    execution: ExecutionIdentity;
+    conversation: ConversationIdentity;
+    output: HarnessRunOutput<T>;
+    usage: readonly UsageMeasurement[];
+    transcript?: TranscriptSourceHint;
+} | {
+    ok: false;
+    harness: H;
+    execution?: ExecutionIdentity;
+    conversation?: ConversationIdentity;
+    failure: HarnessRunFailure;
+    usage: readonly UsageMeasurement[];
+};
+
+export { type BoundedRunBase, type CapabilityAssessment, EXECUTION_CAPABILITIES, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, NormalizedSessionObservation, type OptionalLimitUnit, ReadSessionObservationOptions, ReadSessionSourceTextOptions, type RunTarget, SessionObservationReadResult, SessionSourceDescriptor, SourceTextLocator, type TranscriptSourceHint };
+
+// ./dist/pricing-port.d.ts
+import { ConversationIdentity, UsageMeasurement } from './index.js';
 
 /**
  * One physical transcript source. A conversation may have more than one source.
@@ -254,99 +510,6 @@ interface ReadSessionSourceTextOptions {
     sources?: readonly SessionSourceDescriptor[];
 }
 
-/** Corpus/account roots are bound by the adapter; cwd is only an optional lookup hint. */
-interface HarnessSourceQuery {
-    conversation: ConversationIdentity;
-    cwd?: string;
-}
-/** not_written retains an expected location; absent or unreadable evidence is unavailable. */
-type HarnessSourceLookup = {
-    status: "found";
-    sources: readonly [SessionSourceDescriptor, ...SessionSourceDescriptor[]];
-} | {
-    status: "not_written";
-    expectedPaths: readonly [string, ...string[]];
-} | {
-    status: "unavailable";
-    reason: string;
-};
-interface HarnessSourceCapabilities {
-    discover: CapabilityAssessment;
-    locate: CapabilityAssessment;
-    observations: CapabilityAssessment;
-    text: CapabilityAssessment;
-    /** Assessment only; this port neither classifies finality nor proves a process finished. */
-    semanticFinality: CapabilityAssessment;
-}
-/** Required unsupported/unverified operations must be refused before invocation. */
-interface HarnessSourcePort {
-    readonly capabilities: HarnessSourceCapabilities;
-    discover(): Promise<readonly SessionSourceDescriptor[]>;
-    locate(query: HarnessSourceQuery): Promise<HarnessSourceLookup>;
-    readObservations(source: SessionSourceDescriptor, options?: ReadSessionObservationOptions, onDone?: (result: SessionObservationReadResult) => void): AsyncIterable<NormalizedSessionObservation>;
-    readText(locator: SourceTextLocator, options?: ReadSessionSourceTextOptions): Promise<string | null>;
-}
-
-/** Interface compatibility, independent of an adapter binary's own version. */
-declare const HARNESS_CONTRACT_VERSION: 1;
-/** Opaque references; producers keep native homes and credentials outside this contract. */
-interface HarnessAccountRef<H extends string = string> {
-    readonly harness: H;
-    readonly host: string;
-    readonly accountId: string;
-    readonly billingPoolId: string;
-}
-/** Intent resolved inside the selected adapter; consumers do not infer a provider from it. */
-interface HarnessModelIntent {
-    readonly model?: string;
-    readonly reasoningEffort?: string;
-}
-/** Persist the selected binding for resume; changing fallback creates a new execution. */
-interface HarnessExecutionBinding<H extends string = string> {
-    readonly profileRef: string;
-    readonly account: HarnessAccountRef<H>;
-    readonly model?: HarnessModelIntent;
-    readonly policyRevision: string;
-}
-type HarnessOutputIntent<T = string> = {
-    readonly kind: "text";
-} | {
-    readonly kind: "structured";
-    readonly jsonSchema: Readonly<Record<string, unknown>>;
-    /** Adapter validates output again after any native schema constraint. */
-    readonly parse: (value: unknown) => T;
-};
-/** Metadata and output intent only; native SDK options remain private to adapter modules. */
-interface HarnessExecutionRequest<H extends string = string, T = string> extends BoundedRunBase<H> {
-    readonly harness: H;
-    readonly binding: HarnessExecutionBinding<H>;
-    readonly output?: HarnessOutputIntent<T>;
-}
-/** In-process port; a conforming implementation still needs independently qualified runtime evidence. */
-interface HarnessExecutionPort<H extends string = string> {
-    readonly contractVersion: typeof HARNESS_CONTRACT_VERSION;
-    readonly descriptor: HarnessCapabilityDescriptor<H>;
-    run<T = string>(request: HarnessExecutionRequest<H, T>): Promise<HarnessRunResult<T, H>>;
-}
-/** A transport acknowledgment is not a terminal result or an authenticated authority grant. */
-type HarnessDispatchReceipt<H extends string = string> = {
-    readonly state: "accepted";
-    readonly harness: H;
-    readonly execution: ExecutionIdentity;
-    readonly binding: HarnessExecutionBinding<H>;
-} | {
-    readonly state: "running";
-    readonly harness: H;
-    readonly execution: ExecutionIdentity;
-    readonly binding: HarnessExecutionBinding<H>;
-    readonly observedAtMs: number;
-    readonly conversation?: ConversationIdentity;
-} | {
-    readonly state: "refused";
-    readonly harness: H;
-    readonly failure: HarnessRunFailure;
-};
-
 /** Versioned policy metadata, never executable code supplied by a profile. */
 interface HarnessPricePolicyRef {
     readonly id: string;
@@ -407,160 +570,4 @@ interface HarnessPricingPort<H extends string = string> {
     quote(measurement: UsageMeasurement, atMs: number, context?: HarnessPricingContext): HarnessPriceQuote;
 }
 
-declare const EXECUTION_CAPABILITIES: readonly ["fresh_run", "resume", "fork", "structured_output", "interactive_approvals", "external_cancellation", "semantic_interrupt", "active_turn_steering", "idle_turn_submission", "persisted_transcript", "process_reattachment", "token_reporting"];
-type ExecutionCapability = (typeof EXECUTION_CAPABILITIES)[number];
-type CapabilityAssessment = {
-    status: "supported";
-    evidence: string;
-} | {
-    status: "unsupported" | "unverified";
-    reason: string;
-};
-type LimitUnit = "milliseconds" | "usd" | "model_requests" | "agent_iterations" | "tokens";
-type OptionalLimitUnit = Exclude<LimitUnit, "milliseconds">;
-type LimitScope = "execution" | "conversation";
-type LimitEnforcement = "hard" | "advisory";
-interface ExecutionLimit {
-    unit: OptionalLimitUnit;
-    value: number;
-    scope: LimitScope;
-    enforcement: LimitEnforcement;
-}
-interface LimitCapability {
-    unit: LimitUnit;
-    scope: LimitScope;
-    enforcement: LimitEnforcement;
-    assessment: CapabilityAssessment;
-}
-/** A factual report supplied by an adapter implementation, not a promise made by the core. */
-interface HarnessCapabilityDescriptor<H extends string = string> {
-    harness: H;
-    adapter: {
-        name: string;
-        version: string;
-    };
-    capabilities: Record<ExecutionCapability, CapabilityAssessment>;
-    limits: readonly LimitCapability[];
-}
-type RunTarget = {
-    kind: "fresh";
-    namespace: string;
-} | {
-    kind: "resume";
-    conversation: ConversationIdentity;
-};
-interface BoundedRunBase<H extends string = string> {
-    prompt: string;
-    cwd: string;
-    target: RunTarget;
-    /** Required hard deadline for this execution. Must be positive and finite. */
-    wallTimeMs: number;
-    limits?: readonly ExecutionLimit[];
-    requires?: readonly ExecutionCapability[];
-    signal?: AbortSignal;
-    onProgress?: (progress: HarnessRunProgress<H>) => void;
-}
-type HarnessRunProgress<H extends string = string> = {
-    harness: H;
-    atMs: number;
-} & ({
-    kind: "execution_started";
-    execution: ExecutionIdentity;
-} | {
-    kind: "conversation_identified";
-    executionId: string;
-    conversation: ConversationIdentity;
-} | {
-    kind: "assistant_output";
-    executionId: string;
-    text: string;
-} | {
-    kind: "usage";
-    executionId: string;
-    measurement: UsageMeasurement;
-} | {
-    kind: "execution_finished";
-    executionId: string;
-    outcome: "succeeded" | "failed" | "cancelled";
-});
-type HarnessRunOutput<T> = {
-    kind: "text";
-    text: string;
-} | {
-    kind: "structured";
-    value: T;
-};
-interface TranscriptSourceHint {
-    format: string;
-    namespace: string;
-    path?: string;
-}
-type HarnessRunFailure = {
-    kind: "invalid_request";
-    reason: string;
-} | {
-    kind: "harness_mismatch";
-    reason: string;
-} | {
-    kind: "unsupported_requirement";
-    reason: string;
-    requirement: {
-        kind: "capability";
-        capability: ExecutionCapability;
-    } | {
-        kind: "limit";
-        limit: LimitCapability;
-    };
-    status: "unsupported" | "unverified";
-} | {
-    kind: "rate_limited";
-    reason: string;
-    retryAtMs?: number;
-    native?: unknown;
-} | {
-    kind: "limit_exceeded";
-    reason: string;
-    unit: LimitUnit;
-    native?: unknown;
-} | {
-    kind: "output_invalid";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "auth_misconfigured";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "aborted";
-    reason: string;
-} | {
-    kind: "wall_time_exceeded";
-    reason: string;
-    wallTimeMs: number;
-} | {
-    kind: "cancelled_unknown";
-    reason: string;
-    native?: unknown;
-} | {
-    kind: "runtime_error";
-    reason: string;
-    native?: unknown;
-};
-type HarnessRunResult<T = string, H extends string = string> = {
-    ok: true;
-    harness: H;
-    execution: ExecutionIdentity;
-    conversation: ConversationIdentity;
-    output: HarnessRunOutput<T>;
-    usage: readonly UsageMeasurement[];
-    transcript?: TranscriptSourceHint;
-} | {
-    ok: false;
-    harness: H;
-    execution?: ExecutionIdentity;
-    conversation?: ConversationIdentity;
-    failure: HarnessRunFailure;
-    usage: readonly UsageMeasurement[];
-};
-
-export { type BoundedRunBase, type CacheWriteSplit, type CapabilityAssessment, type ConversationItemKind, type DecodeRequest, type DecodeResult, type DecodeResume, type DecoderCheckpoint, EXECUTION_CAPABILITIES, type EmitNormalizedObservation, type ExecutionCapability, type ExecutionLimit, HARNESS_CONTRACT_VERSION, type HarnessAccountRef, type HarnessCapabilityDescriptor, type HarnessDispatchReceipt, type HarnessExecutionBinding, type HarnessExecutionPort, type HarnessExecutionRequest, type HarnessModelIntent, type HarnessOutputIntent, type HarnessPriceCatalogRef, type HarnessPricePolicyRef, type HarnessPriceQuote, type HarnessPricingContext, type HarnessPricingPort, type HarnessRunFailure, type HarnessRunOutput, type HarnessRunProgress, type HarnessRunResult, type HarnessSourceCapabilities, type HarnessSourceLookup, type HarnessSourcePort, type HarnessSourceQuery, type LimitCapability, type LimitEnforcement, type LimitScope, type LimitUnit, type LocatedSourceLine, type NormalizedCompactionObservation, type NormalizedLineageObservation, type NormalizedMessageObservation, type NormalizedMetadataObservation, type NormalizedNativeExtension, type NormalizedNativeTurnObservation, type NormalizedObservationBase, type NormalizedObservationKind, type NormalizedObservationOf, type NormalizedSessionObservation, type NormalizedTextPart, type NormalizedToolCallObservation, type NormalizedToolResultObservation, type NormalizedUnknownObservation, type NormalizedUsageObservation, type ObservationIdentity, type OptionalLimitUnit, type ReadSessionObservationOptions, type ReadSessionSourceTextOptions, type ResumeBoundary, type RunTarget, type ScopedConversationItemId, type SessionFormatDecoder, type SessionObservationReadResult, type SessionSourceDescriptor, type SessionSourceProvenance, type SourceEvidence, type SourceLineEvidence, type SourceSubrecordEvidence, type SourceTextLocator, type TranscriptSourceHint };
+export type { ScopedConversationItemId as A, SessionFormatDecoder as B, CacheWriteSplit as C, DecodeRequest as D, EmitNormalizedObservation as E, SessionSourceProvenance as F, SourceEvidence as G, HarnessPriceCatalogRef as H, SourceLineEvidence as I, SourceSubrecordEvidence as J, LocatedSourceLine as L, NormalizedSessionObservation as N, ObservationIdentity as O, ReadSessionObservationOptions as R, SessionSourceDescriptor as S, SessionObservationReadResult as a, SourceTextLocator as b, ReadSessionSourceTextOptions as c, ConversationItemKind as d, DecodeResult as e, DecodeResume as f, DecoderCheckpoint as g, HarnessPricePolicyRef as h, HarnessPriceQuote as i, HarnessPricingContext as j, HarnessPricingPort as k, NormalizedCompactionObservation as l, NormalizedLineageObservation as m, NormalizedMessageObservation as n, NormalizedMetadataObservation as o, NormalizedNativeExtension as p, NormalizedNativeTurnObservation as q, NormalizedObservationBase as r, NormalizedObservationKind as s, NormalizedObservationOf as t, NormalizedTextPart as u, NormalizedToolCallObservation as v, NormalizedToolResultObservation as w, NormalizedUnknownObservation as x, NormalizedUsageObservation as y, ResumeBoundary as z };

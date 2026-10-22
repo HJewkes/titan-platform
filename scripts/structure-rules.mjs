@@ -97,13 +97,17 @@ export function checkNoTestsDirectories(root) {
   });
 }
 
-/** R47: packages take zod as a peer, never a regular dependency. */
+/**
+ * R47: packages take zod as a peer, never a regular dependency. A package that ships a bin is
+ * exempt: `npx -p` runs the bin with no host to supply the peer, and legacy-peer-deps skips it (TP-3897).
+ */
 export function checkZodIsPeer(root) {
   return workspaceDirs(root, ["packages"])
     .map((dir) => readJson(join(dir, "package.json")))
-    .filter((pkg) => pkg.dependencies?.zod)
+    .filter((pkg) => pkg.dependencies?.zod && !pkg.bin)
     .map(
-      (pkg) => `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies.`,
+      (pkg) =>
+        `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies, unless the package ships a bin.`,
     );
 }
 
@@ -190,6 +194,11 @@ function resolveWorkspaceGlob(root, glob) {
   return dirs.filter((dir) => existsSync(join(dir, "package.json"))).map((dir) => relative(root, dir));
 }
 
+/** Every pnpm workspace member's directory, relative to root, as `pnpm-workspace.yaml` lists them. */
+export function workspaceMemberDirs(root) {
+  return workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+}
+
 /** R55: the root lint command reaches every workspace dir; workspaces carry no lint script of their own. */
 export function checkRootLintCoversWorkspaces(root) {
   const targets = (readJson(join(root, "package.json")).scripts?.lint ?? "")
@@ -230,7 +239,7 @@ function undeclaredImports(root, dir, members) {
 
 /** R58: a workspace member declares every workspace package it imports; test scoping follows only declared edges. */
 export function checkWorkspaceImportsDeclared(root) {
-  const dirs = workspaceGlobs(root).flatMap((glob) => resolveWorkspaceGlob(root, glob));
+  const dirs = workspaceMemberDirs(root);
   const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }

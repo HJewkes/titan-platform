@@ -11,10 +11,11 @@ import { z } from "zod";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import type { DecisionLog } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
-import { ACTIONS_OFF, CONFIRM_TTL_MS, inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
+import { ACTIONS_OFF, inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
 import type { InboxSources, WatchRow } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient } from "./owner-action.js";
 import type { ConsoleContext } from "./owner-guard.js";
+import { CONFIRM_TTL_MS } from "./owner-tap.js";
 import { shepherdReader } from "./shepherd.js";
 import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 

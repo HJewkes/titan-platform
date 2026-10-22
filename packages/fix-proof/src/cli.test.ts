@@ -84,7 +84,7 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
     const { exec, mutants } = await mutantsVerdict(REAL_TEST);
 
     expect(exec).toBe("");
-    expect(mutants).toEqual({ verdict: "killed", results: [{ spec: "src/math.test.mutations.json", name: "add subtracts", outcome: "killed" }] });
+    expect(mutants).toEqual({ verdict: "killed", results: [{ spec: "src/math.test.mutations.json", name: "add subtracts", outcome: "killed" }], uncovered: [] });
   });
 
   it("a mutation whose test fails by a thrown Error rather than an assertion is not killed", async () => {

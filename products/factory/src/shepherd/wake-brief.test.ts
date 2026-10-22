@@ -376,6 +376,31 @@ describe("wake brief: who merges the base branch", () => {
   });
 });
 
+describe("conflict wake brief: how the fixer brings in the base", () => {
+  const RECIPE = "`git fetch origin`, `git merge origin/<base>`";
+  const CAP = ["src/a.ts", ...Array.from({ length: 300 }, (_, i) => `gen/file-${i}.ts`)];
+  const shapes: Array<[string, string[], string[]]> = [
+    ["generated-only", ["CAPABILITIES.md"], ["CAPABILITIES.md"]],
+    ["mixed with registries", ["CAPABILITIES.md", "src/a.ts"], ["CAPABILITIES.md", "src/a.ts"]],
+    ["ordinary files", ["src/a.ts"], ["src/a.ts"]],
+    ["no shared files", ["src/a.ts"], ["src/b.ts"]],
+    ["truncated comparison", ["src/a.ts"], CAP],
+  ];
+
+  it.each(shapes)("gives the merge recipe and never names a rebase for %s", async (_name, prPaths, basePaths) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    fake.prFiles.set(pr.number, prPaths.map((path) => ({ path, status: "modified" as const })));
+    fake.compares.set(`${H1}...${pr.baseRef}`, { mergeBaseSha: fakeSha("base"), files: basePaths });
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), { kind: "conflict", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(reason).toContain(RECIPE);
+    expect(reason).toContain("plain `git push`");
+    expect(`${reason}\n${payload}`.toLowerCase()).not.toContain("rebase");
+  });
+});
+
 describe("defectClassSection", () => {
   it("reads the newest defect class when the findings hold more than one FIX_FIRST", () => {
     const verdict = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;
@@ -407,6 +432,25 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     expect(reason).toContain(`merge base is ${BASE}`);
     expect(reason).not.toContain(pr.headRef);
     expect(payload).toContain(fence("head branch", pr.headRef));
+  });
+
+  it("asks a test-only PR whose mutation check failed for kills, not for a test that fails at the merge base", async () => {
+    const { wake } = proofScene(noRepro("vacuous", { mutants: { verdict: "not-killed", results: [] } }));
+
+    const { reason } = await wake();
+
+    expect(reason).toContain("the mutation check did not pass");
+    expect(reason).toContain("fail under that mutation and pass at the head");
+    expect(reason).not.toContain("fails at the merge base and passes at the head");
+  });
+
+  it("fences the changed test files that still need a mutation spec", async () => {
+    const { wake } = proofScene(noRepro("vacuous", { mutants: { verdict: "not-killed", results: [], uncovered: ["src/guard.test.ts", "src/store.test.ts"] } }));
+
+    const { reason, payload } = await wake();
+
+    expect(reason).toContain("a changed test file has no mutation spec of its own");
+    expect(payload).toContain(fence("changed test files with no mutation spec", "src/guard.test.ts\nsrc/store.test.ts"));
   });
 
   it("says no test was added for a no-tests verdict, without claiming tests ran", async () => {

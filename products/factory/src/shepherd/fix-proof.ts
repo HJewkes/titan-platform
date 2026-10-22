@@ -1,4 +1,4 @@
-import { RESULT_PREFIX, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { RESULT_PREFIX, parseResultLine, provedByMutants, type FixProofResult } from "@titan-design/fix-proof";
 import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -7,17 +7,19 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
+import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
-/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after both have finished. */
-const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head"]);
+/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
+const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
- * Above the three-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
+ * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
  */
 const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
@@ -39,13 +41,18 @@ const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/act
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
-type FixProofRead = ({ kind: "result" } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
+type FixProofRead =
+  | ({ kind: "result"; testOnlyProceed?: true } & Parsed)
+  | ({ kind: "untrusted"; reason: string } & Parsed)
+  | { kind: "skipped" | "missing" | "error"; reason: string }
+  | WorkflowCiRead;
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string() }),
+  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional() }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string() }),
+  WorkflowCiReadSchema,
 ]);
 
 const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1) });
@@ -53,7 +60,7 @@ type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
-type Gate = { open: true; pr: number | null } | { open: false; reason: string };
+type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string };
 
 /** A store that cannot be read gives no kind, so the gate stays shut and the review proceeds with the reason recorded. */
 async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string): Promise<Gate> {
@@ -64,11 +71,11 @@ async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string):
     return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
   }
   if (registration === undefined) return { open: false, reason: "no registration for this run" };
-  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr };
+  if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr, kind: registration.kind };
   const branch = await headBranchOf(port, registration);
   if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
-  if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr };
+  if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr, kind: registration.kind };
   return { open: false, reason: `kind ${registration.kind}` };
 }
 
@@ -235,13 +242,20 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
   return distrust === undefined ? { kind: "result", line, verdict } : { kind: "untrusted", line, verdict, reason: distrust };
 }
 
-/** The body of the sh-fix-proof step. A kind outside the gate makes no GitHub call; a read that fails is recorded and the review proceeds. */
-export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+/**
+ * The body of the sh-fix-proof step. A kind outside the gate makes no GitHub call; a read that fails is recorded and the review proceeds.
+ * A diff that is only workflows has no test to run, so CI at the merge base and the head is its proof instead of the fix-proof run.
+ */
+export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
   const gate = await gateOf(deps.port, deps.store, input.runId);
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   try {
-    return await readResult(deps.port, input, gate.pr, timing, signal);
+    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head);
+    if (ci !== undefined) return ci;
+    const read = await readResult(deps.port, input, gate.pr, timing, signal);
+    const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
+    return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
   } catch (error) {
     signal.throwIfAborted();
     return { kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };
@@ -264,25 +278,41 @@ export async function readFixProofAt(ctx: WorkflowContext, target: { repo: strin
   return rereads ? step(ctx, stepId, input, FixProofReadSchema) : first;
 }
 
-/** A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result; anything else lets the review proceed. */
+/**
+ * A vacuous or test-less proof at `head` is NO_REPRO, carrying the parsed result, unless its mutants prove it; anything
+ * else lets the review proceed. A surviving mutation leaves the vacuous verdict standing, so it is NO_REPRO too. A workflow-only
+ * diff's CI read is NO_REPRO, carrying the read, unless CI proved it.
+ */
 export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
-  if (read.kind !== "result" || typeof read.line !== "string") return undefined;
-  const parsed = parseResultLine(read.line);
+  if (read.kind === "workflow-ci") return read.proved || read.head !== head ? undefined : { kind: "NO_REPRO", headSha: head, result: read };
+  return read.kind === "result" && typeof read.line === "string" ? noReproOfLine(read.line, head) : undefined;
+}
+
+/** A vacuous or test-less line at `head` its mutants do not prove is NO_REPRO, carrying the parsed result; any other line is not. */
+export function noReproOfLine(line: string, head: string): Extract<Verdict, { kind: "NO_REPRO" }> | undefined {
+  const parsed = parseResultLine(line);
   if (!parsed.ok || parsed.result.head !== head || !NO_REPRO_VERDICTS.has(parsed.result.verdict)) return undefined;
+  if (provedByMutants(parsed.result)) return undefined;
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-export type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
 
 /**
  * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.
  * A head can force each of these reads, so none may pass as if the bug were reproduced.
  */
 export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head: string): { unverified: FixProofUnverified } | undefined {
+  if (read.kind === "result" && read.testOnlyProceed === true && fixProofVerdict(read, head)) return { unverified: "no-repro-test-only" };
   if (read.kind === "untrusted") return { unverified: "untrusted" };
   if (read.kind === "error") return { unverified: "unread" };
+  if (read.kind === "workflow-ci") return read.head === head ? undefined : { unverified: "unread" };
   if (read.kind !== "result") return undefined;
   const parsed = typeof read.line === "string" ? parseResultLine(read.line) : undefined;
   if (!parsed?.ok || parsed.result.head !== head) return { unverified: "unread" };
   return parsed.result.verdict === "error" ? { unverified: "error" } : undefined;
 }
+
+/** A workflow-only diff that CI proved names its two commits to the reviewer; any other read adds nothing. */
+export const workflowCiFieldOf = (proof: z.infer<typeof FixProofReadSchema>): { workflowCiProof?: { mergeBase: string; head: string } } =>
+  proof.kind === "workflow-ci" && proof.proved ? { workflowCiProof: { mergeBase: proof.mergeBase, head: proof.head } } : {};

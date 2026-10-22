@@ -61,6 +61,22 @@ describe("explainer eval pace", () => {
     expect(row("Q-E10")?.[9]).toBe("ch2,ch3");
   });
 
+  it("fails the v4 spike script's unseated invariant, routes r2-4, and prints the reused beats to re-voice", async () => {
+    await pace(write("script.json", v4Script()), "--timing", write("words.json", v4Durations()));
+
+    expect(row("Q-E11")?.slice(5, 9)).toEqual(["error", "1", "0", "false"]);
+    expect(row("Q-E11")?.[9]).toBe("r2-2-inv");
+    expect(row("Q-E12")?.[9]).toBe("r2-4-measure");
+    expect(printed()).toContain("beat\tchecks\trevoice_s");
+    expect(printed()).toMatch(/r2-1-jobs\tQ-E7[^\t]*\t\d+\.\d/);
+  });
+
+  it("prints no reused table when no reused beat fails", async () => {
+    await pace(write("script.json", spike(spikeBeat("b1-parts", FOUR_PARTS))));
+
+    expect(printed()).not.toContain("revoice_s");
+  });
+
   // Mutation: mapping col to attribute drops c3-6's "owns" and c8-1's "agents", and the frozen ch3 and ch8 rows fail.
   it("fails the pipeline-explainer hold-out on exactly its labelled Q-E7 beats, with ch2 under 20 items a minute", async () => {
     const m1 = LabelsSchema.parse(pipelineLabels()).checks.find((c) => c.check === "M1");
@@ -73,6 +89,13 @@ describe("explainer eval pace", () => {
       ["ch1\t5\t36.0\t8.3", "ch2\t13\t72.0\t10.8", "ch3\t12\t66.0\t10.9", "ch4\t15\t106.0\t8.5", "ch5\t11\t50.0\t13.2",
         "ch6\t23\t176.0\t7.8", "ch7\t22\t134.0\t9.9", "ch8\t5\t31.0\t9.7", "ch9\t1\t13.0\t4.6"].map((r) => `${r}\tpass`).join("\n"),
     );
+  });
+
+  // Mutation: reverting Q-E9 to a warning changes the severity cell; flagging a pilot beat fails the "0" count.
+  it("records Q-E9 as an error row that flags no pilot beat, on planned lengths", async () => {
+    await pace(write("script.json", pipelineScript()));
+
+    expect(row("Q-E9")?.slice(5, 9)).toEqual(["error", "0", "0", "true"]);
   });
 
   it("passes a spike script whose only failures are warnings, still recording them as failing rows", async () => {
@@ -97,7 +120,7 @@ describe("explainer eval pace", () => {
 
     await pace(write("script.json", script));
 
-    expect(structureRows().map((cells) => cells[3])).toEqual(["Q-E7", "Q-E8", "Q-E9", "Q-E10"]);
+    expect(structureRows().map((cells) => cells[3])).toEqual(["Q-E7", "Q-E8", "Q-E9", "Q-E10", "Q-E11", "Q-E12", "Q-E13", "Q-E14"]);
     expect(structureRows().every(([config, sha]) => config === "unconfigured" && sha === scriptSha(script))).toBe(true);
     const run = JSON.parse(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8"));
     expect(run).toMatchObject({ config_id: "unconfigured", script_sha: scriptSha(script), eval_id: "L0-pace", usd: 0, wall_s: 0.25 });

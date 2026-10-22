@@ -37,7 +37,8 @@ function splicedReadings(cmd: Unwrapped): string[] {
   return known.length < texts.length ? [] : [...new Set(known)];
 }
 
-function passesThrough(cmd: Unwrapped): boolean {
+/** Whether the command writes what is piped into it: `tee`, or `cat` reading stdin. */
+export function passesThrough(cmd: Unwrapped): boolean {
   if (cmd.name === "tee") return true;
   if (cmd.name !== "cat") return false;
   const operands = catOperands(cmd.args.map((a) => a.value));

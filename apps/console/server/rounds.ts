@@ -19,12 +19,22 @@ import { z } from "zod";
 import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { readCommand } from "./owner-guard.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
+import { hasUnboundMergeOffer } from "./round-merge-binding.js";
+import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
+import { readFollowUps } from "./round-follow-ups.js";
+import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, roundNotes, type RoundNotes } from "./round-notes.js";
+import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
+import type { LiveReader } from "./round-live.js";
+import { roundLive } from "./storybook-build.js";
 
 export interface RoundsSource {
   dir: string;
+  /** Absent, a Ship round's lineage reads as unknown; fixtures and tests never reach GitHub. */
+  lineage?: LineageReader;
+  /** Absent, no round carries a `live` field; the daemon wires the console's Storybook store. */
+  live?: LiveReader;
 }
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
@@ -46,7 +56,7 @@ const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().n
 
 const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
 
-const roundSummary = z.discriminatedUnion("valid", [
+export const roundSummary = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
@@ -55,12 +65,14 @@ const roundSummary = z.discriminatedUnion("valid", [
     questions: z.number(),
     design: z.boolean(),
     ship: z.boolean(),
+    /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
+    unbound: z.literal(true).optional(),
     recommendations: z.enum(["after-answer", "shown"]),
   }),
   invalidRound,
 ]);
 
-const roundDetail = z.discriminatedUnion("valid", [
+export const roundDetail = z.discriminatedUnion("valid", [
   z.object({
     ...roundHead,
     valid: z.literal(true),
@@ -72,14 +84,27 @@ const roundDetail = z.discriminatedUnion("valid", [
     manifestSha256: z.string(),
     /** True while an after-answer round is unsent: every question's recommendation is stripped. */
     recommendationsWithheld: z.boolean(),
+    /** While withheld, the questions that have a recommendation `rounds.reveal` can hand back; empty otherwise. */
+    revealable: z.array(z.string()),
     /** Null unless the manifest's Storybook host is loopback. */
     storybookUrl: z.string().nullable(),
     manifest: z.custom<Manifest>(),
     answer: gateAnswer.optional(),
+    /** A Ship round's proven head against its PR base now; absent on any other round. */
+    lineage: shipLineage.optional(),
+    /** A sent round's free text from its feedback.json; absent while unsent or when that file does not parse. */
+    notes: roundNotes.optional(),
+    /** An open or sent Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
+    priorFeedback: priorFeedbackList.optional(),
+    /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
+    followUps: z.array(z.string()).optional(),
+    /** A round that carries a Storybook build: each story variant's url on the story origin, or why it shows its PNG (TP-3793). */
+    live: roundLive.optional(),
   }),
   invalidRound,
 ]);
 
+export type { RoundNotes, SentAnswer } from "./round-notes.js";
 export type RoundSummary = z.infer<typeof roundSummary>;
 export type RoundDetail = z.infer<typeof roundDetail>;
 
@@ -183,8 +208,11 @@ function summaryOf({ id, status, updatedAt, parsed }: LoadedRound): RoundSummary
   return {
     id, status, updatedAt, valid: true, unit: manifest.unit, round: manifest.round,
     questions: manifest.questions.length, design: isDesign(manifest), ship: isShip(manifest), recommendations: manifest.recommendations,
+    ...(hasUnboundMergeOffer(manifest.questions) && { unbound: true as const }),
   };
 }
+
+const hasRecommendation = (question: Question): boolean => question.kind !== "text" && question.recommendation !== undefined;
 
 function withoutRecommendation(question: Question): Question {
   if (!("recommendation" in question)) return question;
@@ -193,15 +221,42 @@ function withoutRecommendation(question: Question): Question {
   return stripped;
 }
 
-function detailOf({ id, status, updatedAt, parsed }: LoadedRound, answer: GateAnswer | undefined): RoundDetail {
+interface DetailExtras {
+  answer?: GateAnswer;
+  lineage?: ShipLineage;
+  notes?: RoundNotes;
+}
+
+function detailOf({ id, status, updatedAt, parsed }: LoadedRound, { answer, lineage, notes }: DetailExtras): RoundDetail {
   if (!parsed.ok) return { id, status, updatedAt, valid: false, reason: parsed.reason };
   const withheld = parsed.manifest.recommendations === "after-answer" && status !== "sent";
   const manifest = withheld ? { ...parsed.manifest, questions: parsed.manifest.questions.map(withoutRecommendation) } : parsed.manifest;
+  const revealable = withheld ? parsed.manifest.questions.filter(hasRecommendation).map((question) => question.id) : [];
   return {
     id, status, updatedAt, valid: true, design: isDesign(manifest), ship: isShip(manifest), manifestSha256: parsed.sha256,
-    recommendationsWithheld: withheld, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
+    recommendationsWithheld: withheld, revealable, storybookUrl: isLoopbackUrl(manifest.storybookUrl) ? manifest.storybookUrl : null, manifest,
     ...(answer !== undefined && { answer }),
+    ...(lineage !== undefined && { lineage }),
+    ...(notes !== undefined && { notes }),
   };
+}
+
+/** A missing, oversized or malformed `addressed.json` reads as no ticks; the feedback beside it still shows. */
+async function readAddressed(roundDir: string): Promise<number[]> {
+  const read = await readRoundFile(roundDir, ADDRESSED_FILE, MAX_ADDRESSED_BYTES);
+  return read.state === "read" ? addressedOf(jsonOrUndefined(read.text)) : [];
+}
+
+/** Only a sent round has notes; a feedback.json that does not parse shows none rather than failing the page. */
+async function readNotes(roundDir: string): Promise<RoundNotes | undefined> {
+  const read = await readFeedback(roundDir);
+  return read.ok && read.feedback !== null ? notesOf(read.feedback, await readAddressed(roundDir)) : undefined;
+}
+
+async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLineage | undefined> {
+  const binding = parsed.ok ? parsed.manifest.questions.flatMap((question) => (question.kind === "pick-one" && question.merge ? [question.merge] : []))[0] : undefined;
+  if (binding === undefined) return undefined;
+  return source.lineage ? source.lineage(binding) : UNWIRED_LINEAGE;
 }
 
 const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
@@ -220,10 +275,15 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
   return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
-export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
+export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
+  const { dir } = source;
   if (!(await roundDirExists(dir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
-  const [round, answer] = await Promise.all([loadRound(dir, id), readAnswer(path.join(dir, id))]);
-  return detailOf(round, answer);
+  const roundDir = path.join(dir, id);
+  const [round, answer, notes, followUps] = await Promise.all([loadRound(dir, id), readAnswer(roundDir), readNotes(roundDir), readFollowUps(roundDir)]);
+  const prior = round.parsed.ok && round.status !== "withdrawn" ? await readPriorFeedback(round.parsed.manifest, () => readQueueRounds(source)) : [];
+  const live = round.parsed.ok ? await source.live?.(roundDir, round.parsed.manifest, remote) : undefined;
+  const detail = detailOf(round, { answer, lineage: await lineageOf(source, round.parsed), notes });
+  return { ...detail, ...(prior.length > 0 && { priorFeedback: prior }), ...(notes !== undefined && followUps.length > 0 && { followUps }), ...(live && { live }) };
 }
 
 const WithdrawalSchema = z.object({ schema: z.literal(WITHDRAWN_SCHEMA_ID), reason: z.string().min(1).max(200), at: z.string() });
@@ -239,6 +299,8 @@ export interface QueueRound {
   manifest: Manifest;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;
+  /** The questions its feedback filed as follow-ups; empty while unsent. */
+  followUps: string[];
 }
 
 type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
@@ -306,7 +368,8 @@ async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound
   const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
   if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback: read.ok ? read.feedback : null, withdrawn };
+  const feedback = read.ok ? read.feedback : null;
+  const round = { id, updatedAt, manifest: parsed.manifest, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 
@@ -326,23 +389,4 @@ export async function readQueueRounds({ dir }: RoundsSource): Promise<{ rounds: 
   const gaps = read.flatMap(({ gap }) => (gap === undefined ? [] : [gap]));
   if (ids.length > MAX_ROUNDS) gaps.push(`only the first ${MAX_ROUNDS} of ${ids.length} rounds were read`);
   return { rounds: read.flatMap(({ round }) => (round === undefined ? [] : [round])), gaps };
-}
-
-export function roundsCommands(source: RoundsSource) {
-  return {
-    "rounds.list": readCommand({
-      name: "rounds.list",
-      description: "Every review round in the rounds dir, newest first: open, sent or withdrawn, and the schema's reason for any invalid one",
-      args: z.object({}),
-      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean(), dir: z.string() }),
-      run: () => listRounds(source),
-    }),
-    "rounds.get": readCommand({
-      name: "rounds.get",
-      description: "One review round's manifest; an unsent after-answer round comes without its recommendations",
-      args: z.object({ id: z.string().min(1).max(64) }),
-      result: roundDetail,
-      run: ({ id }) => getRound(source, id),
-    }),
-  };
 }

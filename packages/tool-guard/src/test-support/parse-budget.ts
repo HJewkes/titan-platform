@@ -1,4 +1,5 @@
 import type { HookResult } from "../hook.js";
+import { cpuStopwatch } from "./cpu-budget.js";
 
 /** Runs the hook on one event, usually a closure over `handle` with a test port. */
 export type HookRun = (input: string) => Promise<Pick<HookResult, "stdout">>;
@@ -29,14 +30,14 @@ export function bashEvent(command: string, cwd = "/home/you/app"): string {
 
 /**
  * Times the hook in this thread's CPU, not the wall clock: in a full run the worker shares the runner's cores with
- * other test files, and the time it waits for one says nothing about the work the hook does.
+ * other test files, and the time it waits for one says nothing about the work the hook does. Call it inside a
+ * `cpuBudgetIt` test.
  */
 export async function withinParseBudget(run: HookRun, command: string, opts: ParseBudgetOptions = {}): Promise<ParseBudgetResult> {
   const ms = opts.ms ?? DEFAULT_PARSE_BUDGET_MS;
-  const start = process.threadCpuUsage();
+  const elapsed = cpuStopwatch();
   const { stdout } = await run(bashEvent(command));
-  const { user, system } = process.threadCpuUsage(start);
-  const cpuMs = (user + system) / 1000;
+  const cpuMs = elapsed();
   const denied = stdout.includes(DENY_MARK);
   const problems: string[] = [];
   if (cpuMs >= ms) problems.push(`took ${cpuMs.toFixed(1)} ms of CPU, budget ${ms} ms`);

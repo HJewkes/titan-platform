@@ -1,3 +1,4 @@
+import { headRegressionObserver } from "../head-guard/head-regression.js";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
@@ -218,7 +219,14 @@ function mainRecheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, hel
 
 /** The freeze is a local read made every tick; the PR is read on a push to its branch or once per backstop, and a failed read is read again. */
 const prPoll = (deps: ShepherdDeps, input: PrTarget & { headSha: string }): HeadPoll =>
-  headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.headSha, tickMs: PUSH_WATCH_TICK_MS, read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined) });
+  headPoll({
+    pushes: deps.pushes,
+    repo: input.repo,
+    headSha: input.headSha,
+    tickMs: PUSH_WATCH_TICK_MS,
+    read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined),
+    observe: headRegressionObserver(deps.port),
+  });
 
 /** Waits until the hold's episode is no longer live, the PR moves off the held head, or the wait reaches its limit. */
 async function awaitThaw(deps: ShepherdDeps, freezes: FreezeStore, input: WaitInput, signal: AbortSignal): Promise<Waited> {

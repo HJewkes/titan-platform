@@ -8,6 +8,11 @@ import { githubPort } from "./port.js";
 const TOKEN = "ghp_synthetic_test_token_0000000000";
 const NOW = Date.parse("2026-03-01T12:00:00Z");
 const ok: FakeAnswer = { status: 200, body: { ok: true } };
+const primaryLimit = (resetInS: number): FakeAnswer => ({
+  status: 403,
+  body: { message: "API rate limit exceeded for user ID 1." },
+  headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + resetInS) },
+});
 
 let clients = 0;
 
@@ -56,6 +61,27 @@ describe("octokitClient", () => {
 
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(2);
+  });
+
+  it("waits out a primary limit's reset on a GET and retries it once", async () => {
+    const { client, calls } = clientWith((index) => (index === 0 ? primaryLimit(5) : ok));
+
+    const response = await settle(client.request("GET /repos/octo/demo"), 10_000);
+
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("leaves every rate-limit wait to the pool when poolOwnsWaits is set", async () => {
+    const fake = fakeFetch((_call, index) => (index === 0 ? secondaryLimit("5") : primaryLimit(5)));
+    const client = octokitClient({ fetch: fake.fetch, token: async () => TOKEN, throttleId: `test-${++clients}`, poolOwnsWaits: true });
+
+    await expect(settle(client.request("GET /repos/octo/demo"), 100)).rejects.toMatchObject({ status: 403 });
+    await expect(settle(client.request("GET /repos/octo/demo"), 100)).rejects.toMatchObject({ status: 403 });
+    expect(client.budget().cooldowns).toEqual([{ lane: "rest", class: "primary", until: expect.any(Number) }]);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(fake.calls).toHaveLength(2);
   });
 
   it("never retries a write on a secondary limit", async () => {

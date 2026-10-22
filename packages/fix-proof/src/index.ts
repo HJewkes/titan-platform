@@ -62,6 +62,7 @@ export {
 export {
   formatResultLine,
   parseResultLine,
+  provedByMutants,
   RESULT_LINE_MAX_BYTES,
   RESULT_PREFIX,
   toResult,

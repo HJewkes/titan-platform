@@ -154,7 +154,9 @@ export, export it from the package entry so it has an importer.
 - Tests live next to source as `*.test.ts` and run from the root with vitest. Test
   behaviour, not implementation.
 - Functions stay under about 30 lines. Comments explain why, never what.
-- `zod` is a peer dependency of packages that use it, never a regular dependency.
+- `zod` is a peer dependency of packages that use it, never a regular dependency. A package
+  that ships a bin lists it under `dependencies`: `npx -p` runs the bin with no host to
+  supply the peer, and npm skips peers under `legacy-peer-deps`.
 - Products own surface wiring — commander, MCP SDK transports, hono servers. Packages
   expose surface-independent cores.
 - Every CLI surface a package exposes takes `--json` and returns the JSON envelope. The one

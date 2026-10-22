@@ -1,5 +1,21 @@
 # @titan-design/tool-guard
 
+## 0.5.3
+
+### Patch Changes
+
+- 7ce4573: The lexer refuses math that writes a protected parameter at a `$`: a `$(( ))` or `$[ ]` body, a `${a[…]}` subscript and a bash `${x:off}` or `${x:off:len}` offset, and any math body the guard cannot read to a close it pairs, at a window edge or past a nested unit. The lexer also refuses a `$(( ))` or `$[ ]` it closes elsewhere than the guard's scan did, and a brace splice onto a `$[` group. `assignedInMath` and `mentionedIn` take the set of names to look for, defaulting to the hooked names.
+
+## 0.5.2
+
+### Patch Changes
+
+- 783153d: Refuse a by-path script whose `#!` is `/usr/bin/env bash|sh|zsh` when the same line changes PATH, since env then finds its shell through the new PATH.
+
+  A PATH= or HOME= prefix on a function call, or on a special builtin that a POSIX-mode shell keeps it after, counts as a change to the whole line.
+
+  A PATH entry that a `$( )` or backquote lands in is never treated as fixed, and neither is a `~` or `$HOME` entry once the line may give HOME a value other than a fixed absolute directory.
+
 ## 0.5.1
 
 ### Patch Changes

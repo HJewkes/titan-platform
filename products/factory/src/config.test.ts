@@ -111,6 +111,13 @@ describe("loadConfig", () => {
     expect(() => load({ heldRepairs: "on" })).toThrow(/heldRepairs/);
   });
 
+  it("reads the no-repro-proceed gate reset flag, and rejects a value other than off or on", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ noReproProceed: "on" }).shepherd?.gateReset).toEqual({ noReproProceed: "on" });
+    expect(() => load({ noReproProceed: "shadow" })).toThrow(/noReproProceed/);
+  });
+
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
     const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));

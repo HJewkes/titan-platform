@@ -31,11 +31,11 @@ async function awaitPr(port: GitHubPort, store: ShepherdStoreRef): Promise<boole
 }
 
 describe("sh-await-pr on a branch-only registration", () => {
-  it("holds the run g10-review when the PR it finds is over 400 changed lines", async () => {
+  it("leaves the run unheld when the PR it finds is over 400 changed lines", async () => {
     const { port, store } = rig([{ path: "packages/x/src/a.ts", status: "modified", additions: 450, deletions: 0 }]);
 
     expect(await awaitPr(port, store)).toBe(true);
-    expect(store.get().byRun("run-1")).toMatchObject({ pr: 1, held: true, holdReason: "g10-review: 450 changed lines" });
+    expect(store.get().byRun("run-1")).toMatchObject({ pr: 1, held: false });
   });
 
   it("holds the run g10-adversary when the PR it finds touches an authority path", async () => {

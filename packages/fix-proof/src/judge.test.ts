@@ -5,6 +5,7 @@ import { spawnExec, type Exec } from "./exec.js";
 import { judge, type JudgeReports } from "./judge.js";
 import { GIT_SAFETY } from "./context.js";
 import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, VACUOUS_TEST, type Repo } from "./repo.test-helpers.js";
+import { provedByMutants } from "./result-line.js";
 import { encodeError, encodeMutantsReport, encodeReport } from "./transport.js";
 
 afterEach(removeRepos);
@@ -162,7 +163,70 @@ describe("judge with mutation specs", () => {
     const result = await judgeHead({ [SPEC]: specText(), ".changeset/x.md": "---\n---\n" }, killedMutants);
 
     expect(result.verdict).toBe("vacuous");
-    expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }] });
+    expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
+    expect(provedByMutants(result)).toBe(true);
+  });
+
+  describe("a changed test file with no spec of its own", () => {
+    const GUARD = "src/guard.test.ts";
+    const guardTest = (body: string) => `test("denies", () => { ${body} });\n`;
+    const bothPassed = (): string => {
+      const file = (name: string, test: string) => ({ name, status: "passed", assertionResults: [{ fullName: test, status: "passed", failureMessages: [] }] });
+      return encodeReport({ testResults: [file("src/math.test.ts", "adds zero"), file(GUARD, "denies")] });
+    };
+    const judgeOver = async (baseFiles: Record<string, string>, headFiles: Record<string, string>) => {
+      const repo = makeRepo({}, undefined, baseFiles);
+      const head = repo.commit(headFiles);
+      const passed = bothPassed();
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: { base: passed, baseRerun: passed, head: passed, mutants: killedMutants } }));
+    };
+
+    it("a spec borrowed from an unchanged sibling test proves nothing about the gutted test the PR changed", async () => {
+      const result = await judgeOver(
+        { "src/math.test.ts": VACUOUS_TEST, [GUARD]: guardTest("expect(1).toBe(1); expect(2).toBe(2);") },
+        { [GUARD]: guardTest(""), [SPEC]: specText() },
+      );
+
+      expect(result.verdict).toBe("vacuous");
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [GUARD] });
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("one of two changed test files without a spec leaves the PR unproved", async () => {
+      const result = await judgeOver({}, { "src/math.test.ts": VACUOUS_TEST, [GUARD]: guardTest("expect(1).toBe(1);"), [SPEC]: specText() });
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [GUARD] });
+      expect(provedByMutants(result)).toBe(false);
+    });
+  });
+
+  describe("a test the PR removes from the tests", () => {
+    const GUARD = "src/guard.test.ts";
+    const judgeRemoving = async (remove: (dir: string) => void) => {
+      const repo = makeRepo({}, undefined, { "src/math.test.ts": VACUOUS_TEST, [GUARD]: `test("denies", () => { expect(1).toBe(1); });\n` });
+      remove(repo.dir);
+      const head = repo.commit({ "src/math.test.ts": `${VACUOUS_TEST}// touched\n`, [SPEC]: specText() });
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: reports(killedMutants) }));
+    };
+
+    it("a deleted test beside a killed spec on an untouched sibling leaves the PR unproved", async () => {
+      const result = await judgeRemoving((dir) => git(dir, ["rm", "-q", GUARD]));
+
+      expect(result).toMatchObject({ verdict: "vacuous", deletedTests: [GUARD] });
+      expect(result.mutants).toBeUndefined();
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("a test renamed into a carried fixture counts as deleted and leaves the PR unproved", async () => {
+      const result = await judgeRemoving((dir) => {
+        fs.mkdirSync(path.join(dir, "src/fixtures"));
+        git(dir, ["mv", GUARD, "src/fixtures/guard.ts"]);
+      });
+
+      expect(result).toMatchObject({ verdict: "vacuous", deletedTests: [GUARD] });
+      expect(result.mutants).toBeUndefined();
+      expect(provedByMutants(result)).toBe(false);
+    });
   });
 
   it("attaches no mutants when the diff also changes source", async () => {

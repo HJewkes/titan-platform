@@ -5,10 +5,12 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
 import { SHEPHERD_ACTOR } from "./events.js";
+import type { TakeRecheck } from "./hold.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
-import { OWNER_PACKET_FILES } from "./registration-hold.js";
+import { OWNER_PACKET_FILES } from "./signoffs.js";
 import { narrowToRegistration } from "./registration-policy.js";
+import { separateLineages, type LineageRow } from "./reviewer-lineage.js";
 import type { ShepherdStore } from "./store.js";
 
 export const G10_RELEASE_STEP = "sh-g10-release";
@@ -88,21 +90,24 @@ interface TwoMerge {
   mergeUp?: MergeUp;
 }
 
-/** Two reviewers, not one twice: separate sessions, and separate profiles, so one model's blind spot cannot pass both. */
-const independent = ({ correctness, adversary }: TwoMerge): boolean =>
-  isOpusProfile(correctness.profile) && correctness.profile !== adversary.profile && correctness.verdict.reviewer.sessionId !== adversary.verdict.reviewer.sessionId;
+/**
+ * Two reviewers, not one twice. Decision 457 runs both at the same profile, so the profile no longer tells them apart; the
+ * roster must prove their conversations separate (D7). `roster` undefined means it was not read, which proves nothing.
+ */
+const independent = ({ correctness, adversary }: TwoMerge, roster: readonly LineageRow[] | undefined): boolean =>
+  isOpusProfile(correctness.profile) && roster !== undefined && separateLineages(correctness.verdict.reviewer, adversary.verdict.reviewer, roster);
 
 /** `files` undefined means the list was not read whole, which could hide the rule file, so it never releases. */
 const clearOfOwnerPacket = (files: readonly string[] | undefined): files is readonly string[] => files !== undefined && !files.some((path) => OWNER_PACKET_FILES.includes(path));
 
 /**
  * True when the run is held as `g10-adversary`, on record with no named reviewer (418(2)), and both Shepherd's opus correctness MERGE
- * and its adversary MERGE stand at the PR's head as read now, with the required checks green there and no change to the owner's rule
- * file in the diff. A MERGE stands at the head it was written at, or the head a recorded clean merge-up of it made (341(1)).
+ * and its adversary MERGE stand at the PR's head as read now, from reviewers the roster shows share no conversation, with the required
+ * checks green there and no change to the owner's rule file in the diff. A MERGE stands at the head it was written at, or the head a recorded clean merge-up of it made (341(1)).
  */
-export function satisfiesTwoMerge(run: G10Run, merges: TwoMerge, prHead: string, checks: G10Checks, files: readonly string[] | undefined): boolean {
+export function satisfiesTwoMerge(run: G10Run, merges: TwoMerge, prHead: string, checks: G10Checks, files: readonly string[] | undefined, roster: readonly LineageRow[] | undefined): boolean {
   if (!run.held || holdClassOf(run.holdReason) !== G10_ADVERSARY_CLASS || maybeAssigned(run)) return false;
-  if (!independent(merges) || !clearOfOwnerPacket(files)) return false;
+  if (!independent(merges, roster) || !clearOfOwnerPacket(files)) return false;
   const stands = [merges.correctness, merges.adversary].every(({ verdict }) => verdict.value === "MERGE" && standsAt(verdict, merges.mergeUp) === prHead);
   return stands && checks.green && checks.head === prHead;
 }
@@ -141,6 +146,12 @@ async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
   return { released, head: prHead, ...(released && { verdict: input.verdict }) };
 }
 
+/** The roster as the lineage check reads it; an unwired or failed read is undefined, so the hold stays. */
+async function lineageRoster(deps: ShepherdDeps): Promise<readonly LineageRow[] | undefined> {
+  const read = await deps.roster?.read();
+  return read?.kind === "known" ? read.rows : undefined;
+}
+
 /**
  * The files are re-read pinned to the head just read, so a push between the reads leaves them unread. The release event carries the
  * head, which `adversary-anchor.ts` takes as the released head a later merge-up must stay on; the step records both refs and the rule.
@@ -148,11 +159,12 @@ async function releaseOnReview(deps: ShepherdDeps, raw: unknown) {
 async function releaseOnTwoMerges(deps: ShepherdDeps, mode: TwoMergeMode | undefined, raw: unknown) {
   const input = TwoMergeInput.parse(raw);
   const target = { repo: input.repo, pr: input.pr };
+  const roster = await lineageRoster(deps);
   const prHead = (await deps.port.getPr(target.repo, target.pr)).headSha;
   const files = await pinnedPaths(deps.port, { ...target, head: prHead }, prHead);
   const store = deps.store.get();
   const run = heldRun(store, input.runId);
-  const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined);
+  const judged = satisfiesTwoMerge(run, input, prHead, input.checks, files.unread === undefined ? files.paths : undefined, roster);
   const released = judged && mode === "on" && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason, { actor: SHEPHERD_ACTOR, headSha: prHead });
   const refs = { rule: TWO_MERGE_RULE, correctness: input.correctness, adversary: input.adversary };
   return { released, head: prHead, mode: mode ?? "off", ...(released && refs), ...(judged && mode === "shadow" && { wouldRelease: true, ...refs }) };
@@ -162,10 +174,11 @@ const isTwoMergeAsk = (raw: unknown): boolean => typeof raw === "object" && raw 
 
 /**
  * The hold is read after the PR head, and released only if it is still held under the reason that was judged, so a re-hold in between
- * stands. `twoMerge` is `shepherd.gateReset.twoMergeRelease`; absent (off) never releases a g10-adversary hold.
+ * stands. `twoMerge` is `shepherd.gateReset.twoMergeRelease`, read per step when a function; absent (off) never releases a g10-adversary hold.
  */
-export function g10ReleaseRoutes(deps: ShepherdDeps, twoMerge?: TwoMergeMode) {
-  return [codeRoute(G10_RELEASE_STEP, deps.now, (raw: unknown) => (isTwoMergeAsk(raw) ? releaseOnTwoMerges(deps, twoMerge, raw) : releaseOnReview(deps, raw)))];
+export function g10ReleaseRoutes(deps: ShepherdDeps, twoMerge?: TwoMergeMode | (() => TwoMergeMode | undefined)) {
+  const modeNow = () => (typeof twoMerge === "function" ? twoMerge() : twoMerge);
+  return [codeRoute(G10_RELEASE_STEP, deps.now, (raw: unknown) => (isTwoMergeAsk(raw) ? releaseOnTwoMerges(deps, modeNow(), raw) : releaseOnReview(deps, raw)))];
 }
 
 /** Marks a MERGE as the verdict of the reviewer Shepherd spawned with `profile`; an external, resumed or carried verdict has none. */
@@ -243,9 +256,12 @@ function twoMergesAt(reviews: ReadonlyMap<string, Verdict>, head: string): TwoMe
 
 /**
  * At a head a clean merge-up made, a `behind` read whose own required checks are green counts as green: a strict base that keeps moving
- * would otherwise hold the run forever. The merge step still gates on the base. Any other head waits for its update and a green read.
+ * would otherwise hold the run forever. The merge step still gates on the base. So does a `baseMoved` read: a non-strict base that moved
+ * past the head's green, which land merges as it stands, so it is never updated and would hold the run forever too (TP-3933). Any other
+ * head waits for its update and a green read.
  */
-const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean => ci.verdict === "green" || (mergeUp !== undefined && ci.verdict === "behind" && ci.checksGreen === true);
+const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean =>
+  ci.verdict === "green" || (ci.verdict === "behind" && ci.checksGreen === true && (mergeUp !== undefined || ci.baseMoved === true));
 
 /** What the release step is asked at a head: the verdict refs it judges, and the key that marks them used once they released. */
 interface Ask {
@@ -274,6 +290,25 @@ function recordedWithoutAsk(ctx: WorkflowContext, holdClass: string | undefined)
 }
 
 /**
+ * Runs whose newest release ask, at the head mapped to, was answered no by a replayed step: an earlier build judged it, so a deploy
+ * that fixed the rule would never be asked. The merge wait at that head ends once and the run asks again under the code serving now (TP-3956).
+ */
+const replayedRefusals = new Map<string, string>();
+
+/** True once when the run's newest release ask at `head` was a replayed no; the merge wait then ends with no merge, so the run asks live. */
+function takeG10Recheck(runId: string, head: string): boolean {
+  if (replayedRefusals.get(runId) !== head) return false;
+  replayedRefusals.delete(runId);
+  return true;
+}
+
+/** The merge wait's recheck for the run registered on `repo#pr`; an unregistered PR has no run to ask. */
+export const g10Recheck = (store: () => { byPr: (repo: RepoSlug, pr: number) => { runId: string } | undefined }): TakeRecheck => (repo, pr, sha) => {
+  const runId = store().byPr(repo, pr)?.runId;
+  return runId !== undefined && takeG10Recheck(runId, sha);
+};
+
+/**
  * Records the release as a step, so `shepherd status` and the ledger show it; the route re-reads the PR head and the hold before it
  * writes. A `g10-review` hold is judged on one opus MERGE, a `g10-adversary` hold on Shepherd's correctness and adversary MERGEs.
  * A shadow would-release is asked once per pair of verdicts, as a release is.
@@ -284,9 +319,12 @@ export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | n
   const ask = ci && askFor(holdClass, run.reviews, ci.headSha);
   if (!ci || !ask || used.get(run.ctx)?.has(ask.key) || recordedWithoutAsk(run.ctx, holdClass)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
+  const replayed = run.ctx.historyNext() !== undefined;
   const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...ask.refs, checks: { head: ci.headSha, green: greenAt(ci, ask.refs.mergeUp) } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
   if (done.released || done.wouldRelease) used.set(run.ctx, (used.get(run.ctx) ?? new Set()).add(ask.key));
+  if (replayed && !done.released && !done.wouldRelease) replayedRefusals.set(run.ctx.runId, ci.headSha);
+  else replayedRefusals.delete(run.ctx.runId);
 }
 
 /**

@@ -607,6 +607,12 @@ describe("sh-review", () => {
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 36, dependencyTouch: true }, profile: "bd-reviewer" });
     });
 
+    it.each(["store-migrations.ts", "store.ts", "events.ts", "train.ts", "account-store.ts"])("gives a 50-line PR that touches the store migration %s the g10 profile", async (name) => {
+      const sized = await spawnSized([{ path: `products/factory/src/shepherd/${name}`, status: "modified", additions: 40, deletions: 10 }]);
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 50, migrationTouch: true }, profile: "bd-reviewer" });
+    });
+
     it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
       const sized = await spawnSized([
         { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },
@@ -634,14 +640,14 @@ describe("sh-review", () => {
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
     });
 
-    const smallMigration: PrFile[] = [{ path: "products/factory/src/shepherd/store-migrations.ts", status: "modified", additions: 20, deletions: 10 }];
+    const smallPr: PrFile[] = [{ path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 }];
     const spawnHeld = async (prepare: (store: ShepherdStore) => void) => {
       const dispatch = fakeDispatch();
-      const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallMigration, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallPr, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
       return { facts: dispatch.spawns[0]?.facts, profile: result?.kind === "dispatched" ? result.profile : undefined };
     };
 
-    it("gives a 30-line migration PR held g10-review the g10 profile", async () => {
+    it("gives a 30-line PR held g10-review by hand the g10 profile", async () => {
       const sized = await spawnHeld((store) => store.hold("run-1", "g10-review: store migration"));
 
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", g10Hold: true, changedLines: 30 }, profile: "bd-reviewer" });

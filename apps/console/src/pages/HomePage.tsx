@@ -57,7 +57,7 @@ function UpstreamsRegion(): ReactNode {
 function UpstreamCard({ upstream }: { upstream: Upstream }): ReactNode {
   const onPress = isWebTarget(upstream.target) ? () => openExternal(upstream.target) : undefined;
   return (
-    <Card variant="outline" onPress={onPress} testID={`upstream-${upstream.id}`}>
+    <Card variant="outline" onPress={onPress} testID={`upstream-${upstream.id}`} className="max-w-full">
       <CardContent>
         <VStack gap={1}>
           <HStack gap={2} align="center">

@@ -4,7 +4,7 @@ import { singleSeat } from "./shepherd/exit-notice.js";
 import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { loadSeatBook } from "./shepherd/seats.js";
 
-/** A digest goes out over agent-chat, so no configured `agentChatBin` means serve sends none. The seat book is re-read per sweep. */
+/** A digest goes out over agent-chat, so no configured `agentChatBin` means serve sends none. The seat book and roster are re-read per sweep. */
 export function configuredSeatDigest(env: NodeJS.ProcessEnv): SeatDigestPorts | undefined {
   const { agentChatBin } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
@@ -14,6 +14,7 @@ export function configuredSeatDigest(env: NodeJS.ProcessEnv): SeatDigestPorts | 
       const book = loadSeatBook(loadConfig(configPath(env)).shepherd ?? {});
       return (repo) => singleSeat(book, repo);
     },
+    roster: () => agents.roster(),
     send: (seat, text) => agents.message(seat, text),
   };
 }

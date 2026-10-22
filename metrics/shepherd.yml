@@ -300,7 +300,7 @@ metrics:
   - id: shepherd.owner-load.waiting_now
     family: owner-load
     title: Waiting on the owner now
-    definition: Owner gates (not seat-routed) pending over 24 hours
+    definition: Owner gates (not seat-routed) pending over 24 hours, plus each held registration with no pending gate
     unit: count
     source: { anchor: "products/factory/src/shepherd/waiting.ts#waitingGates", store: ledger, captured: Y }
     query: { kind: cli, store: shepherd-stats, text: owner-load.overdue-owner-gates }

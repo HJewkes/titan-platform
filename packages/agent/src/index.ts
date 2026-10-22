@@ -70,6 +70,25 @@ export { checkCodexAvailable } from "./codex-available.js";
 export type { CodexAvailability, CodexAvailabilityOptions, CodexAvailabilityDeps } from "./codex-available.js";
 export type { CodexRuntimeCapability, CodexRuntimeInspection, CodexCapabilityInspectionOptions } from "./codex-runtime.js";
 export { DEFAULT_CODEX_KILL_GRACE_MS } from "./codex-exec-session.js";
+export {
+  CodexAppServerExitedError,
+  CodexAppServerRpcError,
+  CodexSteerPreconditionError,
+  startCodexAppServer,
+} from "./codex-app-server.js";
+export type {
+  CodexAppServer,
+  CodexAppServerEvent,
+  CodexAppServerOptions,
+  CodexInitializeResult,
+  CodexThreadOptions,
+  CodexThreadResult,
+  CodexThreadStatus,
+  CodexTurnStartParams,
+  CodexTurnStatus,
+  CodexTurnSteerParams,
+  CodexUserInput,
+} from "./codex-app-server.js";
 export type {
   AgentFailure,
   AgentFailureKind,

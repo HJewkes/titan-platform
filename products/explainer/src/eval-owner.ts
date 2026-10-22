@@ -2,9 +2,11 @@ import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
+import { chaptersOf, coldQuestions } from "./eval-cold.js";
 import { deriveEvalView, type EvalBeat } from "./eval-view.js";
 import { appendTsv, freezeScript, type BenchLayout } from "./eval-store.js";
 import type { MapLayout } from "./map-state.js";
+import type { PaceBeat } from "./pace-items.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 
 const cell = (text: string): string => text.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
@@ -175,4 +177,140 @@ export function recordOwnerSession(bench: BenchLayout, session: string, answers:
   appendTsv<OwnerRow>(ownerPath(bench), OWNER_COLUMNS, toRows(bench, session, key, answers, options));
   writeFileSync(join(dir, OPENED), `${JSON.stringify(key, null, 2)}\n`);
   return key;
+}
+
+/** The one label a timed session's key hides: a timed check rates a single version, not a blind pair. */
+const TIMED_LABEL = "A";
+export const OVERLOAD_ITEM = "overload";
+const TIMED_SCOPE = "timed:";
+
+/** The version a timed session rates. The caller hashes its own script, since spike scripts are not `script/v1`. */
+export interface TimedVersion {
+  config_id: string;
+  script_sha: string;
+}
+
+/** The id a question's answer is filed under: the cold probe's kind plus its item, or its beat for a list. */
+const questionId = (question: ReturnType<typeof coldQuestions>[number]): string =>
+  question.kind === "odd-one-out" ? `${question.kind}:${question.beat}` : `${question.kind}:${question.item}`;
+
+function chapterQuestionSheet(chapter: string, beats: readonly PaceBeat[]): string {
+  const asked = coldQuestions(beats).map((q) => `- ${questionId(q)}: ${q.text}`);
+  const scale = "Answer 0 (not stated), 1 (what it is) or 2 (what and why); an odd-one-out is the item or none.";
+  const overload = `- ${OVERLOAD_ITEM}: How overloaded did this chapter feel, from 1 (easy to follow) to 5 (far too much)?`;
+  return [`# Chapter ${chapter}`, "", scale, "", ...asked, overload, ""].join("\n");
+}
+
+/**
+ * Prepares a timed human check: one `questions-<chapter>.md` per chapter, asking exactly what the cold probe
+ * asks of the same item track, plus a 1-5 overload row. The version is sealed until the answers are written.
+ * Returns the chapters in the order they are watched.
+ */
+export function prepareTimedSession(bench: BenchLayout, session: string, version: TimedVersion, beats: readonly PaceBeat[], chapters?: readonly string[]): string[] {
+  const dir = ownerSessionDir(bench, session);
+  if (existsSync(dir)) throw new Error(`owner session ${session} already exists`);
+  const wanted = chaptersOf(beats).filter((c) => !chapters || chapters.includes(c.chapter));
+  if (wanted.length === 0) throw new Error("a timed session needs at least one chapter with beats");
+  mkdirSync(dir, { recursive: true });
+  for (const { chapter, beats: chapterBeats } of wanted) writeFileSync(join(dir, `questions-${chapter}.md`), chapterQuestionSheet(chapter, chapterBeats));
+  const key: BlindKey = { [TIMED_LABEL]: version };
+  writeFileSync(join(dir, SEALED), Buffer.from(JSON.stringify(key)).toString("base64"));
+  return wanted.map((c) => c.chapter);
+}
+
+/** One timed answer: a chapter, a question id from its sheet, and the value given. */
+export interface TimedAnswer {
+  chapter: string;
+  item: string;
+  value: string;
+  note?: string;
+}
+
+const OVERLOAD_VALUES = ["1", "2", "3", "4", "5"];
+const ITEM_VALUES = ["0", "1", "2"];
+const isScored = (item: string): boolean => item.startsWith("what-why:") || item.startsWith("invariant:");
+
+function checkTimedAnswer({ chapter, item, value }: TimedAnswer): void {
+  const allowed = item === OVERLOAD_ITEM ? OVERLOAD_VALUES : isScored(item) ? ITEM_VALUES : null;
+  if (allowed && !allowed.includes(value)) throw new Error(`${chapter} ${item}: "${value}" must be one of ${allowed.join(", ")}`);
+}
+
+/** Writes the timed answers to `owner.tsv` with scope `timed:<chapter>`, then opens the key, as a blind session does. */
+export function recordTimedSession(bench: BenchLayout, session: string, answers: readonly TimedAnswer[], options: RecordOptions): BlindKey {
+  answers.forEach(checkTimedAnswer);
+  const owner = answers.map(({ chapter, item, value, note }): OwnerAnswer => ({ label: TIMED_LABEL, scope: `${TIMED_SCOPE}${chapter}`, item, value, note }));
+  return recordOwnerSession(bench, session, owner, options);
+}
+
+/** One cold-probe score for an item, the probe side of the comparison. */
+export interface ProbeRow {
+  chapter: string;
+  kind: "what-why" | "invariant";
+  item: string;
+  score: number;
+}
+
+export interface TimedItemAgreement {
+  chapter: string;
+  item: string;
+  probe: number;
+  human: number;
+  agree: boolean;
+}
+
+export interface TimedChapterReading {
+  chapter: string;
+  agreement: number | null;
+  overload: number | null;
+  probe_undefined_share: number;
+}
+
+export interface TimedComparison {
+  items: TimedItemAgreement[];
+  agreement: number | null;
+  chapters: TimedChapterReading[];
+  /** Pearson r between overload and the probe's undefined share across chapters; null under 2 chapters or no spread. */
+  overload_correlation: number | null;
+}
+
+const mean = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+const share = (flags: readonly boolean[]): number | null => (flags.length === 0 ? null : flags.filter(Boolean).length / flags.length);
+
+function pearson(xs: readonly number[], ys: readonly number[]): number | null {
+  if (xs.length < 2) return null;
+  const [mx, my] = [mean(xs), mean(ys)];
+  const cov = xs.reduce((sum, x, i) => sum + (x - mx) * (ys[i]! - my), 0);
+  const spread = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0) * ys.reduce((s, y) => s + (y - my) ** 2, 0));
+  return spread === 0 ? null : cov / spread;
+}
+
+const timedChapter = (row: Pick<OwnerRow, "scope">): string | null => (row.scope.startsWith(TIMED_SCOPE) ? row.scope.slice(TIMED_SCOPE.length) : null);
+
+function pairedItems(probe: readonly ProbeRow[], human: readonly OwnerRow[]): TimedItemAgreement[] {
+  const heard = new Map(human.flatMap((row) => (timedChapter(row) === null || !isScored(row.item) ? [] : [[`${timedChapter(row)}|${row.item}`, Number(row.value)] as const])));
+  return probe.flatMap(({ chapter, kind, item, score }) => {
+    const given = heard.get(`${chapter}|${kind}:${item}`);
+    return given === undefined ? [] : [{ chapter, item: `${kind}:${item}`, probe: score, human: given, agree: score >= 1 === given >= 1 }];
+  });
+}
+
+/**
+ * Compares the cold probe with the human's timed answers. An item agrees when both say it was
+ * conveyed (score of 1 or more) or both say it was not; items only one side rated are left out.
+ */
+export function compareTimed(probe: readonly ProbeRow[], human: readonly OwnerRow[]): TimedComparison {
+  const items = pairedItems(probe, human);
+  const chapters = [...new Set(items.map((i) => i.chapter))].map((chapter): TimedChapterReading => {
+    const own = items.filter((i) => i.chapter === chapter);
+    const overload = human.find((row) => timedChapter(row) === chapter && row.item === OVERLOAD_ITEM);
+    const undefinedShare = share(own.map((i) => i.probe === 0)) ?? 0;
+    return { chapter, agreement: share(own.map((i) => i.agree)), overload: overload ? Number(overload.value) : null, probe_undefined_share: undefinedShare };
+  });
+  const rated = chapters.filter((c) => c.overload !== null);
+  return {
+    items,
+    agreement: share(items.map((i) => i.agree)),
+    chapters,
+    overload_correlation: pearson(rated.map((c) => c.overload!), rated.map((c) => c.probe_undefined_share)),
+  };
 }

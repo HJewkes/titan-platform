@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a live NO_REPRO round records a FIX_FIRST again",
+      "file": "products/factory/src/shepherd/routed.ts",
+      "find": "  if (kind === \"fix-first\" && routed.verdict.kind === \"NO_REPRO\" && !recordedNoReproAsFixFirst(run.ctx)) return undefined;\n",
+      "replace": "",
+      "kills": [
+        "a fix-proof NO_REPRO send-back (TP-3900) leaves three NO_REPRO rounds to the fix-proof cap's owner gate, never fix-first-runaway or a convergence review",
+        "a fix-proof NO_REPRO send-back (TP-3900) wakes the fixer on a reviewer FIX_FIRST after two NO_REPRO rounds, and merges the next head with no runaway"
+      ]
+    },
+    {
+      "name": "a replay skips the FIX_FIRST step an older record holds at a NO_REPRO round",
+      "file": "products/factory/src/shepherd/routed.ts",
+      "find": "  return ctx.historyNext() === FIX_FIRST_STEP;",
+      "replace": "  return false;",
+      "kills": [
+        "a run recorded before TP-3900, which counted a NO_REPRO as a FIX_FIRST replays the recorded FIX_FIRST step at its NO_REPRO round without diverging"
+      ]
+    },
+    {
+      "name": "D8 starts on a trail with no reviewer FIX_FIRST",
+      "file": "products/factory/src/shepherd/fix-first-demotion.ts",
+      "find": "  return hasReviewerFixFirst(run.fixFirstTrail) && run.reviews.get(headSha)?.kind !== \"NO_REPRO\";",
+      "replace": "  return run.reviews.get(headSha)?.kind !== \"NO_REPRO\";",
+      "kills": [
+        "D8's convergence review entry (TP-3900) leaves a runaway whose trail holds no reviewer FIX_FIRST to the owner gate, sending no convergence review"
+      ]
+    },
+    {
+      "name": "D8 starts at a head whose fix-proof said NO_REPRO",
+      "file": "products/factory/src/shepherd/fix-first-demotion.ts",
+      "find": "  return hasReviewerFixFirst(run.fixFirstTrail) && run.reviews.get(headSha)?.kind !== \"NO_REPRO\";",
+      "replace": "  return hasReviewerFixFirst(run.fixFirstTrail);",
+      "kills": [
+        "D8's convergence review entry (TP-3900) leaves a runaway at a head whose fix-proof said NO_REPRO to the owner gate, though a reviewer said FIX_FIRST earlier"
+      ]
+    },
+    {
+      "name": "a replay ignores the D8 pass an older record took",
+      "file": "products/factory/src/shepherd/fix-first-demotion.ts",
+      "find": "  if (run.ctx.historyNext() === autoPassStepId(CONVERGENCE_RULE, headSha)) return true;\n",
+      "replace": "",
+      "kills": [
+        "D8's convergence review entry (TP-3900) replays a convergence review a record took at a NO_REPRO-only trail, so the run does not diverge"
+      ]
+    }
+  ]
+}

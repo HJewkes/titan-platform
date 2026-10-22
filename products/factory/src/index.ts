@@ -26,6 +26,9 @@ export type { AuditStepName, ManifestStep } from "./audit/manifest.js";
 export { AUDIT_MANIFEST, MEASUREMENT_AUDIT_STEPS } from "./audit/manifest.js";
 export { auditRoutes } from "./audit/routes.js";
 export { claudePrintAgent, systemAuditPorts } from "./audit/production.js";
+export type { EvaluatorOptions } from "./autoresearch/evaluator.js";
+export type { AgentPorts, ProductionOptions } from "./autoresearch/production.js";
+export { arProductionPorts } from "./autoresearch/production.js";
 export { AUDIT_WORKFLOW, measurementAuditWorkflow } from "./audit/workflow.js";
 export type { AwaitHeadDeps, AwaitHeadTarget, AwaitHeadTiming } from "./workflows/await-head.js";
 export { AWAIT_HEAD_STEPS, awaitNewHead, awaitNewHeadRoute } from "./workflows/await-head.js";
@@ -38,3 +41,15 @@ export type { NeedsList } from "./needs/merged.js";
 export { collectNeeds, renderNeeds } from "./needs/merged.js";
 export type { Overlap, OverlapEntry } from "./needs/overlap.js";
 export { overlapReport, renderOverlapReport } from "./needs/overlap.js";
+export type { IngressAnswer, IngressDeps, IngressRequest, Projector, WebhookSecret } from "./ingress/index.js";
+export {
+  BODY_TOO_LARGE,
+  INGRESS_PATH,
+  INGRESS_PORT,
+  INGRESS_REQUEST_TIMEOUT_MS,
+  MAX_INGRESS_BODY_BYTES,
+  answerDelivery,
+  signDelivery,
+  verifySignature,
+  webhookSecretPath,
+} from "./ingress/index.js";

@@ -1,4 +1,4 @@
-import { TEST_CLASSES, parseResultLine, type FixProofResult, type Verdict } from "@titan-design/fix-proof";
+import { TEST_CLASSES, parseResultLine, provedByMutants, type FixProofResult, type Verdict } from "@titan-design/fix-proof";
 
 export const TESTS_OVERLAY: readonly string[] = [
   "You are the tests member of a review panel. Other members judge correctness and scope; your question is whether the tests prove the change.",
@@ -15,17 +15,28 @@ const VERDICT_READING: Record<Verdict, string> = {
   error: "fix-proof could not finish, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
 };
 
+const MUTANTS_READING =
+  "The PR changes only tests, so base and head run the same code; instead every changed test file has a mutation spec in this diff, every mutation its specs declare made the tests it names fail, and the tests pass at head. Check that each mutation is a bug a caller would see and that the tests it kills are the ones the PR changed.";
+
+function verdictLine(result: FixProofResult): string {
+  const reading = provedByMutants(result) ? MUTANTS_READING : VERDICT_READING[result.verdict];
+  return `fix-proof/v1 verdict for this head: ${result.verdict}. ${reading}`;
+}
+
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "untrusted" | "unread";
+export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   error: "Shepherd marks this head's fix-proof unverified: the run ended in an error, which a head can cause on purpose.",
   untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
+  "no-repro-test-only": "Shepherd marks this head's fix-proof unverified: the PR changes only tests, so its proof found no test that fails on the base, and the review goes ahead.",
 };
 
 const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";
+
+const TEST_ONLY_RULE = "Judge each added test on its own: say FIX_FIRST unless it asserts behavior the code has; a MERGE here merges on green with the unverified standing recorded.";
 
 const JUDGE_YOURSELF = "Read each added test against the base code and say which would fail there.";
 
@@ -50,7 +61,7 @@ export function fixProofLines(head: string, line: string | undefined): string[] 
   if (!parsed.ok) return [`The fix-proof/v1 result given could not be read, so ignore it. ${JUDGE_YOURSELF}`];
   const { result } = parsed;
   if (result.head !== head) return [`The fix-proof/v1 result given is for another head, so ignore it. ${JUDGE_YOURSELF}`];
-  return [`fix-proof/v1 verdict for this head: ${result.verdict}. ${VERDICT_READING[result.verdict]}`, countLine(result), ...cautionLines(result)];
+  return [verdictLine(result), countLine(result), ...cautionLines(result)];
 }
 
 const WAIVED_READING =
@@ -61,8 +72,31 @@ export function waivedLines(head: string, waivedAt: string | undefined): string[
   return waivedAt === head ? [WAIVED_READING] : [];
 }
 
+/** The commits a workflow-only diff's CI proof read: a required check failed at `mergeBase` and every one passed at `head`. */
+export interface WorkflowCiProof {
+  mergeBase: string;
+  head: string;
+}
+
+/** The field a brief input carries it in. */
+export interface WorkflowCiInput {
+  /** Set by Shepherd when CI proved a workflow-only diff at this head; the brief then names CI as its proof. */
+  workflowCiProof?: WorkflowCiProof;
+}
+
+const SHA = /^[0-9a-f]{40}$/;
+
+/** Only the two shas reach the prompt, each checked; a proof read at any other head yields nothing. */
+export function workflowCiLines(head: string, proof: WorkflowCiProof | undefined): string[] {
+  if (proof === undefined || proof.head !== head || !SHA.test(proof.mergeBase) || !SHA.test(proof.head)) return [];
+  return [
+    `Shepherd's fix-proof for this head is CI: the PR changes only .github/workflows/, a required check concluded failure at the merge base ${proof.mergeBase}, and every required check concluded success at this head.`,
+    "That is the proof for this change. No unit test can cover a workflow edit, so do not ask for one; check that the edit fixes the cause of the base's failure rather than weakening, skipping or renaming a check.",
+  ];
+}
+
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];
-  return reading === undefined ? [] : [reading, UNVERIFIED_RULE];
+  return reading === undefined ? [] : [reading, why === "no-repro-test-only" ? TEST_ONLY_RULE : UNVERIFIED_RULE];
 }

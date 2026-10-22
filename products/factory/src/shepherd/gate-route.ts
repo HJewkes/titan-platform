@@ -6,7 +6,7 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
+import { runSeat, type ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 
@@ -14,16 +14,17 @@ import { ownerSentBackPrompt } from "./owner-send-back.js";
  * Only owner approvals open an owner gate: approve-merge under an owner-gate or visual policy, one-way items, and holds
  * that need the owner. These three are seat work. The registering seat gets a notice and Shepherd takes the default
  * action; the owner gate opens only when no notice went out. A review round's Ship pick at one head is the owner's
- * merge approval there too, but it answers approve-merge only through `roundMergeDecisions` once the gate is open; an
- * answer before the gate opens would join approval carry's wrapper in `reviewingContext`.
+ * merge approval there too, but it answers approve-merge only through `roundMergeDecisions` once the gate is open (serve's
+ * round ship sweep); an answer before the gate opens would join approval carry's wrapper in `reviewingContext`.
  */
 const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];
 /**
  * Seat work that is no gate's: a held run's fix round, a red head that only repeats its base's red, which waits on the
- * seat instead of waking a fixer, or a mergeability GitHub left unsettled past the wait's bound.
+ * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, or a runaway whose
+ * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -36,7 +37,12 @@ const NEXT: Record<SeatNotice, string> = {
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
   "merge-unsettled": "Nothing waits on the owner: Shepherd reads mergeability again at this head every few minutes and merges once GitHub settles it. A new head starts the wait over. Push to the PR, or close it to end the run.",
+  "fix-first-planner": `${WAITS} Shepherd wakes no further fixer: the task needs its planner. Redesign or split the task and push to the PR, or close the PR to end the run.`,
   "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
+  "review-infra": `This is a reviewer infrastructure defect, not a finding about the PR, and nothing waits on the owner. ${WAITS} Next: fix the reviewer account or broker, then push to the PR or register it again to review it on another account.`,
+  "seat-held": `Nothing waits on the owner: the seat's hold on Shepherd's MERGE is the seat's to settle. ${WAITS} Next: release or answer the hold, push to the PR, or close it to end the run.`,
+  conflict: `Nothing waits on the owner: two fixer attempts left the conflict in place. ${WAITS} Next: resolve the conflict on the PR's branch yourself or with a successor, split the PR, or close it to end the run.`,
+  unreviewed: `Nothing waits on the owner: Shepherd asks the owner to merge only a head a reviewer said MERGE at. ${WAITS} Next: check why the reviewers gave no MERGE here, push to the PR, or register it again to review it afresh.`,
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
@@ -50,10 +56,15 @@ function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): stri
   return [`Shepherd: ${repo}#${pr} at head ${headSha}: ${why}.`, NEXT[gate]].join("\n");
 }
 
-/** A notice naming its seat goes there; a held run naming none falls back to the hub seat, and a gate's to the repo's one seat. */
-function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | undefined {
+/**
+ * A notice naming its seat goes there; a held run naming none, and reviewer infrastructure, go to the hub seat, and the rest
+ * to the run's seat (`runSeat`). A planner notice tries the run's seat, then the hub seat, since no owner gate stands behind it.
+ */
+async function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): Promise<string | undefined> {
   if (input.seat !== undefined) return input.seat;
-  return input.gate === "held" ? ports.hubSeat?.() : ports.seatFor(input.repo);
+  if (input.gate === "held" || input.gate === "review-infra") return ports.hubSeat?.();
+  const seat = await runSeat(ports, input);
+  return input.gate === "fix-first-planner" ? (seat ?? ports.hubSeat?.()) : seat;
 }
 
 type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
@@ -83,7 +94,7 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
   if (ports === undefined) return { sent: false, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
-    seat = addressee(ports, input);
+    seat = await addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
     const to = seat;
     await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
@@ -134,7 +145,7 @@ export async function noticeGate(run: GateRun, gate: SeatGate, headSha: string, 
  * One recorded message per run and `key` to the seat a held run names, or the hub seat; seat work that is no gate's,
  * so a run recorded before the step has nothing to keep. A replay of the run's notice steps rebuilds the set.
  */
-export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: "held" | "base-red" | "merge-unsettled" }): Promise<Told> {
+export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: Exclude<SeatNotice, SeatGate> }): Promise<Told> {
   const told = noticed.get(run.ctx) ?? noticed.set(run.ctx, new Set()).get(run.ctx)!;
   if (told.has(key)) return undefined;
   const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, gate: "held", ...notice }, SeatNoticeResult);
@@ -179,18 +190,24 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   );
 }
 
+/** A NO_REPRO is the fix-proof's send-back, not a reviewer's, and its cap is the fix-proof wakes alone (TP-3900). */
+const NO_REPRO_WORDS = "fix-proof did not reproduce (NO_REPRO)";
+
 /** A send-back no agent took is the seat's fix round; undefined lands the next round. */
 export function unhandledSendBack(run: GateRun, kind: string, headSha: string, ownerNote?: string): Promise<LandOutcome | undefined> {
+  const noRepro = kind === "NO_REPRO";
   return seatOrGate(
-    () => noticeGate(run, "sh-sent-back", headSha, `the review said ${kind}, and no agent took the wake`),
+    () => noticeGate(run, "sh-sent-back", headSha, `${noRepro ? NO_REPRO_WORDS : `the review said ${kind}`}, and no agent took the wake`),
     () => awaitNewHead(run, headSha),
     (unsent) => {
       if (ownerNote !== undefined) {
         const { prompt, situation } = ownerSentBackPrompt(run.target, headSha, ownerNote, unsent);
         return sentBackGate(run, headSha, prompt, "a human abandoned the PR after the owner sent it back", situation);
       }
-      const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake${unsent}. Await a new head or abandon?`;
-      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, kind === "NO_REPRO");
+      const where = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha}`;
+      const what = noRepro ? `${NO_REPRO_WORDS} at ${where}` : `The review of ${where} said ${kind}`;
+      const prompt = `${what}, and no agent took the wake${unsent}. Await a new head or abandon?`;
+      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, noRepro);
     },
   );
 }

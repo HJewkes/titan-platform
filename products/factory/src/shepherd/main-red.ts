@@ -1,13 +1,14 @@
 import { stripVTControlCharacters } from "node:util";
 import { BrokerUnavailableError, DispatchTimeoutError, dataFence } from "@titan-design/agent-dispatch";
 import { GITHUB_ACTIONS_APP_ID, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
-import type { StepRoute } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js";
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
+import { recordAutoPass } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
 import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -86,6 +87,22 @@ export const FixTaskResult = z.looseObject({ task: z.string().nullable(), thawed
 export const FixerResult = z.looseObject({ fixer: z.string().nullable(), fixPr: z.number().nullable().optional(), thawed: z.boolean(), detail: z.string() });
 /** `frozen` is whether the repo is still frozen after the step. */
 export const UnfreezeResult = z.looseObject({ unfrozen: z.boolean(), frozen: z.boolean(), episode: z.number().nullable(), detail: z.string() });
+
+/** What a red or unread main gate would have named. */
+export interface MainRedAbout {
+  repo: RepoSlug;
+  pr: number;
+  mergeSha: string;
+  headline: string;
+  detail: string;
+}
+
+/** D13 (TP-3697): the red or unread main as an FYI record with its evidence; nothing waits on the owner. */
+export async function mainRedFyi(ctx: WorkflowContext, situation: string, about: MainRedAbout): Promise<void> {
+  const evidence = [`merge sha: ${about.mergeSha === "" ? "none returned" : about.mergeSha}`, `main CI read: ${about.detail}`, `run: ${ctx.runId}`];
+  const headSha = about.mergeSha === "" ? "no-merge-sha" : about.mergeSha;
+  await recordAutoPass(ctx, { repo: about.repo, pr: about.pr, rule: "D13/main-red-fyi", headSha, detail: `${about.headline}. ${situation}`, evidence });
+}
 
 export interface RedInput {
   repo: RepoSlug;

@@ -1,6 +1,7 @@
 import { parseResultLine } from "@titan-design/fix-proof";
 import { PROBES_HEADING } from "./briefs/adversary.js";
-import { fixProofLines, unverifiedLines, waivedLines, type FixProofUnverified } from "./briefs/tests.js";
+import { quoteLines } from "./briefs/quotes.js";
+import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixProofUnverified, type WorkflowCiInput } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/ci.js";
 import { OWNER_PICK_CONTRADICTED, boundedFindings, findingsText } from "./fix-first-findings.js";
@@ -36,12 +37,12 @@ export const CI_POLICY_RULE =
   "If your verdict is MERGE, add a fourth line directly after the Head line: `CI-policy: unchanged`, or `CI-policy: weakened <keys>` naming, comma-separated, each key that applies: " +
   "required-check (drops, renames or skips a required check), permissions (widens token permissions), pull_request_target (adds or widens that trigger), " +
   "secrets (exposes secrets to more code), ruleset (loosens a ruleset or branch protection), other (any other CI weakening). Write it on every MERGE, even with no .github/ change; never on a FIX_FIRST. " +
-  `${CI_POLICY_EXACT} No explanation, bold, list marker, code span or fence on it.`;
+  `${CI_POLICY_EXACT} No explanation, bold, list marker, code span or fence on it. No other line of your message may start with "CI policy" or "Verdict", markdown headings like "**CI policy:**" included: reword such a line or leave it out.`;
 
 export { CI_REVIEWER_TEST_RULE, MAX_CI_CHECK_ROWS, type CiCheckRow } from "./briefs/ci.js";
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
-export interface ReviewerBriefInput {
+export interface ReviewerBriefInput extends WorkflowCiInput {
   repo: RepoSlug;
   pr: number;
   head: string;
@@ -65,6 +66,8 @@ export interface ReviewerBriefInput {
   fixProofWaivedAt?: string;
   /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
   earlierFindings?: readonly EarlierFinding[];
+  /** True when this is a runaway's one convergence review: its FIX_FIRST goes to the planner, never to another fix round. */
+  convergence?: boolean;
   /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
   ownerPicks?: readonly OwnerPick[];
   /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
@@ -103,7 +106,7 @@ const ciLines = (input: ReviewerBriefInput): string[] => (input.ciChecks && ciTa
 /** Checks CI already ran at this head cost build slots when a reviewer reruns them; the fix-proof text is rebuilt from the parsed result, never echoed. */
 function rerunLines(input: ReviewerBriefInput): string[] {
   const waived = waivedLines(input.head, input.fixProofWaivedAt);
-  const proof = waived.length > 0 ? waived : input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
+  const proof = waived.length > 0 ? waived : [...(input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof)), ...workflowCiLines(input.head, input.workflowCiProof)];
   const rerun = input.fixProofUnverified === undefined && fixProofReproduced(input.head, input.fixProof);
   return [
     ...proof,
@@ -190,6 +193,25 @@ function recurringLines(fixFirsts: number, earlier: readonly EarlierFinding[]): 
   ];
 }
 
+/** The section a convergence review sorts the open findings in. */
+export const CONVERGENCE_HEADING = "Convergence:";
+
+/**
+ * A runaway's rounds kept failing, so this reviewer separates real defects from re-rolls of answered points: only an
+ * Important finding may hold the PR, and its FIX_FIRST sends the task to the planner rather than to a fourth fixer.
+ */
+function convergenceLines(convergence: boolean | undefined): string[] {
+  if (convergence !== true) return [];
+  return [
+    "",
+    "This is a convergence review. This PR's FIX_FIRST rounds did not converge, and Shepherd wakes no further fixer for it. Judge whether this head can merge as it is.",
+    `Whatever your verdict, before the verdict lines add a section that starts with a line \`${CONVERGENCE_HEADING}\`, with one line per finding still open, from the earlier rounds or your own: \`- Important: <item>\`, \`- Nit: <item>\` or \`- Pre-existing: <item>\`.`,
+    "Important is a defect this PR adds or leaves unfixed that would make merging it wrong. Nit is style, polish, or a re-roll of a point an earlier round already answered. Pre-existing was on the base before this PR.",
+    `In the same section, add a line \`${DEFECT_CLASS_HEADING} <class>\` naming the bug class the rounds kept finding.`,
+    "Give MERGE when no Important finding remains, whatever Nits or Pre-existing items are left. Give FIX_FIRST only for an Important finding; it sends the task to its planner to redesign or split.",
+  ];
+}
+
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 export const FOLLOW_UPS_RULE =
   `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
@@ -271,6 +293,7 @@ function verdictRuleLines(input: ReviewerBriefInput): string[] {
     CI_POLICY_RULE,
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? []),
+    ...convergenceLines(input.convergence),
     FOLLOW_UPS_RULE,
   ];
 }
@@ -345,10 +368,19 @@ interface CorrectionPromptInput {
   refusal: MalformedRefusal;
   /** True when this run's verdict will reach the owner, as for the review brief. */
   ownerBrief?: boolean;
+  /** The lines of the reviewer's last message that made the refusal; shown to it so it knows which to reword. */
+  quotes?: readonly string[];
 }
 
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 export function correctionPrompt(input: CorrectionPromptInput): string {
+  const base = correctionLines(input);
+  const quoted = input.quotes ? quoteLines(input.quotes, MAX_CORRECTION_PROMPT_CHARS - base.join("\n").length - 1) : [];
+  if (quoted.length === 0) return base.join("\n");
+  return [base[0]!, ...quoted, ...base.slice(1)].join("\n");
+}
+
+function correctionLines(input: CorrectionPromptInput): string[] {
   const { repo, pr, head } = input;
   return [
     `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[input.refusal]}.`,
@@ -363,5 +395,5 @@ export function correctionPrompt(input: CorrectionPromptInput): string {
     ...(input.ownerBrief ? ownerBriefLines() : []),
     "",
     "This is your only correction. A reply that does not end this way goes to a fresh reviewer.",
-  ].join("\n");
+  ];
 }

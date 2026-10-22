@@ -10,7 +10,7 @@ const normalize = (text: string): string =>
     .trim();
 
 // Padding both sides with a space keeps word boundaries: "restarts" does not match inside "restartsafe".
-const speaks = (spoken: string, phrase: string): boolean => ` ${normalize(spoken)} `.includes(` ${normalize(phrase)} `);
+export const speaks = (spoken: string, phrase: string): boolean => ` ${normalize(spoken)} `.includes(` ${normalize(phrase)} `);
 
 /**
  * Invariants a beat states: the larger of its `inv:` items and the `invariants` phrases its spoken text says.
@@ -49,10 +49,10 @@ export function findingRoutes(beats: readonly PaceBeat[]): string[] {
 }
 
 /** Why a beat goes to the L1 seat judge. */
-type SeatReason = "invariant" | "finding";
+export type SeatReason = "invariant" | "finding";
 
 /** One beat the L1 seat judge (TP-2982) asks "is this seated in the architecture?" about. */
-interface SeatRoute {
+export interface SeatRoute {
   beat: string;
   reason: SeatReason;
 }

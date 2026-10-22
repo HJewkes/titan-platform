@@ -27,7 +27,8 @@ export interface MachineStopWatch {
 
 interface MachineStopWatchOptions {
   read: () => MachineReadings;
-  limits?: Partial<StopLimits>;
+  /** A function is read at every sample, as the spawn gate reads its limits. */
+  limits?: Partial<StopLimits> | (() => Partial<StopLimits>);
   now?: () => number;
 }
 
@@ -40,7 +41,7 @@ const MINUTE_MS = 60_000;
 
 /** Keeps the newest stop per minute, so a storm of spawn refusals stays small, and forgets stops older than the hold ceiling. */
 export function machineStopWatch({ read, limits, now = Date.now }: MachineStopWatchOptions): MachineStopWatch {
-  const stopLimits = { ...DEFAULT_SPAWN_LIMITS, ...limits };
+  const stopLimits = (): StopLimits => ({ ...DEFAULT_SPAWN_LIMITS, ...(typeof limits === "function" ? limits() : limits) });
   const stops = new Map<number, NotedStop>();
   const note = (at: number, reason: string) => {
     const minute = Math.floor(at / MINUTE_MS);
@@ -50,7 +51,7 @@ export function machineStopWatch({ read, limits, now = Date.now }: MachineStopWa
   return {
     note,
     sample() {
-      const reason = stopReason(read(), stopLimits);
+      const reason = stopReason(read(), stopLimits());
       if (reason !== undefined) note(now(), reason);
       return reason;
     },
