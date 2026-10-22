@@ -453,6 +453,19 @@ describe("fix-proof wake brief: a NO_REPRO verdict", () => {
     expect(payload).toContain(fence("changed test files with no mutation spec", "src/guard.test.ts\nsrc/store.test.ts"));
   });
 
+  it.each([
+    ["a vacuous proof", noRepro("vacuous")],
+    ["a failed mutation check", noRepro("vacuous", { mutants: { verdict: "not-killed", results: [] } })],
+  ])("tells a test-only flake fix after %s to register test-only and add no mutation spec", async (_name, payload) => {
+    const { wake } = proofScene(payload);
+
+    const { reason } = await wake();
+
+    expect(reason).toContain("A flaky-test fix that changes only tests needs no base-failing test and no mutation spec");
+    expect(reason).toContain("register it with `--kind test-only` and leave out any `*.mutations.json`");
+    expect(reason).toContain("a mutation spec keeps it NO_REPRO");
+  });
+
   it("says no test was added for a no-tests verdict, without claiming tests ran", async () => {
     const { wake } = proofScene(noRepro("no-tests"));
 

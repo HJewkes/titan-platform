@@ -171,6 +171,12 @@ stays out of the repo.
   the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
   deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
   and keeps the branch with a caveat while any of them is still based on it.
+- `shepherd.redSeat` says where serve's [main CI watch](/guides/shepherd#main-ci-watch) sends a
+  red-main event: `{ "repos": { "acme/widgets": "widgets-coord" }, "fallback": "ops-coord" }`.
+  The repo's entry wins (keys match in any case), then `fallback`, and either one wins over the
+  run's seat, the branch-prefix seat and `shepherd.hubSeat`. Both keys are optional. Only red
+  events read it: merge grants, merge policy and the seat a run records stay with the seat
+  file. It needs `agentChatBin`, and an unknown key in it fails the load.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 ### GitHub event sources {#github-event-sources}

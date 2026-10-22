@@ -17,7 +17,8 @@
  * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
  * and the write; the OS account is the trust boundary, as in `owner-guard.ts`. The story variants the owner
- * opened live go to the decision log with the round's Storybook build, never into feedback.json (TP-3793 S7).
+ * opened live go to the decision log with the round's Storybook build, never into feedback.json (TP-3793 S7). Once the
+ * answer is written, each still-open round the manifest's `supersedes` names is withdrawn (`round-supersede.ts`, TP-3990).
  */
 import { createHash } from "node:crypto";
 import { open, rm, type FileHandle } from "node:fs/promises";
@@ -35,6 +36,7 @@ import { hasFramesIndex } from "./round-frames.js";
 import { viewedBuilds } from "./round-live.js";
 import { refuseUnrevealedSeen } from "./round-reveal.js";
 import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
+import { supersedeOutcome, withdrawSuperseded } from "./round-supersede.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
 import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
@@ -89,6 +91,8 @@ const submitResult = z.discriminatedUnion("status", [
     log: z.array(decisionLogResult.extend({ questionId: z.string() })).optional(),
     /** Present when liveViewed was sent and the console has a decision log: whether its line was written. */
     liveViewedLog: z.enum(["written", "failed"]).optional(),
+    /** Present when round.json lists `supersedes`: what became of each named round (TP-3990). */
+    superseded: z.array(supersedeOutcome).optional(),
   }),
   z.object({ status: z.literal("already-submitted") }),
 ]);
@@ -333,7 +337,8 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
   const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, ...(await viewedBuilds(roundDir, manifest, liveKeys)) };
-  return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps }, round, live };
+  const superseded = manifest.supersedes === undefined ? {} : { superseded: await withdrawSuperseded(dir, args.id, manifest.supersedes, { apply: true, now }) };
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps, ...superseded }, round, live };
 }
 
 async function logRound(decisionLog: RoundDecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
