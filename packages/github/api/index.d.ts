@@ -406,6 +406,8 @@ interface GitHubWire {
     mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+    /** `POST actions/jobs/{jobId}/rerun`, what `gh run rerun <run> --job <job>` sends. */
+    rerunJob(repo: RepoSlug, jobId: number): Promise<void>;
     /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
     listPrFiles(repo: RepoSlug, number: number): Promise<{
         files: PrFile[];
@@ -506,6 +508,10 @@ interface GitHubPort {
     mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+    /** An Actions workflow run's `status`: `queued`, `in_progress`, `completed` and the like. */
+    workflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+    /** Reruns one job (its check run id) of workflow run `runId`; a run that is not completed skips as `in-progress`, since a rerun is already under way or none is allowed yet. */
+    rerunJob(repo: RepoSlug, runId: number, jobId: number): Promise<WriteResult>;
     /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
     listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
     /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
@@ -975,6 +981,13 @@ interface FakeGitHub {
     /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
     gitExec: GitExec;
     effects: FakeEffects;
+    /**
+     * Workflow run id to the `status` `getWorkflowRunStatus` answers, and a rerun sets it `queued`. An unset run reads as
+     * the status of a job of it still open, else `completed`; set `completed` to model a job GitHub left open (tp#2215).
+     */
+    runStatuses: Map<number, string>;
+    /** Every job id a `rerunJob` post named, in order; the rerun leaves the job's check runs as they were. */
+    jobReruns: number[];
     /** Every wire call in order, as `method` names; lets a test prove what was never called. */
     calls: string[];
     /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */

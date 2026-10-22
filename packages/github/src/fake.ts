@@ -47,6 +47,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const reads = new Map<number, number>();
   const fake: FakeGitHub = {
     effects,
+    runStatuses: runStatus,
+    jobReruns: [],
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
@@ -142,7 +144,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),
     listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
-    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
+    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? openJobStatus(runs, runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
       const log = fake.jobLogs.get(jobId);
       if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
@@ -170,6 +172,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
       if (fault) throw fault.error;
+    },
+    rerunJob: async (_repo, jobId) => {
+      record("rerunJob", undefined);
+      fake.jobReruns.push(jobId);
+      const owner = [...runs.values()].flat().find((run) => run.id === jobId)?.workflowRunId;
+      if (owner !== null && owner !== undefined) runStatus.set(owner, "queued");
     },
     listPrFiles: async (_repo, number) => {
       const all = fake.prFiles.get(number) ?? [];
@@ -207,6 +215,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   };
   fake.gitExec = fakeLsRemote(prs, () => read("lsRemote", () => undefined));
   return fake;
+}
+
+/** Like GitHub, a workflow run with a job still queued or in progress has not completed; `runStatuses` overrides it. */
+function openJobStatus(runs: Map<string, CheckRun[]>, runId: number): string | undefined {
+  return [...runs.values()].flat().find((run) => run.workflowRunId === runId && run.status !== "completed")?.status;
 }
 
 /** A commit is known when it was created, is a ref's tip, or has runs or statuses; only a unique prefix expands, as on GitHub. */

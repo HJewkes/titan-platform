@@ -91,6 +91,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
+    rerunJob: async (repo, jobId) => void (await api.send("POST", `repos/${repo}/actions/jobs/${jobId}/rerun`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),

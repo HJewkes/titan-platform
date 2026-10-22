@@ -21,6 +21,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `pushEmptyCommit` | the branch's ref: absent or moved past the expected head skips | the ref moves only as a fast-forward |
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
+| `rerunJob` | the Actions run that owns the job; not completed skips | none |
 | `upsertComment` | the PR's comments; one containing the marker skips | none |
 
 `githubPort` validates every argument before any wire call, because each one becomes part of a
