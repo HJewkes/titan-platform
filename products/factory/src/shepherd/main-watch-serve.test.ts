@@ -91,6 +91,22 @@ describe("serve's main CI watch", () => {
     expect(errors).toEqual(["alpha-coord", "alpha-coord"]);
   });
 
+  it("alarms for a newly dead seat when another comes back in the same sweep, so the count of dead seats stays the same", async () => {
+    const fixture = shepherdFixture({ seats: BOOK });
+    const errors: string[] = [];
+    const logger: Logger = { ...silentLogger, error: (fields) => void errors.push(String(fields.seat)) };
+    const live = { names: new Set(["hub-coord"]) };
+    const ports: MainWatchPorts = { hubSeat: () => "hub-coord", send: async () => undefined, liveNames: async () => live.names };
+    const watch = openMainWatch(fixture.routes.shepherd!, ports, dirname(tempDb()), logger);
+
+    await watch.tick();
+    live.names = new Set(["alpha-coord"]);
+    await watch.tick();
+    watch.close();
+
+    expect(errors).toEqual(["alpha-coord", "hub-coord"]);
+  });
+
   it("logs an alarm at startup when the seat a repo's red events go to has no live session", async () => {
     const fixture = shepherdFixture({ seats: BOOK });
     const errors: { fields: Record<string, unknown>; message: string }[] = [];

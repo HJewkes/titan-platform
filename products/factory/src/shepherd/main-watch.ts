@@ -94,8 +94,10 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
   let alarmed = "";
   const alarmOnChange = async (repos: readonly string[]): Promise<void> => {
     const alarms = await deadRedSeats(services.seats(), repos, ports).catch(() => undefined);
-    if (alarms === undefined || alarms.join("\n") === alarmed) return;
-    alarmed = alarms.join("\n");
+    if (alarms === undefined) return;
+    const key = alarms.map((alarm) => `${alarm.seat}:${alarm.repos.join(",")}`).join("\n");
+    if (key === alarmed) return;
+    alarmed = key;
     for (const alarm of alarms) log.error({ ...alarm }, `main CI watch ALARM: red events go to seat ${alarm.seat}, which no live agent-chat session holds`);
   };
   const tick = async (): Promise<void> => {
