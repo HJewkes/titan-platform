@@ -481,8 +481,14 @@ A successor bills the review account rotation (TP-3961). Its first account is
 account-limit store does not mark exhausted, as a review does. Fixers have no fallback key of
 their own: the store records exhaustion per account for reviews and fixers alike, so one list is
 kept. A successor never holds for an account. When every account is exhausted, or the store
-cannot be read, it spawns under the first. A resume keeps the agent's own account, and a red
-main's fixer still spawns under `fixer.configDir` alone.
+cannot be read, it spawns under the first. A resume keeps the agent's own account. A red main's
+fixer picks its account the same way (TP-3962).
+
+A woken fixer or successor can exit because its account ran out of usage. When its session ends
+on Claude Code's own usage-limit notice, the same record a review reads, Shepherd marks the
+account on its roster row exhausted until the notice's reset. agent-chat's default account is
+marked when the row names none. The next successor then moves to the next account in the rotation.
+A fixer that writes the same words itself marks nothing.
 
 A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When

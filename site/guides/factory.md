@@ -123,8 +123,8 @@ stays out of the repo.
 - `shepherd.fixer` tunes the fixer a red main spawns (see
   [After the merge](/guides/shepherd#after-the-merge)). Its one key, `configDir`, is optional
   and follows the same rules as `review.configDir`. A `fixer` block without `agentChatBin`
-  fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it. A
-  fix-round successor starts on `configDir` (or `review.configDir` when it is absent) and moves
+  fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it. A red
+  main's fixer and a fix-round successor start on `configDir` (or `review.configDir` when it is absent) and moves
   through `review.fallbackConfigDirs` while that account is out of usage. There is no
   `fixer.fallbackConfigDirs` (see [Shepherd](/guides/shepherd)).
 - `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
