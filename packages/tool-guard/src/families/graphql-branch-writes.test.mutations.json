@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reading 64 KB of GraphQL costs 600 ms of CPU",
+      "file": "packages/tool-guard/src/families/graphql-branch-writes.ts",
+      "find": "  const reads = texts.map(decodeGraphqlEscapes);",
+      "replace": "  if (texts.join(\"\").length > 60_000) for (const start = process.threadCpuUsage(); process.threadCpuUsage(start).user < 6e5; );\n  const reads = texts.map(decodeGraphqlEscapes);",
+      "kills": [
+        "graphqlBranchWrites cost on crafted texts reads 64 KB of a chain of escapes, each pass peeling one as unknown within budget",
+        "graphqlBranchWrites cost on crafted texts reads 64 KB of commented id keys as unknown within budget"
+      ]
+    }
+  ]
+}

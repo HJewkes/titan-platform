@@ -6,6 +6,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 
 const home = mkdtempSync(join(tmpdir(), "tool-guard-arith-paren-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -53,35 +54,31 @@ describe("a quoted paren in $(( ))", () => {
   // The unbounded readings this guards against take ten seconds or run out of memory; slow CI runners need the slack.
   const BOUNDED_MS = 2000;
 
-  it.each([
+  cpuBudgetIt.each([
     ["at the limit", 4, "pass"],
     ["past the limit", 5, "deny"],
     ["far past the limit", 24, "deny"],
-  ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", async (_name, depth, verdict) => {
+  ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", BOUNDED_MS, async (_name, depth, verdict) => {
     let body = `x${" + 1".repeat(1000)}`;
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
-    const started = Date.now();
     expect(await handled(`echo ${body}`)).toBe(verdict);
-    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
   });
 
   // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
   const throughHeredoc = (body: string, i: number): string => `$(( '(' $(cat <<E${i}\n${body}\nE${i}\n) ))`;
   const throughBackquote = (body: string): string => `$(( '(' \`echo ${body.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\` ))`;
   const throughQuotes = (body: string): string => `$(( '(' "${body.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" ))`;
-  it.each([
+  cpuBudgetIt.each([
     ["a heredoc", 5, throughHeredoc],
     ["a heredoc", 22, throughHeredoc],
     ["a backquote", 5, throughBackquote],
     ["a backquote", 12, throughBackquote],
     ["double quotes", 5, throughQuotes],
     ["double quotes", 22, throughQuotes],
-  ] as const)("refuses quoted-paren arithmetic nested through %s, %i deep, in bounded time", async (_name, depth, wrap) => {
+  ] as const)("refuses quoted-paren arithmetic nested through %s, %i deep, in bounded time", BOUNDED_MS, async (_name, depth, wrap) => {
     let body = "true";
     for (let i = 0; i < depth; i++) body = wrap(body, i);
-    const started = Date.now();
     expect(await handled(`echo ${body}`)).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
   });
 
   it.each([

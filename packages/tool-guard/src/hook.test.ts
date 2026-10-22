@@ -8,6 +8,7 @@ import { decide } from "./decide.js";
 import { handle, MAX_COMMAND_BYTES, namesGuarded } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import { UnreadableScriptError } from "./shell/unsure-readings.js";
+import { cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget } from "./test-support/cpu-budget.js";
 import type { ClassifyContext } from "./types.js";
 
 const HOME = "/home/you";
@@ -230,13 +231,11 @@ describe("handle: failure policy", () => {
     expect(decisionOf(result.stdout)).toBe("deny");
   });
 
-  it("denies a credential read padded past the size cap without classifying it", async () => {
+  cpuBudgetIt("denies a credential read padded past the size cap without classifying it", 500, async () => {
     const padded = `${"x ".repeat(20_000)}; cat ~/.npmrc`;
-    const start = performance.now();
 
     const result = await handle(bash(padded), {}, port());
 
-    expect(performance.now() - start).toBeLessThan(500);
     expect(decisionOf(result.stdout)).toBe("deny");
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
   });
@@ -439,6 +438,7 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
   /** Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load. */
   const SCALE = 8;
   const MAX_RATIO = 20;
+  const NEAR_LINEAR_CPU_MS = 2500;
   // Sizes stay under MAX_SCRIPT_BYTES: past it the hook denies unread, which costs nothing and proves nothing.
 
   /** Runs `command` from a checkout on feat/x that holds `files`, read through the real filesystem. */
@@ -454,15 +454,16 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
 
   type Case = { command: string; files: Record<string, string> };
 
-  /** Best of two wall-clock times for `build(size)`, asserting every run denies. */
+  /** Best of two thread-CPU times for `build(size)`, asserting every run denies and the test is within its budget. */
   async function bestMs(build: (size: number) => Case, size: number) {
     const times: number[] = [];
     for (let run = 0; run < 2; run++) {
       const { command, files } = build(size);
-      const start = performance.now();
+      const elapsed = cpuStopwatch();
       const result = await inRepo(command, files);
-      times.push(performance.now() - start);
+      times.push(elapsed());
       expect(decisionOf(result.stdout)).toBe("deny");
+      expectWithinCpuBudget();
     }
     return Math.min(...times);
   }
@@ -473,17 +474,17 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
     expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
   }
 
-  it.each([
+  cpuBudgetIt.each([
     ["python3", "a.py", 1024],
     ["node", "a.js", 1024],
-  ])("denies a push after `sudo $a %s` running a script of paths, cost near-linear in size", async (interpreter, script, bytes) => {
+  ])("denies a push after `sudo $a %s` running a script of paths, cost near-linear in size", NEAR_LINEAR_CPU_MS, async (interpreter, script, bytes) => {
     await expectNearLinear(
       (size) => ({ command: `sudo $a ${interpreter} ${script}; ${MAIN}`, files: { [script]: fill(PATHS, size) } }),
       bytes,
     );
   });
 
-  it("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", async () => {
+  cpuBudgetIt("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", NEAR_LINEAR_CPU_MS, async () => {
     await expectNearLinear(
       (size) => ({
         command: `sudo $a b.sh; ${fill("cat x; ", size - 192)}${MAIN}`,

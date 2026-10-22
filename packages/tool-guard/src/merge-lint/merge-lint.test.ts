@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { classify } from "../index.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { buildReport } from "./report.js";
 import { parseRules } from "./rules.js";
 import type { Rules } from "./rules.js";
@@ -35,14 +36,8 @@ function hitsIn(text: string, rules: Rules = rulesWith()): Array<[number, string
 }
 
 describe("the gh pr merge pattern stays linear", () => {
-  it("a long run of global flags with no merge scans quickly", () => {
-    const text = `gh ${"--a ".repeat(2000)}`;
-    const started = performance.now();
-
-    const hits = hitsIn(text);
-
-    expect(hits).toEqual([]);
-    expect(performance.now() - started).toBeLessThan(500);
+  cpuBudgetIt("a long run of global flags with no merge scans quickly", 500, () => {
+    expect(hitsIn(`gh ${"--a ".repeat(2000)}`)).toEqual([]);
   });
 });
 

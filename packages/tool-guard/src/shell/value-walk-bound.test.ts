@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import type { ClassifyContext } from "../types.js";
 import { MAX_NESTING } from "./nesting.js";
 
@@ -23,21 +24,17 @@ const event = (command: string) =>
 const nestedValue = (repeats: number) =>
   `a='x[${'$("'.repeat(repeats)}[1${')"'.repeat(repeats)}]'; let a\n${PUSH}`;
 
-async function timed(command: string) {
-  const start = performance.now();
+async function hookStdout(command: string): Promise<string> {
   const result = await handle(event(command), { PATH: "/usr/bin" }, port);
-  return { stdout: result.stdout, ms: performance.now() - start };
+  return result.stdout;
 }
 
 describe("a nested subscript value is walked in bounded time (TP-2243)", () => {
-  it.each([30, 40, 60, 200, 2000])("denies %i nested substitutions inside brackets in under a second", async (repeats) => {
-    const { stdout, ms } = await timed(nestedValue(repeats));
-    expect(stdout).toContain('"permissionDecision":"deny"');
-    expect(ms).toBeLessThan(1000);
+  cpuBudgetIt.each([[30], [40], [60], [200], [2000]])("denies %i nested substitutions inside brackets in under a second", 1000, async (repeats) => {
+    expect(await hookStdout(nestedValue(repeats))).toContain('"permissionDecision":"deny"');
   });
 
   it("denies a value nested past the limit rather than allowing it", async () => {
-    const { stdout } = await timed(nestedValue(MAX_NESTING + 50));
-    expect(stdout).toContain('"permissionDecision":"deny"');
+    expect(await hookStdout(nestedValue(MAX_NESTING + 50))).toContain('"permissionDecision":"deny"');
   });
 });

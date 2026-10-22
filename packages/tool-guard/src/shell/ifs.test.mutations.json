@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reading a huge brace list or 64 KB of nested evals for IFS costs 250 ms of CPU",
+      "file": "packages/tool-guard/src/shell/ifs.ts",
+      "find": "export function namesIfs(text: string): boolean {",
+      "replace": "export function namesIfs(text: string): boolean {\n  if (text.includes(\"a249}\") || text.includes(\"$a $a $a $a $a\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 250000; );",
+      "kills": [
+        "namesIfs fails closed fast on a brace list whose expansion would be huge",
+        "namesIfs reads 64KB under 8 nested evals in under 200 ms"
+      ]
+    }
+  ]
+}

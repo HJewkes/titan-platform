@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 2.1 s of CPU on a value read again and again",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.includes(\"a[X]=1;\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 2100000; );",
+      "kills": [
+        "the hook verdict on a value that arithmetic reads (TP-1624) denies a push after a value that holds many substitutions read again and again",
+        "the hook verdict on a value that arithmetic reads (TP-1624) denies a push when a variable the value uses changes before every read"
+      ]
+    }
+  ]
+}

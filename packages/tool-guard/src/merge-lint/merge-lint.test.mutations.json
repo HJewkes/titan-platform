@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "scanning a long run of gh global flags costs 550 ms of CPU",
+      "file": "packages/tool-guard/src/merge-lint/scan.ts",
+      "find": "  const scoped = options.scoped ?? true;",
+      "replace": "  if (files.some((file) => file.text.includes(\"--a --a --a --a\"))) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 550000; );\n  const scoped = options.scoped ?? true;",
+      "kills": [
+        "the gh pr merge pattern stays linear a long run of global flags with no merge scans quickly"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "refusing a 100 KB glob costs 250 ms of CPU",
+      "file": "packages/tool-guard/src/families/curl-glob.ts",
+      "find": "  const pieces = parseGlob(text, cap);",
+      "replace": "  if (text.length > 100_000) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 250000; );\n  const pieces = parseGlob(text, cap);",
+      "kills": [
+        "expandCurlGlob returns null where curl refuses the glob or it is too large refuses a long run of ranges each under the cap without listing them",
+        "expandCurlGlob returns null where curl refuses the glob or it is too large refuses a long run of wide ranges without listing them"
+      ]
+    }
+  ]
+}

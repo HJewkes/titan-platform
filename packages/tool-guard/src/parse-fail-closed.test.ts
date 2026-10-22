@@ -9,6 +9,7 @@ import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
+import { cpuBudgetIt } from "./test-support/cpu-budget.js";
 
 const HOME = "/home/you";
 const ts = new Date("2026-01-02T03:04:05.000Z");
@@ -52,10 +53,9 @@ function decisionOf(stdout: string): string | null {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
-async function timedDecision(command: string): Promise<{ decision: string | null; ms: number }> {
-  const start = performance.now();
+async function hookDecision(command: string): Promise<string | null> {
   const result = await handle(bash(command), {}, port);
-  return { decision: decisionOf(result.stdout), ms: performance.now() - start };
+  return decisionOf(result.stdout);
 }
 
 const pushShapes: [string, string][] = [
@@ -69,11 +69,8 @@ const pushShapes: [string, string][] = [
 ];
 
 describe("handle: a command that fails to parse", () => {
-  it.each(pushShapes)("denies %s within a second", async (_, command) => {
-    const { decision, ms } = await timedDecision(command);
-
-    expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(1000);
+  cpuBudgetIt.each(pushShapes)("denies %s within a second", 1000, async (_, command) => {
+    expect(await hookDecision(command)).toBe("deny");
   });
 
   it.each(["'", "$(", "`"])("denies git push and gh pr merge followed by an unclosed %s tail", async (tail) => {
@@ -121,12 +118,11 @@ describe("the built hook on a command that fails to parse", () => {
   it.each(pushShapes)("denies %s within a second", (_, command) => {
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
 
-    const start = performance.now();
-    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 5000 });
-    const ms = performance.now() - start;
+    // The hook's work happens in a child process, out of this thread's CPU, so the second is a wall-clock kill.
+    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 1000 });
 
+    expect(run.error).toBeUndefined();
     expect(run.status).toBe(0);
     expect(decisionOf(run.stdout)).toBe("deny");
-    expect(ms).toBeLessThan(1000);
   });
 });

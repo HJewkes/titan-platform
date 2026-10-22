@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hook spends 800 ms of CPU on eight kilobytes of pending heredocs",
+      "file": "packages/tool-guard/src/hook.ts",
+      "find": "  const actor = observeActor(env, event.sessionId);",
+      "replace": "  const actor = observeActor(env, event.sessionId);\n  if (event.kind === \"bash\" && event.command.length > 7000 && event.command.includes(\"cat <(cat <<E)\\nE\\n\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 800000; );",
+      "kills": [
+        "a heredoc opened inside a process substitution the hook denies a push after eight kilobytes of pending heredocs with a backtick substitution, in under 750 ms",
+        "a heredoc opened inside a process substitution the hook denies a push after eight kilobytes of pending heredocs with an arithmetic expansion, in under 750 ms",
+        "a heredoc opened inside a process substitution the hook denies a push after eight kilobytes of pending heredocs with three arithmetic expansions, in under 750 ms"
+      ]
+    }
+  ]
+}

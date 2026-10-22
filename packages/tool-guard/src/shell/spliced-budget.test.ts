@@ -4,6 +4,7 @@ import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { extractCommands } from "./commands.js";
 import { SplicedReadingError } from "./unsure-readings.js";
 
@@ -33,14 +34,12 @@ function bash(command: string): string {
 }
 
 describe("the budget for text that splicing a substitution's output adds", () => {
-  it("refuses an 8 KiB line of eight nested evals in well under a second, not after 2^8 walks", async () => {
+  cpuBudgetIt("refuses an 8 KiB line of eight nested evals in well under a second, not after 2^8 walks", 1000, async () => {
     const line = nested(`${"echo hi;".repeat(900)}${PUSH}`, 8);
-    const started = performance.now();
 
     const result = await handle(bash(line), {}, port);
 
     expect(line.length).toBeLessThan(8 * 1024);
-    expect(performance.now() - started).toBeLessThan(1000);
     expect(result.stdout).toContain('"permissionDecision":"deny"');
     expect(result.stdout).toContain(SPLICED_REASON);
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tokenize } from "../shell/lexer.js";
 import type { WordToken } from "../shell/lexer.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { GH_PLACEHOLDER_RE } from "./field-words.js";
 import { decodeGraphqlEscapes, graphqlBranchWrites } from "./graphql-branch-writes.js";
 
@@ -214,12 +215,10 @@ describe("graphqlBranchWrites cost on crafted texts", () => {
   const BUDGET_MS = 500;
   const KB = 1024;
 
-  it.each([
+  cpuBudgetIt.each([
     ["a chain of escapes, each pass peeling one", merge(`"${BS}u{5c}${"u{5c}".repeat((32 * KB) / 5)}u006dain${`${BS}u{110000}`.repeat((32 * KB) / 10)}"`)],
     ["commented id keys", `${commitOn("$b")}\n${"#id\n".repeat(16 * KB)}`],
-  ])("reads 64 KB of %s as unknown within budget", (_what, text) => {
-    const start = performance.now();
+  ])("reads 64 KB of %s as unknown within budget", BUDGET_MS, (_what, text) => {
     expect(graphqlBranchWrites([text], []).unknown).toBe(true);
-    expect(performance.now() - start).toBeLessThan(BUDGET_MS);
   });
 });

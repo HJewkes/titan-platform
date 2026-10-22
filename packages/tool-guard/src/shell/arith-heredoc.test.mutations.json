@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lexing deep (( $( nesting or a long ( run costs 550 ms of CPU",
+      "file": "packages/tool-guard/src/shell/lexer.ts",
+      "find": "export function tokenize(src: string, trials = newTrials(src)): Token[] {",
+      "replace": "export function tokenize(src: string, trials = newTrials(src)): Token[] {\n  if (src.includes(\"(( $( \".repeat(5)) || src.startsWith(\"(\".repeat(1000)) || src.includes(\"<<E20\\n\")) for (const s = process.threadCpuUsage(); ((u) => u.user + u.system)(process.threadCpuUsage(s)) < 550000; );",
+      "kills": [
+        "the cost of finding where an arithmetic command ends stays fast for 20 closed levels of (( $(",
+        "the cost of finding where an arithmetic command ends stays fast for 20 levels of (( $( through heredoc bodies",
+        "the cost of finding where an arithmetic command ends stays fast for 20 unclosed levels of (( $(",
+        "the cost of finding where an arithmetic command ends stays fast for 30 unclosed levels of (( $(",
+        "the cost of finding where an arithmetic command ends stays fast for 40 levels of (( $( through heredoc bodies",
+        "the cost of finding where an arithmetic command ends stays fast for a run of 20000 ("
+      ]
+    }
+  ]
+}

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { CLOCK_HOME, clockRuleViolations } from "./clock-rule.js";
 
 const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const COST = "a cost asserted on wall time, to move onto cpuBudgetIt (TP-3884)";
 const DEADLINE = "the wall-clock deadline is the behavior under test";
 // Built from the clock's name, so this file's own fixtures do not read as clock calls to the rule.
 const call = (clock: string) => `const start = ${clock}();`;
@@ -14,20 +13,6 @@ const call = (clock: string) => `const start = ${clock}();`;
 const ALLOWED: Record<string, string> = {
   "deadline.test.ts": DEADLINE,
   "built-hook.test.ts": DEADLINE,
-  "hook.test.ts": COST,
-  "parse-fail-closed.test.ts": COST,
-  "families/curl-glob.test.ts": COST,
-  "families/graphql-branch-writes.test.ts": COST,
-  "merge-lint/merge-lint.test.ts": COST,
-  "shell/arith-heredoc.test.ts": COST,
-  "shell/arith-quoted-paren.test.ts": COST,
-  "shell/arith-value-hook.test.ts": COST,
-  "shell/ifs.test.ts": COST,
-  "shell/procsub-heredoc.test.ts": COST,
-  "shell/spliced-budget.test.ts": COST,
-  "shell/stdin-operand.test.ts": COST,
-  "shell/value-walk-bound.test.ts": COST,
-  "shell/xargs-readings.test.ts": COST,
 };
 
 function sourceFiles(): Array<[string, string]> {
@@ -68,8 +53,8 @@ describe("tool-guard tests read a clock only through cpu-budget (TP-3877)", () =
   });
 
   it("fails an allowlist entry whose file no longer reads a clock", () => {
-    expect(clockRuleViolations([["hook.test.ts", "expect(1).toBe(1);"]], { "hook.test.ts": COST })).toEqual([
-      "hook.test.ts no longer reads a clock; remove its entry from the allowlist.",
+    expect(clockRuleViolations([["deadline.test.ts", "expect(1).toBe(1);"]], { "deadline.test.ts": DEADLINE })).toEqual([
+      "deadline.test.ts no longer reads a clock; remove its entry from the allowlist.",
     ]);
   });
 });

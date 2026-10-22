@@ -7,6 +7,7 @@ import type { ClassifyContext } from "../types.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -98,16 +99,13 @@ describe("a heredoc opened inside a process substitution", () => {
     expect(await hookDenies(`((cat <(cat <<EOF)); true )\nit's\nEOF\n${PUSH}\necho \\'`)).toBe(true);
   });
 
-  it.each([
+  cpuBudgetIt.each([
     ["an arithmetic expansion", "cat <(cat <<E)\nE\n$((1))\n"],
     ["a backtick substitution", "cat <(cat <<E)\nE\n`echo x`\n"],
     ["three arithmetic expansions", "cat <(cat <<E)\nE\necho $((2<<1)) $((3)) $((4))\n"],
-  ])("the hook denies a push after eight kilobytes of pending heredocs with %s, in under 750 ms", async (_name, unit) => {
+  ])("the hook denies a push after eight kilobytes of pending heredocs with %s, in under 750 ms", 750, async (_name, unit) => {
     const command = `${unit.repeat(Math.floor(7900 / unit.length))}${PUSH}`;
-    const started = performance.now();
-    const denied = await hookDenies(command);
-    expect(performance.now() - started).toBeLessThan(750);
-    expect(denied).toBe(true);
+    expect(await hookDenies(command)).toBe(true);
   });
 
   it.each([40, 80])("the hook denies a push when %i arithmetic openers sit in a quote only bash 3.2 opens", async (count) => {

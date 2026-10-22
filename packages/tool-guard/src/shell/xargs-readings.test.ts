@@ -5,6 +5,7 @@ import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 import { MAX_ADDED_RUNS } from "./xargs-readings.js";
@@ -61,14 +62,12 @@ describe("an added xargs reading never undoes what main's reading decides", () =
 describe("added xargs readings on a long input", () => {
   const words = Array.from({ length: 120 }, (_, i) => String.fromCharCode(97 + (i % 26), 97 + Math.floor(i / 26))).join(" ");
 
-  it.each([
+  cpuBudgetIt.each([
     ["-I -i -J %", `git push origin HEAD:main; printf '${words}' | xargs -I -i -J % -d "$D" -n "$N" git %`],
     ["-I{} -J %", `git push origin HEAD:main; printf '${words}' | xargs -I{} -J % -d "$D" -n "$N" git %`],
-  ])("stay under the cap and the hook timeout under %s", async (_how, command) => {
-    const start = performance.now();
+  ])("stay under the cap and the hook timeout under %s", 1000, async (_how, command) => {
     const commands = extractCommands(command, { cwd: REPO, home: HOME });
     const verdict = await decision(command);
-    expect(performance.now() - start).toBeLessThan(1000);
     expect(commands.length).toBeLessThan(400 + MAX_ADDED_RUNS);
     expect(verdict).toBe("deny");
   });
