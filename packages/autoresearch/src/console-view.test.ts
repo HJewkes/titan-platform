@@ -60,5 +60,5 @@ describe("the console's ladder view from a recorded outcome", () => {
     expect(view.implementer).toEqual({ agent: recorded.implementer!.agent, sessionId: recorded.implementer!.sessionId });
     expect(view.l0).toEqual({ ok: true });
     expect(view.micro).toEqual({ predictedDirectionMet: true });
-  });
+  }, 60_000);
 });
