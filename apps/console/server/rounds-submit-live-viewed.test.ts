@@ -29,15 +29,47 @@ async function writeJson(file: string, value: unknown): Promise<void> {
   await writeFile(file, JSON.stringify(value));
 }
 
-/** Synthetic: the lantern-cards story round with a frames index and, unless `storybook` is false, a storybook@1 sidecar. */
-async function storyRound(name: string, storybook = true): Promise<{ dir: string; stateDir: string; manifestSha256: string }> {
+const SHA_A = "a".repeat(40);
+const SHA_B = "b".repeat(40);
+const sidecarAt = (sha: string, files = BUILD_FILES) =>
+  ({ schema: "titan-review/storybook@1", repo: "example-org/example-ui", sha, dirty: false, builtAt: "2026-10-21T00:00:00Z", storybookVersion: "10.0.0", storyIds: 2, files });
+/** A set build's own bytes: one file differs per sha, so each group's build has its own id. */
+const setFiles = (sha: string) => BUILD_FILES.map((file) => (file.path === "iframe.html" ? { ...file, sha256: createHash("sha256").update(sha).digest("hex") } : file));
+
+/** `set`: a storybook-set@1 sidecar with one build per listed sha, in a round split into PR groups compact@SHA_A and roomy@SHA_B. */
+type Storybook = "single" | "none" | { set: string[] };
+
+async function splitIntoGroups(roundDir: string): Promise<void> {
+  const file = path.join(roundDir, "round.json");
+  const round = JSON.parse(await readFile(file, "utf8")) as { sections: Record<string, unknown>[]; questions: Record<string, unknown>[] } & Record<string, unknown>;
+  const [density] = round.sections;
+  round.sections = [
+    { ...density, kind: "STATES", variantKeys: ["compact"] },
+    { ...density, id: "roomy", title: "Roomy card", kind: "STATES", variantKeys: ["roomy"], questionIds: [], parts: [{ id: "roomy-card", label: "Roomy card", proposed: "roomy", lang: "ts" }] },
+  ];
+  round.questions = round.questions.map((question) => ({ ...question, frames: ["compact"] }));
+  round.prGroups = [
+    { pr: "example-org/example-ui#7", headSha: SHA_A, sectionIds: ["density"] },
+    { pr: "example-org/example-ui#8", headSha: SHA_B, sectionIds: ["roomy"] },
+  ];
+  await writeFile(file, JSON.stringify(round));
+}
+
+async function writeSidecar(roundDir: string, storybook: Storybook): Promise<void> {
+  if (storybook === "none") return;
+  const sidecar = storybook === "single" ? sidecarAt(SHA_A) : { schema: "titan-review/storybook-set@1", builds: storybook.set.map((sha) => sidecarAt(sha, setFiles(sha))) };
+  if (storybook !== "single") await splitIntoGroups(roundDir);
+  await writeJson(path.join(roundDir, "storybook", "storybook.json"), sidecar);
+}
+
+/** Synthetic: the lantern-cards story round with a frames index and the given Storybook sidecar. */
+async function storyRound(name: string, storybook: Storybook = "single"): Promise<{ dir: string; stateDir: string; manifestSha256: string }> {
   const dir = path.join(root, name, "rounds");
   const roundDir = path.join(dir, STORY_ROUND_ID);
   await cp(path.join(FIXTURE_ROUNDS.dir, STORY_ROUND_ID), roundDir, { recursive: true });
   const frame = (key: string) => ({ key, variant: key, viewport: { width: 390, height: 200 }, file: `shots/${key}.png`, sha256: "0".repeat(64) });
   await writeJson(path.join(roundDir, "frames", "frames.json"), { schema: "titan-review/frames@1", unit: "lantern-cards", round: 1, frames: [frame("compact"), frame("roomy")] });
-  const sidecar = { schema: "titan-review/storybook@1", repo: "example-org/example-ui", sha: "a".repeat(40), dirty: false, builtAt: "2026-10-21T00:00:00Z", storybookVersion: "10.0.0", storyIds: 2, files: BUILD_FILES };
-  if (storybook) await writeJson(path.join(roundDir, "storybook", "storybook.json"), sidecar);
+  await writeSidecar(roundDir, storybook);
   return { dir, stateDir: path.join(root, name, "state"), manifestSha256: sha256(await readFile(path.join(roundDir, "round.json"))) };
 }
 
@@ -86,11 +118,32 @@ describe("rounds.submit with the variants the owner opened live (TP-3793 S7)", (
   });
 
   it("logs a null build for a round that carries no Storybook build", async () => {
-    const round = await storyRound("no-build", false);
+    const round = await storyRound("no-build", "none");
 
     await submitTo(round, { liveViewed: ["compact"] });
 
-    expect(await liveRows(round)).toEqual([expect.objectContaining({ keys: ["compact"], buildId: null })]);
+    expect(await liveRows(round)).toEqual([{ v: 1, roundId: STORY_ROUND_ID, at: NOW.toISOString(), keys: ["compact"], buildId: null }]);
+  });
+
+  it("logs, for a multi-PR round, each key's own PR group build, with feedback.json byte-equal to a submit without them", async () => {
+    const [withLive, without] = [await storyRound("set-live", { set: [SHA_A, SHA_B] }), await storyRound("set-plain", { set: [SHA_A, SHA_B] })];
+
+    const live = await submitTo(withLive, { liveViewed: ["roomy", "compact"] });
+    await submitTo(without);
+
+    expect(live.envelope).toMatchObject({ ok: true, data: { status: "submitted", liveViewedLog: "written" } });
+    const builds = { compact: buildIdOf(setFiles(SHA_A)), roomy: buildIdOf(setFiles(SHA_B)) };
+    expect(builds.compact).not.toBe(builds.roomy);
+    expect(await liveRows(withLive)).toEqual([{ v: 1, roundId: STORY_ROUND_ID, at: NOW.toISOString(), keys: ["compact", "roomy"], buildId: null, builds }]);
+    expect((await feedbackBytes(withLive)).equals(await feedbackBytes(without))).toBe(true);
+  });
+
+  it("logs a null build for a key whose PR group carries no build in a multi-PR round", async () => {
+    const round = await storyRound("set-missing", { set: [SHA_A] });
+
+    await submitTo(round, { liveViewed: ["compact", "roomy"] });
+
+    expect(await liveRows(round)).toEqual([expect.objectContaining({ buildId: null, builds: { compact: buildIdOf(setFiles(SHA_A)), roomy: null } })]);
   });
 
   it("refuses a key that is no frame of the round, and writes nothing", async () => {
