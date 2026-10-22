@@ -770,7 +770,7 @@ Key exports:
 - `handlers`: `arStepHandlers`
 - `ports`: `HeadSchema`, `ImplementedSchema`, `PinnedSchema`, `ReleasedSchema`, `StaticCheckSchema`, `TreeSchema`
 - `schemas`: `ArMicroSchema`, `ArResultSchema`, `DiffSizeSchema`
-- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- +69 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
