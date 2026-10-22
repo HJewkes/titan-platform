@@ -26,7 +26,7 @@ const answerRecArgs = z.strictObject({
 type AnswerRecArgs = z.infer<typeof answerRecArgs>;
 
 /** `answered` counts the questions the recommendations answered; `result` is `rounds.submit`'s own. */
-export interface RecAnswer {
+interface RecAnswer {
   answered: number;
   result: SubmitResult;
 }

@@ -38,7 +38,7 @@ export function roundsAnswerRecArgs(argv: readonly string[]): AnswerRecArgs | nu
 }
 
 /** The sha comes from the reader `rounds.list` uses, so it is the one the inbox nudge carried for this round.json. */
-export async function answerRecRound(roundsDir: string, id: string, submit: SubmitPipeline): Promise<AnswerRecReport> {
+async function answerRecRound(roundsDir: string, id: string, submit: SubmitPipeline): Promise<AnswerRecReport> {
   if (!(await roundDirExists(roundsDir, id))) throw failure(`No round named "${id}"`, EXIT.NOINPUT);
   const { parsed } = await readManifest(path.join(roundsDir, id));
   if (!parsed.ok) throw failure(`round.json is not a valid round: ${parsed.reason}`, EXIT.DATAERR);
