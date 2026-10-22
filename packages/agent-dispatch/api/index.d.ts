@@ -347,25 +347,6 @@ declare function buildParkArgs(name: string, options?: ParkOptions): string[];
 declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions): Promise<ParkResult>;
 
 /**
- * Message a live agent through `agent-chat debug send`: the broker delivers the
- * text as one channel message, which starts a turn in an idle session. Use it
- * for a live agent; `resumeAgent` is for an ended one. The CLI connects
- * unregistered, so the broker delivers the text from the human seat. Like
- * `resumeAgent`, the text is in argv, where `ps` shows it.
- */
-/** `--` ends the options, so a text that begins with a dash stays one operand. */
-declare function buildMessageArgs(name: string, text: string): string[];
-/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
-
-/**
- * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
- * data. Ported from agent-chat's burndown `dataFence`.
- */
-/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
-declare function dataFence(label: string, text: string): string;
-
-/**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
  * and `execSafeAsync` discipline as dispatch.ts: absolute binary, argv array,
  * minimal env, no shell.
@@ -424,6 +405,31 @@ declare function retire(agentChatBinPath: string, name: string, timeoutMs: numbe
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
 
+/**
+ * Message a live agent through `agent-chat debug send`: the broker delivers the
+ * text as one channel message, which starts a turn in an idle session. Use it
+ * for a live agent; `resumeAgent` is for an ended one. The CLI connects
+ * unregistered, so the broker delivers the text from the human seat. Like
+ * `resumeAgent`, the text is in argv, where `ps` shows it.
+ */
+
+/** `--` ends the options, so a text that begins with a dash stays one operand. */
+declare function buildMessageArgs(name: string, text: string): string[];
+/**
+ * Whether `messageAgent` can reach the agent a roster row names. An unregistered sender reaches only a connected
+ * session, so a `detached` row (not exited, but nothing connected) is as unreachable as an `exited` one.
+ */
+declare function receivesMessages(row: Pick<AgentRow, "presence">): boolean;
+/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
+
+/**
+ * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
+ * data. Ported from agent-chat's burndown `dataFence`.
+ */
+/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
+declare function dataFence(label: string, text: string): string;
+
 /** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
 declare const ASK_LABEL_PATTERN: RegExp;
 interface AskRequest {
@@ -465,4 +471,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire };

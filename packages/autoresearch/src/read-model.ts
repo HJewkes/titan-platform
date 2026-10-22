@@ -7,11 +7,27 @@ import { z } from "zod";
 import { cellTable, evidenceRow, type EvidenceRow } from "./digest.js";
 import { median } from "./keep.js";
 import { arStepId } from "./manifest.js";
-import { ImplementedSchema, LookAggregateSchema, PinnedSchema, PlannerSchema, RoundSummarySchema, StaticCheckSchema, StopReasonSchema, type Pinned, type RoundSummary } from "./ports.js";
+import {
+  ImplementedSchema,
+  LookAggregateSchema,
+  PinnedSchema,
+  PlannerSchema,
+  ReevalSchema,
+  RoundSummarySchema,
+  SnapshotResultSchema,
+  StaticCheckSchema,
+  StopReasonSchema,
+  SyncResultSchema,
+  type CadenceRound,
+  type Pinned,
+  type RoundSummary,
+  type SyncResult,
+} from "./ports.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { ArMicroSchema, ArResultSchema, IdeaSchema, OutcomeSchema, QueueOpsSchema, type ArResult, type Idea, type MetricSpec, type Outcome } from "./schemas.js";
+import { CadenceSchema, SyncGateAnswerSchema } from "./snapshot.js";
 import { finalOutcomes, RunSettingsSchema } from "./workflow.js";
-import type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArRoundView, ArRunSummary, ArRunView, ArTargetView } from "./read-model-types.js";
+import type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArReevalView, ArRoundView, ArRunSummary, ArRunView, ArSnapshotView, ArSyncView, ArTargetView } from "./read-model-types.js";
 
 type Steps = ReadonlyMap<string, StepResult>;
 
@@ -98,7 +114,10 @@ export function arRunSummary(run: WorkflowRun): ArRunSummary {
   const baseline = baselineRuns(steps);
   const best = pinned && phase && baseline.length >= phase.baselineRuns ? bestOf(steps, pinned, baseline).best : null;
   const { id: runId, status, startedAt, completedAt } = run;
-  return { runId, target: targetName(run, pinned), phase: phase?.id ?? "", round: currentRound(run), rounds: settingsOf(run).rounds, status, startedAt, completedAt, best, spend: spendOf(run) };
+  const { open } = snapshotTimeline(steps);
+  const openSnapshot = open && { k: open.k, pr: open.pr };
+  const progress = { phase: phase?.id ?? "", round: currentRound(run), rounds: settingsOf(run).rounds };
+  return { runId, target: targetName(run, pinned), ...progress, status, startedAt, completedAt, best, spend: spendOf(run), openSnapshot };
 }
 
 const inScope = (stepId: string, scope: string) => stepId.split(":")[1] === scope;
@@ -113,6 +132,79 @@ const EVAL_PREFIX = `${arStepId("eval")}:`;
 function evalsIn(steps: Steps, scope: string) {
   const stepIds = [...steps.keys()].filter((stepId) => stepId.startsWith(`${EVAL_PREFIX}${scope}:`));
   return stepIds.map((stepId) => projectRun(dispatched(steps, stepId, ArResultSchema)!));
+}
+
+const TIMELINE = /^ar-(?:cadence|sync):(\d+|end)$/;
+
+/** Every round a sync or a cadence was recorded for, in run order: numbered rounds, then `end`. */
+function timelineRounds(steps: Steps): CadenceRound[] {
+  const labels = new Set([...steps.keys()].flatMap((stepId) => TIMELINE.exec(stepId)?.[1] ?? []));
+  const numbered = [...labels].filter((label) => label !== "end").map(Number).sort((a, b) => a - b);
+  return labels.has("end") ? [...numbered, "end"] : numbered;
+}
+
+/** The cut a round's cadence made, if it was due, unblocked and its snapshot step answered; `k` is the next cut's number. */
+function cutAt(steps: Steps, round: CadenceRound, k: number): ArSnapshotView | undefined {
+  const cadence = arStepId("cadence");
+  const decided = seeded(steps, `${cadence}:${round}`, CadenceSchema);
+  if (!decided?.due || decided.blockedBy !== null || steps.has(`${cadence}:${round}.failed`)) return undefined;
+  const result = dispatched(steps, `${arStepId("snapshot")}:${k}`, SnapshotResultSchema);
+  if (!result || "failed" in result) return undefined;
+  const { tag, sha, branch, pr, url, logSha } = result;
+  return { k: result.k, tag, sha, branch, pr, ...(url === undefined ? {} : { url }), trigger: decided.trigger!, round, logSha };
+}
+
+const holds = (result: SyncResult) => result.conflict !== undefined || result.frozen !== undefined;
+
+/** The owner's answer to a held sync; the recipe opens no gate for the run's last sync. */
+function gateOf(steps: Steps, round: CadenceRound, held: SyncResult): Pick<ArSyncView, "gate"> {
+  if (!holds(held) || round === "end") return {};
+  const answer = steps.get(`${arStepId("sync-gate")}:${round}`);
+  if (!answer) return { gate: { answered: false } };
+  const parsed = SyncGateAnswerSchema.safeParse(answer.data);
+  return { gate: { answered: true, ...(parsed.success ? { resolved: parsed.data.resolved } : {}) } };
+}
+
+/** A round's sync of the open PR: where it settled, why a gate held it, and B's re-measure when main changed the tree. */
+function syncAt(steps: Steps, round: CadenceRound, pr: number): { view: ArSyncView; settled: SyncResult } | undefined {
+  const stepId = `${arStepId("sync")}:${round}`;
+  const held = dispatched(steps, stepId, SyncResultSchema);
+  if (!held) return undefined;
+  const settled = dispatched(steps, `${stepId}.resolved`, SyncResultSchema) ?? held;
+  const runs = evalsIn(steps, `sync-${round}`);
+  return { view: { round, pr, ...held, ...settled, ...gateOf(steps, round, held), ...(runs.length > 0 ? { runs } : {}) }, settled };
+}
+
+/** Cuts and syncs replayed in run order: each round syncs the open PR before its cadence may cut the next. */
+function snapshotTimeline(steps: Steps) {
+  const snapshots: ArSnapshotView[] = [];
+  const syncs: ArSyncView[] = [];
+  let open: ArSnapshotView | null = null;
+  for (const round of timelineRounds(steps)) {
+    const synced = open && syncAt(steps, round, open.pr);
+    if (synced) syncs.push(synced.view);
+    if (synced && synced.settled.state !== "open" && !holds(synced.settled)) open = null;
+    const cut = cutAt(steps, round, snapshots.length + 1);
+    if (cut) snapshots.push((open = cut));
+  }
+  return { snapshots, syncs, open };
+}
+
+function snapshotsOf(steps: Steps): Pick<ArRunView, "snapshots" | "snapshotPending" | "syncs"> {
+  const { snapshots, syncs } = snapshotTimeline(steps);
+  const end = seeded(steps, `${arStepId("cadence")}:end`, CadenceSchema);
+  const snapshotPending = end?.blockedBy === "open" && end.trigger ? { trigger: end.trigger } : null;
+  return { snapshots, snapshotPending, syncs };
+}
+
+/** The round's re-evaluations in the order the recipe settled them. */
+function reevalsOf(steps: Steps, round: number): ArReevalView[] {
+  const prefix = `${arStepId("reeval")}:${round}/`;
+  const stepIds = [...steps.keys()].filter((stepId) => stepId.startsWith(prefix));
+  return stepIds.map((stepId) => {
+    const { runs, ...reeval } = seeded(steps, stepId, ReevalSchema)!;
+    return { ...reeval, runs: runs.map(projectRun) };
+  });
 }
 
 /** `implementer`, `l0`, `micro` and `outcome` are the recorded values; only the micro flag is renamed for the console. */
@@ -208,6 +300,8 @@ function roundView(steps: Steps, run: WorkflowRun, replayed: Replayed, withDepth
     selection: { picks: selection.picks.map((idea) => idea.id), draws: selection.draws, plannerTopK: selection.plannerTopK },
     ladders: selection.picks.map((idea) => ladderOf(steps, run, `${round}/${idea.id}`, withDepth(idea), settle)),
     ratchet: summary?.ratchet ?? null,
+    moves: summary?.moves ?? [],
+    reevals: reevalsOf(steps, round),
   };
 }
 
@@ -279,5 +373,6 @@ export function arRunView(run: WorkflowRun, looks: readonly WorkflowRun[] = []):
     registries: registriesOf(rounds),
     cells: cellTable(evidence),
     ...validatorOf(pinned, looks),
+    ...snapshotsOf(steps),
   };
 }

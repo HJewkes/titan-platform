@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fixer waits for the rerun to resolve",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  return Promise.all([step(ctx, MAIN_RERUN_STEP, input, RerunResult), step(ctx, \"sh-spawn-fixer\", spawn, FixerResult)]);",
+      "replace": "  return step(ctx, MAIN_RERUN_STEP, input, RerunResult).then(async (rerun) => [rerun, await step(ctx, \"sh-spawn-fixer\", spawn, FixerResult)]);",
+      "kills": [
+        "shepherd-pr on a red main spawns the fixer before the rerun resolves, then thaws on Shepherd's green rerun with the fixer left on the flake task"
+      ]
+    }
+  ]
+}

@@ -195,3 +195,51 @@ export const ArRunSummarySchema = z.object({
   best: z.object({ head: z.string(), primary: z.number() }).nullable(),
   spend: z.number().nonnegative(),
 });
+
+/**
+ * G13 and G13a as proposed to the console (plan 7), not yet in its schemas: the console strips these keys today, so
+ * these pin the names and shapes it will read. Fold them into the copies above once the console lands them.
+ */
+const decision = z.enum(["kept", "rejected", "requeued"]);
+const move = z.object({ from: z.string(), to: z.string(), kind: z.enum(["ff", "merge", "sync"]), ideaId: z.string().optional() });
+const reeval = z.object({
+  ideaId: z.string(),
+  from: z.string(),
+  vs: z.string(),
+  merge: z.string().nullable(),
+  conflict: z.array(z.string()).optional(),
+  l0: z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() }).optional(),
+  runs: z.array(evalRun),
+  delta: z.number().optional(),
+  decision,
+  reason: z.string(),
+});
+const cadenceRound = z.union([z.number().int().positive(), z.literal("end")]);
+const trigger = z.enum(["phase-end", "kept", "spend"]);
+const snapshot = z.object({ k: z.number().int().positive(), tag: z.string(), sha: z.string(), branch: z.string(), pr: z.number().int().positive(), url: z.string().optional(), trigger, round: cadenceRound, logSha: z.string() });
+const sync = z.object({
+  round: cadenceRound,
+  pr: z.number().int().positive(),
+  state: z.enum(["open", "merged", "closed"]),
+  merged: z.object({ from: z.string(), to: z.string(), main: z.string() }).optional(),
+  conflict: z.array(z.string()).optional(),
+  frozen: z.array(z.string()).optional(),
+  treeChanged: z.boolean().optional(),
+  gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
+  runs: z.array(evalRun).optional(),
+});
+
+const settledRound = round.extend({
+  ladders: z.array(ladder.extend({ outcome: outcome.extend({ reeval: z.object({ vs: z.string(), decision, reason: z.string() }).optional() }).nullable() })),
+  moves: z.array(move),
+  reevals: z.array(reeval),
+});
+
+export const ProposedArRunViewSchema = ArRunViewSchema.extend({
+  rounds: z.array(settledRound),
+  snapshots: z.array(snapshot),
+  snapshotPending: z.object({ trigger }).nullable(),
+  syncs: z.array(sync),
+});
+
+export const ProposedArRunSummarySchema = ArRunSummarySchema.extend({ openSnapshot: z.object({ k: z.number().int().positive(), pr: z.number().int().positive() }).nullable() });

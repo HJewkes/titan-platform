@@ -149,8 +149,12 @@ A `correctness` registration, stated or defaulted, on a pull request that change
 prints a hint after the run line:
 
 ```
-hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO
+hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO
 ```
+
+The fix-proof wake brief says the same to a fixer woken on a NO_REPRO: a flaky-test fix that
+changes only tests registers `--kind test-only` and leaves out any mutation spec, since
+`shepherd.gateReset.noReproProceed` lets only a spec-free test-only pull request past a vacuous proof.
 
 ## Phases
 
@@ -259,7 +263,7 @@ notes the landing and leaves its task open for the seat to close after live evid
 
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
-**Red.** The run freezes the repo, then works through three steps:
+**Red.** The run freezes the repo, then works through four steps:
 
 1. `sh-freeze` freezes the repo at the merge sha. A freeze is one row per repo; a red in a
    live freeze counts up, and a red after a thaw starts a new episode.
@@ -269,16 +273,43 @@ notes the landing and leaves its task open for the seat to close after live evid
    into `titan-platform` otherwise. It carries the failing jobs and their fenced log tails,
    and is tagged with a key built from the repo and the merge sha, so a replay after a crash
    finds it instead of filing a second one. A daemon that is down is retried for up to 60
-   minutes.
-3. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
+   minutes. When an earlier red's fixer still stands for the same failing checks and tests,
+   the episode borrows that fixer and its task instead, but only while the episode has no
+   fixer, fix task or marked fix PR of its own. A fixer already exempt keeps its exemption
+   for the rest of the episode.
+3. `sh-main-rerun` reruns the failed jobs at the red sha, once per episode (decision 525).
+   It runs at the same time as `sh-spawn-fixer`, so a deterministic red never waits on it.
+   If each red job comes back green, the repo thaws at the red sha itself. The fixer keeps
+   working the same task, which is now the flake task. Only Shepherd's own rerun counts: a job's run must be newer than every check run
+   at the sha before the rerun, read with every attempt kept, so a pass from someone else's
+   rerun never thaws. Before the thaw, main is judged again at the red sha by every check
+   that judges it, so a check still running when main went red, or a red required context
+   from another app, keeps the repo frozen. The thaw also holds only while the episode's red
+   sha is still the one rerun: a later red in the episode keeps it frozen. Then the fix task
+   becomes a flake task. Shepherd appends both runs (Actions run ids, job
+   ids and URLs), the job names, the failing tests and a fenced error excerpt, tags the task
+   `flake`, reopens it if it was done, and sets its `done_when` to a root-cause fix. A retry,
+   a longer timeout or a quarantine does not count as that fix. The filed `done_when` is
+   replaced with `force`, and the notes are appended last. If active-work cannot take the
+   update, the repo stays frozen; a refusal from active-work ends the step at once instead
+   of being waited out as an outage. The rerun is skipped, and the repo stays frozen as
+   below, for:
+   - a red made only of cancels, which has its own path (see Green);
+   - a red whose log names no failing test;
+   - a wiring with no active-work port;
+   - a failing test that already thawed main this way within 24 hours. A known flake gets
+     a real fix, not another reroll.
+4. `sh-spawn-fixer` spawns one fixer per episode, if the run's policy grants `fixer`. The
    grant holds when a seat lists the repo and `--policy` does not set `"fixer":false`. The
    fixer is a headless agent-chat agent on the `bd-implementer` profile (a pane nobody
    watches would help no one, and that profile's grant covers the verbs it needs), named
    `fix-<repo>-<short merge sha>`, started in the repo's seat checkout. Its brief tells it to
-   register its fix pull request with the fix task and with itself as `--implementer`. It
+   register its fix pull request with the fix task and with itself as `--implementer`. A
+   flaky-test fix that changes only tests registers `--kind test-only` and adds no mutation
+   spec, because a spec keeps a vacuous fix-proof NO_REPRO even with `noReproProceed` on. It
    needs `shepherd.agentChatBin` in the [config file](/guides/factory#the-config-file).
 
-Both steps write only to the episode `sh-freeze` returned. If the repo thaws while a step
+Each step writes only to the episode `sh-freeze` returned. If the repo thaws while a step
 waits, the step files or spawns nothing more, records nothing, and the run moves on to
 cleanup without a gate. That holds even if a new red has frozen the repo again. A fixer
 already spawned by then is reported in the step's detail and keeps running.
@@ -291,7 +322,8 @@ every five minutes, and a green head there thaws the repo.
 **Green.** `sh-unfreeze` thaws a frozen repo when the merge commit descends from the red sha
 and every check that was red there ran green again (when the base branch has required
 checks, every required context green). A path filter that skips a red check
-therefore cannot thaw it.
+therefore cannot thaw it. A green at the red sha itself thaws only a red of cancels, or
+through `sh-main-rerun` above.
 
 Every outcome that leaves the repo frozen with nothing in place to clear it opens a gate
 with the owner's release on offer:
@@ -311,6 +343,24 @@ green head, an `unfreeze` on another gate or a hand thaw, the gone sweep (every 
 and on each thaw) and `shepherd resync` cancel it. Each cancel writes a `gate-cancel` row to
 the run's timeline, and the run goes on to cleanup without thawing anything. A gate whose
 episode is still frozen stays open. A run that recorded no episode also keeps its gate.
+
+### Main CI watch {#main-ci-watch}
+
+Serve also reads each seat repo's main every 5 minutes, whoever merged, and sends one
+agent-chat event per red sha (`products/factory/src/shepherd/main-watch.ts`). The event goes
+to the repo's [`shepherd.redSeat`](/guides/factory#the-config-file) entry, else its
+`fallback`. With neither set, it goes to the seat the merge's run names, then the seat whose
+initials prefix the PR's agent branch, then `shepherd.hubSeat`. A failed send is retried each
+sweep until the sha is 6 hours old.
+
+The send reaches only a seat a connected agent-chat session holds: a roster row whose
+presence is `live` (agent-dispatch's `receivesMessages`). A `detached` or `exited` seat cannot
+take the event. At startup, and whenever the set changes, serve logs one `main CI watch ALARM`
+error for each such seat that the send's own route can pick, with the repos it covers. The
+route is checked for a run registered now and for a merge no seat can be mapped to; a
+branch-prefix seat is chosen per PR and is not checked ahead of time. A roster that cannot be
+read raises no alarm; serve warns once that it skipped the check, and again after the next
+successful read.
 
 ## Merges and the guard on R27 {#merge-guard}
 
@@ -1278,6 +1328,15 @@ queued or in progress (none red, none unreported), the wait extends, up to three
 minutes). Past that ceiling the step fails with a reason that names the CI backlog. A red check ends the
 wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
 repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
+
+GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
+never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
+ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow
+run. If the run has completed and the job is still open 5 minutes later, `ci-wait` returns, and the run
+reruns that one job (`gh run rerun <run> --job <job>`) in a `ci-orphan-rerun` step. That step shows on
+the run's timeline. A job inside a run that is still going is left alone. Each head gets one such rerun.
+If the head orphans again, the run fails as a `ci-timeout`, the same stuck-CI failure a 45-minute
+timeout gives, so it does not wait for the ceiling.
 
 ## Resolving a gate is CLI-only
 

@@ -223,6 +223,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
+      # Fails the job on a spec the runner refused, source diff or not, since the judge never reads a source diff's specs.
       - name: Run the mutants side
         if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
         env:

@@ -290,7 +290,7 @@ describe('startSessionIndexWatch', () => {
 
     it('logs one session index pass line with what the pass opened and read', async () => {
       const watcher = startSessionIndexWatch(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
       expect(passLines()[0]).toMatchObject({
@@ -328,7 +328,7 @@ describe('startSessionIndexWatch', () => {
         await import('../../src/server/session-index-watch.js');
 
       const watcher = start(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
       vi.doUnmock('../../src/session-index/refresh.js');
 
@@ -344,7 +344,7 @@ describe('startSessionIndexWatch', () => {
       );
 
       const watcher = startSessionIndexWatch(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
       const messages = log.info.mock.calls.map(([, msg]) => msg as string);
@@ -368,14 +368,14 @@ describe('startSessionIndexWatch', () => {
           return () => {};
         },
       });
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
 
       const transcript = path.join(home, '.claude', 'projects', 'demo', 't1.jsonl');
       appendFileSync(transcript, renderTranscript(FIXTURE_LINES.slice(0, 1)), 'utf8');
       await new Promise((resolve) => setTimeout(resolve, 3 * debounceMs));
       const afterAppend = passLines().length;
       pollTick();
-      await vi.waitFor(() => expect(passLines()).toHaveLength(2), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(2));
       await watcher!.close();
 
       expect(afterAppend).toBe(1);

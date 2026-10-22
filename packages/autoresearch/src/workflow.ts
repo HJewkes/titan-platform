@@ -32,6 +32,7 @@ import { applyOps, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { IdeaSchema, OutcomeSchema, QueueOpsSchema, resultSchemaFor, type ArResult, type Idea, type Outcome, type Proposal, type QueueOps } from "./schemas.js";
 import { select } from "./select.js";
+import { cutIfDue, SnapshotSettingsSchema, startSnapshots, syncOpen, withKept, type SnapshotRun, type SnapshotState } from "./snapshot.js";
 import { dispatch, recorded, step } from "./steps.js";
 import { settleWinners, type Moved } from "./winners.js";
 
@@ -50,6 +51,8 @@ export const RunSettingsSchema = z.object({
   /** Names of the target's cases; a proposal that mentions one is refused before any spawn. */
   caseNames: z.array(z.string()).default([]),
   forkSchedule: ForkScheduleSchema.default({ afterKeep: { exploit: 1 }, basinEvery: 3 }),
+  /** Set by a host with snapshot and sync ports; absent, the run never cuts, and a run recorded before cadence replays unchanged. */
+  snapshot: SnapshotSettingsSchema.optional(),
 });
 export type RunSettings = z.infer<typeof RunSettingsSchema>;
 type Spend = RegistryRow["spend"];
@@ -77,6 +80,7 @@ interface LoopState {
   inboxCursor: number;
   spend: Spend;
   archives: string[];
+  snapshot: SnapshotState;
 }
 
 const phaseOf = (run: Run) => run.pinned.target.phases[0]!;
@@ -274,6 +278,11 @@ async function archive(run: Run, round: number, record: RoundRecord): Promise<st
   return (await step(run.ctx, `${arStepId("archive")}:${round}`, { runId: run.ctx.runId, round, record }, ArchivedSchema)).path;
 }
 
+function unpicked(queue: readonly Idea[], picks: readonly Idea[]): Idea[] {
+  const picked = new Set(picks.map((idea) => idea.id));
+  return queue.filter((idea) => !picked.has(idea.id));
+}
+
 async function runRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
   const { ops, planned, cursor } = await roundOps(run, state, round);
   const queue = await nextQueue(run, state, ops, round);
@@ -284,7 +293,6 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   const stops = await fanOut(run, rc, picks, round);
   const moved = await settleWinners(rc, ideas, stops);
   await summarize(run, round, rc, planned, moved);
-  const picked = new Set(picks.map((idea) => idea.id));
   const outcomes = finalOutcomes(stops, { sigma, superseded: moved.superseded, reevals: moved.reevals });
   const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome, round), recordAnalysis(state.registries, ops.analysis, round));
   const evidence = outcomes.map((outcome) => evidenceRow(round, outcome));
@@ -292,7 +300,7 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   return {
     best: moved.best,
     noise: withPairs(state.noise, outcomes, run),
-    queue: [...queue.filter((idea) => !picked.has(idea.id)), ...moved.requeue],
+    queue: [...unpicked(queue, picks), ...moved.requeue],
     ideas,
     outcomes: [...state.outcomes, ...outcomes],
     evidence: [...state.evidence, ...evidence],
@@ -302,7 +310,25 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
     inboxCursor: cursor,
     spend: addSpend(state.spend, outcomes, planned.usage, moved.reevals),
     archives: archived === undefined ? state.archives : [...state.archives, archived],
+    snapshot: withKept(state.snapshot, outcomes, moved.kept),
   };
+}
+
+const snapshotRun = (run: Run): SnapshotRun | null => (run.settings.snapshot ? { ...run, settings: run.settings.snapshot } : null);
+
+/** With snapshots on, an open snapshot is synced before the round plans, and the cadence is checked once it is archived. */
+async function cadencedRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
+  const snapshots = snapshotRun(run);
+  if (!snapshots) return runRound(run, state, round);
+  const synced = await syncOpen(snapshots, state, round);
+  return cutIfDue(snapshots, await runRound(run, synced, round), round);
+}
+
+/** The run ends with any due cut made, or pending behind the open one; it never waits for review. */
+async function finalCut(run: Run, state: LoopState, stopReason: StopReason): Promise<LoopState> {
+  const snapshots = snapshotRun(run);
+  if (!snapshots) return state;
+  return cutIfDue(snapshots, await syncOpen(snapshots, state, "end"), "end", stopReason);
 }
 
 /** A superseded winner goes back in the queue, so it is evaluated when it runs again, not twice. */
@@ -334,7 +360,8 @@ async function finish(run: Run, state: LoopState): Promise<void> {
   const { ctx } = run;
   const reason: StopReason = stopped(run, state) ?? "rounds-exhausted";
   const { stopReason } = await recorded(ctx, arStepId("end"), EndSchema, () => ({ stopReason: reason }));
-  await step(ctx, `${arStepId("registry")}:${phaseOf(run).id}`, { runId: ctx.runId, row: registryRow(run, state, stopReason) }, RegisteredSchema);
+  const final = await finalCut(run, state, stopReason);
+  await step(ctx, `${arStepId("registry")}:${phaseOf(run).id}`, { runId: ctx.runId, row: registryRow(run, final, stopReason) }, RegisteredSchema);
 }
 
 const EndSchema = z.object({ stopReason: StopReasonSchema });
@@ -347,7 +374,7 @@ export async function runAutoresearch(ctx: WorkflowContext): Promise<void> {
   if (overlap.length > 0) throw new Error(`[bounds-frozen] ${overlap.join(", ")}`);
   const run: Run = { ctx, pinned, settings, keep: pinned.target.metric, result: resultSchemaFor(pinned.target.metric) };
   const empty = { queue: [], ideas: new Map(), outcomes: [], evidence: [], registries: EMPTY_REGISTRIES, keptLastRound: [], roundsWithoutGain: 0, inboxCursor: 0, archives: [] };
-  let state: LoopState = { ...empty, ...(await baseline(run)) };
-  for (let round = 1; round <= settings.rounds && !stopped(run, state); round++) state = await runRound(run, state, round);
+  let state: LoopState = { ...empty, snapshot: startSnapshots(pinned.ratchetHead), ...(await baseline(run)) };
+  for (let round = 1; round <= settings.rounds && !stopped(run, state); round++) state = await cadencedRound(run, state, round);
   await finish(run, state);
 }

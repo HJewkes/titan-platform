@@ -19,8 +19,10 @@ This package is the pure core of that gate. It adds three primitives:
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
-  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  (`mutations`) and every path that is not test material (`source`). Given `headFiles`, the
+  paths at head beside those specs, it also plans each spec's one sibling test unless the PR
+  deletes it, so a diff that changes only a spec runs the test its mutants are judged on.
+  `testOnlyOf(plan)` is true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
   also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
   `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
@@ -94,7 +96,10 @@ purpose; the sandbox removes the survivors, not the test code's own reach.
 [Test-only diffs and mutation specs](#test-only-diffs-and-mutation-specs)).
 
 1. A diff with no spec, or with any path in `plan.source`, writes a skipped marker and runs
-   nothing. A spec that does not parse or fails `checkMutation` writes an error marker.
+   nothing. A spec that does not parse or fails `checkMutation` writes an error marker. On a
+   source diff each spec is still parsed, paired and run through `checkMutation` against head.
+   A refused spec, or on a source diff any failure reading one, also writes `mutants.refused`,
+   and `scripts/fix-proof-run.sh` fails the mutants job on it.
 2. Like the base side, it adds a merge-base worktree, installs and builds it, and only then
    overlays the head's tests and carried files.
 3. It runs the specs' test files once as the baseline.
@@ -246,7 +251,8 @@ base-vs-head by construction. For such a PR the gate asks for mutations instead 
 - **`parseMutationSpec(text)`** is strict. It refuses unknown keys, more than 5 mutations or
   none, a duplicate or over-80-character `name`, a `find` or `replace` over 400 characters, a
   `find` equal to its `replace`, an unnormalized `file`, and an empty or duplicate `kills` list.
-- **`checkMutation(mutation, baseText, config)`** checks one mutation against the merge base.
+- **`checkMutation(mutation, baseText, config, at?)`** checks one mutation against the merge base,
+  or against the commit `at` names in its errors (the mutants side passes `"head"` on a source diff).
   Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
   carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
   counting overlapping matches.

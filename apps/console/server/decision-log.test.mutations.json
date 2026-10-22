@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a batch reads the human-only list once per record",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "const recordInBatch = recordWith(readOnce(humanOnly));",
+      "replace": "const recordInBatch = recordWith(humanOnly);",
+      "kills": [
+        "decision log a batch of answers (TP-4001) reads the human-only list once and excludes exactly what one record at a time excludes",
+        "decision log a batch of answers (TP-4001) writes nothing for an unknown human-only list, asking once (fail closed)",
+        "decision log a batch of answers (TP-4001) writes nothing for a human-only reader that throws, asking once (fail closed)"
+      ]
+    },
+    {
+      "name": "an excluded answer is written anyway",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "    if (excluded !== null) return { ledger: \"excluded\", decisions: \"excluded\", reason: excluded };",
+      "replace": "    void excluded;",
+      "kills": [
+        "decision log a batch of answers (TP-4001) reads the human-only list once and excludes exactly what one record at a time excludes",
+        "decision log a batch of answers (TP-4001) writes nothing for an unknown human-only list, asking once (fail closed)",
+        "decision log a batch of answers (TP-4001) reads the list afresh for each batch, so a newly human-only initiative is excluded on the next submit"
+      ]
+    }
+  ]
+}

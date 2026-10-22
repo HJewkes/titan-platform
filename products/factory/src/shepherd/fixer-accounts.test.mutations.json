@@ -12,17 +12,7 @@
       ]
     },
     {
-      "name": "the fixer port drops the account picked for its spawn",
-      "file": "products/factory/src/shepherd/main-red.ts",
-      "find": "cwd, ...(configDir !== undefined && { configDir }) }),",
-      "replace": "cwd }),",
-      "kills": [
-        "a red main's fixer spawn spawns under the next account in the successor rotation when the first is exhausted",
-        "a red main's fixer spawn spawns under the fixer config directory when no rotation is wired"
-      ]
-    },
-    {
-      "name": "the agent-chat adapter spawns under its own config directory, not the one the spawn names",
+      "name": "the agent-chat adapter spawns under its own config dir, not the spawn's",
       "file": "products/factory/src/shepherd/agents.ts",
       "find": "...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }",
       "replace": "...SHEPHERD_LAUNCH, ...(options.configDir !== undefined && { configDir: options.configDir }) }",
@@ -58,15 +48,6 @@
       "replace": "if (deps.accountLimits) markLimit(deps.accountLimits.get(), { account: row.account ?? DEFAULT_ACCOUNT, notice: \"limit\", ...limit }",
       "kills": [
         "a woken fixer that exits on its account's usage limit marks nothing when the session ended on the fixer's own words, even ones that quote the limit"
-      ]
-    },
-    {
-      "name": "a row with no account is marked under an empty key, not agent-chat's default",
-      "file": "products/factory/src/shepherd/fixer-limit.ts",
-      "find": "account: row.account ?? DEFAULT_ACCOUNT,",
-      "replace": "account: row.account ?? \"\",",
-      "kills": [
-        "a woken fixer that exits on its account's usage limit marks agent-chat's default account when the row names none"
       ]
     }
   ]

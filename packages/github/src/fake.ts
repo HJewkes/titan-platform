@@ -21,6 +21,15 @@ export class FakeHttpError extends Error {
   }
 }
 
+const attemptKey = (run: CheckRun): string => `${run.name}\u0000${run.appId}\u0000${run.workflowRunId}`;
+
+/** GitHub's default `filter=latest`: a rerun of a job in the same workflow run hides that job's earlier attempts. */
+function latestAttempts(runs: readonly CheckRun[]): CheckRun[] {
+  const newest = new Map<string, number>();
+  for (const run of runs) if (run.workflowRunId !== null) newest.set(attemptKey(run), Math.max(newest.get(attemptKey(run)) ?? run.id, run.id));
+  return runs.filter((run) => run.workflowRunId === null || newest.get(attemptKey(run)) === run.id);
+}
+
 /** A real-shaped commit sha, stable per tag, so tests can name heads. */
 export function fakeSha(tag: string): string {
   return createHash("sha1").update(tag).digest("hex");
@@ -47,6 +56,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const reads = new Map<number, number>();
   const fake: FakeGitHub = {
     effects,
+    runStatuses: runStatus,
+    jobReruns: [],
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
@@ -137,12 +148,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getClassicRequiredChecks: async () => read("getClassicRequiredChecks", () => ({ ...fake.classicRules, contexts: [...fake.classicRules.contexts] })),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
-    listCheckRuns: async (_repo, sha) => read("listCheckRuns", () => [...(runs.get(sha) ?? [])]),
+    listCheckRuns: async (_repo, sha, filter) => read("listCheckRuns", () => (filter === "all" ? [...(runs.get(sha) ?? [])] : latestAttempts(runs.get(sha) ?? []))),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),
     listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
-    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
+    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? openJobStatus(runs, runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
       const log = fake.jobLogs.get(jobId);
       if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
@@ -170,6 +181,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
       if (fault) throw fault.error;
+    },
+    rerunJob: async (_repo, jobId) => {
+      record("rerunJob", undefined);
+      fake.jobReruns.push(jobId);
+      const owner = [...runs.values()].flat().find((run) => run.id === jobId)?.workflowRunId;
+      if (owner !== null && owner !== undefined) runStatus.set(owner, "queued");
     },
     listPrFiles: async (_repo, number) => {
       const all = fake.prFiles.get(number) ?? [];
@@ -207,6 +224,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   };
   fake.gitExec = fakeLsRemote(prs, () => read("lsRemote", () => undefined));
   return fake;
+}
+
+/** Like GitHub, a workflow run with a job still queued or in progress has not completed; `runStatuses` overrides it. */
+function openJobStatus(runs: Map<string, CheckRun[]>, runId: number): string | undefined {
+  return [...runs.values()].flat().find((run) => run.workflowRunId === runId && run.status !== "completed")?.status;
 }
 
 /** A commit is known when it was created, is a ref's tip, or has runs or statuses; only a unique prefix expands, as on GitHub. */

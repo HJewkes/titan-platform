@@ -1,7 +1,7 @@
 import type { WorkflowStatus } from "@titan-design/workflow";
 import type { z } from "zod";
 import type { CellRow } from "./digest.js";
-import type { LookAggregate, Planner, RoundSummary, StaticCheckSchema } from "./ports.js";
+import type { CadenceRound, CadenceTrigger, LookAggregate, Planner, RatchetMoveSchema, Reeval, RoundSummary, SnapshotCutSchema, StaticCheckSchema, SyncResult } from "./ports.js";
 import type { Registries } from "./registry.js";
 import type { ArMicro, ArResult, Idea, ImplementerSchema, MetricSpec, Outcome, QueueOps } from "./schemas.js";
 import type { RunSettings } from "./workflow.js";
@@ -55,8 +55,28 @@ export interface ArRoundView {
   analysis: string[];
   selection: { picks: string[]; draws: { id: string; draw: number }[]; plannerTopK: string[] };
   ladders: ArLadderView[];
+  /** The net move; `moves` holds each step of it. */
   ratchet: RoundSummary["ratchet"];
+  moves: z.infer<typeof RatchetMoveSchema>[];
+  reevals: ArReevalView[];
 }
+
+/** A later winner's re-evaluation on top of the round's new head, with its runs named as the console names them. */
+export type ArReevalView = Omit<Reeval, "runs"> & { runs: ArEvalView[] };
+
+/** A cut snapshot, with the trigger and round its recorded cadence decided. */
+export type ArSnapshotView = Omit<z.infer<typeof SnapshotCutSchema>, "shepherdRunId"> & { trigger: CadenceTrigger; round: CadenceRound };
+
+/**
+ * One sync of the open snapshot PR. `conflict` and `frozen` say why a gate held; the other fields are where it settled.
+ * `runs` are B's re-measure after main changed the tree, kept out of every ladder.
+ */
+export type ArSyncView = SyncResult & {
+  round: CadenceRound;
+  pr: number;
+  gate?: { answered: boolean; resolved?: string };
+  runs?: ArEvalView[];
+};
 
 export interface ArRunView {
   runId: string;
@@ -73,6 +93,10 @@ export interface ArRunView {
   registries: Registries;
   cells: CellRow[];
   validator?: { maxLooks: number; looks: LookAggregate[] };
+  snapshots: ArSnapshotView[];
+  /** A phase-end cut that waited behind the open snapshot when the run ended. */
+  snapshotPending: { trigger: CadenceTrigger } | null;
+  syncs: ArSyncView[];
 }
 
 export interface ArRunSummary {
@@ -87,4 +111,6 @@ export interface ArRunSummary {
   /** Null until every baseline eval is recorded. */
   best: RoundSummary["best"] | null;
   spend: number;
+  /** The snapshot whose PR no sync has yet seen merged or closed. */
+  openSnapshot: { k: number; pr: number } | null;
 }

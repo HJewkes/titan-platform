@@ -225,12 +225,12 @@ describe("tp#1558: a failed-rounds owner gate whose head a fix push moves (TP-30
 
   it("asks the owner again at the new head after Shepherd's own opus MERGE there, and merges nothing", async () => {
     const w = heldRun(OPUS, { silentAt: H1 });
-    await gateOpened(w.host, gateId(w.runId, "approve-merge"), 10_000);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
     expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain(`at head ${H1} into main? CI is green. Policy shepherd-route/failed-rounds`);
 
     w.fake.pushHead(1, H2);
     await supersedeMovedGates(w.host, w.services);
-    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1), 10_000);
+    await gateOpened(w.host, gateId(w.runId, "approve-merge", 1));
 
     expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.status).toBe("cancelled");
     expect(pendingApproveMerge(w).map((pending) => pending.gate.prompt)).toEqual([expect.stringContaining(`at head ${H2} into main? CI is green. Policy shepherd-route/failed-rounds`)]);

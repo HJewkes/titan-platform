@@ -19,7 +19,7 @@ import { z } from "zod";
 import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
+import { FeedbackSchema, ROUND_ID, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
 import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
@@ -40,7 +40,7 @@ export interface RoundsSource {
 export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
-export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export { ROUND_ID };
 export const ROUND_FILE = "round.json";
 export const FEEDBACK_FILE = "feedback.json";
 export const WITHDRAWN_FILE = "withdrawn.json";

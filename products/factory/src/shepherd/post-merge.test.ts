@@ -433,7 +433,8 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   if (deploy === undefined) fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
-  const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) });
+  const refresh = (sha: string) => sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns()));
+  const port = wrap({ ...base, checkRuns: async (repo: string, sha: string) => (refresh(sha), base.checkRuns(repo, sha)), checkRunAttempts: async (repo: string, sha: string) => (refresh(sha), base.checkRunAttempts(repo, sha)) });
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
@@ -852,6 +853,24 @@ describe("shepherd-pr on a red main", () => {
     expect(ports.added).toHaveLength(1);
     expect(ports.spawned).toHaveLength(1);
     expect(w.freezes().get(REPO)).toMatchObject({ fixTask: "demo/FX-1", fixer: ports.spawned[0] });
+    expect(w.host.gates.listPending()).toEqual([]);
+  });
+
+  it("spawns the fixer before the rerun resolves, then thaws on Shepherd's green rerun with the fixer left on the flake task", async () => {
+    const ports = mainRedPorts();
+    const flaked: string[] = [];
+    const mainRed = { ...ports.mainRed, tasks: { ...ports.mainRed.tasks!, markFlake: async (initiative: string, id: string) => void flaked.push(`${initiative}/${id}`) } };
+    const rerunGreen = () => (w.fake.effects.rerunFailedJobs > 0 && ports.spawned.length > 0 ? [successRun("validate", 120, "2026-01-01T00:20:00Z")] : []);
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure"), ...rerunGreen()], undefined, mainRed);
+    w.fake.jobLogs.set(5, "FAIL  src/linear.test.ts > grows linearly");
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(ports.spawned).toHaveLength(1);
+    expect(flaked).toEqual(["demo/FX-1"]);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
     expect(w.host.gates.listPending()).toEqual([]);
   });
 

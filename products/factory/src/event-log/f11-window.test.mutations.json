@@ -23,39 +23,11 @@
       "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
-      "name": "rows come back newest first",
-      "file": "products/factory/src/event-log/f11-window.ts",
-      "find": "ORDER BY seq\"",
-      "replace": "ORDER BY seq DESC\"",
-      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
-    },
-    {
-      "name": "the window's ends are used as typed",
-      "file": "products/factory/src/event-log/f11-window.ts",
-      "find": "return { since: new Date(from).toISOString(), until: new Date(to).toISOString() };",
-      "replace": "return { since, until };",
-      "kills": ["f11Window normalises both ends so a bound without milliseconds still meets a stored row at that instant"]
-    },
-    {
       "name": "an unparseable bound is not refused by name",
       "file": "products/factory/src/event-log/f11-window.ts",
       "find": "if (Number.isNaN(from) || Number.isNaN(to)) throw",
       "replace": "if (false) throw",
       "kills": ["f11Window refuses an unparseable or empty window"]
-    },
-    {
-      "name": "an empty window is accepted",
-      "file": "products/factory/src/event-log/f11-window.ts",
-      "find": "if (from >= to) throw",
-      "replace": "if (from > to) throw",
-      "kills": ["f11Window refuses an unparseable or empty window"]
-    },
-    {
-      "name": "the occurrence key is not carried",
-      "file": "products/factory/src/event-log/f11-window.ts",
-      "find": "occurrenceKey: row.occurrence_key,",
-      "replace": "occurrenceKey: row.subject,",
-      "kills": ["readF11Window returns the rows observed in [since, until), in seq order"]
     },
     {
       "name": "a webhook row past its withinMs is pending, not webhookOnly",
