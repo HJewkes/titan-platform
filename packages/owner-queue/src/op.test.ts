@@ -17,8 +17,8 @@ const OPS: OwnerOp[] = [
   { kind: "retire-agent", name: "worker-a", agentId: "agent-1", force: true },
 ];
 
-function deposit(op: unknown, overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
-  return { depositId: "d-1", asker: "agent-a", kind: "do", door: "two-way", summary: "Merge acme/widgets#7", context: "CI is green.", ...(op === undefined ? {} : { op }), ...overrides } as OwnerItemDeposit;
+function deposit(op: OwnerOp | undefined, overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
+  return { depositId: "d-1", asker: "agent-a", kind: "do", door: "two-way", summary: "Merge acme/widgets#7", context: "CI is green.", ...(op === undefined ? {} : { op }), ...overrides };
 }
 
 function hitlItem(keys: string[]): OwnerItem {
@@ -48,13 +48,13 @@ describe("ownerOpSchema", () => {
 
 describe("a deposit carrying an op", () => {
   it("refuses a merge-at-head with a 39-char head sha", () => {
-    const short = { kind: "merge-at-head", repo: "acme/widgets", pr: 7, headSha: "a".repeat(39) };
+    const short: OwnerOp = { kind: "merge-at-head", repo: "acme/widgets", pr: 7, headSha: "a".repeat(39) };
 
     expect(() => fromDeposit(deposit(short), NOW)).toThrow();
   });
 
   it("refuses an op with an extra key", () => {
-    const extra = { kind: "close-pr", repo: "acme/widgets", pr: 7, headSha: HEAD, admin: true };
+    const extra = { kind: "close-pr" as const, repo: "acme/widgets", pr: 7, headSha: HEAD, admin: true };
 
     expect(() => fromDeposit(deposit(extra), NOW)).toThrow();
   });
