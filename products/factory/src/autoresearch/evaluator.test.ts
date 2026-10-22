@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { IdeaSchema, type Idea, type RoundRecord } from "@titan-design/autoresearch";
+import { IdeaSchema, OutcomeSchema, type Idea, type RoundRecord } from "@titan-design/autoresearch";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluatorPorts } from "./evaluator.js";
 import { execGit } from "./ratchet.js";
@@ -233,9 +234,9 @@ describe("evaluator ratchet and archive", () => {
     const repo = await fixture();
     const artifacts = join(repo.root, "artifacts", "run-1-a-r1");
     writeFiles(artifacts, { "lanes.json": "[]\n" });
-    const run = { schema: "ar-result/v2", case: "t-alpha", repeat: "r1", metrics: {}, gates: {}, violations: {}, usd: 0, wall_s: 0, artifact_dir: artifacts } as const;
-    const outcome = { ideaId: "i-1", lineage: "l", cell: "c", verdict: "kept", reason: "ok", rungReached: "L3", runs: [run] } as const;
-    const record = { outcomes: [outcome], digest: {}, ops: {}, draws: [], registries: {}, evidence: [] } as unknown as RoundRecord;
+    const run = { schema: "ar-result/v2", case: "t-alpha", repeat: "r1", metrics: {}, usd: 0, wall_s: 0, artifact_dir: artifacts };
+    const outcome = OutcomeSchema.parse({ ideaId: "i-1", lineage: "l", cell: "c", verdict: "kept", reason: "ok", rungReached: "L3", runs: [run] });
+    const record = partialFake<RoundRecord>({ outcomes: [outcome] });
 
     const archived = await repo.ports.archive!({ runId: "run-1", round: 2, record }, signal);
 

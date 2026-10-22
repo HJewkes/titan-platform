@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 
-export interface CommandRun {
+interface CommandRun {
   ok: boolean;
   stdout: string;
   stderr: string;

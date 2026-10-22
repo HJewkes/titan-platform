@@ -1,5 +1,6 @@
 import { arStepHandlers, arStepId, type ArPorts, type ArStepHandler } from "@titan-design/autoresearch";
 import type { RoutedStepInput, StepRoute, StepUsage } from "@titan-design/workflow";
+import { z } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { redactForEvidence } from "../redact.js";
 
@@ -22,8 +23,8 @@ function usageOf(result: object): StepUsage | undefined {
 }
 
 /** G12: the ratchet's evidence names the move it made, not only the head it reached. */
-function moveOf(step: RoutedStepInput, input: Record<string, unknown>) {
-  const { round, ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } = input;
+function moveOf(step: RoutedStepInput, input: unknown) {
+  const { round, ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } = z.record(z.string(), z.unknown()).parse(input);
   return { move: { run: step.runId, round, idea: ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } };
 }
 
@@ -31,7 +32,7 @@ function moveOf(step: RoutedStepInput, input: Record<string, unknown>) {
 function arRoute(handler: ArStepHandler, ports: ArPorts): StepRoute {
   const run = async (step: RoutedStepInput) => {
     try {
-      const input = JSON.parse(step.prompt) as Record<string, unknown>;
+      const input: unknown = JSON.parse(step.prompt);
       const result = await handler.run(input, step.signal);
       const body = { startedAt: step.firstStartedAt, restarts: step.restarts, result, ...(handler.name === "ratchet" ? moveOf(step, input) : {}) };
       const output = JSON.stringify(evidenceRecord(`autoresearch.${handler.name}`, step, new Date(ports.now()).toISOString(), body));

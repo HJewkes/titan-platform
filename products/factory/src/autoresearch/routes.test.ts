@@ -51,7 +51,8 @@ async function callRoute(name: ArDispatchStep, input: object) {
   const timing = { attempt: 1, requestKey: `run-1/${stepId}`, firstStartedAt: "2026-10-20T08:00:00.000Z", restarts: 1 };
   const outcome = await route.runner.run({ runId: "run-1", workflowName: "autoresearch", stepId, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, ...timing });
   if (!outcome.ok) throw new Error(outcome.error);
-  return { outcome, body: JSON.parse(outcome.output) as Record<string, unknown> };
+  const body: unknown = JSON.parse(outcome.output);
+  return { outcome, body };
 }
 
 describe("autoresearch routes", () => {

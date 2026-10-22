@@ -34,7 +34,7 @@ export interface EvaluatorOptions {
   caseNames?: readonly string[];
 }
 
-export type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive">;
+type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive">;
 
 type Session = Pinned & { evaluatorTree: string; frozenHash: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
@@ -46,7 +46,7 @@ const nul = (text: string) => text.split("\0").filter(Boolean);
  * The frozen files as they are on disk, tracked or not, so an edit the evaluator commits still shows. Frozen
  * entries are git `:(glob)` pathspecs: `**`, `*` and `?`, no braces.
  */
-export async function frozenHash(tree: string, frozen: readonly string[]): Promise<string> {
+async function frozenHash(tree: string, frozen: readonly string[]): Promise<string> {
   if (frozen.length === 0) return sha256("");
   const listed = await execGit(["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ...frozen.map((glob) => `:(glob)${glob}`)], tree);
   const paths = [...new Set(nul(listed))].sort();
