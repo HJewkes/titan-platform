@@ -186,7 +186,7 @@ describe("rounds.get", () => {
     expect(notes?.addressed).toEqual([1, 2]);
   });
 
-  it("carries only the sent frames that hold a verdict, a comment or a pin (TP-3773)", async () => {
+  it("carries only the sent frames that hold a verdict, a comment or a pin, each pin with the width it was placed at (TP-3773, TP-3964)", async () => {
     const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(dir, "kiln-schedule-r1", "feedback.json"), "utf8")));
     const echo = { verdict: null, comment: "", annotations: [] };
     const pin = { id: "beacon-error-1", width: 375, x: 30, y: 60, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." };
@@ -202,7 +202,7 @@ describe("rounds.get", () => {
 
     expect(notes?.frames).toEqual({
       "beacon-busy": { verdict: "rejected", comment: "Busy reads as idle.", annotations: [] },
-      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
+      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", width: 375, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
     });
   });
 
