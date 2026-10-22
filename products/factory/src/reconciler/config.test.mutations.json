@@ -13,7 +13,7 @@
     {
       "name": "a config that sets intervalMs is never named deprecated",
       "file": "products/factory/src/reconciler/config.ts",
-      "find": "return config?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
+      "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
       "replace": "return [];",
       "kills": [
         "loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
@@ -22,7 +22,7 @@
     {
       "name": "every config is named deprecated, set or not",
       "file": "products/factory/src/reconciler/config.ts",
-      "find": "return config?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
+      "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
       "replace": "return [DEPRECATED_INTERVAL];",
       "kills": [
         "defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own"
