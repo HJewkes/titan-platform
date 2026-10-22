@@ -1,8 +1,10 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AncestryProbe } from "../build-ancestry.js";
+import { rmSync } from "node:fs";
+import { deployCheckoutAncestry, type AncestryProbe } from "../build-ancestry.js";
 import { FACTORY_REPO } from "../build-info.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { gitBehindMain } from "../test-support/git-line.js";
 import { H1, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -176,6 +178,21 @@ describe("an older merge whose own main run goes green after a newer sha is queu
     await queue(store, UNRELATED);
 
     expect(readWanted("/state", store)?.sha).toBe(UNRELATED);
+  });
+
+  it("keeps the newer queued sha when neither merge is in the deploy checkout yet", async () => {
+    const behind = gitBehindMain();
+    try {
+      const store = memoryStore();
+      const probe = deployCheckoutAncestry(behind.checkout);
+      await queue(store, behind.newer, probe);
+
+      await queue(store, behind.older, probe);
+
+      expect(readWanted("/state", store)?.sha).toBe(behind.newer);
+    } finally {
+      rmSync(behind.dir, { recursive: true, force: true });
+    }
   });
 
   it("replaces the queued sha when git cannot tell, as before the guard", async () => {
