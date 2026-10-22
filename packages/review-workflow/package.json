@@ -1,0 +1,42 @@
+{
+  "name": "@titan-design/review-workflow",
+  "version": "0.0.0",
+  "description": "PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "packages/review-workflow"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/evidence": "workspace:^",
+    "@titan-design/github": "workspace:^",
+    "@titan-design/review-panel": "workspace:^"
+  }
+}

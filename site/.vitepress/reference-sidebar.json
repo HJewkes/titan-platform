@@ -212,6 +212,10 @@
         "link": "/reference/review-panel"
       },
       {
+        "text": "review-workflow",
+        "link": "/reference/review-workflow"
+      },
+      {
         "text": "session-analytics",
         "link": "/reference/session-analytics"
       },

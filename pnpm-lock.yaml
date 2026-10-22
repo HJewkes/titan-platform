@@ -725,6 +725,18 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/review-workflow:
+    dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../github
+      '@titan-design/review-panel':
+        specifier: workspace:^
+        version: link:../review-panel
+
   packages/rpc-client:
     dependencies:
       '@titan-design/rpc-protocol':
