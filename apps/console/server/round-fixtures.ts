@@ -1,6 +1,7 @@
 // The synthetic review rounds in `fixtures/rounds`, for tests and the owner's browser check. Nothing there is copied from a real round;
 // the PNGs under `ship-tile-r1` and `beacon-states-r1` are solid blocks with a stripe (and a dot), generated once by a throwaway script.
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RoundsSource } from "./rounds.js";
@@ -63,4 +64,23 @@ export async function stagedRound(from: string, id: string, roundJson: unknown):
     feedback: async () => JSON.parse(await readFile(path.join(root, id, "feedback.json"), "utf8")) as unknown,
     remove: () => rm(root, { recursive: true, force: true }),
   };
+}
+
+/** `stagedRound` plus a frames/frames.json listing each `{ key, file }` at a 320×180 viewport, so a design round's page test can draw them. */
+export async function stagedIndexedRound(from: string, id: string, roundJson: unknown, frames: readonly { key: string; file: string }[]): Promise<StagedRound> {
+  const staged = await stagedRound(from, id, roundJson);
+  const dir = path.join(staged.source.dir, id);
+  const records = await Promise.all(
+    frames.map(async ({ key, file }) => ({ key, variant: key, viewport: { width: 320, height: 180 }, file, sha256: createHash("sha256").update(await readFile(path.join(dir, file))).digest("hex") })),
+  );
+  await mkdir(path.join(dir, "frames"), { recursive: true });
+  await writeFile(path.join(dir, "frames", "frames.json"), JSON.stringify({ schema: "titan-review/frames@1", unit: id, round: 1, frames: records }));
+  return staged;
+}
+
+/** A temp rounds dir holding fixture round `id` sent with `feedback`, so a page test reads it back through rounds.get. */
+export async function sentRound(id: string, feedback: unknown): Promise<StagedRound> {
+  const staged = await stagedRound(id, id, JSON.parse(await readFile(path.join(FIXTURE_ROUNDS.dir, id, "round.json"), "utf8")));
+  await writeFile(path.join(staged.source.dir, id, "feedback.json"), JSON.stringify(feedback));
+  return staged;
 }

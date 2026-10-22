@@ -76,7 +76,7 @@ export async function runVerb<T>(run: () => Promise<T>, print: (result: T) => st
 /** The seat is checked before anything lands; a round imported again keeps its first asker. */
 async function importWithAsker(config: ConsoleConfig, dir: string, seat: string | null): Promise<ImportReport> {
   if (seat !== null && !SEAT_NAME.test(seat)) fail(`import refused: seat "${seat}" is not an agent-chat name (lowercase letters, digits and dashes)`, EXIT.USAGE);
-  const result = await importRound({ source: dir, roundsDir: config.roundsDir });
+  const result = await importRound({ source: dir, roundsDir: config.roundsDir, ...(config.storybooksDir !== undefined && { storybooksDir: config.storybooksDir }) });
   const asker = seat === null ? undefined : await recordAsker(path.join(path.resolve(config.roundsDir), result.id), { seat, initiative: null }, new Date());
   return { ...result, ...urlsOf(config, result.id), ...(asker !== undefined && { asker: asker.seat }) };
 }

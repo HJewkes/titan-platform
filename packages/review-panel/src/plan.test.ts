@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CLASS_ROLES, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel } from "./plan.js";
+import { DEFAULT_CLASS_ROLES, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, UninstalledProfileError } from "./plan.js";
 import type { PanelPolicy } from "./plan.js";
 import type { PrClass, PrTouch, ReviewClass } from "./types.js";
 
@@ -81,6 +81,55 @@ describe("planPanel caps", () => {
   it("lets a later member take the one opus seat when correctness is sonnet", () => {
     const policy: PanelPolicy = { ...PANEL, shapeRoles: { tests: { g10: "bd-reviewer", standard: "bd-reviewer" } } };
     expect(summary("standard", ["untested"], policy)).toEqual(["correctness:reviewer:blocking", "tests:bd-reviewer:advisory"]);
+  });
+});
+
+describe("planPanel premium price class (TP-3907)", () => {
+  const fableCorrectness: PanelPolicy = { ...PANEL, roles: { g10: "fable-reviewer", standard: "reviewer" }, shapeRoles: { adversary: { g10: "bd-reviewer", standard: "bd-reviewer" } } };
+
+  it("counts a fable correctness member against the premium cap, so an opus adversary beside it is lowered", () => {
+    expect(summary("g10", ["authority"], fableCorrectness)).toEqual(["correctness:fable-reviewer:blocking", "adversary:reviewer:blocking"]);
+  });
+
+  it("lowers a fable member past the premium cap", () => {
+    const policy: PanelPolicy = { ...PANEL, shapeRoles: { adversary: { g10: "fable-reviewer", standard: "fable-reviewer" } } };
+    expect(summary("g10", ["authority"], policy)).toEqual(["correctness:bd-reviewer:blocking", "adversary:reviewer:blocking"]);
+  });
+
+  it("prices a fable member at premium points", () => {
+    const policy: PanelPolicy = { roles: { g10: "fable-reviewer", standard: "reviewer" }, points: { opus: 5, sonnet: 2 } };
+    expect(planPanel(cls("g10"), policy, OPUS).spendEstimate).toBe(5);
+  });
+
+  it("keeps an uncapped member's premium profile beside a premium correctness member, outside the cap", () => {
+    const hold = { shape: "adversary", classes: ["g10"], touches: [], blocking: true, always: true, uncapped: true } as const;
+    const policy: PanelPolicy = { ...PANEL, panel: [hold, ...DEFAULT_PANEL_TABLE.filter((rule) => rule.shape !== "adversary")], shapeRoles: { adversary: { g10: "bd-reviewer", standard: "bd-reviewer" }, perf: { g10: "fable-reviewer", standard: "fable-reviewer" } } };
+    expect(summary("g10", ["perf"], policy)).toEqual(["correctness:bd-reviewer:blocking", "adversary:bd-reviewer:blocking", "perf:reviewer:advisory"]);
+  });
+
+  it("still lowers an uncapped member, marked degraded, when headroom refuses opus", () => {
+    const hold = { shape: "adversary", classes: ["g10"], touches: [], blocking: true, always: true, uncapped: true } as const;
+    const policy: PanelPolicy = { ...PANEL, panel: [hold], shapeRoles: { adversary: { g10: "fable-reviewer", standard: "fable-reviewer" } } };
+    expect(planPanel(cls("g10"), policy, NO_OPUS).members[1]).toMatchObject({ shape: "adversary", profile: "reviewer", degraded: true });
+  });
+});
+
+describe("planPanel with an installed-profile check (TP-3907)", () => {
+  const capped: PanelPolicy = { ...PANEL, shapeRoles: { adversary: { g10: "bd-reviewer", standard: "bd-reviewer" } } };
+  const without = (missing: string) => (profile: string) => profile !== missing;
+
+  it("refuses at plan time to lower a capped member to a profile that is not installed, naming both profiles", () => {
+    const plan = () => planPanel(cls("g10", ["authority"]), { ...capped, installed: without("reviewer") }, OPUS);
+    expect(plan).toThrow(UninstalledProfileError);
+    expect(plan).toThrow("the adversary member's profile 'bd-reviewer' would be lowered to 'reviewer', which is not installed");
+  });
+
+  it("refuses to lower a member headroom degrades to a profile that is not installed", () => {
+    expect(() => planPanel(cls("g10"), { ...DEFAULT_PANEL_POLICY, installed: without("reviewer") }, NO_OPUS)).toThrow(UninstalledProfileError);
+  });
+
+  it("plans as before when the lowered profile is installed", () => {
+    expect(summary("g10", ["authority"], { ...capped, installed: () => true })).toEqual(["correctness:bd-reviewer:blocking", "adversary:reviewer:blocking"]);
   });
 });
 

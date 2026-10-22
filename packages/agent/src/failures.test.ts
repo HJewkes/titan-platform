@@ -93,6 +93,15 @@ describe("usageFromResult", () => {
     expect(usageFromResult(asResult(result), 10).totalCostUsd).toBeCloseTo(0.5);
   });
 
+  it("keeps the 5m and 1h cache write split from the raw usage", () => {
+    const result = successResult({ usage: { cache_creation: { ephemeral_5m_input_tokens: 40, ephemeral_1h_input_tokens: 700 } } });
+    expect(usageFromResult(asResult(result), 10).cacheCreation).toEqual({ ephemeral5m: 40, ephemeral1h: 700 });
+  });
+
+  it("leaves cacheCreation absent when the raw usage has no split", () => {
+    expect(usageFromResult(asResult(successResult()), 10)).not.toHaveProperty("cacheCreation");
+  });
+
   it("reports zeroes when there is no result at all", () => {
     expect(usageFromResult(undefined, 42)).toEqual({ totalCostUsd: 0, modelUsage: {}, turns: 0, durationMs: 42 });
   });

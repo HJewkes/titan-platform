@@ -1,4 +1,4 @@
-import { dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
 
@@ -25,6 +25,8 @@ export interface SpawnRequest {
   runningReviews?: readonly number[];
   /** Set for a reviewer's spawn only, so the gate can put a red main's fix ahead of other reviews. */
   review?: ReviewAsk;
+  /** This spawn's Claude config directory, picked per spawn; absent means the adapter's own `configDir`. */
+  configDir?: string;
 }
 
 /** Shepherd's one adapter over the `agent-chat` CLI; each caller picks its profile per spawn. */
@@ -37,12 +39,22 @@ export interface AgentChatAgents {
   message(name: string, message: string): Promise<void>;
 }
 
+/** The check `spawn` makes before agent-chat runs, asked ahead of time, so a panel plan can refuse a profile its dispatch would. */
+export function installedHeadless(profile: string, dir?: string): boolean {
+  try {
+    assertInstalledHeadless(profile, dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Every mutation invalidates `roster`, so the read that checks whether it took effect is never a cached one. */
 export function agentChatAgents(agentChatBin: string, options: AgentChatOptions = {}): AgentChatAgents {
-  const { configDir, timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
+  const { timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd, runningReviews, review }) =>
+    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir }) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
         await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);

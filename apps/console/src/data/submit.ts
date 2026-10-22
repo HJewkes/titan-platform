@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import type { DataSource } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../../server/commands.js";
+import { useLiveViewed } from "./live-viewed.js";
 import { useInvalidate } from "./rpc.js";
 
 type SubmitArgs = ConsoleCommands["rounds.submit"]["args"];
@@ -18,17 +19,19 @@ const alreadySubmitted = (data: unknown): boolean => typeof data === "object" &&
 export function useSubmit(): { available: boolean; state: SubmitState; submit: (args: SubmitArgs) => Promise<void> } {
   const source = useContext(AnswerSource);
   const invalidate = useInvalidate();
+  const liveViewed = useLiveViewed();
   const [state, setState] = useState<SubmitState>({ status: "idle" });
   const submit = useCallback(
     async (args: SubmitArgs) => {
       if (source === null) return;
       setState({ status: "sending" });
-      const envelope = await source.call("rounds.submit", args);
+      const viewed = liveViewed();
+      const envelope = await source.call("rounds.submit", viewed === undefined ? args : { ...args, liveViewed: viewed });
       if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
       setState({ status: "sent", already: alreadySubmitted(envelope.data) });
       invalidate(["rounds.get", "rounds.list"]);
     },
-    [source, invalidate],
+    [source, invalidate, liveViewed],
   );
   return { available: source !== null, state, submit };
 }

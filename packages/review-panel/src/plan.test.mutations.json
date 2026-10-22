@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "fable-reviewer is no longer in the premium class",
+      "file": "packages/review-panel/src/plan.ts",
+      "find": "{ \"bd-reviewer\": \"reviewer\", \"fable-reviewer\": \"reviewer\" }",
+      "replace": "{ \"bd-reviewer\": \"reviewer\" }",
+      "kills": [
+        "planPanel premium price class (TP-3907) counts a fable correctness member against the premium cap, so an opus adversary beside it is lowered",
+        "planPanel premium price class (TP-3907) lowers a fable member past the premium cap",
+        "planPanel premium price class (TP-3907) prices a fable member at premium points",
+        "planPanel premium price class (TP-3907) keeps an uncapped member's premium profile beside a premium correctness member, outside the cap",
+        "planPanel premium price class (TP-3907) still lowers an uncapped member, marked degraded, when headroom refuses opus"
+      ]
+    },
+    {
+      "name": "an uncapped seat takes the premium cap like any other",
+      "file": "packages/review-panel/src/plan.ts",
+      "find": "if (seat.uncapped) return",
+      "replace": "if (seat.uncapped && headroom.opus === false) return",
+      "kills": [
+        "planPanel premium price class (TP-3907) keeps an uncapped member's premium profile beside a premium correctness member, outside the cap"
+      ]
+    },
+    {
+      "name": "a lowering never asks whether its profile is installed",
+      "file": "packages/review-panel/src/plan.ts",
+      "find": "!policy.installed(sonnet)",
+      "replace": "!policy.installed(seat.profile)",
+      "kills": [
+        "planPanel with an installed-profile check (TP-3907) refuses at plan time to lower a capped member to a profile that is not installed, naming both profiles",
+        "planPanel with an installed-profile check (TP-3907) refuses to lower a member headroom degrades to a profile that is not installed"
+      ]
+    },
+    {
+      "name": "a headroom lowering skips the installed check",
+      "file": "packages/review-panel/src/plan.ts",
+      "find": "profile: lowered(seat, sonnet, policy), briefId, blocking, degraded: true",
+      "replace": "profile: sonnet, briefId, blocking, degraded: true",
+      "kills": [
+        "planPanel with an installed-profile check (TP-3907) refuses to lower a member headroom degrades to a profile that is not installed"
+      ]
+    }
+  ]
+}

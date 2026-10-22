@@ -6,7 +6,7 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
+import { runSeat, type ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 
@@ -58,12 +58,13 @@ function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): stri
 
 /**
  * A notice naming its seat goes there; a held run naming none, and reviewer infrastructure, go to the hub seat, and the rest
- * to the repo's one seat. A planner notice tries the repo's seat, then the hub seat, since no owner gate stands behind it.
+ * to the run's seat (`runSeat`). A planner notice tries the run's seat, then the hub seat, since no owner gate stands behind it.
  */
-function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | undefined {
+async function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): Promise<string | undefined> {
   if (input.seat !== undefined) return input.seat;
-  if (input.gate === "fix-first-planner") return ports.seatFor(input.repo) ?? ports.hubSeat?.();
-  return input.gate === "held" || input.gate === "review-infra" ? ports.hubSeat?.() : ports.seatFor(input.repo);
+  if (input.gate === "held" || input.gate === "review-infra") return ports.hubSeat?.();
+  const seat = await runSeat(ports, input);
+  return input.gate === "fix-first-planner" ? (seat ?? ports.hubSeat?.()) : seat;
 }
 
 type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
@@ -93,7 +94,7 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
   if (ports === undefined) return { sent: false, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
-    seat = addressee(ports, input);
+    seat = await addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
     const to = seat;
     await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
@@ -189,18 +190,24 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   );
 }
 
+/** A NO_REPRO is the fix-proof's send-back, not a reviewer's, and its cap is the fix-proof wakes alone (TP-3900). */
+const NO_REPRO_WORDS = "fix-proof did not reproduce (NO_REPRO)";
+
 /** A send-back no agent took is the seat's fix round; undefined lands the next round. */
 export function unhandledSendBack(run: GateRun, kind: string, headSha: string, ownerNote?: string): Promise<LandOutcome | undefined> {
+  const noRepro = kind === "NO_REPRO";
   return seatOrGate(
-    () => noticeGate(run, "sh-sent-back", headSha, `the review said ${kind}, and no agent took the wake`),
+    () => noticeGate(run, "sh-sent-back", headSha, `${noRepro ? NO_REPRO_WORDS : `the review said ${kind}`}, and no agent took the wake`),
     () => awaitNewHead(run, headSha),
     (unsent) => {
       if (ownerNote !== undefined) {
         const { prompt, situation } = ownerSentBackPrompt(run.target, headSha, ownerNote, unsent);
         return sentBackGate(run, headSha, prompt, "a human abandoned the PR after the owner sent it back", situation);
       }
-      const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake${unsent}. Await a new head or abandon?`;
-      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, kind === "NO_REPRO");
+      const where = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha}`;
+      const what = noRepro ? `${NO_REPRO_WORDS} at ${where}` : `The review of ${where} said ${kind}`;
+      const prompt = `${what}, and no agent took the wake${unsent}. Await a new head or abandon?`;
+      return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`, prompt, noRepro);
     },
   );
 }

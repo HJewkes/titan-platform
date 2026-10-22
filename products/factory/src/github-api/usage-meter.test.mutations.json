@@ -1,0 +1,76 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "windows are keyed by resource alone, so a reset folds into the window before it",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "const key = `${read.resource}@${read.reset}`;",
+      "replace": "const key = read.resource;",
+      "kills": [
+        "reports the pre-reset max for a window, not the last value it saw"
+      ]
+    },
+    {
+      "name": "a window keeps the last used it saw rather than its max",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "const window = seed !== undefined && seed.used >= read.used ? seed : read;",
+      "replace": "const window = read;",
+      "kills": [
+        "keeps a window's max when a slower concurrent answer arrives later with a lower used",
+        "keeps core and graphql apart and reports each resource's latest window as current",
+        "carries a window's max into the next take while that window is still open"
+      ]
+    },
+    {
+      "name": "a late answer from an older window replaces the current one",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "if (prior === undefined || read.reset >= prior.reset) latest.set(read.resource, window);",
+      "replace": "latest.set(read.resource, window);",
+      "kills": [
+        "does not let a late answer from an older window replace the current one"
+      ]
+    },
+    {
+      "name": "a window's max is not carried past a take",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "(prior?.reset === read.reset ? prior : undefined)",
+      "replace": "undefined",
+      "kills": [
+        "carries a window's max into the next take while that window is still open"
+      ]
+    },
+    {
+      "name": "a take does not clear the touched windows",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "      touched = new Map();\n",
+      "replace": "",
+      "kills": [
+        "gives an empty take when no answer arrived since the last one",
+        "logs a github-api.peak line per window touched since the last peak lines, then none until another answer"
+      ]
+    },
+    {
+      "name": "an answer without a resource header is metered",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "if (resource === null || used",
+      "replace": "if (used",
+      "kills": ["ignores answers without a complete set of rate-limit headers"]
+    },
+    {
+      "name": "a zero limit is metered",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": " || limit === 0) return undefined;",
+      "replace": ") return undefined;",
+      "kills": ["ignores answers without a complete set of rate-limit headers"]
+    },
+    {
+      "name": "the peak line reports the current windows instead of taking the touched ones",
+      "file": "products/factory/src/github-api/usage-meter.ts",
+      "find": "for (const window of meter.takePeaks())",
+      "replace": "for (const window of meter.current())",
+      "kills": [
+        "logs a github-api.peak line per window touched since the last peak lines, then none until another answer"
+      ]
+    }
+  ]
+}

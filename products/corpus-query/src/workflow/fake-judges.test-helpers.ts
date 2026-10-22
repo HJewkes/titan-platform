@@ -95,6 +95,9 @@ function shownPassages(prompt: string): Shown[] {
   return heads.map((head, i) => ({ id: head[1]!, ref: head[2]!, text: prompt.slice(head.index + head[0].length + 1, heads[i + 1]?.index).trim() }));
 }
 
+/** A canary is shown under a lookalike id and ref, so only its text gives it away. */
+const isCanary = (p: Shown): boolean => SPEC.canaries.some((c) => c.text === p.text);
+
 const winningLine = (text: string): string | undefined => text.split("\n\n").find((line) => /\b(won|lifted)\b/.test(line));
 
 const ok = (output: unknown): StepRunOutcome => ({ ok: true, output: JSON.stringify(output), usage: { costUsd: 0.01 } });
@@ -137,7 +140,7 @@ export function fakeJudges(options: { names?: Record<string, string[]>; behave?:
         systemPrompt: runner.defaults!.systemPrompt!,
         env: runner.deps?.env,
         prompt: input.prompt,
-        refs: shownPassages(input.prompt).filter((p) => p.ref !== "CANARY").map((p) => p.ref),
+        refs: shownPassages(input.prompt).filter((p) => !isCanary(p)).map((p) => p.ref),
         startedAt: performance.now(),
       };
       calls.push(call);

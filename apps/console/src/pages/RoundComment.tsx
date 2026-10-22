@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Input, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Input, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 
 interface RoundCommentProps {
@@ -8,12 +8,21 @@ interface RoundCommentProps {
   onChange: (text: string) => void;
   /** Present once the round is sent: the comment feedback.json holds, shown read-only in place of the box. */
   sent?: string;
+  /** The answer asks for a revision, so the comment saying what to change is required (G10). */
+  revising?: boolean;
 }
 
-/** A question's free-text comment, sent with its picks or on its own. */
-export function RoundComment({ question, value, onChange, sent }: RoundCommentProps): ReactNode {
+/** A question's free-text comment, sent with its picks or on its own; a revision request needs one before it sends. */
+export function RoundComment({ question, value, onChange, sent, revising = false }: RoundCommentProps): ReactNode {
   if (sent !== undefined) return <SentComment questionId={question.id} text={sent} />;
-  return <Input multiline numberOfLines={2} label="Comment (optional)" accessibilityLabel={`Comment on ${question.prompt}`} value={value} onChangeText={onChange} />;
+  return (
+    <VStack gap={2}>
+      {revising && value.trim() === "" ? (
+        <Alert status="warning" size="compact" message="Say what to change: a revision request needs a comment before the round can send." testID={`round-comment-required-${question.id}`} />
+      ) : null}
+      <Input multiline numberOfLines={2} label={revising ? "Comment (required)" : "Comment (optional)"} accessibilityLabel={`Comment on ${question.prompt}`} value={value} onChangeText={onChange} />
+    </VStack>
+  );
 }
 
 interface RoundGeneralProps {

@@ -6,6 +6,9 @@ export const DONE_PAGE = 20;
 export const HISTORY_PAGE = 50;
 export const CONTEXTS_PAGE = 50;
 export const REVIEWS_PAGE = 20;
+export const TRAINS_PAGE = 50;
+/** The branches Shepherd pushes candidate merges to; only the factory may write under it. */
+export const TRAIN_PREFIX = "shepherd-train/";
 /** Follow-up pages read one PR or commit each, so they take GitHub's largest page for the same single request. */
 export const FOLLOW_UP_PAGE = 100;
 
@@ -23,7 +26,7 @@ export interface GhPageInfo {
 
 export type GhContext =
   | { __typename: "CheckRun"; databaseId: number; name: string; status: string; conclusion: string | null; completedAt: string | null }
-  | { __typename: "StatusContext"; context: string; state: string; createdAt: string };
+  | { __typename: "StatusContext"; context: string; state: string; createdAt: string; creator?: { login: string } | null };
 
 export interface GhContexts {
   pageInfo: GhPageInfo;
@@ -38,6 +41,9 @@ export interface GhReview {
   databaseId: number;
   state: string;
   submittedAt: string | null;
+  /** Read on every query; optional so a fixture that predates the field still types. */
+  author?: { login: string } | null;
+  commit?: { oid: string } | null;
 }
 
 export interface GhReviews {
@@ -75,12 +81,19 @@ export interface GhHistoryTarget {
   history: GhConnection<GhCommit>;
 }
 
+/** `name` is relative to the prefix the refs were listed under. */
+export interface GhRef {
+  name: string;
+  target: { oid: string } | null;
+}
+
 export interface GhSnapshotData {
   rateLimit: RateLimit;
   repository: {
     open?: GhConnection<GhOpenPr>;
     done?: GhConnection<GhDonePr>;
     ref?: { target: GhHistoryTarget | null } | null;
+    trains?: GhConnection<GhRef>;
   } | null;
 }
 
@@ -88,13 +101,13 @@ const CONTEXTS_FRAGMENT = `fragment Contexts on StatusCheckRollupContextConnecti
   pageInfo { hasNextPage endCursor }
   nodes { __typename
     ... on CheckRun { databaseId name status conclusion completedAt }
-    ... on StatusContext { context state createdAt } }
+    ... on StatusContext { context state createdAt creator { login } } }
 }`;
 
-const REVIEW_FIELDS = "pageInfo { hasPreviousPage startCursor } nodes { databaseId state submittedAt }";
+const REVIEW_FIELDS = "pageInfo { hasPreviousPage startCursor } nodes { databaseId state submittedAt author { login } commit { oid } }";
 
 /** One document for every page: a later page includes only the ranges that still have pages, so it re-reads nothing. */
-export const SNAPSHOT_QUERY = `query($owner: String!, $name: String!, $branch: String!, $since: GitTimestamp!, $openAfter: String, $doneAfter: String, $historyAfter: String, $withOpen: Boolean!, $withDone: Boolean!, $withHistory: Boolean!) {
+export const SNAPSHOT_QUERY = `query($owner: String!, $name: String!, $branch: String!, $since: GitTimestamp!, $openAfter: String, $doneAfter: String, $historyAfter: String, $trainsAfter: String, $withOpen: Boolean!, $withDone: Boolean!, $withHistory: Boolean!, $withTrains: Boolean!) {
   rateLimit { cost remaining resetAt }
   repository(owner: $owner, name: $name) {
     open: pullRequests(states: OPEN, first: ${OPEN_PAGE}, after: $openAfter, orderBy: {field: UPDATED_AT, direction: DESC}) @include(if: $withOpen) {
@@ -111,6 +124,10 @@ export const SNAPSHOT_QUERY = `query($owner: String!, $name: String!, $branch: S
       history(first: ${HISTORY_PAGE}, since: $since, after: $historyAfter) {
         pageInfo { hasNextPage endCursor }
         nodes { oid statusCheckRollup { contexts(first: ${CONTEXTS_PAGE}) { ...Contexts } } } } } } }
+    trains: refs(refPrefix: "refs/heads/${TRAIN_PREFIX}", first: ${TRAINS_PAGE}, after: $trainsAfter) @include(if: $withTrains) {
+      pageInfo { hasNextPage endCursor }
+      nodes { name target { oid } }
+    }
   }
 }
 ${CONTEXTS_FRAGMENT}`;
@@ -147,9 +164,10 @@ export function graphqlPoints(requests: number): number {
 }
 
 /** The requests one snapshot page asks for, per included range; the nested connections count once per parent node. */
-export function snapshotRequests(ranges: { open: boolean; done: boolean; history: boolean }): number {
+export function snapshotRequests(ranges: { open: boolean; done: boolean; history: boolean; trains: boolean }): number {
   const open = ranges.open ? 1 + OPEN_PAGE * 3 : 0;
   const done = ranges.done ? 1 : 0;
   const history = ranges.history ? 1 + HISTORY_PAGE : 0;
-  return open + done + history;
+  const trains = ranges.trains ? 1 : 0;
+  return open + done + history + trains;
 }

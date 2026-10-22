@@ -115,3 +115,33 @@ stripped because some MCP clients reject them at the root.
 `unwrapSchema`, `schemaKind`, `fieldSchema`, and `isOptionalField` use zod 4's public
 `instanceof` classes and `def`, not the `_zod` internals the original dispatcher reached
 into. A `.default()` field counts as optional input.
+
+## Consumer-specific schema and validation text
+
+The optional third argument to `commandToTool` accepts zod's `io` and `override`.
+Pass `{ io: "input" }` to describe accepted input, including nested object unknown-key
+handling. An `override` callback controls a consumer's schema representation.
+Omitting `io` preserves the existing output-mode schema.
+
+`InvokeOptions.formatInvalidArgs(issues)` supplies product validation wording without
+an added prefix; invalid arguments never run the command. `invalidArgsCode` still
+controls the envelope code. Omitting the formatter preserves the existing
+`Invalid arguments: ...` message. A formatter exception passes through `formatError`.
+
+## CLI labels, variadic positionals and defaults
+
+`CliOption.valueName` controls a value flag's placeholder (`<path>`, `<n>`);
+omitting it keeps `<value>`. Booleans and exact `z.literal(true)` fields (including
+optional wrappers) stay bare. String, false and mixed literals take a value.
+Nullable and default-wrapped true literals are not supported as switches yet.
+Array-typed positional arguments render `<text...>` or `[brief...]` when optional
+and swallow every remaining argument, so an array positional must be the last one.
+Their values are coerced element by element. An omitted variadic is left out of the
+args (Commander's `[]` is dropped), so zod defaults apply and the CLI matches MCP and
+HTTP. Repeatable option flags still do not use variadic syntax, so they cannot
+swallow trailing positionals.
+
+`optionDefault(command, key)` reads a field's explicit zod default for the product
+to pass into Commander. Missing/non-default fields return undefined; zero and
+false remain valid defaults. It does not parse args or run schema transforms, but a
+function default (`.default(() => ...)`) is evaluated on each call.

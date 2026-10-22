@@ -137,8 +137,9 @@ describe("explainer eval cold", () => {
 
     expect(viewer.termCalls).toHaveLength(3);
     expect(viewer.termCalls[0]).toContain("## Chapter ch2");
-    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "spoken-term");
+    const asked = evalRows("cold-scores.tsv").filter((r) => r.kind === "viewer-term");
     expect(asked.map((r) => [r.chapter, r.item, r.score])).toEqual([["ch1", "desk", "0"]]);
+    expect(evalRows("cold-chapters.tsv")[0]).toMatchObject({ chapter: "ch1", undefined_terms: "1" });
     const terms = allRecords().filter((r) => r.eval_id === "L1-cold-terms");
     expect(terms).toMatchObject([{ run: 1, usd: 0.09, tokens_in: 1500, judge: "claude-print:sonnet" }]);
   });
@@ -149,6 +150,22 @@ describe("explainer eval cold", () => {
       call.prompt.startsWith(TERMS_RUBRIC) ? { ok: false, reason: "timeout: no reply", usd: 0, tokensIn: 0, tokensOut: 0 } : viewer.harness(call);
 
     expect(await cold(failing, "sonnet", "--runs", "1")).toBe(1);
+  });
+
+  it("adds each run's reader-gap group scores to its line when given labels", async () => {
+    const labels = write("labels.json", {
+      schema: "labels/v1",
+      script: "synthetic-cold",
+      source: "invented",
+      checks: [{ check: "M1", check_ids: [], level: "beat", true: [], false: [], borderline: [] }],
+      owner_named: { true: [], borderline: [] },
+      items: [{ group: "ledger", items: ["ledger"], first_used: ["c2-1"] }],
+    });
+
+    await cold(fakeViewer().harness, "sonnet", "--runs", "1", "--labels", labels);
+
+    const lines = vi.mocked(console.log).mock.calls.map(([line]) => JSON.parse(String(line)));
+    expect(lines.find((l) => l.run === 1)).toMatchObject({ reader_gaps: [{ group: "ledger", asked: ["Ledger"], score: 0 }] });
   });
 
   it("exits 2 on a judge config it cannot parse, before any call", async () => {

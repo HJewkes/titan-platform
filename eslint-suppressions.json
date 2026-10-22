@@ -1522,7 +1522,7 @@
   },
   "products/factory/src/workflows.ts": {
     "titan/max-line-length": {
-      "count": 12
+      "count": 10
     }
   },
   "products/factory/src/workflows/await-head.test.ts": {
