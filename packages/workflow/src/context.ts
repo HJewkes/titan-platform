@@ -14,28 +14,8 @@ import { reportingStepFailure } from "./step-failure.js";
 import { completedTiming, dispatchTiming, newActiveStep, resumeCounts, tryTiming } from "./step-timing.js";
 import { parseStepOutput } from "./step-output.js";
 import { addUsage } from "./usage.js";
-import {
-  GATE_CANCELLED_SIGNAL,
-  StepFailedError,
-  StepOutputInvalidError,
-  WorkflowCancelledError,
-  WorkflowNonDeterminismError,
-  WorkflowRecoveryRequiredError,
-  WorkflowSchemaDriftError,
-  type ActiveStep,
-  type AssistedOptions,
-  type AuthorizeOptions,
-  type AuthorizeRequest,
-  type AuthorizeResult,
-  type DispatchOptions,
-  type DurableStepOutcome,
-  type SeedResult,
-  type StepOperation,
-  type StepResult,
-  type StepRunInput,
-  type WorkflowContext,
-  type WorkflowRun,
-} from "./types.js";
+import { GATE_CANCELLED_SIGNAL, StepFailedError, StepOutputInvalidError, WorkflowCancelledError, WorkflowNonDeterminismError, WorkflowRecoveryRequiredError, WorkflowSchemaDriftError } from "./types.js";
+import type { ActiveStep, AssistedOptions, AuthorizeOptions, AuthorizeRequest, AuthorizeResult, DispatchOptions, DurableStepOutcome, SeedResult, StepOperation, StepResult, StepRunInput, WorkflowContext, WorkflowRun } from "./types.js";
 
 export type { ContextDeps, RecoveredStep } from "./context-deps.js";
 export { assistedGateId, gateIdFor, gateIsPending, memoKey, pendingGateId, type GatePredicate } from "./gate-ids.js";
