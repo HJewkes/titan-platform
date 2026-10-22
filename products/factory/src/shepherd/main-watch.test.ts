@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAIN_WATCH_DB, MainWatchLedger } from "./main-watch-ledger.js";
-import { MAIN_WATCH_WINDOW_MS, MainCiReads, prNumberOf, seatByPrefix, sweepMain, type MainWatchDeps } from "./main-watch.js";
+import { deadRedSeats, MAIN_WATCH_WINDOW_MS, MainCiReads, prNumberOf, seatByPrefix, sweepMain, type MainWatchDeps } from "./main-watch.js";
 import type { SeatBook } from "./seats.js";
 import type { Registration } from "./store.js";
 
@@ -245,6 +245,35 @@ describe("merge to seat mapping", () => {
     const book: SeatBook = { seats: [...BOOK.seats, { name: "acme-crew", remotes: [], paths: {}, grants: [] }], denied: [] };
 
     expect(seatByPrefix(book, "agent-chat/ac-fix")).toBeUndefined();
+  });
+});
+
+describe("red-event seats with no live session", () => {
+  const OTHER = "acme/gadgets";
+  const book: SeatBook = { seats: [{ name: "alpha-coord", remotes: [REPO], paths: {}, grants: [] }], denied: [] };
+  const ports = (live: string[], hubSeat: string | undefined = "hub-coord") => ({ hubSeat: () => hubSeat, send: async () => undefined, liveNames: async () => new Set(live) });
+
+  it("names a repo's seat that no live session holds, with the repos it is told about", async () => {
+    expect(await deadRedSeats(book, [REPO, OTHER], ports(["hub-coord"]))).toEqual([{ seat: "alpha-coord", repos: [REPO] }]);
+  });
+
+  it("names the hub seat when it is dead, with the unseated repos it stands in for", async () => {
+    expect(await deadRedSeats(book, [REPO, OTHER], ports(["alpha-coord"]))).toEqual([{ seat: "hub-coord", repos: [OTHER] }]);
+  });
+
+  it("sends a remote two seats share to the hub seat, as a joined seat names no one agent", async () => {
+    expect(await deadRedSeats(BOOK, [REPO], ports(["alpha-coord", "beta-coord"]))).toEqual([{ seat: "hub-coord", repos: [REPO] }]);
+  });
+
+  it("names nothing when every seat is live, or when the watch cannot read who is live", async () => {
+    expect(await deadRedSeats(book, [REPO], ports(["alpha-coord", "hub-coord"]))).toEqual([]);
+    expect(await deadRedSeats(book, [REPO], { hubSeat: () => undefined, send: async () => undefined })).toEqual([]);
+  });
+
+  it("throws on an unreadable roster rather than calling every seat dead", async () => {
+    const unread = { hubSeat: () => undefined, send: async () => undefined, liveNames: () => Promise.reject(new Error("broker down")) };
+
+    await expect(deadRedSeats(book, [REPO], unread)).rejects.toThrow("broker down");
   });
 });
 

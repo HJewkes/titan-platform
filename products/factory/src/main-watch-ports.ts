@@ -10,7 +10,8 @@ export function configuredMainWatch(env: NodeJS.ProcessEnv): MainWatchPorts | un
   const { agentChatBin, hubSeat } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
   const agents = agentChatAgents(agentChatBin, { timeoutMs: AGENT_CALL_TIMEOUT_MS });
-  return { hubSeat: () => hubSeat, send: (seat, text) => agents.message(seat, text) };
+  const liveNames = async () => new Set((await agents.roster()).filter((row) => row.presence !== "exited").map((row) => row.name));
+  return { hubSeat: () => hubSeat, send: (seat, text) => agents.message(seat, text), liveNames };
 }
 
 /** Park and retire go over the same `agent-chat` CLI; the retire is never forced, and a park refuses a tree that holds unpushed or uncommitted work. */

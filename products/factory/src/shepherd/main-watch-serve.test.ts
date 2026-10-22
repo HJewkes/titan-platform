@@ -1,28 +1,32 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { silentLogger } from "@titan-design/daemon";
+import { dirname, join } from "node:path";
+import { silentLogger, type Logger } from "@titan-design/daemon";
 import { fakeSha, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { REPO } from "../test-support/land.js";
 import { shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
-import type { MainWatchPorts } from "./main-watch.js";
+import { openMainWatch, type MainWatchPorts } from "./main-watch.js";
 import type { SeatBook } from "./seats.js";
 
 const BOOK: SeatBook = { seats: [{ name: "alpha-coord", remotes: [REPO], paths: {}, grants: [] }], denied: [] };
 const dirs: string[] = [];
 afterEach(() => void dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
-function serve(fixture: ShepherdFixture, dbPath: string, mainWatch: MainWatchPorts): Promise<FactoryServer> {
-  return startFactoryServer({ dbPath, workflows: fixture.workflows, routes: fixture.routes, port: 0, logger: silentLogger, resyncOnStart: false, github: { status: () => "ok", refresh: async () => undefined }, mainWatch });
+function serve(fixture: ShepherdFixture, dbPath: string, mainWatch: MainWatchPorts, logger: Logger = silentLogger): Promise<FactoryServer> {
+  return startFactoryServer({ dbPath, workflows: fixture.workflows, routes: fixture.routes, port: 0, logger, resyncOnStart: false, github: { status: () => "ok", refresh: async () => undefined }, mainWatch });
+}
+
+function tempDb(): string {
+  const dir = mkdtempSync(join(tmpdir(), "main-watch-serve-"));
+  dirs.push(dir);
+  return join(dir, "factory.sqlite3");
 }
 
 describe("serve's main CI watch", () => {
   it("sends a seat-merge's red main one event, and none again after serve restarts", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "main-watch-serve-"));
-    dirs.push(dir);
-    const dbPath = join(dir, "factory.sqlite3");
+    const dbPath = tempDb();
     const fixture = shepherdFixture({ seats: BOOK });
     const sha = fakeSha("seat-merge");
     const at = new Date(Date.now() + 60_000).toISOString();
@@ -42,5 +46,40 @@ describe("serve's main CI watch", () => {
     await second.close();
 
     expect(sent).toEqual([{ seat: "alpha-coord", text: expect.stringContaining(`at ${sha} after PR #41. Failing: validate.`) }]);
+  });
+
+  it("alarms once per change in the dead seats, not on every sweep, and again once a seat that came back dies", async () => {
+    const fixture = shepherdFixture({ seats: BOOK });
+    const errors: string[] = [];
+    const logger: Logger = { ...silentLogger, error: (fields) => void errors.push(String(fields.seat)) };
+    const live = { names: new Set<string>() };
+    const ports: MainWatchPorts = { hubSeat: () => undefined, send: async () => undefined, liveNames: async () => live.names };
+    const watch = openMainWatch(fixture.routes.shepherd!, ports, dirname(tempDb()), logger);
+
+    await watch.tick();
+    await watch.tick();
+    live.names = new Set(["alpha-coord"]);
+    await watch.tick();
+    live.names = new Set();
+    await watch.tick();
+    watch.close();
+
+    expect(errors).toEqual(["alpha-coord", "alpha-coord"]);
+  });
+
+  it("logs an alarm at startup when the seat a repo's red events go to has no live session", async () => {
+    const fixture = shepherdFixture({ seats: BOOK });
+    const errors: { fields: Record<string, unknown>; message: string }[] = [];
+    const logger: Logger = { ...silentLogger, error: (fields, message) => void errors.push({ fields, message }) };
+    const reads = { count: 0 };
+    const ports: MainWatchPorts = { hubSeat: () => "hub-coord", send: async () => undefined, liveNames: async () => (reads.count++, new Set(["hub-coord"])) };
+
+    const server = await serve(fixture, tempDb(), ports, logger);
+    await vi.waitFor(() => expect(reads.count).toBeGreaterThan(0));
+    await server.close();
+
+    expect(errors).toEqual([
+      { fields: { seat: "alpha-coord", repos: [REPO] }, message: "main CI watch ALARM: red events go to seat alpha-coord, which no live agent-chat session holds" },
+    ]);
   });
 });

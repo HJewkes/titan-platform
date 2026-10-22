@@ -6,7 +6,7 @@ import { failureOf } from "./error-class.js";
 import { singleSeat } from "./held-repair.js";
 import { MAIN_WATCH_DB, MainWatchLedger, type WatchedSha } from "./main-watch-ledger.js";
 import { judgeMain, readMainRules, type MainRules } from "./main-verdict.js";
-import type { SeatBook } from "./seats.js";
+import { lookupSeat, type SeatBook } from "./seats.js";
 import type { ShepherdStore } from "./store.js";
 
 /** How often serve reads each watched repo's main; one listing per repo, plus one check-run read per unsettled sha. */
@@ -64,6 +64,8 @@ export interface MainWatchPorts {
   /** The config's shepherd.hubSeat: told about a red merge no seat can be found for. */
   hubSeat(): string | undefined;
   send(seat: string, text: string): Promise<void>;
+  /** The names a live agent-chat session holds now; absent, no red-event seat is checked for one. */
+  liveNames?(): Promise<ReadonlySet<string>>;
 }
 
 export interface MainWatchDeps {
@@ -87,8 +89,17 @@ interface MainWatchNote {
 export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts, stateDir: string, log: Logger): { tick: () => Promise<void>; close: () => void } {
   const ledger = MainWatchLedger.open(join(stateDir, MAIN_WATCH_DB));
   const deps: MainWatchDeps = { port: services.port, ledger, store: { byPr: (repo, pr) => services.store.get().byPr(repo, pr) }, seats: services.seats, ports, now: Date.now };
+  let alarmed = "";
+  const alarmOnChange = async (repos: readonly string[]): Promise<void> => {
+    const alarms = await deadRedSeats(services.seats(), repos, ports).catch(() => undefined);
+    if (alarms === undefined || alarms.join("\n") === alarmed) return;
+    alarmed = alarms.join("\n");
+    for (const alarm of alarms) log.error({ ...alarm }, `main CI watch ALARM: red events go to seat ${alarm.seat}, which no live agent-chat session holds`);
+  };
   const tick = async (): Promise<void> => {
-    for (const note of await sweepMain(deps, watchedRepos(services.seats()))) {
+    const repos = watchedRepos(services.seats());
+    await alarmOnChange(repos);
+    for (const note of await sweepMain(deps, repos)) {
       if (note.outcome === "sent") log.info({ ...note }, "main CI watch sent a red event");
       else log.warn({ ...note }, "main CI watch");
     }
@@ -99,6 +110,33 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
 /** Every seat's owned remotes, once each: the repos whose main a merge can land on outside a run. */
 function watchedRepos(book: SeatBook): string[] {
   return [...new Set(book.seats.flatMap((seat) => seat.remotes))];
+}
+
+/** A red-event seat no live session holds, with the repos whose red merges it is sent; none means it stands in as the hub seat. */
+export interface DeadSeat {
+  seat: string;
+  repos: string[];
+}
+
+/** Where each repo's red event goes when no run names another seat: the repo's one seat, else the hub seat, which also takes unmapped merges. */
+export function redEventSeats(book: SeatBook, repos: readonly string[], hubSeat: string | undefined): Map<string, string[]> {
+  const seats = new Map<string, string[]>(hubSeat === undefined ? [] : [[hubSeat, []]]);
+  for (const repo of repos) {
+    const found = lookupSeat(book, repo);
+    const seat = (found.kind === "seat" ? singleSeat(found.seat.name) : undefined) ?? hubSeat;
+    if (seat !== undefined) seats.set(seat, [...(seats.get(seat) ?? []), repo]);
+  }
+  return seats;
+}
+
+/**
+ * Every red-event seat with no live agent-chat session, so a send that can only fail is reported as a dead route
+ * rather than retried quietly each sweep. A roster that cannot be read throws, and never reads as every seat dead.
+ */
+export async function deadRedSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<DeadSeat[]> {
+  if (ports.liveNames === undefined) return [];
+  const live = await ports.liveNames();
+  return [...redEventSeats(book, repos, ports.hubSeat())].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
 }
 
 /**
