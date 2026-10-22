@@ -426,7 +426,8 @@ backstop. Each clock passes on its own report, and the M1a exit cites both.
    ```
 
    `curl -s http://127.0.0.1:7410/health | jq .sources` shows `effective: "polling"`, `reason: "configured"` and a
-   `lastPassAt` that advances. `sources.reconciler: "running"` lands with TP-3431's serve wiring.
+   `lastPassAt` that advances, and `sources.reconciler: "running"`. Any other value stops the gate; see
+   [Reconciler health and cost](#reconciler-health-cost).
 4. The first pass read each repo's rulesets with status 200, not the 403 `unreadable`. A repo that answers 403 stops the
    gate: its ruleset changes can never pass the census.
 5. Both meters run, and the old pollers keep running: nothing in Shepherd retires at M1a.
@@ -490,6 +491,45 @@ and writes the census (clock 1) or the agreement (clock 2), the stale-read count
 ```sh
 node products/factory/scripts/f11.mjs --db <db> --log <serve.err.log> --since <iso> --until <iso> \
   --clock polling|webhook --rate <jsonl> --out <file>
+```
+
+Its `log` line counts the `reconciler.cost` lines in the window; their fields are in
+[Reconciler health and cost](#reconciler-health-cost).
+
+### Reconciler health and cost {#reconciler-health-cost}
+
+Serve runs the reconciler as the bot or not at all (TP-3431, I13). It never falls back to the user's client.
+`GET /health` reports which with `sources.reconciler`:
+
+| Value | Meaning |
+| --- | --- |
+| `running` | `reconciler.enabled` is on and the bot can run it; the sweep started |
+| `disabled` | `reconciler.enabled` is off, or the config has no `reconciler` block |
+| `no-bot` | `reconciler.enabled` is on, but the bot cannot run it, so serve started nothing |
+
+`no-bot` comes with one `reconciler.no-bot` warning at start, whose `reason` says why:
+
+| `reason` | Cause |
+| --- | --- |
+| `absent` | no bot token file |
+| `refused` | the token file failed its checks (for example a mode other than 0600); `.bot.problem` in health names which |
+| `no-login` | the token is fine but `BOT_LOGIN` in `bot-identity.ts` is undefined, so C7 cannot tell the bot's writes apart |
+
+Serve decides once, at start. Fix the cause, then `titan-factory service restart`.
+
+While it runs, the reconciler logs one `reconciler.cost` line per repo per pass. A skipped pass (the pool refused the
+claim) and a failed one (`reconciler.unit-failed`) log it too, so a pass that spent nothing still says so:
+
+| Field | Meaning |
+| --- | --- |
+| `repo` | `owner/name` |
+| `graphqlCost` | GraphQL points the snapshot spent, from its `rateLimit.cost`; 0 on a quiet tick with no snapshot |
+| `restCalls` | REST reads: the conditional gates plus each head guard compare |
+| `notModified` | how many of the gate reads answered 304 |
+| `appended` | rows this pass wrote, counted by event kind; a confirmed duplicate is not counted |
+
+```sh
+grep 'reconciler.cost' "$XDG_STATE_HOME/titan-factory/serve.err.log"
 ```
 
 ### Go-live
