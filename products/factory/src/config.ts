@@ -297,9 +297,9 @@ export function defaultDbPath(env: NodeJS.ProcessEnv): string {
   return join(factoryStateDir(env), "factory.sqlite3");
 }
 
-function parseJson(path: string): unknown {
+function parseJson(path: string, text: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(text);
   } catch (error) {
     throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -312,7 +312,12 @@ export function loadConfig(path: string): FactoryConfig {
 /** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
 export function readConfig(path: string): FactoryConfig | undefined {
   if (!existsSync(path)) return undefined;
-  const raw = parseJson(path);
+  return parseConfig(path, readFileSync(path, "utf8"));
+}
+
+/** Parses and validates config file text; `path` only names the file in an error. */
+export function parseConfig(path: string, text: string): FactoryConfig {
+  const raw = parseJson(path, text);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
   const parsed = FactoryConfigSchema.safeParse(raw);
