@@ -44,7 +44,7 @@ export function fetchingAncestry(probe: AncestryProbe, fetch: () => Promise<unkn
 }
 
 /** Objects only: it writes no ref and no FETCH_HEAD, so it never holds a lock a running deployer's own `git fetch origin main` needs. */
-export function gitFetchMain(checkout: string, run: Run = runCommand): () => Promise<unknown> {
+function gitFetchMain(checkout: string, run: Run = runCommand): () => Promise<unknown> {
   return () => run("git", ["-C", checkout, "fetch", "--quiet", "--no-write-fetch-head", "--refmap=", "origin", "main"]);
 }
 
