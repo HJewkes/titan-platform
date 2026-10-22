@@ -49,6 +49,8 @@ export interface ResyncReport {
   phaseMs: PhaseMs;
 }
 
+type Phase = <R>(key: keyof PhaseMs, run: () => Promise<R>) => Promise<R>;
+
 interface PhaseMs {
   ended: number;
   reverts: number;
@@ -163,27 +165,9 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
   return superseded;
 }
 
-/**
- * Brings Shepherd's runs and gates in line with GitHub after time away: ends live runs whose PR left Shepherd, cancels
- * the gates of runs that already ended and the main gates of thawed freeze episodes, then supersedes gates, review steps and merge steps whose open PR moved head, and
- * MRG-AU gates whose only unmet conditions were transient, on a PR no longer frozen, and marks merged runs a later main
- * commit reverted. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
- * resolved: the run's new cycle asks again. `dryRun` computes the same report and writes nothing.
- */
-export async function resyncShepherd(host: FactoryHost, services: ShepherdServices, { dryRun = false, now = Date.now }: ResyncOptions = {}): Promise<ResyncReport> {
-  const held: string[] = [];
-  const cancelErrors: CancelError[] = [];
-  const onCancelFailed = (runId: string, cause: string) => {
-    held.push(runId);
-    cancelErrors.push({ runId, cause });
-  };
-  const phaseMs: PhaseMs = { ended: 0, reverts: 0, superseded: 0, supersededReviews: 0, supersededMerges: 0 };
-  const phase = <R>(key: keyof PhaseMs, run: () => Promise<R>): Promise<R> => timed(phaseMs, key, now, run);
-  const ended = await phase("ended", () => endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed }));
-  const orphans = orphanGates(host);
-  if (!dryRun) for (const gateId of orphans) cancelUnlessSettled(host.gates, gateId, ORPHANED);
-  const { reverted, errors: revertErrors } = await phase("reverts", () => markRevertedRuns(host, services, { dryRun }));
-  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, closedMainGates: [], superseded: [], supersededReviews: [], supersededMerges: [], reverted, revertErrors, phaseMs };
+/** The gate sweeps after the ended runs and reverts; an error stops them, and the report keeps what they found so far. */
+async function sweepGates(host: FactoryHost, services: ShepherdServices, report: ResyncReport, phase: Phase): Promise<void> {
+  const { dryRun } = report;
   try {
     report.closedMainGates = closeThawedMainGates(host, services, { dryRun });
     await phase("superseded", async () => {
@@ -198,6 +182,33 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   } catch (err) {
     report.supersedeError = failureOf(err);
   }
+}
+
+/**
+ * Brings Shepherd's runs and gates in line with GitHub after time away: ends live runs whose PR left Shepherd, cancels
+ * the gates of runs that already ended and the main gates of thawed freeze episodes, then supersedes gates, review steps
+ * and merge steps whose open PR moved head, and
+ * MRG-AU gates whose only unmet conditions were transient, on a PR no longer frozen, and marks merged runs a later main
+ * commit reverted. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
+ * resolved: the run's new cycle asks again. `dryRun` computes the same report and writes nothing.
+ */
+export async function resyncShepherd(host: FactoryHost, services: ShepherdServices, { dryRun = false, now = Date.now }: ResyncOptions = {}): Promise<ResyncReport> {
+  const held: string[] = [];
+  const cancelErrors: CancelError[] = [];
+  const onCancelFailed = (runId: string, cause: string) => {
+    held.push(runId);
+    cancelErrors.push({ runId, cause });
+  };
+  const phaseMs: PhaseMs = { ended: 0, reverts: 0, superseded: 0, supersededReviews: 0, supersededMerges: 0 };
+  const phase: Phase = (key, run) => timed(phaseMs, key, now, run);
+  const ended = await phase("ended", () => endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed }));
+  const orphans = orphanGates(host);
+  if (!dryRun) for (const gateId of orphans) cancelUnlessSettled(host.gates, gateId, ORPHANED);
+  const { reverted, errors: revertErrors } = await phase("reverts", () => markRevertedRuns(host, services, { dryRun }));
+  const report: ResyncReport = {
+    dryRun, ended, held, cancelErrors, orphanGates: orphans, closedMainGates: [], superseded: [], supersededReviews: [], supersededMerges: [], reverted, revertErrors, phaseMs,
+  };
+  await sweepGates(host, services, report, phase);
   return report;
 }
 
