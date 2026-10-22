@@ -217,6 +217,18 @@ describe("evaluator ratchet and archive", () => {
     expect(await git(repo.bare, "rev-parse", "refs/heads/main")).toBe(repo.pin);
   });
 
+  it("judges the ref by the pinned target's prefix, not a prefix the request names", async () => {
+    const repo = await fixture();
+    const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const winner = await ideaTree(repo, "winner", GATE_EDIT);
+    await git(pinned.integrationTree, "push", "--quiet", "origin", `${repo.pin}:refs/heads/other/run-1`);
+    const move = { tree: pinned.integrationTree, ratchetRef: "refs/heads/other/run-1", ratchetPrefix: "other", from: repo.pin, to: winner.head };
+    const record = { round: 1, ideaId: "i-1", kind: "ff" as const, keepRung: "L3", delta: 1, sigma: 0.1, runDigests: [], pin: repo.pin };
+
+    await expect(repo.ports.ratchet({ ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
+    expect(await git(repo.bare, "rev-parse", "refs/heads/other/run-1")).toBe(repo.pin);
+  });
+
   it("writes the round's tgz with its record and artifacts, and a SHA256SUMS line that verifies", async () => {
     const repo = await fixture();
     const artifacts = join(repo.root, "artifacts", "run-1-a-r1");
