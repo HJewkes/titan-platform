@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { Classification } from "./classify.js";
 import { CONFIG_PATH, parseFixProofConfig } from "./config.js";
 import { spawnExec, type Exec } from "./exec.js";
-import { planFixProof, type FixProofPlan } from "./plan.js";
+import { planFixProof, type FixProofPlan, type PlanInput } from "./plan.js";
 import { formatResultLine, toResult } from "./result-line.js";
 
 const CLEANUP_TIMEOUT_MS = 60_000;
@@ -71,12 +71,28 @@ async function readConfig(ctx: Context, sha: string): Promise<string | null> {
   return git(ctx, ["show", `${sha}:${CONFIG_PATH}`], "reading the config");
 }
 
+/** Every path at `head` under the spec's own directory, the set its sibling test is paired from. */
+export async function headFilesBeside(ctx: Context, head: string, spec: string): Promise<string[]> {
+  const dir = spec.includes("/") ? spec.slice(0, spec.lastIndexOf("/")) : "";
+  const pathspec = dir === "" ? [] : ["--", dir];
+  return (await git(ctx, ["ls-tree", "-r", "--name-only", head, ...pathspec], "listing the spec's directory")).split("\n").filter(Boolean);
+}
+
+function planned(input: PlanInput): FixProofPlan {
+  const result = planFixProof(input);
+  if (!result.ok) throw new RunError(result.error);
+  return result.plan;
+}
+
 /** The plan from git alone, so each side and the judge derive the same test set without trusting one another. */
 export async function planDiff(ctx: Context, shas: Shas): Promise<FixProofPlan> {
   const nameStatus = await git(ctx, ["diff", "--no-ext-diff", "--no-textconv", "-M", "--name-status", shas.base, shas.head], "git diff");
-  const planned = planFixProof({ nameStatus, baseConfig: await readConfig(ctx, shas.base), headConfig: await readConfig(ctx, shas.head) });
-  if (!planned.ok) throw new RunError(planned.error);
-  return planned.plan;
+  const input = { nameStatus, baseConfig: await readConfig(ctx, shas.base), headConfig: await readConfig(ctx, shas.head) };
+  const first = planned(input);
+  if (first.mutations.length === 0) return first;
+  const headFiles: string[] = [];
+  for (const spec of first.mutations) headFiles.push(...(await headFilesBeside(ctx, shas.head, spec)));
+  return planned({ ...input, headFiles });
 }
 
 /** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */

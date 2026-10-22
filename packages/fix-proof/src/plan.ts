@@ -1,5 +1,6 @@
 import { CHANGESET_GLOB, CONFIG_PATH, isHarnessPath, MUTATION_SPEC_GLOB, parseFixProofConfig, type FixProofConfig } from "./config.js";
 import { compileGlobs } from "./glob.js";
+import { testFileOfSpec } from "./mutant-classify.js";
 import { normalizeRelative } from "./paths.js";
 
 export interface PlanInput {
@@ -9,6 +10,11 @@ export interface PlanInput {
   baseConfig?: string | null;
   /** The same file at head, used only to tell the reviewer the PR edited it. */
   headConfig?: string | null;
+  /**
+   * Paths at head beside the diff's mutation specs. A spec whose one sibling test is listed here plans that test, so a
+   * spec-only diff still runs the file its mutants are judged on; absent, no sibling is planned.
+   */
+  headFiles?: readonly string[];
 }
 
 export interface FixProofPlan {
@@ -131,7 +137,15 @@ function sortEntry(sorter: Sorter, entry: DiffEntry): void {
   }
 }
 
-function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: boolean): FixProofPlan {
+// A spec names its test file only by sitting beside it, so an unchanged sibling is planned too, unless the diff deletes it.
+function addSpecSiblings(sorter: Sorter, buckets: Buckets, headFiles: readonly string[]): void {
+  for (const spec of buckets.mutations) {
+    const sibling = testFileOfSpec(spec, headFiles, sorter.isTest);
+    if (sibling !== null && !buckets.deletedTests.has(sibling)) sorter.add("tests", sibling);
+  }
+}
+
+function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: boolean, headFiles: readonly string[]): FixProofPlan {
   const buckets: Buckets = {
     tests: new Set(),
     carried: new Set(),
@@ -149,6 +163,7 @@ function buildPlan(entries: DiffEntry[], config: FixProofConfig, configEdited: b
     add: (bucket, path) => buckets[bucket].add(path),
   };
   entries.forEach((entry) => sortEntry(sorter, entry));
+  addSpecSiblings(sorter, buckets, headFiles);
   const sorted = (set: Set<string>) => [...set].sort();
   return {
     tests: sorted(buckets.tests),
@@ -188,7 +203,7 @@ export type TestOnlyReading =
 
 /**
  * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
- * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ * out of the tests counts), or it plans no test at all (a changeset- or fixture-only diff, or a spec with no sibling).
  */
 export function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading {
   if (plan.source.length > 0) return { testOnly: false, reason: "source", paths: [...plan.source] };
@@ -208,5 +223,5 @@ export function planFixProof(input: PlanInput): PlanResult {
     return { ok: false, error: (error as Error).message };
   }
   const headDiffers = input.headConfig !== undefined && (input.headConfig ?? null) !== (input.baseConfig ?? null);
-  return rejectDashedTests(buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries)));
+  return rejectDashedTests(buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries), input.headFiles ?? []));
 }
