@@ -1,4 +1,4 @@
-import { WorkflowContext, RestartRule } from '@titan-design/workflow';
+import { WorkflowContext, RestartRule, WorkflowStatus, WorkflowRun } from '@titan-design/workflow';
 import { z } from 'zod';
 
 /** What the planner proposes; the workflow derives `id`, `lineage` and `cell` from it. */
@@ -409,6 +409,7 @@ interface Digest {
     queue: Pick<Idea, "id" | "cell" | "class" | "mechanism" | "priority" | "bold">[];
 }
 declare function evidenceRow(round: number, outcome: Outcome): EvidenceRow;
+declare function cellTable(rows: readonly EvidenceRow[]): CellRow[];
 /** What the planner reads each round. Validator results never enter it: a look that steered the search would leak. */
 declare function buildDigest(input: {
     round: number;
@@ -1112,4 +1113,133 @@ declare function quotaViolations(ops: QueueOps, quota: QuotaContext): string[];
 /** Applies the planner's ops mechanically: adds pass dedup, the bounds pre-check and the dead-end rule, at no model cost. */
 declare function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueContext): Applied;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArStepDeclaration, type ArStepHandler, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arStepHandlers, arStepId, band, betaDraw, buildDigest, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
+/** An eval run under the console's name for its wall time. */
+type ArEvalView = Omit<ArResult, "wall_s"> & {
+    wallS: number;
+};
+interface ArMetricView {
+    primary: string;
+    direction: MetricSpec["primary"]["direction"];
+    guards: string[];
+    zeroTolerance: string[];
+    /** The gate names the baseline ran when the all-gate rule is on; empty otherwise. */
+    allGate: string[];
+    noOp: string[];
+    noise: {
+        bandSigmas: number;
+        lockAfterPairs: number;
+        minPairs: number;
+        defaultBandPp: number;
+    };
+}
+interface ArTargetView {
+    name: string;
+    pin: string;
+    ratchetRef: string;
+    metric: ArMetricView;
+    phases: string[];
+    repo?: string;
+    ratchetPrefix: string;
+}
+type ArIdeaView = Idea & {
+    lineageDepth: number;
+};
+interface ArLadderView {
+    idea: ArIdeaView;
+    implementer: z.infer<typeof ImplementerSchema> | null;
+    active: {
+        stepId: string;
+        firstStartedAt: string;
+        restarts: number;
+    } | null;
+    completed: {
+        stepId: string;
+        completedAt: string;
+    }[];
+    implementUsd: number | null;
+    l0: z.infer<typeof StaticCheckSchema> | null;
+    micro: (ArMicro & {
+        predictedDirectionMet: boolean;
+    }) | null;
+    evals: ArEvalView[];
+    /** The recorded stop, settled by `finalOutcomes` once its round's summary exists; null while the ladder runs. */
+    outcome: Outcome | null;
+}
+interface ArRoundView {
+    round: number;
+    queue: ArIdeaView[];
+    rejected: {
+        code: string;
+    }[];
+    plannerRetried: boolean;
+    planner?: Planner;
+    exempt: QueueOps["exempt"];
+    analysis: string[];
+    selection: {
+        picks: string[];
+        draws: {
+            id: string;
+            draw: number;
+        }[];
+        plannerTopK: string[];
+    };
+    ladders: ArLadderView[];
+    ratchet: RoundSummary["ratchet"];
+}
+interface ArRunView {
+    runId: string;
+    status: WorkflowStatus;
+    startedAt: string;
+    completedAt: string | null;
+    error: string | null;
+    stopReason?: string;
+    target: ArTargetView;
+    settings: Pick<RunSettings, "lanes" | "rounds" | "minPool">;
+    baseline: {
+        runs: ArEvalView[];
+        b0: number;
+    };
+    best: RoundSummary["best"];
+    rounds: ArRoundView[];
+    registries: Registries;
+    cells: CellRow[];
+    validator?: {
+        maxLooks: number;
+        looks: LookAggregate[];
+    };
+}
+interface ArRunSummary {
+    runId: string;
+    target: string;
+    phase: string;
+    round: number;
+    rounds: number;
+    status: WorkflowStatus;
+    startedAt: string;
+    completedAt: string | null;
+    /** Null until every baseline eval is recorded. */
+    best: RoundSummary["best"] | null;
+    spend: number;
+}
+
+/**
+ * G14: a run's read model, replayed from its recorded steps. It reads the step ids the recipe writes and never
+ * re-decides what the recipe recorded; the one shared rule, settling a round's outcomes, is the recipe's own `finalOutcomes`.
+ */
+
+/** The console names gates and the no-op metric as lists, and the band in pp; everything else keeps the engine's shape. */
+declare function projectMetric(metric: MetricSpec, baseline: readonly ArResult[]): ArMetricView;
+/** One row of `autoresearch.runs`; `best` stays null until every baseline eval is recorded. */
+declare function arRunSummary(run: WorkflowRun): ArRunSummary;
+/**
+ * Where an idea's latest ladder forked and what it built, for its diff: the outcome's `against.head`, else the best the
+ * round started from. Undefined when the run never picked the idea or its implementer has not answered.
+ */
+declare function ideaRefs(run: WorkflowRun, ideaId: string): {
+    base: string;
+    head: string;
+} | undefined;
+/** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
+declare function arRunView(run: WorkflowRun, looks?: readonly WorkflowRun[]): ArRunView | null;
+
+export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArStepDeclaration, type ArStepHandler, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };

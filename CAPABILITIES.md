@@ -772,7 +772,7 @@ Key exports:
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
 - `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `LoadWaitSchema`
-- +104 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- +118 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 

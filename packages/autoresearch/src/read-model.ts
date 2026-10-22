@@ -11,6 +11,7 @@ import { ImplementedSchema, LookAggregateSchema, PinnedSchema, PlannerSchema, Ro
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { ArMicroSchema, ArResultSchema, IdeaSchema, OutcomeSchema, QueueOpsSchema, type ArResult, type Idea, type MetricSpec, type Outcome } from "./schemas.js";
 import { finalOutcomes, RunSettingsSchema } from "./workflow.js";
+import type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArRoundView, ArRunSummary, ArRunView, ArTargetView } from "./read-model-types.js";
 
 type Steps = ReadonlyMap<string, StepResult>;
 
@@ -27,7 +28,7 @@ function seeded<T>(steps: Steps, stepId: string, schema: z.ZodType<T>): T | unde
 }
 
 /** The console names gates and the no-op metric as lists, and the band in pp; everything else keeps the engine's shape. */
-export function projectMetric(metric: MetricSpec, baseline: readonly ArResult[]) {
+export function projectMetric(metric: MetricSpec, baseline: readonly ArResult[]): ArMetricView {
   const { bandSigmas, lockAfterPairs, minPairs, defaultBand } = metric.noise;
   const gates = [...new Set(baseline.flatMap((run) => Object.keys(run.gates)))].sort();
   return {
@@ -41,7 +42,7 @@ export function projectMetric(metric: MetricSpec, baseline: readonly ArResult[])
   };
 }
 
-const projectRun = ({ wall_s, ...run }: ArResult) => ({ ...run, wallS: wall_s });
+const projectRun = ({ wall_s, ...run }: ArResult): ArEvalView => ({ ...run, wallS: wall_s });
 
 const BASELINE = /^ar-eval:base:b(\d+)$/;
 
@@ -90,7 +91,7 @@ function spendOf(run: WorkflowRun): number {
 const pinnedOf = (steps: Steps) => dispatched(steps, arStepId("pin"), PinnedSchema);
 
 /** One row of `autoresearch.runs`; `best` stays null until every baseline eval is recorded. */
-export function arRunSummary(run: WorkflowRun) {
+export function arRunSummary(run: WorkflowRun): ArRunSummary {
   const steps = indexSteps(run);
   const pinned = pinnedOf(steps);
   const phase = pinned?.target.phases[0];
@@ -99,7 +100,6 @@ export function arRunSummary(run: WorkflowRun) {
   const { id: runId, status, startedAt, completedAt } = run;
   return { runId, target: targetName(run, pinned), phase: phase?.id ?? "", round: currentRound(run), rounds: settingsOf(run).rounds, status, startedAt, completedAt, best, spend: spendOf(run) };
 }
-export type ArRunSummary = ReturnType<typeof arRunSummary>;
 
 const inScope = (stepId: string, scope: string) => stepId.split(":")[1] === scope;
 
@@ -116,7 +116,7 @@ function evalsIn(steps: Steps, scope: string) {
 }
 
 /** `implementer`, `l0`, `micro` and `outcome` are the recorded values; only the micro flag is renamed for the console. */
-function ladderOf(steps: Steps, run: WorkflowRun, scope: string, idea: Idea, settle: (stop: Outcome) => Outcome) {
+function ladderOf(steps: Steps, run: WorkflowRun, scope: string, idea: ArIdeaView, settle: (stop: Outcome) => Outcome): ArLadderView {
   const implemented = dispatched(steps, `${arStepId("implement")}:${scope}`, ImplementedSchema);
   const l0 = dispatched(steps, `${arStepId("l0")}:${scope}`, StaticCheckSchema);
   const micro = dispatched(steps, `${arStepId("l1")}:${scope}`, ArMicroSchema);
@@ -184,7 +184,7 @@ function registriesOf(rounds: readonly Replayed[]): Registries {
 }
 
 /** How many parents an idea has within the run: 0 for a root, and a parent outside the run ends the chain. */
-function lineageDepths(rounds: readonly Replayed[]): (idea: Idea) => Idea & { lineageDepth: number } {
+function lineageDepths(rounds: readonly Replayed[]): (idea: Idea) => ArIdeaView {
   const parentOf = new Map(rounds.flatMap(({ queue, selection }) => [...queue.queue, ...selection.picks]).map((idea) => [idea.id, idea.parent]));
   const depth = (id: string, seen: Set<string>): number => {
     const parent = parentOf.get(id);
@@ -193,7 +193,7 @@ function lineageDepths(rounds: readonly Replayed[]): (idea: Idea) => Idea & { li
   return (idea) => ({ ...idea, lineageDepth: depth(idea.id, new Set([idea.id])) });
 }
 
-function roundView(steps: Steps, run: WorkflowRun, replayed: Replayed, withDepth: ReturnType<typeof lineageDepths>) {
+function roundView(steps: Steps, run: WorkflowRun, replayed: Replayed, withDepth: (idea: Idea) => ArIdeaView): ArRoundView {
   const { round, queue, selection, plan, summary, outcomes } = replayed;
   const settled = new Map(outcomes.map((outcome) => [outcome.ideaId, outcome]));
   const settle = (stop: Outcome) => settled.get(stop.ideaId) ?? stop;
@@ -218,7 +218,7 @@ function aggregatesOf(look: WorkflowRun) {
 }
 
 /** Each look's aggregate, from its own validate run; the run's other sections never read them. */
-function validatorOf(pinned: Pinned, looks: readonly WorkflowRun[]) {
+function validatorOf(pinned: Pinned, looks: readonly WorkflowRun[]): Pick<ArRunView, "validator"> {
   const recorded = looks.flatMap(aggregatesOf);
   return recorded.length === 0 ? {} : { validator: { maxLooks: pinned.target.validator.maxLooks, looks: recorded.sort((a, b) => a.look - b.look) } };
 }
@@ -230,7 +230,7 @@ function stopReasonOf(steps: Steps, run: WorkflowRun): { stopReason?: string } {
   return code === undefined ? {} : { stopReason: code };
 }
 
-function targetView(run: WorkflowRun, pinned: Pinned, baseline: readonly ArResult[]) {
+function targetView(run: WorkflowRun, pinned: Pinned, baseline: readonly ArResult[]): ArTargetView {
   const { pin, ratchetRef, target } = pinned;
   const where = { ...(target.repo ? { repo: target.repo } : {}), ratchetPrefix: target.ratchetPrefix };
   return { name: targetName(run, pinned), pin, ratchetRef, metric: projectMetric(target.metric, baseline), phases: target.phases.map((phase) => phase.id), ...where };
@@ -257,7 +257,7 @@ export function ideaRefs(run: WorkflowRun, ideaId: string): { base: string; head
 }
 
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
-export function arRunView(run: WorkflowRun, looks: readonly WorkflowRun[] = []) {
+export function arRunView(run: WorkflowRun, looks: readonly WorkflowRun[] = []): ArRunView | null {
   const steps = indexSteps(run);
   const pinned = pinnedOf(steps);
   if (!pinned) return null;
@@ -281,4 +281,3 @@ export function arRunView(run: WorkflowRun, looks: readonly WorkflowRun[] = []) 
     ...validatorOf(pinned, looks),
   };
 }
-export type ArRunView = NonNullable<ReturnType<typeof arRunView>>;
