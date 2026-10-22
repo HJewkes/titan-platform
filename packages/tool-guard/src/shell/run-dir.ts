@@ -56,3 +56,15 @@ function chdirOperand(value: string, spec: ChdirSpec): string | null | undefined
 export function argDir(cmd: Pick<SimpleCommand, "dir" | "runDir">): string | null {
   return cmd.runDir === undefined ? cmd.dir : cmd.runDir;
 }
+
+/** A relative directory a nested wrapper names is relative to where the outer one started it, so an unknown outer one stays unknown. */
+export function movedTo(outer: WordToken | null | undefined, inner: WordToken | null | undefined): WordToken | null | undefined {
+  if (inner === undefined) return outer;
+  if (outer === undefined || inner === null) return inner;
+  if (outer === null || outer.dynamic) return null;
+  return /^(?:\/|~(?:\/|$))/.test(inner.value) ? inner : { ...inner, value: `${outer.value.replace(/\/+$/, "")}/${inner.value}` };
+}
+
+export function ranIn(runDir: WordToken | null | undefined): { runDir?: WordToken | null } {
+  return runDir === undefined ? {} : { runDir };
+}

@@ -6,7 +6,7 @@ import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
 import { EnvSplitError } from "./unsure-readings.js";
-import { runDirWord } from "./run-dir.js";
+import { movedTo, ranIn, runDirWord } from "./run-dir.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions, spellOption } from "./wrapper-long.js";
@@ -231,18 +231,6 @@ function envOptions(words: WordToken[], i: number): WordToken[] {
     if (w.value === "--") break;
   }
   return words.slice(start, i);
-}
-
-/** A relative directory a nested wrapper names is relative to where the outer one started it, so an unknown outer one stays unknown. */
-function movedTo(outer: WordToken | null | undefined, inner: WordToken | null | undefined): WordToken | null | undefined {
-  if (inner === undefined) return outer;
-  if (outer === undefined || inner === null) return inner;
-  if (outer === null || outer.dynamic) return null;
-  return /^(?:\/|~(?:\/|$))/.test(inner.value) ? inner : { ...inner, value: `${outer.value.replace(/\/+$/, "")}/${inner.value}` };
-}
-
-function ranIn(runDir: WordToken | null | undefined): { runDir?: WordToken | null } {
-  return runDir === undefined ? {} : { runDir };
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {
