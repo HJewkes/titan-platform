@@ -42,7 +42,9 @@ export default defineConfig({
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
-    setupFiles: ["products/factory/src/test-support/vitest-setup.ts"],
+    // One key: a second `setupFiles` would silently replace this list. In-test waits get their own budget below
+    // testTimeout (scripts/wait-budget.mjs says why); the factory setup keeps its tests off the real bot token.
+    setupFiles: ["scripts/vitest-wait-budget.mjs", "products/factory/src/test-support/vitest-setup.ts"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
@@ -54,8 +56,6 @@ export default defineConfig({
     // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
     // --testTimeout and still catches a hang.
     testTimeout: 30_000,
-    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
-    setupFiles: ["scripts/vitest-wait-budget.mjs"],
     expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
