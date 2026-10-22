@@ -126,6 +126,27 @@ const ladder = z.object({
   outcome: outcome.nullable(),
 });
 
+const tokens = z.number().int().nonnegative().optional();
+
+/**
+ * TP-3954: the planner that answered a round and what its turn cost, from C-256 S3e. Absent on a round recorded before
+ * it, and on one whose planner named no agent.
+ */
+const planner = z.object({
+  agent: z.string(),
+  sessionId: z.string().optional(),
+  mode: z.enum(["spawn", "resume"]).optional(),
+  usage: z
+    .object({
+      usd: z.number().nonnegative(),
+      cacheReadTokens: tokens,
+      cacheWrite5mTokens: tokens,
+      cacheWrite1hTokens: tokens,
+      retries: z.number().int().nonnegative(),
+    })
+    .optional(),
+});
+
 /** The planner's `[EXEMPT]` reasons for skipping a quota this round, as its queue ops carry them; absent means none given. */
 const quotaExemptions = z.object({ bold: z.string().optional(), followup: z.string().optional() });
 
@@ -134,6 +155,7 @@ const round = z.object({
   queue: z.array(idea),
   rejected: z.array(z.object({ code: z.string() })),
   plannerRetried: z.boolean(),
+  planner: planner.optional(),
   exempt: quotaExemptions.default({}),
   analysis: z.array(z.string()),
   selection: z.object({ picks: z.array(z.string()), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) }),
@@ -220,6 +242,7 @@ export type ArRunView = z.infer<typeof ArRunViewSchema>;
 export type ArLadder = z.infer<typeof ladder>;
 export type ArImplementer = z.infer<typeof implementer>;
 export type ArRound = z.infer<typeof round>;
+export type ArPlanner = z.infer<typeof planner>;
 export type ArIdea = z.infer<typeof idea>;
 export type ArOutcome = z.infer<typeof outcome>;
 export type ArAgainst = NonNullable<ArOutcome["against"]>;

@@ -24,7 +24,8 @@ export function AutoresearchIdeaRecord({ run, ladder }: { run: ArRunView; ladder
   );
 }
 
-const modeText = ({ mode, account }: NonNullable<ArLadder["implementer"]>): string => [mode === "resume" ? "resumed" : "spawned fresh", account === undefined ? undefined : `account ${account}`].filter(Boolean).join(" · ");
+export const modeText = ({ mode, account }: { mode?: "spawn" | "resume"; account?: string }): string =>
+  [mode === "resume" ? "resumed" : "spawned fresh", account === undefined ? undefined : `account ${account}`].filter(Boolean).join(" · ");
 
 /** Design §1.3's lane pills: an exploit lane warm-resumes a winner's implementer, an explore lane starts fresh. */
 function LaneFork({ ladder }: { ladder: ArLadder }): ReactNode {
