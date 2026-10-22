@@ -113,6 +113,22 @@ describe("a later winner re-evaluated on top of the round's new head", () => {
     expect(summaryOf(run).keptIds).toEqual([id("a"), id("b")]);
   });
 
+  it("rejects a winner whose merge fails L0, with no re-eval evals and no second move", async () => {
+    const { repo, ports } = await world(["a", "b"]);
+    const solo = ports.staticCheck;
+    const failing = { ok: false, code: "unit-suite", checks: [{ name: "unit-suite", ok: false, code: "unit-suite" }] };
+    ports.staticCheck = async (input, signal) => (input.tree === repo.work ? failing : solo(input, signal));
+    const host = openHost(ports);
+    const run = await host.runtime.wait(start(host, repo, CONFIG));
+    const first = stopOutcomes(run).get(id("a"))!;
+
+    expect(reevalOf(run, "b")).toMatchObject({ decision: "rejected", reason: "rejected:post:unit-suite", merge: expect.any(String), l0: { ok: false, code: "unit-suite" }, runs: [] });
+    expect(ports.calls.evals.filter((call) => call.key.includes("-re-"))).toHaveLength(0);
+    expect(ports.calls.ratchet.map((request) => request.kind)).toEqual(["ff"]);
+    expect(await ratchetHead(repo, ports)).toBe(first.head);
+    expect(archived(ports, "b")).toMatchObject({ verdict: "rejected", reason: "reeval:rejected:post:unit-suite", reeval: { vs: first.head, decision: "rejected" } });
+  });
+
   it("runs the re-evaluation under its own scope, so the solo ladder's runs and Δ stay its own", async () => {
     const { ports, run } = await loop(["a", "b"]);
     const solo = stopOutcomes(run).get(id("b"))!;
