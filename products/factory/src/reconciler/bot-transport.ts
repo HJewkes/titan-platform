@@ -1,4 +1,4 @@
-import { GitHubRequestError, RATE_LIMIT_PHRASES, octokitRest, octokitWire, readBackstopSnapshot, type GitHubClient, type GitHubWire, type PoolAnswer } from "@titan-design/github";
+import { GitHubRequestError, RATE_LIMIT_PHRASES, octokitRest, octokitWire, readBackstopSnapshot, type GitHubClient, type GitHubWire, type PoolAnswer, type RulesetList } from "@titan-design/github";
 import type { BackstopAnswer, BackstopCall } from "./service.js";
 
 /** The branch the service's snapshot reads; the ref gate revalidates the same one. */
@@ -25,7 +25,9 @@ export function botTransport(client: GitHubClient): (call: BackstopCall) => Prom
     const seen: Seen = { headers: {}, networkError: false };
     const traced = tracing(client, seen);
     try {
-      if (call.kind === "gates") return { status: 200, headers: seen.headers, gates: await readGates(octokitWire({ client: traced, etagCacheSize: 0 }), call.repo, call.etags) };
+      const wire = () => octokitWire({ client: traced, etagCacheSize: 0 });
+      if (call.kind === "gates") return { status: 200, headers: seen.headers, gates: await readGates(wire(), call.repo, call.etags) };
+      if (call.kind === "ancestry") return { status: 200, headers: seen.headers, ancestry: await wire().compareAncestry(call.repo, call.base, call.head) };
       return { status: 200, headers: seen.headers, snapshot: await readBackstopSnapshot(octokitRest(traced, 0), call.request) };
     } catch (error) {
       return failureAnswer(error, seen);
@@ -34,7 +36,7 @@ export function botTransport(client: GitHubClient): (call: BackstopCall) => Prom
 }
 
 /** All three reads go out every time: a 304 costs no rate-limit point, and one read skipped is one change missed. */
-async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<{ changed: boolean; etags: Etags }> {
+async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<{ changed: boolean; etags: Etags; rulesets?: RulesetList }> {
   const pulls = await wire.revalidateOpenPrs(repo, etags[GATE_KEYS.pulls] ?? null);
   const ref = await wire.revalidateRef(repo, BRANCH, etags[GATE_KEYS.ref] ?? null);
   const rulesets = await wire.revalidateRulesets(repo, etags[GATE_KEYS.rulesets] ?? null);
@@ -43,6 +45,7 @@ async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<
     // A free-plan repo's rulesets are unknown on every read, so they cannot say whether anything changed.
     changed: !pulls.notModified || !ref.notModified || (!rulesets.notModified && !rulesets.unreadable),
     etags: { [GATE_KEYS.pulls]: next(GATE_KEYS.pulls, pulls), [GATE_KEYS.ref]: next(GATE_KEYS.ref, ref), [GATE_KEYS.rulesets]: next(GATE_KEYS.rulesets, rulesets) },
+    ...(!rulesets.notModified && !rulesets.unreadable && { rulesets }),
   };
 }
 
