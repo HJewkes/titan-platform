@@ -772,7 +772,7 @@ Key exports:
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
 - `snapshot`: `cadence`, `CadenceSchema`, `snapshotLog`, `SnapshotSettingsSchema`, `SyncGateAnswerSchema`
-- +145 more in the [reference page](/reference/autoresearch)
+- +148 more in the [reference page](/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
