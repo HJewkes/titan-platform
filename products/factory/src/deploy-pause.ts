@@ -64,7 +64,7 @@ export function readDeployPause(ports: PauseReadPorts, stateDir: string): PauseS
 }
 
 /** The `deployPaused` key of `/health`: the failure pause `service pause` reads, so a seat need not run that verb. */
-export interface DeployPausedHealth {
+interface DeployPausedHealth {
   /** Null when the file exists but could not be read; the deployer still holds on its existence. */
   paused: boolean | null;
   since: string | null;
