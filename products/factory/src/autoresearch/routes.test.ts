@@ -40,31 +40,37 @@ const IDEA = {
 };
 
 const MOVE = {
-  tree: "/trees/integration", ratchetRef: "refs/heads/autoresearch/fixture/run-1", ratchetPrefix: "autoresearch/fixture", from: "aaa", to: "bbb",
+  runId: "run-1", tree: "/trees/integration", ratchetRef: "refs/heads/autoresearch/fixture/run-1", ratchetPrefix: "autoresearch/fixture", from: "aaa", to: "bbb",
   round: 2, ideaId: "i-1", kind: "ff", keepRung: "L3", delta: 1.5, sigma: 0.25, runDigests: ["d1", "d2"], pin: "ppp",
 };
 
 /** One route call as the runtime makes it after a restart: the first attempt's start time survives. */
-async function callRoute(name: ArDispatchStep, input: object) {
-  const route = arRoutes(answeringPorts()).find((candidate) => candidate.match === arStepId(name))!;
+async function routeOutcome(name: ArDispatchStep, input: object, ports: ArPorts = answeringPorts()) {
+  const route = arRoutes(ports).find((candidate) => candidate.match === arStepId(name))!;
   const stepId = `${arStepId(name)}:x`;
   const timing = { attempt: 1, requestKey: `run-1/${stepId}`, firstStartedAt: "2026-10-20T08:00:00.000Z", restarts: 1 };
-  const outcome = await route.runner.run({ runId: "run-1", workflowName: "autoresearch", stepId, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, ...timing });
+  return route.runner.run({ runId: "run-1", workflowName: "autoresearch", stepId, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, ...timing });
+}
+
+async function callRoute(name: ArDispatchStep, input: object, ports?: ArPorts) {
+  const outcome = await routeOutcome(name, input, ports);
   if (!outcome.ok) throw new Error(outcome.error);
   const body: unknown = JSON.parse(outcome.output);
   return { outcome, body };
 }
 
+const RUN_PIN = { runId: "run-1", pin: "ppp" };
+
 describe("autoresearch routes", () => {
   it("records the step's first start time and restart count, not the time of this attempt", async () => {
-    const { body } = await callRoute("eval", { tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
+    const { body } = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
 
     expect(body).toMatchObject({ startedAt: "2026-10-20T08:00:00.000Z", restarts: 1, result: { repeat: "k1" } });
   });
 
   it("passes a dispatch's usage, cache reads included, and an eval's model dollars to the runtime", async () => {
-    const implemented = await callRoute("implement", { idea: IDEA, tree: "/trees/a", base: "aaa", brief: "b", round: 1, lane: 1, fork: "explore" });
-    const evaluated = await callRoute("eval", { tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
+    const implemented = await callRoute("implement", { runId: "run-1", idea: IDEA, tree: "/trees/a", base: "aaa", brief: "b", round: 1, lane: 1, fork: "explore" });
+    const evaluated = await callRoute("eval", { ...RUN_PIN, tree: "/trees/a", case: "t-alpha", key: "k1", rung: "seed" });
 
     expect(implemented.outcome.usage).toEqual({ costUsd: 2.5, cacheReadTokens: 900 });
     expect(evaluated.outcome.usage).toEqual({ costUsd: 0.4 });
@@ -74,6 +80,28 @@ describe("autoresearch routes", () => {
     const { body } = await callRoute("ratchet", MOVE);
 
     expect(body).toMatchObject({ result: { head: "bbb" }, move: { run: "run-1", round: 2, idea: "i-1", from: "aaa", to: "bbb", delta: 1.5, sigma: 0.25, pin: "ppp", runDigests: ["d1", "d2"] } });
+  });
+
+  it("hands the load gate the step's first start time, so a restart keeps its deadline", async () => {
+    const seen: unknown[] = [];
+    const ports = { ...answeringPorts(), loadWait: async (input: unknown) => (seen.push(input), { waitedMs: 0 }) };
+
+    await callRoute("load-wait", { stage: "implement" }, ports);
+
+    expect(seen).toEqual([{ stage: "implement", firstStartedAt: "2026-10-20T08:00:00.000Z" }]);
+  });
+
+  it("marks a live tree retryable and a frozen-file drift or a missing pin not", async () => {
+    const failing = (message: string): ArPorts => ({ ...answeringPorts(), releaseTree: () => Promise.reject(new Error(message)) });
+    const retryable = async (message: string) => {
+      const outcome = await routeOutcome("release", { tree: "/trees/a" }, failing(message));
+      return outcome.ok ? undefined : outcome.retryable;
+    };
+
+    expect(await retryable("[tree-live] /trees/a is the cwd of live agent ar-x")).toBe(true);
+    expect(await retryable("[frozen-drift] frozen files in /trees/e no longer match the pin")).toBe(false);
+    expect(await retryable("[no-pin] run run-1 has no evaluator checkout")).toBe(false);
+    expect(await retryable("[release] [tree-live] quoted inside another code")).toBe(false);
   });
 });
 

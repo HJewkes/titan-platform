@@ -81,8 +81,11 @@ async function fixture(bounds: object = BOUNDS) {
   await git(seed, "commit", "--quiet", "-m", "fixture");
   await git(root, "clone", "--quiet", "--bare", seed, bare);
   await git(root, "clone", "--quiet", bare, clone);
-  const ports = evaluatorPorts({ clone, workRoot: join(root, "work"), archiveDir: join(root, "archive"), adapterDir: "ar", caseNames: ["t-alpha"] });
-  return { root, bare, clone, ports, pin: await git(clone, "rev-parse", "HEAD") };
+  const options = { clone, workRoot: join(root, "work"), archiveDir: join(root, "archive"), adapterDir: "ar", caseNames: ["t-alpha"] };
+  const pin = await git(clone, "rev-parse", "HEAD");
+  /** A second host over the same clone and work root, as the factory is after a restart. */
+  const restarted = () => evaluatorPorts(options);
+  return { root, bare, clone, ports: evaluatorPorts(options), restarted, pin, run: { runId: "run-1", pin } };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -130,7 +133,7 @@ describe("evaluator eval and micro", () => {
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
     const { tree } = await ideaTree(repo, "plain", GATE_EDIT);
 
-    const result = await repo.ports.evalCase({ tree, case: "t-alpha", key: "run-1-a-r1", rung: "seed" }, signal);
+    const result = await repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "run-1-a-r1", rung: "seed" }, signal);
 
     expect(result).toMatchObject({ case: "t-alpha", repeat: "run-1-a-r1", usd: 0.5, artifact_dir: join(tree, ".artifacts", "run-1-a-r1") });
   });
@@ -141,7 +144,7 @@ describe("evaluator eval and micro", () => {
     const { tree } = await ideaTree(repo, "slow", GATE_EDIT);
     const started = Date.now();
 
-    await expect(repo.ports.evalCase({ tree, case: "t-alpha", key: "k-slow", rung: "slow" }, signal)).rejects.toThrow("[command]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k-slow", rung: "slow" }, signal)).rejects.toThrow("[command]");
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
@@ -151,7 +154,7 @@ describe("evaluator eval and micro", () => {
     const { tree } = await ideaTree(repo, "drifts", GATE_EDIT);
     writeFileSync(join(tree, "drift"), "");
 
-    await expect(repo.ports.evalCase({ tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
   });
 
   it("refuses to run an eval in a dirty evaluator checkout", async () => {
@@ -160,7 +163,7 @@ describe("evaluator eval and micro", () => {
     const { tree } = await ideaTree(repo, "dirty", GATE_EDIT);
     writeFileSync(join(pinned.evaluatorTree!, "stray.txt"), "left by someone\n");
 
-    await expect(repo.ports.evalCase({ tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[evaluator-dirty]");
+    await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[evaluator-dirty]");
     expect(existsSync(join(tree, ".artifacts", "k1"))).toBe(false);
   });
 
@@ -169,10 +172,63 @@ describe("evaluator eval and micro", () => {
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
     const { tree } = await ideaTree(repo, "micro", GATE_EDIT);
 
-    const micro = await repo.ports.micro({ idea: idea("accept-gate"), tree, rung: "L1-replay", case: "t-alpha", baselineDir: "/runs/best", microSignal: "accepts:down", microArgs: {}, key: "k-m1" }, signal);
+    const micro = await repo.ports.micro({ ...repo.run, idea: idea("accept-gate"), tree, rung: "L1-replay", case: "t-alpha", baselineDir: "/runs/best", microSignal: "accepts:down", microArgs: {}, key: "k-m1" }, signal);
 
     expect(micro).toMatchObject({ rung: "L1-replay", signal: "accepts:down" });
     expect(readFileSync(join(tree, ".artifacts", "micro.argv"), "utf8").split("\n").slice(0, 3)).toEqual([tree, "/runs/best", "accepts:down"]);
+  });
+});
+
+describe("evaluator after a restart", () => {
+  it("serves an eval for a run another instance pinned, from the recorded pin", async () => {
+    const repo = await fixture();
+    const { frozenHash } = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const { tree } = await ideaTree(repo, "after-restart", GATE_EDIT);
+
+    const result = await repo.restarted().evalCase({ ...repo.run, frozenHash, tree, case: "t-alpha", key: "k-restart", rung: "seed" }, signal);
+
+    expect(result).toMatchObject({ case: "t-alpha", repeat: "k-restart" });
+  });
+
+  it("refuses an eval and an L0 when a frozen file was committed in the evaluator checkout while the host was down", async () => {
+    const repo = await fixture();
+    const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const gate = await ideaTree(repo, "drifted", GATE_EDIT);
+    writeFileSync(join(pinned.evaluatorTree!, "ar", "score.py"), "def score(run):\n    return 1\n");
+    await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "edit the scorer");
+    const restarted = repo.restarted();
+    const run = { ...repo.run, frozenHash: pinned.frozenHash };
+
+    await expect(restarted.evalCase({ ...run, tree: gate.tree, case: "t-alpha", key: "k1", rung: "seed" }, signal)).rejects.toThrow("[frozen-drift]");
+    await expect(restarted.staticCheck({ ...run, idea: idea("accept-gate"), ...gate }, signal)).rejects.toThrow("[frozen-drift]");
+  });
+
+  it("rebuilds again on the next step once a refused drift is undone, without another restart", async () => {
+    const repo = await fixture();
+    const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const { tree } = await ideaTree(repo, "restored", GATE_EDIT);
+    const scorer = join(pinned.evaluatorTree!, "ar", "score.py");
+    const original = readFileSync(scorer, "utf8");
+    writeFileSync(scorer, "def score(run):\n    return 1\n");
+    await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "edit the scorer");
+    const restarted = repo.restarted();
+    const evalAt = (key: string) => restarted.evalCase({ ...repo.run, frozenHash: pinned.frozenHash, tree, case: "t-alpha", key, rung: "seed" }, signal);
+    await expect(evalAt("k1")).rejects.toThrow("[frozen-drift]");
+
+    writeFileSync(scorer, original);
+    await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "restore the scorer");
+
+    expect(await evalAt("k2")).toMatchObject({ repeat: "k2" });
+  });
+
+  it("refuses a step whose run recorded no frozen hash or was never pinned here", async () => {
+    const repo = await fixture();
+    await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const { tree } = await ideaTree(repo, "unpinned", GATE_EDIT);
+    const evalIn = (runId: string, frozenHash?: string) => repo.restarted().evalCase({ runId, pin: repo.pin, frozenHash, tree, case: "t-alpha", key: "k1", rung: "seed" }, signal);
+
+    await expect(evalIn("run-1")).rejects.toThrow("[no-pin] run run-1 recorded no frozen hash");
+    await expect(evalIn("run-2", "0".repeat(64))).rejects.toThrow("[no-pin] run run-2 has no evaluator checkout");
   });
 });
 
@@ -183,8 +239,8 @@ describe("evaluator L0", () => {
     const gate = await ideaTree(repo, "gate", GATE_EDIT);
     const config = await ideaTree(repo, "config", { "src/config.json": '{\n  "hot_cc": 12\n}\n' });
 
-    const gateL0 = await repo.ports.staticCheck({ idea: idea("accept-gate"), ...gate }, signal);
-    const configL0 = await repo.ports.staticCheck({ idea: idea("config-param"), ...config }, signal);
+    const gateL0 = await repo.ports.staticCheck({ ...repo.run, idea: idea("accept-gate"), ...gate }, signal);
+    const configL0 = await repo.ports.staticCheck({ ...repo.run, idea: idea("config-param"), ...config }, signal);
 
     expect(gateL0.ok).toBe(true);
     expect(readFileSync(join(gate.tree, ".artifacts", "proof-ran"), "utf8").trim()).toBe(`${gate.base} ${gate.head}`);
@@ -199,7 +255,7 @@ describe("evaluator L0", () => {
     const gate = await ideaTree(repo, "failing", GATE_EDIT);
     writeFiles(gate.tree, { "unit-fails": "", "proof-fails": "" });
 
-    const l0 = await repo.ports.staticCheck({ idea: idea("accept-gate"), ...gate }, signal);
+    const l0 = await repo.ports.staticCheck({ ...repo.run, idea: idea("accept-gate"), ...gate }, signal);
 
     expect(l0).toMatchObject({ ok: false, code: "unit-suite" });
     expect(l0.checks!.filter((row) => !row.ok).map((row) => row.name)).toEqual(["unit-suite", "test-proof"]);
@@ -211,7 +267,7 @@ describe("evaluator L0", () => {
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
     const config = await ideaTree(repo, "config-high", { "src/config.json": '{\n  "hot_cc": 20\n}\n' });
 
-    const l0 = await repo.ports.staticCheck({ idea: idea("config-param"), ...config }, signal);
+    const l0 = await repo.ports.staticCheck({ ...repo.run, idea: idea("config-param"), ...config }, signal);
 
     expect(l0).toMatchObject({ ok: false, code: "param-out-of-range", diff: { files: 1 } });
   });
@@ -225,7 +281,7 @@ describe("evaluator ratchet and archive", () => {
     const move = { tree: pinned.integrationTree, ratchetRef: "refs/heads/main", ratchetPrefix: "autoresearch/fixture", from: repo.pin, to: winner.head };
     const record = { round: 1, ideaId: "i-1", kind: "ff" as const, keepRung: "L3", delta: 1, sigma: 0.1, runDigests: [], pin: repo.pin };
 
-    await expect(repo.ports.ratchet({ ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
+    await expect(repo.ports.ratchet({ ...repo.run, ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
     expect(await git(repo.bare, "rev-parse", "refs/heads/main")).toBe(repo.pin);
   });
 
@@ -237,7 +293,7 @@ describe("evaluator ratchet and archive", () => {
     const move = { tree: pinned.integrationTree, ratchetRef: "refs/heads/other/run-1", ratchetPrefix: "other", from: repo.pin, to: winner.head };
     const record = { round: 1, ideaId: "i-1", kind: "ff" as const, keepRung: "L3", delta: 1, sigma: 0.1, runDigests: [], pin: repo.pin };
 
-    await expect(repo.ports.ratchet({ ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
+    await expect(repo.ports.ratchet({ ...repo.run, ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
     expect(await git(repo.bare, "rev-parse", "refs/heads/other/run-1")).toBe(repo.pin);
   });
 

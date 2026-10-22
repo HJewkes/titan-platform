@@ -17,6 +17,7 @@ import {
   type Idea,
   type Pinned,
   type RoundRecord,
+  type RunPin,
   type Target,
 } from "@titan-design/autoresearch";
 import { execGit, ratchetFastForward } from "./ratchet.js";
@@ -36,7 +37,7 @@ export interface EvaluatorOptions {
 
 type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive">;
 
-type Session = Pinned & { evaluatorTree: string; frozenHash: string };
+type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
 
 const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
@@ -73,12 +74,14 @@ async function refuseFrozenClasses(clone: string, pin: string, bounds: Bounds, f
   if (overlap.length > 0) throw new Error(`[bounds-frozen] ${overlap.join(", ")}`);
 }
 
-async function pinRun(options: EvaluatorOptions, runId: string, rev: string): Promise<Session> {
+const evaluatorTreeOf = (workRoot: string, runId: string) => join(workRoot, `eval-${runId}`);
+
+async function pinRun(options: EvaluatorOptions, runId: string, rev: string): Promise<Pinned & Session> {
   const { clone, workRoot, adapterDir } = options;
   const pin = await execGit(["rev-parse", "--verify", `${rev}^{commit}`], clone);
   const adapter = await readAdapter(clone, pin, adapterDir);
   await refuseFrozenClasses(clone, pin, adapter.bounds, adapter.target.frozen);
-  const [evaluatorTree, integrationTree] = [join(workRoot, `eval-${runId}`), join(workRoot, `int-${runId}`)];
+  const [evaluatorTree, integrationTree] = [evaluatorTreeOf(workRoot, runId), join(workRoot, `int-${runId}`)];
   await checkout(clone, evaluatorTree, pin);
   await checkout(clone, integrationTree, pin);
   const ratchetRef = `refs/heads/${adapter.target.ratchetPrefix}/${runId}`;
@@ -91,6 +94,21 @@ async function assertIntact(session: Session): Promise<void> {
   const { evaluatorTree, target } = session;
   if (await execGit(["status", "--porcelain"], evaluatorTree)) throw new Error(`[evaluator-dirty] ${evaluatorTree} has uncommitted changes`);
   if ((await frozenHash(evaluatorTree, target.frozen)) !== session.frozenHash) throw new Error(`[frozen-drift] frozen files in ${evaluatorTree} no longer match the pin`);
+}
+
+/**
+ * A host that restarted after `ar-pin` rebuilds the run's evaluator from the pin the engine recorded: the adapter is
+ * re-read at the pin and the checkout must still hash to the recorded value, so a scorer edited while the host was
+ * down is refused, not adopted.
+ */
+async function resumeRun(options: EvaluatorOptions, { runId, pin, frozenHash: recorded }: RunPin): Promise<Session> {
+  const evaluatorTree = evaluatorTreeOf(options.workRoot, runId);
+  if (recorded === undefined) throw new Error(`[no-pin] run ${runId} recorded no frozen hash, so its evaluator cannot be checked`);
+  if (!existsSync(evaluatorTree)) throw new Error(`[no-pin] run ${runId} has no evaluator checkout at ${evaluatorTree}`);
+  const { target, bounds } = await readAdapter(options.clone, pin, options.adapterDir);
+  const session = { pin, target, bounds, evaluatorTree, frozenHash: recorded };
+  await assertIntact(session);
+  return session;
 }
 
 /** Both sides of every evaluator run: a scorer that edits itself mid-run is caught after, not only before. */
@@ -189,31 +207,45 @@ async function archiveRound(archiveDir: string, input: { runId: string; round: n
   return { path, sha256: sum };
 }
 
-/**
- * The real evaluator side of a run: pin, L0, micro, eval, ratchet and archive. The pin is held in memory, so a
- * process restart after `ar-pin` refuses the next evaluator step rather than run it unguarded.
- */
-export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
-  let session: Session | undefined;
-  const pinned = () => {
-    if (!session) throw new Error("[no-pin] this process has not pinned an evaluator");
+/** Sessions by run: the one this process pinned, or one rebuilt from a step's recorded pin after a restart. */
+function sessions(options: EvaluatorOptions) {
+  const byRun = new Map<string, Promise<Session>>();
+  const remember = <S extends Session>(runId: string, session: Promise<S>): Promise<S> => {
+    byRun.set(runId, session);
+    session.catch(() => byRun.get(runId) === session && byRun.delete(runId));
     return session;
   };
   return {
-    pin: async ({ runId, pin }) => (session = await pinRun(options, runId, pin)),
-    evalCase: async ({ tree, case: name, key, rung }, signal) => {
-      const { target } = pinned();
-      const vars = { caseSet: target.caseSets[name], case: name, key, runnerRoot: join(tree, target.runnerRoot) };
-      return resultSchemaFor(target.metric).parse(await runRung(pinned(), rung, vars, signal));
+    pin: (runId: string, rev: string) => remember(runId, pinRun(options, runId, rev)),
+    of: (input: RunPin) => byRun.get(input.runId) ?? remember(input.runId, resumeRun(options, input)),
+  };
+}
+
+/**
+ * The real evaluator side of a run: pin, L0, micro, eval, ratchet and archive. Every evaluator step names its run's
+ * recorded pin, so a process restarted after `ar-pin` rebuilds the session instead of refusing the step.
+ */
+export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
+  const session = sessions(options);
+  return {
+    pin: ({ runId, pin }) => session.pin(runId, pin),
+    evalCase: async (input, signal) => {
+      const pinned = await session.of(input);
+      const { target } = pinned;
+      const vars = { caseSet: target.caseSets[input.case], case: input.case, key: input.key, runnerRoot: join(input.tree, target.runnerRoot) };
+      return resultSchemaFor(target.metric).parse(await runRung(pinned, input.rung, vars, signal));
     },
     micro: async (input, signal) => {
-      const { target } = pinned();
+      const pinned = await session.of(input);
       const { baselineDir, microSignal, key, case: name } = input;
-      const vars = { ...input.microArgs, runnerRoot: join(input.tree, target.runnerRoot), baselineDir, microSignal, caseSet: target.caseSets[name], case: name, key };
-      return ArMicroSchema.parse(await runRung(pinned(), input.rung, vars, signal));
+      const vars = { ...input.microArgs, runnerRoot: join(input.tree, pinned.target.runnerRoot), baselineDir, microSignal, caseSet: pinned.target.caseSets[name], case: name, key };
+      return ArMicroSchema.parse(await runRung(pinned, input.rung, vars, signal));
     },
-    staticCheck: (input, signal) => staticCheck(pinned(), options.caseNames ?? [], input, signal),
-    ratchet: ({ tree, ratchetRef, from, to }) => ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: pinned().target.ratchetPrefix, from, to }),
+    staticCheck: async (input, signal) => staticCheck(await session.of(input), options.caseNames ?? [], input, signal),
+    ratchet: async (input) => {
+      const { tree, ratchetRef, from, to } = input;
+      return ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: (await session.of(input)).target.ratchetPrefix, from, to });
+    },
     archive: (input) => archiveRound(options.archiveDir, input),
   };
 }

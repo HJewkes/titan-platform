@@ -10,10 +10,10 @@ import { mapItems, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { buildDigest, evidenceRow, type EvidenceRow } from "./digest.js";
 import type { KeepSettings } from "./keep.js";
-import { ideaLadder, LaneSlots, runKey, type ForkAssignment, type RoundContext } from "./ladder.js";
+import { ideaLadder, LaneSlots, runKey, runPinOf, type ForkAssignment, type RoundContext } from "./ladder.js";
 import { arStepId } from "./manifest.js";
 import { addPair, band, NO_NOISE, sigmaOf, type NoiseState } from "./noise.js";
-import { ArchivedSchema, HeadSchema, PinnedSchema, type Pinned, type RatchetRequest, type RoundRecord } from "./ports.js";
+import { ArchivedSchema, HeadSchema, PinnedSchema, PlannerSchema, type Pinned, type Planner, type RatchetRequest, type RoundRecord } from "./ports.js";
 import { frozenOverlap } from "./post-check.js";
 import { applyOps, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
@@ -72,7 +72,7 @@ function runParams(ctx: WorkflowContext): { pin: string; settings: RunSettings }
 async function baseline(run: Run): Promise<Pick<LoopState, "best" | "noise">> {
   const { ctx, pinned } = run;
   const keys = Array.from({ length: phaseOf(run).baselineRuns }, (_, index) => `b${index + 1}`);
-  const input = (label: string) => ({ tree: pinned.integrationTree, case: phaseOf(run).train[0], key: runKey(ctx.runId, "base", label), rung: "seed" });
+  const input = (label: string) => ({ ...runPinOf(run), tree: pinned.integrationTree, case: phaseOf(run).train[0], key: runKey(ctx.runId, "base", label), rung: "seed" });
   const evalBase = (label: string) => dispatch(ctx, `${arStepId("eval")}:base:${label}`, input(label), run.result);
   const mapped = await mapItems(ctx, "ar-baseline", keys, (key) => evalBase(key), { key: (key) => key, concurrency: 2 });
   if (mapped.failed.length > 0 || mapped.skipped.length > 0) throw new Error(`[baseline] ${mapped.failed.map((failure) => `${failure.key}: ${failure.error}`).join("; ")}`);
@@ -84,16 +84,23 @@ async function baseline(run: Run): Promise<Pick<LoopState, "best" | "noise">> {
   return { best: { head: pinned.ratchetHead, runs }, noise };
 }
 
+const PlanStepSchema = PlannerSchema.partial().extend({ ops: QueueOpsSchema });
+
+/** Only a planner that named itself is recorded; its other fields mean nothing without the agent. */
+function plannerOf({ ops: _ops, ...planned }: z.infer<typeof PlanStepSchema>): Planner | undefined {
+  return planned.agent === undefined ? undefined : { ...planned, agent: planned.agent };
+}
+
 /** The planner gets one retry that names the quota it missed; a second miss stops the run. */
-async function planRound(run: Run, state: LoopState, round: number): Promise<QueueOps> {
+async function planRound(run: Run, state: LoopState, round: number): Promise<{ ops: QueueOps; planner?: Planner }> {
   const digest = buildDigest({ round, evidence: state.evidence, registries: state.registries, queue: state.queue });
   const quota = { keptLastRound: state.keptLastRound, minPool: run.settings.minPool, queuedBefore: state.queue.length };
   let violations: string[] = [];
   for (const attempt of ["", ".retry"]) {
     const input = { runId: run.ctx.runId, round, digest, violations, mode: round === 1 ? "spawn" : "resume" };
-    const { ops } = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, z.object({ ops: QueueOpsSchema }));
-    violations = quotaViolations(ops, quota);
-    if (violations.length === 0) return ops;
+    const planned = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, PlanStepSchema);
+    violations = quotaViolations(planned.ops, quota);
+    if (violations.length === 0) return { ops: planned.ops, planner: plannerOf(planned) };
   }
   throw new Error(`[planner-quota] round ${round}: ${violations.join("; ")}`);
 }
@@ -170,8 +177,8 @@ const runDigest = (result: ArResult) => createHash("sha256").update(canonicalArg
 
 /** The G12 move record: which idea moved the ratchet, on what evidence, against which pin. */
 function ratchetMove(run: Run, state: LoopState, first: Outcome, round: number, sigma: number): RatchetRequest {
-  const { ratchetRef, integrationTree: tree, target, pin } = run.pinned;
-  const evidence = { round, ideaId: first.ideaId, kind: "ff" as const, keepRung: first.rungReached, delta: first.delta ?? 0, sigma, runDigests: first.runs.map(runDigest), pin };
+  const { ratchetRef, integrationTree: tree, target } = run.pinned;
+  const evidence = { round, ideaId: first.ideaId, kind: "ff" as const, keepRung: first.rungReached, delta: first.delta ?? 0, sigma, runDigests: first.runs.map(runDigest), ...runPinOf(run) };
   return { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, from: state.best.head, to: first.head!, ...evidence };
 }
 
@@ -205,7 +212,7 @@ async function archive(run: Run, round: number, record: RoundRecord): Promise<vo
 }
 
 async function runRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
-  const ops = await planRound(run, state, round);
+  const { ops, planner } = await planRound(run, state, round);
   const queue = await nextQueue(run, state, ops, round);
   const { picks, draws } = await pick(run, queue, state, round);
   const ideas = new Map([...state.ideas, ...queue.map((idea) => [idea.id, idea] as const)]);
@@ -216,7 +223,7 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   const outcomes = moved.outcomes.map((outcome) => ({ ...outcome, sigma }));
   const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome, round), recordAnalysis(state.registries, ops.analysis, round));
   const evidence = outcomes.map((outcome) => evidenceRow(round, outcome));
-  await archive(run, round, { outcomes, digest: rc.digest, ops, draws, registries, evidence });
+  await archive(run, round, { outcomes, digest: rc.digest, ops, draws, registries, evidence, ...(planner ? { planner } : {}) });
   return {
     best: moved.best,
     noise: withPairs(state.noise, outcomes, run),

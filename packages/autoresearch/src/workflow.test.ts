@@ -188,6 +188,31 @@ describe("autoresearch on a fixture target at $0", () => {
   });
 });
 
+describe("inputs a restarted host can act on", () => {
+  it("names the run and its recorded pin on every evaluator step, the baseline included", async () => {
+    const { repo, ports, run } = await loop(["better"]);
+
+    const steps = new Set(ports.calls.runPins.map((call) => call.step));
+    expect(steps).toEqual(new Set(["eval", "l0", "l1", "ratchet"]));
+    const expected = { runId: run.id, pin: repo.pin, frozenHash: "f".repeat(64) };
+    expect(ports.calls.runPins.filter((call) => JSON.stringify(call.runPin) !== JSON.stringify(expected))).toEqual([]);
+  });
+
+  it("gives the implementer the run id, so a host need not read it off the tree name", async () => {
+    const { ports, run } = await loop(["better"]);
+
+    expect(ports.calls.implementInputs.map((input) => input.runId)).toEqual([run.id]);
+  });
+
+  it("records the planner that wrote the round's ops on the round", async () => {
+    const { ports, run } = await loop(["better"]);
+
+    expect(ports.calls.archives[0]!.record.planner).toEqual({
+      agent: `planner-${run.id}`, sessionId: `session-planner-${run.id}`, mode: "spawn", usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 },
+    });
+  });
+});
+
 const RPS = "throughput_rps";
 const THROUGHPUT: Policy = {
   ...THROUGHPUT_POLICY,

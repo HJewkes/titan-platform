@@ -769,9 +769,8 @@ Key exports:
 - `workflow`: `runAutoresearch`
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
-- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `LoadWaitSchema`, `PinnedSchema`, `ReleasedSchema`, `StaticCheckSchema`, `TreeSchema`
-- `schemas`: `ArMicroSchema`
-- +79 more in the [reference page](/reference/autoresearch)
+- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `LoadWaitSchema`, `PinnedSchema`, `PlannedSchema`, `PlannerSchema`, `ReleasedSchema`, `StaticCheckSchema`
+- +84 more in the [reference page](/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 

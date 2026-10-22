@@ -6,6 +6,13 @@ import { redactForEvidence } from "../redact.js";
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/**
+ * Port error codes a later attempt can clear: a tree is live only until its agent exits. Every other code, a
+ * frozen-file drift or a missing pin among them, needs a person, so a retry would only repeat it.
+ */
+const RETRYABLE_CODES: readonly string[] = ["tree-live"];
+const retryableOf = (message: string): boolean => RETRYABLE_CODES.some((code) => message.startsWith(`[${code}] `));
+
 interface PortSpend {
   usd?: unknown;
   usage?: { usd: number; cacheReadTokens?: number; cacheWrite5mTokens?: number; cacheWrite1hTokens?: number };
@@ -33,13 +40,14 @@ function arRoute(handler: ArStepHandler, ports: ArPorts): StepRoute {
   const run = async (step: RoutedStepInput) => {
     try {
       const input: unknown = JSON.parse(step.prompt);
-      const result = await handler.run(input, step.signal);
+      const result = await handler.run(input, step.signal, { firstStartedAt: step.firstStartedAt });
       const body = { startedAt: step.firstStartedAt, restarts: step.restarts, result, ...(handler.name === "ratchet" ? moveOf(step, input) : {}) };
       const output = JSON.stringify(evidenceRecord(`autoresearch.${handler.name}`, step, new Date(ports.now()).toISOString(), body));
       const usage = usageOf(result);
       return { ok: true as const, output, ...(usage ? { usage } : {}) };
     } catch (error) {
-      return { ok: false as const, error: redactForEvidence(messageOf(error)), retryable: false };
+      const message = messageOf(error);
+      return { ok: false as const, error: redactForEvidence(message), retryable: retryableOf(message) };
     }
   };
   return { match: arStepId(handler.name), onRestart: handler.onRestart, runner: { run } };
