@@ -78,17 +78,20 @@ const evaluatingLadder: ArLadder = {
 
 const noPlannerNotes = { rejected: [], plannerRetried: false, analysis: [], exempt: {} };
 
+/** Rounds recorded before C-256 S5a list no move and no re-evaluation. */
+const BEFORE_S5 = { moves: [], reevals: [] };
+
 const ROUNDS: ArRunView["rounds"] = [
   {
     round: 1, queue: [KEPT, SUPERSEDED], ...noPlannerNotes,
     selection: { picks: [KEPT.id, SUPERSEDED.id], draws: [{ id: KEPT.id, draw: 0.81 }, { id: SUPERSEDED.id, draw: 0.44 }], plannerTopK: [KEPT.id, SUPERSEDED.id] },
-    ladders: [keptLadder, supersededLadder], ratchet: { from: PIN, to: KEPT_HEAD },
+    ladders: [keptLadder, supersededLadder], ratchet: { from: PIN, to: KEPT_HEAD }, ...BEFORE_S5,
   },
   {
     round: 2, queue: [L0_STOP, L2_REJECT, REQUEUED], rejected: [{ code: "dead-end" }], plannerRetried: true, analysis: ["The ranking tests assume a fixed order"],
     exempt: { followup: "The kept gate has no sibling cell left to try" },
     selection: { picks: [L0_STOP.id, L2_REJECT.id], draws: [{ id: L0_STOP.id, draw: 0.63 }, { id: L2_REJECT.id, draw: 0.57 }, { id: REQUEUED.id, draw: 0.21 }], plannerTopK: [L0_STOP.id, L2_REJECT.id] },
-    ladders: [l0Ladder, l2Ladder], ratchet: null,
+    ladders: [l0Ladder, l2Ladder], ratchet: null, ...BEFORE_S5,
   },
   {
     round: 3, queue: [RUNNING, EVALUATING, REQUEUED], rejected: [{ code: "duplicate" }, { code: "bounds" }], plannerRetried: false, analysis: [],
@@ -98,7 +101,7 @@ const ROUNDS: ArRunView["rounds"] = [
       draws: [{ id: RUNNING.id, draw: 0.72 }, { id: EVALUATING.id, draw: 0.55 }, { id: REQUEUED.id, draw: 0.38 }],
       plannerTopK: [RUNNING.id, REQUEUED.id],
     },
-    ladders: [runningLadder, evaluatingLadder], ratchet: null,
+    ladders: [runningLadder, evaluatingLadder], ratchet: null, ...BEFORE_S5,
   },
 ];
 
@@ -129,6 +132,9 @@ const PRE_S3A_RUN: ArRunView = {
     { cell: "planner-ranking:fanout-first", trials: 1, meanAbsDeltaOverSigma: 0, keepRate: 0, flag: "explore" },
     { cell: "config-param:raise-slack", trials: 1, meanAbsDeltaOverSigma: 2.6, keepRate: 0, flag: "demote" },
   ],
+  snapshots: [],
+  snapshotPending: null,
+  syncs: [],
 };
 
 type Outcome = NonNullable<ArLadder["outcome"]>;
@@ -193,15 +199,51 @@ const PLANNERS: Record<number, NonNullable<ArRunView["rounds"][number]["planner"
   3: { agent: "ar-plan-7c1e", sessionId: PLANNER_SESSION, mode: "resume", usage: { usd: 0.19, cacheReadTokens: 24_600, cacheWrite1hTokens: 3_100, retries: 0 } },
 };
 
+const SYNCED_MAIN = "2f5a8d1b4e7c0a3f6d9b2e5c8a1f4d7b0e3c6a9f";
+
+/** C-256 S5a: round 1's kept idea fast-forwards the ratchet, and the superseded winner's merge onto it conflicts. */
+const S5_ROUNDS: Record<number, Pick<ArRunView["rounds"][number], "moves" | "reevals">> = {
+  1: {
+    moves: [{ from: PIN, to: KEPT_HEAD, kind: "ff", ideaId: KEPT.id }],
+    reevals: [{ ideaId: SUPERSEDED.id, from: PIN, vs: KEPT_HEAD, merge: null, conflict: ["src/thresholds.ts"], runs: [], decision: "requeued", reason: "conflict" }],
+  },
+};
+
+function withReeval(round: ArRunView["rounds"][number], ladder: ArLadder): ArLadder {
+  const reeval = round.reevals.find((entry) => entry.ideaId === ladder.idea.id);
+  if (reeval === undefined || ladder.outcome === null) return ladder;
+  return { ...ladder, outcome: { ...ladder.outcome, reeval: { vs: reeval.vs, decision: reeval.decision, reason: reeval.reason } } };
+}
+
+/**
+ * C-256 S5: snapshot 1 is cut after round 1 and merges cleanly at round 2's sync, which re-measures B on the changed
+ * tree; snapshot 2 is cut on spend and its round 3 sync holds on a conflict until the owner answers.
+ */
+const S5_RUN: Pick<ArRunView, "snapshots" | "snapshotPending" | "syncs"> = {
+  snapshots: [
+    { k: 1, tag: "ar/fixture/s1", sha: KEPT_HEAD, branch: "ar/snapshot/ar-7c1e/1", pr: 101, trigger: "kept", round: 1, logSha: SUPERSEDED_HEAD },
+    { k: 2, tag: "ar/fixture/s2", sha: KEPT_HEAD, branch: "ar/snapshot/ar-7c1e/2", pr: 102, url: "https://github.com/example-org/example-target/pull/102", trigger: "spend", round: 2, logSha: SUPERSEDED_HEAD },
+  ],
+  snapshotPending: null,
+  syncs: [
+    { round: 2, pr: 101, state: "merged", merged: { from: KEPT_HEAD, to: SYNCED_MAIN, main: SYNCED_MAIN }, treeChanged: true, runs: [evalRun("s1", 231.4), evalRun("s2", 231.1), evalRun("s3", 231.3)] },
+    { round: 3, pr: 102, state: "open", conflict: ["src/config.json"], gate: { answered: false } },
+  ],
+};
+
 /** The synthetic run as the engine records it from C-256 S3a on; every registry row names its idea and round. */
 export const AR_RUN_FIXTURE: ArRunView = {
   ...PRE_S3A_RUN,
-  rounds: PRE_S3A_RUN.rounds.map((round) => ({
-    ...round,
-    queue: round.queue.map(withDepth),
-    planner: PLANNERS[round.round],
-    ladders: round.ladders.map((ladder) => withS3a({ ...ladder, idea: withDepth(ladder.idea) })),
-  })),
+  ...S5_RUN,
+  rounds: PRE_S3A_RUN.rounds.map((plain) => {
+    const round = { ...plain, ...S5_ROUNDS[plain.round] };
+    return {
+      ...round,
+      queue: round.queue.map(withDepth),
+      planner: PLANNERS[round.round],
+      ladders: round.ladders.map((ladder) => withReeval(round, withS3a({ ...ladder, idea: withDepth(ladder.idea) }))),
+    };
+  }),
   registries: {
     deadEnds: [
       { ideaId: SUPERSEDED.id, round: 1, ...PRE_S3A_RUN.registries.deadEnds[0]! },
@@ -214,11 +256,11 @@ export const AR_RUN_FIXTURE: ArRunView = {
 /** The same run under another id, recorded before S3a, so the page proves it still renders a run without those fields. */
 export const AR_RUN_PRE_S3A: ArRunView = { ...PRE_S3A_RUN, runId: "ar-2b90" };
 
-const summaryOf = (run: ArRunView): ArRunSummary => ({
+const summaryOf = (run: ArRunView, openSnapshot: ArRunSummary["openSnapshot"] = null): ArRunSummary => ({
   runId: run.runId, target: run.target.name, phase: run.target.phases[0]!, round: run.rounds.at(-1)?.round ?? 0, rounds: run.settings.rounds, status: run.status,
-  startedAt: run.startedAt, completedAt: run.completedAt, best: run.best, spend: 9.9,
+  startedAt: run.startedAt, completedAt: run.completedAt, best: run.best, spend: 9.9, openSnapshot,
 });
 
 /** Each run's row in `autoresearch.runs`; spend is every implement and eval dollar the run view carries. */
-export const AR_RUN_SUMMARY: ArRunSummary = summaryOf(AR_RUN_FIXTURE);
+export const AR_RUN_SUMMARY: ArRunSummary = summaryOf(AR_RUN_FIXTURE, { k: 2, pr: 102 });
 export const AR_RUN_PRE_S3A_SUMMARY: ArRunSummary = summaryOf(AR_RUN_PRE_S3A);

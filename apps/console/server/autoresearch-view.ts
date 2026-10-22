@@ -69,6 +69,8 @@ const idea = z.object({
 /** A step still in flight; its timer runs from `firstStartedAt`, which survives a restart. */
 const activeStep = z.object({ stepId: z.string(), firstStartedAt: z.string(), restarts: z.number().int().nonnegative() });
 
+const REEVAL_DECISIONS = ["kept", "rejected", "requeued"] as const;
+
 const outcome = z.object({
   verdict: z.enum(AR_VERDICTS),
   reason: z.string(),
@@ -98,6 +100,8 @@ const outcome = z.object({
   fork: z.enum(["exploit", "explore"]).optional(),
   /** Design G4: where the idea's dollars went. */
   usage: z.object({ implementUsd: z.number().nonnegative(), evalUsd: z.number().nonnegative(), microUsd: z.number().nonnegative() }).optional(),
+  /** C-256 S5a: a later winner's re-evaluation on the head the round's first winner left; its final decision sets the verdict. */
+  reeval: z.object({ vs: z.string(), decision: z.enum(REEVAL_DECISIONS), reason: z.string() }).optional(),
 });
 
 /**
@@ -115,6 +119,8 @@ const implementer = z.object({
 /** Design G6: one L0 check's row (bounds-post, unit, test-proof); absent on a run recorded before C-256 S3a. */
 const l0Check = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: z.number().nonnegative().optional() });
 
+const l0 = z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() });
+
 /** One picked idea's ladder: `outcome` is null while it runs. */
 const ladder = z.object({
   idea,
@@ -122,7 +128,7 @@ const ladder = z.object({
   active: activeStep.nullable(),
   completed: z.array(z.object({ stepId: z.string(), completedAt: z.string() })),
   implementUsd: z.number().nonnegative().nullable(),
-  l0: z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() }).nullable(),
+  l0: l0.nullable(),
   micro: z.object({ predictedDirectionMet: z.boolean() }).nullable(),
   evals: z.array(evalRun),
   outcome: outcome.nullable(),
@@ -152,6 +158,26 @@ const planner = z.object({
 /** The planner's `[EXEMPT]` reasons for skipping a quota this round, as its queue ops carry them; absent means none given. */
 const quotaExemptions = z.object({ bold: z.string().optional(), followup: z.string().optional() });
 
+/** C-256 S5a: one ratchet move; the first winner fast-forwards, each later kept winner merges, and a snapshot sync moves it too. */
+const move = z.object({ from: z.string(), to: z.string(), kind: z.enum(["ff", "merge", "sync"]), ideaId: z.string().optional() });
+
+/**
+ * C-256 S5a: a later winner merged onto the new head and measured again. `merge` is null when it conflicted or the host
+ * had no integrate port, and then the winner is requeued.
+ */
+const reeval = z.object({
+  ideaId: z.string(),
+  from: z.string(),
+  vs: z.string(),
+  merge: z.string().nullable(),
+  conflict: z.array(z.string()).optional(),
+  l0: l0.optional(),
+  runs: z.array(evalRun),
+  delta: z.number().optional(),
+  decision: z.enum(REEVAL_DECISIONS),
+  reason: z.string(),
+});
+
 const round = z.object({
   round: z.number().int().positive(),
   queue: z.array(idea),
@@ -162,7 +188,45 @@ const round = z.object({
   analysis: z.array(z.string()),
   selection: z.object({ picks: z.array(z.string()), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) }),
   ladders: z.array(ladder),
+  /** The round's net move; `moves` lists each step of it. */
   ratchet: z.object({ from: z.string(), to: z.string() }).nullable(),
+  /** Empty for a round recorded before C-256 S5a. */
+  moves: z.array(move).default([]),
+  reevals: z.array(reeval).default([]),
+});
+
+/** C-256 S5: a snapshot is cut after a numbered round or at the run's `end`. */
+const cadenceRound = z.union([z.number().int().positive(), z.literal("end")]);
+const snapshotTrigger = z.enum(["phase-end", "kept", "spend"]);
+const prNumber = z.number().int().positive();
+
+/** G13a: one snapshot PR the run cut from its ratchet. */
+const snapshot = z.object({
+  k: z.number().int().positive(),
+  tag: z.string(),
+  sha: z.string(),
+  branch: z.string(),
+  pr: prNumber,
+  url: z.string().optional(),
+  trigger: snapshotTrigger,
+  round: cadenceRound,
+  logSha: z.string(),
+});
+
+/**
+ * G13a: the open snapshot PR synced at a round's start. `conflict` or `frozen` say why a sync held for the owner's gate;
+ * `runs` is B re-measured after a sync that changed the tree, and belongs to no idea's ladder.
+ */
+const sync = z.object({
+  round: cadenceRound,
+  pr: prNumber,
+  state: z.enum(["open", "merged", "closed"]),
+  merged: z.object({ from: z.string(), to: z.string(), main: z.string() }).optional(),
+  conflict: z.array(z.string()).optional(),
+  frozen: z.array(z.string()).optional(),
+  treeChanged: z.boolean().optional(),
+  gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
+  runs: z.array(evalRun).optional(),
 });
 
 /**
@@ -222,6 +286,10 @@ export const ArRunViewSchema = z.object({
   registries,
   cells: z.array(cell),
   validator: validator.optional(),
+  /** C-256 S5: empty, or null when nothing is pending, on a run recorded before snapshots. */
+  snapshots: z.array(snapshot).default([]),
+  snapshotPending: z.object({ trigger: snapshotTrigger }).nullable().default(null),
+  syncs: z.array(sync).default([]),
 });
 
 /** One row of `autoresearch.runs`; `best` is null until the baseline has run, and `round` is 0 until the first round starts. */
@@ -236,6 +304,8 @@ export const ArRunSummarySchema = z.object({
   completedAt: z.string().nullable(),
   best: z.object({ head: z.string(), primary: z.number() }).nullable(),
   spend: z.number().nonnegative(),
+  /** C-256 S5: the snapshot PR still open for the owner; null when none is, and on a factory from before snapshots. */
+  openSnapshot: z.object({ k: z.number().int().positive(), pr: prNumber }).nullable().default(null),
 });
 
 /** `autoresearch.diff`: the idea branch against the head it forked from, with the patch capped by the factory. */
@@ -255,6 +325,10 @@ export type ArOutcome = z.infer<typeof outcome>;
 export type ArAgainst = NonNullable<ArOutcome["against"]>;
 export type ArL0Check = z.infer<typeof l0Check>;
 export type ArRunSummary = z.infer<typeof ArRunSummarySchema>;
+export type ArMove = z.infer<typeof move>;
+export type ArReeval = z.infer<typeof reeval>;
+export type ArSnapshot = z.infer<typeof snapshot>;
+export type ArSync = z.infer<typeof sync>;
 export type ArRegistries = z.infer<typeof registries>;
 export type ArValidator = z.infer<typeof validator>;
 export type ArDiff = z.infer<typeof ArDiffSchema>;

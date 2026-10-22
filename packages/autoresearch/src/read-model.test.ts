@@ -7,7 +7,7 @@ import { PlannedSchema, RoundSummarySchema, type SyncRequest } from "./ports.js"
 import { arRunSummary, arRunView, ideaRefs, projectMetric } from "./read-model.js";
 import type { ArRunView } from "./read-model-types.js";
 import { ArResultSchema, ideaId, OutcomeSchema, type Proposal } from "./schemas.js";
-import { ArRunSummarySchema, ArRunViewSchema, ProposedArRunSummarySchema, ProposedArRunViewSchema } from "./test-support/console-schemas.js";
+import { ArRunSummarySchema, ArRunViewSchema } from "./test-support/console-schemas.js";
 import { FIXTURE_POLICY, THROUGHPUT_TARGET, fakeArPorts, fixtureRepo, proposal, removeFixture, scriptedPlanner, type FakeOptions, type FixtureRepo, type Policy } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, stopOutcomes, until } from "./test-support/runs.js";
@@ -304,7 +304,7 @@ describe("G13: snapshots and syncs", () => {
     expect(sync!.runs).toEqual(["r1", "r2", "r3"].map((label) => expect.objectContaining({ wallS: ArResultSchema.parse(dispatchedOf(run, `ar-eval:sync-2:${label}`)).wall_s })));
     expect(ladders.flatMap((ladder) => ladder.evals)).toHaveLength(stepIds.filter((stepId) => /^ar-eval:\d+\/i-/.test(stepId)).length);
     expect(ladders.every((ladder) => RUNGS.includes(ladder.outcome!.rungReached))).toBe(true);
-    expect(ProposedArRunViewSchema.parse(view).syncs.map((entry) => [entry.round, entry.pr])).toEqual([[2, 101], ["end", 102]]);
+    expect(ArRunViewSchema.parse(view).syncs.map((entry) => [entry.round, entry.pr])).toEqual([[2, 101], ["end", 102]]);
     expect(arRunSummary(run).openSnapshot).toBeNull();
   });
 
@@ -359,13 +359,12 @@ describe("the console's G13 and G13a shapes", () => {
   it("parse the read model of a run that re-evaluated a winner and cut a snapshot", async () => {
     const { run, view } = await winnersRun([["a", "b"]], { rounds: 1, snapshot: { keptIdeas: 1 } });
 
-    const parsed = ProposedArRunViewSchema.parse(view);
+    const parsed = ArRunViewSchema.parse(view);
 
     expect(parsed.rounds[0]!.reevals).toHaveLength(1);
     expect(parsed.rounds[0]!.moves).toHaveLength(2);
     expect(parsed.snapshots).toHaveLength(1);
-    expect(ProposedArRunSummarySchema.parse(arRunSummary(run)).openSnapshot).toEqual({ k: 1, pr: 101 });
-    expect(ArRunViewSchema.parse(view).rounds).toHaveLength(1);
+    expect(ArRunSummarySchema.parse(arRunSummary(run)).openSnapshot).toEqual({ k: 1, pr: 101 });
   });
 
   it("read an old recorded run with every new section empty", () => {
@@ -375,6 +374,6 @@ describe("the console's G13 and G13a shapes", () => {
     expect(view.rounds.map((round) => [round.moves, round.reevals])).toEqual([[[], []]]);
     expect(view).toMatchObject({ snapshots: [], syncs: [], snapshotPending: null });
     expect(arRunSummary(run).openSnapshot).toBeNull();
-    expect(ProposedArRunViewSchema.parse(view).rounds).toHaveLength(1);
+    expect(ArRunViewSchema.parse(view).rounds).toHaveLength(1);
   });
 });
