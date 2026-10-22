@@ -9,6 +9,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
 import { successorConfigDir } from "./account-hold.js";
+import { noteFixerLimit } from "./fixer-limit.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -332,7 +333,7 @@ function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): Wak
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
-  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring)) }, AWAIT_NEW_HEAD_STEP),
+  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring), noteFixerLimit(deps)) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),
