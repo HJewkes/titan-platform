@@ -54,8 +54,9 @@ describe("the linearity check", () => {
     return sink;
   };
 
+  // Each timed run must span many ticks of the thread CPU clock; at a fraction of a tick the ratio measured rounding (TP-3978).
   cpuBudgetIt("passes work linear in the size", 2000, () => {
-    expectLinearTime((n) => () => void work(n * 50), 40_000);
+    expectLinearTime((n) => () => void work(n * 500), 40_000);
   });
 
   cpuBudgetIt("fails quadratic work on its ratio", 2000, () => {

@@ -101,13 +101,14 @@ const gates: FixtureGate[] = [
 let rows: CorpusRow[];
 const rowAt = (pr: number, head = rows.find((row) => row.pr === pr)?.head) => rows.find((row) => row.pr === pr && row.head === head);
 
+// The hook runs about seventy git processes, which on a loaded CI runner outran vitest's 10 s default (TP-3978).
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "corpus-fixture-"));
   repo = scratchRepo(join(root, "widgets"));
   buildHistory();
   writeFactoryDb(join(root, "factory.sqlite3"), runs(), gates);
   rows = await buildCorpus({ dbPath: join(root, "factory.sqlite3"), clones: new Map([[REPO.toLowerCase(), repo.dir]]), mainRef: "main", now: NOW, costOf: fakeCost });
-});
+}, 60_000);
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
