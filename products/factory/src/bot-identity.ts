@@ -1,3 +1,5 @@
+import { userInfo } from "node:os";
+import { join } from "node:path";
 import { TokenFileError, trackSecretFile, type Logger, type TokenFileProblem } from "@titan-design/daemon";
 import { octokitClient, parseGitHubToken, rateBudget, type GitExec, type GitHubClient } from "@titan-design/github";
 import type { WorkflowCapability } from "@titan-design/workflow";
@@ -6,11 +8,29 @@ import { publishFingerprint, tokenFingerprint } from "./bot-token-fingerprint.js
 import { usageMeter, type UsageMeter } from "./github-api/usage-meter.js";
 import { botLsRemote, type BotLsRemote } from "./bot-ls-remote.js";
 
+/** Where the bot's token sits under a home dir: its own 0700 dir, outside every worktree (TP-3094 option B). */
+export function botTokenPathIn(home: string): string {
+  return join(home, ".config", "titan-factory", "secrets", "github-bot.token");
+}
+
+/** The passwd entry's home, not `$HOME`, so no environment variable can move the path; undefined when the uid has none. */
+function passwdHome(): string | undefined {
+  try {
+    return userInfo().homedir || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The bot's token file. Fixed in code like `OWNER_KEYS_DIR`: no environment variable, flag or config can point serve
- * elsewhere. Undefined until the owner ratifies a path (TP-3094 A-4 or B-1), so until then serve looks nowhere.
+ * elsewhere. Undefined only for a uid with no home, and then serve looks nowhere.
  */
-export const BOT_TOKEN_PATH: string | undefined = undefined;
+export const BOT_TOKEN_PATH: string | undefined = botTokenPathFor(passwdHome());
+
+function botTokenPathFor(home: string | undefined): string | undefined {
+  return home === undefined ? undefined : botTokenPathIn(home);
+}
 
 /** The bot's GitHub login, fixed in code beside its token path, so C7 can tell its writes apart. Undefined until ratified. */
 export const BOT_LOGIN: string | undefined = undefined;

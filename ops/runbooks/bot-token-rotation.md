@@ -4,10 +4,11 @@ The factory's bot account acts through one token, read by `titan-factory serve` 
 `BOT_TOKEN_PATH` (`products/factory/src/bot-identity.ts`). This runbook replaces that token. It holds for
 both host options of TP-3094: (A) serve runs as its own OS user, and (B) serve runs as the owner's user.
 
-Placeholders: `<BOT_TOKEN_PATH>` is the path fixed in code; `<serve-user>` is serve's OS user under option A;
+The owner chose option B on 2026-10-22, so `<BOT_TOKEN_PATH>` is
+`~/.config/titan-factory/secrets/github-bot.token`, in a 0700 dir, with `~` the home dir in serve's passwd entry.
+Option A stays below for reference only. Other placeholders: `<serve-user>` is serve's OS user under option A;
 `<state-dir>` is serve's state dir (the factory database's dir); serve answers on loopback port 7410 unless
-`--port` set another. Examples: `/var/lib/<serve-user>/.config/titan-factory/github-bot.token` (A),
-`$HOME/.config/titan-factory/secrets/github-bot.token` in a 0700 dir (B).
+`--port` set another.
 
 Never put the token on a command line, in an environment variable, in a chat message, a brief or a log.
 Paste it only at a `read -rs` prompt.

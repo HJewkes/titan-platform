@@ -1038,6 +1038,71 @@ token fingerprint (the A17 fingerprint above, never the token). The set of alarm
 memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
 follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
 
+### The bot token file
+
+serve reads the bot's token from `BOT_TOKEN_PATH` (`src/bot-identity.ts`):
+`~/.config/titan-factory/secrets/github-bot.token`, where `~` is the home dir in serve's passwd entry, not
+`$HOME`. No environment variable, flag or config moves it. The file is 0600 in a 0700 dir, both owned by serve's
+OS user (TP-3094 option B: serve runs as the owner's user), outside every worktree. A missing file leaves the bot
+`absent`; a symlink, a group or other bit, another owner or a non-token shape leaves it `refused`. Either way serve
+still starts.
+
+The owner writes the token; no agent reads, writes or prints it. Run one line at a time in the owner's own
+terminal, not in an agent session:
+
+```sh
+mkdir -m 700 -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+umask 077
+read -rs BOT_TOKEN
+printf '%s\n' "$BOT_TOKEN" > ~/.config/titan-factory/secrets/github-bot.token.new
+unset BOT_TOKEN
+chmod 600 ~/.config/titan-factory/secrets/github-bot.token.new
+mv ~/.config/titan-factory/secrets/github-bot.token.new ~/.config/titan-factory/secrets/github-bot.token
+ls -ld ~/.config/titan-factory/secrets ~/.config/titan-factory/secrets/github-bot.token
+```
+
+Paste the token at the `read -rs` prompt; nothing shows. The `ls` lines must start with `drwx------` and
+`-rw-------`. Then `titan-factory service restart`, check that `curl -s http://127.0.0.1:7410/health | jq .bot`
+shows `state: "ok"`, and that `titan-factory bot-token scan` exits 0. Rotation, including the E16 classic-token
+check, follows [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md), option B.
+
+### Bot token security
+
+Owner decision 2026-10-22 (TP-3094 option B, TP-3420): serve stays the owner's OS user, so the token file is
+readable by every process running as that user, agents included. The owner accepted this same-user residual
+rather than move serve to its own OS user (option A). Agents already hold the owner's admin GitHub token through
+the `gh` CLI, so the bot token adds three things: an approval that counts as not the author's, writes that look
+like the factory's, and a credential that works off the box until it expires.
+
+What an agent running as the owner's user could still do:
+
+- read the token by any route the tool guard misses, for example a script it writes or an interpreter that
+  builds the path at run time;
+- approve, merge, push `shepherd-train/**` branches and post statuses as the bot, directly;
+- drain the bot's rate budget and stall every factory read (a denial of service, not a breach);
+- copy the token off the box, where it works until it expires or is revoked;
+- edit serve's deploy checkout or config and wait for a restart, so serve itself misuses the token;
+- read serve's memory with ptrace, unless the kernel's Yama `ptrace_scope` is 1 or more.
+
+What limits it:
+
+- **The tool guard.** `**/titan-factory/**/*.token` is a secret path in `@titan-design/tool-guard`, so a `Read`,
+  `cat`, `cp` or `base64` of the file is refused as `secret-read` (TP-3406). It stops direct reads, not every route.
+- **No accidental exposure.** The token never enters an environment, brief, log, step output, trace or the store:
+  serve holds it in memory, reaches GitHub through octokit in-process, and hands steps only the
+  `github-bot` capability. The unit sets `LimitCORE=0`, and the file sits outside every worktree.
+- **I5 and the audit.** Agents never merge; only logged paths do, and `pnpm merge:lint` flags any other merge.
+  The reconciler raises `ops-alarm BotActionUnlogged` for a bot review, merge, status or train push with no
+  factory intent row, and never counts that review as the factory's approval. Attribution is by the merge log, so
+  a move as the bot is caught at M3's walk over main, not prevented. The detector needs `BOT_LOGIN` set.
+- **The A17 scan and expiry.** `titan-factory bot-token scan` finds a copy in any agent's environment, briefs,
+  logs, transcripts or the store. A 90-day expiry and the 14-day alarm bound a copied token, and the token keeps
+  the scopes of the bot's setup packet.
+
+Option A, with serve as its own OS user and its code, config and unit unwritable by agents, is what would close the
+read, the direct use and the misuse rows above.
+
 ## Writing a gate brief
 
 Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one there, never inline.
