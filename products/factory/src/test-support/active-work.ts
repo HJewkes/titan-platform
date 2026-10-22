@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** A task as active-work stores it, with the fields `task.edit`'s guards read. */
 interface FakeTask {
   id: string;
@@ -57,7 +59,7 @@ export function fakeActiveWork(tasks: readonly FakeTask[]): FakeActiveWork {
   const fake: FakeActiveWork = { tasks: new Map(tasks.map((task) => [task.id, { ...task }])), calls: [], fetch: async () => new Response() };
   fake.fetch = async (url, init) => {
     const command = String(url).split("/rpc/")[1]!;
-    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const body = z.record(z.string(), z.unknown()).parse(JSON.parse(String(init?.body)));
     fake.calls.push({ command, body });
     try {
       return new Response(JSON.stringify({ ok: true, data: answer(fake, command, body) }));
