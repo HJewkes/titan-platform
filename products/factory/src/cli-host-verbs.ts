@@ -37,7 +37,7 @@ export function registerServe(program: Command, { io, deps, dbPath }: Verbs): vo
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action(async (opts: { port: number }) => {
       for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);
-      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env) }, deps.stop);
+      await serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env), gateNotify: deps.gateNotify?.(io.env), consoleAnswers: deps.consoleAnswers?.(io.env), sources: deps.sources?.(io.env, deps.logger ?? consoleLogger), ingress: deps.ingress?.(io.env), reconciler: deps.reconciler?.(io.env), bot: deps.bot }, deps.stop);
       deps.exitAfterServe?.();
     });
 }

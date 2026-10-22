@@ -2,9 +2,9 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { octokitClient, sharedRateBudget } from "@titan-design/github";
+import { octokitClient, sharedRateBudget, type GhExecOptions, type GitExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOT_CAPABILITY, BOT_TOKEN_PATH, botAccess, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
+import { BOT_CAPABILITY, BOT_LOGIN, BOT_TOKEN_PATH, botAccess, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
 import { runCommand } from "./service-ports.js";
 
 /** Built, not written out, so no source line carries a token-shaped literal. */
@@ -43,11 +43,13 @@ function fakeGitHub(seen: Seen[], status = 200, remaining = 4999, extra: Record<
 
 const handle = (bot: BotIdentity): BotHandle => bot.capabilities[BOT_CAPABILITY]!.handle;
 
-function okClient(bot: BotIdentity) {
+function okAccess(bot: BotIdentity) {
   const access = handle(bot).access();
   if (access.state !== "ok") throw new Error(`bot is ${access.state}`);
-  return access.client;
+  return access;
 }
+
+const okClient = (bot: BotIdentity) => okAccess(bot).client;
 
 const printEnv = ["-e", "process.stdout.write(JSON.stringify(process.env))"];
 
@@ -75,11 +77,11 @@ describe("bot identity: the token never reaches an env (V3)", () => {
     expect(seen).toEqual([{ authorization: `bearer ${SENTINEL}` }]);
   });
 
-  it("the module reaches GitHub only through octokitClient: no gh wire, no GH_TOKEN, no process env", () => {
+  it("the module reaches GitHub only through octokitClient and the bot's ls-remote: no gh wire, no GH_TOKEN, no process env", () => {
     const source = readFileSync(fileURLToPath(new URL("./bot-identity.ts", import.meta.url)), "utf8");
     const github = [...source.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"@titan-design\/github";/g)].flatMap(([, names = ""]) => names.split(",").map((name) => name.trim().replace(/^type\s+/, "")));
 
-    expect(github.filter((name) => name !== "").sort()).toEqual(["GitHubClient", "octokitClient", "parseGitHubToken", "rateBudget"]);
+    expect(github.filter((name) => name !== "").sort()).toEqual(["GitExec", "GitHubClient", "octokitClient", "parseGitHubToken", "rateBudget"]);
     expect(source).not.toMatch(/GH_TOKEN|process\.env|child_process|ghCliWire|execGh/);
   });
 });
@@ -106,6 +108,58 @@ describe("bot identity: its own throttle and budget (V4)", () => {
 
     expect(okClient(bot).budget().cooldowns).toMatchObject([{ lane: "rest", class: "primary" }]);
     expect(user.budget().cooldowns).toEqual([]);
+  });
+});
+
+/** GitHub's secondary limit on the first call, with a one-second retry-after; every later call answers 200. */
+function secondaryThenOk(calls: string[]): typeof fetch {
+  return async (url) => {
+    calls.push(String(url));
+    if (calls.length > 1) return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ message: "You have exceeded a secondary rate limit." }), { status: 403, headers: { "content-type": "application/json", "retry-after": "1" } });
+  };
+}
+
+describe("bot identity: the reconciler's pool owns rate-limit waits (TP-3431)", () => {
+  it("answers a secondary-limited read at once, unretried, so Octokit's throttle never sleeps under the pool", async () => {
+    const calls: string[] = [];
+    const bot = openBotIdentity({ path: tokenFile(), fetch: secondaryThenOk(calls) });
+
+    const answer = await okClient(bot).request("GET /rate_limit").then(
+      () => "answered",
+      (error: { status?: number }) => error.status,
+    );
+
+    expect(answer).toBe(403);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+function recordingGit(answer: string): { exec: GitExec; calls: { args: readonly string[]; env: GhExecOptions["env"] }[] } {
+  const calls: { args: readonly string[]; env: GhExecOptions["env"] }[] = [];
+  const exec: GitExec = async (args, options) => (calls.push({ args, env: options?.env }), { code: 0, stdout: answer, stderr: "" });
+  return { exec, calls };
+}
+
+describe("bot identity: ls-remote as the bot (TP-3431)", () => {
+  const A = "a".repeat(40);
+
+  it("ships with no login, as it ships with no token path", () => {
+    expect(BOT_LOGIN).toBeUndefined();
+  });
+
+  it("hands the reconciler the bot's login and an ls-remote that sends the bot's own token, off argv", async () => {
+    const git = recordingGit(`${A}\trefs/heads/main\n`);
+    const bot = openBotIdentity({ path: tokenFile(), login: "synthetic-bot", git: git.exec });
+    const access = okAccess(bot);
+
+    const tip = await access.lsRemote("example-org/widgets", { branch: "main" });
+
+    expect([tip, access.login]).toEqual([A, "synthetic-bot"]);
+    expect(git.calls[0]!.args).toEqual(["ls-remote", "--", "https://github.com/example-org/widgets.git", "refs/heads/main"]);
+    expect(git.calls[0]!.args.join(" ")).not.toContain(SENTINEL);
+    const header = Buffer.from(`x-access-token:${SENTINEL}`).toString("base64");
+    expect(git.calls[0]!.env).toMatchObject({ GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${header}`, GIT_CONFIG_KEY_1: "credential.helper", GIT_CONFIG_VALUE_1: "" });
   });
 });
 

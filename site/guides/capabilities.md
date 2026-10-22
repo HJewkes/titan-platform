@@ -567,7 +567,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +154 more in the [reference page](/reference/github)
+- +155 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
