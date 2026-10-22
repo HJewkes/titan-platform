@@ -1,4 +1,4 @@
-import { DEFAULT_PARK_TIMEOUT_MS, parkAgent } from "@titan-design/agent-dispatch";
+import { DEFAULT_PARK_TIMEOUT_MS, parkAgent, receivesMessages } from "@titan-design/agent-dispatch";
 import { configPath, loadConfig, type FactoryConfig } from "./config.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
 import { agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
@@ -12,7 +12,7 @@ export function configuredMainWatch(env: NodeJS.ProcessEnv): MainWatchPorts | un
   const { agentChatBin, hubSeat, redSeat } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
   const agents = agentChatAgents(agentChatBin, { timeoutMs: AGENT_CALL_TIMEOUT_MS });
-  const liveNames = async () => new Set((await agents.roster()).filter((row) => row.presence !== "exited").map((row) => row.name));
+  const liveNames = async () => new Set((await agents.roster()).filter(receivesMessages).map((row) => row.name));
   return { hubSeat: () => hubSeat, redSeat: (repo) => redSeatFor(redSeat, repo), send: (seat, text) => agents.message(seat, text), liveNames };
 }
 

@@ -107,6 +107,25 @@ describe("serve's main CI watch", () => {
     expect(errors).toEqual(["alpha-coord", "hub-coord"]);
   });
 
+  it("warns once that it skipped the dead-seat check while the roster cannot be read, and again after a read succeeds", async () => {
+    const fixture = shepherdFixture({ seats: BOOK });
+    const warnings: string[] = [];
+    const logger: Logger = { ...silentLogger, warn: (_fields, message) => void warnings.push(message) };
+    const roster = { down: true };
+    const liveNames = async () => (roster.down ? Promise.reject(new Error("broker down")) : new Set(["alpha-coord"]));
+    const watch = openMainWatch(fixture.routes.shepherd!, { hubSeat: () => undefined, send: async () => undefined, liveNames }, dirname(tempDb()), logger);
+
+    await watch.tick();
+    await watch.tick();
+    roster.down = false;
+    await watch.tick();
+    roster.down = true;
+    await watch.tick();
+    watch.close();
+
+    expect(warnings.filter((message) => message.includes("skipped its dead-seat check"))).toHaveLength(2);
+  });
+
   it("logs an alarm at startup when the seat a repo's red events go to has no live session", async () => {
     const fixture = shepherdFixture({ seats: BOOK });
     const errors: { fields: Record<string, unknown>; message: string }[] = [];

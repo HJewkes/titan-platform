@@ -6,6 +6,7 @@ import { failureOf } from "./error-class.js";
 import { singleSeat } from "./held-repair.js";
 import { MAIN_WATCH_DB, MainWatchLedger, type WatchedSha } from "./main-watch-ledger.js";
 import { judgeMain, readMainRules, type MainRules } from "./main-verdict.js";
+import { resolveEffectivePolicy } from "./policy.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 import type { ShepherdStore } from "./store.js";
 
@@ -66,7 +67,7 @@ export interface MainWatchPorts {
   /** The config's shepherd.redSeat for `repo`: when set, every red event on it goes there, whichever seat owns the merge. */
   redSeat?(repo: string): string | undefined;
   send(seat: string, text: string): Promise<void>;
-  /** The names a live agent-chat session holds now; absent, no red-event seat is checked for one. */
+  /** The names `send` can reach now, by the send's own rule; absent, no red-event seat is checked. */
   liveNames?(): Promise<ReadonlySet<string>>;
 }
 
@@ -92,9 +93,14 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
   const ledger = MainWatchLedger.open(join(stateDir, MAIN_WATCH_DB));
   const deps: MainWatchDeps = { port: services.port, ledger, store: { byPr: (repo, pr) => services.store.get().byPr(repo, pr) }, seats: services.seats, ports, now: Date.now };
   let alarmed = "";
+  let unread = false;
   const alarmOnChange = async (repos: readonly string[]): Promise<void> => {
-    const alarms = await deadRedSeats(services.seats(), repos, ports).catch(() => undefined);
+    const alarms = await deadRedSeats(services.seats(), repos, ports).catch((error: unknown) => {
+      if (!unread) log.warn({ error: failureOf(error) }, "main CI watch skipped its dead-seat check: the agent-chat roster could not be read");
+      unread = true;
+    });
     if (alarms === undefined) return;
+    unread = false;
     const key = alarms.map((alarm) => `${alarm.seat}:${alarm.repos.join(",")}`).join("\n");
     if (key === alarmed) return;
     alarmed = key;
@@ -123,24 +129,24 @@ interface DeadSeat {
 }
 
 /**
- * Where each repo's red event goes when no run names another seat: its red seat, else its one seat, else the hub seat.
- * The hub seat is listed whenever a repo has no red seat, as it also takes that repo's merges no seat can be mapped to.
+ * The seats `ownerSeat` sends each repo's red events to: a run registered now, through the seat its policy records,
+ * and a merge no seat can be mapped to. A branch-prefix seat is left out; it is chosen per PR from the whole book.
  */
-function redEventSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Map<string, string[]> {
-  const hubSeat = ports.hubSeat();
+async function redEventSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<Map<string, string[]>> {
   const seats = new Map<string, string[]>();
-  const add = (seat: string | undefined, owned: string[]) => seat !== undefined && seats.set(seat, [...(seats.get(seat) ?? []), ...owned]);
+  const none = async () => undefined;
   for (const repo of repos) {
-    const redSeat = ports.redSeat?.(repo);
-    if (redSeat !== undefined) {
-      add(redSeat, [repo]);
-      continue;
+    for (const seat of new Set([await redRoute(ports, repo, registeredSeat(book, repo), none), await redRoute(ports, repo, undefined, none)])) {
+      if (seat !== undefined) seats.set(seat, [...(seats.get(seat) ?? []), repo]);
     }
-    const found = lookupSeat(book, repo);
-    add(hubSeat, []);
-    add((found.kind === "seat" ? singleSeat(found.seat.name) : undefined) ?? hubSeat, [repo]);
   }
   return seats;
+}
+
+/** The seat a run registered on `repo` now records, by registration's own policy; a denied repo registers none. */
+function registeredSeat(book: SeatBook, repo: string): string | undefined {
+  const lookup = lookupSeat(book, repo);
+  return lookup.kind === "denied" ? undefined : singleSeat(resolveEffectivePolicy(lookup).seat);
 }
 
 /**
@@ -150,7 +156,7 @@ function redEventSeats(book: SeatBook, repos: readonly string[], ports: MainWatc
 export async function deadRedSeats(book: SeatBook, repos: readonly string[], ports: MainWatchPorts): Promise<DeadSeat[]> {
   if (ports.liveNames === undefined) return [];
   const live = await ports.liveNames();
-  return [...redEventSeats(book, repos, ports)].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
+  return [...(await redEventSeats(book, repos, ports))].filter(([seat]) => !live.has(seat)).map(([seat, owned]) => ({ seat, repos: owned }));
 }
 
 /**
@@ -248,13 +254,17 @@ export function prNumberOf(subject: string): number | undefined {
  * whose initials prefix the PR's agent branch (`agent-chat/tc-...` to a seat named `t...-c...`), else to the hub seat.
  */
 async function ownerSeat(deps: MainWatchDeps, repo: string, pr: number | undefined): Promise<string | undefined> {
-  const redSeat = deps.ports.redSeat?.(repo);
-  if (redSeat !== undefined) return redSeat;
   const registration = pr === undefined ? undefined : deps.store.byPr(repo, pr);
-  const runSeat = singleSeat(registration?.policy.seat);
-  if (runSeat !== undefined) return runSeat;
-  const branch = registration?.implementer ?? (pr === undefined ? undefined : await deps.port.getPr(repo, pr).then((read) => read.headRef, () => undefined));
-  return (branch === undefined ? undefined : seatByPrefix(deps.seats(), branch)) ?? deps.ports.hubSeat();
+  const prefixSeat = async () => {
+    const branch = registration?.implementer ?? (pr === undefined ? undefined : await deps.port.getPr(repo, pr).then((read) => read.headRef, () => undefined));
+    return branch === undefined ? undefined : seatByPrefix(deps.seats(), branch);
+  };
+  return redRoute(deps.ports, repo, singleSeat(registration?.policy.seat), prefixSeat);
+}
+
+/** The one order a red event's seat is picked in, for the send and the dead-seat alarm alike; the prefix seat is read only when needed. */
+async function redRoute(ports: MainWatchPorts, repo: string, runSeat: string | undefined, prefixSeat: () => Promise<string | undefined>): Promise<string | undefined> {
+  return ports.redSeat?.(repo) ?? runSeat ?? (await prefixSeat()) ?? ports.hubSeat();
 }
 
 const initials = (name: string): string => name.split("-").map((part) => part.charAt(0)).join("").toLowerCase();

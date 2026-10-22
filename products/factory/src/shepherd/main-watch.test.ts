@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAIN_WATCH_DB, MainWatchLedger } from "./main-watch-ledger.js";
 import { deadRedSeats, MAIN_WATCH_WINDOW_MS, MainCiReads, prNumberOf, seatByPrefix, sweepMain, type MainWatchDeps } from "./main-watch.js";
-import type { SeatBook } from "./seats.js";
+import { resolveEffectivePolicy } from "./policy.js";
+import { lookupSeat, type SeatBook } from "./seats.js";
 import type { Registration } from "./store.js";
 
 const REPO = "acme/widgets";
@@ -273,8 +274,27 @@ describe("red-event seats with no live session", () => {
     expect(await deadRedSeats(book, [REPO, OTHER], ports(["hub-coord"]))).toEqual([{ seat: "alpha-coord", repos: [REPO] }]);
   });
 
-  it("names the hub seat when it is dead, with the unseated repos it stands in for", async () => {
-    expect(await deadRedSeats(book, [REPO, OTHER], ports(["alpha-coord"]))).toEqual([{ seat: "hub-coord", repos: [OTHER] }]);
+  it("names the hub seat when it is dead, with every repo whose unmapped merges it takes", async () => {
+    expect(await deadRedSeats(book, [REPO, OTHER], ports(["alpha-coord"]))).toEqual([{ seat: "hub-coord", repos: [REPO, OTHER] }]);
+  });
+
+  it.each([
+    ["no red seat", undefined],
+    ["a red seat", () => "factory-coord"],
+  ])("checks every seat the send picks for a registered run and for an unmapped merge, with %s", async (_label, redSeat) => {
+    const w = world();
+    const ledger = memoryLedger();
+    await sweep(w, ledger, "hub-coord", redSeat);
+    merged(w, 2, T0 + MINUTE, { validate: "failure", "dag-check": "success" });
+    w.registrations.set(2, registration({ implementer: "zz-impl", policy: resolveEffectivePolicy(lookupSeat(book, REPO)) }));
+    merged(w, 3, T0 + MINUTE, { validate: "failure", "dag-check": "success" }, "owner/quick-fix");
+    w.clock.now = T0 + 5 * MINUTE;
+    await sweepMain({ ...depsOver(w, ledger, "hub-coord", redSeat), seats: () => book }, [REPO]);
+
+    const checked = (await deadRedSeats(book, [REPO], { ...ports([]), ...(redSeat && { redSeat }) })).map((dead) => dead.seat);
+
+    expect(w.sent).toHaveLength(2);
+    expect(checked).toEqual(expect.arrayContaining(w.sent.map((sent) => sent.seat)));
   });
 
   it("sends a remote two seats share to the hub seat, as a joined seat names no one agent", async () => {

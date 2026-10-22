@@ -35,7 +35,7 @@ export {
   type ParkOptions,
   type ParkResult,
 } from "./park.js";
-export { buildMessageArgs, messageAgent } from "./message.js";
+export { buildMessageArgs, messageAgent, receivesMessages } from "./message.js";
 export { dataFence } from "./fence.js";
 export {
   buildListAgentsArgs,
