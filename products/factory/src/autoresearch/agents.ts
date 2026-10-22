@@ -49,13 +49,6 @@ const treeName = (runId: string, ideaId: string): string => `ar-${runTag(runId)}
 const implementerName = (tag: string, round: number, ideaId: string): string => `ar-${tag}-r${round}-${ideaId}`.toLowerCase();
 const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
 
-/** `ImplementRequest` carries no run id; the tree `allocTree` named carries its tag. */
-function tagOfTree(tree: string): string {
-  const tag = /^ar-([0-9a-f]{8})-/.exec(basename(tree))?.[1];
-  if (tag === undefined) throw new Error(`[tree] ${tree} was not allocated by this host`);
-  return tag;
-}
-
 function admit(host: Host, profile: string): void {
   const { limits, now } = host.options;
   const resolved = resolveLimits(limits.read(), { pool: limits.pool, profile, now: now?.() ?? new Date() });
@@ -92,7 +85,7 @@ function implementBrief(input: ImplementRequest): string {
 }
 
 async function explore(host: Host, input: ImplementRequest, signal: AbortSignal): Promise<Done> {
-  const tag = tagOfTree(input.tree);
+  const tag = runTag(input.runId);
   const name = implementerName(tag, input.round, input.idea.id);
   return host.stagger(tag)(input.round, async (responded) => {
     await spawnOrJoin(host, name, host.options.profiles.implementer, input.tree, implementBrief(input));
@@ -111,7 +104,7 @@ async function exploit(host: Host, input: ImplementRequest & { resumeFrom: strin
     await execGit(["worktree", "move", input.tree, home], host.options.clone);
   }
   try {
-    const from = await host.stagger(tagOfTree(input.tree))(input.round, async (responded) => {
+    const from = await host.stagger(runTag(input.runId))(input.round, async (responded) => {
       const at = await resumeOrJoin(host, name, host.options.profiles.implementer, implementBrief(input));
       await untilResponded(host, name, responded, signal);
       return at;
@@ -139,14 +132,16 @@ async function implement(host: Host, input: ImplementRequest, signal: AbortSigna
 }
 
 /** Round 1 spawns the planner; later rounds resume the same agent so its prompt prefix is read from cache. */
-async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: AbortSignal): Promise<unknown> {
+async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: AbortSignal) {
   const name = plannerName(input.runId);
   const { profiles, plannerCwd } = host.options;
   const brief = JSON.stringify({ round: input.round, digest: input.digest, violations: input.violations });
   let from: From = { offset: 0 };
   if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, brief);
   else from = await resumeOrJoin(host, name, profiles.planner, brief);
-  return (await awaitAgent(host.chat, name, signal, from)).final;
+  const done = await awaitAgent(host.chat, name, signal, from);
+  const session = done.row.sessionId === "" ? {} : { sessionId: done.row.sessionId };
+  return { ops: done.final, agent: name, ...session, mode: input.mode, usage: done.usage };
 }
 
 async function allocTree(host: Host, input: Parameters<ArPorts["allocTree"]>[0]) {
