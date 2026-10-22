@@ -1,0 +1,71 @@
+import { z } from "zod";
+
+/** The parent run's stages in order; `--from` names one of them. */
+export const STAGES = ["script", "rewrite", "eval", "tts", "render", "qa", "sheets", "export"] as const;
+export type StageName = (typeof STAGES)[number];
+
+/** Stages that run today's template commands through the host's bridge file until their TypeScript ports land. */
+export const BRIDGE_STAGES = ["tts", "render", "qa", "sheets"] as const;
+export type BridgeStage = (typeof BRIDGE_STAGES)[number];
+export const isBridgeStage = (stage: StageName): stage is BridgeStage => (BRIDGE_STAGES as readonly string[]).includes(stage);
+
+/** The artifacts a run starts from, before any stage. */
+export const RUN_INPUTS = ["spine", "facts"] as const;
+
+/** Model spend of one stage, folded over its calls; tokens a runner left out count as zero here and nowhere else. */
+export const StageUsageSchema = z.object({
+  usd: z.number(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  calls: z.number(),
+  costUnknown: z.literal(true).optional(),
+});
+export type StageUsage = z.infer<typeof StageUsageSchema>;
+
+export const NO_USAGE: StageUsage = { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 };
+
+export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), detail: z.string().optional() });
+export type Check = z.infer<typeof CheckSchema>;
+
+/**
+ * What a stage's code step stores. Timing and usage live here, not on the workflow's step result, so the report
+ * can read wall time and code-step spend before the workflow package records them itself.
+ */
+export const StageRecordSchema = z.object({
+  stage: z.enum(STAGES),
+  bridged: z.boolean(),
+  /** The run whose outputs this stage reused instead of running; it then cost nothing here. */
+  reusedFrom: z.string().optional(),
+  startedAt: z.string(),
+  endedAt: z.string(),
+  wallMs: z.number(),
+  usage: StageUsageSchema,
+  retries: z.number(),
+  outputs: z.record(z.string(), z.string()),
+  checks: z.array(CheckSchema),
+  notes: z.array(z.string()),
+});
+export type StageRecord = z.infer<typeof StageRecordSchema>;
+
+/** What a stage body returns; the stage route adds the timing and the stage name. */
+export interface StageOutcome {
+  outputs: Record<string, string>;
+  usage?: StageUsage;
+  retries?: number;
+  checks?: Check[];
+  notes?: string[];
+}
+
+/** Where the run stopped at its spend cap, so `resume` knows the stage to start from. */
+export const StopSchema = z.object({ stage: z.enum(STAGES), spentUsd: z.number(), capUsd: z.number() });
+export type Stop = z.infer<typeof StopSchema>;
+
+export const addUsage = (a: StageUsage, b: StageUsage): StageUsage => ({
+  usd: a.usd + b.usd,
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+  calls: a.calls + b.calls,
+  ...(a.costUnknown || b.costUnknown ? { costUnknown: true as const } : {}),
+});
