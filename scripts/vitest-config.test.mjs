@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import config from "../vitest.config.ts";
+import { readWorkspace, testScope } from "./test-scope.mjs";
 import { WAIT_BUDGET_MS } from "./wait-budget.mjs";
 
 const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
@@ -26,6 +27,12 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   expect(config.test.expect.poll.timeout).toBe(WAIT_BUDGET_MS);
   expect(config.test.setupFiles).toContain("scripts/vitest-wait-budget.mjs");
   for (const project of config.test.projects) expect(project.test.setupFiles, project.test.name).toBeUndefined();
+});
+
+// Every test runs these, so a pull request touching one must run the whole suite, not just scripts/.
+it("runs the full suite for a pull request that changes a file every test loads", () => {
+  const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs"];
+  for (const path of loadedByEveryTest) expect(testScope([path], readWorkspace()), path).toEqual({ mode: "full", reason: path });
 });
 
 it("gives vi.waitFor the budget when a call names no timeout", async () => {
