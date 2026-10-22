@@ -133,11 +133,12 @@ const SUBSCRIPTS: Shape[] = [
     7_000,
   ],
   ["assignments with no joins", (n) => `${"a[0]=1 ".repeat(n)}\n`, 9_000],
-  // Half size: handling 21 000 commands of any kind costs a few hundred ms; a scan per bracket would still cost seconds.
+  // Quarter size: the hook spends about 25 µs a command locally and four times that on a loaded CI runner, where
+  // 10 500 commands passed the budget (TP-4040). The tokenizing check below still catches a scan per bracket.
   [
     "commands each with an unclosed subscript",
     (n) => `${"a[;".repeat(n)}\n`,
-    10_500,
+    5_250,
   ],
   [
     "one long name before many brackets",
