@@ -62,10 +62,7 @@ const gateRead = (answer: Omit<StandingAnswer, "gateId">, { runId, stepId, gate 
 
 /** What this record already did: the gate it resolved, or the land run it started and how far that run got. */
 async function readBack(answer: StandingAnswer, { host, port, now }: MergeAtHeadDeps): Promise<Outcome> {
-  if (answer.gateId !== undefined) {
-    const gate = host.gates.get(answer.gateId);
-    return gate === undefined ? { outcome: "gone", reason: `no gate ${answer.gateId}` } : resolveGate(gateRead(answer, { runId: answer.runId, stepId: gate.id.slice(answer.runId.length + 1), gate }), port, host);
-  }
+  if (answer.gateId !== undefined) return readBackGate(answer, answer.gateId, { host, port });
   if (resolvedBy(host, answer)) return { outcome: "already", runId: answer.runId };
   const asked = pendingMergeGates(host, answer.runId).map((pending) => landGate(pending.gate)?.head).find((head) => head !== answer.headSha);
   if (asked !== undefined) return { outcome: "moved", currentHead: asked };
@@ -73,6 +70,14 @@ async function readBack(answer: StandingAnswer, { host, port, now }: MergeAtHead
   if (status === undefined || !LIVE.has(status)) return { outcome: "gone", reason: `land run ${answer.runId} is ${status ?? "missing"} and this tap resolved none of its gates` };
   if (Date.parse(answer.expiresAt) <= now()) return { outcome: "gone", reason: `this tap expired at ${answer.expiresAt} before land-pr asked at head ${answer.headSha}` };
   return { outcome: "already", runId: answer.runId };
+}
+
+/** The Shepherd gate this tap resolved at once; `resolveGate` tells this record's own resolve (`already`) from any other. */
+function readBackGate(answer: StandingAnswer, gateId: string, { host, port }: Pick<MergeAtHeadDeps, "host" | "port">): Promise<Outcome> | Outcome {
+  const gate = host.gates.get(gateId);
+  if (gate === undefined) return { outcome: "gone", reason: `no gate ${gateId}` };
+  const stepId = gate.id.slice(answer.runId.length + 1);
+  return resolveGate(gateRead(answer, { runId: answer.runId, stepId, gate }), port, host);
 }
 
 function resolvedBy(host: FactoryHost, answer: StandingAnswer): boolean {

@@ -142,8 +142,15 @@ async function endShepherdRun(host: FactoryHost, services: ShepherdServices, ans
   await endRunsGoneElsewhere(host, services, { scope: "live", only: new Set([shepherdRun]) });
 }
 
+interface SweepWhere {
+  actionsDir: string | undefined;
+  stateDir: string;
+  now?: () => number;
+}
+
 /** Runs only where serve answers console actions (`shepherd.consoleAnswers.actionsDir`); pending outcomes are not logged, since most wait on CI. */
-export function startStandingAnswerSweep(host: FactoryHost, services: ShepherdServices | undefined, actionsDir: string | undefined, stateDir: string, log: Logger, now: () => number = Date.now): Sweep | undefined {
+export function startStandingAnswerSweep(host: FactoryHost, services: ShepherdServices | undefined, where: SweepWhere, log: Logger): Sweep | undefined {
+  const { actionsDir, stateDir, now = Date.now } = where;
   if (services === undefined || actionsDir === undefined) return undefined;
   const answers = standingAnswers(stateDir);
   const tick = async (): Promise<void> => {

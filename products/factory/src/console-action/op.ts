@@ -7,20 +7,20 @@ import type { OpRead } from "./record.js";
 
 /** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, and the standing answers. */
 export type OpContext = MergeAtHeadDeps;
-export type OpEffect = (actionId: string, read: OpRead, context: OpContext) => Promise<Outcome>;
-type OpEffects = Readonly<Partial<Record<OwnerOpKind, OpEffect>>>;
+export type OpEffect<C = OpContext> = (actionId: string, read: OpRead, context: C) => Promise<Outcome>;
+type OpEffects<C = OpContext> = Readonly<Partial<Record<OwnerOpKind, OpEffect<C>>>>;
 
 /** The ops the console may run, as data: each later slice adds its kind's effect here, and a kind with none is refused. */
 export const OP_EFFECTS: OpEffects = Object.freeze({ "merge-at-head": mergeAtHead });
 
-export interface OpDeps {
-  effects: OpEffects;
+export interface OpDeps<C = OpContext> {
+  effects: OpEffects<C>;
   ledger: OwnerOpsLedger;
   now: () => number;
 }
 
 /** The authority table decides first, so an op it denies owner-remote never reaches an effect or the ledger. */
-export async function actOnOp(actionId: string, read: OpRead, { effects, ledger, now }: OpDeps, context: OpContext): Promise<Outcome> {
+export async function actOnOp<C>(actionId: string, read: OpRead, { effects, ledger, now }: OpDeps<C>, context: C): Promise<Outcome> {
   const { op } = read;
   const decision = opAuthority(op);
   if (decision.verdict === "deny") return refused("class", `a ${op.kind} op: ${decision.reason}`);

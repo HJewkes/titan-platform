@@ -174,7 +174,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const standingSweep = startStandingAnswerSweep(host, services, options.consoleAnswers?.actionsDir, stateDir, log, options.now);
+  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now }, log);
   const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
   sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconcilerSweep);
