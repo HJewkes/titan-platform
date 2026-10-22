@@ -296,7 +296,7 @@ function recordedWithoutAsk(ctx: WorkflowContext, holdClass: string | undefined)
 const replayedRefusals = new Map<string, string>();
 
 /** True once when the run's newest release ask at `head` was a replayed no; the merge wait then ends with no merge, so the run asks live. */
-export function takeG10Recheck(runId: string, head: string): boolean {
+function takeG10Recheck(runId: string, head: string): boolean {
   if (replayedRefusals.get(runId) !== head) return false;
   replayedRefusals.delete(runId);
   return true;
