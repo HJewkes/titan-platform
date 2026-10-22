@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { L0Check } from "../eval-l0.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { sha256 } from "./artifacts.js";
+import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
@@ -41,10 +42,13 @@ describe("explainer run", () => {
   it("stops at the eval stage when an error-severity L0 check fails, before any bridged command", async () => {
     fx = fixture();
     const bridge = fakeBridge();
+    const model = fakeScriptModel();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { evalChecks: [l0Check(false)] }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, bridge, { evalChecks: [l0Check(false)] }));
 
     expect(result.status).toBe("failed");
+    expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
+    expect(row(result, "script").checks).toBe("1 pass, 1 fail");
     expect(result.error).toContain("eval: l0");
     expect(bridge.calls).toEqual([]);
     expect(row(result, "eval").status).toBe("failed");

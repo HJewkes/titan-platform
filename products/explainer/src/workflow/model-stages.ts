@@ -151,19 +151,32 @@ interface Repair {
   check: Check;
 }
 
-/** One call that answers the draft's failing error-severity L0 rows; its reply is kept only when it parses and fails fewer. */
+/** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red. */
+export const MAX_REPAIR_ROUNDS = 2;
+
+/**
+ * Up to `MAX_REPAIR_ROUNDS` calls, each answering the current script's failing error-severity L0 rows. A reply is
+ * kept only when it parses and fails fewer rows, so a round never makes the script worse.
+ */
 async function repairScript(call: Call, prompt: string, draft: ScriptV1, lint: (script: ScriptV1) => L0Result[]): Promise<Repair | undefined> {
-  const before = failingErrors(lint(draft));
-  if (before.length === 0) return undefined;
-  const outcome = await call(repairPrompt(prompt, draft, failureList(before, loadRuleRegistry())));
-  const repaired = checked(outcome).script;
-  const after = repaired ? failingErrors(lint(repaired)).length : before.length;
-  const kept = repaired !== undefined && after < before.length;
-  const detail = `${before.length} failing error checks before, ${kept ? after : before.length} after${kept ? "" : "; repair not kept"}`;
-  return { script: kept ? repaired : draft, usage: stageUsage(outcome.usage), check: { name: "l0-repair", pass: kept && after === 0, detail } };
+  const first = failingErrors(lint(draft)).length;
+  if (first === 0) return undefined;
+  const rules = loadRuleRegistry();
+  let script = draft;
+  let failing = failingErrors(lint(draft));
+  let usage = NO_USAGE;
+  for (let round = 0; round < MAX_REPAIR_ROUNDS && failing.length > 0; round++) {
+    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules)));
+    usage = addUsage(usage, stageUsage(outcome.usage));
+    const repaired = checked(outcome).script;
+    const after = repaired ? failingErrors(lint(repaired)) : failing;
+    if (repaired && after.length < failing.length) [script, failing] = [repaired, after];
+  }
+  const detail = `${first} failing error checks before repair, ${failing.length} after`;
+  return { script, usage, check: { name: "l0-repair", pass: failing.length === 0, detail } };
 }
 
-/** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, and one L0 repair call. */
+/** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, then the L0 repair rounds. */
 export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDeps): Promise<StageOutcome> {
   const spineText = input.store.readText(need(input, "spine"));
   const prompt = scriptPrompt(spineText, input.store.readText(need(input, "facts")));
