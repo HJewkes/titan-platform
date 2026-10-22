@@ -10,6 +10,42 @@
         "the fix-proof bounce cap wakes the fixer for two fix-proof bounces and leaves the third to the owner gate, asking no agent",
         "the fix-proof bounce cap keeps the count across a restart, so the third wake after replay is still the owner's"
       ]
+    },
+    {
+      "name": "a successor passes the default account's key to agent-chat as a config directory",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "return account === DEFAULT_ACCOUNT ? undefined : account;",
+      "replace": "return account;",
+      "kills": [
+        "sh-wake-implementer: who is woken skips agent-chat's exhausted default account, and spawns under no config directory while it has headroom"
+      ]
+    },
+    {
+      "name": "a successor with every account exhausted takes the last account, not the first",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];",
+      "replace": "return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[dirs.length - 1]!;",
+      "kills": [
+        "sh-wake-implementer: who is woken spawns a successor under the first account when every account is exhausted, since a successor never holds"
+      ]
+    },
+    {
+      "name": "a successor with unreadable account limits takes the last account, not the first",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "  } catch {\n    return dirs[0];",
+      "replace": "  } catch {\n    return dirs[dirs.length - 1]!;",
+      "kills": [
+        "sh-wake-implementer: who is woken spawns a successor under the first account when the account limits cannot be read, since a successor never holds"
+      ]
+    },
+    {
+      "name": "a lineage gone from the roster ends the wake unhandled",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) :",
+      "replace": "newest === undefined ? `no agent of ${task.implementer}'s lineage is on the roster` :",
+      "kills": [
+        "sh-wake-implementer: who is woken starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)"
+      ]
     }
   ]
 }

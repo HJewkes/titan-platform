@@ -38,6 +38,7 @@ const refusals: [string, string, (port: GitHubPort) => Promise<unknown>][] = [
   ["pr", "a fractional PR", (port) => port.merge(REPO, 1.5, SHA, "squash")],
   ["pr", "an unsafe PR", (port) => port.getPr(REPO, Number.MAX_SAFE_INTEGER + 1)],
   ["runId", "a negative run id", (port) => port.rerunFailed(REPO, -5)],
+  ["jobId", "a fractional job id", (port) => port.rerunJob(REPO, 5, 1.5)],
   ["path", "traversal in the path", (port) => port.getFile(REPO, "docs/../../../user", "main")],
   ["path", "a leading slash", (port) => port.putFile(REPO, put({ path: "/etc/passwd" }))],
   ["path", "a query in the path", (port) => port.getFile(REPO, "docs/a.md?ref=x", "main")],

@@ -29,6 +29,7 @@
   },
   "scripts": {
     "a17": "node scripts/a17.mjs",
+    "f11": "node scripts/f11.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },

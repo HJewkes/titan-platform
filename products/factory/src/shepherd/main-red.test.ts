@@ -230,6 +230,18 @@ describe("sh-spawn-fixer", () => {
     expect(brief).toContain("task `demo/FX-1`");
   });
 
+  it("tells the fixer a flaky-test fix registers test-only with no mutation spec, and that a rerun thaw leaves the root-cause task", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+
+    await spawnFixer(r.deps, r.wiring, fixer, signal);
+
+    const { brief } = r.spawned[0]!;
+    expect(brief).toContain("register the PR with `--kind test-only` and add no `<test>.mutations.json`");
+    expect(brief).toContain("with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO");
+    expect(brief).toContain("its done_when still asks for a root-cause fix");
+  });
+
   it("spawns nothing when the episode thaws and a new red freezes again while the broker is down", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
@@ -364,6 +376,19 @@ describe("a red after a thaw that fails like an earlier red", () => {
 
     expect(r.spawned.map((s) => s.name)).toEqual([fixerName(REPO, fakeSha("red-a")), fixerName(REPO, fakeSha("red-b"))]);
     expect(third.fixer).toBe(fixerName(REPO, fakeSha("red-a")));
+  });
+
+  it("keeps the fixer and task the episode gained while the standing fixer was looked up, so that fixer's exemption never moves", async () => {
+    const r = rosterRig("live");
+    await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    const { episode } = r.freezes.freeze(REPO, failAt(r, fakeSha("red-b"), 12, "validate", TIMEOUT));
+    const roster = r.wiring.fixers!.roster;
+    const racing: FixerAgents = { ...r.wiring.fixers!, roster: async () => (r.freezes.setFixTask(REPO, episode, "demo/FX-OWN"), r.freezes.setFixer(REPO, episode, "fix-widget-own"), roster()) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, fixers: racing }, { ...red, mergeSha: fakeSha("red-b"), episode }, signal);
+
+    expect(r.freezes.get(REPO)).toMatchObject({ fixTask: "demo/FX-OWN", fixer: "fix-widget-own" });
+    expect(result).toMatchObject({ task: "demo/FX-OWN", thawed: false, detail: expect.stringContaining("kept the episode's own fix task") });
   });
 
   it("gives a red with the same test under a different failing check its own fixer", async () => {

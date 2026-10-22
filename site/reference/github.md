@@ -198,6 +198,10 @@ and exit 2.
 - One head can carry several runs per check name, for example a success and a later
   superseded `cancelled` run. `mergeReadiness` wants every run from `checkRuns`, so a
   superseded red run still blocks the merge.
+- `checkRuns` lists runs as GitHub's default `filter=latest` does: a rerun of a job in the
+  same workflow run hides that job's earlier attempts. A reader of attempt order, such as
+  "which run came after my rerun", uses `checkRunAttempts`, which asks for `filter=all`.
+  The fake hides superseded attempts of one workflow run the same way.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
@@ -290,6 +294,12 @@ transport, not REST, so it is a second, independent source for a PR head. A cred
 cannot run, exits non-zero or prints no object id throws `LsRemoteError`, with the `env` values
 and token-shaped strings cut from the message; a failed read is never a sha. Only an exact
 `refs/pull/<n>/head` line counts, because git matches the pattern against the tail of each ref.
+
+`lsRemoteBranchHead(exec, remoteUrl, branch, { env, timeoutMs })` reads `refs/heads/<branch>`
+the same way, with the same URL, credential and failure rules, so a branch tip has the same
+second source. `branch` must be a plain branch name (no glob, `..`, `//`, leading dash or
+slash, trailing dot or slash, or `.lock` suffix) and is refused with `GitHubInputError` before
+git runs otherwise.
 
 The fake answers both from its own history: `compareAncestry` walks `fake.commits` parents
 (ref names resolve to their tips, and PR heads count as known), and `fake.gitExec` answers each

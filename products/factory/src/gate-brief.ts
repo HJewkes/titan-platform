@@ -206,7 +206,7 @@ export function stuckBehindDecision(target: { repo: string; pr: number; headSha:
 export const WAIVE_PROOF = "waive-proof";
 
 /**
- * `waivable` marks a fix-proof send-back (NO_REPRO), the only kind that offers the owner's `waive-proof`, never recommended. Its
+ * `waivable` marks a fix-proof send-back (NO_REPRO, or a fixer's exit from its wake), the only kind that offers the owner's `waive-proof`, never recommended. Its
  * answer must name the gate's head, which only the `anyOf` shapes pin: a top-level `headSha.const` would change the abandon a
  * coordinator's pr-gone evidence must match.
  */

@@ -5,7 +5,7 @@ import { z } from "zod";
 const IdeaSourceSchema = z.enum(["planner", "owner", "requeue", "followup"]);
 
 /** What the planner proposes; the workflow derives `id`, `lineage` and `cell` from it. */
-const ProposalSchema = z.object({
+export const ProposalSchema = z.object({
   hypothesis: z.string(),
   mechanism: z.string(),
   class: z.string(),
@@ -79,7 +79,7 @@ export type DiffSize = z.infer<typeof DiffSizeSchema>;
 const nonnegative = z.number().nonnegative();
 
 /** The noise an idea was judged against, fixed at round start; `locked` is the engine's own call, not a pair count. */
-const AgainstSchema = z.object({ case: z.string(), head: z.string(), bandWidth: nonnegative, sigma: nonnegative, pairs: count, locked: z.boolean() });
+export const AgainstSchema = z.object({ case: z.string(), head: z.string(), bandWidth: nonnegative, sigma: nonnegative, pairs: count, locked: z.boolean() });
 
 /** The agent that wrote the idea; `account` names whose spend it was. */
 export const ImplementerSchema = z.object({
@@ -92,6 +92,9 @@ export const ImplementerSchema = z.object({
 
 const CheckRowSchema = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: nonnegative.optional() });
 export const L0RecordSchema = z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(CheckRowSchema).default([]) });
+
+/** What re-evaluating a later winner on top of the round's new head decided; `vs` is that head. */
+export const ReevalVerdictSchema = z.object({ vs: z.string(), decision: z.enum(["kept", "rejected", "requeued"]), reason: z.string() });
 
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
 export const OutcomeSchema = z.object({
@@ -117,6 +120,8 @@ export const OutcomeSchema = z.object({
   l0: L0RecordSchema.optional(),
   micro: ArMicroSchema.optional(),
   usage: z.object({ implementUsd: nonnegative, evalUsd: nonnegative, microUsd: nonnegative }).optional(),
+  /** Set when the round re-evaluated this winner; its own `delta` stays the solo ladder's. */
+  reeval: ReevalVerdictSchema.optional(),
 });
 export type Outcome = z.infer<typeof OutcomeSchema>;
 
@@ -179,6 +184,10 @@ export const TargetSchema = z.object({
   testProof: z.array(z.string()).default([]),
   rungs: z.record(z.string(), RungSchema).default({}),
   phases: z.array(PhaseSchema).min(1),
+  /** Milestone looks at held-out cases, which the host supplies and the target never names; `maxLooks` caps them per run. */
+  validator: z
+    .object({ runs: z.number().int().min(1).default(1), maxLooks: z.number().int().min(1).default(2) })
+    .default({ runs: 1, maxLooks: 2 }),
 });
 export type Target = z.infer<typeof TargetSchema>;
 

@@ -72,9 +72,11 @@ describe("factory rows", () => {
     );
   });
 
-  it("marks the gateReset and review rows live", () => {
+  it("marks every factory row live, the spawnGate loads included", () => {
     const live = EDITABLE_FIELDS.filter((row) => row.surface === "factory" && row.reload === "live").map((row) => row.pattern);
     expect(live).toEqual([
+      "shepherd.spawnGate.load5",
+      "shepherd.spawnGate.buildLoad5",
       "shepherd.gateReset.noReproProceed",
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",

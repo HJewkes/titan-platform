@@ -27,7 +27,7 @@ export { CHECK_CONCLUSIONS } from "./check-run-create.js";
 export type { GhExec, GhExecOptions, GhResult, GitExec } from "./exec.js";
 export { GhError, execGh, execGit } from "./exec.js";
 export type { LsRemoteOptions } from "./ls-remote.js";
-export { LsRemoteError, lsRemotePullHead } from "./ls-remote.js";
+export { LsRemoteError, lsRemoteBranchHead, lsRemotePullHead } from "./ls-remote.js";
 export type { GhCliOptions } from "./gh-cli.js";
 export { ghCliWire } from "./gh-cli.js";
 export type { Cooldown, GatewayBudget, GitHubClient, OctokitClientOptions, RateLane, RateWindow } from "./octokit-client.js";

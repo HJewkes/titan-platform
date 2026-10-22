@@ -76,10 +76,20 @@ interface Inbox {
   gaps?: string[];
   fyiCount?: number;
   derived?: Record<string, unknown>[];
+  nudges?: Record<string, unknown>[];
 }
 
-const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [] }: Inbox = {}): JsonEnvelope<unknown> =>
-  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived });
+const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox = {}): JsonEnvelope<unknown> =>
+  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+
+const ROUND_SHA = "e".repeat(64);
+
+const nudge = (roundId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  roundId, unit: roundId.replace(/-r\d+$/, ""), round: 1, openedAt: ago(7 * HOUR), manifestSha256: ROUND_SHA, oneTap: true, nudgedAt: null, recommendationsHidden: false,
+  recommendations: [{ questionId: "ramp", prompt: "Which ramp by default?", answer: "Staged" }],
+  line: `${roundId} has waited 7 h: reply rec to answer all 1 with the recommendation (ramp: Staged)`,
+  ...overrides,
+});
 
 const BLOCKED_AGENT = {
   id: "derived:blocked-agent:relay-worker@1",
@@ -307,6 +317,15 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
   });
 
+  it("shows the run's live next state under a landed outcome", async () => {
+    const landed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved", next: { state: "merged", detail: "example/repo#12 merged as 9999999" } }));
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": landed });
+    await tapGate();
+    await screen.findByTestId("inbox-readback");
+    fireEvent.click(confirmButton());
+    expect((await screen.findByTestId("inbox-confirm-next")).textContent).toBe("Now: example/repo#12 merged as 9999999");
+  });
+
   it("shows a moved head as a warning naming the new head", async () => {
     const moved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "moved", currentHead: "9".repeat(40) }, message: "PR moved to 9999999, read again" }));
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": moved });
@@ -378,6 +397,20 @@ describe("the inbox page, acting from the console", () => {
     expect(screen.queryByText(/^Gate /)).toBeNull();
   });
 
+  it("taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed", async () => {
+    const op = item("op-1", { sources: [{ system: "deposit", ref: "fixture-agent/op-1" }], kind: "do", summary: "Hand-merge example/repo#16", action: { kind: "owner-op", op: { kind: "merge-at-head", repo: "example/repo", pr: 16, headSha: HEAD } } });
+    const readBack = { repo: "example/repo", pr: 16, title: "tidy the fixtures", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "MRG-OR: gate", proposedBy: "fixture-agent", proposal: "Hand-merge example/repo#16", effect: "Merge example/repo#16 at 0b7e2c1 through a land run, once its required checks are green at this head" };
+    const accepted = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "accepted", runId: "land-1" }, message: "Merge queued: land run land-1 merges at this head once its checks are green" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-1", action: op.action, readBack })), "inbox.act": accepted });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-1")).getByText("Merge at head"));
+    expect((await screen.findByTestId("inbox-readback-proposal")).textContent).toBe("Proposed by fixture-agent: Hand-merge example/repo#16");
+    expect(screen.getByText("Into main; GitHub reads it clean. Authority MRG-OR: gate")).toBeTruthy();
+    fireEvent.click(confirmButton());
+    const outcome = await screen.findByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Merge queued: land run land-1");
+    expect(outcome.className).toContain("success");
+  });
+
   it("names the gate on a gate read-back and gives it no confirm label", async () => {
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await tapGate();
@@ -401,5 +434,53 @@ describe("the inbox page, empty or gapped", () => {
   it("says so when the inbox itself cannot be read", async () => {
     renderInbox(errorEnvelope("console daemon down", 69));
     expect(await screen.findByText("Could not load the inbox: console daemon down")).toBeTruthy();
+  });
+});
+
+describe("the round age nudge", () => {
+  it("lists each waiting round once with its recommendation stated", async () => {
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1"), nudge("lamp-r1", { oneTap: false, withoutTap: 'question "notes" has no recommendation that answers it' })] }));
+
+    const kiln = await screen.findByTestId("inbox-nudge-kiln-r1");
+    expect(within(screen.getByTestId("inbox-nudges")).getByText("Waiting over 6 h (2)")).toBeTruthy();
+    expect(within(kiln).getByText("ramp: Staged")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-nudge-lamp-r1")).getByText('No one-tap answer: question "notes" has no recommendation that answers it')).toBeTruthy();
+    expect(screen.queryByTestId("inbox-nudge-rec-lamp-r1")).toBeNull();
+  });
+
+  it("states no recommendation for an after-answer round, and offers its tap as accepting them unseen", async () => {
+    const hidden = { recommendationsHidden: true, recommendations: [], line: "kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer" };
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1", hidden)] }), { "rounds.answer-rec": () => Promise.resolve(successEnvelope({ status: "submitted", path: "/synthetic/feedback.json", sha256: "f".repeat(64), headSha: null })) });
+
+    const kiln = await screen.findByTestId("inbox-nudge-kiln-r1");
+
+    expect(within(kiln).queryByText(/Staged/)).toBeNull();
+    expect(within(kiln).getByText("kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer")).toBeTruthy();
+    expect(within(kiln).getByText("Accept all recommendations (unseen)")).toBeTruthy();
+  });
+
+  it("answers every question with one tap through rounds.answer-rec, bound to the round it showed", async () => {
+    const calls = renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }), { "rounds.answer-rec": () => Promise.resolve(successEnvelope({ status: "submitted", path: "/synthetic/feedback.json", sha256: "f".repeat(64), headSha: null })) });
+
+    fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
+
+    expect(await screen.findByText("Answered with every recommendation.")).toBeTruthy();
+    expect(named(calls, "rounds.answer-rec")).toEqual([{ name: "rounds.answer-rec", args: { id: "kiln-r1", manifestSha256: ROUND_SHA } }]);
+  });
+
+  it("offers no tap on a snapshot page, and shows a refusal from the server", async () => {
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }));
+    expect(await screen.findByText("This page is a snapshot: answer from the live console.")).toBeTruthy();
+    cleanup();
+
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }), { "rounds.answer-rec": () => Promise.resolve(errorEnvelope("refused: withdrawn; only an open round takes the one-tap answer", 65)) });
+    fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
+    expect(await screen.findByText("Not answered: refused: withdrawn; only an open round takes the one-tap answer")).toBeTruthy();
+  });
+
+  it("renders a snapshot that carries no nudges", async () => {
+    renderInbox(inboxAnswer());
+    await screen.findByTestId("inbox-row-gate-1");
+    expect(screen.queryByTestId("inbox-nudges")).toBeNull();
   });
 });

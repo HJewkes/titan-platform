@@ -4,11 +4,14 @@ import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { registrantSeat, storedLineage } from "./registrant.js";
 import type { GateRun } from "./gates.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { toPresence } from "./presence.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
+import type { ShepherdStoreRef } from "./store.js";
+import { holdsLiveSession } from "./wake-roster.js";
 
 const EXIT_NOTICE_STEP = "sh-exit-notice";
 export const EXIT_NOTICE_STEPS: readonly StepDeclaration[] = [{ id: EXIT_NOTICE_STEP, kind: "dispatch" }];
@@ -28,9 +31,42 @@ export interface ExitNoticePorts {
   seatFor(repo: string): string | undefined;
   /** The config's shepherd.hubSeat, told about a held run whose policy names no seat; absent when none is set. */
   hubSeat?(): string | undefined;
+  /** The seat the run's lineage names (`lineageSeat`); undefined, or absent, falls back to `seatFor`. */
+  lineageSeat?(target: { repo: string; pr: number }): Promise<string | undefined>;
   lastReport(target: { repo: string; pr: number; head: string }, agent: string, sessionId?: string): Promise<LastReport | undefined>;
   send(seat: string, text: string): Promise<void>;
+  /** Whether `seat` holds a live session; rejects when the roster cannot be read. Absent means every seat is taken as live. */
+  live?(seat: string): Promise<boolean>;
+  /** The seats a notice for `repo` goes to, in order, when its seat holds no live session. */
+  fallbackSeats?(repo: string): readonly FallbackSeat[];
 }
+
+/** `from` names the config key the seat came from, so a rerouted notice's record says which one it reached. */
+interface FallbackSeat {
+  seat: string;
+  from: string;
+}
+
+/** Where a notice goes: the seat, the fallback that stands in for it with why, or why none can take it. */
+type LiveRoute = { seat: string; rerouted?: string } | { none: string };
+
+const liveOrUnread = (live: NonNullable<ExitNoticePorts["live"]>, seat: string): Promise<boolean> => live(seat).catch(() => true);
+
+/**
+ * A seat with no live session cannot take a message, as after its coordinator retired (tp#1859, #2177), so the first live
+ * fallback takes the notice: the repo's red seat, the red seat fallback, then the hub seat. A roster that cannot be read
+ * keeps the seat, as before liveness was checked.
+ */
+export async function liveRoute(ports: ExitNoticePorts, repo: string, seat: string): Promise<LiveRoute> {
+  if (ports.live === undefined || (await liveOrUnread(ports.live, seat))) return { seat };
+  for (const next of ports.fallbackSeats?.(repo) ?? []) {
+    if (next.seat !== seat && (await liveOrUnread(ports.live, next.seat))) return { seat: next.seat, rerouted: `${seat} holds no live session, so ${next.from} ${next.seat} was told` };
+  }
+  return { none: `${seat} holds no live session and no fallback seat does` };
+}
+
+/** The detail a sent notice records: who was told, and why it was not the run's own seat. */
+export const toldDetail = (route: { seat: string; rerouted?: string }, told: string): string => (route.rerouted === undefined ? told : `${told} (${route.rerouted})`);
 
 /**
  * `unread`: a live wake the agent exited before reading, because its last report predates the ask. `read-no-push`: it
@@ -107,6 +143,17 @@ async function readReport(ports: ExitNoticePorts, input: ExitNoticeInput): Promi
   return ports.lastReport({ repo: input.repo, pr: input.pr, head: input.headSha }, input.wake.agent, input.wake.sessionId).catch(() => undefined);
 }
 
+/**
+ * The run's lineage seat, else the repo's one seat. A notice lets the gate take its default action, which only a repo with
+ * one seat authorises, so a denied, unseated or `+` joined repo names none and the owner gate opens whoever registered the
+ * run. A lineage that cannot be read must not cost the notice.
+ */
+export async function runSeat(ports: ExitNoticePorts, target: { repo: string; pr: number }): Promise<string | undefined> {
+  const seat = ports.seatFor(target.repo);
+  if (seat === undefined) return undefined;
+  return (await ports.lineageSeat?.(target).catch(() => undefined)) ?? seat;
+}
+
 /** Never throws: no ports, no single seat, or a failed send records `sent: false`, and the run takes the owner gate. */
 export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: ExitNoticeInput): Promise<ExitNoticeResult> {
   const report = ports && input.held === undefined ? await readReport(ports, input) : undefined;
@@ -115,10 +162,13 @@ export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: 
   if (ports === undefined) return { sent: false, ...recorded, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
-    seat = ports.seatFor(input.repo);
+    seat = await runSeat(ports, input);
     if (seat === undefined) return { sent: false, ...recorded, detail: `no single seat owns ${input.repo}` };
+    const route = await liveRoute(ports, input.repo, seat);
+    if ("none" in route) return { sent: false, seat, ...recorded, detail: route.none };
+    seat = route.seat;
     await ports.send(seat, noticeText(input, cause, report));
-    return { sent: true, seat, ...recorded, detail: causeText(cause, input.wake, input.held) };
+    return { sent: true, seat, ...recorded, detail: toldDetail(route, causeText(cause, input.wake, input.held)) };
   } catch (error) {
     return { sent: false, ...(seat && { seat }), ...recorded, detail: `the seat notice failed: ${failureOf(error)}` };
   }
@@ -186,12 +236,43 @@ interface ExitNoticeAgents {
   message(name: string, message: string): Promise<void>;
 }
 
-/** The production ports: the seat book re-read per notice, the hub seat, the agent's transcript, and an agent-chat message to the seat. */
-export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents, hubSeat?: string): ExitNoticePorts {
+/** The roster is read only for a run that names a registrant, which is named only while live. */
+function lineagePort(agents: ExitNoticeAgents, store: ShepherdStoreRef): ExitNoticePorts["lineageSeat"] {
+  return async (target) => {
+    const lineage = storedLineage(store, target);
+    return lineage && registrantSeat(lineage, lineage.registrant ? await agents.roster() : undefined);
+  };
+}
+
+/** The config's shepherd.hubSeat and shepherd.redSeat, the seats that stand in for a seat with no live session. */
+export interface NoticeFallbacks {
+  hubSeat?: string;
+  redSeat?: { repos?: Record<string, string>; fallback?: string };
+}
+
+/** The repo's red seat entry (keys match in any case, as for red events), the red seat fallback, then the hub seat. */
+function fallbackSeats({ hubSeat, redSeat }: NoticeFallbacks, repo: string): FallbackSeat[] {
+  const entry = Object.entries(redSeat?.repos ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
+  const candidates = [
+    { seat: entry, from: "shepherd.redSeat.repos" },
+    { seat: redSeat?.fallback, from: "shepherd.redSeat.fallback" },
+    { seat: hubSeat, from: "shepherd.hubSeat" },
+  ];
+  return candidates.flatMap(({ seat, from }) => (seat === undefined ? [] : [{ seat, from }]));
+}
+
+/**
+ * The production ports: the run's lineage seat, else the seat book re-read per notice, checked live on the roster with the
+ * config's fallbacks behind it, the hub seat, the agent's transcript, and an agent-chat message to the seat.
+ */
+export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents, fallbacks: NoticeFallbacks = {}, store?: ShepherdStoreRef): ExitNoticePorts {
   return {
     seatFor: (repo) => singleSeat(seats(), repo),
-    hubSeat: () => hubSeat,
+    ...(store && { lineageSeat: lineagePort(agents, store) }),
+    hubSeat: () => fallbacks.hubSeat,
     lastReport: transcriptLastReport(() => agents.roster()),
     send: (seat, text) => agents.message(seat, text),
+    live: async (seat) => holdsLiveSession(seat, await agents.roster()),
+    fallbackSeats: (repo) => fallbackSeats(fallbacks, repo),
   };
 }

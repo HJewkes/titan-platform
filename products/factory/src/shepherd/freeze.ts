@@ -4,6 +4,7 @@ import { z } from "zod";
 import { consoleTextOf } from "./error-class.js";
 import { appendEvent, SHEPHERD_ACTOR } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
+import { episodeRecords, type EpisodeRecords } from "./freeze-episode.js";
 import { repoFreezes, type RepoFreezes } from "./repo-freeze.js";
 
 export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
@@ -94,9 +95,11 @@ export class FreezeStore {
   private readonly rechecked = new Map<string, number>();
   /** The coordinator's freezes, in their own table, so no thaw here lifts one and no unfreeze there thaws a red main. */
   readonly repoFreezes: RepoFreezes;
+  readonly episodes: EpisodeRecords;
 
   constructor(private readonly db: Db, private readonly now: () => number = Date.now, private readonly onThaw: (repo: RepoSlug) => void = () => undefined) {
     this.repoFreezes = repoFreezes(db, now);
+    this.episodes = episodeRecords(db, now, this, repoKey);
   }
 
   /** Claims `repo`'s re-read of its default branch at `at`; false within `FREEZE_RECHECK_MS` of the last claim, so every reader of this store shares one limit. */
@@ -180,7 +183,7 @@ export class FreezeStore {
     return this.active(repo);
   }
 
-  /** Refuses a green sha equal to the red sha, because a check that passed on the red commit proves nothing, unless that red was only cancels. */
+  /** Refuses a green sha equal to the red sha unless that red was only cancels; Shepherd's own rerun thaws there through `episodes`. */
   unfreeze(repo: RepoSlug, greenSha: string): boolean {
     const freeze = this.active(repo);
     if (!freeze || (freeze.redSha === greenSha && !freeze.cancelOnly)) return false;
@@ -188,11 +191,11 @@ export class FreezeStore {
   }
 
   /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. Every thaw, `unfreeze` included, ends here. */
-  release(repo: RepoSlug, episode: number, actor: string = SHEPHERD_ACTOR): boolean {
+  release(repo: RepoSlug, episode: number, actor: string = SHEPHERD_ACTOR, reason?: string): boolean {
     const at = new Date(this.now()).toISOString();
     const thawed = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(at, repoKey(repo), episode).changes > 0;
-      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, actor, headSha: this.row(repo)?.red_sha });
+      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, actor, headSha: this.row(repo)?.red_sha, reason });
       return changed;
     })();
     if (thawed) notifyThaw(this.onThaw, repo);

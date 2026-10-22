@@ -84,7 +84,7 @@ function ports(overrides: Partial<ArAgentsOptions> = {}) {
 
 const idea = (id: string): Idea => partialFake<Idea>({ id, class: "accept-gate", targets: [], mechanism: "m" });
 const request = (tree: string, id: string, extra: Partial<ImplementRequest> = {}): ImplementRequest =>
-  ({ idea: idea(id), tree, base: bases[0]!, brief: "make it faster", round: 1, lane: 1, fork: "explore", ...extra });
+  ({ runId: "run-1", idea: idea(id), tree, base: bases[0]!, brief: "make it faster", round: 1, lane: 1, fork: "explore", ...extra });
 const nameFor = (tree: string, round: number, id: string) => basename(tree).replace(`-${id}`, `-r${round}-${id}`);
 
 beforeEach(() => {
@@ -121,6 +121,28 @@ describe("the load wait", () => {
 
     expect(waited.load5).toBe(27.9);
     expect(readings).toEqual([]);
+  });
+
+  it("keeps the deadline of the step's first start across a restart", async () => {
+    const readings = [30, 30, 30, 1];
+    const wait = loadWaitPort({ ceiling: 28, pollMs: 1, maxWaitMs: 5_000, readLoad5: () => readings.shift() ?? 0, now: () => Date.parse("2026-01-01T00:00:10Z") });
+
+    await expect(wait({ stage: "implement", firstStartedAt: "2026-01-01T00:00:00Z" }, signal)).rejects.toThrow("[load-timeout] implement held 10000 ms");
+    expect(readings).toHaveLength(3);
+  });
+
+  it("fails a stage held for exactly maxWaitMs", async () => {
+    const readings = [30, 1];
+    const wait = loadWaitPort({ ceiling: 28, pollMs: 1, maxWaitMs: 5_000, readLoad5: () => readings.shift() ?? 0, now: () => Date.parse("2026-01-01T00:00:05Z") });
+
+    await expect(wait({ stage: "implement", firstStartedAt: "2026-01-01T00:00:00Z" }, signal)).rejects.toThrow("[load-timeout] implement held 5000 ms");
+  });
+
+  it("counts the wait from the step's first start, and from now when that start is unreadable", async () => {
+    const wait = loadWaitPort({ ceiling: 28, pollMs: 1, readLoad5: () => 1, now: () => Date.parse("2026-01-01T00:00:10Z") });
+
+    expect(await wait({ stage: "implement", firstStartedAt: "2026-01-01T00:00:04Z" }, signal)).toEqual({ waitedMs: 6_000, load5: 1 });
+    expect(await wait({ stage: "implement", firstStartedAt: "not a time" }, signal)).toEqual({ waitedMs: 0, load5: 1 });
   });
 });
 
@@ -163,6 +185,18 @@ describe("implementers", () => {
     expect(argv.slice(0, 4)).toEqual(["agent", "spawn", nameFor(tree, 1, "i-aaa"), "impl"]);
     expect(argv[argv.indexOf("--config-dir") + 1]).toBe("/accounts/agents");
     expect(built).toMatchObject({ head: git(tree, "rev-parse", "HEAD"), mode: "spawn", account: "agents", agent: nameFor(tree, 1, "i-aaa") });
+  });
+
+  it("are named from the request's run id, not from the tree they were handed", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    const name = `${plannerName("run-2").replace(/-planner$/, "")}-r1-i-aaa`;
+    behave(name, { commit: true, turns: [implemented()] });
+
+    const built = await p.implement(request(tree, "i-aaa", { runId: "run-2" }), signal);
+
+    expect(spawns()[0]!.args[2]).toBe(name);
+    expect(built.agent).toBe(name);
   });
 
   it("sum cache reads and writes over every turn, counting a split response once", async () => {
@@ -273,10 +307,21 @@ describe("the planner", () => {
     behave(name, { turns: [final("p1", '{"add": []}')] });
     const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
 
-    expect(await p.plan({ ...input, round: 1, mode: "spawn" }, signal)).toEqual({ add: [] });
+    expect(await p.plan({ ...input, round: 1, mode: "spawn" }, signal)).toMatchObject({ ops: { add: [] }, agent: name, mode: "spawn" });
     behave(name, { turns: [final("p2", '{"add": [], "close": []}')] });
-    expect(await p.plan({ ...input, round: 2, mode: "resume" }, signal)).toEqual({ add: [], close: [] });
+    expect(await p.plan({ ...input, round: 2, mode: "resume" }, signal)).toMatchObject({ ops: { add: [], close: [] }, agent: name, mode: "resume" });
 
     expect(spawns().map((call) => call.args.slice(0, 3))).toEqual([["agent", "spawn", name], ["agent", "resume", name]]);
+  });
+
+  it("reports its session and the cache reads of its turn beside the ops", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [final("p1", '{"add": []}', { read: 120, w5m: 12, w1h: 0 })] });
+
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], round: 1, mode: "spawn" }, signal);
+
+    expect(planned).toMatchObject({ sessionId: `s-${name}`, usage: { cacheReadTokens: 120, cacheWrite5mTokens: 12 } });
+    expect(planned.usage!.usd).toBeGreaterThan(0);
   });
 });

@@ -44,14 +44,30 @@ interface NoiseReading {
 
 /**
  * Design §1.5: ±bandSigmas·σ once σ is locked, and the wider max(bandSigmas·σ_est, defaultBandPp) until then. The engine's
- * explicit `locked` wins, since it can re-open a lock; only a record without one falls back to counting pairs. With no σ at
- * all the band is the default.
+ * explicit `locked` wins, since it can re-open a lock; only a record without one falls back to counting pairs. As the
+ * engine's `band()` does, an unlocked σ counts only from `minPairs` pairs on; below that, or with no pair count, the band is
+ * the default.
  */
 export function bandFor(noise: NoiseConfig, reading: NoiseReading): Band {
   const { sigma, pairs } = reading;
   const locked = reading.locked ?? (pairs !== undefined && pairs >= noise.lockAfterPairs);
   if (sigma !== undefined && locked) return { halfWidth: noise.bandSigmas * sigma, locked: true };
-  return { halfWidth: Math.max(noise.bandSigmas * (sigma ?? 0), noise.defaultBandPp), locked: false };
+  const trusted = pairs !== undefined && pairs >= noise.minPairs ? sigma : undefined;
+  return { halfWidth: Math.max(noise.bandSigmas * (trusted ?? 0), noise.defaultBandPp), locked: false };
+}
+
+/** G7's snapshot names the case σ was measured on and the band the engine itself used, which wins over the recomputed one. */
+interface NoiseSnapshot extends NoiseReading {
+  case?: string;
+  bandWidth?: number;
+}
+
+/** σ's pairs, case, lock and band, as one caption: "5 pairs on seed-a · locked: band ±1.24". */
+export function noiseText(noise: NoiseConfig, snapshot: NoiseSnapshot): string {
+  const band = bandFor(noise, snapshot);
+  const width = (snapshot.bandWidth ?? band.halfWidth).toFixed(2);
+  const pairs = snapshot.pairs === undefined ? [] : [`${snapshot.pairs} pairs${snapshot.case === undefined ? "" : ` on ${snapshot.case}`}`];
+  return [...pairs, `${band.locked ? "locked" : "unlocked"}: band ±${width}`].join(" · ");
 }
 
 function median(values: readonly number[]): number | null {
@@ -83,7 +99,7 @@ function toPoint(primary: string, ladder: Decided, index: number): ProgressPoint
 /**
  * The chart's data. Every decided idea is a point, but only a kept one with a primary moves best-so-far: a rejected or stopped
  * point is drawn where it landed and leaves the line alone. The band follows the newest G7 record, carried past an outcome
- * that has none because that outcome says nothing new about noise; before any record it reads the stamped σ, unlocked.
+ * that has none because that outcome says nothing new about noise; before any record the band is the unlocked default.
  */
 export function runProgress(run: ArRunView): RunProgress {
   const { primary, noise } = run.target.metric;

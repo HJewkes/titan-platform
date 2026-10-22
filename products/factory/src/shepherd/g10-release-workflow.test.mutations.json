@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the merge wait never takes a g10 recheck",
+      "file": "products/factory/src/shepherd/hold.ts",
+      "find": "    if (target.sha !== undefined && recheck?.(target.repo, target.pr, target.sha)) return true;\n",
+      "replace": "",
+      "kills": [
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks the release again under the next build, which releases the hold, and the PR merges",
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks once more when the next build still answers no, then waits held at merge without asking again"
+      ]
+    },
+    {
+      "name": "serve wires no recheck into the merge wait",
+      "file": "products/factory/src/workflows.ts",
+      "find": ", adversary.takeRehold, g10Recheck(holds))",
+      "replace": ", adversary.takeRehold)",
+      "kills": [
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks the release again under the next build, which releases the hold, and the PR merges",
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks once more when the next build still answers no, then waits held at merge without asking again"
+      ]
+    },
+    {
+      "name": "a replayed refusal is read as a live one",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "const replayed = run.ctx.historyNext() !== undefined;",
+      "replace": "const replayed = false;",
+      "kills": [
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks the release again under the next build, which releases the hold, and the PR merges",
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks once more when the next build still answers no, then waits held at merge without asking again"
+      ]
+    },
+    {
+      "name": "a live refusal also ends the merge wait, so the run asks forever",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "if (replayed && !done.released && !done.wouldRelease)",
+      "replace": "if (!done.released && !done.wouldRelease)",
+      "kills": [
+        "a g10-adversary hold under gateReset.twoMergeRelease (decision 422(1)) stays held when the diff changes the owner's rule file, and merges nothing",
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks the release again under the next build, which releases the hold, and the PR merges",
+        "a g10-adversary run whose release step answered no before a deploy, waiting on the hold at merge (TP-3956) asks once more when the next build still answers no, then waits held at merge without asking again"
+      ]
+    },
+    {
+      "name": "a replayed shadow would-release is asked again",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "if (replayed && !done.released && !done.wouldRelease)",
+      "replace": "if (replayed && !done.released)",
+      "kills": [
+        "a g10-adversary run recorded with an adversary member MERGE and adopted by the next build replays a record that asked the release step, reading the recorded answer"
+      ]
+    }
+  ]
+}

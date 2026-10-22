@@ -52,7 +52,7 @@ function guardAnswering(head: GuardVerdict, tip: GuardVerdict = head): HeadTipGu
 const CONFIRMED: GuardVerdict = { kind: "confirmed" };
 
 function observeWith(guard: HeadTipGuard, snap: BackstopSnapshot, cursor: RepoCursor = { main: { value: CURSOR, at: AT } }, rulesets?: RulesetList): Observation {
-  return createObserve({ guard, now: () => NOW })(REPO, snap, cursor, rulesets);
+  return createObserve({ now: () => NOW })(REPO, snap, cursor, rulesets, guard);
 }
 
 const kinds = (observation: Observation): string[] => observation.events.map((event) => event.kind);

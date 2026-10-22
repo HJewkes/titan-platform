@@ -400,6 +400,27 @@ esac
         );
       });
 
+      // Stands in for a merge-base runner that refused a spec: it writes the report and mutants.refused, then exits 0.
+      const refusingBin = (side) =>
+        `const out = process.argv[process.argv.indexOf("--out") + 1];\nrequire("node:fs").mkdirSync(out, { recursive: true });\nrequire("node:fs").writeFileSync(out + "/${side}.report", "");\nrequire("node:fs").writeFileSync(out + "/mutants.refused", "x.test.mutations.json: spec.mutations must hold 1 to 5 mutations");\n`;
+
+      it("exec mutants fails the job when the runner refused a spec, after the report is written", () => {
+        withSandboxSupport();
+        writeFileSync(path.join(dist, "bin.js"), refusingBin("mutants"));
+
+        const result = execWith("mutants");
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("fix-proof: mutation spec refused: x.test.mutations.json: spec.mutations must hold 1 to 5 mutations");
+        expect(existsSync(path.join(out(), "mutants.report"))).toBe(true);
+      });
+
+      it("exec head ignores a mutants.refused file, which only the mutants side reads", () => {
+        writeFileSync(path.join(dist, "bin.js"), refusingBin("head"));
+
+        expect(execWith("head").status).toBe(0);
+      });
+
       it("exec mutants writes an error marker, never an unsandboxed run, when the runner has no sandbox support", () => {
         const result = execWith("mutants");
 

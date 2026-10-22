@@ -11,7 +11,7 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
-import type { DecisionLog } from "./decision-log.js";
+import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
@@ -21,9 +21,11 @@ import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
 import type { RoundsSource } from "./rounds.js";
-import { roundsSubmitCommands } from "./rounds-submit.js";
+import { roundsAnswerRecCommands } from "./round-rec-answer.js";
+import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
@@ -56,7 +58,7 @@ export interface ConsoleSources {
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
   /** Optional so test sources need not build one; absent, `rounds.submit` records nothing and returns no `log`. */
-  decisionLog?: DecisionLog;
+  decisionLog?: RoundDecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
@@ -67,6 +69,8 @@ export interface ConsoleSources {
   hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
+  /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
+  videoNotify?: SeatNotifier;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
@@ -120,7 +124,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -136,6 +140,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundFramesCommands(rounds),
     ...roundsRevealCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
+    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
@@ -143,7 +148,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
-    ...videoNotesCommands(videos),
+    ...videoNotesCommands(videos, videoNotify),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };

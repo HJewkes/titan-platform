@@ -4,6 +4,7 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
+import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 import type { ConfigStorePaths } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
@@ -102,6 +103,8 @@ export interface ConsoleConfig {
   hostSurfaces?: HostSurfaceRoots;
   /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
   videoRoots?: string[];
+  /** What `serve` prints once at start: settings that were dropped rather than refused, so the console still starts. */
+  startupWarnings?: string[];
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -116,6 +119,8 @@ export interface Machine {
   hostname(): string;
   /** Every address on a non-internal interface, so loopback is never among them. */
   addresses(): string[];
+  /** Absent, the real filesystem answers. */
+  isExecutable?: IsExecutable;
 }
 
 const hostMachine: Machine = {
@@ -135,6 +140,7 @@ export function resolveConfig(
   machine: Machine = hostMachine,
 ): ConsoleConfig {
   const stateDir = expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
+  const agentChat = agentChatBinFrom(env, home, machine.isExecutable ?? hostIsExecutable);
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
     storyPort: storyPortFrom(env),
@@ -144,7 +150,7 @@ export function resolveConfig(
     factoryPort: portFrom(env, "TITAN_CONSOLE_FACTORY_PORT", FACTORY_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
-    agentChatBin: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_BIN || "agent-chat", home),
+    ...agentChat,
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
@@ -210,6 +216,19 @@ function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.
 /** Where `config.surfaces` reads the coordinator files and this host's own config. */
 function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
   return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
+}
+
+export const AGENT_CHAT_NOT_FOUND = "agent-chat is not on PATH, so no seat is told when its round is answered; set TITAN_CONSOLE_AGENT_CHAT_BIN to its absolute path";
+
+/**
+ * agent-dispatch runs only an absolute binary path, so a bare name is resolved on PATH here, once. Not found, notices
+ * are off with a warning rather than a refusal: the console is still worth serving when it cannot message seats.
+ */
+function agentChatBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "agentChatBin" | "startupWarnings"> {
+  const named = expandHome(env.TITAN_CONSOLE_AGENT_CHAT_BIN || "agent-chat", home);
+  const bin = resolveCommand(named, env.PATH, isExecutable);
+  if (bin !== null) return { agentChatBin: bin, startupWarnings: [] };
+  return { startupWarnings: [`${AGENT_CHAT_NOT_FOUND} (looked for "${named}")`] };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */

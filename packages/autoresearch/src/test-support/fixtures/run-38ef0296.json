@@ -1,0 +1,1010 @@
+{
+ "id": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe",
+ "workflowName": "autoresearch",
+ "params": {
+  "target": "fixture",
+  "pin": "565d553a25f3656916e5465668461f654b449bac",
+  "config": "{\"lanes\":2,\"rounds\":1,\"minPool\":0}"
+ },
+ "status": "completed",
+ "currentStep": "ar-registry:p1",
+ "stepResults": {
+  "ar-pin:0": {
+   "stepId": "ar-pin",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-pin:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.267Z",
+   "output": "{\"result\":{\"pin\":\"565d553a25f3656916e5465668461f654b449bac\",\"ratchetRef\":\"refs/heads/autoresearch/fixture/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe\",\"ratchetHead\":\"565d553a25f3656916e5465668461f654b449bac\",\"integrationTree\":\"/fixture/work\",\"target\":{\"schema\":\"ar-target/v1\",\"ratchetPrefix\":\"autoresearch/fixture\",\"metric\":{\"primary\":{\"name\":\"cc_total_delta_pct\",\"direction\":\"min\"},\"guards\":{\"single_caller_delta\":1},\"zeroTolerance\":[\"hidden_regressions\"],\"allGate\":true,\"noOp\":\"accepted_tasks\",\"noise\":{\"bandSigmas\":2,\"lockAfterPairs\":5,\"minPairs\":3,\"defaultBand\":1.5}},\"microRung\":{\"accept-gate\":\"L1-replay\",\"planner-ranking\":\"L1-cluster\"},\"frozen\":[\"src/gate/measure.py\",\"tests/test_ar_*.py\"],\"caseSets\":{},\"runnerRoot\":\".\",\"unitTests\":[],\"testProof\":[],\"rungs\":{},\"phases\":[{\"id\":\"p1\",\"train\":[\"t-alpha\"],\"baselineRuns\":6,\"stop\":{\"ideasEvaluated\":16,\"roundsWithoutGain\":3}}],\"validator\":{\"runs\":1,\"maxLooks\":2}},\"bounds\":{\"schema\":\"ar-bounds/v1\",\"classes\":{\"accept-gate\":{\"paths\":[\"src/gate/*.py\"],\"tests\":[\"tests/test_gate*.py\"],\"integerParams\":[]},\"planner-ranking\":{\"paths\":[\"src/planner/{rank,recipes}.py\"],\"tests\":[\"tests/test_planner*.py\"],\"integerParams\":[]},\"config-param\":{\"paths\":[\"src/config.json\"],\"tests\":[],\"params\":{\"hot_cc\":[6,15],\"p5.*\":[0,0.2]},\"integerParams\":[\"hot_cc\"]}},\"diff\":{\"oneClassPerIdea\":true},\"test\":{\"required\":true,\"mustFailOnBase\":true,\"exceptClasses\":[\"config-param\"]},\"banned\":{\"frozenTouch\":true,\"literalsOutsideConfig\":\"added source literals other than 0, 1, 2, -1\",\"newFiles\":\"only under the class's test globs\",\"seedNames\":\"the run's case names\"}},\"frozenHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "data": {
+    "result": {
+     "pin": "565d553a25f3656916e5465668461f654b449bac",
+     "ratchetRef": "refs/heads/autoresearch/fixture/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe",
+     "ratchetHead": "565d553a25f3656916e5465668461f654b449bac",
+     "integrationTree": "/fixture/work",
+     "target": {
+      "schema": "ar-target/v1",
+      "ratchetPrefix": "autoresearch/fixture",
+      "metric": {
+       "primary": {
+        "name": "cc_total_delta_pct",
+        "direction": "min"
+       },
+       "guards": {
+        "single_caller_delta": 1
+       },
+       "zeroTolerance": [
+        "hidden_regressions"
+       ],
+       "allGate": true,
+       "noOp": "accepted_tasks",
+       "noise": {
+        "bandSigmas": 2,
+        "lockAfterPairs": 5,
+        "minPairs": 3,
+        "defaultBand": 1.5
+       }
+      },
+      "microRung": {
+       "accept-gate": "L1-replay",
+       "planner-ranking": "L1-cluster"
+      },
+      "frozen": [
+       "src/gate/measure.py",
+       "tests/test_ar_*.py"
+      ],
+      "caseSets": {},
+      "runnerRoot": ".",
+      "unitTests": [],
+      "testProof": [],
+      "rungs": {},
+      "phases": [
+       {
+        "id": "p1",
+        "train": [
+         "t-alpha"
+        ],
+        "baselineRuns": 6,
+        "stop": {
+         "ideasEvaluated": 16,
+         "roundsWithoutGain": 3
+        }
+       }
+      ],
+      "validator": {
+       "runs": 1,
+       "maxLooks": 2
+      }
+     },
+     "bounds": {
+      "schema": "ar-bounds/v1",
+      "classes": {
+       "accept-gate": {
+        "paths": [
+         "src/gate/*.py"
+        ],
+        "tests": [
+         "tests/test_gate*.py"
+        ],
+        "integerParams": []
+       },
+       "planner-ranking": {
+        "paths": [
+         "src/planner/{rank,recipes}.py"
+        ],
+        "tests": [
+         "tests/test_planner*.py"
+        ],
+        "integerParams": []
+       },
+       "config-param": {
+        "paths": [
+         "src/config.json"
+        ],
+        "tests": [],
+        "params": {
+         "hot_cc": [
+          6,
+          15
+         ],
+         "p5.*": [
+          0,
+          0.2
+         ]
+        },
+        "integerParams": [
+         "hot_cc"
+        ]
+       }
+      },
+      "diff": {
+       "oneClassPerIdea": true
+      },
+      "test": {
+       "required": true,
+       "mustFailOnBase": true,
+       "exceptClasses": [
+        "config-param"
+       ]
+      },
+      "banned": {
+       "frozenTouch": true,
+       "literalsOutsideConfig": "added source literals other than 0, 1, 2, -1",
+       "newFiles": "only under the class's test globs",
+       "seedNames": "the run's case names"
+      }
+     },
+     "frozenHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b1:0": {
+   "stepId": "ar-eval:base:b1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.302Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b1\",\"metrics\":{\"cc_total_delta_pct\":0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b1\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b1",
+     "metrics": {
+      "cc_total_delta_pct": 0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b1"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b2:0": {
+   "stepId": "ar-eval:base:b2",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab2:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.308Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b2\",\"metrics\":{\"cc_total_delta_pct\":-0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b2\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b2",
+     "metrics": {
+      "cc_total_delta_pct": -0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b2"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b3:0": {
+   "stepId": "ar-eval:base:b3",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab3:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.332Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b3\",\"metrics\":{\"cc_total_delta_pct\":-0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b3\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b3",
+     "metrics": {
+      "cc_total_delta_pct": -0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b3"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b4:0": {
+   "stepId": "ar-eval:base:b4",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab4:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.339Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b4\",\"metrics\":{\"cc_total_delta_pct\":-0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b4\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b4",
+     "metrics": {
+      "cc_total_delta_pct": -0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b4"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b5:0": {
+   "stepId": "ar-eval:base:b5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.362Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b5\",\"metrics\":{\"cc_total_delta_pct\":0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b5\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b5",
+     "metrics": {
+      "cc_total_delta_pct": 0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b5"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:base:b6:0": {
+   "stepId": "ar-eval:base:b6",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3Abase%3Ab6:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.368Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b6\",\"metrics\":{\"cc_total_delta_pct\":-0.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b6\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b6",
+     "metrics": {
+      "cc_total_delta_pct": -0.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/work/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-base-b6"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-inbox:1:0": {
+   "stepId": "ar-inbox:1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-inbox%3A1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.370Z",
+   "output": "{\"result\":{\"ideas\":[],\"cursor\":0}}",
+   "data": {
+    "result": {
+     "ideas": [],
+     "cursor": 0
+    }
+   },
+   "attempt": 0
+  },
+  "ar-plan:1:0": {
+   "stepId": "ar-plan:1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-plan%3A1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.372Z",
+   "output": "{\"result\":{\"ops\":{\"add\":[{\"hypothesis\":\"better improves the primary metric\",\"mechanism\":\"better\",\"class\":\"accept-gate\",\"direction\":\"better\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":true,\"priority\":0,\"source\":\"planner\",\"evidence\":[]},{\"hypothesis\":\"better-2 improves the primary metric\",\"mechanism\":\"better-2\",\"class\":\"accept-gate\",\"direction\":\"better-2\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":false,\"priority\":0,\"source\":\"planner\",\"evidence\":[]}]},\"agent\":\"planner-d6909d25-7d7e-4a6b-a393-1ff9ac4269fe\",\"sessionId\":\"session-planner-d6909d25-7d7e-4a6b-a393-1ff9ac4269fe\",\"mode\":\"spawn\",\"usage\":{\"usd\":0.25,\"cacheReadTokens\":40,\"retries\":0}}}",
+   "data": {
+    "result": {
+     "agent": "planner-d6909d25-7d7e-4a6b-a393-1ff9ac4269fe",
+     "sessionId": "session-planner-d6909d25-7d7e-4a6b-a393-1ff9ac4269fe",
+     "mode": "spawn",
+     "usage": {
+      "usd": 0.25,
+      "cacheReadTokens": 40,
+      "retries": 0
+     },
+     "ops": {
+      "add": [
+       {
+        "hypothesis": "better improves the primary metric",
+        "mechanism": "better",
+        "class": "accept-gate",
+        "direction": "better",
+        "targets": [
+         "src/gate/gates.py"
+        ],
+        "expectedEffect": {
+         "metric": "primary",
+         "direction": "down",
+         "microSignal": "fewer accepts"
+        },
+        "microArgs": {},
+        "testPlan": "assert the new accept decision",
+        "bold": true,
+        "priority": 0,
+        "source": "planner",
+        "evidence": []
+       },
+       {
+        "hypothesis": "better-2 improves the primary metric",
+        "mechanism": "better-2",
+        "class": "accept-gate",
+        "direction": "better-2",
+        "targets": [
+         "src/gate/gates.py"
+        ],
+        "expectedEffect": {
+         "metric": "primary",
+         "direction": "down",
+         "microSignal": "fewer accepts"
+        },
+        "microArgs": {},
+        "testPlan": "assert the new accept decision",
+        "bold": false,
+        "priority": 0,
+        "source": "planner",
+        "evidence": []
+       }
+      ],
+      "drop": [],
+      "reprioritize": [],
+      "analysis": [],
+      "exempt": {}
+     }
+    }
+   },
+   "attempt": 0
+  },
+  "ar-queue:1": {
+   "stepId": "ar-queue:1",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.373Z",
+   "output": "{\"queue\":[{\"hypothesis\":\"better improves the primary metric\",\"mechanism\":\"better\",\"class\":\"accept-gate\",\"direction\":\"better\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":true,\"priority\":0,\"source\":\"planner\",\"evidence\":[],\"id\":\"i-1637fd7c55e8\",\"lineage\":\"i-1637fd7c55e8\",\"cell\":\"accept-gate:better\",\"round\":1},{\"hypothesis\":\"better-2 improves the primary metric\",\"mechanism\":\"better-2\",\"class\":\"accept-gate\",\"direction\":\"better-2\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":false,\"priority\":0,\"source\":\"planner\",\"evidence\":[],\"id\":\"i-723120561ad5\",\"lineage\":\"i-723120561ad5\",\"cell\":\"accept-gate:better-2\",\"round\":1}],\"rejected\":[]}",
+   "data": {}
+  },
+  "ar-select:1": {
+   "stepId": "ar-select:1",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.375Z",
+   "output": "{\"picks\":[{\"hypothesis\":\"better-2 improves the primary metric\",\"mechanism\":\"better-2\",\"class\":\"accept-gate\",\"direction\":\"better-2\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":false,\"priority\":0,\"source\":\"planner\",\"evidence\":[],\"id\":\"i-723120561ad5\",\"lineage\":\"i-723120561ad5\",\"cell\":\"accept-gate:better-2\",\"round\":1},{\"hypothesis\":\"better improves the primary metric\",\"mechanism\":\"better\",\"class\":\"accept-gate\",\"direction\":\"better\",\"targets\":[\"src/gate/gates.py\"],\"expectedEffect\":{\"metric\":\"primary\",\"direction\":\"down\",\"microSignal\":\"fewer accepts\"},\"microArgs\":{},\"testPlan\":\"assert the new accept decision\",\"bold\":true,\"priority\":0,\"source\":\"planner\",\"evidence\":[],\"id\":\"i-1637fd7c55e8\",\"lineage\":\"i-1637fd7c55e8\",\"cell\":\"accept-gate:better\",\"round\":1}],\"draws\":[{\"id\":\"i-723120561ad5\",\"draw\":0.7870093757282451},{\"id\":\"i-1637fd7c55e8\",\"draw\":0.6828955981175706}],\"plannerTopK\":[\"i-1637fd7c55e8\",\"i-723120561ad5\"]}",
+   "data": {}
+  },
+  "ar-lane:1/i-723120561ad5": {
+   "stepId": "ar-lane:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.376Z",
+   "output": "1",
+   "data": {}
+  },
+  "ar-lane:1/i-1637fd7c55e8": {
+   "stepId": "ar-lane:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.376Z",
+   "output": "2",
+   "data": {}
+  },
+  "ar-alloc:1/i-723120561ad5:0": {
+   "stepId": "ar-alloc:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-alloc%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.393Z",
+   "output": "{\"result\":{\"tree\":\"/fixture/trees/i-723120561ad5-0\",\"branch\":\"ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-723120561ad5\"}}",
+   "data": {
+    "result": {
+     "tree": "/fixture/trees/i-723120561ad5-0",
+     "branch": "ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-723120561ad5"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-load-wait:1/i-723120561ad5:0": {
+   "stepId": "ar-load-wait:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-load-wait%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.394Z",
+   "output": "{\"result\":{\"waitedMs\":0,\"load5\":0.5}}",
+   "data": {
+    "result": {
+     "waitedMs": 0,
+     "load5": 0.5
+    }
+   },
+   "attempt": 0
+  },
+  "ar-alloc:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-alloc:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-alloc%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.401Z",
+   "output": "{\"result\":{\"tree\":\"/fixture/trees/i-1637fd7c55e8-0\",\"branch\":\"ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-1637fd7c55e8\"}}",
+   "data": {
+    "result": {
+     "tree": "/fixture/trees/i-1637fd7c55e8-0",
+     "branch": "ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-1637fd7c55e8"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-load-wait:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-load-wait:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-load-wait%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.402Z",
+   "output": "{\"result\":{\"waitedMs\":0,\"load5\":0.5}}",
+   "data": {
+    "result": {
+     "waitedMs": 0,
+     "load5": 0.5
+    }
+   },
+   "attempt": 0
+  },
+  "ar-implement:1/i-723120561ad5:0": {
+   "stepId": "ar-implement:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-implement%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.435Z",
+   "output": "{\"result\":{\"head\":\"4e37f3568bc616ee78d859ce1c3e035854fab6bc\",\"usd\":0,\"lesson\":\"better-2 applied\",\"agent\":\"implementer-i-723120561ad5-r1\",\"sessionId\":\"session-implementer-i-723120561ad5-r1\",\"mode\":\"spawn\",\"account\":\"fixture\"}}",
+   "data": {
+    "result": {
+     "agent": "implementer-i-723120561ad5-r1",
+     "sessionId": "session-implementer-i-723120561ad5-r1",
+     "mode": "spawn",
+     "account": "fixture",
+     "head": "4e37f3568bc616ee78d859ce1c3e035854fab6bc",
+     "usd": 0,
+     "lesson": "better-2 applied"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-implement:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-implement:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-implement%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.441Z",
+   "output": "{\"result\":{\"head\":\"a0b555a642ea4bd45c730a5d555c89131376fa94\",\"usd\":0,\"lesson\":\"better applied\",\"agent\":\"implementer-i-1637fd7c55e8-r1\",\"sessionId\":\"session-implementer-i-1637fd7c55e8-r1\",\"mode\":\"spawn\",\"account\":\"fixture\"}}",
+   "data": {
+    "result": {
+     "agent": "implementer-i-1637fd7c55e8-r1",
+     "sessionId": "session-implementer-i-1637fd7c55e8-r1",
+     "mode": "spawn",
+     "account": "fixture",
+     "head": "a0b555a642ea4bd45c730a5d555c89131376fa94",
+     "usd": 0,
+     "lesson": "better applied"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-l0:1/i-723120561ad5:0": {
+   "stepId": "ar-l0:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-l0%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.448Z",
+   "output": "{\"result\":{\"ok\":true,\"checks\":[{\"name\":\"frozen-touch\",\"ok\":true},{\"name\":\"outside-class\",\"ok\":true},{\"name\":\"new-file\",\"ok\":true},{\"name\":\"test-required\",\"ok\":true},{\"name\":\"case-name\",\"ok\":true},{\"name\":\"stray-literal\",\"ok\":true},{\"name\":\"params\",\"ok\":true}],\"diff\":{\"files\":2,\"lines\":2,\"srcFiles\":1,\"srcLines\":1,\"testLines\":1}}}",
+   "data": {
+    "result": {
+     "ok": true,
+     "checks": [
+      {
+       "name": "frozen-touch",
+       "ok": true
+      },
+      {
+       "name": "outside-class",
+       "ok": true
+      },
+      {
+       "name": "new-file",
+       "ok": true
+      },
+      {
+       "name": "test-required",
+       "ok": true
+      },
+      {
+       "name": "case-name",
+       "ok": true
+      },
+      {
+       "name": "stray-literal",
+       "ok": true
+      },
+      {
+       "name": "params",
+       "ok": true
+      }
+     ],
+     "diff": {
+      "files": 2,
+      "lines": 2,
+      "srcFiles": 1,
+      "srcLines": 1,
+      "testLines": 1
+     }
+    }
+   },
+   "attempt": 0
+  },
+  "ar-l0:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-l0:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-l0%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.455Z",
+   "output": "{\"result\":{\"ok\":true,\"checks\":[{\"name\":\"frozen-touch\",\"ok\":true},{\"name\":\"outside-class\",\"ok\":true},{\"name\":\"new-file\",\"ok\":true},{\"name\":\"test-required\",\"ok\":true},{\"name\":\"case-name\",\"ok\":true},{\"name\":\"stray-literal\",\"ok\":true},{\"name\":\"params\",\"ok\":true}],\"diff\":{\"files\":2,\"lines\":2,\"srcFiles\":1,\"srcLines\":1,\"testLines\":1}}}",
+   "data": {
+    "result": {
+     "ok": true,
+     "checks": [
+      {
+       "name": "frozen-touch",
+       "ok": true
+      },
+      {
+       "name": "outside-class",
+       "ok": true
+      },
+      {
+       "name": "new-file",
+       "ok": true
+      },
+      {
+       "name": "test-required",
+       "ok": true
+      },
+      {
+       "name": "case-name",
+       "ok": true
+      },
+      {
+       "name": "stray-literal",
+       "ok": true
+      },
+      {
+       "name": "params",
+       "ok": true
+      }
+     ],
+     "diff": {
+      "files": 2,
+      "lines": 2,
+      "srcFiles": 1,
+      "srcLines": 1,
+      "testLines": 1
+     }
+    }
+   },
+   "attempt": 0
+  },
+  "ar-l1:1/i-723120561ad5:0": {
+   "stepId": "ar-l1:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-l1%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.478Z",
+   "output": "{\"result\":{\"schema\":\"ar-micro/v1\",\"rung\":\"L1-replay\",\"predicted_direction_met\":true,\"usd\":0}}",
+   "data": {
+    "result": {
+     "schema": "ar-micro/v1",
+     "rung": "L1-replay",
+     "predicted_direction_met": true,
+     "usd": 0
+    }
+   },
+   "attempt": 0
+  },
+  "ar-l1:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-l1:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-l1%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.486Z",
+   "output": "{\"result\":{\"schema\":\"ar-micro/v1\",\"rung\":\"L1-replay\",\"predicted_direction_met\":true,\"usd\":0}}",
+   "data": {
+    "result": {
+     "schema": "ar-micro/v1",
+     "rung": "L1-replay",
+     "predicted_direction_met": true,
+     "usd": 0
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-723120561ad5:r1:0": {
+   "stepId": "ar-eval:1/i-723120561ad5:r1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-723120561ad5%3Ar1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.508Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1\",\"metrics\":{\"cc_total_delta_pct\":-2.8,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1",
+     "metrics": {
+      "cc_total_delta_pct": -2.8,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-1637fd7c55e8:r1:0": {
+   "stepId": "ar-eval:1/i-1637fd7c55e8:r1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-1637fd7c55e8%3Ar1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.518Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1",
+     "metrics": {
+      "cc_total_delta_pct": -3.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-723120561ad5:r2:0": {
+   "stepId": "ar-eval:1/i-723120561ad5:r2",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-723120561ad5%3Ar2:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.538Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2\",\"metrics\":{\"cc_total_delta_pct\":-2.8,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2",
+     "metrics": {
+      "cc_total_delta_pct": -2.8,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-1637fd7c55e8:r2:0": {
+   "stepId": "ar-eval:1/i-1637fd7c55e8:r2",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-1637fd7c55e8%3Ar2:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.548Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2",
+     "metrics": {
+      "cc_total_delta_pct": -3.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-723120561ad5:r3:0": {
+   "stepId": "ar-eval:1/i-723120561ad5:r3",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-723120561ad5%3Ar3:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.570Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3",
+     "metrics": {
+      "cc_total_delta_pct": -3.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-eval:1/i-1637fd7c55e8:r3:0": {
+   "stepId": "ar-eval:1/i-1637fd7c55e8:r3",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-eval%3A1%2Fi-1637fd7c55e8%3Ar3:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.578Z",
+   "output": "{\"result\":{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3\"}}",
+   "data": {
+    "result": {
+     "schema": "ar-result/v2",
+     "case": "t-alpha",
+     "repeat": "d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3",
+     "metrics": {
+      "cc_total_delta_pct": -3.2,
+      "single_caller_delta": 0,
+      "accepted_tasks": 5
+     },
+     "gates": {
+      "all_gate": true
+     },
+     "violations": {
+      "hidden_regressions": 0
+     },
+     "usd": 0,
+     "wall_s": 0,
+     "artifact_dir": "/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-release:1/i-723120561ad5:0": {
+   "stepId": "ar-release:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-release%3A1%2Fi-723120561ad5:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.584Z",
+   "output": "{\"result\":{\"released\":\"/fixture/trees/i-723120561ad5-0\"}}",
+   "data": {
+    "result": {
+     "released": "/fixture/trees/i-723120561ad5-0"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-stop:1/i-723120561ad5": {
+   "stepId": "ar-stop:1/i-723120561ad5",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.585Z",
+   "output": "{\"ideaId\":\"i-723120561ad5\",\"lineage\":\"i-723120561ad5\",\"cell\":\"accept-gate:better-2\",\"verdict\":\"kept\",\"reason\":\"beyond-band\",\"rungReached\":\"L3\",\"head\":\"4e37f3568bc616ee78d859ce1c3e035854fab6bc\",\"branch\":\"ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-723120561ad5\",\"lesson\":\"better-2 applied\",\"diff\":{\"files\":2,\"lines\":2,\"srcFiles\":1,\"srcLines\":1,\"testLines\":1},\"implementer\":{\"agent\":\"implementer-i-723120561ad5-r1\",\"sessionId\":\"session-implementer-i-723120561ad5-r1\",\"mode\":\"spawn\",\"account\":\"fixture\"},\"l0\":{\"ok\":true,\"checks\":[{\"name\":\"frozen-touch\",\"ok\":true},{\"name\":\"outside-class\",\"ok\":true},{\"name\":\"new-file\",\"ok\":true},{\"name\":\"test-required\",\"ok\":true},{\"name\":\"case-name\",\"ok\":true},{\"name\":\"stray-literal\",\"ok\":true},{\"name\":\"params\",\"ok\":true}]},\"micro\":{\"schema\":\"ar-micro/v1\",\"rung\":\"L1-replay\",\"predicted_direction_met\":true,\"usd\":0},\"usage\":{\"implementUsd\":0,\"evalUsd\":0,\"microUsd\":0},\"runs\":[{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1\",\"metrics\":{\"cc_total_delta_pct\":-2.8,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r1\"},{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2\",\"metrics\":{\"cc_total_delta_pct\":-2.8,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r2\"},{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-723120561ad5-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-723120561ad5-r3\"}],\"delta\":2.5999999999999996,\"against\":{\"case\":\"t-alpha\",\"head\":\"565d553a25f3656916e5465668461f654b449bac\",\"bandWidth\":1.5,\"sigma\":0.23094010767585033,\"pairs\":3,\"locked\":false},\"lane\":1,\"fork\":\"explore\"}",
+   "data": {}
+  },
+  "ar-release:1/i-1637fd7c55e8:0": {
+   "stepId": "ar-release:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-release%3A1%2Fi-1637fd7c55e8:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.587Z",
+   "output": "{\"result\":{\"released\":\"/fixture/trees/i-1637fd7c55e8-0\"}}",
+   "data": {
+    "result": {
+     "released": "/fixture/trees/i-1637fd7c55e8-0"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-stop:1/i-1637fd7c55e8": {
+   "stepId": "ar-stop:1/i-1637fd7c55e8",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.587Z",
+   "output": "{\"ideaId\":\"i-1637fd7c55e8\",\"lineage\":\"i-1637fd7c55e8\",\"cell\":\"accept-gate:better\",\"verdict\":\"kept\",\"reason\":\"beyond-band\",\"rungReached\":\"L3\",\"head\":\"a0b555a642ea4bd45c730a5d555c89131376fa94\",\"branch\":\"ar-idea/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/i-1637fd7c55e8\",\"lesson\":\"better applied\",\"diff\":{\"files\":2,\"lines\":2,\"srcFiles\":1,\"srcLines\":1,\"testLines\":1},\"implementer\":{\"agent\":\"implementer-i-1637fd7c55e8-r1\",\"sessionId\":\"session-implementer-i-1637fd7c55e8-r1\",\"mode\":\"spawn\",\"account\":\"fixture\"},\"l0\":{\"ok\":true,\"checks\":[{\"name\":\"frozen-touch\",\"ok\":true},{\"name\":\"outside-class\",\"ok\":true},{\"name\":\"new-file\",\"ok\":true},{\"name\":\"test-required\",\"ok\":true},{\"name\":\"case-name\",\"ok\":true},{\"name\":\"stray-literal\",\"ok\":true},{\"name\":\"params\",\"ok\":true}]},\"micro\":{\"schema\":\"ar-micro/v1\",\"rung\":\"L1-replay\",\"predicted_direction_met\":true,\"usd\":0},\"usage\":{\"implementUsd\":0,\"evalUsd\":0,\"microUsd\":0},\"runs\":[{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r1\"},{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r2\"},{\"schema\":\"ar-result/v2\",\"case\":\"t-alpha\",\"repeat\":\"d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3\",\"metrics\":{\"cc_total_delta_pct\":-3.2,\"single_caller_delta\":0,\"accepted_tasks\":5},\"gates\":{\"all_gate\":true},\"violations\":{\"hidden_regressions\":0},\"usd\":0,\"wall_s\":0,\"artifact_dir\":\"/fixture/trees/i-1637fd7c55e8-0/.artifacts/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe-1-i-1637fd7c55e8-r3\"}],\"delta\":3,\"against\":{\"case\":\"t-alpha\",\"head\":\"565d553a25f3656916e5465668461f654b449bac\",\"bandWidth\":1.5,\"sigma\":0.23094010767585033,\"pairs\":3,\"locked\":false},\"lane\":2,\"fork\":\"explore\"}",
+   "data": {}
+  },
+  "ar-ratchet:1:0": {
+   "stepId": "ar-ratchet:1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-ratchet%3A1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.739Z",
+   "output": "{\"result\":{\"head\":\"a0b555a642ea4bd45c730a5d555c89131376fa94\"}}",
+   "data": {
+    "result": {
+     "head": "a0b555a642ea4bd45c730a5d555c89131376fa94"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-summary:1": {
+   "stepId": "ar-summary:1",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.740Z",
+   "output": "{\"round\":1,\"best\":{\"head\":\"a0b555a642ea4bd45c730a5d555c89131376fa94\",\"primary\":-3.2},\"against\":{\"case\":\"t-alpha\",\"head\":\"565d553a25f3656916e5465668461f654b449bac\",\"bandWidth\":1.5,\"sigma\":0.23094010767585033,\"pairs\":3,\"locked\":false},\"keptIds\":[\"i-1637fd7c55e8\"],\"superseded\":[\"i-723120561ad5\"],\"ratchet\":{\"from\":\"565d553a25f3656916e5465668461f654b449bac\",\"to\":\"a0b555a642ea4bd45c730a5d555c89131376fa94\"},\"quotaViolations\":[],\"plannerRetried\":false}",
+   "data": {}
+  },
+  "ar-archive:1:0": {
+   "stepId": "ar-archive:1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-archive%3A1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.742Z",
+   "output": "{\"result\":{\"path\":\"/fixture/archive/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/round-1.json\",\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}",
+   "data": {
+    "result": {
+     "path": "/fixture/archive/d6909d25-7d7e-4a6b-a393-1ff9ac4269fe/round-1.json",
+     "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   },
+   "attempt": 0
+  },
+  "ar-end": {
+   "stepId": "ar-end",
+   "iteration": 0,
+   "operation": "seed",
+   "agentId": null,
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.743Z",
+   "output": "{\"stopReason\":\"rounds-exhausted\"}",
+   "data": {}
+  },
+  "ar-registry:p1:0": {
+   "stepId": "ar-registry:p1",
+   "iteration": 0,
+   "operation": "dispatch",
+   "agentId": "workflow:d6909d25-7d7e-4a6b-a393-1ff9ac4269fe:ar-registry%3Ap1:0:0",
+   "signal": null,
+   "completedAt": "2026-10-22T10:45:45.745Z",
+   "output": "{\"result\":{\"path\":\"/fixture/registry.jsonl\"}}",
+   "data": {
+    "result": {
+     "path": "/fixture/registry.jsonl"
+    }
+   },
+   "attempt": 0
+  }
+ },
+ "activeSteps": {},
+ "revision": 109,
+ "ownerGeneration": 1,
+ "startedAt": "2026-10-22T10:45:45.133Z",
+ "completedAt": "2026-10-22T10:45:45.745Z",
+ "error": null
+}

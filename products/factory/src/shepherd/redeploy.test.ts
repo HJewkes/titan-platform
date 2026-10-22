@@ -213,18 +213,18 @@ describe("sh-redeploy when the deployer cannot start", () => {
 describe("redeploy", () => {
   const input = { repo: OWN_REPO, pr: 1, mergeSha: "a".repeat(40) };
 
-  it("spawns nothing when the service already runs the merge sha", () => {
+  it("spawns nothing when the service already runs the merge sha", async () => {
     const deployer = fakeDeployer(input.mergeSha);
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
     expect(deployer.spawned).toEqual([]);
   });
 
-  it("spawns nothing when no deployer is wired", () => {
-    expect(redeploy(undefined, input)).toMatchObject({ spawned: false, detail: "no deployer wired" });
+  it("spawns nothing when no deployer is wired", async () => {
+    expect(await redeploy(undefined, input)).toMatchObject({ spawned: false, detail: "no deployer wired" });
   });
 
-  it("records the error class, never a URL or token from the spawn error", () => {
+  it("records the error class, never a URL or token from the spawn error", async () => {
     const deployer: Deployer = {
       runningSha: () => "unknown",
       spawn: () => {
@@ -232,19 +232,19 @@ describe("redeploy", () => {
       },
     };
 
-    const result = redeploy(deployer, input);
+    const result = await redeploy(deployer, input);
 
     expect(result).toMatchObject({ spawned: false, detail: "the deployer did not start: Error" });
     expectNoLeak(result);
   });
 
-  it("asks a deployer that queues before the running-sha check only when the sha is new", () => {
+  it("asks a deployer that queues before the running-sha check only when the sha is new", async () => {
     const deployer = { ...fakeDeployer(input.mergeSha), request: () => ({ spawned: false, queued: true, detail: "queued" }) };
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
   });
 
-  it("records a request that throws as no spawn, with the error class only", () => {
+  it("records a request that throws as no spawn, with the error class only", async () => {
     const deployer: Deployer = {
       ...fakeDeployer(),
       request: () => {
@@ -252,16 +252,16 @@ describe("redeploy", () => {
       },
     };
 
-    const result = redeploy(deployer, input);
+    const result = await redeploy(deployer, input);
 
     expect(result).toEqual({ spawned: false, detail: "the deploy was not queued: Error" });
     expectNoLeak(result);
   });
 
-  it("reports no spawn when the deployer got no pid", () => {
+  it("reports no spawn when the deployer got no pid", async () => {
     const deployer: Deployer = { runningSha: () => "unknown", spawn: () => ({ pid: undefined, log: "/state/redeploy.log" }) };
 
-    expect(redeploy(deployer, input)).toMatchObject({ spawned: false });
+    expect(await redeploy(deployer, input)).toMatchObject({ spawned: false });
   });
 
   it("matches the factory's repo case-insensitively and no other", () => {
@@ -309,10 +309,10 @@ describe("deployPacerPorts", () => {
     expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
   });
 
-  it("queues into the file the pacer reads", () => {
+  it("queues into the file the pacer reads", async () => {
     const store = memoryStore();
 
-    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
+    await systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
 
     expect([...store.files.keys()]).toEqual([join("/state", DEPLOY_WANTED)]);
   });

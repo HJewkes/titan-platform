@@ -16,7 +16,9 @@
  * item each (`round-follow-ups.ts`). A design round is answered here only when it has a valid `frames/frames.json`, as the page then
  * shows its frames; without one the review harness answers it. A withdrawn round is refused before anything is written, so neither the decision
  * log nor a listener hears of it. A same-user process could still swap the round directory between the check
- * and the write; the OS account is the trust boundary, as in `owner-guard.ts`.
+ * and the write; the OS account is the trust boundary, as in `owner-guard.ts`. The story variants the owner
+ * opened live go to the decision log with the round's Storybook build, never into feedback.json (TP-3793 S7). Once the
+ * answer is written, each still-open round the manifest's `supersedes` names is withdrawn (`round-supersede.ts`, TP-3990).
  */
 import { createHash } from "node:crypto";
 import { open, rm, type FileHandle } from "node:fs/promises";
@@ -26,13 +28,15 @@ import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { decisionLogResult, type DecisionLog } from "./decision-log.js";
+import { decisionLogResult, type LiveViewedEntry, type RoundDecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
+import { viewedBuilds } from "./round-live.js";
 import { refuseUnrevealedSeen } from "./round-reveal.js";
-import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
+import { buildRoundFeedback, feedbackProblems } from "./round-feedback.js";
+import { supersedeOutcome, withdrawSuperseded } from "./round-supersede.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
 import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, parseManifest, readCapped, readQueueRounds, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
@@ -40,6 +44,7 @@ import { readPriorFeedback } from "./prior-feedback.js";
 import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { frameScope, sendBackBlocker, shipBlockers } from "./ship-blockers.js";
+import { checkAnswers, checkFollowUps, checkVariants } from "./round-answer-checks.js";
 
 /**
  * Room for a 24-frame round whose frames all hold the longest comment and pins in one-byte text; the same round in
@@ -65,6 +70,8 @@ const submitArgs = z.strictObject({
   followUps: z.array(z.string().min(1)).max(100).default([]),
   /** The owner's verdict, comment and pins per frame (TP-3773); a frame left out is echoed undecided. */
   variants: z.array(PostedVariant).max(200).default([]),
+  /** The variant keys whose live story rendered on the owner's page; logged for an audit, never written to feedback.json. */
+  liveViewed: z.array(z.string().min(1).max(200)).max(200).optional(),
 });
 
 type SubmitArgs = z.infer<typeof submitArgs>;
@@ -83,17 +90,24 @@ const submitResult = z.discriminatedUnion("status", [
     followUps: z.object({ sidecar: z.enum(["recorded", "unrecorded"]), filed: z.array(z.object({ questionId: z.string(), item: z.string().nullable() })) }).optional(),
     /** One decision-log result per answered question; absent when the console has no decision log. */
     log: z.array(decisionLogResult.extend({ questionId: z.string() })).optional(),
+    /** Present when liveViewed was sent and the console has a decision log: whether its line was written. */
+    liveViewedLog: z.enum(["written", "failed"]).optional(),
+    /** Present when round.json lists `supersedes`: what became of each named round (TP-3990). */
+    superseded: z.array(supersedeOutcome).optional(),
   }),
   z.object({ status: z.literal("already-submitted") }),
 ]);
 
-type SubmitResult = z.infer<typeof submitResult>;
+export type SubmitResult = z.infer<typeof submitResult>;
+export { submitResult };
 type LogEntry = NonNullable<Extract<SubmitResult, { status: "submitted" }>["log"]>[number];
 
 interface Submission {
   result: SubmitResult;
   /** Null unless this call wrote the feedback file. */
   round: SubmittedRound | null;
+  /** Null unless this call wrote the feedback file with liveViewed sent. */
+  live: LiveViewedEntry | null;
 }
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -123,58 +137,12 @@ function validManifest(bytes: Buffer): Manifest {
   return parsed.ok ? parsed.manifest : refuse(`${ROUND_FILE} is not a valid round: ${parsed.reason}`);
 }
 
-/** Each field an answer may carry, by the question kinds that take it; `comment` and `optionNotes` go anywhere. */
-const FIELD_KINDS: Record<string, readonly string[]> = {
-  pick: ["pick-one"],
-  revisionRequested: ["pick-one"],
-  picks: ["pick-many"],
-  value: ["scale"],
-  text: ["text"],
-};
-
-function answerProblem(question: Question, answer: SubmittedAnswer): string | null {
-  const misplaced = Object.keys(answer).find((field) => FIELD_KINDS[field] && !FIELD_KINDS[field].includes(question.kind));
-  if (misplaced) return `${misplaced} does not answer a ${question.kind} question`;
-  if (answer.pick !== undefined && answer.revisionRequested) return "a revision request carries no pick";
-  const offered = "options" in question ? question.options : [];
-  const chosen = [...(answer.pick === undefined ? [] : [answer.pick]), ...(answer.picks ?? [])];
-  const unknown = chosen.find((option) => !offered.includes(option));
-  return unknown === undefined ? null : `"${unknown}" is not one of its options`;
-}
-
-/** A follow-up names a side question once; the merge question is the PR's own answer, never a follow-up. */
-function checkFollowUps(manifest: Manifest, followUps: readonly string[]): void {
-  const questions = new Map(manifest.questions.map((question) => [question.id, question]));
-  for (const [index, id] of followUps.entries()) {
-    const question = questions.get(id) ?? refuse(`no question "${id}" to mark follow-up`);
-    if (question.kind === "pick-one" && question.merge) refuse(`question "${id}" is the Ship decision and cannot be a follow-up`);
-    if (followUps.indexOf(id) !== index) refuse(`question "${id}" is marked follow-up twice`);
-  }
-}
-
-function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
-  const questions = new Map(manifest.questions.map((question) => [question.id, question]));
-  const seen = new Set<string>();
-  for (const answer of answers) {
-    const question = questions.get(answer.questionId) ?? refuse(`no question "${answer.questionId}" in this round`);
-    if (seen.has(answer.questionId)) refuse(`question "${answer.questionId}" is answered twice`);
-    seen.add(answer.questionId);
-    const problem = answerProblem(question, answer);
-    if (problem !== null) refuse(`question "${answer.questionId}": ${problem}`);
-  }
-}
-
-/** Each posted frame is one of the round's, once, and each of its pins is numbered on that frame. */
-function checkVariants(manifest: Manifest, variants: readonly PostedVariant[]): void {
-  const keys = new Set(manifest.variants.map((variant) => variant.key));
-  const seen = new Set<string>();
-  for (const { key, annotations = [] } of variants) {
-    if (!keys.has(key)) refuse(`no frame "${key}" in this round`);
-    if (seen.has(key)) refuse(`frame "${key}" is sent twice`);
-    seen.add(key);
-    const stray = annotations.find((pin, index) => !isPinOf(key, pin.id) || annotations.findIndex((each) => each.id === pin.id) !== index);
-    if (stray !== undefined) refuse(`frame "${key}": pin "${stray.id}" is not a pin of its own, numbered once`);
-  }
+/** The live keys as round variants, each once, in the round's order; undefined when none were sent. */
+function liveViewedKeys(manifest: Manifest, liveViewed: readonly string[] | undefined): string[] | undefined {
+  if (liveViewed === undefined) return undefined;
+  const unknown = liveViewed.find((key) => !manifest.variants.some((variant) => variant.key === key));
+  if (unknown !== undefined) refuse(`liveViewed names "${unknown}", which is no frame in this round`);
+  return manifest.variants.map((variant) => variant.key).filter((key) => liveViewed.includes(key));
 }
 
 type Shipped = { id: string; headSha: string };
@@ -306,34 +274,39 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   await refuseUnrevealedSeen(roundDir, manifest, args.answers);
   checkFollowUps(manifest, args.followUps);
   checkVariants(manifest, args.variants);
+  const liveKeys = liveViewedKeys(manifest, args.liveViewed);
   const shipped = shippedHeads(manifest, args);
   if (shipped.length > 0) await refuseBlockedShip(source, manifest, args, shipped);
   refuseSendBackWithoutNote(manifest, args);
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
-  if (written === null) return { result: { status: "already-submitted" }, round: null };
+  if (written === null) return { result: { status: "already-submitted" }, round: null, live: null };
   const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
-  return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps }, round };
+  const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, ...(await viewedBuilds(roundDir, manifest, liveKeys)) };
+  const superseded = manifest.supersedes === undefined ? {} : { superseded: await withdrawSuperseded(dir, args.id, manifest.supersedes, { apply: true, now }) };
+  return { result: { status: "submitted", path: written, sha256: sha256(bytes), ...headsResult(shipped), ...addressed, ...followUps, ...superseded }, round, live };
 }
 
-async function logRound(decisionLog: DecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
-  const entries: LogEntry[] = [];
-  for (const { questionId, item, answer } of roundDecisions(round)) entries.push({ questionId, ...(await decisionLog.record(item, answer)) });
-  return entries;
+/** One batch, so a round of N answers reads the human-only list once rather than N times (TP-4001). */
+async function logRound(decisionLog: RoundDecisionLog, round: SubmittedRound): Promise<LogEntry[]> {
+  const decisions = roundDecisions(round);
+  const results = await decisionLog.recordAll(decisions);
+  return decisions.map(({ questionId }, index) => ({ questionId, ...results[index]! }));
 }
 
 /** Runs only once the feedback file is written; a log failure shows in `log` and never undoes the submit. */
-async function recordDecisions(decisionLog: DecisionLog | undefined, { result, round }: Submission): Promise<SubmitResult> {
+async function recordDecisions(decisionLog: RoundDecisionLog | undefined, { result, round, live }: Submission): Promise<SubmitResult> {
   if (decisionLog === undefined || round === null || result.status !== "submitted") return result;
-  return { ...result, log: await logRound(decisionLog, round) };
+  const log = await logRound(decisionLog, round);
+  return { ...result, log, ...(live !== null && { liveViewedLog: await decisionLog.recordLiveViewed(live) }) };
 }
 
-/** The listener runs after the answer is on disk and never changes what the owner is told. */
+/** The listener never changes what the owner is told, so the response skips its 10 s factory and seat calls; the sweep retries a failure (TP-4001). */
 async function afterSubmit(hooks: SubmitHooks, id: string, submission: Submission): Promise<SubmitResult> {
   const result = await recordDecisions(hooks.decisionLog, submission);
-  await hooks.listeners?.afterRoundSubmit(id, result);
+  void hooks.listeners?.afterRoundSubmit(id, result).catch(() => undefined);
   return result;
 }
 
@@ -344,11 +317,22 @@ interface SubmitTarget {
 }
 
 interface SubmitHooks {
-  decisionLog?: DecisionLog;
+  decisionLog?: RoundDecisionLog;
   listeners?: RoundListeners;
 }
 
-export function roundsSubmitCommands(source: RoundsSource, decisionLog?: DecisionLog, listeners?: RoundListeners, inboxDir?: string) {
+/** The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044). */
+export type SubmitPipeline = (posted: z.input<typeof submitArgs>) => Promise<SubmitResult>;
+
+export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string): SubmitPipeline {
+  return async (posted) => {
+    const args = submitArgs.parse(posted);
+    return afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
+  };
+}
+
+export function roundsSubmitCommands(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string) {
+  const submit = submitPipeline(source, decisionLog, listeners, inboxDir);
   return {
     "rounds.submit": ownerWriteCommand({
       name: "rounds.submit",
@@ -356,7 +340,7 @@ export function roundsSubmitCommands(source: RoundsSource, decisionLog?: Decisio
       args: submitArgs,
       result: submitResult,
       ownerWrite: true,
-      run: async (args) => afterSubmit({ decisionLog, listeners }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args)),
+      run: (args) => submit(args),
     }),
   };
 }

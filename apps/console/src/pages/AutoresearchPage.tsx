@@ -24,6 +24,7 @@ import { AutoresearchHeader, RunStatusBadge } from "./AutoresearchHeader.js";
 import { AutoresearchLanes } from "./AutoresearchLanes.js";
 import { AutoresearchProgress } from "./AutoresearchProgress.js";
 import { AutoresearchRegistries } from "./AutoresearchRegistries.js";
+import { AutoresearchSnapshots } from "./AutoresearchSnapshots.js";
 import { AutoresearchValidator } from "./AutoresearchValidator.js";
 
 export function AutoresearchView({ route }: { route: Route }): ReactNode {
@@ -61,6 +62,7 @@ function RunsTable({ runs }: { runs: readonly ArRunSummary[] }): ReactNode {
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Phase</TableHeaderCell>
           <TableHeaderCell>Round</TableHeaderCell>
+          <TableHeaderCell>Open snapshot</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -86,6 +88,7 @@ function RunRow({ run }: { run: ArRunSummary }): ReactNode {
       </TableCell>
       <TableCell>{run.phase}</TableCell>
       <TableCell>{`${run.round} / ${run.rounds}`}</TableCell>
+      <TableCell>{run.openSnapshot === null ? "—" : `k${run.openSnapshot.k} · PR #${run.openSnapshot.pr}`}</TableCell>
     </TableRow>
   );
 }
@@ -100,6 +103,7 @@ function RunSection({ runId }: { runId: string }): ReactNode {
       <AutoresearchBacklog run={run.data} />
       <AutoresearchLanes run={run.data} />
       <AutoresearchDecisions run={run.data} />
+      <AutoresearchSnapshots run={run.data} />
       <AutoresearchProgress run={run.data} />
       <AutoresearchRegistries run={run.data} />
       <AutoresearchValidator run={run.data} />

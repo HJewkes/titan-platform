@@ -3,9 +3,12 @@ import { z } from "zod";
 import { implementerBrief, type Digest } from "./digest.js";
 import { confirmRule, improvement, keepRule, zeroToleranceHit, type Band, type KeepSettings } from "./keep.js";
 import { arStepId } from "./manifest.js";
-import { ImplementedSchema, LoadWaitSchema, ReleasedSchema, StaticCheckSchema, TreeSchema, type Fork, type Pinned } from "./ports.js";
+import { ImplementedSchema, LoadWaitSchema, ReleasedSchema, StaticCheckSchema, TreeSchema, type Fork, type Pinned, type RunPin } from "./ports.js";
 import { ArMicroSchema, microSignalArg, type ArMicro, type ArResult, type DiffSize, type Idea, type Outcome } from "./schemas.js";
 import { recorded, step } from "./steps.js";
+
+/** The recorded pin an evaluator step names, so a restarted host can rebuild its evaluator; never a wall-clock value. */
+export const runPinOf = ({ ctx, pinned }: { ctx: WorkflowContext; pinned: Pinned }): RunPin => ({ runId: ctx.runId, pin: pinned.pin, frozenHash: pinned.frozenHash });
 
 /** A run's eval key, unique per run, ladder scope and repeat, because a target may use it as a cache directory. */
 export const runKey = (runId: string, scope: string, label: string): string => `${runId}-${scope.replaceAll("/", "-")}-${label}`.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -54,7 +57,7 @@ export interface RoundContext {
   slots: LaneSlots;
 }
 
-interface Built {
+export interface Built {
   idea: Idea;
   tree: string;
   base: string;
@@ -77,7 +80,7 @@ function finish(built: Built, rungReached: Outcome["rungReached"], verdict: Outc
 }
 
 const evalRun = (rc: RoundContext, scope: string, tree: string, label: string) =>
-  step(rc.ctx, `${arStepId("eval")}:${scope}:${label}`, { tree, case: rc.case, key: runKey(rc.ctx.runId, scope, label), rung: "seed" }, rc.result);
+  step(rc.ctx, `${arStepId("eval")}:${scope}:${label}`, { ...runPinOf(rc), tree, case: rc.case, key: runKey(rc.ctx.runId, scope, label), rung: "seed" }, rc.result);
 
 async function confirm(rc: RoundContext, scope: string, built: Built, runs: ArResult[], delta: number): Promise<Outcome> {
   const confirms = [await evalRun(rc, scope, built.tree, "c1"), await evalRun(rc, scope, built.tree, "c2")];
@@ -86,8 +89,11 @@ async function confirm(rc: RoundContext, scope: string, built: Built, runs: ArRe
   return finish(built, "L3", verdict, decision.reason, { runs: [...runs, ...confirms], delta });
 }
 
-/** L2 one run, then L3 repeats and the keep rule; an L2 run with a zero-tolerance violation or clearly worse stops here. */
-async function caseRungs(rc: RoundContext, scope: string, built: Built): Promise<Outcome> {
+/**
+ * L2 one run, then L3 repeats and the keep rule against `rc.best`; an L2 run with a zero-tolerance violation or clearly
+ * worse stops here. A re-evaluation passes a context rebased on the round's new head and a scope of its own.
+ */
+export async function caseRungs(rc: RoundContext, scope: string, built: Built): Promise<Outcome> {
   const first = await evalRun(rc, scope, built.tree, "r1");
   const firstDelta = improvement(rc.best.runs, [first], rc.keep);
   const violation = zeroToleranceHit([first], rc.keep);
@@ -111,7 +117,7 @@ async function implement(rc: RoundContext, idea: Idea, at: Lane) {
   await step(rc.ctx, `${arStepId("load-wait")}:${at.scope}`, { stage: "implement" }, LoadWaitSchema);
   const brief = implementerBrief(rc.digest, idea);
   const fork = rc.forks.get(idea.id) ?? { fork: "explore" };
-  const input = { idea, tree: at.tree, base: rc.best.head, brief, round: rc.round, lane: at.lane, ...fork };
+  const input = { runId: rc.ctx.runId, idea, tree: at.tree, base: rc.best.head, brief, round: rc.round, lane: at.lane, ...fork };
   return step(rc.ctx, `${arStepId("implement")}:${at.scope}`, input, ImplementedSchema);
 }
 
@@ -120,14 +126,14 @@ async function microRung(rc: RoundContext, at: Built, scope: string, rung: strin
   const baselineDir = rc.best.runs[0]?.artifact_dir;
   if (!baselineDir) return finish(at, "L1", "stopped", "no-baseline-dir");
   const { idea, tree, base } = at;
-  const input = { idea, tree, base, rung, case: rc.case, baselineDir, microSignal: microSignalArg(idea), microArgs: idea.microArgs, key: runKey(rc.ctx.runId, scope, "m1") };
+  const input = { ...runPinOf(rc), idea, tree, base, rung, case: rc.case, baselineDir, microSignal: microSignalArg(idea), microArgs: idea.microArgs, key: runKey(rc.ctx.runId, scope, "m1") };
   return step(rc.ctx, `${arStepId("l1")}:${scope}`, input, ArMicroSchema);
 }
 
 async function climb(rc: RoundContext, idea: Idea, at: Lane): Promise<Outcome> {
   const base = rc.best.head;
   const built = await implement(rc, idea, at);
-  const l0 = await step(rc.ctx, `${arStepId("l0")}:${at.scope}`, { idea, tree: at.tree, base, head: built.head }, StaticCheckSchema);
+  const l0 = await step(rc.ctx, `${arStepId("l0")}:${at.scope}`, { ...runPinOf(rc), idea, tree: at.tree, base, head: built.head }, StaticCheckSchema);
   const { agent, sessionId, resumedFrom, mode, account } = built;
   const record = { implementer: { agent, sessionId, resumedFrom, mode, account }, l0: { ok: l0.ok, code: l0.code, checks: l0.checks } };
   const implementUsd = built.usage?.usd ?? built.usd;

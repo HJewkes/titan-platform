@@ -118,6 +118,8 @@ export interface ShepherdDeps {
   agentChatBin: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
+  /** The accounts a successor may spawn under, preferred first, read per wake; the first with headroom wins. Absent means `agentChatConfigDir`. */
+  successorAccounts?: () => readonly string[];
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** Admits a successor spawn; absent means it is not gated. */

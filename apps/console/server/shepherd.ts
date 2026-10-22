@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { OwnerOp } from "@titan-design/owner-queue";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
@@ -45,6 +46,29 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
+/** The factory's `owner-op.preview` for a PR op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
+const opPreview = z
+  .object({
+    kind: z.string(),
+    authority: z.object({ verdict: z.string(), ruleId: z.string().nullable().optional(), reason: z.string().optional() }).passthrough(),
+    pr: z
+      .object({
+        repo: z.string(),
+        pr: z.number().int(),
+        state: z.enum(["open", "merged", "closed"]),
+        title: z.string().nullable(),
+        base: z.string(),
+        head: z.string().optional(),
+        mergeSha: z.string().optional(),
+        behind: z.boolean(),
+        mergeableState: z.string(),
+        shepherd: z.object({ runId: z.string(), held: z.boolean(), holdReason: z.string().nullable(), ownerHold: z.string().nullable() }).passthrough().nullable(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 /** Shepherd's `shepherd.release` arguments: one hold of `holdClass`, at the head the owner confirmed, by `actor`. */
 interface ReleaseAt {
   repo: string;
@@ -58,6 +82,7 @@ type WatchRow = z.infer<typeof watchRow>;
 type PrTimeline = z.infer<typeof prTimeline>;
 type Waiting = z.infer<typeof waiting>;
 type Released = z.infer<typeof released>;
+export type OpPreview = z.infer<typeof opPreview>;
 type ListState = (typeof LIST_STATES)[number];
 
 /** Each call rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
@@ -67,6 +92,8 @@ export interface ShepherdSource {
   waiting(): Promise<Waiting>;
   /** The one write: only `inbox.act` calls it, after the owner confirmed a g10 hold's release. */
   release(at: ReleaseAt): Promise<Released>;
+  /** The factory's live read-back for a typed owner op: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
+  previewOp(op: OwnerOp): Promise<OpPreview>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -92,6 +119,7 @@ export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS
     timeline: (repo, pr) => read("shepherd.timeline", { repo, pr }, prTimeline),
     waiting: () => read("shepherd.waiting", {}, waiting),
     release: ({ repo, pr, head, holdClass, actor }) => read("shepherd.release", { repo, pr, head, holdClass, actor }, released),
+    previewOp: (op) => read("owner-op.preview", { op }, opPreview),
   };
 }
 

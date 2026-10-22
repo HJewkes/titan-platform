@@ -12,6 +12,7 @@
 import { open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { SEAT_NAME } from "./round-notice-transport.js";
 import { OPEN_FLAGS, readCapped } from "./rounds.js";
 
 export const VIDEO_META_SCHEMA = "titan-console/video-meta@1";
@@ -33,6 +34,8 @@ const folderFields = {
   series: label.optional(),
   take: label.optional(),
   status: z.enum(["draft", "review", "final", "superseded"]).optional(),
+  /** The agent-chat seat that owns the work the video shows; the owner's comments on its content go there. */
+  owner: z.string().regex(SEAT_NAME).optional(),
 };
 
 const videoFields = {

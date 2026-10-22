@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { Button, ButtonText, HStack, Spinner, Typography } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
@@ -53,6 +53,7 @@ function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay, onNatur
   const pins = useFramePins();
   const coarse = useCoarsePointer();
   const image = useRef<HTMLImageElement>(null);
+  const onLoad = useLoadRender(onNaturalSize);
   if (frame.status === "loading") return <Spinner size="sm" label={`Loading ${alt}`} />;
   if (frame.data === undefined) return <Typography variant="caption" color="error">{`Could not load ${alt}: ${frame.error.message}`}</Typography>;
   const src = `data:${frame.data.contentType};base64,${frame.data.base64}`;
@@ -66,7 +67,7 @@ function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay, onNatur
     <>
       <div className="relative" style={trueWidth === undefined ? undefined : { width: trueWidth }}>
         <button type="button" className="block w-full cursor-zoom-in" aria-label={`Enlarge ${alt}`} onClick={() => setEnlarged(true)}>
-          <img ref={image} src={src} alt={alt} className="block h-auto w-full rounded border border-hairline-strong" onLoad={onNaturalSize && ((event) => onNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }))} />
+          <img ref={image} src={src} alt={alt} className="block h-auto w-full rounded border border-hairline-strong" onLoad={onLoad} />
         </button>
         {overlay}
         {pins ? <PinLayer pins={{ ...pins, placing: pins.placing && !coarse }} size={naturalSize(image)} /> : null}
@@ -74,6 +75,15 @@ function LoadedFrame({ roundId, frameKey, view, alt, trueWidth, overlay, onNatur
       {enlarged || pinsFullSize ? <Enlarge src={src} alt={alt} pins={pinsFullSize ? pins : null} onClose={close} /> : null}
     </>
   );
+}
+
+/** Renders again once the image loads, so its pins are drawn for the width its natural pixels give it, and tells `onNaturalSize` those pixels. */
+function useLoadRender(onNaturalSize?: (size: { width: number; height: number }) => void): (event: SyntheticEvent<HTMLImageElement>) => void {
+  const [, setLoaded] = useState(false);
+  return (event) => {
+    setLoaded(true);
+    onNaturalSize?.({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
+  };
 }
 
 /** A full-size view leaves on Escape. */
@@ -98,6 +108,7 @@ interface EnlargeProps {
 /** The image at least as wide as the screen, scrolling sideways when it is wider; Escape or Close leaves. */
 function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
   const image = useRef<HTMLImageElement>(null);
+  const onLoad = useLoadRender();
   useEscapeKey(onClose);
   return (
     <div role="dialog" aria-modal="true" aria-label={alt} className="fixed inset-0 z-50 flex flex-col gap-3 bg-surface-base p-4">
@@ -107,7 +118,7 @@ function Enlarge({ src, alt, pins, onClose }: EnlargeProps): ReactNode {
       </HStack>
       <div className="flex-1 overflow-auto">
         <div className="relative w-max min-w-full">
-          <img ref={image} src={src} alt={alt} className="block h-auto w-full max-w-none" />
+          <img ref={image} src={src} alt={alt} className="block h-auto w-full max-w-none" onLoad={onLoad} />
           {pins ? <PinLayer pins={pins} size={naturalSize(image)} /> : null}
         </div>
       </div>

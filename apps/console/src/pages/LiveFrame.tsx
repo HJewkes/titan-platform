@@ -1,11 +1,12 @@
 /**
- * A round's story variant, live from the round's Storybook build on the story origin (TP-3793 S4).
+ * A round's story variant, live from the round's Storybook build on the story origin (TP-3793 S4, S5).
  * The frame's captured PNG is its placeholder until the bridge in that frame posts `ready`, and its
  * fallback when the story dies. The PNG is what the owner approves; a live frame is a viewing aid.
  */
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type RefObject } from "react";
 import { Button, ButtonText, HStack, Typography, VStack } from "@titan-design/react-ui";
-import { useFramePins, useMediaQuery } from "./FramePins.js";
+import { useMarkLiveViewed } from "../data/live-viewed.js";
+import { SurfacePinLayer, useCoarsePointer, useFramePins, useMediaQuery } from "./FramePins.js";
 import { FrameImage, NEAR_VIEWPORT, useEscapeKey } from "./RoundFrame.js";
 import { useFitScale } from "./TrueSize.js";
 import {
@@ -18,9 +19,11 @@ import {
   builtAt,
   createLiveSlots,
   frameHeight,
+  iframeSurface,
   liveCaption,
   liveReducer,
   liveSrc,
+  pressOnPage,
   type LiveEntry,
   type LiveEvent,
   type LiveSizing,
@@ -29,6 +32,8 @@ import {
 
 /** One page shows one set of frames, so one queue caps them all. */
 const slots = createLiveSlots();
+
+export const STORY_KEYS_HINT = "Keys go to the story. Tap outside to answer.";
 
 interface PngProps {
   roundId: string;
@@ -73,17 +78,18 @@ interface StoryProps extends PngProps {
   sizing: LiveSizing;
 }
 
-/** Pins sit on the PNG's pin layer, which a live frame lacks until S5, so a frame in pin mode or holding pins stays its PNG. */
-function usePinnedPng(): boolean {
+/** A phone places pins in the captured frame's full-size view, so there a live frame in pin mode is its PNG for the while. */
+function usePinningOnPhone(): boolean {
   const pins = useFramePins();
-  return pins !== null && (pins.placing || pins.pins.length > 0);
+  const coarse = useCoarsePointer();
+  return pins !== null && pins.placing && coarse;
 }
 
 /** A Ship-bound frame starts as the approved PNG, so the default view is what a Ship approves. */
 function LiveStory({ shipBound, ...props }: StoryProps & { shipBound: boolean }): ReactNode {
   const [opened, setOpened] = useState(!shipBound);
-  const pinned = usePinnedPng();
-  if (pinned) return <CapturedFrame {...props} note="Pins are placed on the captured frame" />;
+  const pinningOnPhone = usePinningOnPhone();
+  if (pinningOnPhone) return <CapturedFrame {...props} note="Pins are placed on the captured frame" />;
   if (!opened) {
     return (
       <VStack gap={1}>
@@ -107,16 +113,34 @@ interface ViewportProps extends StoryProps {
   width: number;
 }
 
-/** Mounted only near the viewport and within the screen's cap; otherwise its PNG. */
+/** Mounted only near the viewport and within the screen's cap; otherwise its PNG. Its enlarged view outlives the fitted mount. */
 function LiveViewport(props: ViewportProps): ReactNode {
   const box = useRef<HTMLDivElement>(null);
   const near = useInView(box);
-  const granted = useLiveSlot(near);
+  const [enlarged, setEnlarged] = useState(false);
   return (
     <div ref={box} className="min-h-16" data-testid={`live-viewport-${props.frameKey}-${props.width}`}>
-      {granted ? <MountedStory {...props} fitted /> : <Waiting {...props} near={near} />}
+      <SlottedStory {...props} wanted={near} fitted onEnlarge={() => setEnlarged(true)} />
+      {enlarged ? <LiveEnlarge {...props} onClose={() => setEnlarged(false)} /> : null}
     </div>
   );
+}
+
+interface SlottedProps extends ViewportProps {
+  wanted: boolean;
+  fitted: boolean;
+  /** Takes the front of the queue, as the enlarged view the owner just opened does. */
+  first?: boolean;
+  onEnlarge?: () => void;
+}
+
+/** A story holds a slot while it is wanted and alive; a dead one hands its slot to the next frame and shows its PNG with Retry. */
+function SlottedStory({ wanted, fitted, first = false, onEnlarge, ...props }: SlottedProps): ReactNode {
+  const [dead, setDead] = useState(false);
+  const granted = useLiveSlot(wanted && !dead, first);
+  if (dead) return <DeadStory {...props} onRetry={() => setDead(false)} />;
+  if (!granted) return <Waiting {...props} near={wanted} />;
+  return <MountedStory {...props} fitted={fitted} onDead={() => setDead(true)} onEnlarge={onEnlarge} />;
 }
 
 function Waiting({ near, width, ...png }: ViewportProps & { near: boolean }): ReactNode {
@@ -144,23 +168,24 @@ function useInView(ref: RefObject<HTMLElement | null>): boolean {
   return near;
 }
 
-function useLiveSlot(wanted: boolean): boolean {
+function useLiveSlot(wanted: boolean, first: boolean): boolean {
   const [id] = useState(() => Symbol("live-frame"));
   const cap = useMediaQuery(PHONE_WIDTH) ? LIVE_CAP.phone : LIVE_CAP.desktop;
   useEffect(() => {
     if (!wanted) return;
-    slots.request(id);
+    slots.request(id, first);
     return () => slots.release(id);
-  }, [wanted, id]);
+  }, [wanted, first, id]);
   return useSyncExternalStore(slots.subscribe, () => slots.granted(id, cap));
 }
 
-/** Trusts only its own frame's window on the story origin. */
+/** Trusts only its own frame's window on the story origin; a navigation key from it is pressed again on the page. */
 function useBridge(origin: string, frame: RefObject<HTMLIFrameElement | null>, dispatch: Dispatch<LiveEvent>): void {
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
       const live = bridgeEvent(event, origin, frame.current?.contentWindow);
-      if (live) dispatch(live);
+      if (live?.type === "key") pressOnPage(live.key);
+      else if (live) dispatch(live);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -176,25 +201,55 @@ function useReadyTimeout({ phase, mount }: LiveState, dispatch: Dispatch<LiveEve
   }, [phase, mount, dispatch]);
 }
 
-/** `fitted` scales the story to its column; unfitted, as enlarged, it is drawn 1:1 and scrolls sideways. */
-function MountedStory({ fitted, ...props }: ViewportProps & { fitted: boolean }): ReactNode {
+/** Whether the owner's keys now go to this story: the page has lost focus to its iframe. */
+function useFrameFocus(frame: RefObject<HTMLIFrameElement | null>): boolean {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const check = (): void => setFocused(frame.current !== null && document.activeElement === frame.current);
+    // The page can blur before focus has landed in the frame, so the check waits a task.
+    const onBlur = (): void => void setTimeout(check, 0);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", check);
+    document.addEventListener("focusin", check);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("focusin", check);
+    };
+  }, [frame]);
+  return focused;
+}
+
+interface MountedProps extends ViewportProps {
+  /** `fitted` scales the story to its column; unfitted, as enlarged, it is drawn 1:1 and scrolls sideways. */
+  fitted: boolean;
+  onDead: () => void;
+  onEnlarge?: (() => void) | undefined;
+}
+
+function MountedStory({ fitted, onDead, onEnlarge, ...props }: MountedProps): ReactNode {
   const [state, dispatch] = useReducer(liveReducer, MOUNTING);
-  const [enlarged, setEnlarged] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const fit = useFitScale(box, props.width);
+  const focused = useFrameFocus(frame);
+  const markViewed = useMarkLiveViewed();
   useBridge(props.story.origin, frame, dispatch);
   useReadyTimeout(state, dispatch);
-  if (state.phase === "dead") return <DeadStory {...props} onRetry={() => dispatch({ type: "retry" })} />;
+  useEffect(() => {
+    if (state.phase === "dead") onDead();
+    if (state.phase === "live") markViewed(props.frameKey);
+  }, [state.phase, onDead, markViewed, props.frameKey]);
+  if (state.phase === "dead") return <CapturedPng {...props} />;
   const scale = fitted ? (fit ?? 1) : 1;
   return (
     <VStack gap={1}>
       <HStack gap={2} align="center" justify="between" wrap>
         <Typography variant="caption" color="secondary">{`${liveCaption(props.width, fitted ? fit : 1, props.story.built)}${state.phase === "mounting" ? " · loading" : ""}`}</Typography>
-        {fitted ? <Button size="sm" variant="outline" onPress={() => setEnlarged(true)}><ButtonText>Enlarge live</ButtonText></Button> : null}
+        {onEnlarge ? <Button size="sm" variant="outline" onPress={onEnlarge}><ButtonText>Enlarge live</ButtonText></Button> : null}
       </HStack>
       <StoryBox {...props} box={box} frame={frame} state={state} scale={scale} fitted={fitted} />
-      {enlarged ? <LiveEnlarge {...props} onClose={() => setEnlarged(false)} /> : null}
+      {focused ? <Typography variant="caption" color="secondary">{STORY_KEYS_HINT}</Typography> : null}
     </VStack>
   );
 }
@@ -207,8 +262,9 @@ interface StoryBoxProps extends ViewportProps {
   fitted: boolean;
 }
 
-/** The PNG holds the box's place, the story loading unseen over it, until the bridge says the story rendered. */
+/** The PNG holds the box's place, the story loading unseen over it, until the bridge says the story rendered; then pins sit on the story. */
 function StoryBox({ box, frame, state, scale, fitted, width, story, sizing, ...png }: StoryBoxProps): ReactNode {
+  const pins = useFramePins();
   const live = state.phase === "live";
   const height = frameHeight(sizing.height, state.height, sizing.maxHeight);
   return (
@@ -225,6 +281,7 @@ function StoryBox({ box, frame, state, scale, fitted, width, story, sizing, ...p
         className={`absolute left-0 top-0 origin-top-left border-0 bg-white ${live ? "" : "invisible"}`}
         style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
       />
+      {live && pins ? <SurfacePinLayer pins={pins} surface={() => iframeSurface({ width, height, boxes: state.boxes })} /> : null}
     </div>
   );
 }
@@ -241,7 +298,7 @@ function DeadStory({ onRetry, width, ...png }: ViewportProps & { onRetry: () => 
   );
 }
 
-/** The story at 1:1, where a phone can interact with a wide frame by scrolling sideways. */
+/** The story at 1:1, where a phone can interact with a wide frame by scrolling sideways. It holds a slot like any live frame. */
 function LiveEnlarge({ onClose, ...props }: ViewportProps & { onClose: () => void }): ReactNode {
   useEscapeKey(onClose);
   return (
@@ -254,7 +311,7 @@ function LiveEnlarge({ onClose, ...props }: ViewportProps & { onClose: () => voi
         <Button variant="outline" size="sm" onPress={onClose}><ButtonText>Close</ButtonText></Button>
       </HStack>
       <div className="flex-1 overflow-auto">
-        <MountedStory {...props} fitted={false} />
+        <SlottedStory {...props} wanted fitted={false} first />
       </div>
     </div>
   );

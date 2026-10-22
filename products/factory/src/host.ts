@@ -25,6 +25,8 @@ import {
   WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
+import type { ArConfig } from "./autoresearch/config.js";
+import type { ConfigRef } from "./config-ref.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { assertDistinctStepIds, dispatchStepIds, guardedContext, orphanSafe, type WorkflowDefinition } from "./definition.js";
 
@@ -39,8 +41,14 @@ export interface DatabaseTenant {
 export type FactoryRoutes = readonly StepRoute[] & {
   readonly database?: DatabaseTenant;
   readonly shepherd?: ShepherdServices;
+  /** The config file the routes read their live rows through; `/health` reports its stamp. */
+  readonly config?: ConfigRef;
   /** Hands routes that start or read other runs the host they run on; returns the unbind, called on close. */
   readonly bindHost?: (host: FactoryHost) => () => void;
+  /** Workflows only these routes can run, registered beside the host's own; autoresearch's exist only when it is configured. */
+  readonly workflows?: readonly WorkflowDefinition[];
+  /** The autoresearch config section the routes were built from; the autoresearch commands read it. */
+  readonly autoresearch?: ArConfig;
 };
 
 export interface FactoryHostOptions {
@@ -143,7 +151,7 @@ function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptio
     onEvent: options.onEvent,
     capabilities: options.capabilities,
   });
-  for (const definition of options.workflows) {
+  for (const definition of [...options.workflows, ...(options.routes.workflows ?? [])]) {
     assertDistinctStepIds(definition);
     runner.assertRoutes(definition.name, dispatchStepIds(definition));
     runtime.register(definition.name, (ctx) => definition.run(guardedContext(ctx, definition)), { abandonsOrphan: orphanSafe(definition), strictReplay: true });

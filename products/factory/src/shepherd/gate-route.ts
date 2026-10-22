@@ -6,7 +6,7 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import type { ExitNoticePorts } from "./exit-notice.js";
+import { liveRoute, runSeat, toldDetail, type ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 
@@ -58,12 +58,13 @@ function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): stri
 
 /**
  * A notice naming its seat goes there; a held run naming none, and reviewer infrastructure, go to the hub seat, and the rest
- * to the repo's one seat. A planner notice tries the repo's seat, then the hub seat, since no owner gate stands behind it.
+ * to the run's seat (`runSeat`). A planner notice tries the run's seat, then the hub seat, since no owner gate stands behind it.
  */
-function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): string | undefined {
+async function addressee(ports: ExitNoticePorts, input: SeatNoticeInput): Promise<string | undefined> {
   if (input.seat !== undefined) return input.seat;
-  if (input.gate === "fix-first-planner") return ports.seatFor(input.repo) ?? ports.hubSeat?.();
-  return input.gate === "held" || input.gate === "review-infra" ? ports.hubSeat?.() : ports.seatFor(input.repo);
+  if (input.gate === "held" || input.gate === "review-infra") return ports.hubSeat?.();
+  const seat = await runSeat(ports, input);
+  return input.gate === "fix-first-planner" ? (seat ?? ports.hubSeat?.()) : seat;
 }
 
 type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
@@ -93,11 +94,14 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
   if (ports === undefined) return { sent: false, detail: "no seat notice is wired" };
   let seat: string | undefined;
   try {
-    seat = addressee(ports, input);
+    seat = await addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
+    const route = await liveRoute(ports, input.repo, seat);
+    if ("none" in route) return { sent: false, seat, detail: route.none };
+    seat = route.seat;
     const to = seat;
     await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
-    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
+    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: toldDetail(route, `told ${seat}`) };
   } catch (error) {
     signal.throwIfAborted();
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
@@ -184,7 +188,7 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"})`).join(", ") || "no failing check named";
   return seatOrGate(
     () => noticeGate(run, "ci-failed", red.headSha, `CI failed (${checks}) and no fixer took the ci-red wake`),
-    () => awaitNewHead(run, red.headSha, true),
+    () => awaitNewHead(run, red.headSha, true, red.failing),
     (unsent) => onCiFailed(run.ctx, run.target, red, run.state, unsent),
   );
 }

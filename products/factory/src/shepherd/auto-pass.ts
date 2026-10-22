@@ -30,6 +30,8 @@ export const GATE_DEMOTIONS: GateDemotions = { failedRounds: true, mainRed: true
 
 const AUTO_PASS_RULES = ["D7/fallback-reviewer", "D13/main-red-fyi", "D7/ops-notice", "D7/seat-notice", "D8/convergence-review", "R4/fresh-reviewer", "D7/no-verdict-diagnosis"] as const;
 type AutoPassRule = (typeof AUTO_PASS_RULES)[number];
+/** The rule a TP-3796 never-verdict run and a TP-3910 repeated no-verdict both take to the diagnosis planner. */
+export const DIAGNOSIS_RULE: AutoPassRule = "D7/no-verdict-diagnosis";
 
 const AUTO_PASS_STEP = "sh-auto-pass";
 export const AUTO_PASS_STEPS: readonly StepDeclaration[] = [{ id: AUTO_PASS_STEP, kind: "dispatch" }];
@@ -59,7 +61,7 @@ const RULE_WORDS: Record<AutoPassRule, string> = {
   "D7/seat-notice": "the seat held Shepherd's own MERGE past its rounds, so the seat hears instead of the owner",
   "D8/convergence-review": "FIX_FIRST rounds did not converge, so one fresh convergence reviewer judges the trail; its FIX_FIRST goes to the planner, never to you",
   "R4/fresh-reviewer": "no reviewer MERGE stood at this head, so a fresh reviewer goes instead of asking the owner to merge it",
-  "D7/no-verdict-diagnosis": "no review round returned an adversary verdict, so a planner diagnoses why the reviews fail instead of a fourth review or the owner",
+  "D7/no-verdict-diagnosis": "no review round returned an adversary verdict, or a round repeated the last one's no-verdict at this head, so a planner diagnoses why the reviews fail instead of another review or the owner",
 };
 
 const autoPassMarker = (rule: AutoPassRule, headSha: string): string => `<!-- shepherd-auto-pass:${rule}:${headSha} -->`;

@@ -70,6 +70,25 @@ source diff moves the ratchet.
 - **Optional ports.** `ar-load-wait` runs before each implement and `ar-archive` at each round's
   end, with `{outcomes, digest, ops, draws, registries, evidence}`. A host without `loadWait` or
   `archive` gets an immediate empty answer.
+- **Round and run records.** After each ratchet, `ar-summary:<r>` records the round's best
+  `{head, primary}`, `against`, the kept and superseded ids, the ratchet move (or `null`), the
+  first planner answer's quota misses and whether it was retried. `finalOutcomes` applies the
+  superseded marking and the σ stamp, so a reader of the recorded stops agrees with the archive.
+  After the loop, `ar-end` records `stopReason` (`ideas-evaluated`, `rounds-without-gain` or
+  `rounds-exhausted`); a run that threw has no `ar-end`, and its error's `[code]` says why.
+- **Owner ideas.** `ar-inbox:<r>` asks the optional `ownerIdeas` port for proposals written
+  since its last cursor and queues them with `source: "owner"` ahead of the planner's adds. The
+  answer is recorded, so a replay reads the same ideas. With no port the step answers no ideas.
+- **Registry row.** `ar-registry:<phase>` hands the optional `registry` port one row per phase:
+  pin, target and bounds shas, the train aliases, evaluated ideas by rung, σ, pairs, lock,
+  spend, archive paths and the stop reason. Cases appear only as the target's own aliases.
+- **Validator looks.** `runValidatorLook`, registered as `AUTORESEARCH_VALIDATE_WORKFLOW`, is a
+  separate run with params `parent`, `pin`, `head`, `look` and `frozenHash`. Its one step,
+  `ar-validate:<look>`, calls the `validate` port, whose answer must be the strict aggregate
+  `{look, at, sha, aggregate: {metrics, gates}, provenance, usd}`: a per-case key fails the
+  step. The search never reads a look. `target.json`'s `validator {runs, maxLooks}` (defaults 1
+  and 2) tells the host how often to run each held-out case and how many looks to allow; the
+  cases themselves come from the host, never from the target.
 
 ## Usage
 

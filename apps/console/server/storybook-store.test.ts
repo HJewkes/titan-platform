@@ -5,9 +5,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRound } from "./round-import.js";
-import { storybookLiveReader } from "./round-live.js";
+import { storybookLiveReader, viewedBuilds, type ViewedBuilds } from "./round-live.js";
 import { getRound, parseManifest, type RoundDetail } from "./rounds.js";
-import { buildIdOf, pinReason, type BuildFile, type LiveFrame } from "./storybook-build.js";
+import { buildIdOf, pinnedBuild, type BuildFile, type LiveFrame } from "./storybook-build.js";
 
 // Synthetic: the lantern-cards fixture round with a three-file static build beside it.
 const FIXTURE = path.join(import.meta.dirname, "..", "fixtures", "rounds", "lantern-cards-r1");
@@ -64,14 +64,34 @@ interface BuildOptions {
 }
 
 /** Writes the build's files and a storybook@1 sidecar that lists them, after `edit`. */
-async function writeBuild({ from = source, builtAt = "2026-10-21T00:00:00Z", sha = BUILD_SHA, dirty = false, edit = (files) => files }: BuildOptions = {}): Promise<void> {
-  for (const [rel, text] of Object.entries(BUILD_FILES)) {
-    await mkdir(path.dirname(path.join(staticDir(from), rel)), { recursive: true });
-    await writeFile(path.join(staticDir(from), rel), text);
+async function writeFiles(dir: string, files: Record<string, string>): Promise<void> {
+  for (const [rel, text] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+    await writeFile(path.join(dir, rel), text);
   }
-  const files = edit(listing(BUILD_FILES));
-  const sidecar = { schema: "titan-review/storybook@1", repo: "example-org/example-ui", sha, dirty, builtAt, storybookVersion: "10.0.0", storyIds: 2, files };
-  await writeFile(path.join(from, "storybook", "storybook.json"), JSON.stringify(sidecar));
+}
+
+const sidecarOf = (sha: string, files: BuildFile[], { builtAt = "2026-10-21T00:00:00Z", dirty = false }: BuildOptions = {}) =>
+  ({ schema: "titan-review/storybook@1", repo: "example-org/example-ui", sha, dirty, builtAt, storybookVersion: "10.0.0", storyIds: 2, files });
+
+async function writeBuild({ from = source, sha = BUILD_SHA, edit = (files) => files, ...options }: BuildOptions = {}): Promise<void> {
+  await writeFiles(staticDir(from), BUILD_FILES);
+  await writeFile(path.join(from, "storybook", "storybook.json"), JSON.stringify(sidecarOf(sha, edit(listing(BUILD_FILES)), options)));
+}
+
+/** Replaces the single build with a storybook-set@1 sidecar of one build per sha, each with its own bytes; gives each sha's build id. */
+async function writeBuildSet(shas: string[]): Promise<Record<string, string>> {
+  await rm(path.join(source, "storybook"), { recursive: true });
+  const ids: Record<string, string> = {};
+  const builds = [];
+  for (const sha of shas) {
+    const files = { ...BUILD_FILES, "assets/a-hash.js": `export const sha = "${sha}";\n` };
+    await writeFiles(path.join(source, "storybook", "builds", sha), files);
+    builds.push(sidecarOf(sha, listing(files)));
+    ids[sha] = buildIdOf(listing(files));
+  }
+  await writeFile(path.join(source, "storybook", "storybook.json"), JSON.stringify({ schema: "titan-review/storybook-set@1", builds }));
+  return ids;
 }
 
 async function editRound(edit: (round: Record<string, unknown>) => void, from = source): Promise<void> {
@@ -110,6 +130,12 @@ const urlOf = (frame: LiveFrame | undefined): URL => {
   return new URL(frame.url, "https://story.example");
 };
 const reasonOf = (frame: LiveFrame | undefined): string | undefined => (frame && "reason" in frame ? frame.reason : undefined);
+
+async function viewedOf(keys: string[]): Promise<ViewedBuilds> {
+  const parsed = parseManifest(await readFile(path.join(roundsDir, ID, "round.json")));
+  if (!parsed.ok) throw new Error(parsed.reason);
+  return viewedBuilds(path.join(roundsDir, ID), parsed.manifest, keys);
+}
 
 describe("importing a round's Storybook build", () => {
   it("files the build once under its content id, and a second round shipping the same bytes adds no copy", async () => {
@@ -169,6 +195,17 @@ describe("importing a round's Storybook build", () => {
     await writeBuild({ builtAt: "2026-10-23T00:00:00Z" });
 
     await expectRefused(/already imported with a different storybook\.json/);
+  });
+
+  it("imports a single-build round as before: its sidecar byte for byte, one stored build", async () => {
+    const sidecar = path.join(source, "storybook", "storybook.json");
+    await writeFile(sidecar, `${JSON.stringify(JSON.parse(await readFile(sidecar, "utf8")), null, 2)}\n`);
+
+    await runImport();
+
+    expect(await readFile(path.join(roundsDir, ID, "storybook", "storybook.json"))).toEqual(await readFile(sidecar));
+    expect(await stored()).toEqual([buildIdOf(listing(BUILD_FILES))]);
+    expect(await viewedOf(["compact"])).toEqual({ buildId: buildIdOf(listing(BUILD_FILES)) });
   });
 
   it("refuses a round with a build when the console has no store for it", async () => {
@@ -273,14 +310,68 @@ describe("rounds.get live", () => {
   });
 });
 
-describe("pinReason", () => {
+describe("a multi-PR round's builds", () => {
+  const THIRD_SHA = "c".repeat(40);
+
+  /** Splits the fixture's one section in two, each its own PR group: compact at BUILD_SHA, roomy at OTHER_SHA. */
+  const splitIntoGroups = () =>
+    editRound((round) => {
+      const [density] = jsonObjects.parse(round.sections);
+      round.sections = [
+        { ...density, kind: "STATES", variantKeys: ["compact"] },
+        { ...density, id: "roomy", title: "Roomy card", kind: "STATES", variantKeys: ["roomy"], questionIds: [], parts: [{ id: "roomy-card", label: "Roomy card", proposed: "roomy", lang: "ts" }] },
+      ];
+      round.questions = jsonObjects.parse(round.questions).map((question) => ({ ...question, frames: ["compact"] }));
+      round.prGroups = [
+        { pr: "example-org/example-ui#7", headSha: BUILD_SHA, sectionIds: ["density"] },
+        { pr: "example-org/example-ui#8", headSha: OTHER_SHA, sectionIds: ["roomy"] },
+      ];
+    });
+
+  beforeEach(splitIntoGroups);
+
+  it("pins each PR group's variants to the build at that group's own head", async () => {
+    const ids = await writeBuildSet([BUILD_SHA, OTHER_SHA]);
+    await runImport();
+
+    const frames = await liveOf();
+
+    expect(urlOf(frames.compact).pathname).toBe(`/sb/${ids[BUILD_SHA]}/iframe.html`);
+    expect(urlOf(frames.roomy).pathname).toBe(`/sb/${ids[OTHER_SHA]}/iframe.html`);
+    expect(frames.roomy).toMatchObject({ buildSha: OTHER_SHA });
+    expect((await stored()).sort()).toEqual([ids[BUILD_SHA], ids[OTHER_SHA]].sort());
+    expect(await viewedOf(["compact", "roomy"])).toEqual({ buildId: null, builds: { compact: ids[BUILD_SHA], roomy: ids[OTHER_SHA] } });
+  });
+
+  it("gives a group with no build of its own a reason, never another group's build", async () => {
+    await writeBuildSet([BUILD_SHA]);
+    await runImport();
+
+    const frames = await liveOf();
+
+    expect(urlOf(frames.compact).searchParams.get("id")).toBe("lantern-card--compact");
+    expect(reasonOf(frames.roomy)).toBe("Live build is for aaaaaaa; this round is at bbbbbbb");
+  });
+
+  it("refuses a set with a build at no PR group's head, or one sha twice, storing nothing", async () => {
+    await writeBuildSet([BUILD_SHA, THIRD_SHA]);
+    await expectRefused(/build ccccccc is no PR group's head/);
+
+    await writeBuildSet([BUILD_SHA, BUILD_SHA]);
+    await expectRefused(/lists one sha twice/);
+    expect(await stored()).toEqual([]);
+  });
+});
+
+describe("pinnedBuild", () => {
   const SHIP_HEAD = "0123456789abcdef0123456789abcdef01234567";
 
   it("pins a round with no PR group to its merge-bound Ship head", async () => {
     const parsed = parseManifest(await readFile(path.join(import.meta.dirname, "..", "fixtures", "import", "sample-batch-r2", "round.json")));
     if (!parsed.ok) throw new Error(parsed.reason);
+    const at = (sha: string) => ({ build: { sha } });
 
-    expect(pinReason(parsed.manifest, "card-light", SHIP_HEAD)).toBeUndefined();
-    expect(pinReason(parsed.manifest, "card-light", BUILD_SHA)).toBe("Live build is for aaaaaaa; this round is at 0123456");
+    expect(pinnedBuild(parsed.manifest, "card-light", [at(SHIP_HEAD)])).toEqual({ pinned: at(SHIP_HEAD) });
+    expect(pinnedBuild(parsed.manifest, "card-light", [at(BUILD_SHA)])).toEqual({ reason: "Live build is for aaaaaaa; this round is at 0123456" });
   });
 });
