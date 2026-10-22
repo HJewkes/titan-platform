@@ -15,6 +15,8 @@ export interface StageJudge<V extends Verdict, T extends QuotedItem> {
   item: ZodType<T>;
   judged: (verdict: V) => string[];
   items: (verdict: V) => T[];
+  /** Whether an item claims its passage answers the question; a canary reported with a non-claiming item was still read correctly. */
+  asserts: (item: T) => boolean;
   /** The route's own model; recorded with usage only, because the route, not the dispatch, picks it. */
   model: string;
   /** Judges a batch the route's model failed twice; a stage already on this model gets no third call. */
@@ -50,7 +52,7 @@ async function attempt<V extends Verdict, T extends QuotedItem>(
     if (result.usage) usage.push({ stepId, model, usage: result.usage });
     const verdict = result.data;
     if (verdict === undefined) return { ok: false, reason: "the step recorded no verdict" };
-    return { ok: true, result, verified: verifyVerdict(job.batch, resolveLabels(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) })) };
+    return { ok: true, result, verified: verifyVerdict(job.batch, resolveLabels(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) }), judge.asserts) };
   } catch (error) {
     if (!(error instanceof StepFailedError) || ctx.signal.aborted) throw error;
     if (error.usage) {

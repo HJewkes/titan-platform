@@ -1208,7 +1208,7 @@ Key exports:
 - `cli`: `runCli`, `defaultIndexPath`, `formatHit`, `formatStats`
 - `header`: `parseHeader`, `splitTitle`
 - `index-corpus`: `chapterOwnerRef`, `indexCorpus`, `listChapters`, `migrateIndex`, `openSpans`, `readSpanText`
-- +87 more in `products/corpus-query/src/index.ts`
+- +88 more in `products/corpus-query/src/index.ts`
 
 <a id="cap-evals"></a>
 

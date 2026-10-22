@@ -6,6 +6,7 @@ export type { Batch, BatchOptions, Canary, ShownPassage } from "./batch.js";
 export { verifyVerdict } from "./verify.js";
 export type { QuotedItem, VerifiedBatch, VoidReason, Voided } from "./verify.js";
 export {
+  assertsMatch,
   CandidateSchema,
   ConfirmRowSchema,
   ConfirmVerdictSchema,

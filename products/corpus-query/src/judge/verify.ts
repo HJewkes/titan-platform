@@ -34,10 +34,10 @@ function voidReason(text: string | undefined, quote: string): VoidReason | undef
   return found ? undefined : "quote-not-in-passage";
 }
 
-function scoreCanary<T extends QuotedItem>(batch: Batch, judged: ReadonlySet<string>, items: readonly T[]) {
+function scoreCanary<T extends QuotedItem>(batch: Batch, judged: ReadonlySet<string>, items: readonly T[], asserts: (item: T) => boolean) {
   const { canary } = batch;
   if (!canary) return undefined;
-  const flagged = items.some((item) => item.id === canary.id);
+  const flagged = items.some((item) => item.id === canary.id && asserts(item));
   const answered = flagged ? "match" : judged.has(canary.id) ? "no-match" : undefined;
   return scoreControls(
     [{ id: canary.id, label: canary.expect }],
@@ -48,10 +48,14 @@ function scoreCanary<T extends QuotedItem>(batch: Batch, judged: ReadonlySet<str
 /**
  * Checks a verdict against the passages the batch showed. A quote counts only for the passage
  * it is reported on, so a real sentence cited for the wrong passage is void.
+ *
+ * A canary is "seen" when the judge reports it as an answer (`asserts`); a no-match canary reported
+ * as a loss or an exclusion is a correct reading, not a miss.
  */
 export function verifyVerdict<T extends QuotedItem>(
   batch: Batch,
   verdict: { judged: readonly string[]; items: readonly T[] },
+  asserts: (item: T) => boolean = () => true,
 ): VerifiedBatch<T> {
   const shown = new Map(batch.passages.map((p) => [p.id, p.text]));
   if (batch.canary) shown.set(batch.canary.id, batch.canary.text);
@@ -64,7 +68,7 @@ export function verifyVerdict<T extends QuotedItem>(
   }
   const judged = new Set(verdict.judged);
   const unjudged = batch.passages.map((p) => p.id).filter((id) => !judged.has(id));
-  const canary = scoreCanary(batch, judged, items);
+  const canary = scoreCanary(batch, judged, items, asserts);
   const canaryId = batch.canary?.id;
   return {
     items: items.filter((item) => item.id !== canaryId),
