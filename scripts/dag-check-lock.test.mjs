@@ -598,6 +598,17 @@ describe("the capped indexer child", () => {
     expect(lines).toEqual(["indexer ran out of memory: V8 aborted it at the 32 MB heap cap"]);
   }, 30000);
 
+  it("keeps an ignored child's out-of-memory report out of the parent's stderr", () => {
+    const worker = scriptFile("const keep = []; for (;;) keep.push(new Array(1e5).fill({}));");
+    const script = `import { runCappedWorker } from ${JSON.stringify(MODULE)};
+      process.exitCode = await runCappedWorker({ script: ${JSON.stringify(worker)}, args: [], name: "indexer", heapCapMb: 32, cleanups: [], log: () => {}, stdio: "ignore" });`;
+
+    const parent = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 30000 });
+
+    expect(parent.status).toBe(2);
+    expect(parent.stderr).not.toContain("Reached heap limit");
+  }, 30000);
+
   it("names a raw 134 exit from a shell wrapper as out of memory too", () => {
     const lines = [];
     expect(workerExitCode({ code: 134, signal: null, name: "indexer", heapCapMb: 1024, log: (m) => lines.push(m) })).toBe(2);
