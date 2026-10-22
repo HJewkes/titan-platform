@@ -9,7 +9,7 @@ import { sleep } from "../workflows/land.js";
 import { DEPLOY_QUIET_MS, noteWanted, pacerTick, readWanted, writeWanted, type WantedStore } from "./deploy-pacer.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { systemDeployer, type DeployerPorts } from "./redeploy.js";
+import { redeploy, systemDeployer, type DeployerPorts } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
 
 const OWN_REPO = FACTORY_REPO!;
@@ -43,13 +43,13 @@ function cancelledUnderGreenTip(fake: FakeGitHub): void {
   fake.setRuns(mergeSha, [successRun("validate", 5, undefined, "cancelled")]);
 }
 
-function world(store: WantedStore) {
+function world(store: WantedStore, running: string) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
   const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && cancelledUnderGreenTip(fake), base.checkRuns(repo, sha)) };
-  const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => new Date(AT) }, queueOnlyPorts, store), runningSha: () => RUNNING };
+  const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => new Date(AT) }, queueOnlyPorts, store), runningSha: () => running };
   let clock = 0;
   const routes = factoryRoutesFor({ port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), redeploy: deployer });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
@@ -57,8 +57,8 @@ function world(store: WantedStore) {
   return { host, fake };
 }
 
-async function landCancelledMerge(store: WantedStore): Promise<string> {
-  const w = world(store);
+async function landCancelledMerge(store: WantedStore, running = RUNNING): Promise<string> {
+  const w = world(store, running);
   const runId = w.host.runtime.start("shepherd-pr", { repo: OWN_REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   await gateOpened(w.host, gateId(runId, "approve-merge"));
   w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
@@ -109,5 +109,23 @@ describe("a burst of merges whose own main CI was cancelled under one green tip 
     const spawned = tickAfterQuiet(store, (sha) => sha === mergeSha);
 
     expect(spawned).toEqual([TIP]);
+  });
+
+  it("queues nothing when the service already runs the green tip", async () => {
+    const store = memoryStore();
+
+    await landCancelledMerge(store, TIP);
+
+    expect(readWanted("/state", store)).toBeUndefined();
+  });
+
+  it("spawns the green tip, not the merge sha, when no pacer queue is wired", () => {
+    const spawned: string[] = [];
+    const deployer = { runningSha: () => RUNNING, spawn: (sha: string) => (spawned.push(sha), { pid: 4242, log: "/state/redeploy.log" }) };
+
+    const result = redeploy(deployer, { repo: OWN_REPO, pr: 1, mergeSha: fakeSha("cancelled-merge"), greenSha: TIP });
+
+    expect(spawned).toEqual([TIP]);
+    expect(result.detail).toContain(`deploys ${TIP}`);
   });
 });
