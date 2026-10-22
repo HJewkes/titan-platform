@@ -22,6 +22,7 @@ export type {
   ReviewWorkflowPorts,
   SnapshotPort,
 } from "./ports.js";
+export { applyHeal, healOnce, type HealEffect, type HealPassResult, type HealPorts, type HealRequest, type HealSubject } from "./heal.js";
 export {
   DEFAULT_RETRY_POLICY,
   type FixerKey,
