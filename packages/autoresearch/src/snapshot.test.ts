@@ -260,6 +260,8 @@ describe("a failed ar-sync", () => {
   const FETCH = "[pin-fetch] git fetch origin failed in fixture-clone: could not resolve host";
   const FailedSync = z.object({ pr: z.number(), error: z.string() });
   const failedOf = (run: WorkflowRun, round: number | "end") => run.stepResults[`ar-sync:${round}.failed`] && seedOf(run, `ar-sync:${round}.failed`, FailedSync);
+  /** The sync step's recorded answers, which a replay reads instead of syncing again. */
+  const answersOf = (run: WorkflowRun, stepId: string) => resultsOf(run, stepId).map((result) => z.object({ result: z.unknown() }).parse(result.data).result);
   const failingOnce = (error: string) => async (_input: SyncRequest, call: number) => {
     if (call === 1) throw new Error(error);
     return { state: "open" as const };
@@ -270,6 +272,7 @@ describe("a failed ar-sync", () => {
 
     expect(run.status).toBe("completed");
     expect(failedOf(run, 2)).toEqual({ pr: 101, error: FETCH });
+    expect(answersOf(run, "ar-sync:2")).toEqual([{ failed: FETCH }]);
     expect(failedOf(run, 3)).toBeUndefined();
     expect(ports.calls.sync.map((input) => [input.round, input.pr])).toEqual([[2, 101], [3, 101], ["end", 101]]);
     expect(cadenceOf(run, 2)).toMatchObject({ due: true, blockedBy: "open" });
@@ -322,6 +325,7 @@ describe("a failed ar-sync", () => {
 
     expect(run.status).toBe("completed");
     expect(failedOf(run, 2)).toEqual({ pr: 101, error: "[sync-fixture] the resolved merge was not on origin" });
+    expect(answersOf(run, "ar-sync:2.resolved")).toEqual([{ failed: "[sync-fixture] the resolved merge was not on origin" }]);
     expect(ports.calls.sync.slice(0, 4).map((input) => [input.round, input.resolved])).toEqual([[2, undefined], [2, UNREACHABLE], [3, undefined], [3, resolved]]);
     expect(summaryOf(run, 2).against.head).not.toBe(resolved);
     expect(summaryOf(run, 3).against.head).toBe(resolved);
@@ -352,6 +356,7 @@ describe("a failed ar-sync", () => {
 
     expect(run.status).toBe("completed");
     expect(failedOf(run, 2)).toEqual({ pr: 101, error: "[no-sync] this host has no sync port" });
+    expect(answersOf(run, "ar-sync:2")).toEqual([{ failed: "[no-sync] this host has no sync port" }]);
     expect(failedOf(run, "end")).toMatchObject({ error: expect.stringContaining("[no-sync]") });
   });
 });
