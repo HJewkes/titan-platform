@@ -30,6 +30,7 @@ import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
+import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountServeRoutes, type ConsoleAnswersServeOptions } from "./serve-routes.js";
 import { startSweep, type Sweep } from "./sweep.js";
@@ -173,9 +174,10 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
+  const standingSweep = startStandingAnswerSweep(host, services, options.consoleAnswers?.actionsDir, stateDir, log, options.now);
   const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
-  sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, reconcilerSweep);
+  sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconcilerSweep);
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }

@@ -15,6 +15,7 @@ import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
+import { landPrWorkflow } from "../workflows/land-pr.js";
 import { shepherdFixture } from "../test-support/shepherd.js";
 import { MAX_ACTION_RECORD_BYTES } from "./record.js";
 import { CONSOLE_ACTION_PATH, MAX_ACTION_BODY_BYTES } from "./route.js";
@@ -86,7 +87,7 @@ async function world({ actions = true, policy, stamp }: WorldOptions = {}): Prom
   const fixture = shepherdFixture({ frozen: true, port: githubPort(github.wire) });
   const server = await startFactoryServer({
     dbPath: join(dir, "factory.sqlite3"),
-    workflows: [mergeGate, sideGate("device-confirm"), sideGate("after-stages")],
+    workflows: [mergeGate, sideGate("device-confirm"), sideGate("after-stages"), landPrWorkflow()],
     routes: fixture.routes,
     resyncOnStart: false,
     now: () => NOW_MS,
@@ -508,13 +509,17 @@ describe("POST /owner/console-action", () => {
       expect(ledgerWritten(w)).toBe(false);
     });
 
-    it("refuses with 403 class an admitted op that has no factory effect yet, and leaves the gate pending", async () => {
+    it("answers 200 accepted for a merge-at-head with no Shepherd gate, starting one land-pr that never updates the branch", async () => {
       const w = await world();
       writeOp(w, { kind: "merge-at-head", repo: REPO, pr: w.pr, headSha: H });
 
       const res = await post(w.server, { actionId: ACTION_ID });
 
-      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("no factory effect") }]);
+      const [status, body] = await reply(res);
+      const lands = w.server.host.runtime.list().filter((run) => run.workflowName === "land-pr");
+      expect([status, body]).toEqual([200, { outcome: "accepted", runId: lands[0]?.id }]);
+      expect(lands.map((run) => run.params)).toEqual([{ repo: REPO, pr: String(w.pr), update: "false" }]);
+      expect(ledgerWritten(w)).toBe(true);
       expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
     });
 

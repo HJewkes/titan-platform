@@ -1,7 +1,7 @@
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
 import type { LedgerEntry, OwnerOpsLedger } from "../owner-ops/ledger.js";
-import { actOnOp, type OpEffect } from "./op.js";
+import { actOnOp, type OpContext, type OpEffect } from "./op.js";
 import type { Outcome } from "./outcome.js";
 
 const REPO = "example-org/example-repo";
@@ -13,7 +13,10 @@ function memoryLedger(): OwnerOpsLedger & { entries: LedgerEntry[] } {
   return { entries, append: async (entry) => void entries.push(entry) };
 }
 
-const act = (op: OwnerOp, effect: OpEffect, ledger = memoryLedger()) => actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: { [op.kind]: effect }, ledger, now: () => 0 });
+/** The effects these tests run never touch the context, so it stays an empty stand-in. */
+const CONTEXT = {} as OpContext;
+
+const act = (op: OwnerOp, effect: OpEffect, ledger = memoryLedger()) => actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: { [op.kind]: effect }, ledger, now: () => 0 }, CONTEXT);
 
 describe("actOnOp", () => {
   it("refuses with class an op the authority table denies owner-remote, running no effect and logging nothing", async () => {
@@ -32,7 +35,7 @@ describe("actOnOp", () => {
     const ledger = memoryLedger();
     const op: OwnerOp = { kind: "merge-at-head", repo: REPO, pr: 7, headSha: H };
 
-    const outcome = await act(op, async (read) => (read.op === op && read.confirmEvent === CONFIRM ? answer : { outcome: "gone", reason: "wrong read" }), ledger);
+    const outcome = await act(op, async (_actionId, read) => (read.op === op && read.confirmEvent === CONFIRM ? answer : { outcome: "gone", reason: "wrong read" }), ledger);
 
     expect(outcome).toEqual(answer);
     expect(ledger.entries.map((entry) => entry.phase)).toEqual(["started", "done"]);
@@ -41,7 +44,7 @@ describe("actOnOp", () => {
   it("refuses with class an admitted op whose kind has no effect yet", async () => {
     const ledger = memoryLedger();
 
-    const outcome = await actOnOp("act-1", { op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: H }, confirmEvent: CONFIRM }, { effects: {}, ledger, now: () => 0 });
+    const outcome = await actOnOp("act-1", { op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: H }, confirmEvent: CONFIRM }, { effects: {}, ledger, now: () => 0 }, CONTEXT);
 
     expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("no factory effect") });
     expect(ledger.entries).toEqual([]);

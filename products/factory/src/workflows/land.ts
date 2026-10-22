@@ -51,6 +51,8 @@ export interface LandInput {
   updateBound?: UpdateBound;
   /** The unsettled-merge wait at a head across every round of the run; a caller that re-enters `land` passes the same hold each time. */
   settleHold?: SettleHold;
+  /** False stops `behind` instead of updating the branch, so the only head land merges is one the caller already saw. */
+  update?: false;
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
@@ -93,7 +95,7 @@ export type LandOutcome =
   | { kind: "merged"; headSha: string; mergeSha: string | null; landed?: LandedPr; /** Set only when this run's own merge write landed, never for a PR GitHub reports merged elsewhere. */ own?: true }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
   /** On `sent-back`, `detail` is the owner's note for the implementer. */
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "sent-back" | "stuck-behind" | "merge-denied" | "update-branch-unmoved" | "behind"; headSha: string; detail: string };
 
 interface LandState {
   round: number;
@@ -172,6 +174,7 @@ function landsAsIs(ci: CiSnapshot): boolean {
 
 /** Only a strict repo reads a head behind here, so every update spends the bound shared by every round. */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
+  if (input.update === false) return stopped("behind", ci.headSha, `the base moved past head ${ci.headSha}; it needs a merge-up, and this run may not update the branch`);
   const spent = budgetSpent(state.bound, ci.readAt);
   const retrying = spent && retryBeforeGate(ctx, state.bound);
   if (retrying) await backoff(ctx, state);
