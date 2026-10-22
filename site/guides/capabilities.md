@@ -772,7 +772,7 @@ Key exports:
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
 - `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `LoadWaitSchema`
-- +104 more in the [reference page](/reference/autoresearch)
+- +118 more in the [reference page](/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 

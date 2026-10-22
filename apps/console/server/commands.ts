@@ -11,7 +11,7 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
-import type { DecisionLog } from "./decision-log.js";
+import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
@@ -56,7 +56,7 @@ export interface ConsoleSources {
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
   /** Optional so test sources need not build one; absent, `rounds.submit` records nothing and returns no `log`. */
-  decisionLog?: DecisionLog;
+  decisionLog?: RoundDecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */

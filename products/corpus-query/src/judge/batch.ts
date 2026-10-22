@@ -31,6 +31,32 @@ export function batchKey(passageIds: readonly string[], prefixSha: string): stri
   return hash.digest("hex").slice(0, 16);
 }
 
+/**
+ * A shown id or ref for the canary, shaped like `template` (a real one from the batch) but never
+ * equal to anything in `taken`, so the judge cannot tell it is a control. Numbers are shifted by a
+ * seeded amount; a template without numbers has its letters shifted instead. Always returns: the
+ * last resort appends a counter, and `taken` is finite.
+ */
+function lookalike(template: string, seed: string, taken: ReadonlySet<string>): string {
+  const digest = createHash("sha256").update(seed).digest();
+  const shift = (i: number) => 1 + (digest[i % digest.length]! % 7);
+  let at = 0;
+  const renumbered = template.replace(/\d+/g, (n) => String(Number(n) + shift(at++)));
+  if (!taken.has(renumbered)) return renumbered;
+  const reletter = (base: string) =>
+    base.replace(/[a-z]/gi, (ch) => {
+      const lower = ch >= "a";
+      const origin = (lower ? "a" : "A").charCodeAt(0);
+      return String.fromCharCode(origin + ((ch.charCodeAt(0) - origin + shift(at++)) % 26));
+    });
+  const relettered = reletter(renumbered);
+  if (!taken.has(relettered)) return relettered;
+  for (let n = 2; ; n++) {
+    const candidate = `${renumbered}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 /** Packs passages, already in story order, into groups under the budget without splitting one. */
 function pack(passages: readonly ShownPassage[], tokenBudget: number): ShownPassage[][] {
   const groups: ShownPassage[][] = [];
@@ -68,7 +94,13 @@ export function buildBatches(passages: readonly ShownPassage[], options: BatchOp
       options.prefixSha,
     );
     const [picked] = pickControls(options.canaries, key, 1);
-    const canary = picked && { id: `canary-${key}`, ref: "CANARY", text: picked.text, expect: picked.expect };
+    const last = group[group.length - 1]!;
+    const canary = picked && {
+      id: lookalike(last.id, key, new Set(group.map((p) => p.id))),
+      ref: lookalike(last.ref, key, new Set(group.map((p) => p.ref))),
+      text: picked.text,
+      expect: picked.expect,
+    };
     const shown = canary ? [...group, canary] : group;
     const head = options.preamble ? `${options.preamble}\n\n` : "";
     return { key, passages: group, canary, message: head + shown.map(show).join("\n\n") };

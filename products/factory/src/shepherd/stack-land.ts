@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import { successorConfigDir } from "./account-hold.js";
 import { agentChatAgents } from "./agents.js";
 import { errorClass } from "./error-class.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -237,7 +238,7 @@ function wakeOver(deps: ShepherdDeps): (wake: ChildWake) => Promise<boolean> {
   return async (wake) => {
     const registration = deps.store.get().byPr(wake.repo, wake.pr);
     if (registration === undefined || !isAbsolute(deps.agentChatBin)) return false;
-    const agents = agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster });
+    const agents = agentChatAgents(deps.agentChatBin, { configDir: successorConfigDir(deps), roster: deps.roster });
     const message = `${wake.repo}#${wake.pr} at ${wake.headSha}: ${wake.reason}.`;
     return agents.message(registration.implementer, message).then(() => true, () => false);
   };
