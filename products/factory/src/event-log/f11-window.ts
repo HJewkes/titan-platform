@@ -1,6 +1,7 @@
 // scripts/f11.mjs imports this file under Node's type stripping, which does not map `.js` specifiers to `.ts` files, so
-// its only runtime import is a package.
+// its only runtime imports are packages.
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import type { CensusRow } from "./agreement.js";
 import type { EventSource } from "./event-log.js";
 
@@ -19,6 +20,8 @@ interface WindowRow {
   occurrence_key: string;
   observed_at: string;
 }
+
+const Keys = z.record(z.string(), z.unknown());
 
 export function f11Window(since: string, until: string): F11Window {
   const [from, to] = [Date.parse(since), Date.parse(until)];
@@ -48,7 +51,7 @@ function windowRows(db: Db, window: F11Window): CensusRow[] {
       source: row.source,
       kind: row.kind,
       subject: row.subject,
-      keys: JSON.parse(row.keys) as Record<string, unknown>,
+      keys: Keys.parse(JSON.parse(row.keys)),
       occurrenceKey: row.occurrence_key,
       observedAt: row.observed_at,
     }));

@@ -25,8 +25,8 @@
     {
       "name": "a confirmed line with an unknown answer counts as a re-observation",
       "file": "products/factory/src/event-log/f11-report.ts",
-      "find": "typeof by === \"string\" && DUPLICATE_BY.has(by)",
-      "replace": "typeof by === \"string\"",
+      "find": "return DUPLICATE_BY.includes(by);",
+      "replace": "return typeof by === \"string\";",
       "kills": ["matches a webhook row by a timestamped reconciler.confirmed line, and not by a delivery retry or an unknown answer"]
     },
     {

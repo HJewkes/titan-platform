@@ -13,7 +13,7 @@ export const F11_WITHIN_MS = 300_000 + 15_000;
 const PEAK_BOUND_PCT = 50;
 /** The disagree classes the reconciler logs; each is reported even at zero so a clean window reads as checked. */
 const DISAGREE_CLASSES = ["stale-read", "field-parity", "main-ancestry-lost", "unconfirmed"];
-const DUPLICATE_BY = new Set(["delivery", "occurrence", "unchanged"]);
+const DUPLICATE_BY: readonly unknown[] = ["delivery", "occurrence", "unchanged"];
 /** The HJewkes side is sampled outside serve (scripts/f11-rate-sample.mjs); serve's own lines name the bot. */
 const SAMPLED_IDENTITY = "hjewkes";
 
@@ -82,10 +82,18 @@ function stampOf(text: string): string | undefined {
   return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isDuplicateBy(by: unknown): by is DuplicateLine["by"] {
+  return DUPLICATE_BY.includes(by);
+}
+
 function fieldsOf(json: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(json);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    return isRecord(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -116,7 +124,7 @@ function windowLines(log: string, window: F11Window): { lines: LogLine[]; untime
 
 function confirmedLines(lines: readonly LogLine[]): DuplicateLine[] {
   return lines.flatMap(({ at, message, fields: { seq, by } }) =>
-    message === "reconciler.confirmed" && typeof seq === "number" && typeof by === "string" && DUPLICATE_BY.has(by) ? [{ seq, by: by as DuplicateLine["by"], at }] : [],
+    message === "reconciler.confirmed" && typeof seq === "number" && isDuplicateBy(by) ? [{ seq, by, at }] : [],
   );
 }
 
