@@ -2,7 +2,7 @@ import type { GitBehindProbe } from "./deploy-behind.js";
 import type { Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
 import { Command, CommanderError } from "commander";
-import { resolveDbPath } from "./config.js";
+import { configDeprecations, resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
@@ -94,6 +94,8 @@ export interface CliDeps {
   sources?: (env: NodeJS.ProcessEnv, log: Logger) => SourcesReader;
   /** The serve verb's webhook ingress listener; absent means serve binds no ingress port. */
   ingress?: (env: NodeJS.ProcessEnv) => ServeIngressOptions;
+  /** The deprecation lines the serve verb logs at start for the config file; absent means it logs none. */
+  configDeprecations?: (env: NodeJS.ProcessEnv) => string[];
   /** What `planner wake` runs agent-chat and its input commands through; defaults to the real machine. */
   planner?: PlannerDeps;
   /** Ends the process once serve has closed, so a child an abandoned tick still holds cannot keep it alive; absent means serve returns instead. */
@@ -101,7 +103,7 @@ export interface CliDeps {
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), configDeprecations, exitAfterServe: () => process.exit() };
 
 export interface Verbs {
   io: CliIo;

@@ -255,9 +255,12 @@ function twoMergesAt(reviews: ReadonlyMap<string, Verdict>, head: string): TwoMe
 
 /**
  * At a head a clean merge-up made, a `behind` read whose own required checks are green counts as green: a strict base that keeps moving
- * would otherwise hold the run forever. The merge step still gates on the base. Any other head waits for its update and a green read.
+ * would otherwise hold the run forever. The merge step still gates on the base. So does a `baseMoved` read: a non-strict base that moved
+ * past the head's green, which land merges as it stands, so it is never updated and would hold the run forever too (TP-3933). Any other
+ * head waits for its update and a green read.
  */
-const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean => ci.verdict === "green" || (mergeUp !== undefined && ci.verdict === "behind" && ci.checksGreen === true);
+const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean =>
+  ci.verdict === "green" || (ci.verdict === "behind" && ci.checksGreen === true && (mergeUp !== undefined || ci.baseMoved === true));
 
 /** What the release step is asked at a head: the verdict refs it judges, and the key that marks them used once they released. */
 interface Ask {

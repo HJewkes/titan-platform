@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the serve verb drops the config deprecation log",
+      "file": "products/factory/src/cli-host-verbs.ts",
+      "find": "for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);",
+      "replace": "",
+      "kills": [
+        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+      ]
+    },
+    {
+      "name": "configDeprecations names nothing whatever the file sets",
+      "file": "products/factory/src/config.ts",
+      "find": "return reconcilerDeprecations(loadConfig(configPath(env)));",
+      "replace": "return reconcilerDeprecations({});",
+      "kills": [
+        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+      ]
+    },
+    {
+      "name": "configDeprecations reads the home config rather than the serve verb's env",
+      "file": "products/factory/src/config.ts",
+      "find": "return reconcilerDeprecations(loadConfig(configPath(env)));",
+      "replace": "return reconcilerDeprecations(loadConfig(configPath({})));",
+      "kills": [
+        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+      ]
+    }
+  ]
+}
