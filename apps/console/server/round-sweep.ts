@@ -15,12 +15,12 @@ import { readQueueRounds, statusOf } from "./rounds.js";
 const MAX_DECISIONS_BYTES = 16 * 1024 * 1024;
 const CITES_ANSWERED = /\b(answered|resolved)\b/i;
 
-export interface SupersededBy {
+interface SupersededBy {
   by: string;
   targets: SupersedeOutcome[];
 }
 
-export interface DecisionCandidate {
+interface DecisionCandidate {
   id: string;
   /** 1-based line in the decisions file. */
   line: number;
@@ -36,7 +36,7 @@ export interface SweepReport {
   gaps: string[];
 }
 
-export interface SweepOptions extends SupersedeOptions {
+interface SweepOptions extends SupersedeOptions {
   roundsDir: string;
   decisionsFile: string | null;
 }
@@ -45,7 +45,7 @@ export interface SweepOptions extends SupersedeOptions {
 const mentions = (line: string, id: string): boolean => new RegExp(`(^|[^A-Za-z0-9_-])${id}($|[^A-Za-z0-9_-])`).test(line);
 
 /** The first line that names the round and calls it answered or resolved, or null. */
-export function decisionCitation(lines: readonly string[], id: string): { line: number; text: string } | null {
+function decisionCitation(lines: readonly string[], id: string): { line: number; text: string } | null {
   const at = lines.findIndex((line) => CITES_ANSWERED.test(line) && mentions(line, id));
   const text = lines[at];
   return text === undefined ? null : { line: at + 1, text: text.trim() };
