@@ -149,9 +149,12 @@ describe("the fork schedule and lane slots", () => {
 
   it("replays the lane slot each ladder first held, though siblings finish in another order on replay", async () => {
     const slow = latch();
-    const beforeImplement = async (_idea: Idea, call: number) => {
-      if (call === 1) await slow.opened;
-      if (call === 3 || call === 4) await new Promise(() => undefined);
+    // Hold lane 1 by slot, not call order: the first two ladders race to their implement call, so a call
+    // index could stall either one. The replay must not hang, so the later stalls end with the first host.
+    let firstHost = true;
+    const beforeImplement = async (_idea: Idea, call: number, lane: number) => {
+      if (call <= 2 && lane === 1) await slow.opened;
+      if (firstHost && call >= 3) await new Promise(() => undefined);
     };
     const dir = mkdtempSync(join(tmpdir(), "ar-lanes-"));
     dirs.push(dir);
@@ -161,6 +164,7 @@ describe("the fork schedule and lane slots", () => {
     slow.open();
     await until(() => ports.calls.implement.length >= 4, "a fourth implement");
     host.close();
+    firstHost = false;
 
     const second = openHost(ports, join(dir, "runs.db"));
     await second.adopt();
