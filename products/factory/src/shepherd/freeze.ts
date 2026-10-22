@@ -86,6 +86,20 @@ function notifyThaw(listener: (repo: RepoSlug) => void, repo: RepoSlug): void {
   }
 }
 
+/** The freeze-event reason that claims an episode's one rerun; a check run id follows. */
+const rerunPrefix = (episode: number): string => `main rerun: episode ${episode} after `;
+/** The thaw-event reason of a thaw on Shepherd's own green rerun; the failing tests follow as JSON. */
+export const RERUN_THAW = "rerun-green (flake suspected):";
+
+/** An unreadable list names no test, which leaves the 24 h guard as if no thaw had happened. */
+function testsOf(reason: string): string[] {
+  try {
+    return z.array(z.string()).catch([]).parse(JSON.parse(reason.slice(RERUN_THAW.length + 1)));
+  } catch {
+    return [];
+  }
+}
+
 /** GitHub treats repo names case-insensitively, so a freeze on one spelling must freeze every spelling. */
 const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
@@ -180,7 +194,10 @@ export class FreezeStore {
     return this.active(repo);
   }
 
-  /** Refuses a green sha equal to the red sha, because a check that passed on the red commit proves nothing, unless that red was only cancels. */
+  /**
+   * Refuses a green sha equal to the red sha, unless that red was only cancels: a pass anyone saw at the red commit could
+   * be a reroll they shopped for. Shepherd's own one rerun at the red sha thaws through `thawOnRerun` instead.
+   */
   unfreeze(repo: RepoSlug, greenSha: string): boolean {
     const freeze = this.active(repo);
     if (!freeze || (freeze.redSha === greenSha && !freeze.cancelOnly)) return false;
@@ -188,15 +205,61 @@ export class FreezeStore {
   }
 
   /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. Every thaw, `unfreeze` included, ends here. */
-  release(repo: RepoSlug, episode: number, actor: string = SHEPHERD_ACTOR): boolean {
+  release(repo: RepoSlug, episode: number, actor: string = SHEPHERD_ACTOR, reason?: string): boolean {
     const at = new Date(this.now()).toISOString();
     const thawed = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(at, repoKey(repo), episode).changes > 0;
-      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, actor, headSha: this.row(repo)?.red_sha });
+      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, actor, headSha: this.row(repo)?.red_sha, reason });
       return changed;
     })();
     if (thawed) notifyThaw(this.onThaw, repo);
     return thawed;
+  }
+
+  /**
+   * Claims live `episode`'s one rerun of the red sha's failed jobs for `runId`, recording `after`, the newest check run id
+   * at the red sha before the rerun, so only runs past it count as the rerun. The same run gets its own claim back after a
+   * restart, not `fresh`, so it waits on the rerun it queued; any other run, or a thawed episode, gets undefined.
+   */
+  claimRerun(repo: RepoSlug, episode: number, runId: string, after: number): { after: number; fresh: boolean } | undefined {
+    return this.db.transaction(() => {
+      const live = this.live(repo, episode);
+      if (!live) return undefined;
+      const claimed = this.rerunClaim(repo, episode);
+      if (claimed !== undefined) return claimed.runId === runId ? { after: claimed.after, fresh: false } : undefined;
+      appendEvent(this.db, { repo, runId, kind: "freeze", at: new Date(this.now()).toISOString(), headSha: live.redSha, reason: `${rerunPrefix(episode)}${after}` });
+      return { after, fresh: true };
+    }).immediate();
+  }
+
+  /** `episode`'s rerun claim, if one was made: the run that made it and the check run id it recorded. */
+  rerunClaim(repo: RepoSlug, episode: number): { runId: string | null; after: number } | undefined {
+    const prefix = rerunPrefix(episode);
+    const claimed = this.db.prepare("SELECT run_id, reason FROM shepherd_event WHERE repo = ? AND kind = 'freeze' AND reason LIKE ? ORDER BY id LIMIT 1").get(repoKey(repo), `${prefix}%`) as { run_id: string | null; reason: string } | undefined;
+    return claimed && { runId: claimed.run_id, after: Number(claimed.reason.slice(prefix.length)) };
+  }
+
+  /** Thaws live `episode` on Shepherd's own green rerun at the red sha, recording the failing tests the 24 h guard reads. */
+  thawOnRerun(repo: RepoSlug, episode: number, tests: readonly string[]): boolean {
+    return this.release(repo, episode, SHEPHERD_ACTOR, `${RERUN_THAW} ${JSON.stringify(tests)}`);
+  }
+
+  /** The failing tests of each rerun thaw of `repo` at or after `since` (ISO time). */
+  rerunThawedTests(repo: RepoSlug, since: string): string[] {
+    const rows = this.db.prepare("SELECT reason FROM shepherd_event WHERE repo = ? AND kind = 'thaw' AND at >= ? AND reason LIKE ?").all(repoKey(repo), since, `${RERUN_THAW} %`) as { reason: string }[];
+    return rows.flatMap((row) => testsOf(row.reason));
+  }
+
+  /**
+   * Hands live `episode` a standing fixer and its task only while it has no fixer, fix task or marked fix PR, so a fixer
+   * already exempt keeps its exemption for the rest of the episode.
+   */
+  linkFix(repo: RepoSlug, episode: number, task: string, fixer: string): "linked" | "kept" | "not-live" {
+    const changed = this.db
+      .prepare("UPDATE shepherd_freeze SET fix_task = ?, fixer = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL AND fix_task IS NULL AND fixer IS NULL AND fix_pr IS NULL")
+      .run(task, fixer, repoKey(repo), episode).changes;
+    if (changed > 0) return "linked";
+    return this.live(repo, episode) ? "kept" : "not-live";
   }
 
   private setField(repo: RepoSlug, episode: number, column: "fix_task" | "fixer", value: string): boolean {

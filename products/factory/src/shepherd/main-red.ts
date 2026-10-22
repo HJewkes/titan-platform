@@ -35,6 +35,14 @@ export interface FixTaskFields {
 export interface FixTasks {
   findByTag(initiative: string, tag: string): Promise<string | undefined>;
   add(initiative: string, fields: FixTaskFields): Promise<string>;
+  /** Turns a filed fix task into a flake task: sets its done_when, appends `notes` once, and adds `tag`. Absent means no rerun thaw. */
+  markFlake?(initiative: string, id: string, flake: FlakeFields): Promise<void>;
+}
+
+export interface FlakeFields {
+  done_when: string;
+  notes: string;
+  tag: string;
 }
 
 /** A broker that is down or a timeout is waited out; any other throw is a refusal. */
@@ -140,7 +148,7 @@ export function freezeStep(wiring: MainRedWiring | undefined, input: Pick<RedInp
 type Patient<T> = { value: T } | { error: string };
 
 /** Retries any throw until the give-up deadline, so a daemon that is down delays the step and never fails it. */
-async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: () => Promise<T>, retryable: (error: unknown) => boolean = () => true): Promise<Patient<T>> {
+export async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: () => Promise<T>, retryable: (error: unknown) => boolean = () => true): Promise<Patient<T>> {
   const clock = deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_MAIN_RED_GIVE_UP_MS });
   for (;;) {
     try {
@@ -153,8 +161,8 @@ async function patiently<T>(deps: ShepherdDeps, signal: AbortSignal, attempt: ()
 }
 
 /** The failing Actions jobs at `sha` with their log tails, split evenly so one noisy job cannot crowd out the rest. */
-export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string): Promise<{ failing: CheckRun[]; log: string }> {
-  const runs = await port.latestCheckRuns(repo, sha).catch(() => [] as CheckRun[]);
+export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string, latest?: readonly CheckRun[]): Promise<{ failing: CheckRun[]; log: string }> {
+  const runs = latest ?? (await port.latestCheckRuns(repo, sha).catch(() => [] as CheckRun[]));
   const failing = runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID && run.status === "completed" && !isPassing(run));
   if (failing.length === 0) return { failing, log: "No failing Actions run was found at this sha." };
   const budget = Math.floor(LOG_BUDGET_BYTES / failing.length);
@@ -166,12 +174,12 @@ export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string)
   return { failing, log: sections.join("\n") };
 }
 
-type FailingRead = Awaited<ReturnType<typeof failingLogs>>;
+export type FailingRead = Awaited<ReturnType<typeof failingLogs>>;
 
 const FAILED_TEST = /(?:^|\s)FAIL\s+(\S.*?)\s*$/;
 
 /** The test files and cases a vitest or jest log tail reports as `FAIL`, sorted and unique. */
-function failedTests(log: string): string[] {
+export function failedTests(log: string): string[] {
   const tests = log.split("\n").flatMap((line) => FAILED_TEST.exec(stripVTControlCharacters(line))?.slice(1, 2) ?? []);
   return [...new Set(tests)].sort();
 }
@@ -235,10 +243,17 @@ async function standingFix(deps: ShepherdDeps, wiring: MainRedWiring, input: Epi
   return undefined;
 }
 
-/** Hands this episode the standing fixer and its task, so its PR passes this freeze and `sh-spawn-fixer` reuses it. */
-function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> {
-  const freezes = wiring.freezes();
-  if (!freezes.setFixTask(input.repo, episode, standing.task) || !freezes.setFixer(input.repo, episode, standing.fixer)) return noTask(THAWED, true);
+/**
+ * Hands this episode the standing fixer and its task, so its PR passes this freeze and `sh-spawn-fixer` reuses it. A
+ * fixer, task or fix PR the episode gained while the standing fixer was looked up is kept, so its exemption never moves.
+ */
+function linkStanding(wiring: MainRedWiring, input: EpisodeInput, episode: number, standing: StandingFix): z.infer<typeof FixTaskResult> | undefined {
+  const linked = wiring.freezes().linkFix(input.repo, episode, standing.task, standing.fixer);
+  if (linked === "not-live") return noTask(THAWED, true);
+  if (linked === "kept") {
+    const kept = wiring.freezes().live(input.repo, episode)?.fixTask ?? null;
+    return kept === null ? undefined : { task: kept, thawed: false, detail: `kept the episode's own fix task; ${standing.fixer} was not linked` };
+  }
   const pr = standing.pr === null ? "" : ` and its open PR #${standing.pr}`;
   return { task: standing.task, thawed: false, detail: `linked to ${standing.fixer}${pr}: the red at ${standing.redSha} failed the same checks and tests` };
 }
@@ -273,7 +288,8 @@ export async function fileFixTask(deps: ShepherdDeps, wiring: MainRedWiring | un
   const key = mainRedKey(input.repo, input.mergeSha);
   const read = await failingLogs(deps.port, input.repo, input.mergeSha);
   const standing = await standingFix(deps, wiring, input, initiative, read).catch(() => undefined);
-  if (standing !== undefined) return linkStanding(wiring, input, live.episode, standing);
+  const linked = standing && linkStanding(wiring, input, live.episode, standing);
+  if (linked !== undefined) return linked;
   const fields = fixTaskFields(input, read, key, named === undefined);
   const id = await patiently(deps, signal, async () => {
     if (!wiring.freezes().live(input.repo, input.episode)) return undefined;
@@ -297,7 +313,7 @@ function fixerBrief(name: string, input: FixerInput, failing: readonly CheckRun[
 
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError || error instanceof SpawnDeferred;
 
-const THAWED = "the episode thawed while the step ran";
+export const THAWED = "the episode thawed while the step ran";
 
 const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> => ({ fixer: null, thawed, detail });
 

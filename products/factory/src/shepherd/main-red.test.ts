@@ -366,6 +366,19 @@ describe("a red after a thaw that fails like an earlier red", () => {
     expect(third.fixer).toBe(fixerName(REPO, fakeSha("red-a")));
   });
 
+  it("keeps the fixer and task the episode gained while the standing fixer was looked up, so that fixer's exemption never moves", async () => {
+    const r = rosterRig("live");
+    await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));
+    const { episode } = r.freezes.freeze(REPO, failAt(r, fakeSha("red-b"), 12, "validate", TIMEOUT));
+    const roster = r.wiring.fixers!.roster;
+    const racing: FixerAgents = { ...r.wiring.fixers!, roster: async () => (r.freezes.setFixTask(REPO, episode, "demo/FX-OWN"), r.freezes.setFixer(REPO, episode, "fix-widget-own"), roster()) };
+
+    const result = await fileFixTask(r.deps, { ...r.wiring, fixers: racing }, { ...red, mergeSha: fakeSha("red-b"), episode }, signal);
+
+    expect(r.freezes.get(REPO)).toMatchObject({ fixTask: "demo/FX-OWN", fixer: "fix-widget-own" });
+    expect(result).toMatchObject({ task: "demo/FX-OWN", thawed: false, detail: expect.stringContaining("kept the episode's own fix task") });
+  });
+
   it("gives a red with the same test under a different failing check its own fixer", async () => {
     const r = rosterRig("live");
     await episodeAt(r, failAt(r, fakeSha("red-a"), 11, "validate", TIMEOUT));

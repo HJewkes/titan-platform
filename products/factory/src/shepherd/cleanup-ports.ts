@@ -1,7 +1,7 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource, type RpcClient } from "@titan-design/rpc-client";
 import type { CleanupAgents, CleanupTasks, TaskState } from "./cleanup.js";
-import type { FixTaskFields, FixTasks } from "./main-red.js";
+import type { FixTaskFields, FixTasks, FlakeFields } from "./main-red.js";
 import { toPresence } from "./presence.js";
 import { createRosterReader, mutating, type RosterReader } from "./roster.js";
 
@@ -32,7 +32,7 @@ type ActiveWorkCommands = {
   "source.list": { args: { slug: string }; result: { sources: { filename: string }[] } };
   "source.read": { args: { slug: string; path: string }; result: { content: string } };
   "task.add": { args: { slug: string } & FixTaskFields; result: { id: string } };
-  "task.edit": { args: { slug: string; id: string; field: "notes"; value: string }; result: unknown };
+  "task.edit": { args: { slug: string; id: string; field: "notes" | "done_when" | "status"; value: string } | { slug: string; id: string; add_tag: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
 
@@ -80,5 +80,18 @@ export function activeWorkFixTasks(options: { origin: string; fetch?: typeof fet
   return {
     findByTag: async (slug, tag) => (await client.call("task.list", { slug, status: "all", tag })).tasks[0]?.id,
     add: async (slug, fields) => (await client.call("task.add", { slug, ...fields })).id,
+    markFlake: (slug, id, flake) => markFlake(client, slug, id, flake),
   };
+}
+
+/** Each write is idempotent, so a retry after a partial failure lands the same task: the notes are appended only once. A done task is reopened, because the flake is still in the code. */
+async function markFlake(client: RpcClient<ActiveWorkCommands>, slug: string, id: string, flake: FlakeFields): Promise<void> {
+  const { tasks } = await client.call("task.list", { slug, status: "all" });
+  const task = tasks.find((candidate) => candidate.id === id);
+  if (task === undefined) throw new Error(`fix task ${slug}/${id} is not in its initiative`);
+  const notes = task.notes ?? "";
+  if (!notes.includes(flake.notes)) await client.call("task.edit", { slug, id, field: "notes", value: notes === "" ? flake.notes : `${notes}\n\n${flake.notes}` });
+  await client.call("task.edit", { slug, id, field: "done_when", value: flake.done_when });
+  if (!(task.tags ?? []).includes(flake.tag)) await client.call("task.edit", { slug, id, add_tag: flake.tag });
+  if (task.status === "done") await client.call("task.edit", { slug, id, field: "status", value: "open" });
 }

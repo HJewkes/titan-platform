@@ -81,6 +81,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-unfreeze": `${WRITE}: releases the repo freeze`,
   "sh-freeze": `${WRITE}: freezes the repo on a red main`,
   "sh-file-fix-task": `${WRITE}: files the fix task`,
+  "sh-main-rerun": `${WRITE}: reruns main's failed jobs once and may thaw`,
   "sh-spawn-fixer": `${WRITE}: spawns the fixer agent`,
   "sh-thaw": `${WRITE}: releases the freeze for the owner`,
   "sh-cleanup": `${WRITE}: deletes the head ref and closes the task`,

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the 24 h repeat-flake guard is dropped",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  if (again.length > 0) return stays(`${again.join(\", \")} already thawed main on a rerun within 24 h, so it stays frozen for a real fix`);\n",
+      "replace": "",
+      "kills": [
+        "sh-main-rerun keeps the repo frozen, with no rerun, when the same failing test already thawed main on a rerun within 24 h"
+      ]
+    },
+    {
+      "name": "the thaw skips filing the flake task",
+      "file": "products/factory/src/shepherd/main-rerun.ts",
+      "find": "  const marked = await patiently(deps, signal, () => red.markFlake(initiative, id, fields));",
+      "replace": "  const marked = { value: fields };",
+      "kills": [
+        "sh-main-rerun thaws on Shepherd's own green rerun at the red sha and leaves the fix task open as the flake task",
+        "sh-main-rerun files the flake with both runs' ids and URLs, the job, the failing test, an error excerpt and a root-cause done_when"
+      ]
+    }
+  ]
+}

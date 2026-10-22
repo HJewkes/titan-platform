@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "linking a standing fixer overwrites the episode's own fixer and task",
+      "file": "products/factory/src/shepherd/freeze.ts",
+      "find": "AND thawed_at IS NULL AND fix_task IS NULL AND fixer IS NULL AND fix_pr IS NULL\")",
+      "replace": "AND thawed_at IS NULL\")",
+      "kills": [
+        "a red after a thaw that fails like an earlier red keeps the fixer and task the episode gained while the standing fixer was looked up, so that fixer's exemption never moves"
+      ]
+    }
+  ]
+}

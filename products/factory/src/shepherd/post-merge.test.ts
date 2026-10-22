@@ -855,6 +855,23 @@ describe("shepherd-pr on a red main", () => {
     expect(w.host.gates.listPending()).toEqual([]);
   });
 
+  it("thaws on Shepherd's green rerun at the red sha, files the flake on the fix task and spawns no fixer", async () => {
+    const ports = mainRedPorts();
+    const flaked: string[] = [];
+    const mainRed = { ...ports.mainRed, tasks: { ...ports.mainRed.tasks!, markFlake: async (initiative: string, id: string) => void flaked.push(`${initiative}/${id}`) } };
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure"), ...(w.fake.effects.rerunFailedJobs > 0 ? [successRun("validate", 120, "2026-01-01T00:20:00Z")] : [])], undefined, mainRed);
+    w.fake.jobLogs.set(5, "FAIL  src/linear.test.ts > grows linearly");
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(flaked).toEqual(["demo/FX-1"]);
+    expect(ports.spawned).toEqual([]);
+    expect(w.freezes().isFrozen(REPO)).toBe(false);
+    expect(w.host.gates.listPending()).toEqual([]);
+  });
+
   it("finishes and cleans up, gating nothing, when main goes green and thaws the repo while the fixer spawns", async () => {
     const ports = mainRedPorts();
     let thaw = (): void => undefined;
