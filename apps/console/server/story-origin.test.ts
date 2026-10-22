@@ -181,7 +181,7 @@ describe("the story bridge", () => {
     bridge.emit("storyRendered");
     bridge.resize(412.3);
 
-    expect(bridge.posted).toEqual([
+    expect(bridge.posted.filter(({ message }) => message.type !== "boxes")).toEqual([
       { message: { bridge: BRIDGE_TAG, type: "ready" }, target: consoleOrigin() },
       { message: { bridge: BRIDGE_TAG, type: "height", height: 413 }, target: consoleOrigin() },
     ]);
@@ -220,6 +220,67 @@ describe("the story bridge", () => {
 
     expect(bridge.posted.filter(({ message }) => message.type === "height")).toHaveLength(12);
   });
+
+  it("reports each element a pin can name after every render, with its testId, role and text", () => {
+    const card = { attributes: { "data-testid": "card" }, text: "Lantern   Open", rect: { left: 0, top: 0, width: 390, height: 200 } };
+    const button = { attributes: { "data-testid": "card-open", role: "button" }, text: "Open", rect: { left: 16, top: 150, width: 80, height: 32 } };
+    const bridge = runBridge({ elements: [card, button] });
+
+    bridge.emit("storyRendered");
+    bridge.emit("storyRendered");
+
+    const boxes = bridge.posted.filter(({ message }) => message.type === "boxes");
+    expect(boxes).toHaveLength(2);
+    expect(boxes[0]).toEqual({
+      message: {
+        bridge: BRIDGE_TAG,
+        type: "boxes",
+        boxes: [
+          { x: 0, y: 0, width: 390, height: 200, target: { testId: "card", text: "Lantern Open" } },
+          { x: 16, y: 150, width: 80, height: 32, target: { testId: "card-open", role: "button", text: "Open" } },
+        ],
+      },
+      target: consoleOrigin(),
+    });
+  });
+
+  it("forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier", () => {
+    const bridge = runBridge({});
+    bridge.emit("storyRendered");
+
+    for (const key of ["1", "Enter", "a", "c", "ArrowDown"]) bridge.press(key);
+    bridge.press("]", { metaKey: true });
+    bridge.press("Enter", { ctrlKey: true });
+    bridge.press("?", { target: { tagName: "INPUT" } });
+    for (const key of ["[", "]", "Escape", "?"]) bridge.press(key);
+
+    const keys = bridge.posted.filter(({ message }) => message.type === "key").map(({ message }) => message);
+    expect(keys).toEqual(["[", "]", "Escape", "?"].map((key) => ({ bridge: BRIDGE_TAG, type: "key", key })));
+  });
+
+  it("pushes the page's args to the story, and once more after the story next renders", () => {
+    const bridge = runBridge({});
+    const args = { bridge: BRIDGE_TAG, type: "args", args: { phase: "open" } };
+
+    bridge.receive(args);
+    bridge.emit("storyRendered");
+    bridge.emit("storyRendered");
+
+    const update = { event: "updateStoryArgs", payload: { storyId: "lantern-card--compact", updatedArgs: { phase: "open" } } };
+    expect(bridge.emitted).toEqual([update, update]);
+  });
+
+  it("takes args only from the console page's own window and origin", () => {
+    const bridge = runBridge({});
+    const args = { bridge: BRIDGE_TAG, type: "args", args: { phase: "open" } };
+
+    bridge.receive(args, { source: "other" });
+    bridge.receive(args, { origin: "https://evil.example" });
+    bridge.receive({ type: "args", args: { phase: "open" } });
+    bridge.emit("storyRendered");
+
+    expect(bridge.emitted).toEqual([]);
+  });
 });
 
 /** The fast-fail page's reason, as the browser would read the bridge tag's attribute. */
@@ -233,10 +294,24 @@ interface Posted {
   target: string;
 }
 
+/** An element as the bridge reads it for pins: its attributes, text and client rect. */
+interface FakeElement {
+  attributes: Record<string, string>;
+  text?: string;
+  tagName?: string;
+  rect: { left: number; top: number; width: number; height: number };
+}
+
 interface BridgeRun {
   posted: Posted[];
+  /** Every `updateStoryArgs` the bridge emitted on Storybook's channel. */
+  emitted: { event: string; payload: unknown }[];
   emit(event: string): void;
   resize(bottom: number): void;
+  /** A keydown inside the story, as the browser dispatches it on the story's window. */
+  press(key: string, init?: { metaKey?: boolean; ctrlKey?: boolean; target?: { tagName: string } }): void;
+  /** A postMessage the story's window receives. */
+  receive(data: unknown, from?: { source?: "parent" | "other"; origin?: string }): void;
 }
 
 interface BridgeSetup {
@@ -244,27 +319,41 @@ interface BridgeSetup {
   parent?: string | null;
   failure?: string;
   framed?: boolean;
+  elements?: FakeElement[];
 }
+
+type Listener = (event: Record<string, unknown>) => void;
 
 /**
  * Runs the bridge text the story origin serves, fetched synchronously beforehand, in a bare VM
- * with a fake frame: the parent window records each postMessage, Storybook's channel and the
- * ResizeObserver are driven by the test.
+ * with a fake frame: the parent window records each postMessage, Storybook's channel, the story's
+ * window events and the ResizeObserver are driven by the test.
  */
-function runBridge({ parent = consoleOrigin(), failure, framed = true }: BridgeSetup): BridgeRun {
+function runBridge({ parent = consoleOrigin(), failure, framed = true, elements = [] }: BridgeSetup): BridgeRun {
   const posted: Posted[] = [];
+  const emitted: BridgeRun["emitted"] = [];
   const handlers = new Map<string, () => void>();
+  const listeners = new Map<string, Listener[]>();
   const observers: (() => void)[] = [];
   let bottom = 0;
   const root = { getBoundingClientRect: () => ({ bottom }) };
-  const self: Record<string, unknown> = { scrollY: 0, __STORYBOOK_ADDONS_CHANNEL__: { on: (event: string, handler: () => void) => handlers.set(event, handler) } };
-  self.parent = framed ? { postMessage: (message: BridgeMessage, target: string) => posted.push({ message, target }) } : self;
+  const channel = { on: (event: string, handler: () => void) => handlers.set(event, handler), emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
+  const self: Record<string, unknown> = {
+    scrollY: 0,
+    __STORYBOOK_ADDONS_CHANNEL__: channel,
+    addEventListener: (type: string, listener: Listener) => listeners.set(type, [...(listeners.get(type) ?? []), listener]),
+  };
+  const parentWindow = { postMessage: (message: BridgeMessage, target: string) => posted.push({ message, target }) };
+  self.parent = framed ? parentWindow : self;
+  const fire = (type: string, event: Record<string, unknown>): void => (listeners.get(type) ?? []).forEach((listener) => listener(event));
   const context = {
     window: self,
-    location: { search: parent === null ? "" : `?id=x&parent=${encodeURIComponent(parent)}` },
+    location: { search: parent === null ? "" : `?id=lantern-card--compact&parent=${encodeURIComponent(parent)}` },
     document: {
       currentScript: { getAttribute: (name: string) => (name === BRIDGE_ERROR_ATTRIBUTE ? (failure ?? null) : null) },
       getElementById: (id: string) => (id === "storybook-root" ? root : null),
+      querySelectorAll: () =>
+        elements.map((element) => ({ tagName: element.tagName ?? "DIV", textContent: element.text ?? "", getAttribute: (name: string) => element.attributes[name] ?? null, getBoundingClientRect: () => element.rect })),
     },
     URLSearchParams,
     setTimeout: () => 0,
@@ -284,11 +373,14 @@ function runBridge({ parent = consoleOrigin(), failure, framed = true }: BridgeS
   vm.runInNewContext(bridgeText, context);
   return {
     posted,
+    emitted,
     emit: (event) => handlers.get(event)?.(),
     resize: (next) => {
       bottom = next;
       for (const observer of [...observers]) observer();
     },
+    press: (key, init = {}) => fire("keydown", { key, metaKey: false, ctrlKey: false, altKey: false, target: null, ...init }),
+    receive: (data, { source = "parent", origin = consoleOrigin() } = {}) => fire("message", { data, origin, source: source === "parent" ? parentWindow : {} }),
   };
 }
 
