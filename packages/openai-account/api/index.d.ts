@@ -1,10 +1,20 @@
-export { A as AccountProfile, K as KnownObservationInput, a as KnownUsageReading, L as LoginState, b as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, U as UsageReading, c as UsageResult, d as UsageWindow, e as accountLabel, f as assertAccountLabel, k as knownObservation, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
+import { U as UsageResult } from './usage.js';
+export { A as AccountProfile, K as KnownObservationInput, a as KnownUsageReading, L as LoginState, b as LoginStatusOutput, M as MAX_READING_AGE_SECONDS, Q as QuotaAdmission, c as UsageReading, d as UsageWindow, e as accountLabel, f as assertAccountLabel, k as knownObservation, l as loginStateFromStatus, q as quotaAdmission, u as usageFromRolloutEvents } from './usage.js';
 
 /** Reuse Titan redaction, adding OpenAI key prefixes; no cause or extra fields survive. */
 declare function redactSecrets(value: string): string;
 declare function redactSecrets(value: Error): Error;
 
-export { redactSecrets };
+interface NativeQuotaObservation {
+    account: string;
+    expectedAccountId: string;
+    /** Local backend-request start, not a server-supplied snapshot generation time. */
+    startedAt: number;
+}
+/** Only for a successful matching native backend request; raw rollouts cannot establish this provenance. */
+declare function usageFromNativeResponse(input: unknown, observation: NativeQuotaObservation): UsageResult;
+
+export { type NativeQuotaObservation, UsageResult, redactSecrets, usageFromNativeResponse };
 
 // ./dist/usage.d.ts
 interface AccountProfile {
@@ -84,4 +94,4 @@ declare function usageFromRolloutEvents(events: Iterable<unknown>, account: stri
 /** Q5 policy; only explicit, locally branded observations can enter the known path. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile as A, type KnownObservationInput as K, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageReading as U, type KnownUsageReading as a, type LoginStatusOutput as b, type UsageResult as c, type UsageWindow as d, accountLabel as e, assertAccountLabel as f, knownObservation as k, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
+export { type AccountProfile as A, type KnownObservationInput as K, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageResult as U, type KnownUsageReading as a, type LoginStatusOutput as b, type UsageReading as c, type UsageWindow as d, accountLabel as e, assertAccountLabel as f, knownObservation as k, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };

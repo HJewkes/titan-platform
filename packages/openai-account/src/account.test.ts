@@ -15,9 +15,9 @@ function event(used = 70, at = now) {
 }
 
 // Supplied observations test policy independently of the untrusted rollout envelope.
-function observed(used = 70, at = now): UsageResult {
+function observed(used = 70, at = now, five = 20): UsageResult {
   return knownObservation({ source: "synthetic-independent-observation", observedAt: at, reading: { account: "reporter",
-    rate_limits: { five_hour: { used_percentage: 20, resets_at: now + 1000 },
+    rate_limits: { five_hour: { used_percentage: five, resets_at: now + 1000 },
       seven_day: { used_percentage: used, resets_at: now + 2000 } } } });
 }
 
@@ -62,9 +62,7 @@ describe("read-only Codex account core", () => {
     const result = observed();
     expect(quotaAdmission(result, now + 900).allowed).toBe(true);
     expect(quotaAdmission(result, now + 901)).toMatchObject({ allowed: false, reason: "stale" });
-    const full = observed();
-    if (full.status !== "known") throw new Error("fixture not known");
-    full.reading.rate_limits.five_hour.used_percentage = 100;
+    const full = observed(70, now, 100);
     expect(quotaAdmission(full, now)).toMatchObject({ allowed: false, reason: "five-hour-ceiling" });
   });
   it.each([null, {}, { primary: { used_percent: 20, window_minutes: 300 } }])("refuses missing or incomplete windows", limits => {
@@ -82,11 +80,10 @@ describe("read-only Codex account core", () => {
   it("validates a supplied known reading rather than trusting its type annotation", () => {
     const valid = observed();
     if (valid.status !== "known") throw new Error("fixture did not parse");
-    valid.reading.written_at = NaN;
-    expect(quotaAdmission(valid, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
-    const invalidCounter = observed();
-    if (invalidCounter.status !== "known") throw new Error("fixture did not parse");
-    invalidCounter.reading.rate_limits.five_hour.used_percentage = NaN;
+    const invalidTimestamp = { status: "known" as const, reading: { ...valid.reading, written_at: NaN } };
+    expect(quotaAdmission(invalidTimestamp, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
+    const invalidCounter = { status: "known" as const, reading: { ...valid.reading,
+      rate_limits: { ...valid.reading.rate_limits, five_hour: { ...valid.reading.rate_limits.five_hour, used_percentage: NaN } } } };
     expect(quotaAdmission(invalidCounter, now)).toMatchObject({ allowed: false, reason: "inconsistent" });
   });
   it("refuses future and reset-expired supplied observations", () => {

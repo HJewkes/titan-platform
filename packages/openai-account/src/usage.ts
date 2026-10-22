@@ -7,9 +7,13 @@ export interface UsageReading {
   written_at: number;
   rate_limits: { five_hour: UsageWindow; seven_day: UsageWindow };
 }
-const KNOWN_OBSERVATION: unique symbol = Symbol("known quota observation");
+declare const KNOWN_OBSERVATION: unique symbol;
+const knownObservations = new WeakSet<object>();
 interface ObservationTime { readonly source: string; readonly observedAt: number }
 export type KnownUsageReading = UsageReading & { readonly [KNOWN_OBSERVATION]: ObservationTime };
+function recordKnownObservation(reading: UsageReading): asserts reading is KnownUsageReading {
+  knownObservations.add(reading);
+}
 export interface KnownObservationInput {
   /** Explicit caller attestation of the time source; not authentication or backend proof. */
   readonly source: string;
@@ -57,11 +61,13 @@ export function knownObservation(input: KnownObservationInput): UsageResult {
     const five_hour = checkedWindow(limits.five_hour, observedAt);
     const seven_day = checkedWindow(limits.seven_day, observedAt);
     if (!five_hour || !seven_day) return unknown("inconsistent");
-    const reading: KnownUsageReading = {
-      account, written_at: observedAt, rate_limits: { five_hour, seven_day },
-      [KNOWN_OBSERVATION]: Object.freeze({ source: source.trim(), observedAt }),
-    };
-    Object.defineProperty(reading, KNOWN_OBSERVATION, { enumerable: false, writable: false, configurable: false });
+    const reading = Object.freeze({
+      account, written_at: observedAt,
+      rate_limits: Object.freeze({
+        five_hour: Object.freeze(five_hour), seven_day: Object.freeze(seven_day),
+      }),
+    });
+    recordKnownObservation(reading);
     return { status: "known", reading };
   } catch { return unknown("inconsistent"); }
 }
@@ -107,10 +113,10 @@ export function usageFromRolloutEvents(events: Iterable<unknown>, account: strin
 }
 
 function admitKnown(value: unknown, now: number): QuotaAdmission {
-  const reading = object(value); const at = reading?.written_at;
-  const provenance = object(reading?.[KNOWN_OBSERVATION]); const limits = object(reading?.rate_limits);
-  if (!provenance || typeof provenance.source !== "string" || !provenance.source.trim() ||
-      !epoch(at) || at !== provenance.observedAt || !epoch(now) || now < at || !limits) return { allowed: false, reason: "inconsistent" };
+  const reading = object(value);
+  if (!reading || !knownObservations.has(reading)) return { allowed: false, reason: "inconsistent" };
+  const at = reading.written_at; const limits = object(reading.rate_limits);
+  if (!epoch(at) || !epoch(now) || now < at || !limits) return { allowed: false, reason: "inconsistent" };
   const five = checkedWindow(limits.five_hour, now); const week = checkedWindow(limits.seven_day, now);
   if (!five || !week) return { allowed: false, reason: "inconsistent" };
   const age = now - at;

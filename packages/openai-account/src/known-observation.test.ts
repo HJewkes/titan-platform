@@ -42,8 +42,9 @@ describe("explicit known observation factory", () => {
   it("binds written_at to the attested time rather than allowing a later refresh by mutation", () => {
     const result = observed();
     if (result.status !== "known") throw new Error("fixture not known");
-    result.reading.written_at = now + 10;
-    expect(quotaAdmission(result, now + 10)).toEqual({ allowed: false, reason: "inconsistent" });
+    expect(Reflect.set(result.reading, "written_at", now + 10)).toBe(false);
+    expect(result.reading.written_at).toBe(now);
+    expect(quotaAdmission(result, now + 901)).toEqual({ allowed: false, reason: "stale", ageSeconds: 901 });
   });
   it("refuses an unknown status even when its reading has valid provenance", () => {
     const result = observed();

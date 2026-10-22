@@ -1,4 +1,4 @@
-import { b as LoginStatusOutput, A as AccountProfile, L as LoginState, c as UsageResult } from './usage.js';
+import { b as LoginStatusOutput, A as AccountProfile, L as LoginState, U as UsageResult } from './usage.js';
 
 interface LoginProbeInput {
     executablePath: string;
@@ -25,7 +25,43 @@ interface ReadUsageOptions {
 /** Read active and archived rollout JSONL only, never auth.json; any scan failure refuses. */
 declare function readUsage(profile: AccountProfile, options?: ReadUsageOptions): Promise<UsageResult>;
 
-export { type LoginProbeInput, type ReadLoginOptions, type ReadUsageOptions, readLoginState, readUsage };
+type NativeQuotaMethod = "initialize" | "account/read" | "account/rateLimits/read";
+interface NativeQuotaProcessInput {
+    executablePath: string;
+    cwd: string;
+    env: Record<string, string>;
+    signal: AbortSignal;
+}
+interface NativeQuotaConnection {
+    request(method: NativeQuotaMethod, params: Record<string, unknown>): Promise<unknown>;
+    initialized(): void;
+    close(): void;
+}
+type ConnectNativeQuota = (input: NativeQuotaProcessInput, invalidated: () => void) => NativeQuotaConnection;
+
+interface NativeQuotaWorkspace {
+    cwd: string;
+    dispose(): Promise<void>;
+}
+
+interface ReadNativeUsageOptions {
+    /** Nonsecret account binding from the caller account authority; never infer from label/email. */
+    expectedAccountId: string;
+    executablePath?: string;
+    env?: Record<string, string | undefined>;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    createWorkspace?: () => Promise<NativeQuotaWorkspace>;
+    resolveExecutable?: (executable: string, env: Record<string, string>) => Promise<string>;
+    inspectVersion?: (input: NativeQuotaProcessInput) => Promise<string>;
+    connect?: ConnectNativeQuota;
+    now?: () => number;
+    monotonicNow?: () => number;
+}
+/** Opt-in native backend fetch. Native may refresh its own credentials; no login or model operation is requested. */
+declare function readNativeUsage(profile: AccountProfile, options: ReadNativeUsageOptions): Promise<UsageResult>;
+
+export { type ConnectNativeQuota, type LoginProbeInput, type NativeQuotaConnection, type NativeQuotaProcessInput, type NativeQuotaWorkspace, type ReadLoginOptions, type ReadNativeUsageOptions, type ReadUsageOptions, readLoginState, readNativeUsage, readUsage };
 
 // ./dist/usage.d.ts
 interface AccountProfile {
@@ -105,4 +141,4 @@ declare function usageFromRolloutEvents(events: Iterable<unknown>, account: stri
 /** Q5 policy; only explicit, locally branded observations can enter the known path. */
 declare function quotaAdmission(result: UsageResult, now: number): QuotaAdmission;
 
-export { type AccountProfile as A, type KnownObservationInput as K, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageReading as U, type KnownUsageReading as a, type LoginStatusOutput as b, type UsageResult as c, type UsageWindow as d, accountLabel as e, assertAccountLabel as f, knownObservation as k, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
+export { type AccountProfile as A, type KnownObservationInput as K, type LoginState as L, MAX_READING_AGE_SECONDS as M, type QuotaAdmission as Q, type UsageResult as U, type KnownUsageReading as a, type LoginStatusOutput as b, type UsageReading as c, type UsageWindow as d, accountLabel as e, assertAccountLabel as f, knownObservation as k, loginStateFromStatus as l, quotaAdmission as q, usageFromRolloutEvents as u };
