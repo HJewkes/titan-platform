@@ -10,6 +10,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const SHIP = "ship-tile-r1";
@@ -104,7 +105,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
 }
 
 const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
-const button = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+const button = (label: string): HTMLElement => getButton(label);
 /** The montages sit under the Diff tab (decision 167). */
 const openDiff = (): void => void fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
@@ -651,7 +652,7 @@ describe("a sent Ship round read back after a reload (TP-3767)", { timeout: REND
 
 describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const submits = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.submit").map((call) => call.args);
-  const verdict = (key: string, label: string): HTMLElement => (openDiff(), within(screen.getByTestId(`montage-${key}`)).getByRole("button", { name: label }));
+  const verdict = (key: string, label: string): HTMLElement => (openDiff(), getButton(label, screen.getByTestId(`montage-${key}`)));
   const blocked = (): string => screen.getByTestId("ship-blocked").textContent;
 
   it("turns Ship off for a Rejected frame, and sends its verdict and comment with Send back", async () => {

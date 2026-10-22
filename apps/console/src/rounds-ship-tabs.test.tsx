@@ -9,6 +9,7 @@ import type { Manifest } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 
 // Each test renders the whole App and presses through it; see rounds-ship.test.tsx (TP-3866).
 const RENDER_TIMEOUT_MS = 30_000;
@@ -68,6 +69,7 @@ const renderOnePr = async (change?: (manifest: Manifest) => Manifest, extra: Par
 const renderTwoPr = async (change?: (manifest: Manifest) => Manifest, extra: Partial<ValidRound> = {}) => renderRound(TWO_PR, { ...(await detailOf(twoPr.source, TWO_PR, change)), ...extra });
 
 const scope = (pr?: string) => (pr === undefined ? screen : within(screen.getByTestId(`pr-${pr}`)));
+const prRoot = (pr?: string): ParentNode => (pr === undefined ? document.body : screen.getByTestId(`pr-${pr}`));
 const openTab = (label: string, pr?: string): void => void fireEvent.click(scope(pr).getByRole("tab", { name: label }));
 const panel = (key: string, pr?: string): HTMLElement => (pr === undefined ? screen.getByTestId(`pr-tab-${key}`) : within(screen.getByTestId(`pr-tabs-${pr}`)).getByTestId(`pr-tab-${key}`));
 const shown = (element: HTMLElement): boolean => !element.hidden;
@@ -83,7 +85,7 @@ describe("Review, Diff and Context tabs on a Ship round (decision 167)", { timeo
     expect(shown(panel("diff"))).toBe(false);
     for (const tab of ["Diff", "Context", "Review"]) {
       openTab(tab);
-      expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
+      expect(getButton("Ship")).toBeTruthy();
       expect(panel("review").contains(screen.getByTestId("ship-bar"))).toBe(false);
     }
   });
@@ -96,8 +98,8 @@ describe("Review, Diff and Context tabs on a Ship round (decision 167)", { timeo
     expect(shown(panel("diff", "example/panels#2"))).toBe(true);
     expect(shown(panel("review", "example/tiles#1"))).toBe(true);
     expect(within(panel("review", "example/tiles#1")).getByText("Keep the stripe colour?")).toBeTruthy();
-    expect(scope("example/panels#2").getByRole("button", { name: "Ship example/panels#2" })).toBeTruthy();
-    expect(scope("example/tiles#1").getByRole("button", { name: "Ship example/tiles#1" })).toBeTruthy();
+    expect(getButton("Ship example/panels#2", prRoot("example/panels#2"))).toBeTruthy();
+    expect(getButton("Ship example/tiles#1", prRoot("example/tiles#1"))).toBeTruthy();
   });
 });
 
@@ -144,16 +146,16 @@ describe("stacked rounds (decision 95(3))", { timeout: RENDER_TIMEOUT_MS }, () =
 
   it("turns the stacked PR's Ship off while its holder is sent back, linking to the holder's Ship question (TP-3883)", async () => {
     await renderTwoPr(stacked);
-    const panelsShip = () => scope("example/panels#2").getByRole("button", { name: "Ship example/panels#2" });
+    const panelsShip = () => getButton("Ship example/panels#2", prRoot("example/panels#2"));
     expect(panelsShip().getAttribute("aria-disabled")).not.toBe("true");
 
     fireEvent.change(scope("example/tiles#1").getByLabelText("Note for Send back on example/tiles#1"), { target: { value: "Lower the stripe." } });
-    fireEvent.click(scope("example/tiles#1").getByRole("button", { name: "Send back example/tiles#1" }));
+    fireEvent.click(getButton("Send back example/tiles#1", prRoot("example/tiles#1")));
 
     expect(panelsShip().getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(within(scope("example/panels#2").getByTestId("ship-blocked")).getByText('stacked on example/tiles#1, which may not ship: it is answered "Don\'t ship"'));
     expect(document.activeElement?.id).toBe("ship-question-ship-tiles");
-    fireEvent.click(scope("example/tiles#1").getByRole("button", { name: "Ship example/tiles#1" }));
+    fireEvent.click(getButton("Ship example/tiles#1", prRoot("example/tiles#1")));
     expect(panelsShip().getAttribute("aria-disabled")).not.toBe("true");
   });
 });
@@ -176,7 +178,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
   it("takes a frame's blocker to the Diff tab and focuses the frame", async () => {
     await renderOnePr();
     openTab("Diff");
-    fireEvent.click(within(screen.getByTestId("montage-tile-dark")).getByRole("button", { name: "Rejected" }));
+    fireEvent.click(getButton("Rejected", screen.getByTestId("montage-tile-dark")));
     openTab("Review");
 
     fireEvent.click(blocker('you left feedback on frame "Tile, dark"'));
@@ -221,7 +223,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
       { round: 1, submittedAt: at, comment: "Narrow the panel.", pr: "example/panels#2" },
     ];
     const card = (pr: string) => within(panel("review", pr)).getByRole("checkbox", { name: "Round 1 feedback addressed" });
-    const shipOff = (pr: string) => scope(pr).getByRole("button", { name: `Ship ${pr}` }).getAttribute("aria-disabled") === "true";
+    const shipOff = (pr: string) => getButton(`Ship ${pr}`, prRoot(pr)).getAttribute("aria-disabled") === "true";
     await renderTwoPr(undefined, { priorFeedback });
 
     fireEvent.click(card("example/tiles#1"));
@@ -237,6 +239,6 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
     await renderOnePr((manifest) => ({ ...manifest, questions: manifest.questions.map((each) => ({ ...each, required: true })) }));
 
     expect(screen.queryByTestId("ship-blocked")).toBeNull();
-    expect(screen.getByRole("button", { name: "Ship" }).getAttribute("aria-disabled")).not.toBe("true");
+    expect(getButton("Ship").getAttribute("aria-disabled")).not.toBe("true");
   });
 });

@@ -1,14 +1,17 @@
 // Lists every mutation sidecar kill that names no test its test file runs (TP-3969). fix-proof matches kills on the
 // vitest full name (describe titles, then the test title), so a bare title matches nothing. Read-only: it runs each
-// sidecar's test file once with the JSON reporter and compares names; it never edits a sidecar.
+// sidecar's test file once with the JSON reporter and compares names; it never edits a sidecar. With --base it also
+// lists each sidecar whose kills name no test the diff from that base touches, so its proof is not about the change.
 //
-//   node scripts/mutation-kills-audit.mjs [sidecar...]     default: every tracked *.test.mutations.json
+//   node scripts/mutation-kills-audit.mjs [sidecar...]               default: every tracked *.test.mutations.json
+//   node scripts/mutation-kills-audit.mjs --base <ref> [sidecar...]  default: the sidecars of test files changed since <ref>
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { changedLines, missedChange, touchedTests } from "./mutation-kills-touched.mjs";
 
 const SUFFIX = ".mutations.json";
 const TEST_EXTENSIONS = ["ts", "tsx", "mjs"];
@@ -49,23 +52,41 @@ function namesOfRun(testFile) {
   }
 }
 
-function audit(path) {
+const git = (...args) => spawnSync("git", args, { encoding: "utf8" }).stdout;
+
+function missedChangeOf(path, testFile, sidecar, base) {
+  if (base === null) return [];
+  const lines = changedLines(git("diff", "-U0", `${base}...HEAD`, "--", testFile));
+  const problem = missedChange(sidecar, touchedTests(readFileSync(testFile, "utf8"), lines));
+  return problem === null ? [] : [`${path}: ${problem}`];
+}
+
+function audit(path, base) {
   const testFile = testFileOf(path, existsSync);
   if (testFile === null) return [`${path}: no single test file beside it`];
   const names = namesOfRun(testFile);
   if (names === null) return [`${path}: ${testFile} collected no tests`];
   const sidecar = JSON.parse(readFileSync(path, "utf8"));
-  return unmatchedKills(sidecar, names).map(({ mutation, kill }) => `${path}: mutation ${JSON.stringify(mutation)} kills ${JSON.stringify(kill)}, which names no test`);
+  const unmatched = unmatchedKills(sidecar, names).map(({ mutation, kill }) => `${path}: mutation ${JSON.stringify(mutation)} kills ${JSON.stringify(kill)}, which names no test`);
+  return [...unmatched, ...missedChangeOf(path, testFile, sidecar, base)];
 }
 
 function trackedSidecars() {
-  const listed = spawnSync("git", ["ls-files", "*.test.mutations.json"], { encoding: "utf8" });
-  return listed.stdout.split("\n").filter(Boolean);
+  return git("ls-files", "*.test.mutations.json").split("\n").filter(Boolean);
 }
 
-function main(args) {
-  const sidecars = args.length > 0 ? args : trackedSidecars();
-  const problems = sidecars.flatMap(audit);
+/** The sidecar path beside each test file changed since `base`, whether or not it exists yet. */
+function changedSidecars(base) {
+  const changed = git("diff", "--name-only", "--diff-filter=AM", `${base}...HEAD`).split("\n");
+  return changed.filter((path) => /\.test\.(ts|tsx|mjs)$/.test(path)).map((path) => `${path.replace(/\.(ts|tsx|mjs)$/, "")}${SUFFIX}`);
+}
+
+function main(argv) {
+  const at = argv.indexOf("--base");
+  const base = at === -1 ? null : argv[at + 1];
+  const args = at === -1 ? argv : argv.filter((_, index) => index !== at && index !== at + 1);
+  const sidecars = args.length > 0 ? args : base === null ? trackedSidecars() : changedSidecars(base);
+  const problems = sidecars.flatMap((path) => (existsSync(path) ? audit(path, base) : [`${path}: no sidecar beside a changed test file`]));
   for (const problem of problems) console.log(problem);
   console.log(`${sidecars.length} sidecars, ${problems.length} problems`);
   process.exitCode = problems.length > 0 ? 1 : 0;

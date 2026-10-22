@@ -8,6 +8,7 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { toSection } from "./pages/round-pager.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
@@ -184,7 +185,7 @@ describe("a question round", () => {
     await renderConsole("#/rounds/orbit-retry-r1");
     expect(await screen.findByText("Recommended: Ship (90%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Ships example/orbit-relay#12 at 0123456")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
+    expect(getButton("Ship")).toBeTruthy();
     expect(screen.queryByText(/^Main vs head/)).toBeNull();
   });
 });
