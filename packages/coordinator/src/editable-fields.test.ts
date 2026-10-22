@@ -3,7 +3,7 @@ import { EDITABLE_FIELDS, checkEditableValue, editableField } from "./editable-f
 
 describe("EDITABLE_FIELDS", () => {
   it("holds every example row of the edit-flow table with its bounds", () => {
-    const rows = EDITABLE_FIELDS.map((row) => [row.surface, row.pattern, row.bounds.min, row.bounds.max]);
+    const rows = EDITABLE_FIELDS.map((row) => [row.surface, row.pattern, row.bounds?.min, row.bounds?.max]);
     expect(rows).toEqual(
       expect.arrayContaining([
         ["coordinator", "seats.*.concurrency.implementers", 0, 64],
@@ -14,6 +14,8 @@ describe("EDITABLE_FIELDS", () => {
         ["coordinator", "limits.pools.*.reserve_seven_day", 0, 100],
         ["agent-chat", "worktreeBudget", 1, 64],
         ["factory", "shepherd.spawnGate.load5", 1, 256],
+        ["factory", "shepherd.spawnGate.buildLoad5", 1, 256],
+        ["factory", "shepherd.review.maxConcurrent", 1, 64],
       ]),
     );
   });
@@ -56,5 +58,73 @@ describe("checkEditableValue", () => {
   it("keeps a path on the surface its row names", () => {
     expect(editableField("factory", "worktreeBudget")).toBeUndefined();
     expect(editableField("agent-chat", "worktreeBudget")?.surface).toBe("agent-chat");
+  });
+});
+
+describe("factory rows", () => {
+  it("refuses a gateReset switch outside its enum", () => {
+    expect(checkEditableValue("factory", "shepherd.gateReset.noReproProceed", "maybe")).toEqual(
+      expect.objectContaining({ ok: false, reason: "invalid" }),
+    );
+    expect(checkEditableValue("factory", "shepherd.gateReset.heldRepair", "shadow").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.gateReset.twoMergeRelease", "shadow")).toEqual(
+      expect.objectContaining({ ok: true, value: "shadow" }),
+    );
+  });
+
+  it("marks the gateReset and review rows live", () => {
+    const live = EDITABLE_FIELDS.filter((row) => row.surface === "factory" && row.reload === "live").map((row) => row.pattern);
+    expect(live).toEqual([
+      "shepherd.gateReset.noReproProceed",
+      "shepherd.gateReset.heldRepair",
+      "shepherd.gateReset.twoMergeRelease",
+      "shepherd.review.adversaryProfile",
+      "shepherd.review.fallbackConfigDirs",
+      "shepherd.review.maxConcurrent",
+    ]);
+  });
+
+  it("accepts a profile name and refuses one that reads as a flag or a path", () => {
+    expect(checkEditableValue("factory", "shepherd.review.adversaryProfile", "example-reviewer").ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.review.adversaryProfile", "--config=x").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.review.adversaryProfile", "../other").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.review.adversaryProfile", 3).ok).toBe(false);
+  });
+
+  it("takes fallbackConfigDirs as a list of absolute paths only", () => {
+    expect(checkEditableValue("factory", "shepherd.review.fallbackConfigDirs", ["/srv/profiles/a", "/srv/profiles/b"])).toEqual(
+      expect.objectContaining({ ok: true, value: ["/srv/profiles/a", "/srv/profiles/b"] }),
+    );
+    expect(checkEditableValue("factory", "shepherd.review.fallbackConfigDirs", ["profiles/a"]).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.review.fallbackConfigDirs", "/srv/profiles/a").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.review.fallbackConfigDirs", ["/srv/a b"]).ok).toBe(false);
+  });
+
+  it("bounds maxConcurrent to whole numbers 1..64", () => {
+    expect(checkEditableValue("factory", "shepherd.review.maxConcurrent", 64).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.review.maxConcurrent", 0).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.review.maxConcurrent", 2.5).ok).toBe(false);
+  });
+
+  it("never lists secrets, paths the factory writes, or unnamed shepherd keys", () => {
+    for (const path of [
+      "digest.push.url",
+      "shepherd.consoleAnswers.actionsDir",
+      "shepherd.consoleAnswers.roundsDir",
+      "dbPath",
+      "shepherd.review.profile",
+      "shepherd.gateReset.unknownSwitch",
+    ]) {
+      expect(checkEditableValue("factory", path, "on")).toEqual(expect.objectContaining({ ok: false, reason: "not-editable" }));
+    }
+  });
+
+  it("leaves the coordinator seat caps as they were", () => {
+    expect(checkEditableValue("coordinator", "seats.web-coord.concurrency.implementers", 65)).toEqual(
+      expect.objectContaining({ ok: false, reason: "invalid" }),
+    );
+    expect(editableField("coordinator", "seats.web-coord.concurrency.implementers")).toEqual(
+      expect.objectContaining({ bounds: { min: 0, max: 64, integer: true }, reload: "per-spawn" }),
+    );
   });
 });
