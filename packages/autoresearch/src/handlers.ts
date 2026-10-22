@@ -57,7 +57,8 @@ const Inputs = {
     k: z.number().int().positive(), trigger: CadenceTriggerSchema, round: CadenceRoundSchema, sha: text, ratchetRef: text, ratchetPrefix: text, log: SnapshotLogSchema,
   }),
   sync: RunPinInput.extend({
-    round: CadenceRoundSchema, pr: z.number().int().positive(), branch: text, head: text, ratchetRef: text, ratchetPrefix: text, tree: text, resolved: text.optional(), allowedFrozen: z.array(text).optional(),
+    round: CadenceRoundSchema, pr: z.number().int().positive(), branch: text, head: text, ratchetRef: text, ratchetPrefix: text, tree: text,
+    resolved: text.optional(), allowedFrozen: z.array(text).optional(),
   }),
   release: z.object({ tree: text }),
   loadWait: z.object({ stage: text }),
