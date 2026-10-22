@@ -54,8 +54,10 @@ describe("the linearity check", () => {
     return sink;
   };
 
+  // Each side runs for about 10 ms: thread CPU ticks in whole milliseconds on Linux runners, and a sub-tick run makes
+  // the ratio clock noise (TP-3979).
   cpuBudgetIt("passes work linear in the size", 2000, () => {
-    expectLinearTime((n) => () => void work(n * 50), 40_000);
+    expectLinearTime((n) => () => void work(n * 1000), 40_000);
   });
 
   cpuBudgetIt("fails quadratic work on its ratio", 2000, () => {
