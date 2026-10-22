@@ -111,10 +111,15 @@ async function readReport(ports: ExitNoticePorts, input: ExitNoticeInput): Promi
   return ports.lastReport({ repo: input.repo, pr: input.pr, head: input.headSha }, input.wake.agent, input.wake.sessionId).catch(() => undefined);
 }
 
-/** The run's lineage seat, else the repo's one seat; a lineage that cannot be read must not cost the notice. */
+/**
+ * The run's lineage seat, else the repo's one seat. A notice lets the gate take its default action, which only a repo with
+ * one seat authorises, so a denied, unseated or `+` joined repo names none and the owner gate opens whoever registered the
+ * run. A lineage that cannot be read must not cost the notice.
+ */
 export async function runSeat(ports: ExitNoticePorts, target: { repo: string; pr: number }): Promise<string | undefined> {
-  const lineage = await ports.lineageSeat?.(target).catch(() => undefined);
-  return lineage ?? ports.seatFor(target.repo);
+  const seat = ports.seatFor(target.repo);
+  if (seat === undefined) return undefined;
+  return (await ports.lineageSeat?.(target).catch(() => undefined)) ?? seat;
 }
 
 /** Never throws: no ports, no single seat, or a failed send records `sent: false`, and the run takes the owner gate. */

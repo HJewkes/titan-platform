@@ -500,7 +500,12 @@ session that spawned its lineage receives them. A run with no registrant, or who
 names no session, goes to the repo's seat as before. A held run naming no seat and a
 reviewer-infrastructure notice still go to the hub seat.
 
-The gate opens only when no notice was sent: no seat was found, no notice is wired,
+A registrant stands in only for a repo that has one seat. A notice lets the gate take its
+default action, and the seat book is what authorises that, so a repo that is on a deny list
+or a charter hard stop, that no seat lists, or that several seats join (`+`) sends no notice
+and no digest line, whoever registered the run, and the owner gate opens.
+
+The gate opens only when no notice was sent: no single seat owns the repo, no notice is wired,
 or the send failed. Its prompt then names why. A run tells the seat once per gate and head, and
 a restart replays the recorded notice instead of sending it again. A run that was already
 paused on one of these gates before the notice step existed keeps that gate.

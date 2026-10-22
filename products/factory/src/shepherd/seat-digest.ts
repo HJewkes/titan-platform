@@ -19,7 +19,7 @@ const SEAT_DIGEST_FILE = "seat-digest.json";
 
 /**
  * Where a digest goes: the seat book read once per sweep, naming the one seat that owns a repo, the roster that names a
- * self-registered fixer's spawner, and the send. A run whose lineage names no seat, in a repo no single seat owns, gets no digest.
+ * self-registered fixer's spawner, and the send. A run in a repo no single seat owns gets no digest, whoever registered it.
  */
 export interface SeatDigestPorts {
   seatLookup(): (repo: string) => string | undefined;
@@ -172,15 +172,18 @@ export async function sendSeatDigests(
 }
 
 /**
- * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat. The seat book is read once,
- * and the roster once, only when some run's own fixer registered it.
+ * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat, and none when the repo has no
+ * single seat (`runSeat`). The seat book is read once, and the roster once, only when some run's own fixer registered it.
  */
 async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
   const roster = ports.roster && lineages.some(({ lineage }) => fixerRegistered(lineage)) ? await ports.roster().catch(() => undefined) : undefined;
   const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster)]));
-  return (run) => named.get(run.runId) ?? seatFor(run.repo);
+  return (run) => {
+    const seat = seatFor(run.repo);
+    return seat && (named.get(run.runId) ?? seat);
+  };
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
