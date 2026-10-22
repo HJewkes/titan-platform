@@ -78,6 +78,20 @@ describe("pressing on the rounds screen", () => {
     expect(field.closest('[role="button"]')).toBeNull();
   });
 
+  it("makes a question active from a click in its text field, which keeps the focus", async () => {
+    await renderRound();
+    await toSection("report");
+    const hint = (questionId: string): HTMLElement | null => within(screen.getByTestId(`round-question-${questionId}`)).queryByText("keys 1-9 answer");
+    expect(hint("report-columns")).not.toBeNull();
+    const field = within(screen.getByTestId("round-question-report-notes")).getByLabelText(`Answer to ${NOTES}`);
+
+    field.focus();
+    fireEvent.click(field);
+
+    expect(hint("report-columns")).toBeNull();
+    expect(document.activeElement).toBe(field);
+  });
+
   it("still gives a button a press, of at most 2% scale", async () => {
     await renderRound();
 
