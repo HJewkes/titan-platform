@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "merge-facts skips the skill-path gate",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "  if (skills.length > 0) return { outcome: \"gate\", rule: guardRule(\"skill-path\"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };\n",
+      "replace": "",
+      "kills": [
+        "a self-granted skills implementer's PR under an auto policy is held at the skill-path gate with nothing merged when its diff adds a repo skill"
+      ]
+    },
+    {
+      "name": "runEligible accepts a guard rule",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  return matches && run.rule === \"authority/MRG-AU\" && mechanicalAuthorityReason(run.reason) && run.merge === \"auto\"",
+      "replace": "  return matches && run.merge === \"auto\"",
+      "kills": [
+        "releasing that skill-path gate refuses a merge on approve-merge evidence even once the prompt parses as a land gate, where an MRG-AU gate admits the same"
+      ]
+    },
+    {
+      "name": "pr-gone evidence admits any answer, a merge included",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  return isDeepStrictEqual(payload, abandonOf(gate));",
+      "replace": "  return true;",
+      "kills": [
+        "releasing that skill-path gate refuses a coordinator merge on pr-gone evidence matched to the gate",
+        "releasing that skill-path gate refuses a merge on pr-gone evidence even once the prompt parses as a land gate, where an MRG-AU gate admits the same"
+      ]
+    },
+    {
+      "name": "an agent shell refused presence resolves as the owner",
+      "file": "products/factory/src/gate-resolve.ts",
+      "find": "  return { resolver: typeof owner === \"string\" ? coordinator : owner };",
+      "replace": "  return { resolver: typeof owner === \"string\" ? ownerTerminal() : owner };",
+      "kills": [
+        "releasing that skill-path gate refuses an agent shell's gate resolve merge without the owner's presence, and the run stays held"
+      ]
+    }
+  ]
+}
