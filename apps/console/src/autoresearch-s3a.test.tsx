@@ -123,7 +123,7 @@ describe("the registries' link to the idea and round", () => {
   });
 });
 
-const headerLabels = (table: HTMLElement): string[] => within(table).getAllByRole("columnheader").map((cell) => cell.textContent ?? "");
+const headerLabels = (table: HTMLElement): string[] => within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
 const bodyRows = (table: HTMLElement): HTMLElement[] => within(table).getAllByRole("row").filter((row) => within(row).queryAllByRole("columnheader").length === 0);
 
 function expectAligned(table: HTMLElement, headers: string[]): void {
