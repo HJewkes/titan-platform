@@ -42,7 +42,7 @@ export interface ExitNoticePorts {
 }
 
 /** `from` names the config key the seat came from, so a rerouted notice's record says which one it reached. */
-interface FallbackSeat {
+export interface FallbackSeat {
   seat: string;
   from: string;
 }
@@ -57,7 +57,7 @@ const liveOrUnread = (live: NonNullable<ExitNoticePorts["live"]>, seat: string):
  * fallback takes the notice: the repo's red seat, the red seat fallback, then the hub seat. A roster that cannot be read
  * keeps the seat, as before liveness was checked.
  */
-export async function liveRoute(ports: ExitNoticePorts, repo: string, seat: string): Promise<LiveRoute> {
+export async function liveRoute(ports: Pick<ExitNoticePorts, "live" | "fallbackSeats">, repo: string, seat: string): Promise<LiveRoute> {
   if (ports.live === undefined || (await liveOrUnread(ports.live, seat))) return { seat };
   for (const next of ports.fallbackSeats?.(repo) ?? []) {
     if (next.seat !== seat && (await liveOrUnread(ports.live, next.seat))) return { seat: next.seat, rerouted: `${seat} holds no live session, so ${next.from} ${next.seat} was told` };
@@ -251,7 +251,7 @@ export interface NoticeFallbacks {
 }
 
 /** The repo's red seat entry (keys match in any case, as for red events), the red seat fallback, then the hub seat. */
-function fallbackSeats({ hubSeat, redSeat }: NoticeFallbacks, repo: string): FallbackSeat[] {
+export function fallbackSeats({ hubSeat, redSeat }: NoticeFallbacks, repo: string): FallbackSeat[] {
   const entry = Object.entries(redSeat?.repos ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
   const candidates = [
     { seat: entry, from: "shepherd.redSeat.repos" },

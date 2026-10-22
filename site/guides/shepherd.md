@@ -591,6 +591,10 @@ none, as after its coordinator retired, the notice goes to the first live one of
 `detail` names which one. With none live, no notice is sent and the owner gate opens with that
 reason. A roster that cannot be read keeps the chosen seat.
 
+The seat digest follows the same routing (TP-4050): a retired seat's digest lines go to the
+first live fallback. With none live, serve sends no digest, logs `could not send a seat digest`
+with the reason as its cause, and the next sweep tries again.
+
 A registrant stands in only for a repo that has one seat. A notice lets the gate take its
 default action, and the seat book is what authorises that, so a repo that is on a deny list
 or a charter hard stop, that no seat lists, or that several seats join (`+`) sends no notice
