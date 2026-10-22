@@ -64,9 +64,10 @@ const ms = (at: string): number => Date.parse(at);
 /**
  * A repeat of the same sha keeps `lastAt`, so a replayed step cannot extend the wait.
  * A sha after a spawn starts its own window: the old `firstAt` is past the cap, and keeping it would spawn once per merge while the spawned deploy drains.
+ * `heldBy` is a sha git showed contains `sha`: an older merge whose own run went green late keeps that queued sha, since deploying it would roll the newer one back.
  */
-export function noteWanted(previous: DeployWanted | undefined, sha: string, now: number): DeployWanted {
-  if (previous?.sha === sha) return previous;
+export function noteWanted(previous: DeployWanted | undefined, sha: string, now: number, heldBy?: string): DeployWanted {
+  if (previous?.sha === sha || (previous !== undefined && previous.sha === heldBy)) return previous;
   const firstAt = previous?.spawnedSha === undefined ? previous?.firstAt : undefined;
   return { sha, firstAt: firstAt ?? iso(now), lastAt: iso(now) };
 }

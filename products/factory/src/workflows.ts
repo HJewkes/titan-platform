@@ -6,7 +6,8 @@ import type { AuditPorts } from "./audit/ports.js";
 import { systemAuditPorts } from "./audit/production.js";
 import { auditRoutes } from "./audit/routes.js";
 import { measurementAuditWorkflow } from "./audit/workflow.js";
-import { ownCheckout } from "./cli-service.js";
+import { cachedAncestry, gitAncestry } from "./build-ancestry.js";
+import { deployCheckoutFor, ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import { configRef, current, liveField, type ConfigRef, type Live } from "./config-ref.js";
 import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, withHoldAdversary } from "./workflows-live.js";
@@ -290,7 +291,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat, store) : undefined;
-  const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
+  const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env), isAncestor: cachedAncestry(gitAncestry(deployCheckoutFor(env))) });
   const client = sharedOctokit();
   const port = overrides.port ?? githubPort(octokitWire({ client }));
   const pacing = tickPacing({ now: overrides.now });

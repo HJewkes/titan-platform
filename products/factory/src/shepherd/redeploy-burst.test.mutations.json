@@ -66,6 +66,45 @@
       "kills": [
         "spawns the green tip, not the merge sha, when no pacer queue is wired"
       ]
+    },
+    {
+      "name": "an older sha replaces a queued sha that contains it",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": " || (previous !== undefined && previous.sha === heldBy)",
+      "replace": "",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge"
+      ]
+    },
+    {
+      "name": "the queue never asks git whether the queued sha contains the merge",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "return (await options.isAncestor(mergeSha, queued)) === true ? queued : undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge"
+      ]
+    },
+    {
+      "name": "the probe asks the wrong direction",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "options.isAncestor(mergeSha, queued)",
+      "replace": "options.isAncestor(queued, mergeSha)",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) still replaces the queued sha with a newer merge that contains it"
+      ]
+    },
+    {
+      "name": "no answer from git keeps the queued sha",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "queued)) === true ? queued",
+      "replace": "queued)) !== false ? queued",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) replaces the queued sha when git cannot tell, as before the guard"
+      ]
     }
   ]
 }
