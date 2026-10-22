@@ -9,20 +9,20 @@
  */
 import type { SeatNotifier } from "./round-notice-transport.js";
 
-export const VIDEO_COORD = "video-coord";
+const VIDEO_COORD = "video-coord";
 
 export const NOTE_ABOUT = ["content", "video"] as const;
 export type NoteAbout = (typeof NOTE_ABOUT)[number];
 
 type RouteReason = "owner" | "unowned" | "about-video";
 
-export interface NoteRoute {
+interface NoteRoute {
   seat: string;
   reason: RouteReason;
 }
 
 /** The seat a comment goes to; `owner` is the video's, absent when no sidecar or manifest names one. */
-export function noteRoute(about: NoteAbout, owner: string | undefined): NoteRoute {
+function noteRoute(about: NoteAbout, owner: string | undefined): NoteRoute {
   if (about === "video") return { seat: VIDEO_COORD, reason: "about-video" };
   return owner === undefined ? { seat: VIDEO_COORD, reason: "unowned" } : { seat: owner, reason: "owner" };
 }
@@ -42,7 +42,7 @@ interface NoticeFacts {
   about: NoteAbout;
 }
 
-export const noteNotice = (note: NoticeFacts, reason: RouteReason, notesFile: string): string =>
+const noteNotice = (note: NoticeFacts, reason: RouteReason, notesFile: string): string =>
   `titan-console: the owner commented on ${ABOUT_LABELS[note.about]} of ${note.video} at ${note.atS}s (${WHY[reason]}). ` +
   `The comment is note ${note.id} in ${notesFile} (titan-console/video-note@1); read it there.`;
 

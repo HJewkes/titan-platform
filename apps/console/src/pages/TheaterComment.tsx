@@ -143,7 +143,7 @@ interface DraftProps {
   onCancel: () => void;
 }
 
-export const ABOUT_LABELS: Record<NoteAbout, string> = { content: "About the content", video: "About the video" };
+const ABOUT_LABELS: Record<NoteAbout, string> = { content: "About the content", video: "About the video" };
 
 /** Content comments go to the seat that owns the work; video comments go to video-coord, about how the system made it. */
 function AboutToggle({ about, onAbout }: { about: NoteAbout; onAbout: (about: NoteAbout) => void }): ReactNode {
