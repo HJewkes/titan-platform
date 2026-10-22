@@ -95,6 +95,26 @@ export function accountWithHeadroom(deps: ShepherdDeps, dirs: readonly string[],
   }
 }
 
+/** A successor never holds, so with no account left or the limits unreadable it takes the first, as it did before rotation. */
+function headroomOrFirst(deps: ShepherdDeps, dirs: readonly [string, ...string[]]): string {
+  try {
+    return usableAccount(accountLimitsOf(deps), dirs) ?? dirs[0];
+  } catch {
+    return dirs[0];
+  }
+}
+
+/**
+ * The config directory a successor spawns under: the rotation's first account with headroom, picked as a review picks, with
+ * agent-chat's default account spawned under none. No rotation wired leaves `agentChatConfigDir`.
+ */
+export function successorConfigDir(deps: ShepherdDeps): string | undefined {
+  const [first, ...rest] = deps.successorAccounts?.() ?? [];
+  if (first === undefined) return deps.agentChatConfigDir;
+  const account = headroomOrFirst(deps, [first, ...rest]);
+  return account === DEFAULT_ACCOUNT ? undefined : account;
+}
+
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
   if (input.notice === undefined) return limits.exhausted(input.account);

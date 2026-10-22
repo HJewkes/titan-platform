@@ -11,6 +11,12 @@ import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarl
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 
+/** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
+const BRANCH = /^[A-Za-z0-9._/-]+$/;
+/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
+const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
+export const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
+
 const FreshFixerPayload = z.looseObject({ freshFixer: z.literal(true) });
 /** A wake whose payload asks for a fresh fixer resumes no agent: a successor takes it, so a failed conflict attempt is not repeated (TP-3734). */
 export const wantsFreshFixer = (payload: unknown): boolean => FreshFixerPayload.safeParse(payload).success;

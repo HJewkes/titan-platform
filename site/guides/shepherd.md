@@ -306,12 +306,22 @@ thaws only the episode the gate opened for. If the repo has thawed and frozen ag
 the answer changes nothing. Each run opens its own gate, so one episode can leave several
 open; answer any one with `unfreeze` and the rest go stale.
 
+A stale gate does not wait for the owner. Once the episode it opened for has thawed, by a
+green head, an `unfreeze` on another gate or a hand thaw, the gone sweep (every 5 minutes
+and on each thaw) and `shepherd resync` cancel it. Each cancel writes a `gate-cancel` row to
+the run's timeline, and the run goes on to cleanup without thawing anything. A gate whose
+episode is still frozen stays open. A run that recorded no episode also keeps its gate.
+
 ## Merges and the guard on R27 {#merge-guard}
 
 From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents
 never call merge and the merge-lint warning are the **only guard on R27**: no count of
 owner-intent moves can run before the walk (D-M3-11). The lint warns until D-M3-03 and is an
 error after; D-M8-07 narrows it. Run it with `pnpm merge:lint`.
+
+Autoresearch's `autoresearch-ratchet` is also a logged path: it fast-forwards only a run's
+own ratchet branch under the target's `ratchetPrefix`, never main or the default branch,
+records each move as evidence, and is not gated by Shepherd.
 
 ## Routing a reviewed head {#routing}
 
@@ -464,6 +474,15 @@ message as if the human sent it until agent-chat adds a `shepherd` wake source (
 is resumed or replaced by a successor. If no turn starts, one fallback goes out: a resume if
 the agent has ended by then, else a second message. If there is still no turn, the wake is
 unhandled.
+
+A successor bills the review account rotation (TP-3961). Its first account is
+`shepherd.fixer.configDir`, or `shepherd.review.configDir` when no fixer directory is set, and
+`shepherd.review.fallbackConfigDirs` follow in order. The spawn takes the first account the
+account-limit store does not mark exhausted, as a review does. Fixers have no fallback key of
+their own: the store records exhaustion per account for reviews and fixers alike, so one list is
+kept. A successor never holds for an account. When every account is exhausted, or the store
+cannot be read, it spawns under the first. A resume keeps the agent's own account, and a red
+main's fixer still spawns under `fixer.configDir` alone.
 
 A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When

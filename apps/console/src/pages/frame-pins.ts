@@ -9,7 +9,7 @@ export type Pin = NonNullable<PostedVariant["annotations"]>[number];
 type PinTarget = Pin["target"];
 
 /** What a pin is measured against; a live story iframe (TP-3793) supplies its own behind the same interface. */
-interface PinSurface {
+export interface PinSurface {
   /** CSS px the pin's x/y are measured in; written as the pin's `width`. */
   width: number;
   height: number;

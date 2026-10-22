@@ -568,7 +568,7 @@ Key exports:
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
 - `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
-- +154 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +155 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
@@ -767,11 +767,12 @@ Tier 2, `@titan-design/autoresearch@0.0.0`. Target-agnostic autoresearch engine:
 
 Key exports:
 
-- `workflow`: `runAutoresearch`
+- `workflow`: `finalOutcomes`, `ForkScheduleSchema`, `runAutoresearch`, `RunSettingsSchema`
+- `validate`: `runValidatorLook`
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
-- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `LoadWaitSchema`, `PinnedSchema`, `PlannedSchema`, `PlannerSchema`, `ReleasedSchema`, `StaticCheckSchema`
-- +84 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- `ports`: `ArchivedSchema`, `HeadSchema`, `ImplementedSchema`, `InboxSchema`, `LoadWaitSchema`
+- +104 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 

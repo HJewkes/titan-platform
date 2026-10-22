@@ -17,7 +17,7 @@ import { resolveSources, sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { sqliteReconcilerCursor } from "./reconciler/cursor.js";
-import { OTHER_REPO, REPO, rig } from "./reconciler/fakes.test-helpers.js";
+import { OTHER_REPO, REPO, fakeBotIdentity, rig } from "./reconciler/fakes.test-helpers.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { statusDelivery } from "./test-support/a17/ci-shapes.js";
 import { crashAt } from "./test-support/crash.js";
@@ -171,8 +171,8 @@ describe("titan-factory serve", () => {
     writeFileSync(file, '{ "github": ');
     const after = await healthOf(server);
 
-    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null });
-    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, configError: expect.stringMatching(/^invalid config /) });
+    expect(before).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, reconciler: "disabled" });
+    expect(after).toHaveProperty("sources", { configured: "webhook", effective: "polling", reason: "kill-switch", intervalMs: 90_000, lastPassAt: null, reconciler: "disabled", configError: expect.stringMatching(/^invalid config /) });
   });
 
   it("health has no sources field when serve was given no reader", async () => {
@@ -397,7 +397,7 @@ describe("serve's reconciler (I9)", () => {
     let release = (): void => undefined;
     r.github.hold = new Promise<void>((resolve) => (release = resolve));
 
-    const server = await serve(dbFile(), landScenario(), { reconciler: { config, bot: r.bot } });
+    const server = await serve(dbFile(), landScenario(), { bot: () => fakeBotIdentity(), reconciler: { config, ports: () => r.bot } });
     expect(r.github.calls.length).toBe(1);
 
     release();
@@ -411,14 +411,14 @@ describe("serve's reconciler (I9)", () => {
     const logger = { ...silentLogger, info: (fields: unknown, msg?: unknown) => void (msg === "reconciler.started" && started.push(fields)) };
     const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
 
-    await serve(dbFile(), landScenario(), { logger, sources, reconciler: { config, bot: rig().bot } });
+    await serve(dbFile(), landScenario(), { logger, sources, bot: () => fakeBotIdentity(), reconciler: { config, ports: () => rig().bot } });
 
     expect(started).toEqual([{ repos: [REPO, OTHER_REPO], effective: "polling", reason: "kill-switch", intervalMs: 45_000 }]);
   });
 
   it("health shows the start pass in sources.lastPassAt, with the interval the schedule runs at", async () => {
     const sources = () => resolveSources({ github: { sources: "webhook", ingress: "off", pollingIntervalMs: 45_000 } });
-    const server = await serve(dbFile(), landScenario(), { sources, reconciler: { config, bot: rig().bot } });
+    const server = await serve(dbFile(), landScenario(), { sources, bot: () => fakeBotIdentity(), reconciler: { config, ports: () => rig().bot } });
 
     await vi.waitFor(async () => expect(await healthOf(server)).toHaveProperty("sources", expect.objectContaining({ intervalMs: 45_000, lastPassAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) })));
   });
@@ -426,7 +426,7 @@ describe("serve's reconciler (I9)", () => {
   it("starts no reconciler while reconciler.enabled is off", async () => {
     const r = rig();
 
-    await serve(dbFile(), landScenario(), { reconciler: { config: { ...config, enabled: false }, bot: r.bot } });
+    await serve(dbFile(), landScenario(), { bot: () => fakeBotIdentity(), reconciler: { config: { ...config, enabled: false }, ports: () => r.bot } });
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(r.github.calls).toEqual([]);

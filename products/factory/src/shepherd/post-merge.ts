@@ -16,6 +16,7 @@ import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
+import { unlessThawed } from "./thawed-main-gates.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -89,7 +90,7 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
-    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha });
+    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail, demotions);
@@ -138,10 +139,11 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
-/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
+/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer until it thaws. */
 async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
   const { schema, brief } = frozenDecision({ repo: red.repo, mergeSha: red.mergeSha, situation: prompt });
-  const answer = schema.parse((await ctx.assisted(gate, prompt, { schema, brief })).data);
+  const answer = unlessThawed(gate, await ctx.assisted(gate, prompt, { schema, brief, recordCancel: true }), schema);
+  if (answer === undefined) return;
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }

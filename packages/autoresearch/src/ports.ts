@@ -2,7 +2,7 @@ import { z } from "zod";
 import { BoundsSchema } from "./bounds.js";
 import type { Digest, EvidenceRow } from "./digest.js";
 import type { Registries } from "./registry.js";
-import { DiffSizeSchema, ImplementerSchema, L0RecordSchema, TargetSchema, type ArMicro, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
+import { AgainstSchema, DiffSizeSchema, ImplementerSchema, L0RecordSchema, ProposalSchema, TargetSchema, type ArMicro, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
 
 export const PinnedSchema = z.object({
   pin: z.string(),
@@ -112,6 +112,66 @@ export interface RoundRecord {
   planner?: Planner;
 }
 
+/** G7 and G16: what a round decided, recorded after its ratchet so a reader never re-derives it. */
+export const RoundSummarySchema = z.object({
+  round: z.number().int().positive(),
+  best: z.object({ head: z.string(), primary: z.number() }),
+  against: AgainstSchema,
+  keptIds: z.array(z.string()),
+  superseded: z.array(z.string()),
+  ratchet: z.object({ from: z.string(), to: z.string() }).nullable(),
+  /** The first planner answer's misses; empty when it met every quota. */
+  quotaViolations: z.array(z.string()),
+  plannerRetried: z.boolean(),
+});
+export type RoundSummary = z.infer<typeof RoundSummarySchema>;
+
+export const StopReasonSchema = z.enum(["ideas-evaluated", "rounds-without-gain", "rounds-exhausted"]);
+export type StopReason = z.infer<typeof StopReasonSchema>;
+
+export const InboxSchema = z.object({ ideas: z.array(ProposalSchema), cursor: z.number().int().nonnegative() });
+
+const nonnegative = z.number().nonnegative();
+const tokenCount = z.number().int().nonnegative();
+/** G17: one phase's row in the host's registry. Cases appear only as the target's own train aliases. */
+export const RegistryRowSchema = z.object({
+  phase: z.string(),
+  pin: z.string(),
+  targetSha: z.string().optional(),
+  boundsSha: z.string().optional(),
+  trainCases: z.array(z.string()),
+  ideasByRung: z.record(z.string(), tokenCount),
+  sigma: nonnegative,
+  pairs: tokenCount,
+  locked: z.boolean(),
+  spend: z.object({ agentUsd: nonnegative, modelUsd: nonnegative, cacheReadTokens: tokenCount, cacheWriteTokens: tokenCount }),
+  archives: z.array(z.string()),
+  stopReason: StopReasonSchema,
+  provenance: z.string(),
+});
+export type RegistryRow = z.infer<typeof RegistryRowSchema>;
+export const RegisteredSchema = z.object({ path: z.string().optional() });
+
+/** A validator look returns aggregates only; strict, so a per-case key fails the step instead of reaching a reader. */
+export const LookAggregateSchema = z.strictObject({
+  look: z.number().int().positive(),
+  at: z.string(),
+  sha: z.string(),
+  aggregate: z.strictObject({ metrics: z.record(z.string(), z.number()), gates: z.record(z.string(), z.number()) }),
+  provenance: z.string(),
+  usd: nonnegative,
+});
+export type LookAggregate = z.infer<typeof LookAggregateSchema>;
+
+export interface LookRequest {
+  /** The run being looked at, not the look's own run. */
+  runId: string;
+  pin: string;
+  frozenHash?: string;
+  look: number;
+  head: string;
+}
+
 /** Everything the loop touches outside its own run, so tests inject fakes and no test calls a model. */
 export interface ArPorts {
   /** Reads `target.json` and `bounds.json` at the pin and points the ratchet ref at the run's starting head. */
@@ -138,5 +198,11 @@ export interface ArPorts {
   loadWait?(input: { stage: string; firstStartedAt?: string }, signal: AbortSignal): Promise<z.input<typeof LoadWaitSchema>>;
   /** Writes the round's record and artifacts somewhere durable; a host with no archive omits it. */
   archive?(input: { runId: string; round: number; record: RoundRecord }, signal: AbortSignal): Promise<z.input<typeof ArchivedSchema>>;
+  /** Owner proposals written since `after`, and the cursor past them; a host with no inbox omits it. */
+  ownerIdeas?(input: { runId: string; round: number; after: number }, signal: AbortSignal): Promise<z.input<typeof InboxSchema>>;
+  /** One milestone look at the head on held-out cases, aggregated; the search never reads it. */
+  validate?(input: LookRequest, signal: AbortSignal): Promise<LookAggregate>;
+  /** Appends the phase's row to the host's registry; a host with none omits it. */
+  registry?(input: { runId: string; row: RegistryRow }, signal: AbortSignal): Promise<z.input<typeof RegisteredSchema>>;
   now(): number;
 }

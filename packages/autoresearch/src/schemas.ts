@@ -5,7 +5,7 @@ import { z } from "zod";
 const IdeaSourceSchema = z.enum(["planner", "owner", "requeue", "followup"]);
 
 /** What the planner proposes; the workflow derives `id`, `lineage` and `cell` from it. */
-const ProposalSchema = z.object({
+export const ProposalSchema = z.object({
   hypothesis: z.string(),
   mechanism: z.string(),
   class: z.string(),
@@ -79,7 +79,7 @@ export type DiffSize = z.infer<typeof DiffSizeSchema>;
 const nonnegative = z.number().nonnegative();
 
 /** The noise an idea was judged against, fixed at round start; `locked` is the engine's own call, not a pair count. */
-const AgainstSchema = z.object({ case: z.string(), head: z.string(), bandWidth: nonnegative, sigma: nonnegative, pairs: count, locked: z.boolean() });
+export const AgainstSchema = z.object({ case: z.string(), head: z.string(), bandWidth: nonnegative, sigma: nonnegative, pairs: count, locked: z.boolean() });
 
 /** The agent that wrote the idea; `account` names whose spend it was. */
 export const ImplementerSchema = z.object({
@@ -179,6 +179,10 @@ export const TargetSchema = z.object({
   testProof: z.array(z.string()).default([]),
   rungs: z.record(z.string(), RungSchema).default({}),
   phases: z.array(PhaseSchema).min(1),
+  /** Milestone looks at held-out cases, which the host supplies and the target never names; `maxLooks` caps them per run. */
+  validator: z
+    .object({ runs: z.number().int().min(1).default(1), maxLooks: z.number().int().min(1).default(2) })
+    .default({ runs: 1, maxLooks: 2 }),
 });
 export type Target = z.infer<typeof TargetSchema>;
 

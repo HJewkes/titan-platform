@@ -125,6 +125,26 @@ describe("evaluator pin", () => {
 
     await expect(repo.ports.pin({ runId: "run-1", pin: "main" }, signal)).rejects.toThrow("[bounds-frozen] ar/*.py");
   });
+
+  it("refuses a pin that is not on the remote's main, before any checkout or ratchet exists", async () => {
+    const repo = await fixture();
+    await git(repo.clone, "switch", "--quiet", "-c", "side");
+    await git(repo.clone, "commit", "--quiet", "--allow-empty", "-m", "side");
+    await git(repo.clone, "push", "--quiet", "origin", "side");
+
+    await expect(repo.ports.pin({ runId: "run-1", pin: "side" }, signal)).rejects.toThrow("[pin-not-on-main]");
+    expect(existsSync(join(repo.root, "work", "eval-run-1"))).toBe(false);
+    expect(await git(repo.bare, "for-each-ref", "refs/heads/autoresearch")).toBe("");
+  });
+
+  it("pins again after a restart without moving the ratchet it seeded", async () => {
+    const repo = await fixture();
+    await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+
+    const pinned = await repo.restarted().pin({ runId: "run-1", pin: "main" }, signal);
+
+    expect(await git(repo.bare, "rev-parse", pinned.ratchetRef)).toBe(repo.pin);
+  });
 });
 
 describe("evaluator eval and micro", () => {
@@ -274,14 +294,14 @@ describe("evaluator L0", () => {
 });
 
 describe("evaluator ratchet and archive", () => {
-  it("refuses a ratchet ref outside the target's prefix and leaves the remote alone", async () => {
+  it("refuses main as a ratchet ref and leaves the remote alone", async () => {
     const repo = await fixture();
     const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
     const winner = await ideaTree(repo, "winner", GATE_EDIT);
     const move = { tree: pinned.integrationTree, ratchetRef: "refs/heads/main", ratchetPrefix: "autoresearch/fixture", from: repo.pin, to: winner.head };
     const record = { round: 1, ideaId: "i-1", kind: "ff" as const, keepRung: "L3", delta: 1, sigma: 0.1, runDigests: [], pin: repo.pin };
 
-    await expect(repo.ports.ratchet({ ...repo.run, ...move, ...record }, signal)).rejects.toThrow("[ratchet-ref]");
+    await expect(repo.ports.ratchet({ ...repo.run, ...move, ...record }, signal)).rejects.toThrow("[ratchet-main]");
     expect(await git(repo.bare, "rev-parse", "refs/heads/main")).toBe(repo.pin);
   });
 

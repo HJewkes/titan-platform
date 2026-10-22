@@ -36,7 +36,7 @@ export function botTransport(client: GitHubClient): (call: BackstopCall) => Prom
 }
 
 /** All three reads go out every time: a 304 costs no rate-limit point, and one read skipped is one change missed. */
-async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<{ changed: boolean; etags: Etags; rulesets?: RulesetList }> {
+async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<{ changed: boolean; etags: Etags; reads: number; notModified: number; rulesets?: RulesetList }> {
   const pulls = await wire.revalidateOpenPrs(repo, etags[GATE_KEYS.pulls] ?? null);
   const ref = await wire.revalidateRef(repo, BRANCH, etags[GATE_KEYS.ref] ?? null);
   const rulesets = await wire.revalidateRulesets(repo, etags[GATE_KEYS.rulesets] ?? null);
@@ -45,6 +45,8 @@ async function readGates(wire: GitHubWire, repo: string, etags: Etags): Promise<
     // A free-plan repo's rulesets are unknown on every read, so they cannot say whether anything changed.
     changed: !pulls.notModified || !ref.notModified || (!rulesets.notModified && !rulesets.unreadable),
     etags: { [GATE_KEYS.pulls]: next(GATE_KEYS.pulls, pulls), [GATE_KEYS.ref]: next(GATE_KEYS.ref, ref), [GATE_KEYS.rulesets]: next(GATE_KEYS.rulesets, rulesets) },
+    reads: 3,
+    notModified: [pulls, ref, rulesets].filter((read) => read.notModified).length,
     ...(!rulesets.notModified && !rulesets.unreadable && { rulesets }),
   };
 }
