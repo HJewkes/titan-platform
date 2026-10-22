@@ -131,6 +131,13 @@ describe("the load wait", () => {
     expect(readings).toHaveLength(3);
   });
 
+  it("fails a stage held for exactly maxWaitMs", async () => {
+    const readings = [30, 1];
+    const wait = loadWaitPort({ ceiling: 28, pollMs: 1, maxWaitMs: 5_000, readLoad5: () => readings.shift() ?? 0, now: () => Date.parse("2026-01-01T00:00:05Z") });
+
+    await expect(wait({ stage: "implement", firstStartedAt: "2026-01-01T00:00:00Z" }, signal)).rejects.toThrow("[load-timeout] implement held 5000 ms");
+  });
+
   it("counts the wait from the step's first start, and from now when that start is unreadable", async () => {
     const wait = loadWaitPort({ ceiling: 28, pollMs: 1, readLoad5: () => 1, now: () => Date.parse("2026-01-01T00:00:10Z") });
 

@@ -203,6 +203,24 @@ describe("evaluator after a restart", () => {
     await expect(restarted.staticCheck({ ...run, idea: idea("accept-gate"), ...gate }, signal)).rejects.toThrow("[frozen-drift]");
   });
 
+  it("rebuilds again on the next step once a refused drift is undone, without another restart", async () => {
+    const repo = await fixture();
+    const pinned = await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
+    const { tree } = await ideaTree(repo, "restored", GATE_EDIT);
+    const scorer = join(pinned.evaluatorTree!, "ar", "score.py");
+    const original = readFileSync(scorer, "utf8");
+    writeFileSync(scorer, "def score(run):\n    return 1\n");
+    await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "edit the scorer");
+    const restarted = repo.restarted();
+    const evalAt = (key: string) => restarted.evalCase({ ...repo.run, frozenHash: pinned.frozenHash, tree, case: "t-alpha", key, rung: "seed" }, signal);
+    await expect(evalAt("k1")).rejects.toThrow("[frozen-drift]");
+
+    writeFileSync(scorer, original);
+    await git(pinned.evaluatorTree!, "commit", "--quiet", "-am", "restore the scorer");
+
+    expect(await evalAt("k2")).toMatchObject({ repeat: "k2" });
+  });
+
   it("refuses a step whose run recorded no frozen hash or was never pinned here", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
