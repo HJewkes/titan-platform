@@ -93,9 +93,9 @@ function nudgeLine(round: QueueRound, recommendations: readonly StatedRecommenda
 }
 
 /** Strictly over six hours, unanswered and not withdrawn, as the queue read it. */
-export const isDue = (round: QueueRound, now: number): boolean => round.feedback === null && round.withdrawn === null && now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS;
+const isDue = (round: QueueRound, now: number): boolean => round.feedback === null && round.withdrawn === null && now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS;
 
-export function nudgeOf(round: QueueRound, now: number, nudgedAt: string | null): RoundNudge {
+function nudgeOf(round: QueueRound, now: number, nudgedAt: string | null): RoundNudge {
   const recommendations = statedRecommendations(round.manifest);
   const answered = recAnswers(round.manifest);
   const oneTap = "answers" in answered;

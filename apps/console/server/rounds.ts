@@ -297,7 +297,6 @@ export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
-  /** The sha256 of round.json as read, which an answer built from this read binds to. */
   manifestSha256: string;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;

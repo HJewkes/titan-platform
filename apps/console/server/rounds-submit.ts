@@ -35,7 +35,7 @@ import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
 import { viewedBuilds } from "./round-live.js";
 import { refuseUnrevealedSeen } from "./round-reveal.js";
-import { buildRoundFeedback, feedbackProblems, isPinOf } from "./round-feedback.js";
+import { buildRoundFeedback, feedbackProblems } from "./round-feedback.js";
 import { supersedeOutcome, withdrawSuperseded } from "./round-supersede.js";
 import { FeedbackSchema, type Manifest, type Question } from "./round-schema.js";
 import { PostedVariant, SubmittedAnswer } from "./round2-adapter.js";
@@ -44,6 +44,7 @@ import { readPriorFeedback } from "./prior-feedback.js";
 import { ADDRESSED_FILE, ADDRESSED_SCHEMA_ID } from "./round-notes.js";
 import { FOLLOW_UPS_FILE, followUpDeposit, followUpsBytes } from "./round-follow-ups.js";
 import { frameScope, sendBackBlocker, shipBlockers } from "./ship-blockers.js";
+import { checkAnswers, checkFollowUps, checkVariants } from "./round-answer-checks.js";
 
 /**
  * Room for a 24-frame round whose frames all hold the longest comment and pins in one-byte text; the same round in
@@ -134,60 +135,6 @@ async function readManifest(roundDir: string): Promise<{ bytes: Buffer; modified
 function validManifest(bytes: Buffer): Manifest {
   const parsed = parseManifest(bytes);
   return parsed.ok ? parsed.manifest : refuse(`${ROUND_FILE} is not a valid round: ${parsed.reason}`);
-}
-
-/** Each field an answer may carry, by the question kinds that take it; `comment` and `optionNotes` go anywhere. */
-const FIELD_KINDS: Record<string, readonly string[]> = {
-  pick: ["pick-one"],
-  revisionRequested: ["pick-one"],
-  picks: ["pick-many"],
-  value: ["scale"],
-  text: ["text"],
-};
-
-function answerProblem(question: Question, answer: SubmittedAnswer): string | null {
-  const misplaced = Object.keys(answer).find((field) => FIELD_KINDS[field] && !FIELD_KINDS[field].includes(question.kind));
-  if (misplaced) return `${misplaced} does not answer a ${question.kind} question`;
-  if (answer.pick !== undefined && answer.revisionRequested) return "a revision request carries no pick";
-  const offered = "options" in question ? question.options : [];
-  const chosen = [...(answer.pick === undefined ? [] : [answer.pick]), ...(answer.picks ?? [])];
-  const unknown = chosen.find((option) => !offered.includes(option));
-  return unknown === undefined ? null : `"${unknown}" is not one of its options`;
-}
-
-/** A follow-up names a side question once; the merge question is the PR's own answer, never a follow-up. */
-function checkFollowUps(manifest: Manifest, followUps: readonly string[]): void {
-  const questions = new Map(manifest.questions.map((question) => [question.id, question]));
-  for (const [index, id] of followUps.entries()) {
-    const question = questions.get(id) ?? refuse(`no question "${id}" to mark follow-up`);
-    if (question.kind === "pick-one" && question.merge) refuse(`question "${id}" is the Ship decision and cannot be a follow-up`);
-    if (followUps.indexOf(id) !== index) refuse(`question "${id}" is marked follow-up twice`);
-  }
-}
-
-function checkAnswers(manifest: Manifest, answers: SubmittedAnswer[]): void {
-  const questions = new Map(manifest.questions.map((question) => [question.id, question]));
-  const seen = new Set<string>();
-  for (const answer of answers) {
-    const question = questions.get(answer.questionId) ?? refuse(`no question "${answer.questionId}" in this round`);
-    if (seen.has(answer.questionId)) refuse(`question "${answer.questionId}" is answered twice`);
-    seen.add(answer.questionId);
-    const problem = answerProblem(question, answer);
-    if (problem !== null) refuse(`question "${answer.questionId}": ${problem}`);
-  }
-}
-
-/** Each posted frame is one of the round's, once, and each of its pins is numbered on that frame. */
-function checkVariants(manifest: Manifest, variants: readonly PostedVariant[]): void {
-  const keys = new Set(manifest.variants.map((variant) => variant.key));
-  const seen = new Set<string>();
-  for (const { key, annotations = [] } of variants) {
-    if (!keys.has(key)) refuse(`no frame "${key}" in this round`);
-    if (seen.has(key)) refuse(`frame "${key}" is sent twice`);
-    seen.add(key);
-    const stray = annotations.find((pin, index) => !isPinOf(key, pin.id) || annotations.findIndex((each) => each.id === pin.id) !== index);
-    if (stray !== undefined) refuse(`frame "${key}": pin "${stray.id}" is not a pin of its own, numbered once`);
-  }
 }
 
 /** The live keys as round variants, each once, in the round's order; undefined when none were sent. */

@@ -5,7 +5,7 @@ import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open } from "../router.js";
 
-export type RoundNudge = ConsoleCommands["inbox.list"]["result"]["nudges"][number];
+type RoundNudge = ConsoleCommands["inbox.list"]["result"]["nudges"][number];
 
 type TapState = { status: "idle" | "sending" } | { status: "sent"; already: boolean } | { status: "failed"; error: string };
 
