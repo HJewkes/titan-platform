@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { closureDirs, touchedPaths } from "./plan.js";
+import { verdictLine, type NodeRun } from "./release-smoke.js";
 import { EXIT, lockPath, readRecord, recordPath, selfUpdate, type CommandResult, type UpdateOptions, type UpdatePorts } from "./update.js";
 
 const ROOT = "/srv/console";
 const OLD = "a".repeat(40);
 const NEW = "b".repeat(40);
+const RELEASE = `${ROOT}/releases/${NEW}`;
 const OPTIONS: UpdateOptions = { root: ROOT, stateDir: "/state", port: 7500, unit: "titan-console.service" };
 const CLOSURE = JSON.stringify([
   { name: "titan-console", path: `${ROOT}/checkout/apps/console` },
@@ -14,6 +16,8 @@ const CLOSURE = JSON.stringify([
 
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
 const failed = (stderr: string): CommandResult => ({ code: 1, stdout: "", stderr });
+const ran = (run: Partial<NodeRun>): NodeRun => ({ code: 0, stdout: "", stderr: "", timedOut: false, ...run });
+const verdict = (why?: string): NodeRun => ran({ code: why === undefined ? 0 : 1, stdout: `boot line\n${verdictLine(why)}\n` });
 
 interface Fake {
   ports: UpdatePorts;
@@ -28,6 +32,9 @@ interface Fake {
 interface Scenario {
   changed?: string[];
   build?: CommandResult;
+  /** What the new release's own `self-update --smoke` does. */
+  releaseSmoke?: NodeRun;
+  /** What this updater's in-process smoke says, used only for a release without the verb. */
   smoke?: string;
   afterRestart?: (string | null | undefined)[];
   liveHolder?: number;
@@ -66,6 +73,7 @@ function fakePorts(scenario: Scenario = {}): Fake {
     createExclusive: (file, text) => (files.has(file) ? false : (files.set(file, text), true)),
     isAlive: (pid) => pid === scenario.liveHolder,
     smoke: async (release) => (calls.push(`smoke ${release}`), scenario.smoke),
+    runNode: async (script, args) => (calls.push(`node ${script} ${args.join(" ")}`), scenario.releaseSmoke ?? verdict()),
     servedSha: async () => restarts.shift(),
     alarm: async (deposit) => void alarms.push(deposit),
     log: () => {},
@@ -89,7 +97,7 @@ describe("the console self-update", () => {
     const fake = fakePorts({ changed: ["packages/daemon/src/http.ts"] });
     expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
     expect(served(fake)).toBe(`${ROOT}/releases/${NEW}`);
-    expect(fake.calls).toContain(`smoke ${ROOT}/releases/${NEW}`);
+    expect(fake.calls).toContain(`node ${RELEASE}/apps/console/dist/cli.js self-update --smoke ${RELEASE} ${NEW}`);
     expect(fake.calls).toContain("systemctl --user restart titan-console.service");
     expect(fake.calls.filter((call) => call.startsWith("git worktree remove"))).toEqual([`git worktree remove --force ${ROOT}/releases/${OLD}`, `git worktree remove --force ${ROOT}/releases/${"c".repeat(40)}`]);
     expect(record(fake)).toMatchObject({ outcome: "updated", target: NEW, served: OLD });
@@ -105,13 +113,60 @@ describe("the console self-update", () => {
   });
 
   it("keeps the old sha serving when the smoke check fails, and raises the alarm", async () => {
-    const fake = fakePorts({ smoke: "the new build on spare port 40123 answered /health with nothing" });
+    const fake = fakePorts({ releaseSmoke: verdict("the new build on spare port 40123 answered /health with nothing") });
     expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
     expect(served(fake)).toBe(`${ROOT}/checkout`);
     expect(fake.calls.some((call) => call.startsWith("systemctl"))).toBe(false);
     expect(fake.alarms).toHaveLength(1);
     expect(fake.alarms[0]).toMatchObject({ asker: "titan-console", kind: "do", keys: ["console-update"] });
     expect(fake.alarms[0]!.context).toContain("aaaaaaa keeps serving");
+    expect(record(fake)?.why).toBe("the new build on spare port 40123 answered /health with nothing");
+  });
+
+  // TP-3938: the installed updater's own smoke was broken, so the release carrying its fix never got past it.
+  it("runs the new release's smoke check, not the one in the updater that is running", async () => {
+    const fake = fakePorts({ smoke: "the old check bound a port the served console holds", releaseSmoke: verdict() });
+
+    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.OK);
+
+    expect(served(fake)).toBe(RELEASE);
+    expect(fake.calls.some((call) => call.startsWith("smoke "))).toBe(false);
+  });
+
+  it("falls back to its own smoke check when the new release has no smoke verb", async () => {
+    const usage = ran({ code: 64, stderr: "usage: titan-console                    serve the console\n" });
+    const fake = fakePorts({ releaseSmoke: usage, smoke: "the new build on spare port 40123 did not serve its page at /" });
+
+    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+
+    expect(fake.calls).toContain(`smoke ${RELEASE}`);
+    expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build on spare port 40123 did not serve its page at /" });
+  });
+
+  // TP-3935: the smoke child's output was discarded, so the owner saw "answered with nothing" and not the EADDRINUSE.
+  it("puts the end of a crashed smoke check's stderr in the record and the alarm", async () => {
+    const noise = Array.from({ length: 30 }, (_, n) => `noise line ${n}`).join("\n");
+    const crash = ran({ code: 1, stderr: `${noise}\nError: listen EADDRINUSE: address already in use 127.0.0.1:7501\n` });
+    const fake = fakePorts({ releaseSmoke: crash });
+
+    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+
+    const why = record(fake)?.why ?? "";
+    expect(why).toMatch(/^the new build's smoke check exited 1 with no verdict; its stderr ended: /);
+    expect(why).toContain("EADDRINUSE: address already in use 127.0.0.1:7501");
+    expect(why).toContain("noise line 11");
+    expect(why).not.toContain("noise line 10");
+    expect(fake.alarms[0]!.context).toContain("EADDRINUSE");
+    expect(served(fake)).toBe(`${ROOT}/checkout`);
+  });
+
+  it("fails the smoke stage when the new release's check runs past its time, even with a late verdict", async () => {
+    const fake = fakePorts({ releaseSmoke: ran({ ...verdict(), timedOut: true, stderr: "still waiting on /health" }) });
+
+    expect(await selfUpdate(fake.ports, OPTIONS)).toBe(EXIT.FAILED);
+
+    expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build's smoke check did not finish in time; its stderr ended: still waiting on /health" });
+    expect(fake.calls.some((call) => call.startsWith("smoke ") || call.startsWith("systemctl"))).toBe(false);
   });
 
   it("swaps the old build back when the restarted unit does not answer as the new sha", async () => {
