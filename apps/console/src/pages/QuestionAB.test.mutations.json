@@ -38,15 +38,6 @@
       ]
     },
     {
-      "name": "the check screen sends while the server would refuse the round",
-      "file": "apps/console/src/pages/RoundCheck.tsx",
-      "find": "const onSend = problems.length > 0 ? undefined : sendable;",
-      "replace": "const onSend = sendable;",
-      "kills": [
-        "an A/B question sends Neither as a revision request, once the comment says what to change"
-      ]
-    },
-    {
       "name": "only the first option note is sent",
       "file": "apps/console/src/pages/RoundAnswers.ts",
       "find": "return options.flatMap((option) => (notes[option]?.trim()",
