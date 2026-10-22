@@ -24,7 +24,8 @@ import {
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
-import { AUTORESEARCH_WORKFLOW, finalOutcomes, pickWinner } from "./workflow.js";
+import { pickWinner } from "./winners.js";
+import { AUTORESEARCH_WORKFLOW, finalOutcomes } from "./workflow.js";
 
 /** σ is 0.2 and the default band 1.5 pp, so a 3 pp gain clears the band and a 0.8 pp gain sits inside it whatever the noise. */
 const CC = "cc_total_delta_pct";
@@ -284,7 +285,7 @@ describe("what a round records for readers", () => {
     const { run, ports } = await loop(["better", "better-2", "flat"]);
     const summary = summaryOf(run, 1);
 
-    const settled = finalOutcomes([...stopOutcomes(run).values()], { sigma: summary.against.sigma, superseded: summary.superseded });
+    const settled = finalOutcomes([...stopOutcomes(run).values()], { sigma: summary.against.sigma, superseded: summary.superseded, reevals: summary.reevals });
 
     const byId = (outcomes: readonly Outcome[]) => [...outcomes].sort((a, b) => a.ideaId.localeCompare(b.ideaId));
     expect(byId(settled)).toEqual(byId(ports.calls.archives[0]!.record.outcomes));

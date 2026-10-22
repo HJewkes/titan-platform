@@ -8,7 +8,7 @@ import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
 import type { Digest } from "../digest.js";
-import type { ArPorts, ImplementRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
+import type { ArPorts, ImplementRequest, IntegrateRequest, IntegrateResult, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 
 const run = promisify(execFile);
@@ -35,6 +35,8 @@ export interface Policy {
   gates?: string[];
   violations?: string[];
   mechanisms: Record<string, Mechanism>;
+  /** An effect named "a+b" applies on top of each mechanism's own only when every named one is in the tree. */
+  interactions?: Record<string, Mechanism>;
   /** What each eval run, micro run and implement reports spending; 0 when absent. */
   usd?: { eval?: number; micro?: number; implement?: number };
 }
@@ -73,7 +75,7 @@ export async function fixtureRepo(policy: Policy): Promise<FixtureRepo> {
   const work = join(root, "work");
   mkdirSync(work);
   await git(work, "init", "--quiet", "-b", "main");
-  writeFiles(work, { ...SEED_FILES, "applied.txt": "", "policy.json": JSON.stringify(policy, null, 2) });
+  writeFiles(work, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
   await git(work, "add", ".");
   await git(work, "commit", "--quiet", "-m", "fixture");
   await git(root, "clone", "--quiet", "--bare", work, bare);
@@ -180,6 +182,7 @@ interface FakeCalls {
   micro: string[];
   microInputs: MicroRequest[];
   ratchet: RatchetRequest[];
+  integrate: IntegrateRequest[];
   released: string[];
   archives: { round: number; record: RoundRecord }[];
   /** The run pin every evaluator step named, by step. */
@@ -204,6 +207,8 @@ export interface FakeOptions {
   beforeImplement?: (idea: Idea, call: number, lane: number) => Promise<void>;
   beforeEval?: (ideaId: string | null, key: string) => Promise<void>;
   beforePlan?: (round: number) => Promise<void>;
+  /** Awaited once a merge is built, before the step records it: a test simulates a kill with it. */
+  afterIntegrate?: (call: number) => Promise<void>;
   /** The owner inbox, read live: a test pushes to it while the run is going. */
   inbox?: Proposal[];
   /** What a validator look answers; by default one aggregate with no per-case key. */
@@ -218,7 +223,7 @@ async function script(name: string, args: string[]): Promise<unknown> {
   return JSON.parse((await run("bash", [join(FIXTURES, name), ...args])).stdout);
 }
 
-/** The idea's own edit; `applied.txt` is the fake evaluator's channel and stays out of the diff L0 checks. */
+/** The idea's own edit; `applied/` is the fake evaluator's channel and stays out of the diff L0 checks. */
 function editsOf(idea: Idea, policy: Policy, bounds: Bounds): Record<string, string> {
   const files = policy.mechanisms[idea.mechanism]?.files;
   if (files) return files;
@@ -248,7 +253,7 @@ function treePorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.implement.push(idea.id);
       calls.implementInputs.push(input);
       await options.beforeImplement?.(idea, calls.implement.length, input.lane);
-      appendFileSync(join(tree, "applied.txt"), `${idea.mechanism}\n`);
+      writeFiles(tree, { [join("applied", idea.mechanism)]: `${idea.mechanism}\n` });
       for (const [path, text] of Object.entries(editsOf(idea, policy, options.bounds ?? FIXTURE_BOUNDS))) {
         mkdirSync(dirname(join(tree, path)), { recursive: true });
         appendFileSync(join(tree, path), text);
@@ -268,7 +273,7 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
   return {
     async staticCheck({ idea, tree, base, head, ...runPin }: RunPin & { idea: Idea; tree: string; base: string; head: string }) {
       calls.runPins.push({ step: "l0", runPin: runPinIn(runPin) });
-      const text = await git(tree, "diff", "--no-color", "--unified=0", "-M", base, head, "--", ".", ":(exclude)applied.txt");
+      const text = await git(tree, "diff", "--no-color", "--unified=0", "-M", base, head, "--", ".", ":(exclude)applied");
       const bounds = options.bounds ?? FIXTURE_BOUNDS;
       const checked = postCheck({ idea, diff: parseUnifiedDiff(text), bounds, frozen: target.frozen, caseNames: options.caseNames ?? [] });
       return { ok: checked.code === undefined, code: checked.code, checks: checked.checks, diff: checked.size };
@@ -278,7 +283,7 @@ function rungPorts(repo: FixtureRepo, calls: FakeCalls, ideaOfTree: Map<string, 
       calls.micro.push(idea.id);
       calls.microInputs.push(input);
       calls.runPins.push({ step: "l1", runPin: runPinIn(input) });
-      return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung]));
+      return ArMicroSchema.parse(await script("fake_micro.sh", [repo.policyPath, tree, rung, idea.mechanism]));
     },
     async evalCase({ tree, case: testCase, key, ...runPin }: RunPin & { tree: string; case: string; key: string }) {
       const ideaId = ideaOfTree.get(tree) ?? null;
@@ -319,6 +324,20 @@ function validatePort(calls: FakeCalls, options: FakeOptions, now: () => number)
   };
 }
 
+/** The date a merge gets when the test host passes no step timing. */
+const FIXTURE_AT = "2026-10-21T00:00:00Z";
+
+/** A later winner merged onto the base in a detached checkout, never pushed; a conflict is aborted and named. */
+async function mergeOnto({ tree, base, head, message, at = FIXTURE_AT }: IntegrateRequest): Promise<IntegrateResult> {
+  await git(tree, "checkout", "--quiet", "--detach", base);
+  const env = { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at };
+  const merged = await run("git", [...IDENTITY, "merge", "--no-ff", "--no-edit", "-m", message, head], { cwd: tree, env }).then(() => true, () => false);
+  if (merged) return { merged: await git(tree, "rev-parse", "HEAD") };
+  const conflict = (await git(tree, "diff", "--name-only", "--diff-filter=U")).split("\n").filter(Boolean);
+  await git(tree, "merge", "--abort");
+  return { conflict };
+}
+
 /** The winner fast-forwards the remote ref, refused if the ref moved since the round started. */
 async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Promise<{ head: string }> {
   await git(tree, "push", "--quiet", `--force-with-lease=${ratchetRef}:${from}`, "origin", `${to}:${ratchetRef}`);
@@ -327,7 +346,7 @@ async function pushRatchet({ tree, ratchetRef, from, to }: RatchetRequest): Prom
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], integrate: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   const now = () => Date.parse("2026-10-21T00:00:00Z");
@@ -349,6 +368,12 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.ratchet.push(input);
       calls.runPins.push({ step: "ratchet", runPin: runPinIn(input) });
       return (options.ratchet ?? pushRatchet)(input);
+    },
+    async integrate(input) {
+      calls.integrate.push(input);
+      const result = await mergeOnto(input);
+      await options.afterIntegrate?.(calls.integrate.length);
+      return result;
     },
     ...recordPorts(repo, calls, options),
     ...validatePort(calls, options, now),

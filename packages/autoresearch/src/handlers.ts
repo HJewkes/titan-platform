@@ -2,7 +2,7 @@ import type { RestartRule } from "@titan-design/workflow";
 import { z } from "zod";
 import type { Digest } from "./digest.js";
 import type { ArDispatchStep } from "./manifest.js";
-import { RegistryRowSchema, type ArPorts, type RoundRecord } from "./ports.js";
+import { RatchetKindSchema, RegistryRowSchema, type ArPorts, type RoundRecord } from "./ports.js";
 import { IdeaSchema } from "./schemas.js";
 
 /** What the runtime knows about this try of the step, which never goes in the step's input, so a replay sees the same input. */
@@ -40,8 +40,9 @@ const Inputs = {
   l1: IdeaInput.extend({ rung: text, case: text, baselineDir: text, microSignal: text, microArgs: z.record(text, text), key: text }),
   ratchet: RunPinInput.extend({
     tree: text, ratchetRef: text, ratchetPrefix: text, from: text, to: text,
-    round, ideaId: text, kind: z.literal("ff"), keepRung: text, delta: z.number(), sigma: z.number().nonnegative(), runDigests: z.array(text),
+    round, ideaId: text.optional(), kind: RatchetKindSchema, keepRung: text, delta: z.number(), sigma: z.number().nonnegative(), runDigests: z.array(text),
   }),
+  integrate: RunInput.extend({ tree: text, base: text, head: text, message: text }),
   release: z.object({ tree: text }),
   loadWait: z.object({ stage: text }),
   archive: RunInput.extend({ round, record: z.custom<RoundRecord>() }),
@@ -58,7 +59,8 @@ async function validateLook(ports: ArPorts, input: z.infer<typeof Inputs.validat
 
 /**
  * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it;
- * a repeated registry row carries the same run and phase, so a host's reader keeps the last.
+ * a repeated registry row carries the same run and phase, so a host's reader keeps the last. An integrate re-checks-out its
+ * base and merges with the step's first start as the date, so a repeat rebuilds the same commit.
  * A ratchet push cut off mid-way may have moved the remote, so a person decides.
  */
 export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
@@ -71,6 +73,9 @@ export function arStepHandlers(ports: ArPorts): ArStepHandler[] {
     handler("l0", "repeat", Inputs.l0, (input, signal) => ports.staticCheck(input, signal)),
     handler("l1", "repeat", Inputs.l1, (input, signal) => ports.micro(input, signal)),
     handler("ratchet", "park", Inputs.ratchet, (input, signal) => ports.ratchet(input, signal)),
+    handler("integrate", "repeat", Inputs.integrate, async (input, signal, { firstStartedAt }) =>
+      ports.integrate ? ports.integrate({ ...input, ...(firstStartedAt === undefined ? {} : { at: firstStartedAt }) }, signal) : { skipped: "no-integrate" },
+    ),
     handler("release", "repeat", Inputs.release, async (input, signal) => (await ports.releaseTree(input, signal), { released: input.tree })),
     handler("load-wait", "repeat", Inputs.loadWait, async (input, signal, { firstStartedAt }) =>
       ports.loadWait ? ports.loadWait({ ...input, ...(firstStartedAt === undefined ? {} : { firstStartedAt }) }, signal) : { waitedMs: 0 },
