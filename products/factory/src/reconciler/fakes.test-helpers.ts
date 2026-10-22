@@ -1,6 +1,7 @@
 import type { Logger } from "@titan-design/daemon";
-import { githubApiPool, memoryPoolStateStore, type BackstopCommit, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority } from "@titan-design/github";
+import { GitHubRequestError, githubApiPool, memoryPoolStateStore, type BackstopCommit, type GitHubClient, type BackstopSnapshot, type CallClass, type GithubApiPool, type PoolPriority } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import { botIntentMigration } from "../bot-intent.js";
 import { eventLogMigration } from "../event-log/event-log.js";
 import { mergeLogMigration } from "../merge-log.js";
@@ -120,4 +121,94 @@ export function rig(options: { conditionalGates?: boolean; observe?: Observe } =
   const log: Logger = { info: record("info"), warn: record("warn"), error: record("warn") };
   const rows = () => db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM factory_event").get()?.n ?? 0;
   return { github, clock, claims, bot, db, cursor, lines, log, deps: { ...bot, db, cursor, log, now: clock.now }, rows };
+}
+
+/** The REST reads the gates send, and GraphQL; each gate read is named by the etag key it revalidates. */
+type BotRoute = "pulls" | "ref" | "rulesets" | "graphql" | "rate_limit";
+
+interface FakeAnswer {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+interface BotRequest {
+  route: BotRoute;
+  method: string;
+  ifNoneMatch: string | undefined;
+}
+
+/**
+ * A synthetic GitHub client, answering as `octokitClient` does: a 2xx resolves, anything else (a 304 included) throws
+ * `GitHubRequestError`, and a `network` failure throws a plain error. Each gate read answers 304 to the ETag of its
+ * current version and 200 with that ETag otherwise.
+ */
+export interface FakeBotGithub {
+  client: GitHubClient;
+  requests: BotRequest[];
+  /** Bump a read's version and its next conditional read answers 200 with a new ETag. */
+  versions: Record<"pulls" | "ref" | "rulesets", number>;
+  /** Answers each read of a route with this until deleted. */
+  fail: Map<BotRoute, FakeAnswer | "network">;
+  /** Main's newest commit's check; `null` is a check still running. */
+  conclusion: string | null;
+  count(route: BotRoute): number;
+}
+
+interface RequestOptions {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export function fakeBotGithub(): FakeBotGithub {
+  const state: Omit<FakeBotGithub, "client" | "count"> = { requests: [], versions: { pulls: 1, ref: 1, rulesets: 1 }, fail: new Map(), conclusion: "SUCCESS" };
+  const request = async (route: string | RequestOptions) => {
+    const options = typeof route === "string" ? { method: route.split(" ")[0]!, url: route.split(" ")[1]! } : route;
+    const sent = { route: routeOf(new URL(options.url, "https://api.github.com").pathname), method: options.method, ifNoneMatch: options.headers?.["if-none-match"] };
+    state.requests.push(sent);
+    const answered = state.fail.get(sent.route) ?? answer(state, sent);
+    if (answered === "network") throw new TypeError("fetch failed");
+    const headers = answered.headers ?? {};
+    if (answered.status >= 300) throw new GitHubRequestError(`${JSON.stringify(answered.body ?? {})}`, answered.status, headers);
+    return { status: answered.status, headers, data: answered.body, url: options.url };
+  };
+  const client = Object.assign(partialFake<GitHubClient>({ budget: () => ({ lanes: {}, cooldowns: [] }) }), { request });
+  return Object.assign(state, { client, count: (route: BotRoute) => state.requests.filter((sent) => sent.route === route).length });
+}
+
+function routeOf(path: string): BotRoute {
+  if (path === "/graphql") return "graphql";
+  if (path === "/rate_limit") return "rate_limit";
+  if (path.endsWith("/pulls")) return "pulls";
+  if (path.endsWith("/git/ref/heads/main")) return "ref";
+  if (path.endsWith("/rulesets")) return "rulesets";
+  throw new Error(`the fake bot GitHub has no route for ${path}`);
+}
+
+function answer(fake: Pick<FakeBotGithub, "versions" | "conclusion">, request: BotRequest): FakeAnswer {
+  if (request.route === "rate_limit") return { status: 200, body: rateLimitAnswer(4999, 4999).body };
+  if (request.route === "graphql") return { status: 200, body: { data: snapshotData(fake.conclusion) } };
+  const etag = `"${request.route}-${fake.versions[request.route]}"`;
+  if (request.ifNoneMatch === etag) return { status: 304, headers: { etag } };
+  const bodies = { pulls: [], ref: { object: { sha: "c1" } }, rulesets: [{ id: 7, updated_at: `2027-01-15T07:0${fake.versions.rulesets}:00Z` }] };
+  return { status: 200, body: bodies[request.route], headers: { etag } };
+}
+
+const NO_MORE = { hasNextPage: false, endCursor: null };
+
+/** One page of the snapshot query: no open or closed PRs, main at `c1` with one check, no trains. */
+function snapshotData(conclusion: string | null) {
+  const running = conclusion === null;
+  const check = { __typename: "CheckRun", databaseId: 1001, name: "build", status: running ? "IN_PROGRESS" : "COMPLETED", conclusion, completedAt: running ? null : "2027-01-15T07:00:00Z" };
+  const c1 = { oid: "c1", statusCheckRollup: { contexts: { pageInfo: NO_MORE, nodes: [check] } } };
+  return {
+    rateLimit: { cost: 1, remaining: 4999, resetAt: "2027-01-15T09:00:00Z" },
+    repository: {
+      open: { pageInfo: NO_MORE, nodes: [] },
+      done: { pageInfo: NO_MORE, nodes: [] },
+      ref: { target: { oid: "c1", history: { pageInfo: NO_MORE, nodes: [c1] } } },
+      trains: { pageInfo: NO_MORE, nodes: [] },
+    },
+  };
 }
