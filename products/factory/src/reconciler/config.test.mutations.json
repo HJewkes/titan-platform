@@ -7,7 +7,7 @@
       "find": "intervalMs: z.number().optional(),",
       "replace": "intervalMs: z.number().min(300_000).max(600_000).optional(),",
       "kills": [
-        "loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
+        "reconciler config (I8) loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
       "replace": "return [];",
       "kills": [
-        "loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
+        "reconciler config (I8) loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
       "replace": "return [DEPRECATED_INTERVAL];",
       "kills": [
-        "defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own"
+        "reconciler config (I8) defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own"
       ]
     }
   ]
