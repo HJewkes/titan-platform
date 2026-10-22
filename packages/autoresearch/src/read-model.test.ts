@@ -346,6 +346,48 @@ describe("G13: snapshots and syncs", () => {
     expect(Object.keys(view.syncs[0]!)).not.toContain("gate");
   });
 
+  it("shows a failed sync as open with its error, and the retry beside it as an ordinary sync", async () => {
+    const sync = async (_input: SyncRequest, call: number) => {
+      if (call === 1) throw new Error("[pin-fetch] git fetch origin failed in fixture-clone");
+      return { state: "open" as const };
+    };
+    const { run, view } = await winnersRun([["a"], ["b"]], { rounds: 2, snapshot: { keptIdeas: 1 } }, { sync });
+
+    expect(view.syncs).toEqual([
+      { round: 2, pr: 101, state: "open", failed: "[pin-fetch] git fetch origin failed in fixture-clone" },
+      { round: "end", pr: 101, state: "open" },
+    ]);
+    expect(ArRunViewSchema.parse(view).syncs[0]!.failed).toContain("[pin-fetch]");
+    expect(arRunSummary(run).openSnapshot).toEqual({ k: 1, pr: 101 });
+  });
+
+  it("shows a failed last sync as open, the snapshot still open when the run ended", async () => {
+    const sync = async () => Promise.reject(new Error("[sync-fixture] getPr answered 502"));
+    const { run, view } = await winnersRun([["a"]], { rounds: 1, snapshot: { keptIdeas: 1 } }, { sync });
+
+    expect(run.status).toBe("completed");
+    expect(view.syncs).toEqual([{ round: "end", pr: 101, state: "open", failed: "[sync-fixture] getPr answered 502" }]);
+    expect(arRunSummary(run).openSnapshot).toEqual({ k: 1, pr: 101 });
+  });
+
+  it("shows a sync that failed after the owner's answer as open, beside the conflict and the answered gate", async () => {
+    const UNREACHABLE = "a".repeat(40);
+    const sync = async (input: SyncRequest) => {
+      if (input.resolved) throw new Error("[sync-fixture] the resolved merge was not on origin");
+      return { state: "merged" as const, conflict: ["src/config.json"] };
+    };
+    const { repo, host } = await world({ planner: byRounds([["a"]]), sync }, WINNERS);
+    const runId = host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify({ lanes: 2, minPool: 0, rounds: 2, snapshot: { keptIdeas: 1 } }) });
+    await until(() => host.runtime.status(runId)?.status === "paused", "the sync gate");
+    host.runtime.signal(runId, "ar-sync-gate:2", { resolved: UNREACHABLE }, { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" });
+    const run = await host.runtime.wait(runId);
+
+    expect(arRunView(run)!.syncs[0]).toEqual({
+      round: 2, pr: 101, state: "open", conflict: ["src/config.json"], gate: { answered: true, resolved: UNREACHABLE }, failed: "[sync-fixture] the resolved merge was not on origin",
+    });
+    expect(arRunSummary(run).openSnapshot).toEqual({ k: 1, pr: 101 });
+  });
+
   it("reopens nothing after a closed PR, and the next cut opens under the next k", async () => {
     const { run, view } = await winnersRun([["a"], ["b"]], { rounds: 2, snapshot: { keptIdeas: 1 } }, { sync: async () => ({ state: "closed" as const }) });
 

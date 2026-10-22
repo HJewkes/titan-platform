@@ -76,6 +76,8 @@ export type ArSyncView = SyncResult & {
   pr: number;
   gate?: { answered: boolean; resolved?: string };
   runs?: ArEvalView[];
+  /** Why the sync failed; the PR stays open and the next round's sync retries it. */
+  failed?: string;
 };
 
 export interface ArRunView {

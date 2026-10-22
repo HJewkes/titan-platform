@@ -50,6 +50,24 @@ describe("step handlers", () => {
     expect(seen).toEqual(["2026-01-01T00:00:00.000Z"]);
   });
 
+  it("answer a sync port that throws with a recorded failure, but rethrow a moved ratchet for a person", async () => {
+    const input = { runId: "run-a", pin: "p", round: 2, pr: 101, branch: "b", head: "h", ratchetRef: "r", ratchetPrefix: "autoresearch/fixture", tree: "t" };
+    const failing = (message: string) => handlerFor(portsWith({ sync: () => Promise.reject(new Error(message)) }), "sync").run(input, signal);
+
+    expect(await failing("[pin-fetch] origin unreachable")).toEqual({ failed: "[pin-fetch] origin unreachable" });
+    await expect(failing("[ratchet-moved] r is at x, not h")).rejects.toThrow("[ratchet-moved]");
+    expect(await handlerFor(portsWith({}), "sync").run(input, signal)).toEqual({ failed: "[no-sync] this host has no sync port" });
+  });
+
+  it("rethrow a failed sync once the run is cancelled", async () => {
+    const aborted = new AbortController();
+    aborted.abort();
+    const ports = portsWith({ sync: () => Promise.reject(new Error("aborted")) });
+    const input = { runId: "run-a", pin: "p", round: 2, pr: 101, branch: "b", head: "h", ratchetRef: "r", ratchetPrefix: "autoresearch/fixture", tree: "t" };
+
+    await expect(handlerFor(ports, "sync").run(input, aborted.signal)).rejects.toThrow("aborted");
+  });
+
   it("repeat a snapshot after a restart, and park a sync, which may already have moved the ratchet", () => {
     const rules = Object.fromEntries(arStepHandlers(portsWith({})).map((handler) => [handler.name, handler.onRestart]));
 

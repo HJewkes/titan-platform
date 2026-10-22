@@ -1551,6 +1551,8 @@ type ArSyncView = SyncResult & {
         resolved?: string;
     };
     runs?: ArEvalView[];
+    /** Why the sync failed; the PR stays open and the next round's sync retries it. */
+    failed?: string;
 };
 interface ArRunView {
     runId: string;

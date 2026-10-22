@@ -106,12 +106,16 @@ export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], hea
   throw await noticeOrGate(run, kind, headSha, exit, `a human abandoned the PR after no fixer could start at a ${kind} wake`, leave);
 }
 
-/** The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. */
+/**
+ * The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. After a
+ * fix-proof wake that gate also offers the owner's waive-proof, as the NO_REPRO send-back does.
+ */
 async function noticeOrGate(run: ExitRun, kind: WakeRequest["kind"], headSha: string, exit: { reason: string; wake?: WakeEvidence; held?: string }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
   const tell = async () => {
     const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
     return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
   };
   const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
-  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red")), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
+  const gate = async (unsent: string) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned, prompt(unsent), kind === "fix-proof"));
+  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha, kind === "ci-red")), gate);
 }
