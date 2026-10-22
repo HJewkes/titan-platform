@@ -223,7 +223,8 @@ that is invalid at start fails the start.
 
 **Going live with webhooks.** The polling-first gate (F11, TP-3103) is the order webhooks go live in: run on polling for the
 48 hours first, then register the webhooks and flip `ingress`. It sequences a move to webhook mode and is not a reason polling
-exists. The owner steps, Funnel route and rollback are in [Webhook ingress](#webhook-ingress).
+exists. The clocks are in [F11 gate](#f11-gate); the owner steps, Funnel route and rollback are in
+[Webhook ingress](#webhook-ingress).
 
 A malformed file fails every command that opens the database, with
 `invalid config <path>: <reason>`. `--help` and `service plist` still work
@@ -343,7 +344,8 @@ The route is live only when `github.sources` is `"webhook"` **and** `github.ingr
 `404 {"error":"ingress off"}` before the body or the secret is read. The listener binds even when the switch is off, so a flip
 takes effect on the next request with no restart.
 
-**The switch stays off until the polling-only 48 h (F11) has passed.** Register the webhooks and flip the switch only after that.
+**The switch stays off until the polling-only 48 h has passed.** Register the webhooks and flip the switch only after that. The
+two clocks, what resets them and the commands for each are in [F11 gate](#f11-gate).
 
 **Parse-only (R28).** The ingress verifies the signature, stores a capped projection of the delivery as one `source='webhook'`
 event, and acts on nothing. No recipe or service reads what it writes at M1a.
@@ -400,9 +402,96 @@ ls -l ~/.config/titan-factory/secrets/github-webhook.token
 The last line must start with `-rw-------`. The secret is never printed, pasted or sent in chat. Serve picks it up on the next
 delivery, with no restart.
 
+### F11 gate {#f11-gate}
+
+F11 (TP-3103) is the order webhooks go live in: 48 hours on polling alone, then the ingress, then 48 hours of webhook plus
+backstop. Each clock passes on its own report, and the M1a exit cites both.
+
+**Before clock 1 starts**, all of these hold:
+
+1. The deployed sha carries the reconciler wired to serve as the bot (TP-3431), the meter below, and the bot token path
+   (TP-3419). Write the sha down.
+2. The bot token is on disk, mode 0600. `curl -s http://127.0.0.1:7410/health | jq .bot` shows `state: "ok"`, and
+   `titan-factory bot-token scan` prints `bot-token scan: clean`.
+3. `~/.config/titan-factory/config.json` sets polling with the switch off and the reconciler on, over the four repos:
+
+   ```json
+   {
+     "github": { "sources": "polling", "ingress": "off" },
+     "reconciler": { "enabled": true, "repos": ["HJewkes/titan-platform", "HJewkes/titan-design", "HJewkes/agent-chat", "HJewkes/voltras-mcp"] }
+   }
+   ```
+
+   `curl -s http://127.0.0.1:7410/health | jq .sources` shows `effective: "polling"`, `reason: "configured"` and a
+   `lastPassAt` that advances. `sources.reconciler: "running"` lands with TP-3431's serve wiring.
+4. The first pass read each repo's rulesets with status 200, not the 403 `unreadable`. A repo that answers 403 stops the
+   gate: its ruleset changes can never pass the census.
+5. Both meters run, and the old pollers keep running: nothing in Shepherd retires at M1a.
+
+**The meters.** The bot side is inside serve, so its token never leaves it. Serve logs a `github-api.usage` line every 5
+minutes and a `github-api.peak` line every hour, each with `identity`, `resource` (`core`, `graphql`), `used`, `limit`,
+`pct` and `reset`. A peak line carries the highest `used` per reset window, not the last read. They go to
+`serve.err.log` with the rest of serve's lines:
+
+```sh
+grep 'github-api.peak' "$XDG_STATE_HOME/titan-factory/serve.err.log"
+```
+
+The HJewkes side is a sampler run as HJewkes from the service checkout. It calls `gh api rate_limit` once a minute, which
+costs no rate-limit points, and appends one JSONL record per sample. `--peaks` prints the highest `used` per resource and
+reset window:
+
+```sh
+node products/factory/scripts/f11-rate-sample.mjs --out <jsonl>
+node products/factory/scripts/f11-rate-sample.mjs --peaks <jsonl>
+```
+
+**Clock 1: polling only, 48 h.**
+
+- It starts when the five conditions above hold.
+- Make one planned restart near the 24 h mark with `titan-factory service restart`, so the peaks cover a restart and its
+  forced start pass.
+- The reconciler's own record (TP-3098) comes from the first 24 h.
+- It passes when the census shows no `missing` kind against the kinds that occurred in the window, no unexplained
+  `reconciler.disagree class=field-parity` line, and a bot peak under 50% of the limit in both buckets.
+
+**Boundary.** Run [Go-live](#go-live) G1 to G3. Re-check D5 first: `tailscale funnel status` lists exactly one route.
+
+**Clock 2: webhook plus backstop, 48 h.** The backstop runs at `github.backstopIntervalMs` (default 5 minutes). Write down
+each of three deliberate probes:
+
+- Redeliver one real `pull_request` delivery from the GitHub UI. It must append no new row (a duplicate `by: delivery`).
+- Re-run one check on a scratch PR, and record whether the re-run gets a new `checkRunId`.
+- Set `github.ingress` to `"off"` for one backstop interval, then back to `"on"`. The backstop catches up what the switch
+  dropped.
+
+Stale reads are counted from `reconciler.disagree class=stale-read` and `head-regression` lines. Clock 2 passes when no
+row is webhook-only past the pending window, each backstop-only row is explained, no key diverges (dedupe holds), and no
+`head-regression` line shows an epoch going backward. The A17 report on the deployed sha must list every case as ok in
+both modes:
+
+```sh
+pnpm --filter @titan-design/factory a17 --out <file>
+```
+
+**What resets a clock.**
+
+- A deploy that changes `reconciler/`, `github-sources/`, `event-log/`, `ingress/`, `head-guard/` or `bot-identity.ts`
+  under `products/factory/src/`. Note any other deploy, but it does not reset the clock.
+- A `reconciler.unit-failed` streak of more than 3 ticks on one repo.
+- A `missing` kind that did occur in the window.
+
+**The report.** `products/factory/scripts/f11.mjs` lands with F6. It reads the database and the serve log over a window
+and writes the census (clock 1) or the agreement (clock 2), the stale-read counts and both identities' peaks:
+
+```sh
+node products/factory/scripts/f11.mjs --db <db> --log <serve.err.log> --since <iso> --until <iso> \
+  --clock polling|webhook --rate <jsonl> --out <file>
+```
+
 ### Go-live
 
-After the polling-only 48 h has passed:
+After [clock 1](#f11-gate) has passed:
 
 **G1. Register the webhook on each of the four repos** (titan-platform, titan-design, agent-chat, voltras-mcp). This needs repo
 admin, so it runs as HJewkes. The secret goes from the file through stdin, never through argv:
