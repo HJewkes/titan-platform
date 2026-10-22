@@ -1,10 +1,20 @@
-import type { WorkflowRun } from "@titan-design/workflow";
-import { z } from "zod";
+import { GATE_CANCELLED_SIGNAL, type StepResult, type WorkflowRun } from "@titan-design/workflow";
+import { z, type ZodType } from "zod";
 import type { FactoryHost } from "../host.js";
 import type { FreezeStore } from "./freeze.js";
-import { EPISODE_THAWED } from "./post-merge.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { cancelUnlessSettled } from "./stale-gates.js";
+
+/** How a sweep's cancel of a frozen gate starts; the run reads it as the gate's answer and moves on to cleanup. */
+const EPISODE_THAWED = "thawed: ";
+
+/** The parsed answer, or undefined for the sweep's own cancel, which leaves nothing to answer; any other cancel fails the run. */
+export function unlessThawed<T>(gate: string, asked: StepResult, schema: ZodType<T>): T | undefined {
+  if (asked.signal !== GATE_CANCELLED_SIGNAL) return schema.parse(asked.data);
+  const reason = String(asked.data?.reason);
+  if (reason.startsWith(EPISODE_THAWED)) return undefined;
+  throw new Error(`${gate} was cancelled: ${reason}`);
+}
 
 /** The gates whose only question is whether to release one freeze episode. */
 const FROZEN_GATES: ReadonlySet<string> = new Set(["main-red-again", "main-frozen"]);
