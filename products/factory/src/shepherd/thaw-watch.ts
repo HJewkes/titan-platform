@@ -1,6 +1,6 @@
 import type { ShepherdServices } from "./services.js";
 
-export interface ThawWatch {
+interface ThawWatch {
   /** Repos thawed, or with a run's hold eased, since the sweep last read them. */
   thawed: Set<string>;
   /** Runs `start` on each later thaw or eased hold, outside its own call, so a gate the freeze caused is not left waiting out the sweep interval. */
