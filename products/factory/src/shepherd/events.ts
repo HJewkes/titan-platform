@@ -26,14 +26,14 @@ export function reclassMarkMigration(version = 25): Migration {
   return { version, name: "factory:shepherd_event_reclass", up: (db) => db.exec("ALTER TABLE shepherd_event ADD COLUMN reclass INTEGER NOT NULL DEFAULT 0") };
 }
 
-/** SQLite cannot alter a CHECK, so the table is rebuilt with the repair-stop kinds; ids, rows and indexes carry over. */
-const REPAIR_STOP_KINDS_DDL = `
+/** SQLite cannot alter a CHECK, so the table is rebuilt with `kinds`; ids, rows and indexes carry over. */
+const rebuildWithKinds = (kinds: readonly string[]): string => `
   CREATE TABLE shepherd_event_next (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id   TEXT,
     repo     TEXT NOT NULL,
     pr       INTEGER,
-    kind     TEXT NOT NULL CHECK (kind IN ('hold', 'release', 'freeze', 'thaw', 'repair-stop', 'repair-go')),
+    kind     TEXT NOT NULL CHECK (kind IN (${kinds.map((kind) => `'${kind}'`).join(", ")})),
     reason   TEXT,
     actor    TEXT,
     at       TEXT NOT NULL,
@@ -49,14 +49,20 @@ const REPAIR_STOP_KINDS_DDL = `
 
 /** Lets the event history take the repair-stop kinds; runs after `reclassMarkMigration`, whose column it keeps. */
 export function widenEventKinds(db: Db): void {
-  db.exec(REPAIR_STOP_KINDS_DDL);
+  db.exec(rebuildWithKinds(["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"]));
 }
 
-export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"] as const;
+export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go", "gate-cancel"] as const;
+
+/** A main gate a sweep cancelled because the freeze episode it asked about had thawed (TP-3952). */
+export function gateCancelKindMigration(version = 39): Migration {
+  return { version, name: "factory:shepherd_event_gate_cancel", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
+}
+
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface ShepherdEvent {
-  /** Null for a freeze or thaw, or a path repair stop, which belong to a repo, not a run. */
+  /** Null for a freeze or thaw, or a path repair stop, which belong to a repo, not a run; a gate-cancel names the run whose gate it closed. */
   runId: string | null;
   repo: string;
   pr: number | null;

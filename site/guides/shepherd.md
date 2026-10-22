@@ -306,6 +306,12 @@ thaws only the episode the gate opened for. If the repo has thawed and frozen ag
 the answer changes nothing. Each run opens its own gate, so one episode can leave several
 open; answer any one with `unfreeze` and the rest go stale.
 
+A stale gate does not wait for the owner. Once the episode it opened for has thawed, by a
+green head, an `unfreeze` on another gate or a hand thaw, the gone sweep (every 5 minutes
+and on each thaw) and `shepherd resync` cancel it. Each cancel writes a `gate-cancel` row to
+the run's timeline, and the run goes on to cleanup without thawing anything. A gate whose
+episode is still frozen stays open. A run that recorded no episode also keeps its gate.
+
 ## Merges and the guard on R27 {#merge-guard}
 
 From the bot account (A21, M1a) until M3's walk over main moves exists, the rule that agents

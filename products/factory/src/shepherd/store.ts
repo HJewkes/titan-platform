@@ -249,10 +249,15 @@ export class ShepherdStore implements HoldLookup {
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
 
-  /** The run's hold, release and repair-stop events and its repo's freeze, thaw and path repair-stop events, oldest first. */
+  /** The run's hold, release, repair-stop and gate-cancel events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
     return registration ? eventsFor(this.db, runId, registration.repo) : [];
+  }
+
+  /** Records a sweep's cancel of the run's gate; the caller writes it only after the cancel took. */
+  recordGateCancel(runId: string, reason: string, at: string): void {
+    if (this.byRun(runId)) this.record(runId, "gate-cancel", reason, at, {});
   }
 
   private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {
