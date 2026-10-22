@@ -218,6 +218,13 @@ describe("autoresearch.start", () => {
     expect(JSON.parse(params.config!)).toMatchObject({ lanes: 2, rounds: 50, forkSchedule: { basinEvery: 3 } });
   });
 
+  it("is not blocked by an unfinished run of another workflow that names the same target", async () => {
+    const { ctx, start } = writeContext([{ ...baselinedRun("land-1"), workflowName: "land-pr" }]);
+
+    expect(await callWrite("autoresearch.start", { target: "fixture", pin: PIN }, ctx)).toMatchObject({ ok: true });
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("starts a target whose last run has finished", async () => {
     const { ctx, start } = writeContext([baselinedRun("run-1", "completed")]);
 
