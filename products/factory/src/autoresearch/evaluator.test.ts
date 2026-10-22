@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { IdeaSchema, OutcomeSchema, type Idea, type RoundRecord } from "@titan-design/autoresearch";
 import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it } from "vitest";
-import { evaluatorPorts } from "./evaluator.js";
+import { evaluatorPorts, type EvaluatorOptions } from "./evaluator.js";
 import { execGit } from "./ratchet.js";
 
 const IDENTITY = ["-c", "user.name=evaluator fixture", "-c", "user.email=fixture@example.invalid"];
@@ -70,7 +70,7 @@ const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
 /** A bare `origin`, a clone of it for the evaluator, and the adapter at the pin. */
-async function fixture(bounds: object = BOUNDS) {
+async function fixture(bounds: object = BOUNDS, host: Partial<EvaluatorOptions> = {}) {
   const root = mkdtempSync(join(tmpdir(), "ar-evaluator-"));
   roots.push(root);
   const [seed, bare, clone] = [join(root, "seed"), join(root, "origin.git"), join(root, "clone")];
@@ -81,7 +81,7 @@ async function fixture(bounds: object = BOUNDS) {
   await git(seed, "commit", "--quiet", "-m", "fixture");
   await git(root, "clone", "--quiet", "--bare", seed, bare);
   await git(root, "clone", "--quiet", bare, clone);
-  const options = { clone, workRoot: join(root, "work"), archiveDir: join(root, "archive"), adapterDir: "ar", caseNames: ["t-alpha"] };
+  const options = { clone, workRoot: join(root, "work"), archiveDir: join(root, "archive"), adapterDir: "ar", caseNames: ["t-alpha"], ...host };
   const pin = await git(clone, "rev-parse", "HEAD");
   /** A second host over the same clone and work root, as the factory is after a restart. */
   const restarted = () => evaluatorPorts(options);
@@ -333,5 +333,55 @@ describe("evaluator ratchet and archive", () => {
     const listed = execFileSync("tar", ["-tzf", archived.path!], { encoding: "utf8" });
     expect(listed).toContain("./record.json");
     expect(listed).toContain("./artifacts/0-run-1-a-r1/lanes.json");
+  });
+});
+
+const HELD_OUT = ["val-1", "val-2", "val-3"].map((name) => ({ case: name, caseSet: "held" }));
+
+/** Every object key and string value in `value`, so a case name anywhere in a look's answer is found. */
+const wordsOf = (value: unknown): string[] =>
+  typeof value === "string" ? [value] : value && typeof value === "object" ? Object.entries(value).flatMap(([key, inner]) => [key, ...wordsOf(inner)]) : [];
+
+describe("milestone looks and the phase registry", () => {
+  it("answers only aggregates over the held-out cases, naming none of them", async () => {
+    const repo = await fixture(BOUNDS, { validatorCases: HELD_OUT, now: () => Date.parse("2026-10-22T00:00:00Z") });
+    const pinned = await repo.ports.pin(repo.run, signal);
+    const { head } = await ideaTree(repo, "best", { "src/gate/gates.py": "def accept(task):\n    return task\n" });
+
+    const look = await repo.ports.validate!({ ...repo.run, frozenHash: pinned.frozenHash, look: 1, head }, signal);
+
+    expect(look).toEqual({ look: 1, at: "2026-10-22T00:00:00.000Z", sha: head, aggregate: { metrics: { score: 1 }, gates: {} }, provenance: expect.stringContaining("not an LLM judge"), usd: 1.5 });
+    expect(wordsOf(look).filter((word) => HELD_OUT.some((held) => word.includes(held.case)))).toEqual([]);
+    expect(existsSync(join(repo.root, "work", "val-run-1-1"))).toBe(false);
+  });
+
+  it("re-creates a parked evaluator checkout at the pin and still refuses a frozen-file drift", async () => {
+    const repo = await fixture(BOUNDS, { validatorCases: HELD_OUT });
+    const pinned = await repo.ports.pin(repo.run, signal);
+    const evaluator = join(repo.root, "work", "eval-run-1");
+    await execGit(["worktree", "remove", "--force", evaluator], repo.clone);
+    const request = { ...repo.run, frozenHash: pinned.frozenHash, look: 1, head: repo.pin };
+
+    await expect(repo.restarted().validate!(request, signal)).resolves.toMatchObject({ sha: repo.pin });
+    await expect(repo.restarted().validate!({ ...request, frozenHash: "0".repeat(64) }, signal)).rejects.toThrow("[frozen-drift]");
+  });
+
+  it("refuses a look when no held-out cases are configured", async () => {
+    const repo = await fixture();
+
+    await expect(repo.ports.validate!({ ...repo.run, look: 1, head: repo.pin }, signal)).rejects.toThrow("[no-validator-cases]");
+  });
+
+  it("appends one registry line per phase", async () => {
+    const registryPath = join(tmpdir(), `ar-registry-${process.pid}`, "phases.jsonl");
+    roots.push(dirname(registryPath));
+    const repo = await fixture(BOUNDS, { registryPath });
+    const row = { phase: "p1", pin: repo.pin, trainCases: ["t-alpha"], ideasByRung: {}, sigma: 0, pairs: 0, locked: false, spend: { agentUsd: 0, modelUsd: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, archives: [], stopReason: "rounds-exhausted" as const, provenance: "fixture" };
+
+    await repo.ports.registry!({ runId: "run-1", row }, signal);
+    const answer = await repo.ports.registry!({ runId: "run-2", row }, signal);
+
+    expect(answer).toEqual({ path: registryPath });
+    expect(readFileSync(registryPath, "utf8").trim().split("\n").map((line) => JSON.parse(line))).toEqual([row, row]);
   });
 });
