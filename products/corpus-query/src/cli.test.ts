@@ -29,3 +29,40 @@ describe("corpus-query index", () => {
     expect(code).toBe(2);
   });
 });
+
+describe("corpus-query hits", () => {
+  const files = [{ relPath: "solo/book_01/chapter_01.txt", title: "SO 1.1 - Hi", published: "2026-01-01", body: "Quiet.\n\nThe brass bell rang twice.\n\nQuiet again.\n\nQuiet still.\n\nQuiet more.\n" }];
+
+  async function indexed(): Promise<{ root: string; db: string }> {
+    const corpus = writeCorpus(files);
+    cleanup = corpus.cleanup;
+    const db = path.join(corpus.root, "..", `${path.basename(corpus.root)}.sqlite3`);
+    await runCli(["index", corpus.root, "--db", db], () => undefined);
+    return { root: corpus.root, db };
+  }
+
+  it("prints ref, locator and context for each passage without any model", async () => {
+    const { root, db } = await indexed();
+    const lines: string[] = [];
+
+    const code = await runCli(["hits", root, "--db", db, "--phrase", "brass bell"], (l) => lines.push(l));
+
+    expect(code).toBe(0);
+    expect(lines).toEqual(["SO 1.1 | p0-3 | Quiet. ¶ The brass bell rang twice. ¶ Quiet again. ¶ Quiet still."]);
+  });
+
+  it("prints counts only with --summary", async () => {
+    const { root, db } = await indexed();
+    const lines: string[] = [];
+
+    await runCli(["hits", root, "--db", db, "--phrase", "brass bell", "--window", "0", "--summary"], (l) => lines.push(l));
+
+    expect(lines).toEqual(["hit paragraphs 1, passages 1, chapters 1"]);
+  });
+
+  it("requires exactly one of --spec and --phrase", async () => {
+    const { root, db } = await indexed();
+
+    expect(await runCli(["hits", root, "--db", db], () => undefined)).toBe(2);
+  });
+});
