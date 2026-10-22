@@ -41,6 +41,16 @@
         "Ship bar blockers link to what they name (harness PrTabs ShipBar) ticks an earlier round Addressed on one PR's card only, and a reload keeps it there (TP-3885)",
         "Ship bar blockers link to what they name (harness PrTabs ShipBar) never lists an unanswered question, even a required one, so Ship stays on (decision 166)"
       ]
+    },
+    {
+      "name": "pressing a PR tab never opens its panel",
+      "file": "apps/console/src/pages/ShipTabs.tsx",
+      "find": "<Tabs index={tab} onChange={setTab}>",
+      "replace": "<Tabs index={tab} onChange={() => undefined}>",
+      "kills": [
+        "Review, Diff and Context tabs on a Ship round (decision 167) gives each PR of a two-PR round its own tabs and Ship bar",
+        "Ship bar blockers link to what they name (harness PrTabs ShipBar) takes a frame's blocker to the Diff tab and focuses the frame"
+      ]
     }
   ]
 }
