@@ -17,12 +17,20 @@ export interface Batch {
   canary?: ShownPassage & { expect: Canary["expect"] };
   /** The user message: passages in the order given, the canary last. */
   message: string;
+  /** Passage id by the short label the message shows in its place. */
+  labels: Record<string, string>;
 }
 
 /** Rough size of English prose in tokens; batches only need to land near their budget. */
 export const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
-const show = (p: ShownPassage): string => `=== PASSAGE ${p.id} (${p.ref}) ===\n${p.text}`;
+/**
+ * Judges echo the id of every passage they judged, and a full passage id costs about 20 output tokens, so the
+ * message shows a short label instead and `resolveLabels` maps the verdict back.
+ */
+const label = (index: number): string => `P${index + 1}`;
+
+const show = (p: ShownPassage, index: number): string => `=== PASSAGE ${label(index)} (${p.ref}) ===\n${p.text}`;
 
 export function batchKey(passageIds: readonly string[], prefixSha: string): string {
   const hash = createHash("sha256");
@@ -62,7 +70,7 @@ function pack(passages: readonly ShownPassage[], tokenBudget: number): ShownPass
   const groups: ShownPassage[][] = [];
   let used = 0;
   for (const passage of passages) {
-    const cost = estimateTokens(show(passage));
+    const cost = estimateTokens(show(passage, 0));
     const last = groups[groups.length - 1];
     if (last && used + cost <= tokenBudget) {
       last.push(passage);
@@ -103,6 +111,13 @@ export function buildBatches(passages: readonly ShownPassage[], options: BatchOp
     };
     const shown = canary ? [...group, canary] : group;
     const head = options.preamble ? `${options.preamble}\n\n` : "";
-    return { key, passages: group, canary, message: head + shown.map(show).join("\n\n") };
+    const labels = Object.fromEntries(shown.map((p, i) => [label(i), p.id]));
+    return { key, passages: group, canary, message: head + shown.map(show).join("\n\n"), labels };
   });
+}
+
+/** Maps the labels a verdict names back to passage ids; anything else is kept, so verification voids it as unknown. */
+export function resolveLabels<T extends { id: string }>(batch: Batch, verdict: { judged: readonly string[]; items: readonly T[] }): { judged: string[]; items: T[] } {
+  const id = (named: string) => (Object.hasOwn(batch.labels, named) ? batch.labels[named]! : named);
+  return { judged: verdict.judged.map(id), items: verdict.items.map((item) => ({ ...item, id: id(item.id) })) };
 }

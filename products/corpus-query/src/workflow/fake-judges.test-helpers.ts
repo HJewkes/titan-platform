@@ -71,6 +71,8 @@ interface Call {
   stepId: string;
   model: string;
   systemPrompt: string;
+  /** The env the runner would hand the CLI. */
+  env: NodeJS.ProcessEnv | undefined;
   prompt: string;
   /** Display refs of the passages shown, canaries excluded. */
   refs: string[];
@@ -130,6 +132,7 @@ export function fakeJudges(options: { names?: Record<string, string[]>; behave?:
         stepId: input.stepId,
         model: input.model ?? runner.defaults!.model!,
         systemPrompt: runner.defaults!.systemPrompt!,
+        env: runner.deps?.env,
         prompt: input.prompt,
         refs: shownPassages(input.prompt).filter((p) => !isCanary(p)).map((p) => p.ref),
         startedAt: performance.now(),

@@ -75,11 +75,11 @@ interface RunState {
 const CONFIRMED_EVENTS: ReadonlySet<Candidate["event"]> = new Set(["won", "referenced"]);
 
 const screenJudge = (models: Models): StageJudge<ScreenVerdict, Candidate> => ({
-  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, redoModel: models.redo,
+  stage: "screen", schema: ScreenVerdictSchema, item: CandidateSchema, judged: (v) => v.judged, items: (v) => v.candidates, model: models.screen, fallbackModel: models.redo,
 });
 
 const confirmJudge = (models: Models): StageJudge<ConfirmVerdict, ConfirmRow> => ({
-  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, redoModel: models.redo,
+  stage: "confirm", schema: ConfirmVerdictSchema, item: ConfirmRowSchema, judged: (v) => v.judged, items: (v) => v.rows, model: models.confirm, fallbackModel: models.redo,
 });
 
 const shown = (state: RunState, passage: Passage): ShownPassage => ({ id: passage.id, ref: passage.ref, text: readPassage(state.config.db, state.config.root, passage).join("\n\n") });
@@ -130,7 +130,7 @@ function screenJobs(state: RunState, round: number, passages: Passage[], known: 
     canaries: state.config.spec.canaries,
     ...(known.length > 0 ? { preamble: `Names already known from earlier passages: ${known.join(", ")}` } : {}),
   });
-  return batches.map((batch) => ({ batch, round, file: state.paths.batch("screen", batch.key, round) }));
+  return batches.map((batch) => ({ batch, round, file: state.paths.batch("screen", batch.key, round), attemptsFile: state.paths.attempts("screen", batch.key, round) }));
 }
 
 /** A grown name stands in for the spec's first term group; the groups after it, what happened, still apply. */
@@ -199,7 +199,7 @@ function confirmJobs(state: RunState, candidates: readonly Candidate[]): BatchJo
       canaries: state.config.spec.canaries,
       preamble: `Book: ${book}`,
     });
-    return batch ? [{ batch, book, file: state.paths.batch("confirm", batch.key) }] : [];
+    return batch ? [{ batch, book, file: state.paths.batch("confirm", batch.key), attemptsFile: state.paths.attempts("confirm", batch.key) }] : [];
   });
 }
 

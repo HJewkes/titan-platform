@@ -18,7 +18,7 @@ const StepUsageSchema = z.object({
   costUnknown: z.literal(true).optional(),
 });
 
-const UsageEntrySchema: ZodType<UsageEntry> = z.object({ stepId: z.string(), model: z.string(), usage: StepUsageSchema });
+export const UsageEntrySchema: ZodType<UsageEntry> = z.object({ stepId: z.string(), model: z.string(), usage: StepUsageSchema });
 
 const VoidedSchema = z.object({ id: z.string(), reason: z.enum(["unknown-id", "quote-too-long", "quote-not-in-passage", "quote-unverifiable"]) });
 
@@ -28,7 +28,7 @@ export function batchArtifactSchema<T>(item: ZodType<T>): ZodType<BatchArtifact<
     stage: z.enum(["screen", "confirm"]),
     round: z.number().optional(),
     book: z.string().optional(),
-    via: z.enum(["primary", "redo", "unjudged"]),
+    via: z.enum(["primary", "redo", "fallback", "unjudged"]),
     passageIds: z.array(z.string()),
     items: z.array(item),
     voided: z.array(VoidedSchema),

@@ -22,15 +22,20 @@ corpus-query ask "<question>" --corpus <root> [--index <file>] [--rules <file>] 
 corpus-query resume <runId>
 ```
 
+`--concurrency` is an integer from 1 to 32, `--rounds` an integer from 0 to 10 and `--budget-usd` a number from
+0.01 to 1000; anything else is rejected with an error naming the flag. `cost.json` carries every call, failed
+attempts included, even one a crash left out of the run journal.
+
 `ask` is two durable workflow runs. `cq-compile` turns the question into a `QuerySpec` with one call;
 `cq-answer` is keyed by that spec's hash, because its judge prefixes are built from the spec. Every judge
 call is a bare `claude -p` (no tools, MCP servers, settings or skills), so the system prompt is the
-cached prefix and the batch is the only other input.
+fixed prefix and the batch is the only other input. Prompt caching is off: no batch is sent twice, so a
+cache write would be paid and never read. Batch messages label passages `P1`…`Pn`, and verdicts are mapped
+back to passage ids before their quotes are checked.
 
-- **screen** (haiku): batches of about 6k tokens, each ending in a canary. One warm call runs alone first,
-  so its cache write is readable by the rest of the wave.
-- **redo**: a refusal, an invalid payload or a mis-judged canary gets one redo on sonnet; if that fails too
-  the batch is recorded unjudged and the wave goes on.
+- **screen** (haiku): batches of about 6k tokens, each ending in a canary. One warm call runs alone first.
+- **redo**: a refusal, an invalid payload or a mis-judged canary gets one redo on the stage's own model, then
+  one call on sonnet; if that fails too the batch is recorded unjudged and the wave goes on.
 - **grow**: names the judges report are searched for next round, until no name is new or `--rounds` is hit.
 - **confirm** (sonnet): one call per book, holding that book's candidate passages.
 

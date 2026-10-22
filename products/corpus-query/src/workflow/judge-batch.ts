@@ -1,7 +1,7 @@
 import { StepFailedError, type StepResult, type StepUsage, type WorkflowContext } from "@titan-design/workflow";
-import type { ZodType } from "zod";
-import { verifyVerdict, type Batch, type QuotedItem, type VerifiedBatch } from "../judge/index.js";
-import { batchArtifactSchema } from "./records.js";
+import { z, type ZodType } from "zod";
+import { resolveLabels, verifyVerdict, type Batch, type QuotedItem, type VerifiedBatch } from "../judge/index.js";
+import { batchArtifactSchema, UsageEntrySchema } from "./records.js";
 import { readJson, writeJson, type BatchArtifact, type UsageEntry } from "./run-dir.js";
 
 /** A verdict payload; the workflow stores dispatch data as a JSON object. */
@@ -17,12 +17,15 @@ export interface StageJudge<V extends Verdict, T extends QuotedItem> {
   items: (verdict: V) => T[];
   /** The route's own model; recorded with usage only, because the route, not the dispatch, picks it. */
   model: string;
-  redoModel: string;
+  /** Judges a batch the route's model failed twice; a stage already on this model gets no third call. */
+  fallbackModel: string;
 }
 
 export interface BatchJob {
   batch: Batch;
   file: string;
+  /** A failed attempt is not in the run journal, so its spend is parked here; a resume loads it back into the batch. */
+  attemptsFile: string;
   round?: number;
   book?: string;
 }
@@ -39,7 +42,7 @@ function dispatchBatch<V extends Verdict, T extends QuotedItem>(
 }
 
 async function attempt<V extends Verdict, T extends QuotedItem>(
-  ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[],
+  ctx: WorkflowContext, stepId: string, job: BatchJob, judge: StageJudge<V, T>, modelOverride: string | undefined, usage: UsageEntry[], parked: UsageEntry[],
 ): Promise<Attempt<T>> {
   const model = modelOverride ?? judge.model;
   try {
@@ -47,10 +50,15 @@ async function attempt<V extends Verdict, T extends QuotedItem>(
     if (result.usage) usage.push({ stepId, model, usage: result.usage });
     const verdict = result.data;
     if (verdict === undefined) return { ok: false, reason: "the step recorded no verdict" };
-    return { ok: true, result, verified: verifyVerdict(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) }) };
+    return { ok: true, result, verified: verifyVerdict(job.batch, resolveLabels(job.batch, { judged: judge.judged(verdict), items: judge.items(verdict) })) };
   } catch (error) {
     if (!(error instanceof StepFailedError) || ctx.signal.aborted) throw error;
-    if (error.usage) usage.push({ stepId, model, usage: error.usage });
+    if (error.usage) {
+      const spent = { stepId, model, usage: error.usage };
+      usage.push(spent);
+      parked.push(spent);
+      writeJson(job.attemptsFile, parked);
+    }
     return { ok: false, reason: error.reason };
   }
 }
@@ -93,28 +101,52 @@ function artifactOf<T extends QuotedItem>(job: BatchJob, judge: { stage: "screen
   };
 }
 
-/** A batch finished in an earlier drive: answer from the record through the one call that counted, never paying again. */
-function replayFinished<V extends Verdict, T extends QuotedItem>(ctx: WorkflowContext, itemStepId: string, job: BatchJob, judge: StageJudge<V, T>, done: BatchArtifact<T>): Promise<StepResult> {
-  if (done.via === "unjudged") return ctx.seed(`${itemStepId}/unjudged`, async () => ({ data: {} }));
-  if (done.via === "redo") return dispatchBatch(ctx, `${itemStepId}/redo`, job, judge, judge.redoModel);
-  return dispatchBatch(ctx, itemStepId, job, judge, undefined);
+type Via = Exclude<BatchArtifact<QuotedItem>["via"], "unjudged">;
+
+interface Try {
+  via: Via;
+  suffix: string;
+  model?: string;
 }
 
 /**
- * Judges one batch. A refusal, an invalid payload or a mis-judged canary gets exactly one redo on the redo model; if
- * that fails too the batch is recorded unjudged and the item returns, so one failure never stops the wave.
+ * A failed first verdict is most often a canary left out of `judged`, which a second call on the same model clears,
+ * so the stronger fallback model is paid for only when that redo fails too.
+ */
+function tries(judge: { model: string; fallbackModel: string }): Try[] {
+  const own: Try[] = [{ via: "primary", suffix: "" }, { via: "redo", suffix: "/redo" }];
+  return judge.fallbackModel === judge.model ? own : [...own, { via: "fallback", suffix: "/fallback", model: judge.fallbackModel }];
+}
+
+/** A batch finished in an earlier drive: answer from the record through the one call that counted, never paying again. */
+function replayFinished<V extends Verdict, T extends QuotedItem>(ctx: WorkflowContext, itemStepId: string, job: BatchJob, judge: StageJudge<V, T>, done: BatchArtifact<T>): Promise<StepResult> {
+  if (done.via === "unjudged") return ctx.seed(`${itemStepId}/unjudged`, async () => ({ data: {} }));
+  const counted = tries(judge).find((t) => t.via === done.via)!;
+  return dispatchBatch(ctx, itemStepId + counted.suffix, job, judge, counted.model);
+}
+
+/**
+ * Judges one batch. A refusal, an invalid payload or a mis-judged canary gets one redo on the stage's own model, then
+ * one call on the fallback model; if every try fails the batch is recorded unjudged and the item returns, so one
+ * failure never stops the wave.
  */
 export async function judgeBatch<V extends Verdict, T extends QuotedItem>(ctx: WorkflowContext, itemStepId: string, job: BatchJob, judge: StageJudge<V, T>): Promise<StepResult> {
   const done = readJson(job.file, batchArtifactSchema(judge.item));
   if (done) return replayFinished(ctx, itemStepId, job, judge, done);
-  const usage: UsageEntry[] = [];
-  const first = await attempt(ctx, itemStepId, job, judge, undefined, usage);
-  if (trusted(first)) return saved(job, artifactOf(job, judge, { via: "primary", usage, misses: 0, verified: first.verified }), first.result);
-  const redo = await attempt(ctx, `${itemStepId}/redo`, job, judge, judge.redoModel, usage);
-  if (trusted(redo)) return saved(job, artifactOf(job, judge, { via: "redo", usage, misses: canaryMisses(first), verified: redo.verified }), { ...redo.result, usage: summedUsage(usage) });
-  const reason = `${failureReason(first)}; redo: ${failureReason(redo)}`;
+  const parked = readJson(job.attemptsFile, z.array(UsageEntrySchema)) ?? [];
+  const usage: UsageEntry[] = [...parked];
+  const failed: Attempt<T>[] = [];
+  for (const t of tries(judge)) {
+    const outcome = await attempt(ctx, itemStepId + t.suffix, job, judge, t.model, usage, parked);
+    if (trusted(outcome)) {
+      const result = failed.length === 0 ? outcome.result : { ...outcome.result, usage: summedUsage(usage) };
+      return saved(job, artifactOf(job, judge, { via: t.via, usage, misses: canaryMisses(...failed), verified: outcome.verified }), result);
+    }
+    failed.push(outcome);
+  }
+  const reason = failed.map(failureReason).join("; then: ");
   const recorded = await ctx.seed(`${itemStepId}/unjudged`, async () => {
-    writeJson(job.file, artifactOf<T>(job, judge, { via: "unjudged", usage, misses: canaryMisses(first, redo), reason }));
+    writeJson(job.file, artifactOf<T>(job, judge, { via: "unjudged", usage, misses: canaryMisses(...failed), reason }));
     return { data: {}, output: reason };
   });
   const spent = summedUsage(usage);
