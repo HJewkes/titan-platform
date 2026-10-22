@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FactoryConfigSchema } from "../config.js";
-import { reconcilerConfig } from "./config.js";
+import { DEPRECATED_INTERVAL, reconcilerConfig, reconcilerDeprecations } from "./config.js";
 
 const issues = (config: object) => {
   const parsed = FactoryConfigSchema.safeParse(config);
@@ -8,22 +8,21 @@ const issues = (config: object) => {
 };
 
 describe("reconciler config (I8)", () => {
-  it("defaults to off, a 5 minute interval, a snapshot at least every 3 ticks and no repos", () => {
-    expect(reconcilerConfig({})).toEqual({ enabled: false, intervalMs: 300_000, fullEvery: 3, repos: [] });
+  it("defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own", () => {
+    expect(reconcilerConfig({})).toEqual({ enabled: false, fullEvery: 3, repos: [] });
+    expect(reconcilerDeprecations(reconcilerConfig({}))).toEqual([]);
   });
 
-  it("accepts 5 to 10 minutes under github.sources webhook and refuses either side of that", () => {
-    const webhook = (intervalMs: number) => issues({ github: { sources: "webhook" }, reconciler: { intervalMs } });
+  it("loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated", () => {
+    const config = { github: { sources: "webhook" }, reconciler: { intervalMs: 900_000 } };
 
-    expect(webhook(300_000)).toEqual([]);
-    expect(webhook(600_000)).toEqual([]);
-    expect(webhook(299_999)).toEqual(["reconciler.intervalMs: intervalMs must be 300000-600000 under github.sources webhook"]);
-    expect(webhook(600_001)).toEqual(["reconciler.intervalMs: intervalMs must be 300000-600000 under github.sources webhook"]);
+    expect(issues(config)).toEqual([]);
+    expect(reconcilerDeprecations(reconcilerConfig(config))).toEqual([DEPRECATED_INTERVAL]);
+    expect(DEPRECATED_INTERVAL).toBe("config.deprecated reconciler.intervalMs ignored; use github.backstopIntervalMs");
   });
 
-  it("leaves the polling-mode interval to TP-3099's bound", () => {
-    expect(issues({ github: { sources: "polling" }, reconciler: { intervalMs: 60_000 } })).toEqual([]);
-    expect(issues({ reconciler: { intervalMs: 60_000 } })).toEqual([]);
+  it("leaves the webhook cadence's bound to github.backstopIntervalMs", () => {
+    expect(issues({ github: { sources: "webhook", backstopIntervalMs: 900_000 } })).not.toEqual([]);
   });
 
   it("refuses an unknown key, a repo that is not owner/name and a fullEvery out of range", () => {

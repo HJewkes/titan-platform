@@ -16,6 +16,7 @@ import { githubApiStatus } from "./github-api/status.js";
 import { resolveSources, sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
+import { DEPRECATED_INTERVAL } from "./reconciler/config.js";
 import { sqliteReconcilerCursor } from "./reconciler/cursor.js";
 import { OTHER_REPO, REPO, rig } from "./reconciler/fakes.test-helpers.js";
 import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
@@ -390,7 +391,17 @@ describe("serve's start-up warnings", () => {
 });
 
 describe("serve's reconciler (I9)", () => {
-  const config = { enabled: true, intervalMs: 300_000, fullEvery: 3, repos: [REPO, OTHER_REPO] };
+  const config = { enabled: true, fullEvery: 3, repos: [REPO, OTHER_REPO] };
+
+  it("logs reconciler.intervalMs as deprecated at start when the config still sets it, and is silent when it does not", async () => {
+    const warnings: unknown[] = [];
+    const logger = { ...silentLogger, warn: (_fields: unknown, msg?: unknown) => void warnings.push(msg) };
+
+    await serve(dbFile(), landScenario(), { logger, reconciler: { config: { ...config, enabled: false }, bot: rig().bot } });
+    await serve(dbFile(), landScenario(), { logger, reconciler: { config: { ...config, enabled: false, intervalMs: 900_000 }, bot: rig().bot } });
+
+    expect(warnings.filter((msg) => msg === DEPRECATED_INTERVAL)).toEqual([DEPRECATED_INTERVAL]);
+  });
 
   it("returns from start before the forced start pass's first read answers, then snapshots every repo once", async () => {
     const r = rig();
