@@ -5,7 +5,8 @@
  * round is never withdrawn: the owner's answer stands. A submit racing this write can leave both files;
  * `feedback.json` then wins everywhere the console reads them.
  *
- * Only `titan-console rounds withdraw` calls it, never `/rpc`: the factory withdraws, the owner does not.
+ * `titan-console rounds withdraw` and `rounds sweep` call it, never `/rpc`: the factory withdraws, the owner does not.
+ * The one other caller is `round-supersede.ts`, which withdraws only the rounds a round's own `supersedes` names.
  */
 import { constants } from "node:fs";
 import { lstat, open, rm, type FileHandle } from "node:fs/promises";
@@ -14,12 +15,12 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { FEEDBACK_FILE, ROUND_ID, WITHDRAWN_FILE, WITHDRAWN_SCHEMA_ID } from "./rounds.js";
 
-/** `new-head` may name the sha the PR moved to. */
-const WITHDRAW_REASON = /^(new-head(:[0-9a-f]{40})?|closed|answered-elsewhere)$/;
+/** `new-head` may name the sha the PR moved to; `superseded-by` names the round whose `supersedes` lists this one. */
+const WITHDRAW_REASON = /^(new-head(:[0-9a-f]{40})?|closed|answered-elsewhere|superseded-by:[A-Za-z0-9_-]{1,64})$/;
 /** `O_EXCL` already refuses a symlink at the name; `O_NOFOLLOW` keeps that true if the flags ever change. */
 export const WITHDRAW_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 
-interface WithdrawResult {
+export interface WithdrawResult {
   id: string;
   outcome: "withdrawn" | "already-withdrawn" | "kept-answered";
 }
@@ -65,7 +66,7 @@ async function writeOnce(file: string, bytes: Buffer): Promise<boolean> {
 }
 
 export async function withdrawRound(roundsDir: string, id: string, reason: string, now = new Date()): Promise<WithdrawResult> {
-  if (!WITHDRAW_REASON.test(reason)) refuse(`reason "${reason}" is not new-head[:<sha>], closed or answered-elsewhere`, EXIT.USAGE);
+  if (!WITHDRAW_REASON.test(reason)) refuse(`reason "${reason}" is not new-head[:<sha>], closed, answered-elsewhere or superseded-by:<id>`, EXIT.USAGE);
   const roundDir = await roundDirOf(roundsDir, id);
   if ((await lstatOrNull(path.join(roundDir, FEEDBACK_FILE)))?.isFile()) return { id, outcome: "kept-answered" };
   const bytes = Buffer.from(`${JSON.stringify({ schema: WITHDRAWN_SCHEMA_ID, reason, at: now.toISOString() })}\n`);

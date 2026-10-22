@@ -7,6 +7,7 @@ import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
+import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
@@ -58,13 +59,15 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
     revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
+    revalidateRef: (repo, branch, etag) => revalidateRef(api, repo, branch, etag),
+    revalidateRulesets: (repo, etag) => revalidateRulesets(api, repo, etag),
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request))),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: (repo, branch) => branchRules(api, repo, branch),
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
-    listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
+    listCheckRuns: (repo, sha, filter) => listCheckRuns(api, repo, sha, filter),
     createCheckRun: postCheckRun,
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
@@ -88,6 +91,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
+    rerunJob: async (repo, jobId) => void (await api.send("POST", `repos/${repo}/actions/jobs/${jobId}/rerun`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
@@ -240,8 +244,9 @@ interface GhCheckRun {
   pull_requests?: { number: number; base: { ref: string } }[];
 }
 
-async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<CheckRun[]> {
-  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, { per_page: "100" }, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
+async function listCheckRuns(api: Rest, repo: string, sha: string, filter?: "all"): Promise<CheckRun[]> {
+  const fields: Record<string, string> = filter === undefined ? { per_page: "100" } : { per_page: "100", filter };
+  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, fields, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
   return runs.map((run) => ({
     id: run.id,
     name: run.name,

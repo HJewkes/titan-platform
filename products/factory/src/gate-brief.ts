@@ -148,7 +148,7 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
 
 function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
-  const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "No reviewer MERGE at this head; no recommendation.";
+  const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
   return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
 }
 
@@ -206,7 +206,7 @@ export function stuckBehindDecision(target: { repo: string; pr: number; headSha:
 export const WAIVE_PROOF = "waive-proof";
 
 /**
- * `waivable` marks a fix-proof send-back (NO_REPRO), the only kind that offers the owner's `waive-proof`, never recommended. Its
+ * `waivable` marks a fix-proof send-back (NO_REPRO, or a fixer's exit from its wake), the only kind that offers the owner's `waive-proof`, never recommended. Its
  * answer must name the gate's head, which only the `anyOf` shapes pin: a top-level `headSha.const` would change the abandon a
  * coordinator's pr-gone evidence must match.
  */

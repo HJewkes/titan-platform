@@ -74,6 +74,8 @@ composes all three.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
   and `assisted` steps are memoized, with `mapItems` fan-out under a budget.
+- [`autoresearch`](/reference/autoresearch): a keep-if-better research loop on top of
+  `workflow`, driven by a target's metric config and run against injected ports.
 
 [Multi-harness contracts](/guides/multi-harness-contracts) covers how the Claude and Codex
 paths share these types.
@@ -134,6 +136,8 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
   caller satisfies, and `classifyPr`, which picks a pull request's review class from its
   signals.
+- [`review-workflow`](/reference/review-workflow): PR review as a resumable workflow over
+  ports; its types, step ids, outcome union, failure classes and the retry policy as data.
 - `tool-guard` (private, unpublished): classifies a Claude Code tool call into the guarded
   `authority` actions it would take, such as a merge, a release or a credential read.
 - [`egress-scan`](/reference/egress-scan): refuses home paths, private-workspace paths, and

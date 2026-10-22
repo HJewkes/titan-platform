@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { nodeContext } from "../context.js";
+import { decide } from "../decide.js";
+import { handle } from "../hook.js";
+import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
+import { expectLinearTime, LINEARITY_CPU_MS } from "../test-support/linear-time.js";
 import { arithmeticHooked } from "./arith-hooked.js";
 import { writesHookedParam } from "./hooked-params.js";
 import { tokenize } from "./lexer.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
-import { expectLinearTime, LINEARITY_TIMEOUT_MS } from "./test-linearity.js";
 import { unwrap } from "./unwrap.js";
 
 const hooked = (line: string) => {
@@ -145,7 +150,7 @@ describe("a name slot the shell computes", () => {
     expect(hooked(line)).toBe(slot);
   });
 
-  it("reads a 100 KB line of brace words without expanding them", () => {
+  cpuBudgetIt("reads a 100 KB line of brace words without expanding them", LINEARITY_CPU_MS, () => {
     const prepare = (n: number) => {
       const words = tokenize(`read ${"{1..1000} ".repeat(n)}`).filter((t): t is WordToken => t.type === "word");
       const cmd = unwrap(words);
@@ -208,7 +213,7 @@ describe("a command that only reads, mentions or writes another name", () => {
 });
 
 describe("an option word the walk reads both ways", () => {
-  it("reads a long run of either-letters in linear time", () => {
+  cpuBudgetIt("reads a long run of either-letters in linear time", LINEARITY_CPU_MS, () => {
     const prepare = (n: number) => {
       const words = tokenize(`stat ${"-t ".repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
       const cmd = unwrap(words);
@@ -217,12 +222,12 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  }, LINEARITY_TIMEOUT_MS);
+  });
 
-  it.each([
+  cpuBudgetIt.each([
     ["read, whose -p ends options in zsh", "read", "-p a "],
     ["stat, whose -t ends options in BSD stat", "stat", "-t a "],
-  ])("slots the operands once when many readings end options: %s", (_how, name, unit) => {
+  ])("slots the operands once when many readings end options: %s", LINEARITY_CPU_MS, (_how, name, unit) => {
     const prepare = (n: number) => {
       const words = tokenize(`${name} ${unit.repeat(n)}-A module_path`).filter((t): t is WordToken => t.type === "word");
       const cmd = unwrap(words);
@@ -231,7 +236,7 @@ describe("an option word the walk reads both ways", () => {
 
     expect(prepare(20_000)()).toBe("module_path");
     expectLinearTime((n) => { const run = prepare(n); return () => void run(); }, 20_000);
-  }, LINEARITY_TIMEOUT_MS);
+  });
 
   it("fails closed on an option word too long to walk", () => {
     expect(hooked(`stat -${"t".repeat(300)} f`)).toBe(`-${"t".repeat(300)}`);
@@ -314,7 +319,7 @@ describe("a zsh flag group too long to read", () => {
 });
 
 describe("reading assign-on-expand in a long word", () => {
-  it.each([
+  cpuBudgetIt.each([
     ["nested zsh flag openers", (n: number) => "${(".repeat(n), 33_000],
     ["a zsh flag group that never closes", (n: number) => `\${(${"P".repeat(n)}`, 100_000],
     ["hooked subscripts that never close", (n: number) => "${PS4[".repeat(n), 16_000],
@@ -323,7 +328,7 @@ describe("reading assign-on-expand in a long word", () => {
     ["many flag-argument delimiters that never close", (n: number) => `\${(${"s:a:".repeat(n)}`, 30_000],
     ["many readable flag groups", (n: number) => "${(s:$:)x}".repeat(n), 10_000],
     ["many l flags with three arguments", (n: number) => "${(l:1::a::b:".repeat(n), 8_000],
-  ])("reads it in linear time: %s", (_how, build, top) => {
+  ])("reads it in linear time: %s", LINEARITY_CPU_MS, (_how, build, top) => {
     expectLinearTime((n) => {
       const word: WordToken = { type: "word", value: build(n), dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: ":", path: ":", args: [word], assigned: [] }, [word]);
@@ -335,14 +340,7 @@ describe("arithmetic that mentions a hooked parameter", () => {
   it.each([
     ["let", "let PS4=1", "PS4"],
     ["let of module_path, quoted", 'let "MODULE_PATH=7"', "MODULE_PATH"],
-    ["$(( ))", ": $(( module_path = 3 ))", "module_path"],
-    ["zsh $[ ]", ": $[ PS4 = 2 ]", "PS4"],
-    ["a subscript inside ${ }", ": ${a[MODULE_PATH=4]}", "MODULE_PATH"],
-    ["a bash subscript inside ${ }", ": ${a[PS4=5]}", "PS4"],
-    ["a length of an element", ": ${#a[PS4=1]}", "PS4"],
     ["a zsh subscript after $name", ": $x[MODULE_PATH=1]", "MODULE_PATH"],
-    ["a bash substring offset", ": ${x:PS4=0}", "PS4"],
-    ["a substring length", ": ${x:0:PS4=1}", "PS4"],
     ["an assignment word's subscript", "a[PS4=7]=x", "PS4"],
     ["a prefix assignment's subscript", "a[PS4=7]=x true", "PS4"],
     ["read into a quoted subscripted name", "read 'a[PS4=6]'", "PS4"],
@@ -373,8 +371,6 @@ describe("arithmetic that mentions a hooked parameter", () => {
     ["a [[ -v test of a subscripted name", "[[ -v a[PS4=7] ]]", "PS4"],
     ["a test -v of a subscripted name", "test -v 'a[PS4=7]'", "PS4"],
     ["a [ -v test of a subscripted name", "[ -v 'a[PS4=7]' ]", "PS4"],
-    ["a bash substring of $@", ": ${@:PS4=7}", "PS4"],
-    ["a bash substring of $1", ": ${1:PS4=7}", "PS4"],
     ["an array element's key", "b=([PS4=7]=x)", "PS4"],
     ["an appended array element's key", "b+=([PS4=7]=x)", "PS4"],
     ["a for list word", "for x in 'PS4=7'", "PS4"],
@@ -435,7 +431,7 @@ describe("arithmetic that mentions a hooked parameter", () => {
     expect(arithmeticHooked("i = i + 1")).toBeNull();
   });
 
-  it("reads a long word in linear time", () => {
+  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
     expectLinearTime((n) => {
       const value = `$((${"a[".repeat(n)}`;
       const word: WordToken = { type: "word", value, dynamic: true, quoted: false, spliced: false, computed: true, refs: [], subs: [] };
@@ -485,7 +481,7 @@ describe("an assignment whose bound name the shell computes", () => {
     expect(hooked(line)).toBeNull();
   });
 
-  it("reads a long word in linear time", () => {
+  cpuBudgetIt("reads a long word in linear time", LINEARITY_CPU_MS, () => {
     expectLinearTime((n) => {
       const value = "]=".repeat(n);
       const word: WordToken = { type: "word", value, dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
@@ -527,10 +523,6 @@ describe("every math write operator, spacing and side around a computed name", (
     ["a brace list after ++", "f ++PS{4,}"],
     ["an unquoted glob before ++", "f P?4++"],
     ["an unquoted heredoc body", "cat <<EOF\n${x}=1\nEOF"],
-    ["a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
-    ["$(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
-    ["$[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
-    ["$(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
     ["a bare { before the expansion in a pattern", 'f "${x#{},${y}=7,0}"'],
     ["& in a replacement before =", 'f "${y/*/&=7}"'],
     ["& in a replacement before a spaced =", 'f "${y/*/& = 7}"'],
@@ -568,14 +560,44 @@ describe("every math write operator, spacing and side around a computed name", (
     expect(hooked(line)).toBeNull();
   });
 
-  it.each([
+  cpuBudgetIt.each([
     ["spaced operators between literal names", "a ++ b -- c = d ", 10_000],
     ["many # patterns", "${x#*}", 10_000],
     ["subscripts that never open", "]=", 30_000],
-  ])("reads a long text without a hit in linear time: %s", (_how, unit, top) => {
+  ])("reads a long text without a hit in linear time: %s", LINEARITY_CPU_MS, (_how, unit, top) => {
     expectLinearTime((n) => {
       const word: WordToken = { type: "word", value: unit.repeat(n), dynamic: true, quoted: true, spliced: false, computed: true, refs: [], subs: [] };
       return () => void writesHookedParam({ name: "f", path: "f", args: [word], assigned: [] }, [word]);
     }, top);
+  });
+});
+
+/** The lexer refuses these before a command walk can see them (TP-3294); the walk's own reading of them is covered by the arithmetic spans above. */
+const refusalPort: HookPort = {
+  context: nodeContext("/home/you", { realpath: (p) => p, readHead: () => "feat", isFile: () => false }),
+  now: () => new Date("2026-01-02T03:04:05.000Z"),
+  loadDecide: async () => decide,
+};
+
+describe("math at a $ that writes a hooked parameter", () => {
+  it.each([
+    ["$(( ))", ": $(( module_path = 3 ))"],
+    ["zsh $[ ]", ": $[ PS4 = 2 ]"],
+    ["a subscript inside ${ }", ": ${a[MODULE_PATH=4]}"],
+    ["a bash subscript inside ${ }", ": ${a[PS4=5]}"],
+    ["a length of an element", ": ${#a[PS4=1]}"],
+    ["a bash substring offset", ": ${x:PS4=0}"],
+    ["a substring length", ": ${x:0:PS4=1}"],
+    ["a bash substring of $@", ": ${@:PS4=7}"],
+    ["a bash substring of $1", ": ${1:PS4=7}"],
+    ["a computed name in a subscript in a # pattern", ': "${x#${a[${y}=1]}}"'],
+    ["a computed name in $(( )) in a # pattern", ': "${x#$(( ${y}=1 ))}"'],
+    ["a computed name in $[ ] in a % pattern", ': "${x%$[${y}=1]}"'],
+    ["a computed name in $(( )) in a / pattern", ': "${x/$(( ${y}=1 ))/z}"'],
+  ])("is a ParseError and a denial for %s", async (_how, line) => {
+    expect(() => tokenize(line)).toThrow(ParseError);
+    const event = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: "/home/you/app", tool_input: { command: line } });
+    const { stdout } = await handle(event, {}, refusalPort);
+    expect(stdout).not.toBe("");
   });
 });

@@ -4,6 +4,7 @@ import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
 
@@ -132,11 +133,12 @@ const SUBSCRIPTS: Shape[] = [
     7_000,
   ],
   ["assignments with no joins", (n) => `${"a[0]=1 ".repeat(n)}\n`, 9_000],
-  // Half size: handling 21 000 commands of any kind costs a few hundred ms; a scan per bracket would still cost seconds.
+  // Quarter size: the hook spends about 25 µs a command locally and four times that on a loaded CI runner, where
+  // 10 500 commands passed the budget (TP-4040). The tokenizing check below still catches a scan per bracket.
   [
     "commands each with an unclosed subscript",
     (n) => `${"a[;".repeat(n)}\n`,
-    10_500,
+    5_250,
   ],
   [
     "one long name before many brackets",
@@ -154,13 +156,7 @@ const SPACED_SUBSCRIPT: Shape = [
 const atFullSize = (shapes: Shape[]) =>
   shapes.map(([name, script, n]): [string, string] => [name, script(n)]);
 
-/**
- * Times the hook in this thread's CPU, not the wall clock: in a full run the worker shares the runner's cores with
- * other test files, and the time it waits for one says nothing about the work the hook does.
- */
-async function timedHookStdout(
-  script: string
-): Promise<{ stdout: string; cpuMs: number }> {
+async function hookStdout(script: string): Promise<string> {
   const context = {
     ...nodeContext(HOME, noFs),
     foldCase: true,
@@ -171,36 +167,34 @@ async function timedHookStdout(
     now: () => new Date(0),
     loadDecide: async () => decide,
   };
-  const start = process.threadCpuUsage();
   const result = await handle(
     event("bash a.sh; git push origin HEAD:main"),
     { PATH: "/usr/bin" },
     port
   );
-  const { user, system } = process.threadCpuUsage(start);
-  return { stdout: result.stdout, cpuMs: (user + system) / 1000 };
+  return result.stdout;
 }
 
 describe("a script of many subscripts", () => {
-  it.each(atFullSize(SUBSCRIPTS))(
+  cpuBudgetIt.each(atFullSize(SUBSCRIPTS))(
     "the hook denies a push after %s, within the budget",
+    BUDGET_MS,
     async (_name, script) => {
-      const { stdout, cpuMs } = await timedHookStdout(script);
+      const stdout = await hookStdout(script);
 
       expect(stdout).toContain('"permissionDecision":"deny"');
-      expect(cpuMs).toBeLessThan(BUDGET_MS);
     }
   );
 });
 
 describe("a long run of backslash-newlines", () => {
-  it.each(atFullSize(SCRIPTS))(
+  cpuBudgetIt.each(atFullSize(SCRIPTS))(
     "the hook denies a push after a script holding %s, within the budget",
+    BUDGET_MS,
     async (_name, script) => {
-      const { stdout, cpuMs } = await timedHookStdout(script);
+      const stdout = await hookStdout(script);
 
       expect(stdout).toContain('"permissionDecision":"deny"');
-      expect(cpuMs).toBeLessThan(BUDGET_MS);
     }
   );
 });

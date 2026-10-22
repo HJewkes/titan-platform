@@ -1,0 +1,95 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a source or dot with two words or more no longer reads a substitution operand",
+      "file": "packages/tool-guard/src/shell/procsub-operand.ts",
+      "find": "  if (SOURCERS.has(cmd.name)) return",
+      "replace": "  if (SOURCERS.has(cmd.name) && cmd.args.length < 2) return",
+      "kills": [
+        "a shell or source running a process substitution as its script allows a harmless file or option, which main refused as unreadable: source -p ./d <(echo 'echo hi')",
+        "a shell or source running a process substitution as its script allows a harmless file sourced after --",
+        "a shell or source running a process substitution as its script allows source -- with an echo that does nothing",
+        "a shell or source running a process substitution as its script gives source -- <(kubectl completion bash) the verdict of kubectl completion bash | bash",
+        "a shell or source running a process substitution as its script gives source -p . <(kubectl completion bash) the verdict of kubectl completion bash | bash",
+        "a shell or source running a process substitution as its script reads the substitution as a script: . \"--\" <(cat ./x.sh)",
+        "a shell or source running a process substitution as its script reads the substitution as a script: . -- <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source '--' <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source -- <(cat ./x.sh)",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source -- <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: source \\-\\- <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: . \"$D\" <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source \"$D\" <(cat ./x.sh)",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source \"$D\" <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source $D <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source -p . <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source -p. <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: source ./src.sh <(echo 'git push origin HEAD:main')"
+      ]
+    },
+    {
+      "name": "a substitution as the program no longer names one",
+      "file": "packages/tool-guard/src/shell/unwrap.ts",
+      "find": "  if (first.dynamic) return { name: null, path: null, args: words.slice(i), assigned };",
+      "replace": "  if (first.dynamic || first.procsub !== undefined) return { name: null, path: null, args: words.slice(i), assigned };",
+      "kills": [
+        "a shell or source running a process substitution as its script reads the substitution as a script: env <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: env VAR=x <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: exec <(cat ./x.sh)",
+        "a shell or source running a process substitution as its script reads the substitution as a script: exec <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads the substitution as a script: sudo -n <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: 2>/dev/null <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: <(cat ./x.sh)",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: true && <(echo 'git push origin HEAD:main')"
+      ]
+    },
+    {
+      "name": "a shell reads neither its rcfile nor files a -c or -s script runs by positional",
+      "file": "packages/tool-guard/src/scripts.ts",
+      "find": "if (name !== null && SHELLS.has(name)) return ",
+      "replace": "if (name !== null && SHELLS.has(name)) return shellTargets(cmd, home);\n  if (name === \"\\0\") return ",
+      "kills": [
+        "a shell or source running a process substitution as its script denies an operand the script may run: bash -c 'cat \"$1\"' _ ./x.sh",
+        "a shell or source running a process substitution as its script gives bash -c 'bash \"$1\"' _ ./x.sh the verdict of bash ./x.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --init-file ./x.sh -i -c true",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --rcfile ./x.sh -i -c true",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --rcfile ./x.sh -i ./ok.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -c '. \"$1\"' _ ./x.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -c 'bash \"$0\"' ./x.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -c 'bash \"$1\"' _ ./x.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -s ./x.sh <<< 'bash \"$1\"'",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: zsh -c 'zsh \"$1\"' _ ./x.sh"
+      ]
+    },
+    {
+      "name": "bash --rcfile and --init-file no longer name an rcfile",
+      "file": "packages/tool-guard/src/shell/shell-options.ts",
+      "find": "if (BASH_LONG_VALUES.has(v)) ",
+      "replace": "if (BASH_LONG_VALUES.has(v)) i++;\n    else if (v === \"\\0\") ",
+      "kills": [
+        "a shell or source running a process substitution as its script denies an operand the script may run: bash --rcfile <(echo 'git push origin HEAD:main') -c true",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --init-file ./x.sh -i -c true",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --rcfile ./x.sh -i -c true",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --rcfile ./x.sh -i ./ok.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash --rcfile <(echo 'git push origin HEAD:main') -i < /dev/null"
+      ]
+    },
+    {
+      "name": "a -s shell walked on the line never counts its stdin as fed",
+      "file": "packages/tool-guard/src/shell/commands.ts",
+      "find": "procsubScript(cmd, ",
+      "replace": "procsubScript(cmd, false && ",
+      "kills": [
+        "a shell or source running a process substitution as its script denies an operand the script may run: bash -s <(echo 'git push origin HEAD:main') <<< 'echo hi'",
+        "a shell or source running a process substitution as its script gives bash -s <(echo 'git push origin HEAD:main') <<< 'bash \"$1\"' the verdict of echo 'git push origin HEAD:main' | bash",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -s <(echo 'git push origin HEAD:main') < ./run.sh",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -s <(echo 'git push origin HEAD:main') <<< 'bash \"$1\"'",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: bash -s x <(echo 'git push origin HEAD:main') <<< 'bash \"$2\"'",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: cat ./run.sh | bash -s <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: echo 'bash \"$1\"' | bash -s <(echo 'git push origin HEAD:main')",
+        "a shell or source running a process substitution as its script reads what a script may run by its positional, rcfile or search path: zsh -s <(echo 'git push origin HEAD:main') <<< 'zsh \"$1\"'"
+      ]
+    }
+  ]
+}

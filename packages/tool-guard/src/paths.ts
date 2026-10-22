@@ -48,6 +48,14 @@ const SECRET: GuardedList = {
       pattern: "~/.claude-profiles/*/.credentials.json",
       samples: ["~/.claude-profiles/work/.credentials.json"],
     },
+    {
+      id: "any:titan-factory/token",
+      pattern: "**/titan-factory/**/*.token",
+      samples: [
+        "~/.config/titan-factory/secrets/github-bot.token",
+        "/var/lib/serve-user/.config/titan-factory/github-bot.token",
+      ],
+    },
     { id: "any:.env", pattern: "**/.env", samples: [".env"] },
     {
       id: "any:.env.*",

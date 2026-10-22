@@ -116,7 +116,8 @@ describe("indexPaths", () => {
 
     await fs.writeFile(path.join(root, "src/b.ts"), `${B_TS}export const extra = 2;\n`);
     const structural = await index();
-    expect(structural.reparsed).toBe(1);
+    // The index.ts barrel re-exports from b.ts, so it re-extracts against b's new surface (TP-3636).
+    expect(structural.reparsed).toBe(2);
     expect(structural.cosmetic).toBe(0);
     const symbols = store.listNodes(structural.snapshotId, { includeSymbols: true });
     expect(symbols.map((n) => n.id)).toContain("src/b.ts#extra");

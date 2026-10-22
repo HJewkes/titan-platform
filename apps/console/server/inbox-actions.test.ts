@@ -11,10 +11,11 @@ import { z } from "zod";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import type { DecisionLog } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
-import { ACTIONS_OFF, CONFIRM_TTL_MS, inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
+import { ACTIONS_OFF, inboxActionCommands, type PrepareResult } from "./inbox-actions.js";
 import type { InboxSources, WatchRow } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient } from "./owner-action.js";
 import type { ConsoleContext } from "./owner-guard.js";
+import { CONFIRM_TTL_MS } from "./owner-tap.js";
 import { shepherdReader } from "./shepherd.js";
 import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 
@@ -44,6 +45,7 @@ let rows: WatchRow[];
 let clock: number;
 let timelines: Record<number, unknown[]>;
 let shepherd: ReturnType<typeof fakeShepherd>;
+let preview: (op: { repo: string; pr: number }) => unknown;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-actions-"));
@@ -52,6 +54,7 @@ beforeEach(async () => {
   clock = Date.parse("2026-10-10T06:00:00.000Z");
   timelines = {};
   shepherd = fakeShepherd();
+  preview = (op) => openPreview(op, HEAD);
 });
 
 afterEach(async () => {
@@ -187,6 +190,7 @@ async function sources(): Promise<InboxSources> {
     if (command === "shepherd.list") return rows;
     if (command === "shepherd.timeline") return { row: rows.find((each) => each.pr === args.pr), entries: timelines[Number(args.pr)] ?? [] };
     if (command === "shepherd.release") return shepherd.release(args);
+    if (command === "owner-op.preview") return preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
     throw new Error(`no fixture for ${command}`);
   });
   return { factory: factoryNeeds(factory.port), shepherd: shepherdReader(factory.port), rounds: { dir: path.join(dir, "rounds") }, inbox: { dir: path.join(dir, "deposits") } };
@@ -556,5 +560,115 @@ describe("inbox g10 hold release", () => {
     const { prepare } = await harness(spyFactory().client);
 
     expect(await prepare(G10_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "a stalled hold is released by its seat, not from the inbox" } });
+  });
+});
+
+/** `owner-op.preview` as the factory answers it for an open PR: GitHub's head, never the op's. */
+function openPreview({ repo, pr }: { repo: string; pr: number }, head: string, verdict = "gate") {
+  const authority = verdict === "deny" ? { verdict, ruleId: "MRG-XX", reason: "owner-remote may not merge here" } : { verdict, ruleId: "MRG-OR", resolvers: ["owner-remote"], reason: "read back first" };
+  return { kind: "merge-at-head", authority, pr: { repo, pr, state: "open", title: `${repo}#${pr}: tidy the fixtures`, base: "main", head, behind: false, mergeableState: "clean", shepherd: null } };
+}
+
+const OP_DEPOSIT = "op-merge-1";
+const OP_ID = depositItemId(ASKER, OP_DEPOSIT);
+const opRecordShape = z.object({ op: z.object({ kind: z.string(), repo: z.string(), pr: z.number(), headSha: z.string() }), action: z.never().optional() });
+
+/** The factory as an op record meets it: it reads the op, never an action, and starts one land run per record. */
+function opFactory() {
+  const posted: z.infer<typeof opRecordShape>[] = [];
+  const client: OwnerActionClient = {
+    post: async (actionId) => {
+      posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
+      return { status: "accepted", runId: "land-run-1" };
+    },
+  };
+  return { client, posted };
+}
+
+async function depositMergeOp(headSha = HEAD): Promise<void> {
+  const op = { kind: "merge-at-head", repo: REPO, pr: 7, headSha } as const;
+  await writeDeposit(path.join(dir, "deposits"), { depositId: OP_DEPOSIT, asker: ASKER, kind: "do", door: "one-way", summary: "Hand-merge the fixture PR", context: "", keys: [], command: "titan-factory shepherd waiting", op });
+}
+
+describe("inbox owner-op", () => {
+  it("reads the head back from the factory's preview, not the deposit, and posts the op at that head", async () => {
+    await depositMergeOp(HEAD);
+    preview = (op) => openPreview(op, NEW_HEAD);
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(OP_ID));
+    const { envelope } = await act(OP_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ repo: REPO, pr: 7, headSha: NEW_HEAD, authority: "MRG-OR: gate", proposedBy: ASKER, proposal: "Hand-merge the fixture PR" });
+    expect(factorySpy.posted).toEqual([{ op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: NEW_HEAD } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "accepted", runId: "land-run-1" }, message: "Merge queued: land run land-run-1 merges at this head once its checks are green" } });
+  });
+
+  it("refuses the confirm when the preview moved between prepare and act, and writes nothing", async () => {
+    await depositMergeOp();
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+    const { confirm } = ready(await prepare(OP_ID));
+    preview = (op) => openPreview(op, NEW_HEAD);
+
+    const { envelope, exitCode } = await act(OP_ID, confirm);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+    expect(factorySpy.posted).toEqual([]);
+    expect(await records()).toEqual([]);
+  });
+
+  it("offers no action for a PR the preview reads as merged", async () => {
+    await depositMergeOp();
+    preview = ({ repo, pr }) => ({ ...openPreview({ repo, pr }, HEAD), pr: { ...openPreview({ repo, pr }, HEAD).pr, state: "merged", head: undefined } });
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 is merged on GitHub, so there is nothing to act on` } });
+  });
+
+  it("offers no action for an op the authority table denies the console", async () => {
+    await depositMergeOp();
+    preview = (op) => openPreview(op, HEAD, "deny");
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "the authority table refuses a merge-at-head op to the console: owner-remote may not merge here" } });
+  });
+});
+
+describe("the next state after a landed tap", () => {
+  const merged = ({ repo, pr }: { repo: string; pr: number }) => ({ ...openPreview({ repo, pr }, HEAD), pr: { ...openPreview({ repo, pr }, HEAD).pr, state: "merged", head: undefined, mergeSha: NEW_HEAD } });
+
+  async function approvePlain(): Promise<JsonEnvelope<unknown>> {
+    const { prepare, act } = await harness(spyFactory().client);
+    const { confirm } = ready(await prepare(PLAIN_ID));
+    return (await act(PLAIN_ID, confirm)).envelope;
+  }
+
+  it("reads a merge that landed as merged, from GitHub through the preview", async () => {
+    preview = merged;
+
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, next: { state: "merged", detail: `${REPO}#1 merged as abcdef1` } } });
+  });
+
+  it("reads a head that moved under the tap as a new review", async () => {
+    preview = (op) => openPreview(op, NEW_HEAD);
+
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { next: { state: "new-review", detail: `${REPO}#1 moved to abcdef1, so its run reviews the new head` } } });
+  });
+
+  it("reads a run that has not moved on as still pending, in its live phase", async () => {
+    expect(await approvePlain()).toMatchObject({ ok: true, data: { next: { state: "pending", detail: `${REPO}#1 is still awaiting-approval at 1234567: owner: resolve approve-merge` } } });
+  });
+
+  it("reads no next state for a tap that did not land", async () => {
+    const { prepare, act } = await harness(spyFactory(NEW_HEAD).client);
+    const { confirm } = ready(await prepare(PLAIN_ID));
+
+    const { envelope } = await act(PLAIN_ID, confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "moved" } } });
+    expect(envelope).not.toMatchObject({ data: { next: expect.anything() } });
   });
 });

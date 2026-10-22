@@ -1,5 +1,6 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Logger } from "@titan-design/daemon";
 
 /** Kept beside the daemon pid file, so each state directory, and so each serve, counts its own starts. */
 const SERVE_STARTS_FILE = "serve-starts.json";
@@ -61,4 +62,14 @@ export function serveStartsHealth(start: ServeStart, now: Date): ServeStart & { 
     uncleanStartsTotal: start.uncleanStartsTotal,
     restartsToday: sameDay ? start.restartsToday : 0,
   };
+}
+
+/** A start record that cannot be written costs /health its start fields, never the start itself. */
+export function recordStartOrWarn(stateDir: string, start: { unclean: boolean; now: Date }, log: Logger): ServeStart | undefined {
+  try {
+    return recordServeStart(stateDir, start);
+  } catch (err) {
+    log.warn({ err }, "could not record the serve start");
+    return undefined;
+  }
 }

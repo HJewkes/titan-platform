@@ -1,5 +1,5 @@
 import { lineSourceFromTexts } from "@titan-design/evidence";
-import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
+import { formatResultLine, type MutantsResult, type Verdict } from "@titan-design/fix-proof";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
@@ -39,6 +39,20 @@ const fixProofLine = (head: string, verdict: Verdict): string =>
     configEdited: false,
     tests: [],
     truncated: false,
+  });
+/** A test-only diff's vacuous line whose mutation check came back `verdict`, every selected test passing at the head. */
+const mutantsLine = (verdict: MutantsResult["verdict"]): string =>
+  formatResultLine({
+    head: HEAD,
+    mergeBase: OLD_HEAD,
+    verdict: "vacuous",
+    counts: { reproduces: 0, "passes-on-base": 3, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
+    notCollected: [],
+    deletedTests: [],
+    configEdited: false,
+    tests: [],
+    truncated: false,
+    mutants: { verdict, results: [{ spec: "src/gate.test.mutations.json", name: "drop the guard", outcome: verdict === "killed" ? "killed" : "survived" }], uncovered: [] },
   });
 const none = (shape: ReviewShape): MemberResult => ({ shape, result: { kind: "none" } });
 const timeout = (shape: ReviewShape): MemberResult => ({ shape, result: { kind: "timeout" } });
@@ -213,6 +227,31 @@ describe("aggregate reads a fix-proof/v1 line", () => {
 
     expect(verdict.outcome).toBe("MERGE");
     expect(verdict.satisfiesG10).toBe(true);
+  });
+
+  it("merges a vacuous line its killed mutants prove, with no unplanned tests member (tp#2145)", () => {
+    const verdict = aggregate(G10, g10, { ...input, fixProof: mutantsLine("killed") });
+
+    expect(verdict.outcome).toBe("MERGE");
+    expect(verdict.satisfiesG10).toBe(true);
+  });
+
+  it.each(["not-killed", "error"] as const)("still withholds MERGE for a vacuous line whose mutants are %s", (mutants) => {
+    const verdict = aggregate(G10, g10, { ...input, fixProof: mutantsLine(mutants) });
+
+    expect(verdict.outcome).toBe("no-verdict");
+    expect(verdict.satisfiesG10).toBe(false);
+  });
+
+  it("marks a no-verdict whose only missing member is the unplanned tests seat as a fix-proof shortfall", () => {
+    const shortfall = aggregate(G10, g10, { ...input, fixProof: mutantsLine("not-killed") });
+    const silent = aggregate(G10, [merge("correctness")], { ...input, fixProof: mutantsLine("not-killed") });
+    const plain = aggregate(G10, [merge("correctness")], input);
+
+    expect(shortfall.fixProofShortfall).toBe(true);
+    expect(silent.outcome).toBe("no-verdict");
+    expect(silent.fixProofShortfall).toBeUndefined();
+    expect(plain.fixProofShortfall).toBeUndefined();
   });
 
   it.each(["", "  "])("treats an empty fix-proof %j as none ran", (fixProof) => {

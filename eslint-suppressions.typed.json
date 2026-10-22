@@ -1077,7 +1077,7 @@
   },
   "packages/daemon/src/daemon.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "packages/daemon/src/file-watch.test.ts": {
@@ -1646,11 +1646,6 @@
   "packages/registry/src/invoke.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/registry/src/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "packages/registry/src/zod-introspect.ts": {
@@ -2485,6 +2480,11 @@
       "count": 1
     }
   },
+  "packages/workflow/src/code-step.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "packages/workflow/src/context.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 2
@@ -2560,11 +2560,6 @@
   "packages/worktree/src/park.repo.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
-    }
-  },
-  "packages/worktree/src/park.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
     }
   },
   "packages/worktree/src/reattach.ts": {
@@ -3963,11 +3958,6 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/await-head.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -4007,11 +3997,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/workflows/land-routes.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

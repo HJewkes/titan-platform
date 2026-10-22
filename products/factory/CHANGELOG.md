@@ -1,5 +1,67 @@
 # @titan-design/factory
 
+## 0.25.0
+
+### Minor Changes
+
+- 749bea7: A pull request that only adds or changes tests can now prove itself without an owner waiver (TP-3658). `@titan-design/fix-proof` exports `provedByMutants(result)`: true when a `vacuous` result's mutation check is `killed`, every changed test file has a spec of its own in the diff, no test was deleted or renamed out of the tests, and every selected test ran and passed at head. The judge attaches mutants only to a diff `testOnlyReading` calls test-only, so one that deletes a test never carries them. The judge lists changed test files without a spec as `mutants.uncovered` and demotes `killed` to `not-killed` when any remain, so a spec beside an unchanged test cannot vouch for a test the PR changed. The fix-proof workflow gains a `fix-proof-mutants` job that runs `exec --side mutants` in the sandbox when the diff adds or changes a `*.mutations.json` spec, and the judge reads its report. Shepherd's fix-proof gate lets such a head go to review; a surviving mutation, a failing or unrun test, or a mutants error still ends the round as `NO_REPRO`, and the wake asks for kills. The tests reviewer's brief reads a proved head as proved rather than as a blocking vacuous proof. A run may now move into `--kind test-only`, under the existing diff check.
+
+### Patch Changes
+
+- e9e4bb7: Shepherd's registration hold follows review policy 458's sign-off classes, given by the new pure `requiredSignoffs`. One correctness sign-off is the default. Size, a migration, a security kind with no sensitive path, and unread line counts no longer place a `g10-review` hold; they still pick the g10 (Opus) correctness reviewer. A store-migration touch now reaches that reviewer through its own `migrationTouch` reviewer fact, with Shepherd's migration globs (`store-migrations.ts`, `*-store.ts`, `*-migration*.ts` and Shepherd's store, events and train files), rather than through the hold it no longer gets. Only an adversarial path (authority, policy or security) places `g10-adversary`. That list now also covers the console's owner-tap and inbox actions, gate resolution, owner release (matched by name stem, so a helper split out of those files stays covered) and agent-chat's agent profiles. A hold placed by hand is unchanged, and so is the fail-closed `g10-adversary` hold for an unread file list.
+- Updated dependencies [749bea7]
+  - @titan-design/fix-proof@0.8.0
+  - @titan-design/review-panel@0.8.1
+
+## 0.24.3
+
+### Patch Changes
+
+- ecc0f82: TP-3697: Shepherd demotes two always-approved owner gates, each leaving an audit record (PR comment, watch row `autoPassed`, owner digest FYI section). D7 failed-rounds: when every counted round failed on infrastructure, one fresh reviewer goes before the owner, and the owner is asked only if it fails too; D7 never merges by itself. D13 main-red: the acknowledge-only gate is an FYI record. `GATE_DEMOTIONS` reverts each class with one line. Visual and gate-2-visual gates (D2) still wait for the owner.
+- Updated dependencies [cda3cbe]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+- Updated dependencies [a16ce17]
+  - @titan-design/agent@0.6.2
+  - @titan-design/worktree@0.3.0
+
+## 0.24.2
+
+### Patch Changes
+
+- 653ecf6: Shepherd's two-MERGE release of a `g10-adversary` hold no longer requires the correctness reviewer and the adversary to run at different profiles. Decision 457 runs both on `bd-reviewer`, and under the old rule no such hold could release. Two MERGEs now count as independent when the broker roster shows the reviewers share no conversation: separate sessions, and no resume, context fork, takeover or common spawning session between them. An unread roster fails closed. Correctness must still run on an Opus profile (TP-3524).
+
+## 0.24.1
+
+### Patch Changes
+
+- d82852a: TP-3637: a decided answer never waives a fix-proof. `ServiceAnswer` now carries the broker's `provenance` marker when agent-chat sets one. gateNotify refuses a `decided` answer on every gate, because it would resolve as owner-remote and the decider is not the owner. It also refuses a `waive-proof` answer unless it is `human-endorsed`, so an unmarked relay fails closed. A refused answer leaves the gate pending, settles the ask as `refused`, and writes no waiver row. The owner's own terminal answer still waives.
+- 4bfc8a3: Resync PR-read deadlines now arm through an optional `readTimer` on `ShepherdServices`, defaulting to the wall clock. A test can pass a deadline in by hand instead of faking global timers, which also captured the seed host's gate polls and made the hung-read test time out on a loaded runner (TP-3647).
+- Updated dependencies [d82852a]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [9914239]
+- Updated dependencies [6dd2f97]
+  - @titan-design/agent-dispatch@0.9.0
+  - @titan-design/agent@0.6.1
+  - @titan-design/session-read@0.16.1
+  - @titan-design/session-analytics@0.17.4
+  - @titan-design/worktree@0.2.0
+  - @titan-design/coordinator@0.5.3
+  - @titan-design/workflow@0.13.1
+
 ## 0.24.0
 
 ### Minor Changes

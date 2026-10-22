@@ -1,10 +1,20 @@
 import { type ReactNode } from "react";
 import { Alert, BreadcrumbItem, Breadcrumbs, DateTime, HStack, Heading, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { RoundDetail } from "../../server/rounds.js";
+import { LiveViewedProvider } from "../data/live-viewed.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { RoundFramesProvider } from "./QuestionFrames.js";
+import { DraftDiscarded } from "./RoundDraft.js";
+import { RoundNote } from "./RoundNote.js";
+import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
-import { RoundSections, orderedQuestions, useRoundAnswers } from "./RoundSections.js";
+import { RoundSend, useRoundSend } from "./RoundSend.js";
+import { RoundSetNav } from "./RoundSetNav.js";
+import { PagedSections } from "./RoundPager.js";
+import { RoundKeyLegend } from "./RoundKeys.js";
+import { ROUND_KEYS } from "./round-keys.js";
+import { orderedQuestions, useRoundAnswers } from "./RoundSections.js";
 import { ShipRound } from "./RoundShip.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
@@ -18,6 +28,7 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
   if (!round.valid) return <Framed id={id}><Alert status="error" message={`This round does not pass the round schema: ${round.reason}`} /></Framed>;
   return (
     <Framed id={id}>
+      <ContrastOverrideBanner round={round} />
       <RoundHeading round={round} />
       <RoundBody round={round} />
     </Framed>
@@ -25,8 +36,12 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
 }
 
 function RoundBody({ round }: { round: ValidRound }): ReactNode {
-  if (round.ship) return <ShipRound round={round} />;
-  return round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
+  const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
+  return (
+    <LiveViewedProvider key={round.id}>
+      <RoundFramesProvider roundId={round.id} manifest={round.manifest}><RoundRevealProvider round={round}>{body}</RoundRevealProvider></RoundFramesProvider>
+    </LiveViewedProvider>
+  );
 }
 
 function Framed({ id, children }: { id: string; children: ReactNode }): ReactNode {
@@ -36,9 +51,17 @@ function Framed({ id, children }: { id: string; children: ReactNode }): ReactNod
         <BreadcrumbItem onPress={() => open({ view: "rounds" })}>Rounds</BreadcrumbItem>
         <BreadcrumbItem isCurrentPage>{id}</BreadcrumbItem>
       </Breadcrumbs>
+      <RoundSetNav id={id} />
       {children}
     </VStack>
   );
+}
+
+/** A round served past a failing contrast gate says why above everything else, as the harness did (G18). */
+function ContrastOverrideBanner({ round }: { round: ValidRound }): ReactNode {
+  const override = round.manifest.contrastOverride;
+  if (override === undefined) return null;
+  return <Alert status="warning" message={`Contrast gate overridden: ${override.reason}`} testID="round-contrast-override" />;
 }
 
 function RoundHeading({ round }: { round: ValidRound }): ReactNode {
@@ -50,18 +73,21 @@ function RoundHeading({ round }: { round: ValidRound }): ReactNode {
         <Pill variant="subtle" size="xs">{round.status}</Pill>
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </HStack>
-      {manifest.context ? <Typography variant="body2" color="secondary">{manifest.context}</Typography> : null}
+      {manifest.context ? <RoundNote heading="Context" text={manifest.context} /> : null}
+      <RoundKeyLegend />
     </VStack>
   );
 }
 
 function QuestionRound({ round }: { round: ValidRound }): ReactNode {
-  const state = useRoundAnswers(orderedQuestions(round.manifest).flatMap((group) => group.questions));
+  const { submitting, check, checking, locked, frozen, draft, review } = useRoundSend(round);
+  // Frozen, no question is handed over, so no digit key can change an answer already sent or being checked.
+  const state = useRoundAnswers(frozen ? [] : orderedQuestions(round.manifest).flatMap((group) => group.questions), round.notes, frozen, undefined, draft);
   return (
     <VStack gap={4}>
-      <Alert status="info" size="compact" message="Read-only: picks stay in this page and are not sent." />
-      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
-      <RoundSections manifest={round.manifest} state={state} />
+      <DraftDiscarded discarded={state.draftDiscarded} />
+      {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">{`Recommendations are hidden until you answer; reveal one first with ${ROUND_KEYS.reveal.label}.`}</Typography> : null}
+      <PagedSections manifest={round.manifest} state={state} textAnswers locked={locked} check={check} checking={checking} review={review} send={<RoundSend round={round} state={state} submitting={submitting} check={check} />} />
     </VStack>
   );
 }

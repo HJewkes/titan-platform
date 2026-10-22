@@ -4,6 +4,7 @@ import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } fr
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { CheckRun, MergeMethod, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
@@ -18,6 +19,15 @@ export class FakeHttpError extends Error {
   ) {
     super(`HTTP ${status}: ${message}`);
   }
+}
+
+const attemptKey = (run: CheckRun): string => `${run.name}\u0000${run.appId}\u0000${run.workflowRunId}`;
+
+/** GitHub's default `filter=latest`: a rerun of a job in the same workflow run hides that job's earlier attempts. */
+function latestAttempts(runs: readonly CheckRun[]): CheckRun[] {
+  const newest = new Map<string, number>();
+  for (const run of runs) if (run.workflowRunId !== null) newest.set(attemptKey(run), Math.max(newest.get(attemptKey(run)) ?? run.id, run.id));
+  return runs.filter((run) => run.workflowRunId === null || newest.get(attemptKey(run)) === run.id);
 }
 
 /** A real-shaped commit sha, stable per tag, so tests can name heads. */
@@ -46,6 +56,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   const reads = new Map<number, number>();
   const fake: FakeGitHub = {
     effects,
+    runStatuses: runStatus,
+    jobReruns: [],
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
@@ -57,6 +69,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     statuses: new Map(),
     readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
+    rulesets: new Map(),
     jobLogs: new Map(),
     jobSteps: new Map(),
     files: new Map(),
@@ -122,6 +135,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
     revalidateOpenPrs: async (_repo, etag) => record("revalidateOpenPrs", revalidateOpenPrs(fake, prs, etag)),
+    revalidateRef: async (_repo, branch, etag) => record("revalidateRef", revalidateRef(fake, branch, etag)),
+    revalidateRulesets: async (_repo, etag) => record("revalidateRulesets", revalidateRulesets(fake, etag)),
     createPr: async (_repo, request) => record("createPr", createPr(fake, request)),
     getPr: async (_repo, number) => {
       const pr = mustPr(prs, number);
@@ -133,12 +148,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getClassicRequiredChecks: async () => read("getClassicRequiredChecks", () => ({ ...fake.classicRules, contexts: [...fake.classicRules.contexts] })),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
-    listCheckRuns: async (_repo, sha) => read("listCheckRuns", () => [...(runs.get(sha) ?? [])]),
+    listCheckRuns: async (_repo, sha, filter) => read("listCheckRuns", () => (filter === "all" ? [...(runs.get(sha) ?? [])] : latestAttempts(runs.get(sha) ?? []))),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
     resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),
     listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
-    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
+    getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? openJobStatus(runs, runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
       const log = fake.jobLogs.get(jobId);
       if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
@@ -166,6 +181,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
       if (fault) throw fault.error;
+    },
+    rerunJob: async (_repo, jobId) => {
+      record("rerunJob", undefined);
+      fake.jobReruns.push(jobId);
+      const owner = [...runs.values()].flat().find((run) => run.id === jobId)?.workflowRunId;
+      if (owner !== null && owner !== undefined) runStatus.set(owner, "queued");
     },
     listPrFiles: async (_repo, number) => {
       const all = fake.prFiles.get(number) ?? [];
@@ -205,6 +226,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   return fake;
 }
 
+/** Like GitHub, a workflow run with a job still queued or in progress has not completed; `runStatuses` overrides it. */
+function openJobStatus(runs: Map<string, CheckRun[]>, runId: number): string | undefined {
+  return [...runs.values()].flat().find((run) => run.workflowRunId === runId && run.status !== "completed")?.status;
+}
+
 /** A commit is known when it was created, is a ref's tip, or has runs or statuses; only a unique prefix expands, as on GitHub. */
 function resolveCommit(fake: FakeGitHub, runs: Map<string, CheckRun[]>, sha: string): string | null {
   const matches = [...new Set([...fake.commits.keys(), ...fake.refs.values(), ...runs.keys(), ...fake.statuses.keys()])].filter((full) => full.startsWith(sha));
@@ -223,12 +249,34 @@ function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: 
 /** Like GitHub's list: rows carry no mergeable state or `behind`, so the ETag changes only with what a row shows. */
 function revalidateOpenPrs(fake: FakeGitHub, prs: Map<number, PullRequest>, etag: string | null): OpenPrList {
   const rows = [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr, mergeableState: "unknown", behind: false }));
-  const current = `W/"${createHash("sha1").update(JSON.stringify(rows)).digest("hex")}"`;
-  if (etag === current) {
-    fake.notModified += 1;
-    return { notModified: true };
-  }
+  const current = etagOf(rows);
+  if (notModified(fake, etag, current)) return { notModified: true };
   return { notModified: false, prs: rows, etag: current };
+}
+
+/** Like GitHub's 404 for a missing branch, a branch the fake lacks reads as a null sha with no ETag. */
+function revalidateRef(fake: FakeGitHub, branch: string, etag: string | null): RefRead {
+  const sha = fake.refs.get(branch);
+  if (sha === undefined) return { notModified: false, sha: null, etag: null };
+  const current = etagOf(sha);
+  if (notModified(fake, etag, current)) return { notModified: true };
+  return { notModified: false, sha, etag: current };
+}
+
+function revalidateRulesets(fake: FakeGitHub, etag: string | null): RulesetList {
+  if (fake.rulesetsFreePlan) return { notModified: false, unreadable: true };
+  const rulesets = Object.fromEntries(fake.rulesets);
+  const current = etagOf(rulesets);
+  if (notModified(fake, etag, current)) return { notModified: true };
+  return { notModified: false, unreadable: false, rulesets, etag: current };
+}
+
+const etagOf = (value: unknown): string => `W/"${createHash("sha1").update(JSON.stringify(value)).digest("hex")}"`;
+
+function notModified(fake: FakeGitHub, etag: string | null, current: string): boolean {
+  if (etag !== current) return false;
+  fake.notModified += 1;
+  return true;
 }
 
 function mustPr(prs: Map<number, PullRequest>, number: number): PullRequest {

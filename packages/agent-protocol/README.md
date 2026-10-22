@@ -230,3 +230,11 @@ These engines retain the rich legacy input contract. A harness-neutral usage quo
 `HarnessPricingPort.quote` accepts an optional readonly `HarnessPricingContext` carrying the existing normalized `CacheWriteSplit`. Forward the split from the same usage observation to preserve known 5-minute and 1-hour write evidence; a total alone cannot reconstruct it. Existing two-argument callers and implementations remain valid. Total-only legacy fallback belongs to the selected accounting policy, rather than a new promise that missing data is zero.
 
 An existing source-provided estimate keeps estimate kind and the current normalized record source through the `existing_estimate` basis. This does not reconstruct or attest its original catalog. Existing reported or estimated costs, including zero, precede model/counter/event-time availability checks; only a new catalog computation needs those inputs. New catalog estimates still require dated catalog and matching/accounting revision metadata. These are structural contracts and a synthetic adapter proof over the shared pure arithmetic, without native account, policy, billing-reservation or quote-adapter qualification.
+
+## Pure Codex pricing service
+
+`createCodexPricingPort({ prices, catalog })` from `@titan-design/agent-protocol/pricing` binds a caller-supplied dated rate table and catalog/policy references. It copies and freezes these inputs; the package supplies no Codex rates or catalog identity. Quotes reuse the existing exact-model/date selection and inclusive-token calculation. The selected row supplies model/effective date evidence; caller references are descriptive policy metadata, not authenticated native evidence.
+
+A valid existing reported or estimated cost takes precedence over catalog matching, including when model, counts or event time are unavailable. Invalid known USD (negative/nonfinite) or cost kind throws `TypeError`. When computing a new estimate, missing/invalid required counts, nonfinite event time, no matching row or nonfinite computed USD yield `unpriced`; known zero remains priced. `priceCodexUsage` retains its legacy behavior.
+
+Pricing does not authorize execution, account access, policy/bus activation or native billing selection.

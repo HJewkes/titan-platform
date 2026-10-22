@@ -48,6 +48,42 @@ if (!outcome.released) console.log(`kept: ${outcome.refusal}`);
 await recreateWorktree({ gitRoot: alloc.ref.gitRoot!, worktree: alloc.cwd, branch: alloc.ref.branch! });
 ```
 
+## Optional allocation policy and requested bases
+
+Without options, allocation still counts every tree under the worktree base against the
+same default budget. `allocationGroup(name)` partitions that count by the caller's group
+identifier. Names passed to classification and budget callbacks are sanitized directory
+names; a re-created tree uses its recorded directory name. `budget(name)` is resolved on
+every check/allocation/re-attachment; existing zero-argument callbacks continue to work.
+The caller owns group labels, role classification, numeric caps and separate pool policy.
+`budgetError(allocated, budget, name)` can return the host's existing Error type and message;
+without it the package still uses `WorktreeBudgetExhaustedError`.
+
+```ts
+const allocator = createWorktreeAllocator({
+  allocationGroup: name => name.startsWith("reader-") ? "readers" : "writers",
+  budget: name => name.startsWith("reader-") ? 8 : 3,
+});
+const alloc = await allocator.allocate({
+  agentName: "writer-next", baseCwd: process.cwd(), baseRef: "origin/parent-slice",
+});
+```
+
+`baseRef` must name a valid branch on origin. It is fetched with the configured timeout;
+a missing branch, fetch failure or invalid ref refuses before creating a tree. There is no
+fallback to default when a requested branch fails. `resolveRequestedBase` exposes the same
+strict resolver. Product-specific stack metadata remains with the caller.
+
+The requested checkout does not grant its branch authority to declare setup. Setup still
+uses origin's fetched default branch declaration, independently of `baseRef`. `skipSetup`
+explicitly leaves all setup orchestration to a caller-owned adapter, both for allocation
+and re-attachment. Such an adapter must run its setup once; the package does not infer its
+outcome. No setup-report or dependency-restoration metadata is invented by this extension.
+
+After the caller parks a tree, `release({}, alloc, { keepBranch: true })` prunes stale
+registration and keeps its branch, including unpushed work. It refuses any tree still on
+disk even with `force`. Assigned allocations remain exempt before branch-keeping checks.
+
 ## What it deliberately does not do
 
 - It does not decide policy. Which agents get a worktree, and who may release or park one, is
@@ -103,3 +139,83 @@ Release remains git-only by default. `createWorktreeAllocator({ releaseProof: "g
 This changes commit-landing evidence only. Hidden untracked files, ignored files no build regenerates, unreadable status/ignored listings, grace and assigned-tree guards still refuse or exempt exactly as before. A nonforced git-remove refusal retains its tree and branch; there is no new force bridge or automatic force retry. Caller `force` semantics remain unchanged.
 
 The legacy product release path has weaker file-loss detection and auto-force retry; it is not claimed equivalent. A merged PR proof must never override these stronger generic checks. Product-specific refusal presentation remains outside this change. Native GitHub compatibility/account access, actual released consumption and TP640's remaining deletion acceptance are not certified by synthetic fixtures.
+
+## Typed refusal presentation
+
+A failed allocator release may additionally return `refusalCode: "unsaved-changes"` when its only blocking observations are ordinary nonempty git status results. The release remains false and its existing `refusal` message stays unchanged. Callers can use the code to present their own ordinary-dirt wording without parsing a diagnostic. An unmerged branch, grace refusal, ignored files, failed status/ignored listing, mixed earlier/later unsafe observations or refused removal does not receive that code. Earlier refusals remain binding even if a provider removes their original cause. The code classifies the guard's observations; it is never permission to remove files.
+
+`MissingAssignedWorktreeRecordError` is exported with `worktreePath`. Allocation throws it under the existing missing-assigned-tree/missing-or-mismatched-record condition, with the same generic message as before. A product can catch this specific class to present its own wording; it must rethrow unrelated errors. No additional adoption or removal authority is granted.
+
+`inspectForRelease` keeps its original object shape and diagnostics. The shared internal inspection records the existing file probes rather than running a second inspection for presentation. These additive fields/types do not certify agent-chat's remaining setup, park, sweep or dependency migration acceptance.
+
+## Strict default-branch fetch
+
+`fetchDefaultTip(gitRoot, timeoutMs)` fetches origin's current default branch and returns `{ sha, ref }`, or the existing failure-reason string. It never substitutes the local HEAD. It honors origin/HEAD when known; otherwise it tries main then master within one shared timeout budget. Fetch updates only the remote-tracking ref, leaving the main checkout's HEAD and files unchanged.
+
+This exposes the existing helper unchanged for callers such as park checks that must refuse when origin cannot establish containment. `resolveBranchBase` retains its separate local-HEAD fallback and warning for allocation. A successful fetch is only a commit observation; the caller must still perform its ancestry, ownership and file-loss checks. Setup, park and sweep policies are unchanged.
+
+## Optional DEFAULT proof when parking
+
+The two-argument `parkWorktree(target, recheck)` behavior is unchanged. A caller may opt in
+with a third argument `{ allowDefaultBranchAncestor: true, fetchTimeoutMs: 1000 }`.
+When the branch has no origin tracking ref, this path requires a successful fresh fetch
+of origin's default branch and proves that the actual current HEAD is its ancestor.
+A failed fetch or a nonpositive or nonfinite budget retains the tree and branch with
+the existing missing-branch refusal. It never uses local HEAD as a fallback proof.
+
+This opt-in path checks files, branch and HEAD again after the fetch and after the
+synchronous lifecycle recheck, then uses nonforced removal. It retains the local branch.
+These checks do not make removal atomic against external writers. Provider or lifecycle
+policy remains with the caller.
+
+## Sweep safety detail presentation
+
+`SweepOptions.formatSafetyDetail` may synchronously format an already classified
+`holds-work` entry. It receives a frozen copy containing only the observed `dirty`
+and `unmerged` booleans. Both can be true; formatting does not change safety status
+or cause another Git observation. Held, in-grace and reclaimable entries bypass it.
+Without the option, entry objects and diagnostics are unchanged.
+
+A throwing presenter rejects the report; a nonstring return throws `TypeError`.
+The sweep does not reclaim trees. Caller presentation is not release authority.
+
+Worktree adds disable checkout hooks for that invocation only (`-c core.hooksPath=/dev/null`), preserving dispatcher CC410. Later git commands retain repository hooks. Timeout/late cleanup uses the original add target despite that prefix. Fetch/reference-transaction hooks are outside this unchanged preservation slice.
+
+## Actual branch parking
+
+`parkWorktree(record, recheck, { allowOriginHeadAncestor: true })` returns the
+actual retained `branch` and optional `containedIn` origin head after backing
+proof. It never rewrites the allocation record. Add the separate
+`allowDefaultBranchAncestor` option to retain the DEFAULT ancestry path too.
+Existing calls and false options retain their original result keys and types.
+Use a literal-true option to select the metadata overload.
+
+Remote alternative tips must be currently listed, complete object IDs with
+locally usable ancestry. Files, branch and HEAD are checked again around
+asynchronous proof and the caller's lifecycle recheck, then removal is nonforced
+and all branches remain. This is not an atomic lock or provider/lifecycle policy.
+See the package README for budget behavior and the tracking-evidence boundary.
+
+
+## Product ignored-file policy
+
+ParkOptions.ignoredFiles optionally supplies a synchronous protectedEntries
+classifier over readonly ParkIgnoredFilesObservation values and an optional
+presentation-only formatRefusal. Set expandDirectories to literal true to inspect
+collapsed ignored-directory contents through the package Git runner. Inputs and
+validated protected subsets are copied/frozen; malformed results and failed
+observations refuse. A failed expanded subtree is always protected.
+
+The package repeats fresh file/branch/HEAD checks around asynchronous proof and
+the caller lifecycle recheck, including opt-in fast paths. Product-specific cache
+and readonly database classification remain in the product. An empty ignored
+subset cannot waive dirty status, failed reads, origin/HEAD proof, lifecycle or
+nonforced Git removal failures. No-policy probes/results/types remain unchanged,
+and ignoredFiles alone returns the existing success shape. This adds no provider,
+assignment, force, release or atomic-removal guarantee.
+
+## Lazy local backing candidates
+
+ParkOptions.localBackingCandidates requires allowOriginHeadAncestor: true. Only if ordinary backing fails does the reader receive the frozen actual branch, commit and worktree snapshot. It returns readonly { oid, ref } candidates; full local commit IDs are checked for ancestry, and only a selected candidate adds the opaque backingRef to the origin-head result. Provider interpretation and metadata stay with the caller; this is not remote authentication.
+
+Malformed lists, unavailable or noncommit objects and callback failures supply no proof. Fresh file, HEAD and branch guards run after asynchronous work and around the lifecycle recheck; removal stays nonforced with the branch retained. Existing options without a reader keep their result shapes and behavior.

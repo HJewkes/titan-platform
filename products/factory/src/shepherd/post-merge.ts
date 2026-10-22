@@ -6,15 +6,18 @@ import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { LandedPr } from "../workflows/land-landed.js";
+import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
-import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
+import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
+import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
+import { unlessThawed } from "./thawed-main-gates.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -30,11 +33,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   ...STACK_LAND_STEPS,
   { id: "sh-main-ci", kind: "dispatch" },
   { id: REDEPLOY_STEP, kind: "dispatch" },
-  { id: "sh-unfreeze", kind: "dispatch" },
-  { id: "sh-freeze", kind: "dispatch" },
-  { id: "sh-file-fix-task", kind: "dispatch" },
-  { id: "sh-spawn-fixer", kind: "dispatch" },
-  { id: "sh-thaw", kind: "dispatch" },
+  ...MAIN_RED_STEPS,
   { id: "main-red", kind: "assisted" },
   { id: "main-ci-timeout", kind: "assisted" },
   { id: "main-red-again", kind: "assisted" },
@@ -83,17 +82,17 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
  * and may unfreeze the repo; red freezes it, files one fix task and spawns one fixer per episode; an unread main goes to
  * the owner. Then cleans up. Runs no after stage.
  */
-export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false): Promise<MainCi> {
+export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false, demotions: GateDemotions = GATE_DEMOTIONS): Promise<MainCi> {
   await restackLanded(ctx, target);
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
-    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha });
+    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });
     await onMainGreen(ctx, red);
   }
-  else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail);
+  else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail, demotions);
   else if (target.mergeSha !== "") await askOwner(ctx, "main-ci-timeout", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is not red, but unread: ${result.detail}. Acknowledge.`, { ...target, headline: `No completed main CI run on ${target.repo} contains the merge`, detail: result.detail });
-  else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
+  else await mainRedAck(ctx, demotions, `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, { ...target, headline: `PR #${target.pr} in ${target.repo} merged with after stages`, detail: `Do by hand: ${result.after.join(", ")}.` });
   await step(ctx, "sh-cleanup", cleanupInput(ctx, target), CleanupResult);
   return result;
@@ -112,17 +111,19 @@ function fixOf(frozen: z.infer<typeof FreezeResult>): string {
   return pr !== null ? `fix PR #${pr}` : `fixer ${frozen.fixer}`;
 }
 
-/** A fixer is spawned at most once per episode, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
-async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string): Promise<void> {
+/** A fixer is spawned at most once per episode, alongside Shepherd's one rerun, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
+async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string, demotions: GateDemotions): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
   const episode = { ...red, episode: frozen.episode };
   if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with ${fixOf(frozen)} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
-  if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, { ...red, headline: `Main CI on ${red.repo} is red`, detail: `${detail}. No freeze store is wired.` });
+  const unwired = { ...red, headline: `Main CI on ${red.repo} is red`, detail: `${detail}. No freeze store is wired.` };
+  if (frozen.state === "unwired") return mainRedAck(ctx, demotions, `${where} No freeze store is wired.`, unwired);
   const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
   if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
-  const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer, episode: frozen.episode }, FixerResult);
+  const [rerun, spawned] = await rerunAlongsideFixer(ctx, { ...episode, task: filed.task }, fixer);
+  if (rerun.thawed) return;
   if (spawned.fixer === null && (spawned.fixPr ?? null) === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
@@ -136,13 +137,18 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
-/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
+/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer until it thaws. */
 async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
   const { schema, brief } = frozenDecision({ repo: red.repo, mergeSha: red.mergeSha, situation: prompt });
-  const answer = schema.parse((await ctx.assisted(gate, prompt, { schema, brief })).data);
+  const answer = unlessThawed(gate, await ctx.assisted(gate, prompt, { schema, brief, recordCancel: true }), schema);
+  if (answer === undefined) return;
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }
+
+/** D13: the acknowledge-only main-red gate carried no decision, so with the demotion on it is an FYI record instead (TP-3697). */
+const mainRedAck = (ctx: WorkflowContext, demotions: GateDemotions, situation: string, about: MainRedAbout): Promise<void> =>
+  demotions.mainRed ? mainRedFyi(ctx, situation, about) : askOwner(ctx, "main-red", `${situation} Acknowledge.`, about);
 
 async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, about: { repo: string; mergeSha: string; headline: string; detail: string }): Promise<void> {
   const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about) });
@@ -166,6 +172,7 @@ export function postMergeRoutes(deps: ShepherdDeps, mainRed?: MainRedWiring): St
   return [
     codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(mainReads, input, timing, signal)),
     ...mainRedRoutes(deps, mainRed),
+    codeRoute(MAIN_RERUN_STEP, deps.now, (input: RerunInput, signal) => rerunRedMain(deps, mainRed, input, signal)),
     ...stackLandRoutes(deps),
     codeRoute("sh-cleanup", deps.now, (input: CleanupInput, signal) => runCleanup(deps, input, signal)),
   ];

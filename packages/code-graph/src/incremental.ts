@@ -102,6 +102,8 @@ export function classifyForReuse(
 export interface StreamedFiles {
   /** Every file's fragments in walk order, so the merge dedup resolves shared nodes as a full index does. */
   fragments: GraphFragment[];
+  /** The file each fragment came from, index for index. */
+  fragmentFileIds: string[];
   /** Parsed files whose structure matches the basis — reuse edges, skip extract. */
   cosmeticFileIds: Set<string>;
   /** fileId → structural signature, for every parsed file and every reused file. */
@@ -132,13 +134,14 @@ export interface StreamFilesInput {
  */
 export async function streamFiles(input: StreamFilesInput): Promise<StreamedFiles> {
   const toParse = new Set(input.toParse.map((rf) => rf.filePath));
-  const out: StreamedFiles = { fragments: [], cosmeticFileIds: new Set(), structuralByFileId: new Map(), digests: [] };
+  const out: StreamedFiles = { fragments: [], fragmentFileIds: [], cosmeticFileIds: new Set(), structuralByFileId: new Map(), digests: [] };
   for (const rf of input.readFiles) {
     const id = fileId(input.idRoot, rf.filePath);
     if (toParse.has(rf.filePath)) {
       await streamParsedFile(input, rf, id, out);
     } else if (input.reuse) {
       out.fragments.push(reconstructFragment(input.idRoot, rf.filePath, id, input.reuse));
+      out.fragmentFileIds.push(id);
     }
   }
   carryReusedSignatures(input.reuse, input.reusedFileIds, out.structuralByFileId);
@@ -156,6 +159,7 @@ async function streamParsedFile(input: StreamFilesInput, rf: ReadFile, id: strin
       : input.extractor.extract(parsed);
     if (basis) out.cosmeticFileIds.add(id);
     out.fragments.push(...fragments);
+    out.fragmentFileIds.push(...fragments.map(() => id));
     if (input.digest) out.digests.push(digestParsedFile(parsed, id, ownSymbolNames(fragments, id)));
   } finally {
     parsed.tree.delete();

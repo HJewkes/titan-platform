@@ -11,8 +11,8 @@ pnpm exec playwright-core install --only-shell chromium
 ## The problem it solves
 
 A video made from a web page has to be captured frame by frame, and a screenshot loop over a
-live page is not deterministic: timers, `Date.now`, `requestAnimationFrame` and
-`Math.random` all read real time, fonts load lazily, and a render that throws leaves a blank
+live page is not deterministic: timers, `Date.now`, `requestAnimationFrame`, CSS
+animations and `Math.random` all read real time, fonts load lazily, and a render that throws leaves a blank
 page that still screenshots. This package is the capture loop that removes each of those. It
 installs a virtual clock before any page script runs, seeks the page through one small
 protocol, waits for it to be ready, and fails the capture on a page error or a font face that
@@ -62,14 +62,18 @@ console.log(result.frames, result.pageDurationS);
 ## What it deliberately does not do
 
 - It imports no React and nothing from titan-design.
-- It has no notion of beats, timelines, captions or chapters.
+- It knows beats only as the optional `FramesOptions.beatStartsS`, the seconds at which the
+  page lays out a fresh scene; it has no notion of timelines, captions or chapters.
 - It does not serve or build the page; pass it a URL.
 
 ## Gotchas
 
 - `captureFrames` gives each worker its own browser, because screenshots encode in the
-  browser process. A fixed worker count renders byte-identically run to run, but a chunk's
-  first frames can differ from a sequential render by a few levels of anti-aliasing.
+  browser process. A fixed worker count renders byte-identically run to run. Pass
+  `FramesOptions.beatStartsS` and chunks start only on beat boundaries: on the synthetic
+  fixture a 16-worker render then differs from a sequential one on 0 frames (real-render
+  confirmation pending). Without it, a chunk can start mid-beat and its first frames can
+  differ by a few levels of anti-aliasing.
 - `openCapturePage` listens for page errors before it navigates, so a page that throws while it
   loads fails the open instead of answering every seek with a blank frame. The same list,
   `CapturePage.errors`, fails a later frame. A `duration` that is missing, NaN or not positive
@@ -83,7 +87,11 @@ console.log(result.frames, result.pageDurationS);
   frame late, because virtual time only moves when the capture advances it.
 - `preloadFonts: false` turns off both the explicit font load and the unloaded-face check. It
   exists to measure what the load prevents, not for production renders.
-- The virtual clock starts at 2026-01-01T00:00:00Z, and `Math.random` is seeded.
+- The virtual clock starts at 2026-01-01T00:00:00Z, and `Math.random` is seeded. `Date()`
+  without `new` and `document.timeline.currentTime` read it too.
+- CSS animations, transitions and Web Animations are paused and set to virtual time after
+  each timer, frame and seek. One the page pauses or seeks itself is left to the page, and a
+  transition a seek triggers starts at that seek, so it can differ between a jump and a sweep.
 
 ## Where it came from
 

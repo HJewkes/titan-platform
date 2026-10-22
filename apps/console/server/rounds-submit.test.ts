@@ -3,18 +3,21 @@ import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { EXIT, invokeCommand } from "@titan-design/registry";
-import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult } from "./decision-log.js";
+import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type DecisionLogResult, type HumanOnly, type RoundDecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
 import { withdrawRound } from "./round-withdraw.js";
-import { BLIND_AB_REFUSED } from "./round-schema.js";
-import { FeedbackDocument } from "./round2-adapter.js";
-import { MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
+import { feedbackProblems } from "./round-feedback.js";
+import { BLIND_AB_REFUSED, FeedbackSchema, RoundSchema } from "./round-schema.js";
+import { ADDRESSED_FILE, MAX_FEEDBACK_BYTES, roundsSubmitCommands } from "./rounds-submit.js";
+import { getRound, listRounds } from "./rounds.js";
 
 const ROUND = "orbit-retry-r1";
+const SHIP_RECOMMENDATION = { answer: "Ship", rationale: "The cap keeps a flapping station from stalling the queue.", confidence: 0.9, by: "fixture-agent" };
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 const SESSION_AUTH: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
 
@@ -28,17 +31,20 @@ function ownerContext(ownerWrites = true): ConsoleContext {
   return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites };
 }
 
-function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: DecisionLog, listeners?: RoundListeners) {
+function submit(args: Record<string, unknown>, ctx = ownerContext(), decisionLog?: RoundDecisionLog, listeners?: RoundListeners) {
   return invokeCommand(roundsSubmitCommands({ dir }, decisionLog, listeners)["rounds.submit"], args, ctx);
 }
 
 function spyLog(result: DecisionLogResult = { ledger: "written", decisions: "not-a-decision" }) {
   const calls: Parameters<DecisionLog["record"]>[] = [];
-  const log: DecisionLog = {
-    record: async (...args) => {
-      calls.push(args);
-      return result;
-    },
+  const record: DecisionLog["record"] = async (...args) => {
+    calls.push(args);
+    return result;
+  };
+  const log: RoundDecisionLog = {
+    record,
+    recordAll: async (entries) => Promise.all(entries.map(({ item, answer }) => record(item, answer))),
+    recordLiveViewed: async () => "written",
   };
   return { log, calls };
 }
@@ -64,7 +70,7 @@ afterEach(async () => {
 
 describe("rounds.submit", () => {
   it("writes one feedback@1 file at mode 0600 and returns its path, sha256 and the shipped head", async () => {
-    const { envelope } = await submit(shipArgs({ general: "Looks right." }));
+    const { envelope } = await submit(shipArgs());
 
     const bytes = await readFile(feedbackOf());
     expect(envelope).toEqual({ ok: true, data: { status: "submitted", path: feedbackOf(), sha256: sha256(bytes), headSha: HEAD } });
@@ -75,9 +81,9 @@ describe("rounds.submit", () => {
       round: 1,
       manifestSha256,
       submittedAt: expect.any(String),
-      answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true }],
+      answers: [{ questionId: "ship-backoff", pick: "Ship", recommendationSeen: true, recommendation: SHIP_RECOMMENDATION, agreed: true }],
       variants: [],
-      general: "Looks right.",
+      general: "",
     });
   });
 
@@ -106,7 +112,7 @@ describe("rounds.submit", () => {
   });
 
   it("writes once: a second submit is already-submitted and leaves the first file's bytes", async () => {
-    await submit(shipArgs({ general: "first" }));
+    await submit(shipArgs());
     const first = await readFile(feedbackOf());
 
     const { envelope } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Don't ship" }], general: "second" }));
@@ -139,7 +145,7 @@ describe("rounds.submit", () => {
   });
 
   it("needs no head sha when the answer does not ship", async () => {
-    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+    const { envelope } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }] }));
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
   });
@@ -200,7 +206,7 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf(id))).toBe(false);
   });
 
-  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json", async () => {
+  it("writes the side answers a Ship round carries, with the Ship pick, to one feedback.json in round order", async () => {
     const id = "ship-tile-r1";
     await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
     const file = path.join(dir, id, "round.json");
@@ -223,8 +229,8 @@ describe("rounds.submit", () => {
     const { envelope } = await submit({ id, manifestSha256: sha256(await readFile(file)), headSha: "89abcdef0123456789abcdef0123456789abcdef", answers });
 
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
-    const written = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
-    expect(written.answers.map((answer) => answer.questionId)).toEqual(["badge-follow-up", "side-many", "side-scale", "side-text", "ship-tiles"]);
+    const written = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+    expect(written.answers.map((answer) => answer.questionId)).toEqual(["side-many", "side-scale", "side-text", "badge-follow-up", "ship-tiles"]);
   });
 
   it("answers a TD-920 CI-packet round, which only review-schema 0.3 accepts, with Ship at its bound head", async () => {
@@ -268,7 +274,7 @@ describe("rounds.submit", () => {
   });
 
   it("refuses feedback over the size cap", async () => {
-    const { envelope, exitCode } = await submit(shipArgs({ general: "x".repeat(MAX_FEEDBACK_BYTES) }));
+    const { envelope, exitCode } = await submit(shipArgs({ answers: [{ questionId: "ship-backoff", pick: "Don't ship" }], general: "x".repeat(MAX_FEEDBACK_BYTES) }));
 
     expect(exitCode).toBe(EXIT.DATAERR);
     expect(envelope).toMatchObject({ ok: false, error: `the feedback is over ${MAX_FEEDBACK_BYTES} bytes` });
@@ -281,7 +287,7 @@ describe("rounds.submit", () => {
 
     const { envelope } = await submit(shipArgs(), ownerContext(), decisionLog);
 
-    const { submittedAt } = FeedbackDocument.parse(JSON.parse(await readFile(feedbackOf(), "utf8")));
+    const { submittedAt } = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(), "utf8")));
     expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: [{ questionId: "ship-backoff", ledger: "written", decisions: "not-a-decision" }] } });
     const rows = (await readFile(path.join(stateDir, ANSWERS_FILE), "utf8")).trim().split("\n").map((line): unknown => JSON.parse(line));
     expect(rows).toEqual([
@@ -292,7 +298,7 @@ describe("rounds.submit", () => {
   it("runs the decision log and then the round listener for a submitted round", async () => {
     const order: string[] = [];
     const { log } = spyLog();
-    const recording: DecisionLog = { record: async (...args) => (order.push("log"), log.record(...args)) };
+    const recording: RoundDecisionLog = { ...log, recordAll: async (entries) => (order.push("log"), log.recordAll(entries)) };
     const listeners: RoundListeners = {
       afterRoundSubmit: async (id, result) => void order.push(`listener:${id}:${result.status}`),
       sweep: async () => undefined,
@@ -357,5 +363,509 @@ describe("rounds.submit", () => {
     expect(await exists(feedbackOf())).toBe(false);
     expect(calls).toEqual([]);
     expect(heard).toEqual([]);
+  });
+});
+
+/** orbit-retry-r1 as a round published before merge bindings were required: "Merge #12" offered, nothing bound. */
+async function publishUnboundRound(): Promise<string> {
+  const file = path.join(dir, ROUND, "round.json");
+  const round = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(file, "utf8")));
+  const questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions);
+  const unbound = questions.map(({ merge: _merge, page: _page, recommendation: _recommendation, ...question }) => ({
+    ...question,
+    options: ["Merge #12 at this head", "Hold"],
+  }));
+  const bytes = Buffer.from(JSON.stringify({ ...round, questions: unbound }));
+  await writeFile(file, bytes);
+  return sha256(bytes);
+}
+
+describe("a round published before merge bindings were required", () => {
+  it("a published unbound round still lists and accepts a submit", async () => {
+    const unboundSha = await publishUnboundRound();
+
+    const { rounds } = await listRounds({ dir });
+    const { envelope } = await submit({ id: ROUND, manifestSha256: unboundSha, answers: [{ questionId: "ship-backoff", pick: "Merge #12 at this head" }] });
+
+    expect(rounds).toEqual([expect.objectContaining({ id: ROUND, valid: true, ship: false, unbound: true })]);
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", path: feedbackOf() } });
+  });
+});
+
+const R2 = "orbit-retry-r2";
+const R2_HEAD = "fedcba9876543210fedcba9876543210fedcba98";
+
+/** The td769 shape: round 1 answered Don't ship with a note, then round 2 asks to Ship a new head. */
+async function sendBackThenReround(): Promise<string> {
+  await submit({ id: ROUND, manifestSha256, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter too." }] });
+  const round = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(path.join(dir, ROUND, "round.json"), "utf8")));
+  const questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions);
+  const reround = questions.map((question) => ({ ...question, merge: { repo: "example/orbit-relay", pr: 12, headSha: R2_HEAD, ship: ["Ship"] } }));
+  const bytes = Buffer.from(JSON.stringify({ ...round, round: 2, questions: reround }));
+  await mkdir(path.join(dir, R2));
+  await writeFile(path.join(dir, R2, "round.json"), bytes);
+  return sha256(bytes);
+}
+
+const shipR2 = (r2Sha: string, overrides: Record<string, unknown> = {}) =>
+  submit({ id: R2, manifestSha256: r2Sha, headSha: R2_HEAD, answers: [{ questionId: "ship-backoff", pick: "Ship" }], ...overrides });
+
+describe("a Ship round after earlier feedback (TP-3741)", () => {
+  it("carries round 1's Don't ship and its note into round 2's detail", async () => {
+    await sendBackThenReround();
+
+    const detail = await getRound({ dir }, R2);
+
+    expect(detail).toMatchObject({ valid: true, priorFeedback: [{ round: 1, pick: "Don't ship", comment: "Cap the jitter too.", submittedAt: expect.any(String) }] });
+  });
+
+  it("refuses Ship until round 1 is ticked Addressed, and writes nothing", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope, exitCode } = await shipR2(r2Sha);
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: "Ship refused: your feedback from round 1 is not ticked Addressed" });
+    expect(await exists(feedbackOf(R2))).toBe(false);
+  });
+
+  it("accepts Ship with round 1 ticked, and keeps the tick in the addressed.json sidecar", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope } = await shipR2(r2Sha, { addressed: [1] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: R2_HEAD, addressed: "recorded" } });
+    expect(JSON.parse(await readFile(path.join(dir, R2, ADDRESSED_FILE), "utf8"))).toEqual({ schema: "titan-console/addressed@1", rounds: [1], at: expect.any(String) });
+    const sent = await getRound({ dir }, R2);
+    expect(sent).toHaveProperty("notes.addressed", [1]);
+    expect(sent).toHaveProperty("priorFeedback.0.round", 1);
+  });
+
+  it("still takes a Send back while round 1 is unticked", async () => {
+    const r2Sha = await sendBackThenReround();
+
+    const { envelope } = await shipR2(r2Sha, { answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Still jittery." }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
+  it.each([
+    ["a comment", { answers: [{ questionId: "ship-backoff", pick: "Ship", comment: "Rename the constant." }] }, 'you left a comment on "Ship the capped backoff?"'],
+    ["round feedback", { general: "Rename the constant." }, "you left feedback on this round"],
+  ])("refuses a Ship that carries %s", async (_label, overrides, reason) => {
+    const { envelope, exitCode } = await submit(shipArgs(overrides));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Ship refused: ${reason}` });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("refuses a Send back with no Ship comment and no round note, and writes nothing (decision 513)", async () => {
+    const { envelope, exitCode } = await submit(shipArgs({ headSha: undefined, answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: 'Send back refused for question "ship-backoff": Send back needs a note: say what to fix in the Ship comment or the round note.' });
+    expect(await exists(feedbackOf())).toBe(false);
+  });
+
+  it("takes a Send back whose only note is the round note", async () => {
+    const { envelope } = await submit(shipArgs({ headSha: undefined, general: "Cap the jitter.", answers: [{ questionId: "ship-backoff", pick: "Don't ship" }] }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
+  it("takes a Send back that leaves a required side question unanswered (decision 513)", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    const required = { id: "side-clarity", kind: "scale", prompt: "How clear is the retry log?", min: 1, max: 5, required: true };
+    await writeFile(file, JSON.stringify({ ...round, questions: [...round.questions, required] }));
+    const answers = [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the jitter." }];
+
+    const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)), headSha: undefined, answers }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+
+  it("accepts a Ship that leaves a required side question unanswered, as the page does (decision 166)", async () => {
+    const file = path.join(dir, ROUND, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    const required = { id: "side-clarity", kind: "scale", prompt: "How clear is the retry log?", min: 1, max: 5, required: true };
+    await writeFile(file, JSON.stringify({ ...round, questions: [...round.questions, required] }));
+
+    const { envelope } = await submit(shipArgs({ manifestSha256: sha256(await readFile(file)) }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: HEAD } });
+  });
+});
+
+describe("a round with two PRs (TP-3329)", () => {
+  const TWO = "tiles-and-panels-r1";
+  let twoSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, "ship-tile-r1"), path.join(dir, TWO), { recursive: true });
+    const bytes = Buffer.from(JSON.stringify(twoPrRound()));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    twoSha = sha256(bytes);
+  });
+
+  const submitTwo = (overrides: Record<string, unknown>) => submit({ id: TWO, manifestSha256: twoSha, answers: [], ...overrides });
+
+  it("ships both PRs, each at its own head, and records every answer in one feedback.json", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep" }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } } });
+    const written = FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(TWO), "utf8")));
+    expect(written.answers).toEqual(answers.map((answer) => expect.objectContaining(answer)));
+  });
+
+  it("ships one PR and sends the other back, its note blocking only its own Ship", async () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const { envelope } = await submitTwo({ answers, heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it.each([
+    ["a shipped PR with no head", { "ship-tiles": TILES_HEAD }, 'question "ship-panels" ships without its head sha in heads'],
+    ["a head from the other PR", { "ship-tiles": TILES_HEAD, "ship-panels": TILES_HEAD }, 'question "ship-panels" names a different head sha'],
+    ["a head for a PR that is not shipped", { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD, "stripe-colour": TILES_HEAD }, 'heads names "stripe-colour", which no Ship answer ships'],
+  ])("refuses %s and writes nothing", async (_, heads, error) => {
+    const { envelope, exitCode } = await submitTwo({ answers: [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }], heads });
+
+    expect({ envelope, exitCode }).toEqual({ envelope: { ok: false, error, code: EXIT.DATAERR }, exitCode: EXIT.DATAERR });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("refuses a Ship whose own side question carries a comment, but not the other PR's", async () => {
+    const answers = [{ questionId: "stripe-colour", pick: "Keep", comment: "Check the contrast." }, { questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+
+    const both = await submitTwo({ answers, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    const panelsOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, answers[2]], heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left a comment on "Keep the stripe colour?"' });
+    expect(panelsOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: PANELS_HEAD } });
+  });
+
+  it("refuses a Ship whose own frame is Rejected, but not the other PR's (TP-3773 S6b)", async () => {
+    const answers = [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Ship" }];
+    const variants = [{ key: "panel-wide", verdict: "rejected" }];
+
+    const both = await submitTwo({ answers, variants, heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    const tilesOnly = await submitTwo({ answers: [answers[0], { questionId: "ship-panels", pick: "Don't ship" }], variants: [{ ...variants[0], comment: "Too wide." }], heads: { "ship-tiles": TILES_HEAD } });
+
+    expect(both.envelope).toMatchObject({ ok: false, error: 'Ship refused: you left feedback on frame "Panel, wider"' });
+    expect(tilesOnly.envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: TILES_HEAD } });
+  });
+
+  it("refuses a stacked PR's Ship while the PR it is stacked on is sent back, and takes it once that ships (TP-3883)", async () => {
+    const round = twoPrRound();
+    round.prGroups = z.array(z.record(z.string(), z.unknown())).parse(round.prGroups).map((group) => (group.pr === "example/panels#2" ? { ...group, stackedOn: { repo: "example/tiles", pr: 1, headSha: TILES_HEAD } } : group));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const panelsShip = { questionId: "ship-panels", pick: "Ship" };
+
+    const held = await submit({ id: TWO, manifestSha256: sha256(bytes), answers: [{ questionId: "ship-tiles", pick: "Don't ship", comment: "Lower the stripe." }, panelsShip], heads: { "ship-panels": PANELS_HEAD } });
+
+    expect(held.envelope).toMatchObject({ ok: false, error: `Ship refused: stacked on example/tiles#1, which may not ship: it is answered "Don't ship"` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+    const both = await submit({ id: TWO, manifestSha256: sha256(bytes), answers: [{ questionId: "ship-tiles", pick: "Ship" }, panelsShip], heads: { "ship-tiles": TILES_HEAD, "ship-panels": PANELS_HEAD } });
+    expect(both.envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
+  it("takes a Send back whose only note is a comment on its own frame, never on the other PR's (TP-3773 S6b)", async () => {
+    const answers = [{ questionId: "ship-panels", pick: "Don't ship" }];
+
+    const other = await submitTwo({ answers, variants: [{ key: "tile-dark", comment: "Darker." }] });
+    const own = await submitTwo({ answers, variants: [{ key: "panel-wide", comment: "Too wide." }] });
+
+    expect(other.envelope).toMatchObject({ ok: false, error: expect.stringContaining('Send back refused for question "ship-panels"') });
+    expect(own.envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+  });
+
+  it.each(["ship-tiles", "ship-panels"])("refuses %s sent back with no note, even beside a noted Send back, and writes nothing (decision 513)", async (bare) => {
+    const answers = ["ship-tiles", "ship-panels"].map((questionId) => ({ questionId, pick: "Don't ship", ...(questionId === bare ? {} : { comment: "Lower the stripe." }) }));
+
+    const { envelope, exitCode } = await submitTwo({ answers });
+
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(envelope).toMatchObject({ ok: false, error: `Send back refused for question "${bare}": Send back needs a note: say what to fix in the Ship comment or the round note.` });
+    expect(await exists(feedbackOf(TWO))).toBe(false);
+  });
+
+  it("takes both PRs sent back on one round note while a required side question is unanswered", async () => {
+    const round = twoPrRound();
+    round.questions = z.array(z.record(z.string(), z.unknown())).parse(round.questions).map((question) => (question.id === "stripe-colour" ? { ...question, required: true } : question));
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(path.join(dir, TWO, "round.json"), bytes);
+    const answers = [{ questionId: "ship-tiles", pick: "Don't ship" }, { questionId: "ship-panels", pick: "Don't ship" }];
+
+    const { envelope } = await submit({ id: TWO, manifestSha256: sha256(bytes), answers, general: "Both need another pass." });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+  });
+});
+
+describe("the feedback rounds.submit writes is the harness's (TP-1988)", () => {
+  const ManifestJson = z.looseObject({ questions: z.array(z.record(z.string(), z.unknown())) });
+  type ManifestJson = z.infer<typeof ManifestJson>;
+
+  /** Copies a fixture round, edits its round.json, and returns the sha256 of the bytes written. */
+  async function stageRound(id: string, edit: (manifest: ManifestJson) => void = () => undefined): Promise<string> {
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    const file = path.join(dir, id, "round.json");
+    const manifest = ManifestJson.parse(JSON.parse(await readFile(file, "utf8")));
+    edit(manifest);
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    await writeFile(file, bytes);
+    return sha256(bytes);
+  }
+
+  const question = (manifest: ManifestJson, id: string) => manifest.questions.find((each) => each.id === id) ?? {};
+  const written = async (id: string) => FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8")));
+  const manifestOf = async (id: string) => RoundSchema.parse(JSON.parse(await readFile(path.join(dir, id, "round.json"), "utf8")));
+
+  /** The answers titan-review's `calibration` scores, read exactly as its `scored` reads them. */
+  const scored = (feedback: z.infer<typeof FeedbackSchema>) =>
+    feedback.answers.flatMap((answer) => (answer.recommendation && answer.agreed !== undefined ? [{ agreed: answer.agreed, confidence: answer.recommendation.confidence }] : []));
+
+  const KILN = "kiln-schedule-r2";
+  const kilnAnswers = [
+    { questionId: "ramp-default", pick: "Single slope" },
+    { questionId: "hold-clarity", value: 4 },
+    { questionId: "report-columns", picks: ["Hold minutes", "Segment", "Target temperature"] },
+    { questionId: "report-notes", text: "Print the cone number." },
+  ];
+  const withAfter = (manifest: ManifestJson) => {
+    question(manifest, "ramp-default").optionDetails = { "Single slope": { detail: "One slope to peak.", after: "Revert the default to the single slope." } };
+  };
+
+  it("echoes each recommendation with agreed, and the picked option's after, in a feedback that fits its round", async () => {
+    const roundSha = await stageRound(KILN, withAfter);
+
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: kilnAnswers });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(KILN);
+    expect(feedback.answers).toEqual([
+      expect.objectContaining({ questionId: "ramp-default", pick: "Single slope", after: "Revert the default to the single slope.", agreed: false, recommendation: expect.objectContaining({ answer: "Staged climb" }) }),
+      expect.objectContaining({ questionId: "hold-clarity", value: 4, agreed: true, recommendation: expect.objectContaining({ answer: 4 }) }),
+      expect.objectContaining({ questionId: "report-columns", agreed: true }),
+      { questionId: "report-notes", text: "Print the cone number." },
+    ]);
+    expect(feedback.unansweredQuestionIds).toBeUndefined();
+    expect(feedbackProblems(feedback, await manifestOf(KILN))).toEqual([]);
+  });
+
+  it("gives titan-review's calibration a scored answer for every recommended question the owner answered", async () => {
+    const roundSha = await stageRound(KILN);
+
+    await submit({ id: KILN, manifestSha256: roundSha, answers: kilnAnswers });
+
+    expect(scored(await written(KILN))).toEqual([
+      { agreed: false, confidence: 0.7 },
+      { agreed: true, confidence: 0.5 },
+      { agreed: true, confidence: 0.6 },
+    ]);
+  });
+
+  it("writes a question round sent with a required question unanswered as a partial submit that fits its round", async () => {
+    const roundSha = await stageRound(KILN);
+
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ questionId: "hold-clarity", value: 3 }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(KILN);
+    expect(feedback.unansweredQuestionIds).toEqual(["ramp-default", "report-columns", "report-notes"]);
+    expect(feedbackProblems(feedback, await manifestOf(KILN))).toEqual([]);
+  });
+
+  it("writes a design round sent with its required pick unanswered as a partial submit that fits its round", async () => {
+    const id = "beacon-states-r1";
+    const roundSha = await stageRound(id);
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, answers: [{ questionId: "beacon-notes", text: "Keep the halo." }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", headSha: null } });
+    const feedback = await written(id);
+    expect(feedback.unansweredQuestionIds).toEqual(["beacon-fill-pick"]);
+    expect(feedbackProblems(feedback, await manifestOf(id))).toEqual([]);
+  });
+
+  it("writes a pick of the round's revisionOption as a revision request, and refuses one with no comment", async () => {
+    const roundSha = await stageRound(KILN, (manifest) => (question(manifest, "ramp-default").revisionOption = "Ask each time"));
+    const revise = { questionId: "ramp-default", pick: "Ask each time" };
+
+    const bare = await submit({ id: KILN, manifestSha256: roundSha, answers: [revise] });
+    const { envelope } = await submit({ id: KILN, manifestSha256: roundSha, answers: [{ ...revise, comment: "Rework the staged climb first." }] });
+
+    expect(bare.envelope).toMatchObject({ ok: false, error: "the feedback does not fit its round: ramp-default: a revision request needs a comment" });
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await written(KILN)).answers).toEqual([
+      expect.objectContaining({ questionId: "ramp-default", revisionRequested: true, comment: "Rework the staged climb first.", agreed: false }),
+    ]);
+  });
+
+  it("lists a Ship round's unanswered side questions as a partial submit, and echoes every frame", async () => {
+    const id = "ship-tile-r1";
+    const roundSha = await stageRound(id);
+
+    const { envelope } = await submit({ id, manifestSha256: roundSha, headSha: "89abcdef0123456789abcdef0123456789abcdef", answers: [{ questionId: "ship-tiles", pick: "Ship" }] });
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback = await written(id);
+    expect(feedback.unansweredQuestionIds).toEqual(["badge-follow-up"]);
+    expect(feedback.variants.map(({ key, verdict }) => ({ key, verdict }))).toEqual(
+      ["tile-light", "tile-dark", "badge-new", "panel-wide"].map((key) => ({ key, verdict: null })),
+    );
+    expect(feedbackProblems(feedback, await manifestOf(id))).toEqual([]);
+  });
+
+  it("keeps every field the factory's round-merge and gate-answer-check read", async () => {
+    const sendBack = { questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the delay lower." };
+
+    const { envelope } = await submit(shipArgs({ answers: [sendBack], general: "One more pass." }));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const feedback: unknown = JSON.parse(await readFile(feedbackOf(), "utf8"));
+    expect(feedback).toMatchObject({ unit: "orbit-retry", round: 1, manifestSha256, submittedAt: expect.any(String), general: "One more pass.", answers: [sendBack] });
+  });
+});
+
+describe("a design round's per-frame verdicts, comments and pins (TP-3773)", () => {
+  const id = "beacon-states-r1";
+  const pin = (n: number, note: string) => ({ id: `beacon-busy-${n}`, width: 375, x: 30 * n, y: 40, xPct: 0.08 * n, yPct: 0.1, note });
+  let roundSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, id), path.join(dir, id), { recursive: true });
+    roundSha = sha256(await readFile(path.join(dir, id, "round.json")));
+  });
+
+  const send = (variants?: unknown[]) => submit({ id, manifestSha256: roundSha, answers: [], ...(variants !== undefined && { variants }) });
+  const sentFrames = async () => FeedbackSchema.parse(JSON.parse(await readFile(feedbackOf(id), "utf8"))).variants;
+
+  it("writes a posted verdict, comment and two pins into the frame's feedback, its source echo intact", async () => {
+    const pins = [pin(1, "The ring is too thin."), { ...pin(2, "Label overlaps."), target: { testId: "beacon-label" } }];
+
+    const { envelope } = await send([{ key: "beacon-busy", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins }]);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    const frames = await sentFrames();
+    expect(frames.find((frame) => frame.key === "beacon-busy")).toEqual({ key: "beacon-busy", image: "shots/beacon-busy.png", verdict: "rejected", comment: "Busy reads as idle.", annotations: pins });
+    expect(frames.find((frame) => frame.key === "beacon-idle")).toEqual({ key: "beacon-idle", image: "shots/beacon-idle.png", verdict: null, comment: "", annotations: [] });
+  });
+
+  it("refuses a frame the round does not have, and writes nothing", async () => {
+    const { envelope } = await send([{ key: "beacon-ghost", verdict: "chosen" }]);
+
+    expect(envelope).toMatchObject({ ok: false, error: 'no frame "beacon-ghost" in this round' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin numbered on another frame, a pin sent twice and a frame sent twice, and writes nothing", async () => {
+    const other = await send([{ key: "beacon-idle", annotations: [pin(1, "Belongs to busy.")] }]);
+    const twicePinned = await send([{ key: "beacon-busy", annotations: [pin(1, "One."), pin(1, "Again.")] }]);
+    const twiceSent = await send([{ key: "beacon-busy", verdict: "maybe" }, { key: "beacon-busy", verdict: "chosen" }]);
+
+    expect(other.envelope).toMatchObject({ ok: false, error: 'frame "beacon-idle": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twicePinned.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy": pin "beacon-busy-1" is not a pin of its own, numbered once' });
+    expect(twiceSent.envelope).toMatchObject({ ok: false, error: 'frame "beacon-busy" is sent twice' });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("refuses a pin placed outside its frame", async () => {
+    const { envelope } = await send([{ key: "beacon-busy", annotations: [{ ...pin(1, "Off the edge."), xPct: 1.2 }] }]);
+
+    expect(envelope).toMatchObject({ ok: false });
+    expect(await exists(feedbackOf(id))).toBe(false);
+  });
+
+  it("writes a round whose every frame holds the longest comment and the most pins, past the old 64 KiB cap", async () => {
+    const long = (chars: number) => "é".repeat(chars);
+    const maxed = (key: string) => ({ key, verdict: "maybe", comment: long(2000), annotations: Array.from({ length: 12 }, (_, n) => ({ ...pin(n + 1, long(500)), id: `${key}-${n + 1}`, xPct: 0.05 })) });
+
+    const { envelope } = await send(["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map(maxed));
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await stat(feedbackOf(id))).size).toBeGreaterThan(64 * 1024);
+  });
+
+  it("echoes every frame undecided when no variants are sent", async () => {
+    const { envelope } = await send();
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect((await sentFrames()).map(({ key, verdict, comment, annotations }) => ({ key, verdict, comment, annotations }))).toEqual(
+      ["beacon-idle", "beacon-busy", "beacon-error", "beacon-muted", "beacon-sketch"].map((key) => ({ key, verdict: null, comment: "", annotations: [] })),
+    );
+  });
+});
+
+describe("a long round sends in about one human-only read (TP-4001)", () => {
+  const KILN = "kiln-schedule-r2";
+  const EXTRA = Array.from({ length: 8 }, (_, n) => `extra-${n + 1}`);
+  const TWELVE_ANSWERS = [
+    { questionId: "ramp-default", pick: "Single slope" },
+    { questionId: "hold-clarity", value: 4 },
+    { questionId: "report-columns", picks: ["Segment"] },
+    { questionId: "report-notes", text: "Print the cone number." },
+    ...EXTRA.map((questionId) => ({ questionId, value: 3 })),
+  ];
+  /** Real but short, so twelve serial reads (3.6 s) and one (0.3 s) are far apart on any CI runner. */
+  const READ_MS = 300;
+  let kilnSha: string;
+
+  beforeEach(async () => {
+    await cp(path.join(FIXTURE_ROUNDS.dir, KILN), path.join(dir, KILN), { recursive: true });
+    const file = path.join(dir, KILN, "round.json");
+    const round = JSON.parse(await readFile(file, "utf8"));
+    round.questions.push(...EXTRA.map((id) => ({ id, kind: "scale", prompt: `How clear is ${id}?`, min: 1, max: 5 })));
+    round.sections.at(-1).questionIds.push(...EXTRA);
+    const bytes = Buffer.from(JSON.stringify(round));
+    await writeFile(file, bytes);
+    kilnSha = sha256(bytes);
+  });
+
+  function slowHumanOnly(initiatives: string[] = []) {
+    const reads = { calls: 0 };
+    const humanOnly = async (): Promise<HumanOnly> => {
+      reads.calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, READ_MS));
+      return { known: true, initiatives: new Set(initiatives) };
+    };
+    return { reads, decisionLog: createDecisionLog({ stateDir: path.join(root, "state"), decisionsFile: null, humanOnly }) };
+  }
+
+  it("reads the human-only list once for twelve answers and logs all twelve", async () => {
+    const { reads, decisionLog } = slowHumanOnly();
+
+    const { envelope } = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog);
+
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted", log: TWELVE_ANSWERS.map(({ questionId }) => ({ questionId, ledger: "written" })) } });
+    expect(reads.calls).toBe(1);
+  });
+
+  it("responds in about one read's latency, not twelve", async () => {
+    const { decisionLog } = slowHumanOnly();
+    const started = performance.now();
+
+    await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog);
+
+    expect(performance.now() - started).toBeLessThan(3 * READ_MS);
+  });
+
+  it("responds while the round listener is still running, and keeps the submit when it fails", async () => {
+    const hung: RoundListeners = { afterRoundSubmit: () => new Promise(() => undefined), sweep: async () => undefined };
+    const failing: RoundListeners = { afterRoundSubmit: () => Promise.reject(new Error("factory down")), sweep: async () => undefined };
+
+    const first = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS.slice(0, 1) }, ownerContext(), undefined, hung);
+    await rm(path.join(dir, KILN, "feedback.json"));
+    const second = await submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS.slice(0, 1) }, ownerContext(), undefined, failing);
+
+    expect([first.envelope, second.envelope]).toEqual([0, 1].map(() => expect.objectContaining({ ok: true, data: expect.objectContaining({ status: "submitted" }) })));
+    expect(await exists(feedbackOf(KILN))).toBe(true);
   });
 });

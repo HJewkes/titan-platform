@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the bridge forwards every key the story sees",
+      "file": "apps/console/server/story-bridge.ts",
+      "find": "if (forwarded.indexOf(event.key) === -1 || event.metaKey",
+      "replace": "if (event.metaKey",
+      "kills": [
+        "the story bridge forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
+      ]
+    },
+    {
+      "name": "the bridge forwards a key held with Cmd or Ctrl",
+      "file": "apps/console/server/story-bridge.ts",
+      "find": " || event.metaKey || event.ctrlKey || event.altKey",
+      "replace": "",
+      "kills": [
+        "the story bridge forwards only [, ], Escape and ? from the story, never Enter, a digit, a letter or a held modifier"
+      ]
+    },
+    {
+      "name": "args are not pushed again once the story renders",
+      "file": "apps/console/server/story-bridge.ts",
+      "find": "    if (argsOwed) {",
+      "replace": "    if (argsOwed && false) {",
+      "kills": [
+        "the story bridge pushes the page's args to the story, and once more after the story next renders"
+      ]
+    },
+    {
+      "name": "the bridge takes args from any window and origin",
+      "file": "apps/console/server/story-bridge.ts",
+      "find": "    if (event.source !== window.parent || event.origin !== target) return;\n",
+      "replace": "",
+      "kills": [
+        "the story bridge takes args only from the console page's own window and origin"
+      ]
+    },
+    {
+      "name": "the bridge reports no boxes after a render",
+      "file": "apps/console/server/story-bridge.ts",
+      "find": "    postBoxes();\n    // Args sent",
+      "replace": "    // Args sent",
+      "kills": [
+        "the story bridge reports each element a pin can name after every render, with its testId, role and text"
+      ]
+    }
+  ]
+}

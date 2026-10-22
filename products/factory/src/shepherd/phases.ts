@@ -4,6 +4,7 @@ import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { FixFirstEntry } from "./fix-first-trail.js";
 import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
@@ -15,6 +16,7 @@ import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { VisualPacketPorts } from "./visual-packet-trigger.js";
+import type { DiagnosisPorts } from "./no-verdict-diagnosis.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -50,6 +52,8 @@ export interface ReviewRequest extends PhaseTarget {
   cause?: ReviewCause;
   /** Shepherd's own MERGE at this head that a seat held last round; only the seat check runs again. */
   seatHeld?: SeatHeld;
+  /** The run's FIX_FIRST trail, set only on D8's convergence review of a runaway head (TP-3734). */
+  convergence?: readonly FixFirstEntry[];
 }
 
 /**
@@ -114,6 +118,8 @@ export interface ShepherdDeps {
   agentChatBin: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
+  /** The accounts a successor may spawn under, preferred first, read per wake; the first with headroom wins. Absent means `agentChatConfigDir`. */
+  successorAccounts?: () => readonly string[];
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
   roster?: RosterReader;
   /** Admits a successor spawn; absent means it is not gated. */
@@ -142,8 +148,12 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
+  /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
+  noReproProceed?: "off" | "on";
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
+  /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */
+  diagnosis?: DiagnosisPorts;
   /** `shepherd.consoleAnswers` is configured, so each approve-merge gate offers the owner `send-back`; absent means none does. */
   consoleAnswers?: boolean;
   /** The name of the repo seat's `visualBaselines.check`; absent, or undefined for a repo, means no red head is offered for acceptance. */

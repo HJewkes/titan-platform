@@ -8,6 +8,8 @@ import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { FIX_PROOF_WAKE_STEP, fixProofBounce } from "./fix-proof-cap.js";
+import { successorConfigDir } from "./account-hold.js";
+import { noteFixerLimit } from "./fixer-limit.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -15,7 +17,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
@@ -37,11 +39,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
-/** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
-const BRANCH = /^[A-Za-z0-9._/-]+$/;
-/** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
-const BAD_REF = /^[-./]|\.\.|\/\/|\/\.|\.lock$|[/.]$/;
-const isRefName = (name: string): boolean => BRANCH.test(name) && !BAD_REF.test(name);
 
 /** How the wake step reaches agent-chat. A broker that is down or a timeout is waited out; any other throw is a refusal. */
 export interface ImplementerAgents {
@@ -118,21 +115,25 @@ type Choice =
   | { mode: "resume" | "live"; agent: string; message: string; sessionId: string }
   | { mode: "successor"; agent: string; predecessor: string; message: string; cwd: string };
 
-/** A retired agent, or one whose resume agent-chat refused this wake, is not asked again; a successor takes over from it. */
-const resumable = (newest: AgentRow, refused: ReadonlySet<string>): boolean => newest.status !== "retired" && !refused.has(newest.name);
+/** A retired agent, one whose resume agent-chat refused this wake, or one a fresh-fixer wake passes over, is not asked again; a successor takes over. */
+const resumable = (newest: AgentRow, refused: ReadonlySet<string>, input: WakeInput): boolean => newest.status !== "retired" && !refused.has(newest.name) && !wantsFreshFixer(input.payload);
 
 /** A string is why nobody can be woken. */
 async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[], refused: ReadonlySet<string>): Promise<Choice | string> {
-  const path = newest.transcriptExists === true && newest.sessionId !== "" && resumable(newest, refused) ? newest.transcriptPath : null;
+  const path = newest.transcriptExists === true && newest.sessionId !== "" && resumable(newest, refused, task.input) ? newest.transcriptPath : null;
   const warmth = typeof path === "string" ? await (wiring.readWarmth ?? readWarmth)(path) : undefined;
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  return successorChoice(deps, wiring, task, newest.name, roster);
+}
+
+function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, predecessor: string, roster: readonly AgentRow[]): Choice | string {
   if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor, message: successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -254,7 +255,8 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 
 /**
  * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
- * ask a poll under its own deadline, so the ask deadline restarts after it.
+ * ask a poll under its own deadline, so the ask deadline restarts after it. A lineage gone from the roster still has the
+ * repo's checkout, so a successor takes over from the registered implementer (TP-4045).
  */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
   let asked: Asked | undefined, waiting: Waiting | undefined;
@@ -265,8 +267,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     const settled = asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, waiting);
     if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
-    if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
-    const live = newest.presence !== "exited";
+    const live = newest !== undefined && newest.presence !== "exited";
     const read: HeadRead = live ? await headMoved(deps.port, task.input) : { moved: false };
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
@@ -275,8 +276,8 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
       continue;
     }
     unreadable.read();
-    if (read.moved) return wokenBy(liveChoice(task, newest));
-    const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
+    if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
+    const choice = newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) : live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
     asked = { choice, at: deps.now() };
@@ -297,7 +298,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
-  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: deps.agentChatConfigDir, roster: deps.roster, gate: deps.spawnGate })) : undefined);
+  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: successorConfigDir(deps), roster: deps.roster, gate: deps.spawnGate })) : undefined);
 }
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */
@@ -336,7 +337,7 @@ function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): Wak
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
 export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonly StepRoute[] => [
   codeRoute(WAKE_STEP, deps.now, async (raw: unknown, signal) => wakeImplementer(deps, wiring, WakeInputSchema.parse(raw), signal)),
-  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring)) }, AWAIT_NEW_HEAD_STEP),
+  awaitNewHeadRoute({ ...deps, agentExited: exitedOn(agentsFor(deps, wiring), noteFixerLimit(deps)) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   codeRoute(FIX_PROOF_WAKE_STEP, deps.now, async (input: object) => input),

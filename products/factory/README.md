@@ -39,6 +39,7 @@ titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner d
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
 titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
+titan-factory bot-token scan [--json]                         # A17: name every place an agent can read the bot's token (never the token)
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -79,15 +80,17 @@ or a helper path.
 
 Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
 coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
-gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
+gate classes, and owner decision 529 (2026-10-22, TP-4048) a fourth, each only on evidence the command
+reads fresh through the GitHub port at resolve time:
 
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
 | `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
-| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
+| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed |
+| `sh-sent-back`: exactly `{"decision":"await-new-head"}` | the PR the gate names is open and its head is the head the gate's prompt asks about |
 
-The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
+The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state and head)
 is stored on the gate as `resolvedEvidence`, and the gate store re-checks it against the gate's own
 prompt, schema and brief before it admits the coordinator, so an audit can re-run the same check later.
 Any read that fails or comes back partial, a pending or red check, an unknown mergeable, a payload or PR
@@ -283,20 +286,30 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   three ways: update-branch fails with a 422, the head reads `dirty`, or the check that runs
   before a gate finds one. It then wakes the implementer once, with the files that likely
   conflict. The next round reads CI at the fixer's head. If that head is behind, it runs a
-  fresh update-branch first. If that head still conflicts, the gate opens and no second fixer
-  starts. The fixer already had the conflict and failed to settle it, so a second wake would
-  likely fail the same way. The count resets when a head reads green, so a later conflict gets
-  its own fixer. This is by design (TP-1753). Allowing a second fixer would change merge policy,
-  so it needs its own task.
+  fresh update-branch first. If that head still conflicts, `GATE_DEMOTIONS.conflict` (on, TP-3734)
+  wakes one fresh fixer: a successor, never the implementer whose attempt failed. If its head
+  still conflicts, the repo's seat gets a `conflict` notice and the run waits for a new head. The
+  gate opens only when that notice cannot go out, or with the flag off, which restores the
+  TP-1753 gate after one fixer. The count resets when a head reads green, so a later conflict
+  gets its own fixers.
 - `policy-denial`: the seat's authority policy does not allow an automated merge, so only the
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
-  timeout or an unanswered hold. Retrying again would only repeat the stall.
+  timeout or an unanswered hold. Retrying again would only repeat the stall. Rounds that all
+  failed on infrastructure get one fallback fresh reviewer first (`D7/fallback-reviewer`). If
+  it fails too, `GATE_DEMOTIONS.failedFallback` records `D7/ops-notice` and tells the hub seat,
+  naming the failed outcomes and the reviewer account; a seat-held run-out tells the seat under
+  `D7/seat-notice`. The run then waits for a new head, whose rounds count from zero. The gate
+  opens only when the notice cannot go out.
 - `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
   kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
   Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
   split it; coord or the owner acts on that, and Shepherd files no planner task itself
   (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
+  With `GATE_DEMOTIONS.fixFirstRunaway` on (the default, TP-3734 D8), neither this nor
+  `no-progress` opens approve-merge: one fresh convergence reviewer gets the FIX_FIRST trail. Its
+  MERGE lands at the PR's normal rules; its FIX_FIRST sends the seat a planner notice and the run
+  waits for a new head, which re-arms the review. The gate opens only when no seat can be told.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
   other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
@@ -744,7 +757,30 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/shepherd/review-stats-store.ts`, `src/shepherd/review-stats.ts`, `src/shepherd/review-stats-report.ts` | The review stats store, its incremental refresh, and the `stats --reviews` report (see Review stats) |
 | `src/workflows/land.ts` | The land core (see below) |
+| `src/test-support/a17/` | The A17 dual-mode harness: `a17Event` registers a case under `sources=webhook` and `sources=polling`, `structure.test.ts` fails the suite on an event case that bypasses it or is skipped, and `not-event.ts` lists the single-mode cases (see the factory guide, "A17 invariant tests") |
+| `src/ingress/` | The webhook ingress: a second loopback listener on 7411 that verifies GitHub's HMAC, projects a delivery and appends one event, behind the `github.ingress` kill switch (see [Webhook ingress](/guides/factory#webhook-ingress)); `doc-pins.test.ts` fails when the guide drifts from its constants |
+| `src/bot-token-fingerprint.ts`, `src/bot-token-scan.ts`, `src/cli-bot-token.ts` | serve's published bot-token fingerprint, the A17 leak scan over its injectable places, and the `bot-token scan` verb (see The bot token's A17 leak scan) |
+| `src/bot-token-expiry.ts` | the bot client's read of GitHub's token-expiration header: `/health.bot.expiresAt` and the 14-day ops alarm (see The bot token's expiry alarm) |
 | `src/test-support/crash.ts` | Crash harness: host A with a frozen clock hangs in a step and never releases its lease; host B, clocked past that lease, takes the run over |
+
+## GitHub event sources config
+
+The top-level `github` block in the config file picks where GitHub events come from. Every key is optional. Polling is a
+permanent, supported configuration, not a fallback.
+
+```json
+{ "github": { "sources": "polling", "ingress": "off", "pollingIntervalMs": 60000, "backstopIntervalMs": 300000 } }
+```
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `github.sources` | `"polling"`, `"webhook"` | `"polling"` |
+| `github.ingress` | `"on"`, `"off"` (the kill switch, applied with no restart) | `"off"` |
+| `github.pollingIntervalMs` | 30000 to 600000, not above `backstopIntervalMs` | 60000 |
+| `github.backstopIntervalMs` | 300000 to 600000 | 300000 |
+
+Health's `sources` field shows `configured`, `effective`, `reason`, `intervalMs` and `lastPassAt`. The effective-mode table and
+the rest are in the [factory guide](https://github.com/HJewkes/titan-platform/blob/main/site/guides/factory.md#github-event-sources).
 
 ## Shepherd reviewer config
 
@@ -775,7 +811,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
-| `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
+| `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
 
@@ -955,6 +991,122 @@ Spell both the same way.
 The land core talks to GitHub through `@titan-design/github` (`githubPort` over `ghCliWire`,
 and `fakeGitHub` in tests). Its README documents the check-then-act writes and the argument
 validation.
+
+### The bot's github-api pool state: `src/github-api/`
+
+The bot identity's `githubApiPool` (from `@titan-design/github`) keeps its state in the factory
+database: `sqlitePoolStateStore` holds one row per (identity, call class) in migration 35
+(`factory:github_api_pool`), so a restart keeps a closed pair closed until its probe and canary
+reopen it. Each reopen appends one `ApiAvailable` to the event log (`source: store`, occurrence key
+`v1|ApiAvailable|<identity>|<class>|<resetAt epoch s>`), so a repeated `onAvailable` inserts
+nothing. A 401 logs one `factory: ops-alarm github-auth identity=<login>` line per transition and
+shows `auth` on every class of health's `githubApi` field; the pool sends no `GET /rate_limit`
+probe in that state, because the probe answers 401 under a rejected token too and cannot succeed,
+so only a token change or a restart clears it. At M1a nothing waits on `ApiAvailable` or reads the
+pool-state table (`github-api/no-consumer.test.ts`), and no bot client is bound to the pool yet.
+
+### The bot token's A17 leak scan: `bot-token scan`
+
+A17 says the bot's token is absent from every agent environment. When serve reads the bot token (TP-3094 C3), it
+writes the token's SHA-256 to `bot-token.sha256` in its state dir (the database's dir), mode 0600, through a rename.
+With no token, or a refused one, it writes none and removes a stale one.
+
+`titan-factory bot-token scan`, run as the agents' uid, finds every token-shaped string (`ghp_` classic and
+`github_pat_` fine-grained, including one run straight into more token characters) and compares its SHA-256 with that
+fingerprint. The scan never holds the token, and the report names a place and where in it, never the matched string:
+
+| Place | Read | Default |
+| --- | --- | --- |
+| `env` | `<proc>/<pid>/environ` of this uid's processes only | `/proc` |
+| `briefs` | every file under each dir | `$AGENT_CHAT_HOME/agents` |
+| `logs` | `*.log` and `*.log.<n>` files under each dir | the database's dir (serve's logs) and `$AGENT_CHAT_HOME` |
+| `transcripts` | every file under each dir | `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects` |
+| `store` | every row of every table, through a read-only connection | the `--db` database |
+
+`--fingerprint`, `--proc`, `--briefs`, `--logs`, `--transcripts` and `--store` override each place; tests point all of
+them at fixture dirs. The report prints `HIT <place> <where>` lines (a path, `pid <n>` or `table <name>`), a count of
+what each place scanned, and a `missing <place> <root>` line for a root that is not there, which is not counted clean.
+It exits 0 when clean and 1 on a hit; on a hit, revoke the token and rotate it. With no fingerprint it exits 69 and
+claims nothing: serve holds no bot token, so there is nothing to check. Files are read in 1 MiB chunks, so a large
+transcript is never held whole. The scan does not decode a token that was base64- or URL-encoded.
+
+### The bot token's expiry alarm
+
+The bot client's fetch reads GitHub's `github-authentication-token-expiration` header on every response,
+error answers included (`src/bot-token-expiry.ts`). `/health.bot.expiresAt` carries the last value as an ISO
+time; it is null before the bot's first response and for a token with no expiry. With 14 days or less left,
+serve logs one `factory: ops-alarm bot-token-expiry fingerprint=<12 hex> expiresAt=<iso> daysLeft=<n>` line per
+token fingerprint (the A17 fingerprint above, never the token). The set of alarmed fingerprints lives in
+memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
+follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
+
+### The bot token file
+
+serve reads the bot's token from `BOT_TOKEN_PATH` (`src/bot-identity.ts`):
+`~/.config/titan-factory/secrets/github-bot.token`, where `~` is the home dir in serve's passwd entry, not
+`$HOME`. No environment variable, flag or config moves it. The file is 0600 in a 0700 dir, both owned by serve's
+OS user (TP-3094 option B: serve runs as the owner's user), outside every worktree. A missing file leaves the bot
+`absent`; a symlink, a group or other bit, another owner or a non-token shape leaves it `refused`. Either way serve
+still starts. The constant lives alone in `src/bot-token-path.ts`. Under vitest, a setup file
+(`src/test-support/vitest-setup.ts`) gives `userInfo()` a fresh home under the run's temp root, and the forked serve
+child's resolve hook swaps the module for one with no path. So no test resolves the passwd home or reads the real
+token, even when it starts serve with no `bot` option.
+
+The owner writes the token; no agent reads, writes or prints it. Run one line at a time in the owner's own
+terminal, not in an agent session:
+
+```sh
+mkdir -m 700 -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+umask 077
+read -rs BOT_TOKEN
+printf '%s\n' "$BOT_TOKEN" > ~/.config/titan-factory/secrets/github-bot.token.new
+unset BOT_TOKEN
+chmod 600 ~/.config/titan-factory/secrets/github-bot.token.new
+mv ~/.config/titan-factory/secrets/github-bot.token.new ~/.config/titan-factory/secrets/github-bot.token
+ls -ld ~/.config/titan-factory/secrets ~/.config/titan-factory/secrets/github-bot.token
+```
+
+Paste the token at the `read -rs` prompt; nothing shows. The `ls` lines must start with `drwx------` and
+`-rw-------`. Then `titan-factory service restart`, check that `curl -s http://127.0.0.1:7410/health | jq .bot`
+shows `state: "ok"`, and that `titan-factory bot-token scan` exits 0. Rotation, including the E16 classic-token
+check, follows [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md), option B.
+
+### Bot token security
+
+Owner decision 2026-10-22 (TP-3094 option B, TP-3420): serve stays the owner's OS user, so the token file is
+readable by every process running as that user, agents included. The owner accepted this same-user residual
+rather than move serve to its own OS user (option A). Agents already hold the owner's admin GitHub token through
+the `gh` CLI, so the bot token adds three things: an approval that counts as not the author's, writes that look
+like the factory's, and a credential that works off the box until it expires.
+
+What an agent running as the owner's user could still do:
+
+- read the token by any route the tool guard misses, for example a script it writes or an interpreter that
+  builds the path at run time;
+- approve, merge, push `shepherd-train/**` branches and post statuses as the bot, directly;
+- drain the bot's rate budget and stall every factory read (a denial of service, not a breach);
+- copy the token off the box, where it works until it expires or is revoked;
+- edit serve's deploy checkout or config and wait for a restart, so serve itself misuses the token;
+- read serve's memory with ptrace, unless the kernel's Yama `ptrace_scope` is 1 or more.
+
+What limits it:
+
+- **The tool guard.** `**/titan-factory/**/*.token` is a secret path in `@titan-design/tool-guard`, so a `Read`,
+  `cat`, `cp` or `base64` of the file is refused as `secret-read` (TP-3406). It stops direct reads, not every route.
+- **No accidental exposure.** The token never enters an environment, brief, log, step output, trace or the store:
+  serve holds it in memory, reaches GitHub through octokit in-process, and hands steps only the
+  `github-bot` capability. The unit sets `LimitCORE=0`, and the file sits outside every worktree.
+- **I5 and the audit.** Agents never merge; only logged paths do, and `pnpm merge:lint` flags any other merge.
+  The reconciler raises `ops-alarm BotActionUnlogged` for a bot review, merge, status or train push with no
+  factory intent row, and never counts that review as the factory's approval. Attribution is by the merge log, so
+  a move as the bot is caught at M3's walk over main, not prevented. The detector needs `BOT_LOGIN` set.
+- **The A17 scan and expiry.** `titan-factory bot-token scan` finds a copy in any agent's environment, briefs,
+  logs, transcripts or the store. A 90-day expiry and the 14-day alarm bound a copied token, and the token keeps
+  the scopes of the bot's setup packet.
+
+Option A, with serve as its own OS user and its code, config and unit unwritable by agents, is what would close the
+read, the direct use and the misuse rows above.
 
 ## Writing a gate brief
 

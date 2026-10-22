@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { configPath, loadConfig, resolveDbPath } from "./config.js";
+import { arConfigFixture } from "./test-support/autoresearch.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -109,6 +110,13 @@ describe("loadConfig", () => {
     expect(load({ heldRepair: "on" }).shepherd?.gateReset).toEqual({ heldRepair: "on" });
     expect(() => load({ heldRepair: "yes" })).toThrow(/heldRepair/);
     expect(() => load({ heldRepairs: "on" })).toThrow(/heldRepairs/);
+  });
+
+  it("reads the no-repro-proceed gate reset flag, and rejects a value other than off or on", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ noReproProceed: "on" }).shepherd?.gateReset).toEqual({ noReproProceed: "on" });
+    expect(() => load({ noReproProceed: "shadow" })).toThrow(/noReproProceed/);
   });
 
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
@@ -357,5 +365,27 @@ describe("the github sources block", () => {
   it("refuses ingress on under polling, where the route would answer 404", () => {
     expect(() => load({ sources: "polling", ingress: "on" })).toThrow(/github\.ingress: ingress on needs sources webhook/);
     expect(() => load({ ingress: "on" })).toThrow(/github\.ingress/);
+  });
+});
+
+describe("the autoresearch block", () => {
+  const section = (target: Record<string, unknown>) => ({
+    ...arConfigFixture("/tmp/ar-fixture"),
+    targets: { fixture: { clone: "/tmp/ar-fixture/clone", adapterDir: "ar", ...target } },
+  });
+  const load = (autoresearch: unknown) => loadConfig(configPath(xdg({ autoresearch })));
+
+  it("reads a target, with the run settings' fork schedule filled in", () => {
+    const loaded = load(section({ validatorCasesFile: "/tmp/ar-fixture/validator-cases" })).autoresearch;
+
+    expect(loaded?.targets.fixture).toEqual({ clone: "/tmp/ar-fixture/clone", adapterDir: "ar", validatorCasesFile: "/tmp/ar-fixture/validator-cases" });
+    expect(loaded?.run.forkSchedule).toEqual({ afterKeep: { exploit: 1 }, basinEvery: 3 });
+  });
+
+  it("refuses a relative clone, an adapter dir outside the repo, an unknown key and a per-stage ttl", () => {
+    expect(() => load(section({ clone: "fixture-clone" }))).toThrow(/autoresearch\.targets\.fixture\.clone: must be an absolute path/);
+    expect(() => load(section({ adapterDir: "../ar" }))).toThrow(/autoresearch\.targets\.fixture\.adapterDir/);
+    expect(() => load(section({ cases: ["val-1"] }))).toThrow(/autoresearch\.targets\.fixture/);
+    expect(() => load({ ...section({}), stages: { planner: { profile: "p", ttl: "1h" }, implementer: { profile: "i" } } })).toThrow(/autoresearch\.stages\.planner/);
   });
 });

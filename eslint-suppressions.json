@@ -12,6 +12,11 @@
       "count": 1
     }
   },
+  "apps/console/server/review-schema-0.3/lint.ts": {
+    "@typescript-eslint/ban-ts-comment": {
+      "count": 1
+    }
+  },
   "apps/console/server/review-schema-0.3/schema.ts": {
     "titan/max-function-lines": {
       "count": 3
@@ -1517,7 +1522,7 @@
   },
   "products/factory/src/workflows.ts": {
     "titan/max-line-length": {
-      "count": 12
+      "count": 10
     }
   },
   "products/factory/src/workflows/await-head.test.ts": {

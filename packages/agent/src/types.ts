@@ -41,6 +41,8 @@ export interface AgentInit {
 export interface AgentUsage {
   totalCostUsd: number;
   modelUsage: Record<string, ModelUsage>;
+  /** Cache writes by TTL from the result's raw `usage`, which is not broken out per model; absent when the harness gave no split. */
+  cacheCreation?: { ephemeral5m: number; ephemeral1h: number };
   turns: number;
   durationMs: number;
 }

@@ -323,6 +323,16 @@ describe("gh api adapter", () => {
     expect(gh.calls[1]?.args).toEqual(["api", "-i", "-X", "GET", "repositories/9/commits/x/check-runs?per_page=100&page=2"]);
   });
 
+  it("asks GitHub for every attempt only when the read is for attempt history", async () => {
+    const gh = scriptedGh({ "check-runs": included(200, {}, { check_runs: [] }) });
+    const wire = ghCliWire(gh.exec);
+
+    await wire.listCheckRuns(REPO, H1);
+    await wire.listCheckRuns(REPO, H1, "all");
+
+    expect(gh.calls.map((call) => call.args.includes("filter=all"))).toEqual([false, true]);
+  });
+
   it("reads a missing ref as null and sends file content base64-encoded on stdin", async () => {
     const notFound = { code: 1, stdout: '{"message":"Not Found","status":"404"}', stderr: "gh: Not Found (HTTP 404)\n" };
     const gh = scriptedGh({ "git/ref/heads/": notFound, "contents/": JSON.stringify({ content: { sha: "blob2" } }) });
@@ -366,6 +376,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/git\/refs/, undefined],
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
   [/rules\/branches\//, []],
+  [/rulesets$/, []],
   [/branches\/main$/, { name: "main", protected: false }],
   [/check-runs$/, { check_runs: [] }],
   [/commits\/[0-9a-f]+\/status$/, { total_count: 0, statuses: [] }],
@@ -374,6 +385,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/git\/commits$/, { sha: H2 }],
   [/actions\/runs\/\d+$/, { status: "completed" }],
   [/rerun-failed-jobs$/, undefined],
+  [/actions\/jobs\/\d+\/rerun$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/actions\/jobs\/\d+$/, { id: 42, steps: [{ name: "Set up job", conclusion: "success", number: 1 }, { name: "Run pnpm test", conclusion: "failure", number: 2 }] }],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
@@ -408,6 +420,8 @@ describe("gh api adapter, REST only", () => {
       findPr: () => port.findPr(REPO, "topic"),
       listOpenPrs: () => port.listOpenPrs(REPO, "to"),
       revalidateOpenPrs: () => port.revalidateOpenPrs(REPO, null),
+      revalidateRef: () => port.revalidateRef(REPO, "main", null),
+      revalidateRulesets: () => port.revalidateRulesets(REPO, null),
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       defaultBranch: () => port.defaultBranch(REPO),
@@ -416,6 +430,7 @@ describe("gh api adapter, REST only", () => {
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       branchProtected: () => port.branchProtected(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
+      checkRunAttempts: () => port.checkRunAttempts(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
@@ -430,6 +445,8 @@ describe("gh api adapter, REST only", () => {
       merge: () => port.merge(REPO, 7, H1, "squash"),
       mergeIntoBranch: () => port.mergeIntoBranch(REPO, { branch: "topic", head: H1 }),
       rerunFailed: () => port.rerunFailed(REPO, 55),
+      workflowRunStatus: () => port.workflowRunStatus(REPO, 55),
+      rerunJob: () => port.rerunJob(REPO, 55, 42),
       listPrFiles: () => port.listPrFiles(REPO, 7),
       listPrCommits: () => port.listPrCommits(REPO, 7),
       getSquashSource: () => port.getSquashSource(REPO, 7),
@@ -591,6 +608,64 @@ describe("gh api adapter, conditional GETs", () => {
     expect(second).toEqual({ notModified: true });
     expect(gh.calls[0]?.args).not.toContain("-H");
     expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"o1"']);
+  });
+
+  it("revalidates a branch tip with the caller's ETag and answers a 304 as not modified", async () => {
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"r1"' }, { ref: "refs/heads/main", object: { sha: H1 } }), included(304, { ETag: 'W/"r1"' }, undefined)]);
+    const port = githubPort(ghCliWire(gh.exec));
+
+    const first = await port.revalidateRef(REPO, "main", null);
+    const second = await port.revalidateRef(REPO, "main", 'W/"r1"');
+
+    expect(first).toEqual({ notModified: false, sha: H1, etag: 'W/"r1"' });
+    expect(second).toEqual({ notModified: true });
+    expect(gh.calls[0]?.args).toEqual(["api", "-i", "-X", "GET", "repos/octo/demo/git/ref/heads/main"]);
+    expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"r1"']);
+  });
+
+  it("reads a branch that answers 404 as a null tip with no ETag", async () => {
+    const gh = scriptedGhSequence([included(404, {}, { message: "Not Found" })]);
+
+    const read = await ghCliWire(gh.exec).revalidateRef(REPO, "gone", 'W/"r1"');
+
+    expect(read).toEqual({ notModified: false, sha: null, etag: null });
+  });
+
+  it("revalidates the rulesets with the caller's ETag, mapping id to updated_at without a detail read", async () => {
+    const list = [{ id: 11, name: "a", updated_at: "2026-10-01T00:00:00Z" }, { id: 12, name: "b", updated_at: "2026-10-02T00:00:00Z" }];
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"s1"' }, list), included(304, { ETag: 'W/"s1"' }, undefined)]);
+    const port = githubPort(ghCliWire(gh.exec));
+
+    const first = await port.revalidateRulesets(REPO, null);
+    const second = await port.revalidateRulesets(REPO, 'W/"s1"');
+
+    expect(first).toEqual({ notModified: false, unreadable: false, rulesets: { 11: "2026-10-01T00:00:00Z", 12: "2026-10-02T00:00:00Z" }, etag: 'W/"s1"' });
+    expect(second).toEqual({ notModified: true });
+    expect(gh.calls).toHaveLength(2);
+    expect(gh.calls[0]?.args).toEqual(["api", "-i", "-X", "GET", "repos/octo/demo/rulesets", "-f", "per_page=100"]);
+    expect(gh.calls[1]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"s1"']);
+  });
+
+  it("reads a ruleset's detail only when its list row lacks updated_at", async () => {
+    const list = [{ id: 11, updated_at: "2026-10-01T00:00:00Z" }, { id: 12 }];
+    const gh = scriptedGhSequence([included(200, { ETag: 'W/"s1"' }, list), included(200, {}, { id: 12, updated_at: "2026-10-03T00:00:00Z" })]);
+
+    const read = await ghCliWire(gh.exec).revalidateRulesets(REPO, null);
+
+    expect(read).toMatchObject({ rulesets: { 11: "2026-10-01T00:00:00Z", 12: "2026-10-03T00:00:00Z" } });
+    expect(gh.calls.map((call) => call.args[4])).toEqual(["repos/octo/demo/rulesets", "repos/octo/demo/rulesets/12"]);
+  });
+
+  it("surfaces a free-plan 403 on the rulesets as unreadable, and any other 403 as a failure", async () => {
+    const upgrade = { message: "Upgrade to GitHub Pro or make this repository public to enable this feature." };
+    const freePlan = scriptedGhSequence([included(403, {}, upgrade)]);
+    const refused = scriptedGhSequence([included(403, {}, { message: "Resource not accessible by integration" })]);
+
+    const read = await ghCliWire(freePlan.exec).revalidateRulesets(REPO, 'W/"s1"');
+
+    expect(read).toEqual({ notModified: false, unreadable: true });
+    expect(freePlan.calls[0]?.args.slice(-2)).toEqual(["-H", 'If-None-Match: W/"s1"']);
+    await expect(ghCliWire(refused.exec).revalidateRulesets(REPO, null)).rejects.toMatchObject({ status: 403 });
   });
 
   it("carries each listed PR's title, and its empty body as an empty string", async () => {

@@ -4,8 +4,9 @@ import type { ConsoleCommands } from "../../server/commands.js";
 
 type Prepared = ConsoleCommands["inbox.prepare"]["result"];
 export type InboxReady = Extract<Prepared, { status: "ready" }>;
-/** A gate or hold read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's carries `confirmLabel`. */
+/** A gate, hold or op read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's `confirmLabel`, only an op's `proposal`. */
 type RepoReadBack = Extract<InboxReady["readBack"], { repo: string }>;
+type OpReadBack = Extract<RepoReadBack, { proposal: string }>;
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
@@ -36,6 +37,18 @@ function PrFacts({ readBack, readAt }: { readBack: RepoReadBack; readAt: string 
       <Typography variant="mono">{`head ${readBack.headSha.slice(0, 7)}, matches the live head, read ${secondsSince(readAt)} s ago`}</Typography>
       {"gateId" in readBack && readBack.gateId !== undefined ? <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography> : null}
       {readBack.hold === undefined ? null : <Typography variant="caption" color="secondary">{`Hold: ${readBack.hold.reason}`}</Typography>}
+      {"proposal" in readBack ? <OpFacts readBack={readBack} /> : null}
+    </>
+  );
+}
+
+/** An op's live PR state from the factory, then the depositing agent's words, labelled as theirs. */
+function OpFacts({ readBack }: { readBack: OpReadBack }): ReactNode {
+  const behind = readBack.behind ? ", behind its base" : "";
+  return (
+    <>
+      <Typography variant="caption" color="secondary">{`Into ${readBack.base}${behind}; GitHub reads it ${readBack.mergeableState}. Authority ${readBack.authority}`}</Typography>
+      <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>
     </>
   );
 }

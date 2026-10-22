@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, EmptyState, HStack, Heading, Link, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Chip, EmptyState, HStack, Heading, Link, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { ScrubMarkers } from "./ScrubMarkers.js";
-import { TheaterComment, formatAt } from "./TheaterComment.js";
-import { VERDICT_LABELS, VideoBadges, type VideoRow } from "./TheaterPage.js";
+import { TheaterComment, formatAt, type NoteAbout } from "./TheaterComment.js";
+import { VERDICT_LABELS, VideoBadges } from "./TheaterFeed.js";
+import type { VideoRow } from "./theater-feed.js";
 
 type Note = ConsoleCommands["videos.notes"]["result"]["notes"][number];
 type Seek = (seconds: number) => void;
+const NOTE_FILTERS = ["all", "content", "video"] as const;
+type NoteFilter = (typeof NOTE_FILTERS)[number];
+
+const ABOUT_PILLS: Record<NoteAbout, string> = { content: "Content", video: "Video" };
 
 /** `HAVE_METADATA`: below it, Safari ignores a `currentTime` write. */
 const HAVE_METADATA = 1;
@@ -111,17 +116,38 @@ function Framed({ title, children }: { title: string; children: ReactNode }): Re
   );
 }
 
+const FILTER_LABELS: Record<NoteFilter, string> = { all: "All", content: "Content", video: "Video" };
+
+/** A filter keeps verdicts in view, since a verdict is on the render as a whole rather than one kind of comment. */
+function filterNotes(notes: readonly Note[], filter: NoteFilter): Note[] {
+  return filter === "all" ? [...notes] : notes.filter((note) => note.kind !== "comment" || note.about === filter);
+}
+
+function NoteFilterChips({ filter, onFilter }: { filter: NoteFilter; onFilter: (filter: NoteFilter) => void }): ReactNode {
+  return (
+    <HStack gap={2} align="center" wrap>
+      {NOTE_FILTERS.map((each) => (
+        <Chip key={each} variant={filter === each ? "solid" : "subtle"} size="sm" onPress={() => onFilter(each)} accessibilityState={{ selected: filter === each }} testID={`theater-notes-filter-${each}`}>
+          {FILTER_LABELS[each]}
+        </Chip>
+      ))}
+    </HStack>
+  );
+}
+
 function NotesList({ videoId, seek }: { videoId: string; seek: Seek }): ReactNode {
   const notes = useQuery("videos.notes", { videoId });
+  const [filter, setFilter] = useState<NoteFilter>("all");
   if (notes.status === "loading") return <Spinner size="sm" label="Loading notes" />;
   if (notes.data === undefined) return <Alert status="error" message={`Could not load notes: ${notes.error.message}`} />;
-  const sorted = [...notes.data.notes].sort((a, b) => a.atS - b.atS);
+  const sorted = filterNotes(notes.data.notes, filter).sort((a, b) => a.atS - b.atS);
   return (
     <VStack gap={2}>
       {notes.data.gaps.map((gap) => (
         <Alert key={gap} status="warning" message={gap} />
       ))}
-      {sorted.length === 0 ? <EmptyState title="No notes on this video yet" /> : sorted.map((note) => <NoteRow key={note.id} note={note} seek={seek} />)}
+      {notes.data.notes.length === 0 ? null : <NoteFilterChips filter={filter} onFilter={setFilter} />}
+      {sorted.length === 0 ? <EmptyState title={filter === "all" ? "No notes on this video yet" : "No notes of this kind"} /> : sorted.map((note) => <NoteRow key={note.id} note={note} seek={seek} />)}
     </VStack>
   );
 }
@@ -133,7 +159,18 @@ function NoteRow({ note, seek }: { note: Note; seek: Seek }): ReactNode {
       <Link color="primary" onPress={() => seek(note.atS)}>
         {formatAt(note.atS)}
       </Link>
-      {note.kind === "comment" ? <Typography variant="body2">{note.text}</Typography> : <Pill variant="subtle" size="xs">{VERDICT_LABELS[note.verdict]}</Pill>}
+      {note.kind === "comment" ? (
+        <>
+          <Pill variant="outline" tone="neutral" size="xs" testID={`theater-about-${note.id}`}>
+            {ABOUT_PILLS[note.about]}
+          </Pill>
+          <Typography variant="body2">{note.text}</Typography>
+        </>
+      ) : (
+        <Pill variant="subtle" size="xs">
+          {VERDICT_LABELS[note.verdict]}
+        </Pill>
+      )}
       {note.current ? null : (
         <Typography variant="caption" color="secondary">
           earlier render

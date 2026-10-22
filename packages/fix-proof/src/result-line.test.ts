@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Classification } from "./classify.js";
 import type { FixProofPlan } from "./plan.js";
-import { formatResultLine, parseResultLine, RESULT_LINE_MAX_BYTES, toResult, type FixProofResult } from "./result-line.js";
+import { formatResultLine, parseResultLine, provedByMutants, RESULT_LINE_MAX_BYTES, toResult, type FixProofResult } from "./result-line.js";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -27,6 +27,68 @@ const classification: Classification = {
 };
 
 const result = (): FixProofResult => toResult({ head: HEAD, mergeBase: BASE, plan, classification });
+
+describe("provedByMutants", () => {
+  const testOnly = (overrides: Partial<FixProofResult> = {}): FixProofResult => ({
+    ...result(),
+    verdict: "vacuous",
+    deletedTests: [],
+    counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
+    mutants: { verdict: "killed", results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: "killed" }], uncovered: [] },
+    ...overrides,
+  });
+
+  it("proves a vacuous result whose every mutation is killed by tests that pass at head", () => {
+    expect(provedByMutants(testOnly())).toBe(true);
+  });
+
+  it("does not prove a result whose mutation survived", () => {
+    expect(provedByMutants(testOnly({ mutants: { verdict: "not-killed", results: [{ spec: "src/a.test.mutations.json", name: "drop the bound", outcome: "survived" }] } }))).toBe(false);
+  });
+
+  it.each([
+    ["a test fails at head", { "fails-on-head": 1 }],
+    ["a test did not run", { "not-run": 1 }],
+    ["no test ran", { "passes-on-base": 0 }],
+  ])("does not prove killed mutants when %s", (_, counts) => {
+    expect(provedByMutants(testOnly({ counts: { ...testOnly().counts, ...counts } }))).toBe(false);
+  });
+
+  it("does not prove killed mutants with a changed test file no spec covers", () => {
+    const mutants = { ...testOnly().mutants!, uncovered: ["src/guard.test.ts"] };
+
+    expect(provedByMutants(testOnly({ mutants }))).toBe(false);
+  });
+
+  it("does not prove killed mutants on a diff that deletes a test", () => {
+    expect(provedByMutants(testOnly({ deletedTests: ["src/guard.test.ts"] }))).toBe(false);
+  });
+
+  it("does not prove killed mutants from a judge that never checked coverage", () => {
+    const unchecked = { verdict: "killed" as const, results: testOnly().mutants!.results };
+
+    expect(provedByMutants(testOnly({ mutants: unchecked }))).toBe(false);
+  });
+
+  it("refuses a killed verdict that lists an uncovered test file", () => {
+    const mutants = { ...testOnly().mutants!, uncovered: ["src/guard.test.ts"] };
+
+    expect(() => formatResultLine(testOnly({ mutants }))).toThrow(/killed with an uncovered test file/);
+  });
+
+  it("round-trips the uncovered list on a not-killed line", () => {
+    const mutants = { ...testOnly().mutants!, verdict: "not-killed" as const, uncovered: ["src/guard.test.ts"] };
+
+    const line = parseResultLine(formatResultLine(testOnly({ mutants })));
+
+    expect(line.ok && line.result.mutants).toEqual(mutants);
+  });
+
+  it("does not prove a result with no mutation check or a mutants error", () => {
+    expect(provedByMutants(testOnly({ mutants: undefined }))).toBe(false);
+    expect(provedByMutants(testOnly({ mutants: { verdict: "error", results: [], error: "mutants side skipped" } }))).toBe(false);
+  });
+});
 
 describe("toResult", () => {
   it("counts classes and carries the plan's deleted tests", () => {

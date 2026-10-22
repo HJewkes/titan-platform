@@ -19,14 +19,19 @@ This package is the pure core of that gate. It adds three primitives:
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
-  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  (`mutations`) and every path that is not test material (`source`). Given `headFiles`, the
+  paths at head beside those specs, it also plans each spec's one sibling test unless the PR
+  deletes it, so a diff that changes only a spec runs the test its mutants are judged on.
+  `testOnlyOf(plan)` is true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
   also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
   `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
   log line of at most 4 KB, for a CI job to print and Shepherd to read.
+- `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
+  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
+  a test-only diff's proof with it.
 
 ## When to reach for it
 
@@ -91,7 +96,10 @@ purpose; the sandbox removes the survivors, not the test code's own reach.
 [Test-only diffs and mutation specs](#test-only-diffs-and-mutation-specs)).
 
 1. A diff with no spec, or with any path in `plan.source`, writes a skipped marker and runs
-   nothing. A spec that does not parse or fails `checkMutation` writes an error marker.
+   nothing. A spec that does not parse or fails `checkMutation` writes an error marker. On a
+   source diff each spec is still parsed, paired and run through `checkMutation` against head.
+   A refused spec, or on a source diff any failure reading one, also writes `mutants.refused`,
+   and `scripts/fix-proof-run.sh` fails the mutants job on it.
 2. Like the base side, it adds a merge-base worktree, installs and builds it, and only then
    overlays the head's tests and carried files.
 3. It runs the specs' test files once as the baseline.
@@ -120,7 +128,7 @@ The deadline defaults to 13 minutes; an overrun is an error marker, never a kill
   presence in a merge-base build tells the CI script that the base supports the split.
 
 **`run`** runs both sides and then the judge in one process: the local mode, with the same
-verdict as the three jobs.
+base-vs-head verdict as the CI jobs. It does not run the mutants side.
 
 Every subcommand exits 0. Bad arguments or any failure give an `error` line instead; the
 deadline's error is `timeout`. Worktrees are removed either way.
@@ -128,18 +136,23 @@ deadline's error is `timeout`. Worktrees are removed either way.
 `command` and `build` run under `sh -c`, so they come from the merge base's config only. Build
 the runner itself from the merge base too, never from the PR's tree.
 
-### The three CI jobs
+### The four CI jobs
 
 | Job | Runs | Hands on |
 | --- | --- | --- |
 | `fix-proof-base` | `exec --side base` | `base.report` and `base-rerun.report` as job outputs |
 | `fix-proof-head` | `exec --side head` | `head.report` as a job output |
-| `fix-proof` | `judge` from a merge-base build, after both | the verdict line Shepherd reads |
+| `fix-proof-mutants` | `exec --side mutants`, sandboxed, when the diff adds or changes a `*.mutations.json` | `mutants.report` as a job output |
+| `fix-proof` | `judge` from a merge-base build, after all three | the verdict line Shepherd reads |
+
+`fix-proof-mutants` skips its build when the diff carries no spec (`fix-proof-run.sh specs`), so
+most pull requests pay only for a checkout. The judge reads its report only for a plan with a
+spec, and an absent report there is a mutants `error`.
 
 A head install or build can rewrite its own tree, its report or the vitest config of anything
 it can reach, and it can leave a detached process that prints a forged line later. None of that
 reaches another job's machine, outputs or log, and the judge job runs no head code. A repo that
-copied the old single-job workflow keeps that weaker model until it adopts the three jobs.
+copied the old single-job workflow keeps that weaker model until it adopts the split jobs.
 
 **Accepted residual.** The head's tests and carried support files still run on the base side,
 because they are what is being proved. A test that detects the base and fails on purpose can
@@ -238,7 +251,8 @@ base-vs-head by construction. For such a PR the gate asks for mutations instead 
 - **`parseMutationSpec(text)`** is strict. It refuses unknown keys, more than 5 mutations or
   none, a duplicate or over-80-character `name`, a `find` or `replace` over 400 characters, a
   `find` equal to its `replace`, an unnormalized `file`, and an empty or duplicate `kills` list.
-- **`checkMutation(mutation, baseText, config)`** checks one mutation against the merge base.
+- **`checkMutation(mutation, baseText, config, at?)`** checks one mutation against the merge base,
+  or against the commit `at` names in its errors (the mutants side passes `"head"` on a source diff).
   Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
   carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
   counting overlapping matches.
@@ -271,6 +285,12 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
     `AssertionError` (from an `expect` matcher or `node:assert`). A thrown TypeError, a
     timeout or a crash is not a kill. Neither is a failure from `.rejects` or `.resolves`,
     because vitest reports those as a plain `Error`.
+- **Coverage.** A killed spec proves only the test file beside it. The judge lists every
+  changed test file (`plan.tests`) that no spec in the diff sits beside as
+  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
+  before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
+  diff that deletes a test or renames one out of the tests is not test-only
+  (`testOnlyReading`), so the judge attaches no `mutants` to it at all.
 - **Fitting the 4 KB line.** `failed` lists the failing tests only for `overkill` and
   `survived`. To fit the line, the judge drops `killed` results before the others and keeps
   the verdict.

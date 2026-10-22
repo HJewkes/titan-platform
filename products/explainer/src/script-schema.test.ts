@@ -73,4 +73,19 @@ describe("script/v1", () => {
 
     expect(ScriptSchema.safeParse(script).success).toBe(false);
   });
+
+  it("admits the spike's optional keys", () => {
+    const base = scriptWith({ visual: { assertion: "One server sits between every scanner and the ledger", job: "map", render: "MapBeat", map_state: { map: "old", level: "containers", old: { pins: [{ anchor: "desk", text: "one desk", atCue: "scan" }] } } } });
+    const script = { ...base, beats: [{ ...base.beats[0], band: "diagram", origin: "v2" }], maps: { old: { nodes: [{ id: "desk", label: "Desk", nodeBox: [1, 2] }] } }, map: { nodes: [] }, shared_nodes: ["desk"] };
+
+    expect(issues(script)).toEqual([]);
+  });
+
+  // Mutation: restoring `.max(2)` on `invariants` makes this parse fail.
+  it("parses more than two invariants; the cap is an L0 warning", () => {
+    const base = scriptWith();
+    const script = { ...base, video: { ...base.video, invariants: ["One holds.", "Two holds.", "Three holds."] } };
+
+    expect(issues(script)).toEqual([]);
+  });
 });

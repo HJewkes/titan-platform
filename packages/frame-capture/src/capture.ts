@@ -104,12 +104,14 @@ export async function openCapturePage(browser: Browser, url: string, options: Pa
   await page.goto(url, { waitUntil: 'load' })
   const duration = await waitForMotionApi(page, errors)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
+  // Anchors the animations the page started while loading at virtual 0, so a chunk that jumps ahead agrees with a sweep.
+  await page.evaluate(() => window.__virtualTime.syncAnimations())
   if (options.preloadFonts !== false) assertFontsLoaded(fonts)
   throwIfPageErrored(errors, 'while loading')
   return { page, duration, fonts, errors }
 }
 
-/** One frame: advance virtual time, seek (commits through flushSync), await ready(), screenshot. */
+/** One frame: advance virtual time, seek (commits through flushSync), await ready(), sync the animations the seek started, screenshot. */
 export async function captureFrame(page: Page, t: number): Promise<Buffer> {
   await page.evaluate(async (seconds) => {
     window.__virtualTime.advanceTo(seconds * 1000)
@@ -117,6 +119,7 @@ export async function captureFrame(page: Page, t: number): Promise<Buffer> {
     if (!motion) throw new Error('window.__titanMotion is gone')
     motion.seek(seconds)
     await motion.ready()
+    window.__virtualTime.syncAnimations()
   }, t)
   return screenshot(page)
 }

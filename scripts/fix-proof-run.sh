@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# The fix-proof workflow's glue between its three jobs. Two exec jobs build and test one side each and pass encoded
+# The fix-proof workflow's glue between its four jobs. Three exec jobs build and test one side each and pass encoded
 # reports on as job outputs; the judge job decodes them with code built from the merge base alone and prints the one
 # fix-proof/v1 line Shepherd reads. A head process cannot reach another job's VM, outputs or log, so the judge's line
 # cannot be forged from the head the way a single job's could.
 #
-#   exec <base|head> <runner> <repo> <base> <head> <out>  run one side, writing <name>.report files into <out>
-#   emit <base|head> <out>                                copy those files into $GITHUB_OUTPUT as report (and rerun)
-#   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD into <dir>
+#   exec <base|head|mutants> <runner> <repo> <base> <head> <out>
+#                                                         run one side, writing <name>.report files into <out>; mutants
+#                                                         exits 1 when the runner wrote mutants.refused
+#   emit <base|head|mutants> <out>                        copy those files into $GITHUB_OUTPUT as report (and rerun)
+#   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD and
+#                                                         REPORT_MUTANTS into <dir>
 #   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>, or an error
 #                                                         line when FIX_PROOF_REFUSED holds a reason
 #   merge-base <repo> <base> <head>                       write sha=<merge base> into $GITHUB_OUTPUT, or refused=<reason>
 #                                                         when env BASE_REF is not env DEFAULT_BRANCH
+#   specs <repo> <base> <head>                            write present=true into $GITHUB_OUTPUT when the diff adds or
+#                                                         changes a *.mutations.json spec, else present=false
 #
 # A stacked PR's base is a parent branch any agent can push, so a runner from its merge base would take the plan's
 # config and the judge's own source from the parent. merge-base therefore refuses any base but the default branch.
@@ -18,10 +23,13 @@
 # The runner always comes from the merge base. A merge base that predates the split has no dist/judge.js, so every
 # mode treats it as "nothing to prove with": exec writes skipped markers and judge prints a skipped line.
 #
-# exec base runs the head's tests on the merge base, so it hands the runner a sandbox user: a system account with no
+# exec base and exec mutants run the head's tests on the merge base, so each hands the runner a sandbox user: a system account with no
 # sudo, which the runner drops to inside a fresh PID namespace. Nothing those tests start can then outlive vitest or
 # write the reports, this script or $GITHUB_OUTPUT. A merge-base runner without sandbox support, or a sandbox this
-# job cannot set up, yields error markers for both base reports, never an unsandboxed run.
+# job cannot set up, yields error markers for that side's reports, never an unsandboxed run.
+#
+# The mutants side only means something on a test-only diff with a spec; specs lets the workflow skip its build otherwise.
+# A skipped mutants job writes no report, and the judge reads that as a mutants error only where the plan has a spec.
 set -euo pipefail
 
 readonly SKIPPED="skipped: no runner at merge base"
@@ -36,7 +44,7 @@ readonly SANDBOX_USER=fix-proof-sandbox
 readonly SANDBOX_TOOLS=${FIX_PROOF_SANDBOX_TOOLS:-/opt/fix-proof-sandbox}
 
 usage() {
-  echo "usage: fix-proof-run.sh exec|emit|receive|judge|merge-base ... (see the header)" >&2
+  echo "usage: fix-proof-run.sh exec|emit|receive|judge|merge-base|specs ... (see the header)" >&2
   exit 64
 }
 
@@ -49,6 +57,7 @@ side_reports() {
   case $1 in
     base) echo "base base-rerun" ;;
     head) echo "head" ;;
+    mutants) echo "mutants" ;;
     *) usage ;;
   esac
 }
@@ -104,7 +113,7 @@ write_markers() {
   for name in "$@"; do marker "$message" >"$out/$name.report"; done
 }
 
-# Prints why the base side cannot run sandboxed, or nothing when it can.
+# Prints why a side that runs head tests on the merge base cannot run sandboxed, or nothing when it can.
 base_sandbox_problem() {
   if has_sandbox "$1"; then sandbox_problem; else echo "the merge-base runner has no sandbox support"; fi
 }
@@ -118,11 +127,11 @@ exec_side() {
     write_markers "$out" "$SKIPPED" $names
     return 0
   fi
-  if [ "$side" = base ]; then
+  if [ "$side" != head ]; then
     problem=$(base_sandbox_problem "$runner")
     if [ -n "$problem" ]; then
-      echo "fix-proof: base side not run: $problem" >&2
-      write_markers "$out" "base: sandbox unavailable: $problem" $names
+      echo "fix-proof: $side side not run: $problem" >&2
+      write_markers "$out" "$side: sandbox unavailable: $problem" $names
       return 0
     fi
     { unshare --version && setpriv --version; } >&2 || true
@@ -131,6 +140,16 @@ exec_side() {
   fi
   PATH=$path node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
     --budget-ms "$EXEC_BUDGET_MS" "${sandbox[@]}"
+  refused_spec "$side" "$out"
+}
+
+# The judge never reads a source diff's specs, so a refused one would pass unseen; the mutants job fails on it instead.
+# The report is already written, so emit still passes it on.
+refused_spec() {
+  local file="$2/mutants.refused"
+  [ "$1" = mutants ] && [ -f "$file" ] || return 0
+  echo "fix-proof: mutation spec refused: $(head -c 2000 "$file")" >&2
+  return 1
 }
 
 # Prints the report to pass on, or a marker saying why it cannot be: a value with anything outside the base64
@@ -170,6 +189,7 @@ receive() {
   receive_one REPORT_BASE "$1/base.report"
   receive_one REPORT_BASE_RERUN "$1/base-rerun.report"
   receive_one REPORT_HEAD "$1/head.report"
+  receive_one REPORT_MUTANTS "$1/mutants.report"
 }
 
 # The error verdict printed without a runner. Quotes, backslashes and control characters are dropped from the
@@ -191,8 +211,11 @@ judge() {
     error_line "$head" "$base" "$SKIPPED"
     return 0
   fi
+  local -a mutants=()
+  # A merge-base judge that predates the flag would refuse it as unknown, so it gets the three reports it reads.
+  grep -qsF -- '"mutants-report"' "$runner"/packages/fix-proof/dist/*.js && mutants=(--mutants-report "$dir/mutants.report")
   node "$runner/packages/fix-proof/dist/judge.js" --repo "$repo" --base "$base" --head "$head" \
-    --base-report "$dir/base.report" --base-rerun-report "$dir/base-rerun.report" --head-report "$dir/head.report"
+    --base-report "$dir/base.report" --base-rerun-report "$dir/base-rerun.report" --head-report "$dir/head.report" "${mutants[@]}"
 }
 
 # A branch name as the refusal may show it: anything outside a plain ref alphabet becomes ?, so the reason cannot
@@ -214,6 +237,12 @@ merge_base() {
   printf 'sha=%s\n' "$sha" >>"${GITHUB_OUTPUT:?}"
 }
 
+specs() {
+  local present=false
+  [ -n "$(git -C "$1" diff --name-only --diff-filter=d "$2" "$3" -- '*.mutations.json')" ] && present=true
+  printf 'present=%s\n' "$present" >>"${GITHUB_OUTPUT:?}"
+}
+
 mode=${1:-}
 [ $# -gt 0 ] && shift
 case $mode in
@@ -222,5 +251,6 @@ case $mode in
   receive) [ $# -eq 1 ] || usage; receive "$@" ;;
   judge) [ $# -eq 5 ] || usage; judge "$@" ;;
   merge-base) [ $# -eq 3 ] || usage; merge_base "$@" ;;
+  specs) [ $# -eq 3 ] || usage; specs "$@" ;;
   *) usage ;;
 esac

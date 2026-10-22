@@ -4,12 +4,17 @@ import path from "node:path";
 import { activeWorkGraphPath, activeWorkRoot } from "@titan-design/app-paths";
 import { isLoopbackHost } from "@titan-design/daemon";
 import { expandHome } from "@titan-design/session-read";
+import { hostIsExecutable, resolveCommand, type IsExecutable } from "./command-path.js";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
+import type { ConfigStorePaths } from "./config-store/compare.js";
+import { coordinatorFilePath } from "./config-store/materialize.js";
 import { coordinatorRootsFrom, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { hostSurfaceRootsFrom, type HostSurfaceRoots } from "./config-surfaces/host.js";
 
 /** Off 7400, which the active-work daemon and `titan-miner serve` both default to. */
 export const DEFAULT_CONSOLE_PORT = 7500;
+/** The story origin's port (TP-3793): its own origin, so a round's Storybook build never runs as the console. */
+export const DEFAULT_STORY_PORT = 7501;
 const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
 /** titan-factory's `serve`, whose `needs.list` merges agent-chat, hitl, Morning and active-work asks. */
@@ -23,6 +28,12 @@ const REVIEWS_UNDER_ROOT = ["titan-platform", "sources", "research", "repo-revie
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
   port: number;
+  /**
+   * The story origin's port, which serves stored Storybook builds read-only on loopback and, with
+   * `lanHost`, the LAN (TP-3793). 0 binds an ephemeral port; null or absent serves no story origin.
+   * `TITAN_CONSOLE_STORY_PORT=0` turns it off, as an ephemeral story port could never be dialled from the LAN.
+   */
+  storyPort?: number | null;
   /** Holds the console daemon's pid file. */
   stateDir: string;
   /** Loopback ports of the upstream daemons; the console never starts any of them. */
@@ -33,6 +44,8 @@ export interface ConsoleConfig {
   agentChatTokenPath: string;
   /** agent-chat's event log, which agents.messages pages through read-only. */
   agentChatEventsDbPath: string;
+  /** The agent-chat CLI that tells a seat its decision round was answered; absent, no seat is told. */
+  agentChatBin?: string;
   /** Which seat owns the agents named `<prefix>-...`. */
   seatPrefixes: SeatPrefix[];
   sessionGraphPath: string;
@@ -61,6 +74,11 @@ export interface ConsoleConfig {
    */
   reviewsDir?: string;
   /**
+   * The Storybook builds rounds ship, one `<buildId>/` each, under the state dir (TP-3793).
+   * Optional so a config built by hand imports no build and gives no round a `live` field; `resolveConfig` always sets it.
+   */
+  storybooksDir?: string;
+  /**
    * The owner's decisions file the decision log appends one-way, A/B and policy answers to, from
    * `TITAN_CONSOLE_DECISIONS_FILE`. Owner-configured; never from a request. Null writes the ledger only.
    */
@@ -70,6 +88,13 @@ export interface ConsoleConfig {
   /** Where `config.surfaces` reads the coordinator files; `TITAN_CONSOLE_AUTONOMY_DIR` and `AGENT_CHAT_HOME` point it. */
   coordinatorRoots?: CoordinatorRoots;
   /**
+   * The coordinator config store: the autonomy tree from `TITAN_CONSOLE_AUTONOMY_DIR`, the same one
+   * `config.surfaces` reads (no default, so nothing reads a tree the owner did not name) and the materialized document, by default in
+   * titan-coordinator's app-paths config dir, `TITAN_CONSOLE_COORDINATOR_FILE` overriding.
+   * Optional so a test config need not build one; absent, `config.compareTree` is `not-configured`.
+   */
+  configStore?: ConfigStorePaths;
+  /**
    * `TITAN_CONSOLE_INBOX_ACTIONS=1` lets `inbox.act` write an action record and post it to the factory's console-action route.
    * Optional so a config built by hand reads as off; `resolveConfig` always sets it.
    */
@@ -78,6 +103,8 @@ export interface ConsoleConfig {
   hostSurfaces?: HostSurfaceRoots;
   /** Directories the theater lists videos from, from `TITAN_CONSOLE_VIDEO_ROOTS`; empty lists none. */
   videoRoots?: string[];
+  /** What `serve` prints once at start: settings that were dropped rather than refused, so the console still starts. */
+  startupWarnings?: string[];
 }
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
@@ -92,6 +119,8 @@ export interface Machine {
   hostname(): string;
   /** Every address on a non-internal interface, so loopback is never among them. */
   addresses(): string[];
+  /** Absent, the real filesystem answers. */
+  isExecutable?: IsExecutable;
 }
 
 const hostMachine: Machine = {
@@ -111,32 +140,48 @@ export function resolveConfig(
   machine: Machine = hostMachine,
 ): ConsoleConfig {
   const stateDir = expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
+  const agentChat = agentChatBinFrom(env, home, machine.isExecutable ?? hostIsExecutable);
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
+    storyPort: storyPortFrom(env),
     stateDir,
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
     factoryPort: portFrom(env, "TITAN_CONSOLE_FACTORY_PORT", FACTORY_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
+    ...agentChat,
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
-    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
-    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
-    lanTls: lanTlsFrom(env, home),
-    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+    ...lanOptionsFrom(env, home, stateDir, machine),
     ...dataDirsFrom(env, home, platform, stateDir),
     ...ownerOptionsFrom(env, home),
+    configStore: configStoreFrom(env, home, platform),
     ...surfaceRootsFrom(env, home),
   };
   assertCoherent(config);
   return config;
 }
 
-/** The dirs other processes write and the console reads from or files into. */
-function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir"> {
+function lanOptionsFrom(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  stateDir: string,
+  machine: Machine,
+): Pick<ConsoleConfig, "lanHost" | "lanNames" | "lanTls" | "lanTokenPath"> {
   return {
+    lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
+    lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
+    lanTls: lanTlsFrom(env, home),
+    lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+  };
+}
+
+/** The dirs other processes write and the console reads from or files into. */
+function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform, stateDir: string): Pick<ConsoleConfig, "inboxDir" | "roundsDir" | "reviewsDir" | "storybooksDir"> {
+  return {
+    storybooksDir: path.join(stateDir, "storybooks"),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
     roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
     reviewsDir: expandHome(env.TITAN_CONSOLE_REVIEWS_DIR || path.join(activeWorkRoot({ env, home, platform }), ...REVIEWS_UNDER_ROOT), home),
@@ -154,9 +199,36 @@ function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleCon
   };
 }
 
+function absolutePathFrom(name: string, raw: string | undefined, home: string): string | null {
+  if (raw === undefined || raw === "") return null;
+  const file = expandHome(raw, home);
+  if (!path.isAbsolute(file)) throw new Error(`${name} must be an absolute or ~/ path, got "${raw}"`);
+  return file;
+}
+
+function configStoreFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Platform): ConfigStorePaths {
+  return {
+    autonomyTree: absolutePathFrom("TITAN_CONSOLE_AUTONOMY_DIR", env.TITAN_CONSOLE_AUTONOMY_DIR, home),
+    coordinatorFile: absolutePathFrom("TITAN_CONSOLE_COORDINATOR_FILE", env.TITAN_CONSOLE_COORDINATOR_FILE, home) ?? coordinatorFilePath({ env, home, platform }),
+  };
+}
+
 /** Where `config.surfaces` reads the coordinator files and this host's own config. */
 function surfaceRootsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "coordinatorRoots" | "hostSurfaces"> {
   return { coordinatorRoots: coordinatorRootsFrom(env, home), hostSurfaces: hostSurfaceRootsFrom(env, home) };
+}
+
+export const AGENT_CHAT_NOT_FOUND = "agent-chat is not on PATH, so no seat is told when its round is answered; set TITAN_CONSOLE_AGENT_CHAT_BIN to its absolute path";
+
+/**
+ * agent-dispatch runs only an absolute binary path, so a bare name is resolved on PATH here, once. Not found, notices
+ * are off with a warning rather than a refusal: the console is still worth serving when it cannot message seats.
+ */
+function agentChatBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "agentChatBin" | "startupWarnings"> {
+  const named = expandHome(env.TITAN_CONSOLE_AGENT_CHAT_BIN || "agent-chat", home);
+  const bin = resolveCommand(named, env.PATH, isExecutable);
+  if (bin !== null) return { agentChatBin: bin, startupWarnings: [] };
+  return { startupWarnings: [`${AGENT_CHAT_NOT_FOUND} (looked for "${named}")`] };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
@@ -165,6 +237,15 @@ function assertCoherent(config: ConsoleConfig): void {
   if ([config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(config.port)) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
   }
+  const story = config.storyPort ?? null;
+  if (story !== null && [config.port, config.activeWorkPort, config.agentChatPort, config.factoryPort].includes(story)) {
+    throw new Error(`TITAN_CONSOLE_STORY_PORT ${story} is taken by the console or an upstream daemon; the story origin needs a port of its own`);
+  }
+}
+
+function storyPortFrom(env: NodeJS.ProcessEnv): number | null {
+  const port = portFrom(env, "TITAN_CONSOLE_STORY_PORT", DEFAULT_STORY_PORT);
+  return port === 0 ? null : port;
 }
 
 function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -187,10 +268,7 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
 
 /** No default: a guessed path would append the owner's answers to a file nobody chose. */
 function decisionsFileFrom(raw: string | undefined, home: string): string | null {
-  if (raw === undefined || raw === "") return null;
-  const file = expandHome(raw, home);
-  if (!path.isAbsolute(file)) throw new Error(`TITAN_CONSOLE_DECISIONS_FILE must be an absolute or ~/ path, got "${raw}"`);
-  return file;
+  return absolutePathFrom("TITAN_CONSOLE_DECISIONS_FILE", raw, home);
 }
 
 /** A `path.delimiter` list; a relative entry would resolve against whatever directory the service started in. */

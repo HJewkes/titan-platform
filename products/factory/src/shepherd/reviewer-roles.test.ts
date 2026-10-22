@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configuredRoles, DEFAULT_REVIEWER_ROLES, prChangedLines, prTouchesDependency, reviewerClassFor, reviewerRoleFor } from "./reviewer-roles.js";
+import { configuredRoles, DEFAULT_REVIEWER_ROLES, prChangedLines, prTouchesDependency, prTouchesMigration, reviewerClassFor, reviewerRoleFor } from "./reviewer-roles.js";
 
 describe("reviewerRoleFor", () => {
   it("gives a security PR and a small correctness PR different profiles", () => {
@@ -75,6 +75,35 @@ describe("configuredRoles", () => {
 
   it("carries a configured changed-line limit", () => {
     expect(configuredRoles({ profile: "rv", g10ChangedLines: 250 })).toEqual({ g10: "rv", standard: "rv", g10ChangedLines: 250 });
+  });
+});
+
+describe("migration touch", () => {
+  const touched = (path: string, previousPath?: string) => prTouchesMigration([{ path, ...(previousPath !== undefined && { previousPath }), status: "modified", additions: 5, deletions: 0 }]);
+
+  it.each([
+    "products/factory/src/shepherd/store-migrations.ts",
+    "products/factory/src/shepherd/store.ts",
+    "products/factory/src/shepherd/events.ts",
+    "products/factory/src/shepherd/train.ts",
+    "products/factory/src/account-store.ts",
+    "packages/x/src/schema-migration.ts",
+    "packages/x/migrations/0001.sql",
+  ])("reads %s as a store migration", (path) => {
+    expect(touched(path)).toBe(true);
+  });
+
+  it("reads a rename out of a store migration file as a migration touch", () => {
+    expect(touched("products/factory/src/shepherd/kept.ts", "products/factory/src/shepherd/store-migrations.ts")).toBe(true);
+  });
+
+  it.each(["products/factory/src/shepherd/train-shadow.ts", "packages/cli/src/events.ts"])("leaves %s outside the migration class", (path) => {
+    expect(touched(path)).toBe(false);
+  });
+
+  it("takes g10 for a small correctness PR that touches a store migration", () => {
+    expect(reviewerClassFor({ kind: "correctness", changedLines: 50, migrationTouch: true })).toBe("g10");
+    expect(reviewerClassFor({ kind: "correctness", changedLines: 50 })).toBe("standard");
   });
 });
 

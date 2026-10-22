@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "confirmed lines are never read",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "message === \"reconciler.confirmed\" &&",
+      "replace": "message === \"reconciler.confirmed!\" &&",
+      "kills": ["f11Report clock 2 (webhook) matches a webhook row by a timestamped reconciler.confirmed line, and not by a delivery retry or an unknown answer"]
+    },
+    {
+      "name": "the input's withinMs is ignored",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "const withinMs = input.withinMs ?? F11_WITHIN_MS;",
+      "replace": "const withinMs = F11_WITHIN_MS;",
+      "kills": ["f11Report clock 2 (webhook) takes withinMs from the input, so a confirm later than it leaves the row webhookOnly"]
+    },
+    {
+      "name": "a log line at since is out of the window",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "at >= window.since && at < window.until",
+      "replace": "at > window.since && at < window.until",
+      "kills": ["f11Report clock 2 (webhook) ignores log lines outside [since, until) and counts untimed ones instead of placing them"]
+    },
+    {
+      "name": "windows are compared by raw use",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "window.used / window.limit > held.used / held.limit",
+      "replace": "window.used > held.used",
+      "kills": ["f11Report peaks compares windows by share of their limit, not by raw use"]
+    },
+    {
+      "name": "one unstamped record refuses an otherwise placed log",
+      "file": "products/factory/src/event-log/f11-report.ts",
+      "find": "if (report.log.untimed === 0 || report.log.lines > 0) return undefined;",
+      "replace": "if (report.log.untimed === 0) return undefined;",
+      "kills": ["f11Report log counts and markdown refuses a log none of whose records can be placed in the window, and accepts one with any placed record"]
+    }
+  ]
+}

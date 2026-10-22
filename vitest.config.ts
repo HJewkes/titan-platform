@@ -3,6 +3,7 @@ import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
 import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { WAIT_BUDGET_MS } from "./scripts/wait-budget.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -26,9 +27,9 @@ const needsProcess = [
 const workerHeapMb = 2048;
 setFlagsFromString(`--max-old-space-size=${workerHeapMb}`);
 const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
-// A "Reached heap limit" line in a CI log is not proof a worker hit this cap: scripts/dag-check-lock.test.mjs aborts a
-// 32 MB child on purpose and its V8 report reaches the log (TP-3487; TP-2565 was the earlier load-timeout red). A real
-// runaway fails its own file with a worker exit, so look for that before raising the cap.
+// scripts/dag-check-lock.test.mjs aborts a 32 MB child on purpose; its V8 report used to reach the CI log and read as a
+// worker hitting this cap (TP-3487, TP-3972). That child now writes nowhere, so a "Reached heap limit" line is a real
+// process at its cap. A runaway worker also fails its own file with a worker exit; look for that before raising the cap.
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
 
@@ -41,12 +42,20 @@ export default defineConfig({
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: ["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    // Vitest's 5 s default is a wall budget, and a loaded runner stretches wall time 10x or more: CI puts 4 workers on
+    // 4 vCPUs beside the main thread's imports and every git, bash and node child the tests spawn. Tests that take
+    // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
+    // --testTimeout and still catches a hang.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {

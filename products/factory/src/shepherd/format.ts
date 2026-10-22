@@ -6,6 +6,7 @@ import type { RepairStopResult } from "./repair-stop-command.js";
 import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
+import type { ThawResult } from "./thaw-command.js";
 import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
@@ -31,6 +32,7 @@ const FORMATTERS: Formatters = {
   "shepherd.release": formatHold,
   "shepherd.repair-stop": formatRepairStops,
   "shepherd.freeze": formatRepoFreezes,
+  "shepherd.thaw": formatThaw,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -79,6 +81,16 @@ function formatRepairStops({ changed, stops }: RepairStopResult): string {
 function formatRepoFreezes({ detail, freezes }: RepoFreezeResult): string {
   const lines = freezes.map((frozen) => `${frozen.repo}  ${frozen.reason} (by ${frozen.actor}, since ${frozen.since})`);
   return `${detail ? `${detail}\n` : ""}${freezes.length === 0 ? "no repo freezes" : `repo freezes:\n${lines.join("\n")}`}\n`;
+}
+
+function formatThaw({ repo, episode, redSha, actor, fixTask, closedGates, alert }: ThawResult): string {
+  const lines = [
+    `${repo} thawed by hand: episode ${episode}, red at ${redSha}, by ${actor}`,
+    `fix task ${fixTask ?? "none"} stays open`,
+    ...closedGates.map((gate) => `cancelled ${gate.gateId}`),
+    alert.sent ? `alerted ${alert.seat}` : `alert not sent: ${alert.detail}`,
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 function formatReviewAsk({ runId, head, requested }: ReviewAsk): string {

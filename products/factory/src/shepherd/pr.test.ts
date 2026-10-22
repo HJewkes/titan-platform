@@ -34,6 +34,7 @@ import { watchRow } from "./view.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 import { OWNER } from "../test-support/resolver.js";
 import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -216,13 +217,15 @@ describe("shepherd-pr", () => {
     expect(landedSteps(w, runId)).toHaveLength(1);
   });
 
-  it("records a landing with a null merge sha and asks the owner about main CI for a PR merged outside with no merge commit", async () => {
+  it("records a landing with a null merge sha and an FYI record, not a main-red gate, for a PR merged outside with no merge commit", async () => {
     const w = world(fakePhases({}).phases);
     const runId = await heldAtMerge(w);
 
     Object.assign(w.fake.pr(1), { merged: true, state: "closed", mergeSha: null });
-    await gateOpened(w.host, gateId(runId, "main-red"));
+    await w.host.runtime.wait(runId);
 
+    expect(w.host.gates.get(gateId(runId, "main-red"))).toBeUndefined();
+    expect(stepResult(w.host, runId, "sh-auto-pass:D13-main-red-fyi:no-merge-sha")).toMatchObject({ result: { rule: "D13/main-red-fyi", headSha: "no-merge-sha" } });
     expect(w.fake.effects.merge).toBe(0);
     expect(stepResult(w.host, runId, "sh-landed")).toMatchObject({ result: { mergeSha: null } });
     expect(stepResult(w.host, runId, "sh-main-ci")).toMatchObject({ result: { verdict: "none" } });
@@ -470,6 +473,9 @@ describe("a pull request whose base moved into a conflict while approve-merge wa
 });
 
 describe("the route table in a run", () => {
+  // These pin the runaway and no-progress owner gates, which D8's flag set false restores (TP-3734).
+  withDemotionOff("fixFirstRunaway");
+
   const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
   const locator = transcriptLocator();
   const merges = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>
@@ -540,7 +546,8 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("three CI-unread-only FIX_FIRSTs at one head open the failed-rounds gate, never a wake", async () => {
+  it("three CI-unread-only FIX_FIRSTs at one head and a fallback reviewer's open the failed-rounds gate, never a wake", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const wakes: WakeRequest[] = [];
     const w = autoWorld(
@@ -551,13 +558,14 @@ describe("the route table in a run", () => {
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(asked).toHaveLength(3);
+    expect(asked).toHaveLength(4);
     expect(wakes).toEqual([]);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with ${CI_UNREAD_REASON}`);
     expect(w.fake.effects.merge).toBe(0);
   });
 
-  it("opens approve-merge naming the failed rounds after three reviews give no verdict", async () => {
+  it("opens approve-merge naming the failed rounds after three reviews and the fresh fallback reviewer give no verdict", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "timeout" }));
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
@@ -565,7 +573,9 @@ describe("the route table in a run", () => {
     await gateOpened(w.host, gateId(runId, "approve-merge"));
     const gate = w.host.gates.get(gateId(runId, "approve-merge"));
 
-    expect(asked).toHaveLength(3);
+    expect(asked).toHaveLength(4);
+    expect(asked[3]?.fresh).toBe(true);
+    expect(gate?.prompt).toContain("the fallback fresh reviewer failed too");
     expect(gate?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -584,13 +594,14 @@ describe("the route table in a run", () => {
   });
 
   it(`counts throttled reviews past ${MAX_THROTTLED_ROUNDS}, so a machine stop that never settles opens approve-merge`, async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "throttled" }));
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(asked).toHaveLength(MAX_THROTTLED_ROUNDS + 3);
+    expect(asked).toHaveLength(MAX_THROTTLED_ROUNDS + 4);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`the last at ${H1} ended with no reviewer verdict while the machine stop held`);
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -662,6 +673,7 @@ describe("the route table in a run", () => {
   });
 
   it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (_ctx, request) => ({ kind: "none", cause: causes[asked.push(request) - 1] ?? "no-verdict" }));
@@ -670,7 +682,7 @@ describe("the route table in a run", () => {
     await gateOpened(w.host, gateId(runId, "approve-merge"));
     const gate = w.host.gates.get(gateId(runId, "approve-merge"));
 
-    expect(asked).toHaveLength(5);
+    expect(asked).toHaveLength(6);
     expect(gate?.prompt).toContain(`3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -911,7 +923,7 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("opens approve-merge naming the conflict when a conflict survives one fixer attempt", async () => {
+  it("wakes a fresh fixer, then opens approve-merge naming the conflict only when no seat notice is wired", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
     const w = world(phases, undefined, fake);
@@ -922,8 +934,10 @@ describe("the route table in a run", () => {
     w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     const done = await w.host.runtime.wait(runId);
 
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1], ["conflict", H2]]);
+    expect(wakes[1]?.payload).toEqual({ mergeableState: "dirty", freshFixer: true });
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("(no seat notice is wired)");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -1381,7 +1395,7 @@ describe("an update-branch the base cannot merge into", () => {
     expect(w.fake.effects.merge).toBe(1);
   });
 
-  it("opens approve-merge naming the conflict when it survives one fixer wake", async () => {
+  it("opens approve-merge naming the conflict when it survives a fresh fixer and no seat notice is wired", async () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
     const w = world(phases, undefined, fake);
@@ -1392,7 +1406,7 @@ describe("an update-branch the base cannot merge into", () => {
     w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     const done = await w.host.runtime.wait(runId);
 
-    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict"]);
+    expect(wakes.map((wake) => wake.kind)).toEqual(["conflict", "conflict"]);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("a merge conflict survived one fixer attempt");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);

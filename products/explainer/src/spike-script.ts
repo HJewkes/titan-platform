@@ -13,7 +13,9 @@ const MapNodes = z.object({ nodes: z.array(z.object({ id: Id, label: z.string().
 // invariants), and widening `ScriptSchema` to admit them would loosen every script/v1 check.
 const SpikeScriptSchema = z.object({
   id: Id,
-  video: z.object({ invariants: z.array(z.string().min(1)).default([]) }).optional(),
+  video: z
+    .object({ invariants: z.array(z.string().min(1)).default([]), glossary: z.array(z.object({ name: z.string().min(1) })).default([]) })
+    .optional(),
   maps: z.record(z.string(), MapNodes).default({}),
   // A single-map script names no map in its map_states; their reveals label from this one.
   map: MapNodes.optional(),
@@ -107,6 +109,8 @@ export interface SpikePace {
   beats: PaceBeat[];
   /** The script's `video.invariants` phrases, for the seated-invariant lint. */
   invariants: string[];
+  /** The script's `video.glossary` names, the terms the cold probe asks where they are first spoken. */
+  glossary: string[];
   ignored: string[];
 }
 
@@ -121,5 +125,5 @@ export function fromSpikeScript(json: unknown, timing?: ScriptTiming): SpikePace
   const { script, ignored } = readSpikeScript(json);
   const label = labeller(script);
   const beats = buildPaceBeats(script.beats.map((b) => spikeSourceBeat(b, label)), timing);
-  return { beats, invariants: script.video?.invariants ?? [], ignored };
+  return { beats, invariants: script.video?.invariants ?? [], glossary: (script.video?.glossary ?? []).map((g) => g.name), ignored };
 }

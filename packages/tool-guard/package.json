@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/tool-guard",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "description": "Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer",
   "type": "module",
   "main": "./dist/index.js",
@@ -47,12 +47,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@titan-design/authority": "workspace:^"
-  },
-  "peerDependencies": {
+    "@titan-design/authority": "workspace:^",
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "zod": "^4.4.3"
   }
 }

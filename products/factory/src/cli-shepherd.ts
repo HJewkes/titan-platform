@@ -56,7 +56,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
 type VerbOf = (spec: string, description: string) => Command;
 
 function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
-  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
+  verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed, or was cancelled with its PR open")
     .option("--branch <name>", "the PR's head branch")
     .option("--head <sha>", "the PR's head commit; with --branch, Shepherd does not read the PR from GitHub to register it")
     .option("--base <name>", "the PR's base branch; with --head, Shepherd classes the PR's files from local git")
@@ -109,7 +109,7 @@ function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
 }
 
-/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze; neither verb touches that one. */
+/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze, which only `thaw` lifts by hand. */
 function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("freeze <repo>", "freeze owner/repo so no Shepherd run merges into it until unfreeze; runs keep reviewing, and a repeat replaces the reason")
     .requiredOption("--reason <text>", "why the repo is frozen")
@@ -119,6 +119,11 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
   verb("freezes", "every repo freeze: repo, reason, who set it and since when")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
+  verb("thaw <repo>", "thaw owner/repo's red-main freeze by hand while it is still red at --red-sha; records who and why, and alerts the repo's red seat")
+    .requiredOption("--red-sha <sha>", "the full red sha of the episode being thawed")
+    .requiredOption("--reason <text>", "why main may thaw without a green")
+    .action((repo: string, opts: ShepherdOpts & { redSha: string; reason: string }) =>
+      runShepherd(verbs, "shepherd.thaw", () => ({ repo, redSha: opts.redSha, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {
@@ -143,7 +148,9 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
-  return { ...parsed, branch, head, base, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
+  const registrant = io.env.AGENT_CHAT_NAME || undefined;
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {

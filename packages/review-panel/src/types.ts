@@ -80,4 +80,6 @@ export interface PanelVerdict {
   degraded: readonly ReviewShape[];
   /** The class is `g10` and the opus correctness member and the adversary both said MERGE at this head, none degraded. */
   satisfiesG10: boolean;
+  /** Every planned blocking member said MERGE and only the tests member a bad fix-proof requires was never planned; no fresh reviewer fills it. */
+  fixProofShortfall?: true;
 }

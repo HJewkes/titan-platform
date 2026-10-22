@@ -73,6 +73,7 @@ describe("config.surfaces over the daemon's RPC", () => {
     const env = {
       TITAN_CONSOLE_STATE: path.join(root, "state"),
       TITAN_CONSOLE_PORT: "0",
+      TITAN_CONSOLE_STORY_PORT: "0",
       TITAN_CONSOLE_ACTIVE_WORK_PORT: closed,
       TITAN_CONSOLE_AGENT_CHAT_PORT: closed,
       TITAN_CONSOLE_FACTORY_PORT: closed,

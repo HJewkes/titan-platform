@@ -1,5 +1,6 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, spent } from "./arith-trials.js";
-import { balancedEnd, type DollarOpener, dollarOpener, QUOTED_LITERAL_OPENERS, refuseValueRun } from "./balanced.js";
+import { balancedEnd, bracketArithmeticEnd, type DollarOpener, dollarOpener, refuseValueRun } from "./balanced.js";
+import { QUOTED_LITERAL_OPENERS } from "./math-close.js";
 import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
 import { inConditional, inJoiningConditional, inOpenCase, newRegexScan, noteParen, refuseRedirect } from "./compound.js";
 import { nested } from "./nesting.js";
@@ -294,7 +295,7 @@ function dollarText(s: LexState, end: number): string {
 /** Reads a `$[ ]`, bash's older spelling of `$(( ))`, through the same matching as `${ }`. */
 function readBracketArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
-  const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
+  const end = bracketArithmeticEnd(s.src, s.i, nestedReaders(lineReading(s), found));
   markComputed(w).value += dollarText(s, end);
   w.subs.push(...found);
   s.i = end + 1;
@@ -325,7 +326,10 @@ function readRedirect(s: LexState): void {
   s.i = ahead.ends[op.length - 1] ?? s.src.length;
   const paren = pastJoins(s.src, s.i);
   if ((op === "<" || op === ">") && s.src[paren] === "(") {
-    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
+    // A pending `<` or `>` takes the substitution as its file, so the next word is the command's again (`bash 2> >(cat) ./x.sh`).
+    const awaited = s.redirect !== null;
+    s.redirect = null;
+    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)], ...(awaited ? { awaited: true as const } : {}) });
     return;
   }
   refuseRedirect(s, op);

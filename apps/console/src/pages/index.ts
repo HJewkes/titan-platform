@@ -2,6 +2,7 @@ import { createElement, type ReactNode } from "react";
 import { VIEW_KEYS, type Route, type ViewKey } from "../router.js";
 import { viewFor } from "../views.js";
 import { AgentsRoute } from "./AgentsPage.js";
+import { AutoresearchView } from "./AutoresearchPage.js";
 import { ConfigPage } from "./ConfigPage.js";
 import { HomePage } from "./HomePage.js";
 import { InboxPage } from "./InboxPage.js";
@@ -38,11 +39,11 @@ interface Shelled {
 }
 
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
-const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage));
+const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage, { query: route.query }));
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
-const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage));
+const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
 
 const WIDE: Layout = { maxWidth: "wide" };
 const NARROW: Layout = { maxWidth: "narrow" };
@@ -61,6 +62,7 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   reviews: { list: WIDE, detail: NARROW, render: ReviewsView },
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },
   shepherd: { list: WIDE, detail: WIDE, render: ShepherdView },
+  autoresearch: { list: WIDE, detail: WIDE, render: AutoresearchView },
   config: { list: WIDE, render: ConfigPage },
 };
 

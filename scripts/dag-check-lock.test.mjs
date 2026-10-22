@@ -580,9 +580,11 @@ describe("the capped indexer child", () => {
     return join(root, "worker.mjs");
   }
 
+  // The out-of-memory child's V8 "Reached heap limit" report reached the CI log through inherited stdio and read as a
+  // vitest worker OOM twice (TP-3487, TP-3972), so these children write nowhere.
   async function run(body, heapCapMb = 64) {
     const lines = [];
-    const code = await runCappedWorker({ script: scriptFile(body), args: [], name: "indexer", heapCapMb, cleanups: [], log: (m) => lines.push(m) });
+    const code = await runCappedWorker({ script: scriptFile(body), args: [], name: "indexer", heapCapMb, cleanups: [], log: (m) => lines.push(m), stdio: "ignore" });
     return { code, lines };
   }
 
@@ -594,6 +596,17 @@ describe("the capped indexer child", () => {
     const { code, lines } = await run("const keep = []; for (;;) keep.push(new Array(1e5).fill({}));", 32);
     expect(code).toBe(2);
     expect(lines).toEqual(["indexer ran out of memory: V8 aborted it at the 32 MB heap cap"]);
+  }, 30000);
+
+  it("keeps an ignored child's out-of-memory report out of the parent's stderr", () => {
+    const worker = scriptFile("const keep = []; for (;;) keep.push(new Array(1e5).fill({}));");
+    const script = `import { runCappedWorker } from ${JSON.stringify(MODULE)};
+      process.exitCode = await runCappedWorker({ script: ${JSON.stringify(worker)}, args: [], name: "indexer", heapCapMb: 32, cleanups: [], log: () => {}, stdio: "ignore" });`;
+
+    const parent = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 30000 });
+
+    expect(parent.status).toBe(2);
+    expect(parent.stderr).not.toContain("Reached heap limit");
   }, 30000);
 
   it("names a raw 134 exit from a shell wrapper as out of memory too", () => {

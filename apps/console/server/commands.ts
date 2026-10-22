@@ -1,24 +1,31 @@
 import { z } from "zod";
 import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
+import { buildInfoCommands } from "./build-info.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
+import { autoresearchCommands, type AutoresearchSource } from "./autoresearch.js";
 import type { ActiveWork } from "./active-work.js";
+import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
 import { configSurfacesCommands, unconfigured, type SurfaceReader } from "./config-surfaces/catalog.js";
 import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/coordinator.js";
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
-import type { DecisionLog } from "./decision-log.js";
+import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
+import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
-import { roundsCommands, type RoundsSource } from "./rounds.js";
-import { roundsSubmitCommands } from "./rounds-submit.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
+import { roundsCommands } from "./rounds-commands.js";
+import type { RoundsSource } from "./rounds.js";
+import { roundsAnswerRecCommands } from "./round-rec-answer.js";
+import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
@@ -44,12 +51,14 @@ export interface ConsoleSources {
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
+  /** Optional so test sources need not build one; absent, the `autoresearch.*` reads are not served. */
+  autoresearch?: AutoresearchSource;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for the coordinator files. */
   coordinatorRoots?: CoordinatorRoots;
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
   /** Optional so test sources need not build one; absent, `rounds.submit` records nothing and returns no `log`. */
-  decisionLog?: DecisionLog;
+  decisionLog?: RoundDecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
@@ -60,9 +69,13 @@ export interface ConsoleSources {
   hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
+  /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
+  videoNotify?: SeatNotifier;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
+  /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
+  configStore?: ConfigStoreSource;
 }
 
 const ACTIONS_UNWIRED: InboxActionOptions = { enabled: false, actionsDir: "", client: { post: async () => ({ status: "off" }) } };
@@ -111,10 +124,12 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
+    ...buildInfoCommands(),
+    ...configStoreCommands(configStore),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
@@ -123,14 +138,17 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
-    ...roundsSubmitCommands(rounds, decisionLog, listeners),
+    ...roundsRevealCommands(rounds),
+    ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
+    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
+    ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),
     ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
-    ...videoNotesCommands(videos),
+    ...videoNotesCommands(videos, videoNotify),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };

@@ -1,3 +1,4 @@
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -5,10 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { adversaryRehold } from "./adversary-anchor.js";
 import { shepherdEventMigration } from "./events.js";
-import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
+import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10Recheck, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
 import type { CiSnapshot } from "../workflows/land.js";
 import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
+import type { LineageRow } from "./reviewer-lineage.js";
+import type { RosterReader } from "./roster.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -170,18 +173,22 @@ describe("which reviewer's verdict releases", () => {
 });
 
 /** A run whose CI read green at `ciHead` and whose release step answers `result`; only the fields releaseG10Hold reads are filled. */
-function stubRun(reviews: [string, Verdict][], ciHead: string, result: object) {
+function stubRun(reviews: [string, Verdict][], ciHead: string, result: object, historyNext: () => string | undefined = () => undefined) {
   const dispatch = vi.fn(async (_id: string, _kind: string, _input: { vars: Record<string, string> }) => ({ data: { result } }));
-  const ctx = { runId: "run-1", iteration: () => 0, historyNext: () => undefined, dispatch } as never;
+  const ctx = { runId: "run-1", iteration: () => 0, historyNext, dispatch } as never;
   const asked = (): unknown => JSON.parse(Object.values(dispatch.mock.calls[0]![2].vars)[0]!);
   return { dispatch, asked, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map(reviews), lastCi: { headSha: ciHead, verdict: "green" } as never } };
 }
 
-function workflowRun(reviewerProfile: string | undefined, released = true) {
+function workflowRun(reviewerProfile: string | undefined, released = true, historyNext?: () => string | undefined) {
   const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
   const merge: Verdict = { kind: "MERGE", headSha: HEAD, evidence, ...(reviewerProfile && { reviewerProfile }) };
-  return stubRun([[HEAD, merge]], HEAD, { released, head: HEAD });
+  return stubRun([[HEAD, merge]], HEAD, { released, head: HEAD }, historyNext);
 }
+
+/** The recorded release step a replay is about to read back. */
+const replaying = () => `${G10_RELEASE_STEP}:${HEAD}:0`;
+const recheck = g10Recheck(() => ({ byPr: () => ({ runId: "run-1" }) }));
 
 describe("releaseG10Hold", () => {
   it("asks for a release once for a verdict, so a re-hold at the same head waits for a newer one", async () => {
@@ -206,6 +213,30 @@ describe("releaseG10Hold", () => {
     const adversary = workflowRun("bd-reviewer");
     await releaseG10Hold(adversary.run, "g10-adversary: x");
     expect([external.dispatch, sonnet.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("the merge wait's recheck after a replayed release answer (TP-3956)", () => {
+  it("ends the wait once, at the head of a replayed ask that released nothing", async () => {
+    await releaseG10Hold(workflowRun("bd-reviewer", false, replaying).run, "g10-review: x");
+
+    expect([recheck(REPO, 1, MOVED), recheck(REPO, 1, HEAD), recheck(REPO, 1, HEAD)]).toEqual([false, true, false]);
+  });
+
+  it.each([
+    ["a live ask released nothing", false, undefined],
+    ["a replayed ask released the hold", true, replaying],
+  ])("ends no wait when %s", async (_case, released, historyNext) => {
+    await releaseG10Hold(workflowRun("bd-reviewer", released, historyNext).run, "g10-review: x");
+
+    expect(recheck(REPO, 1, HEAD)).toBe(false);
+  });
+
+  it("drops a replayed refusal once the run asks live again", async () => {
+    await releaseG10Hold(workflowRun("bd-reviewer", false, replaying).run, "g10-review: x");
+    await releaseG10Hold(workflowRun("bd-reviewer", false).run, "g10-review: x");
+
+    expect(recheck(REPO, 1, HEAD)).toBe(false);
   });
 });
 
@@ -243,7 +274,7 @@ describe("a release at a clean merge-up of the reviewed head", () => {
     const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
     const reviewed = { kind: "MERGE" as const, headSha: HEAD, evidence, reviewerProfile: "bd-reviewer" };
     const carried = { kind: "MERGE" as const, headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, ...(mark && { mergeUpFrom: mark }) };
-    const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+    const ctx = { runId: "run-1", iteration: () => 0, historyNext: () => undefined, dispatch } as never;
     return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map<string, Verdict>([[HEAD, reviewed], [MOVED, carried]]), lastCi: { headSha: MOVED, verdict: "green" } as never } };
   }
 
@@ -315,10 +346,22 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     adversary: { verdict: { ...by(head, adversary.sessionId ?? "s-adversary"), value: adversary.value ?? "MERGE" }, profile: adversary.profile ?? "fable-reviewer" },
   });
   const twoInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, ...merges(head), checks: green(head), ...extra });
+  const row = (sessionId: string, name: string, extra: Partial<LineageRow> = {}): AgentRow => ({
+    ...{ name, agentId: `agent-${sessionId}`, sessionId, spawnedBy: "human", teleportFrom: null },
+    ...{ state: "exited", presence: "exited", status: "finished", profile: "bd-reviewer", surface: "headless", cwd: "/work", generation: 1 },
+    ...extra,
+  });
+  const SPAWNED = [row("s-correctness", "rv-demo-1"), row("s-adversary", "rv-demo-1-adversary")];
+  const rosterOf = (rows: readonly AgentRow[] | "unread"): RosterReader => ({
+    read: async () => (rows === "unread" ? { kind: "unknown", error: new Error("broker down") } : { kind: "known", rows }),
+    rows: async () => (rows === "unread" ? [] : rows),
+    invalidate: () => undefined,
+  });
 
-  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }]) {
+  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }], rows: readonly AgentRow[] | "unread" = SPAWNED) {
     const rigged = rig(ADVERSARY_HOLD, prHead, "shepherd", files);
-    return { ...rigged, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(rigged.deps, mode)[0]! };
+    const deps = { ...rigged.deps, roster: rosterOf(rows) };
+    return { ...rigged, deps, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(deps, mode)[0]! };
   }
 
   describe("satisfiesTwoMerge", () => {
@@ -326,16 +369,24 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     const files = ["src/policy.ts"];
 
     it("releases only when the adversary says MERGE as well as the correctness reviewer", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD), HEAD, green(HEAD), files)).toBe(true);
-      expect(satisfiesTwoMerge(run, merges(HEAD, { value: "FIX_FIRST" }), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge(run, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
+      expect(satisfiesTwoMerge(run, merges(HEAD, { value: "FIX_FIRST" }), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+    });
+
+    it("releases two MERGEs at the same opus profile from separately spawned sessions (decision 457)", () => {
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
     });
 
     it("refuses a correctness MERGE from a profile that is not opus", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD, {}, "reviewer"), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }, "reviewer"), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+    });
+
+    it("refuses when the roster was not read", () => {
+      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, undefined)).toBe(false);
     });
 
     it("refuses a g10-review hold, which its own rule releases", () => {
-      expect(satisfiesTwoMerge({ ...run, holdReason: "g10-review: 900 changed lines" }, merges(HEAD), HEAD, green(HEAD), files)).toBe(false);
+      expect(satisfiesTwoMerge({ ...run, holdReason: "g10-review: 900 changed lines" }, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
     });
   });
 
@@ -367,11 +418,36 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
-  it.each([
-    ["two sessions of the same profile", { adversary: { ...merges(HEAD).adversary, profile: "bd-reviewer" } }],
-    ["one session under two profiles", { adversary: { ...merges(HEAD, { sessionId: "s-correctness" }).adversary } }],
-  ])("stays held on MERGEs from %s", async (_case, extra) => {
+  it("releases on MERGEs from two separately spawned bd-reviewer sessions (decision 457)", async () => {
     const { store, pr, route } = twoRig();
+
+    const done = await runStep(route("on"), twoInput(pr, HEAD, merges(HEAD, { profile: "bd-reviewer" })));
+
+    expect(done).toMatchObject({ released: true, correctness: { profile: "bd-reviewer" }, adversary: { profile: "bd-reviewer" } });
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  const sameProfile = (sessionId?: string) => merges(HEAD, { profile: "bd-reviewer", ...(sessionId !== undefined && { sessionId }) });
+  it.each([
+    ["one session", sameProfile("s-correctness"), SPAWNED],
+    ["an adversary forked from the correctness reviewer's context", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "rv-demo-1" })]],
+    ["a correctness reviewer forked from the adversary's context", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "rv-demo-1-adversary" }), SPAWNED[1]!]],
+    ["two forks of one session", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "seat" }), row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat")]],
+    ["an adversary that resumed the correctness reviewer's transcript", sameProfile(), [SPAWNED[0]!, SPAWNED[1]!, row("s-correctness", "rv-demo-1-adversary", { agentId: "agent-resumed" })]],
+    ["an adversary that took the correctness reviewer over", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-s-correctness" })]],
+    ["an adversary teleported from an agent the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-gone" })]],
+    ["an adversary whose name a fork of the correctness reviewer held in another generation", sameProfile(), [...SPAWNED, row("s-gen-2", "rv-demo-1-adversary", { agentId: "agent-gen-2", spawnedBy: "rv-demo-1" })]],
+    ["an adversary whose session a fork of the correctness reviewer continues", sameProfile(), [...SPAWNED, row("s-adversary", "rv-fork", { agentId: "agent-fork", spawnedBy: "rv-demo-1" })]],
+    [
+      "an adversary whose spawning agent, under another name, was forked from the correctness reviewer",
+      sameProfile(),
+      [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat"), row("s-seat-2", "seat-renamed", { agentId: "agent-s-seat", spawnedBy: "rv-demo-1" })],
+    ],
+    ["an adversary spawned by a session the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "gone-seat" })]],
+    ["an adversary the roster does not hold", sameProfile(), [SPAWNED[0]!]],
+    ["a roster that could not be read", sameProfile(), "unread" as const],
+  ])("stays held on MERGEs from %s", async (_case, extra, rows) => {
+    const { store, pr, route } = twoRig(HEAD, undefined, rows);
 
     const done = await runStep(route("on"), twoInput(pr, HEAD, extra));
 
@@ -497,6 +573,33 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
       await releaseG10Hold(run, ADVERSARY_HOLD);
 
       expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    describe("when a non-strict base moved past the reviewed head's green (TP-3933)", () => {
+      const staleGreen = (headSha: string, extra: Partial<CiSnapshot>): CiSnapshot => ({ headSha, verdict: "behind", mergeableState: "blocked", checksGreen: true, ...extra });
+
+      it("asks with checks green, as land merges that head as it stands, and the route releases", async () => {
+        const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
+        const { store, route } = twoRig();
+
+        await releaseG10Hold({ ...run, lastCi: staleGreen(HEAD, { baseMoved: true }) }, ADVERSARY_HOLD);
+        const done = await runStep(route("on"), asked());
+
+        expect(asked()).toMatchObject({ checks: { head: HEAD, green: true } });
+        expect(done.released).toBe(true);
+        expect(store.byRun("run-1")?.held).toBe(false);
+      });
+
+      it.each([
+        ["a strict base reads it behind", {}],
+        ["the head's own checks are not green", { baseMoved: true, checksGreen: false }],
+      ])("asks with checks not green when %s", async (_case, extra) => {
+        const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
+
+        await releaseG10Hold({ ...run, lastCi: staleGreen(HEAD, extra) }, ADVERSARY_HOLD);
+
+        expect(asked()).toMatchObject({ checks: { head: HEAD, green: false } });
+      });
     });
 
     it("asks once for a shadow would-release, as for a release", async () => {

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "linking a standing fixer overwrites the episode's own fixer and task",
+      "file": "products/factory/src/shepherd/freeze-episode.ts",
+      "find": "AND thawed_at IS NULL AND fix_task IS NULL AND fixer IS NULL AND fix_pr IS NULL\";\n",
+      "replace": "AND thawed_at IS NULL\";\n",
+      "kills": [
+        "a red after a thaw that fails like an earlier red keeps the fixer and task the episode gained while the standing fixer was looked up, so that fixer's exemption never moves"
+      ]
+    },
+    {
+      "name": "the fixer brief drops the flake-fix registration line",
+      "file": "products/factory/src/shepherd/main-red.ts",
+      "find": "    FLAKE_FIX_REGISTER,\n",
+      "replace": "",
+      "kills": [
+        "sh-spawn-fixer tells the fixer a flaky-test fix registers test-only with no mutation spec, and that a rerun thaw leaves the root-cause task"
+      ]
+    }
+  ]
+}

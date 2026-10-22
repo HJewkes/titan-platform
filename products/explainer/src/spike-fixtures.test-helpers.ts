@@ -13,6 +13,9 @@ export const v4FullScript = (): unknown => read("script-full.json");
 /** The durations-only extract of the v4 words.json, all 75 beats. */
 export const v4Durations = (): unknown => read("durations.json");
 
+/** The planner-written v4 story spine (TP-3804); see the fixture folder's README. */
+export const V4_SPINE_PATH = fileURLToPath(fixture("redesign-explainer-v4", "spine.md"));
+
 /** The v4 labelled set from the script-evals plan section 4.1. */
 export const v4Labels = (): unknown => read("labels.json");
 
