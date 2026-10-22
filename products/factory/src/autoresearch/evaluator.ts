@@ -25,6 +25,7 @@ import {
   type RunPin,
   type Target,
 } from "@titan-design/autoresearch";
+import { execDatedGit, mergeOnto } from "./integrate.js";
 import { execGit, ratchetFastForward, remoteDefaultBranch, seedRatchet } from "./ratchet.js";
 import { lastLine, runCommand } from "./run-command.js";
 
@@ -51,7 +52,7 @@ export interface ValidatorCase {
   caseSet?: string;
 }
 
-type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive" | "validate" | "registry">;
+type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "integrate" | "archive" | "validate" | "registry">;
 
 type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string; defaultBranch: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
@@ -334,6 +335,7 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
       const { target, defaultBranch } = await session.of(input);
       return ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, defaultBranch, from, to });
     },
+    integrate: ({ tree, base, head, message, at }) => mergeOnto(execDatedGit, { tree, base, head, message, at }),
     archive: (input) => archiveRound(options.archiveDir, input),
     validate: (input, signal) => validateLook(options, session, input, signal),
     registry: async ({ row }) => appendRegistryRow(options.registryPath, row),
