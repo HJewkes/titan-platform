@@ -206,7 +206,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
  * - `survived`: some `kills` test did not fail.
  * - `unbuilt`: the rebuild under the mutation failed.
  * - `load-error`: the test file failed to load, or some test failed with a load or new-API error.
- * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run.
+ * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run. A kill naming no test in a
+ *   baseline that loaded is no outcome but an `error` verdict naming the spec, mutation and kill.
  * - `error`: the mutation's run is missing from the report, or some test failed with anything but an assertion failure:
  *   a thrown TypeError, a timeout, a crash, or no failure message at all.
  */
