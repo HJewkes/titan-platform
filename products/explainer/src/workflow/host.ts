@@ -79,7 +79,8 @@ function allRecords(dataDir: string, run: WorkflowRun): StageRecord[] {
 
 function inputArtifacts(request: RunRequest, store: ArtifactStore): Record<string, string> {
   const files: Record<(typeof RUN_INPUTS)[number], string | undefined> = { spine: request.spine, facts: request.facts };
-  return Object.fromEntries(Object.entries(files).filter(([, file]) => file !== undefined).map(([name, file]) => [name, store.putText(readFileSync(file!, "utf8"), name, { runId: "input", stage: "input" })]));
+  const given = Object.entries(files).filter((entry): entry is [string, string] => entry[1] !== undefined);
+  return Object.fromEntries(given.map(([name, file]) => [name, store.putText(readFileSync(file, "utf8"), name, { runId: "input", stage: "input" })]));
 }
 
 function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageRecord[]; artifacts: Record<string, string> } {
@@ -138,7 +139,8 @@ export function writeReport(runId: string, host: Pick<RunHost, "dataDir">): { re
     const failedStage = STAGES.find((stage) => readJson(paths.failed(stage), StageRecordSchema) !== undefined);
     const failed = failedStage ? readJson(paths.failed(failedStage), StageRecordSchema) : undefined;
     const stop = readJson(paths.stop, StopSchema);
-    const report = buildReport({ run, from: plan.from, budgetUsd: plan.budgetUsd, records: stageRecords(run), ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), linked: linkedRuns(host.dataDir, runs, plan.baseRunId) });
+    const linked = linkedRuns(host.dataDir, runs, plan.baseRunId);
+    const report = buildReport({ run, from: plan.from, budgetUsd: plan.budgetUsd, records: stageRecords(run), ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), linked });
     writeJson(paths.reportJson, report);
     writeText(paths.reportMd, renderReport(report));
     return { report, reportPath: paths.reportMd };
@@ -157,7 +159,8 @@ function newRuntime(db: Db, plan: RunPlan, host: RunHost): WorkflowRuntime {
   });
   const runner = routedRunner([route]);
   runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
-  const runtime = new WorkflowRuntime({ db, gates: new SqliteGateStore(db, { migrate: false }), runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
+  const gates = new SqliteGateStore(db, { migrate: false });
+  const runtime = new WorkflowRuntime({ db, gates, runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
   runtime.register(VIDEO_WORKFLOW, videoWorkflow(plan, host.dataDir), { version: VIDEO_WORKFLOW_VERSION });
   return runtime;
 }

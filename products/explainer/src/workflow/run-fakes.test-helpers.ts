@@ -46,8 +46,16 @@ export interface Fixture {
 const BRIDGE: Omit<BridgeFile, "workdir" | "theater"> & { schema: "explainer-bridge/v1" } = {
   schema: "explainer-bridge/v1",
   stages: {
-    tts: { inputs: { script: "script.json" }, outputs: { words: { path: "out/words.json", tree: false }, audio: { path: "out/audio", tree: true } }, commands: [{ argv: ["node", "tools/tts.mjs", "{in.script}", "{out.audio}"], timeoutS: 60 }] },
-    render: { inputs: { words: "out/words.json", audio: "out/audio" }, outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false } }, commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}"], timeoutS: 60 }] },
+    tts: {
+      inputs: { script: "script.json" },
+      outputs: { words: { path: "out/words.json", tree: false }, audio: { path: "out/audio", tree: true } },
+      commands: [{ argv: ["node", "tools/tts.mjs", "{in.script}", "{out.audio}"], timeoutS: 60 }],
+    },
+    render: {
+      inputs: { words: "out/words.json", audio: "out/audio" },
+      outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false } },
+      commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}"], timeoutS: 60 }],
+    },
     qa: { inputs: { mp4: "out/demo.mp4" }, outputs: { qa: { path: "out/qa.json", tree: false } }, commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }] },
     sheets: { inputs: {}, outputs: { sheet: { path: "out/sheet.png", tree: false } }, commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }] },
   },
@@ -79,12 +87,11 @@ const write = (file: string, text: string) => {
   writeFileSync(file, text);
 };
 
-/** Stands in for the template commands: each writes what the real one would, derived from its inputs. */
-export function fakeBridge(options: { qaFails?: boolean } = {}): FakeBridge {
-  const calls: string[] = [];
-  const ttsInputs: string[] = [];
-  const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
-  const bodies: Record<string, (req: ExecRequest) => { code: number; stdout: string }> = {
+const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
+
+/** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
+function templateBodies(options: { qaFails?: boolean }, ttsInputs: string[]): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
+  return {
     "tts.mjs": (req) => {
       const script = readFileSync(req.argv[2]!, "utf8");
       ttsInputs.push(sha256(script));
@@ -106,6 +113,13 @@ export function fakeBridge(options: { qaFails?: boolean } = {}): FakeBridge {
       return { code: 0, stdout: "" };
     },
   };
+}
+
+/** Stands in for the template commands and records which ran. */
+export function fakeBridge(options: { qaFails?: boolean } = {}): FakeBridge {
+  const calls: string[] = [];
+  const ttsInputs: string[] = [];
+  const bodies = templateBodies(options, ttsInputs);
   const exec: BridgeExec = async (req) => {
     const name = path.basename(req.argv[1]!);
     calls.push(name);
@@ -145,5 +159,6 @@ export const l0Check = (pass: boolean): L0Check => () => [{ check_id: "fake-l0",
 export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge, extra: Partial<RunHost> = {}): RunHost & { rewriter: ReturnType<typeof fakeRewriter> } {
   const rewriter = fakeRewriter();
   let tick = Date.parse("2026-10-22T00:00:00Z");
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor: () => rewriter.harness, exec: bridge.exec, evalChecks: [l0Check(true)], now: () => new Date((tick += 1000)), rewriter, ...extra };
+  const now = () => new Date((tick += 1000));
+  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor: () => rewriter.harness, exec: bridge.exec, evalChecks: [l0Check(true)], now, rewriter, ...extra };
 }

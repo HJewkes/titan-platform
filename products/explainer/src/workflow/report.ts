@@ -134,8 +134,11 @@ function header(report: RunReport): string[] {
 
 function table(report: RunReport): string[] {
   const t = report.totals;
-  const lines = report.rows.map((r) =>
-    `| ${r.stage} | ${r.status} | ${r.bridged ? "**bridge**" : "in-process"} | ${secs(r.wallMs)} | ${share(r.wallMs, t.wallMs)} | ${usd(r.usd)} | ${share(r.usd, t.usd)} | ${r.inputTokens} | ${r.outputTokens} | ${r.cacheReadTokens} | ${r.calls} | ${r.retries} | ${r.cacheHit ? "yes" : "no"} | ${r.checks} | ${shas(r.outputs)} |`);
+  const cells = (r: ReportRow): (string | number)[] => [
+    r.stage, r.status, r.bridged ? "**bridge**" : "in-process", secs(r.wallMs), share(r.wallMs, t.wallMs), usd(r.usd), share(r.usd, t.usd),
+    r.inputTokens, r.outputTokens, r.cacheReadTokens, r.calls, r.retries, r.cacheHit ? "yes" : "no", r.checks, shas(r.outputs),
+  ];
+  const lines = report.rows.map((r) => `| ${cells(r).join(" | ")} |`);
   return [
     "| Stage | Status | Path | Wall s | Wall % | USD | USD % | Tokens in | Tokens out | Cache read | Calls | Retries | Cache hit | Checks | Output shas |",
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",

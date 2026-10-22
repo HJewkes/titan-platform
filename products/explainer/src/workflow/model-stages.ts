@@ -96,10 +96,10 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const prompt = scriptPrompt(input.store.readText(need(input, "spine")), input.store.readText(need(input, "facts")));
   const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
   const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
-  const call = (text: string) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, outputSchema: ScriptSchema, signal: deps.signal ?? new AbortController().signal });
-  let usage = NO_USAGE;
+  const signal = deps.signal ?? new AbortController().signal;
+  const call = (text: string) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, outputSchema: ScriptSchema, signal });
   let outcome = await call(prompt);
-  usage = addUsage(usage, stageUsage(outcome.usage));
+  let usage = stageUsage(outcome.usage);
   let result = checked(outcome);
   const retried = result.script === undefined && isSchemaFailure(outcome);
   if (retried) {
