@@ -321,10 +321,14 @@ to the repo's [`shepherd.redSeat`](/guides/factory#the-config-file) entry, else 
 initials prefix the PR's agent branch, then `shepherd.hubSeat`. A failed send is retried each
 sweep until the sha is 6 hours old.
 
-A seat with no live agent-chat session cannot take the event. At startup, and whenever the
-set changes, serve logs one `main CI watch ALARM` error for each seat a red event could go to
-that no live session holds, with the repos it covers. A roster that cannot be read raises no
-alarm.
+The send reaches only a seat a connected agent-chat session holds: a roster row whose
+presence is `live` (agent-dispatch's `receivesMessages`). A `detached` or `exited` seat cannot
+take the event. At startup, and whenever the set changes, serve logs one `main CI watch ALARM`
+error for each such seat that the send's own route can pick, with the repos it covers. The
+route is checked for a run registered now and for a merge no seat can be mapped to; a
+branch-prefix seat is chosen per PR and is not checked ahead of time. A roster that cannot be
+read raises no alarm; serve warns once that it skipped the check, and again after the next
+successful read.
 
 ## Merges and the guard on R27 {#merge-guard}
 

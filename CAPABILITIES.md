@@ -484,7 +484,7 @@ Key exports:
 - `call-timing`: `observeAgentChatCalls`
 - `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
 - `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`
-- +36 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
+- +37 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
