@@ -124,8 +124,13 @@ function SyncRow({ repo, primary, sync }: { repo: string | undefined; primary: s
   );
 }
 
-function heldText({ conflict = [], frozen = [] }: ArSync): string {
-  const parts = [...(conflict.length === 0 ? [] : [`conflict: ${conflict.join(", ")}`]), ...(frozen.length === 0 ? [] : [`frozen: ${frozen.join(", ")}`])];
+/** A failed sync leaves the PR open for the next round to retry, so its reason sits beside whatever held it. */
+function heldText({ conflict = [], frozen = [], failed }: ArSync): string {
+  const parts = [
+    ...(failed === undefined ? [] : [`sync failed, retried next round: ${failed}`]),
+    ...(conflict.length === 0 ? [] : [`conflict: ${conflict.join(", ")}`]),
+    ...(frozen.length === 0 ? [] : [`frozen: ${frozen.join(", ")}`]),
+  ];
   return parts.join(" · ") || "—";
 }
 

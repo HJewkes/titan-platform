@@ -184,6 +184,7 @@ const sync = z.object({
   treeChanged: z.boolean().optional(),
   gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
   runs: z.array(evalRun).optional(),
+  failed: z.string().optional(),
 });
 
 const producedBy = { ideaId: z.string().optional(), round: z.number().int().positive().optional() };

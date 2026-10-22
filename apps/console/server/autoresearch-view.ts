@@ -227,6 +227,8 @@ const sync = z.object({
   treeChanged: z.boolean().optional(),
   gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
   runs: z.array(evalRun).optional(),
+  /** C-256 S5f: why the round's sync step failed; the PR stays `open` and the next round retries. */
+  failed: z.string().optional(),
 });
 
 /**

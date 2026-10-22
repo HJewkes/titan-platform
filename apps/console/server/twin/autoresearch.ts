@@ -253,6 +253,12 @@ export const AR_RUN_FIXTURE: ArRunView = {
   },
 };
 
+/** C-256 S5f: round 3's sync step failed, so snapshot 2's PR stays open for round 4 to retry. */
+export const AR_RUN_SYNC_FAILED: ArRunView = {
+  ...AR_RUN_FIXTURE,
+  syncs: [AR_RUN_FIXTURE.syncs[0]!, { round: 3, pr: 102, state: "open", failed: "[sync-push] the push to the snapshot branch was refused" }],
+};
+
 /** The same run under another id, recorded before S3a, so the page proves it still renders a run without those fields. */
 export const AR_RUN_PRE_S3A: ArRunView = { ...PRE_S3A_RUN, runId: "ar-2b90" };
 

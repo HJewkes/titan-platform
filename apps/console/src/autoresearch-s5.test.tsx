@@ -5,7 +5,7 @@ import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
-import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_SYNC_FAILED } from "../server/twin/autoresearch.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
 
@@ -150,6 +150,16 @@ describe("the run's snapshots and syncs", () => {
     expect(pending.textContent).toContain("A phase-end snapshot is waiting");
     expect(sync.textContent).toContain("frozen: src/gate/measure.py");
     expect(sync.textContent).toContain("answered: ddddddd");
+  });
+
+  it("notes a failed sync with its reason, leaving the PR open for the next round", async () => {
+    renderConsole(RUN_ROUTE, withRun(AR_RUN_SYNC_FAILED));
+
+    const failed = await screen.findByTestId("autoresearch-sync-3");
+
+    expect(failed.textContent).toContain("open");
+    expect(failed.textContent).toContain("sync failed, retried next round: [sync-push] the push to the snapshot branch was refused");
+    expect(screen.getByTestId("autoresearch-sync-2").textContent).not.toContain("sync failed");
   });
 
   it("says a run recorded before snapshots cut none", async () => {

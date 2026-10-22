@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ArRunSummarySchema, ArRunViewSchema, type ArRunView } from "./autoresearch-view.js";
-import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_SUMMARY } from "./twin/autoresearch.js";
+import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_SUMMARY, AR_RUN_SYNC_FAILED } from "./twin/autoresearch.js";
 
 const outcomes = (run: ArRunView) => run.rounds.flatMap((round) => round.ladders.map((ladder) => ladder.outcome));
 
@@ -94,6 +94,12 @@ describe("the run view schema", () => {
     expect(parsed.syncs[0]!.runs!.map((entry) => entry.repeat)).toEqual(["s1", "s2", "s3"]);
     expect(outcomes(parsed).flatMap((outcome) => (outcome === null ? [] : [outcome.rungReached])).every((rung) => ["none", "L0", "L1", "L2", "L3"].includes(rung))).toBe(true);
     expect(parsed.rounds.flatMap((round) => round.ladders.flatMap((entry) => entry.evals)).some((entry) => entry.repeat.startsWith("s"))).toBe(false);
+  });
+
+  it("keeps a failed sync's reason on a sync that stays open", () => {
+    const parsed = ArRunViewSchema.parse(AR_RUN_SYNC_FAILED);
+
+    expect(parsed.syncs[1]).toEqual({ round: 3, pr: 102, state: "open", failed: "[sync-push] the push to the snapshot branch was refused" });
   });
 
   it("refuses a re-evaluation decision the engine does not make", () => {
