@@ -63,8 +63,10 @@ export interface LiveViewedEntry {
   roundId: string;
   at: string;
   keys: readonly string[];
-  /** The round's Storybook build, or null when it carries none that parses. */
+  /** The round's Storybook build, or null when it carries none that parses or carries one per PR group. */
   buildId: string | null;
+  /** A multi-PR round's build per key, the one its PR group's live view showed; null where none was pinned (TP-3968). */
+  builds?: Record<string, string | null>;
 }
 
 export interface RoundDecisionLog extends DecisionLog {
