@@ -18,7 +18,7 @@ const OPS: OwnerOp[] = [
 ];
 
 function deposit(op: unknown, overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
-  return { depositId: "d-1", asker: "agent-a", kind: "do", door: "two-way", summary: "Merge acme/widgets#7", context: "CI is green.", op, ...overrides } as OwnerItemDeposit;
+  return { depositId: "d-1", asker: "agent-a", kind: "do", door: "two-way", summary: "Merge acme/widgets#7", context: "CI is green.", ...(op === undefined ? {} : { op }), ...overrides } as OwnerItemDeposit;
 }
 
 function hitlItem(keys: string[]): OwnerItem {
@@ -92,9 +92,7 @@ describe("a deposit carrying an op", () => {
   });
 
   it("files a deposit with no op as an item with no op and no derived key", () => {
-    const { op: _none, ...plain } = deposit(OPS[2]);
-
-    const filed = fromDeposit(plain, NOW);
+    const filed = fromDeposit(deposit(undefined), NOW);
 
     expect(filed).not.toHaveProperty("op");
     expect(filed.keys).toEqual([]);
