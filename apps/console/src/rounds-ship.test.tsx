@@ -10,7 +10,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { getButton } from "./pages/get-button.test-helpers.js";
+import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const SHIP = "ship-tile-r1";
@@ -107,7 +107,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
 const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => getButton(label);
 /** The montages sit under the Diff tab (decision 167). */
-const openDiff = (): void => void fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+const openDiff = (): void => void fireEvent.click(getByRoleFast("tab", "Diff"));
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
 describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
@@ -358,8 +358,8 @@ describe("answering a Ship round with side questions", { timeout: RENDER_TIMEOUT
     const rendered = await renderShip({ answers: true, detail: await td850() });
 
     fireEvent.click(screen.getByRole("radio", { name: "1 Yes" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "1 Light" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "3 Wide" }));
+    fireEvent.click(getByRoleFast("checkbox", "1 Light"));
+    fireEvent.click(getByRoleFast("checkbox", "3 Wide"));
     fireEvent.click(screen.getByRole("radio", { name: "4 4" }));
     fireEvent.change(screen.getByLabelText("Answer to Anything else?"), { target: { value: "Looks fine." } });
     fireEvent.click(button("Ship"));
@@ -441,7 +441,7 @@ describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }
     fireEvent.click(button("Ship"));
     expect(submits(rendered)).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    fireEvent.click(getByRoleFast("checkbox", "Round 1 feedback addressed"));
     expect(screen.queryByTestId("ship-blocked")).toBeNull();
     fireEvent.click(button("Ship"));
 
@@ -634,7 +634,7 @@ describe("a sent Ship round read back after a reload (TP-3767)", { timeout: REND
     expect(within(side).getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Ask design.");
     expect(screen.getByTestId("round-pick-sent-ship-tiles").textContent).toContain("Ship");
-    const addressed = within(screen.getByTestId("ship-prior-feedback")).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const addressed = getByRoleFast("checkbox", "Round 1 feedback addressed", screen.getByTestId("ship-prior-feedback"));
     expect(addressed.getAttribute("aria-checked")).toBe("true");
     expect(screen.queryByRole("button", { name: "Ship" })).toBeNull();
   });
@@ -695,7 +695,7 @@ describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEO
 
     expect(within(screen.getByTestId("ship-prior-feedback")).getByText("Tile, dark (rejected): The stripe clips.")).toBeTruthy();
     expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    fireEvent.click(getByRoleFast("checkbox", "Round 1 feedback addressed"));
     expect(screen.queryByTestId("ship-blocked")).toBeNull();
   });
 
@@ -714,7 +714,7 @@ describe("an unsent Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS 
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
   const SIDE_COMMENT = "Comment on File the badge colour as a follow-up?";
   const stored = (): string | null => localStorage.getItem(draftKey(SHIP));
-  const addressedTick = (): HTMLElement => screen.getByRole("checkbox", { name: "Round 1 feedback addressed" });
+  const addressedTick = (): HTMLElement => getByRoleFast("checkbox", "Round 1 feedback addressed");
   const value = (label: string): string => screen.getByLabelText<HTMLTextAreaElement>(label).value;
 
   /** Answers and comments on the side question, ticks round 1 Addressed and writes the Send back note, then waits for the write. */

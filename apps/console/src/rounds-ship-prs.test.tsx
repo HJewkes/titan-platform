@@ -9,7 +9,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { getButton } from "./pages/get-button.test-helpers.js";
+import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const ROUND = "tiles-and-panels-r1";
@@ -201,7 +201,7 @@ describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, 
     expect(pr("example/panels#2").getByTestId("ship-prior-feedback").textContent).toContain("The stripe is two pixels low.");
     const prior = pr("example/tiles#1").getByTestId("ship-prior-feedback");
     expect(prior.textContent).toContain("The stripe is two pixels low.");
-    const addressed = within(prior).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const addressed = getByRoleFast("checkbox", "Round 1 feedback addressed", prior);
     expect(addressed.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(addressed);
     expect(addressed.getAttribute("aria-checked")).toBe("true");
@@ -210,7 +210,7 @@ describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, 
 
 describe("frame feedback on a Ship round with two PRs (TP-3773 S6b)", { timeout: RENDER_TIMEOUT_MS }, () => {
   const verdict = (key: string, frame: string, label: string): HTMLElement => {
-    fireEvent.click(pr(key).getByRole("tab", { name: "Diff" }));
+    fireEvent.click(getByRoleFast("tab", "Diff", screen.getByTestId(`pr-${key}`)));
     return getButton(label, pr(key).getByTestId(`montage-${frame}`));
   };
 
