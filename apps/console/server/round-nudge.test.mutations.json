@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a round open exactly six hours is nudged",
+      "file": "apps/console/server/round-nudge.ts",
+      "find": "now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS",
+      "replace": "now - Date.parse(round.updatedAt) >= NUDGE_AFTER_MS",
+      "kills": [
+        "the round age nudge does not nudge a round open exactly 6 h, and nudges it a millisecond later"
+      ]
+    },
+    {
+      "name": "a withdrawn round is nudged",
+      "file": "apps/console/server/round-nudge.ts",
+      "find": "round.feedback === null && round.withdrawn === null && now",
+      "replace": "round.feedback === null && now",
+      "kills": [
+        "the round age nudge never nudges a withdrawn round, in the inbox or the digest"
+      ]
+    },
+    {
+      "name": "the rec answer writes feedback.json itself, bypassing rounds.submit",
+      "file": "apps/console/server/round-rec-answer.ts",
+      "find": "  return submit({ id, manifestSha256, answers: built.answers, general: ANSWERED_BY_REC });",
+      "replace": "  return import(\"./state-file.js\").then(({ writeJsonOnce }) => writeJsonOnce(path.join(roundDir, \"feedback.json\"), { general: ANSWERED_BY_REC, answers: built.answers })).then(() => ({ status: \"submitted\" as const, path: roundDir, sha256: manifestSha256, headSha: null }));",
+      "kills": [
+        "rounds.answer-rec answers every question with its recommendation through rounds.submit, marked answered-by-rec"
+      ]
+    },
+    {
+      "name": "an after-answer round's nudge prints its recommendations",
+      "file": "apps/console/server/round-nudge.ts",
+      "find": "const recommendationsHidden = round.manifest.recommendations === \"after-answer\";",
+      "replace": "const recommendationsHidden = false;",
+      "kills": [
+        "the round age nudge states no recommendation for an after-answer round, in the inbox or the digest, yet its one tap still answers through rounds.submit"
+      ]
+    }
+  ]
+}
