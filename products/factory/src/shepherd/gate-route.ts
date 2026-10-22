@@ -6,7 +6,7 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import { runSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { liveRoute, runSeat, toldDetail, type ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 
@@ -96,9 +96,12 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
   try {
     seat = await addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
+    const route = await liveRoute(ports, input.repo, seat);
+    if ("none" in route) return { sent: false, seat, detail: route.none };
+    seat = route.seat;
     const to = seat;
     await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
-    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
+    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: toldDetail(route, `told ${seat}`) };
   } catch (error) {
     signal.throwIfAborted();
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
@@ -185,7 +188,7 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"})`).join(", ") || "no failing check named";
   return seatOrGate(
     () => noticeGate(run, "ci-failed", red.headSha, `CI failed (${checks}) and no fixer took the ci-red wake`),
-    () => awaitNewHead(run, red.headSha, true),
+    () => awaitNewHead(run, red.headSha, true, red.failing),
     (unsent) => onCiFailed(run.ctx, run.target, red, run.state, unsent),
   );
 }

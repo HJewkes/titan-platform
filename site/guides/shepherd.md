@@ -398,7 +398,8 @@ elsewhere, the serve process cancels the run and its gate, whichever gate it wai
 whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
 after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
 release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
-whose pull request is merged or closed (and only abandon, only on a fresh read of that state).
+whose pull request is merged or closed (only on a fresh read of that state), and answer an
+`sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
 The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
@@ -541,7 +542,9 @@ account on its roster row exhausted until the notice's reset. agent-chat's defau
 marked when the row names none. The next successor then moves to the next account in the rotation.
 A fixer that writes the same words itself marks nothing.
 
-A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
+A retired implementer is never resumed; a successor takes the wake. A lineage the roster no
+longer shows at all still gets one: it starts in the repo's checkout and takes over from the
+registered implementer (TP-4045). When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
 refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
@@ -575,10 +578,18 @@ Who receives a seat notice, an exit notice and the seat digest follows the run, 
 (TP-3653). `shepherd register` records the agent-chat session that ran it (`AGENT_CHAT_NAME`),
 and only the first registrant is kept, so a restarted run or a successor's repeat registration
 still reaches it. A session that registered a PR it does not implement, such as a coordinator,
-receives them. An implementer that registered its own PR exits at turn end, so the first
-session that spawned its lineage receives them. A run with no registrant, or whose lineage
-names no session, goes to the repo's seat as before. A held run naming no seat and a
-reviewer-infrastructure notice still go to the hub seat.
+receives them while its roster row is `live` (TP-3958). An implementer that registered its own
+PR exits at turn end, so the first session that spawned its lineage receives them. A run with
+no registrant, whose registrant is no longer live, or whose lineage names no session, goes to
+the repo's seat as before. A held run naming no seat and a reviewer-infrastructure notice still
+go to the hub seat.
+
+A seat notice or exit notice is sent only to a seat that holds a live session, by the same
+`receivesMessages` rule as the [main CI watch](#main-ci-watch). When the chosen seat holds
+none, as after its coordinator retired, the notice goes to the first live one of the repo's
+`shepherd.redSeat` entry, `shepherd.redSeat.fallback` and `shepherd.hubSeat`, and the step's
+`detail` names which one. With none live, no notice is sent and the owner gate opens with that
+reason. A roster that cannot be read keeps the chosen seat.
 
 A registrant stands in only for a repo that has one seat. A notice lets the gate take its
 default action, and the seat book is what authorises that, so a repo that is on a deny list
@@ -1386,8 +1397,8 @@ closed is skipped.
 | --- | --- | --- |
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
-| `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved and merged as is | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
-| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again |
+| `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved and merged as is | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate with exactly `{"decision":"retry"}` (recorded with its agent name), and abandon it only once the PR is merged or closed |
+| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again. A coordinator may answer exactly `{"decision":"await-new-head"}` while the PR is open at the gate's head, and `abandon` once the PR is merged or closed (owner decision 529); a coordinator never gives `waive-proof` |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |

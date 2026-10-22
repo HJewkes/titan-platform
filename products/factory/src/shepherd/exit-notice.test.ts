@@ -316,4 +316,23 @@ describe("the seat notice", () => {
     expect(none).toMatchObject({ sent: false, cause: "unread" });
     expect(unreadable).toMatchObject({ sent: false, detail: "the seat notice failed: Error" });
   });
+
+  it("sends a retired seat's exit notice to the first live fallback, and records which (TP-3958)", async () => {
+    const { sends, ports } = seat();
+    const live = new Set(["hub-coord"]);
+    const fallbacks = [{ seat: "red-coord", from: "shepherd.redSeat.repos" }, { seat: "hub-coord", from: "shepherd.hubSeat" }];
+
+    const result = await sendExitNotice({ ...ports, live: async (name) => live.has(name), fallbackSeats: () => fallbacks }, input);
+
+    expect(sends.map((sent) => sent.seat)).toEqual(["hub-coord"]);
+    expect(result).toMatchObject({ sent: true, seat: "hub-coord", detail: expect.stringContaining("(demo-coord holds no live session, so shepherd.hubSeat hub-coord was told)") });
+  });
+
+  it("keeps the seat when the roster cannot be read, as before liveness was checked", async () => {
+    const { sends, ports } = seat();
+
+    await sendExitNotice({ ...ports, live: async () => Promise.reject(new Error("broker down")), fallbackSeats: () => [{ seat: "hub-coord", from: "shepherd.hubSeat" }] }, input);
+
+    expect(sends.map((sent) => sent.seat)).toEqual(["demo-coord"]);
+  });
 });
