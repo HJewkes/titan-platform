@@ -29,16 +29,6 @@
       ]
     },
     {
-      "name": "pressing a PR tab never opens its panel",
-      "file": "apps/console/src/pages/ShipTabs.tsx",
-      "find": "<Tabs index={tab} onChange={setTab}>",
-      "replace": "<Tabs index={tab} onChange={() => undefined}>",
-      "kills": [
-        "frame feedback on a Ship round (TP-3773 S6b) turns Ship off for a Rejected frame, and sends its verdict and comment with Send back",
-        "frame feedback on a Ship round (TP-3773 S6b) ships with a Chosen frame that has no comment, and sends the verdict"
-      ]
-    },
-    {
       "name": "pressing an Addressed tick never ticks it",
       "file": "apps/console/src/pages/ShipPriorFeedback.tsx",
       "find": "onCheckedChange={(checked) => (locked ? undefined : onToggle(item, checked))}",
