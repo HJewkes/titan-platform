@@ -229,6 +229,15 @@ agent-chat profile. If one is not, the intent step is refused with
 `UninstalledProfileError`, naming the profile, rather than dispatching a member that could
 only come back with no verdict.
 
+A test-only head that `shepherd.gateReset.noReproProceed` lets past its vacuous proof gets a
+blocking tests member, planned right after a hold's adversary so the member cap never drops
+it. It is a fresh reviewer, never one of the members that vote MERGE, and its brief asks
+whether each changed test would fail without the change it covers. Its MERGE lets the panel
+merge with no waiver. Its silence still means no verdict, and its FIX_FIRST sends the head
+back. Before TP-4058 the plan had no tests member, so the aggregate's unplanned tests seat
+stayed empty and the head went back as the proof's `NO_REPRO`; an intent recorded then keeps
+that ending.
+
 The aggregate decides:
 
 - A `FIX_FIRST` from any blocking member sends the head back. The findings carry each
