@@ -11,10 +11,24 @@ export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts"
 export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts"];
 
 /**
- * Who may resolve a gate: the factory's coordinator evidence and answer allowances, and hitl's actor-class refusal.
+ * Who may resolve a gate, along the whole resolve route: the answer entry points that set a resolver's class, the
+ * factory store's wiring of allowances, evidence policy and authorize, and hitl's store check and actor-class refusal.
  * A diff here can widen gate resolves past the owner as surely as an authority table edit (TP-4052, tp#2253).
  */
-const GATE_RESOLVE_ACTOR_FILES = ["products/factory/src/**/coordinator-evidence*.ts", "products/factory/src/**/coordinator-allowances*.ts", "packages/hitl/src/resolver-policy*.ts"];
+const GATE_RESOLVE_ACTOR_FILES = [
+  "products/factory/src/**/coordinator-evidence*.ts",
+  "products/factory/src/**/coordinator-allowances*.ts",
+  "products/factory/src/host.ts",
+  "products/factory/src/gate-answer-rpc.ts",
+  "products/factory/src/gate-answer-check.ts",
+  "products/factory/src/resolve-proof.ts",
+  "products/factory/src/device-gates.ts",
+  "products/factory/src/shepherd/stale-gates.ts",
+  "packages/hitl/src/resolver-policy*.ts",
+  "packages/hitl/src/base-store.ts",
+  "packages/hitl/src/sqlite-store.ts",
+  "packages/hitl/src/memory-store.ts",
+];
 
 /** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5), and its agent profiles (458 E1); test files stay exempt in the panel. */
 const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];

@@ -160,7 +160,21 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBe("g10-adversary: policy touch");
   });
 
-  it.each(["products/factory/src/coordinator-evidence.ts", "products/factory/src/coordinator-evidence-read.ts", "products/factory/src/coordinator-allowances.ts", "packages/hitl/src/resolver-policy.ts"])(
+  it.each([
+    "products/factory/src/coordinator-evidence.ts",
+    "products/factory/src/coordinator-evidence-read.ts",
+    "products/factory/src/coordinator-allowances.ts",
+    "products/factory/src/host.ts",
+    "products/factory/src/gate-answer-rpc.ts",
+    "products/factory/src/gate-answer-check.ts",
+    "products/factory/src/resolve-proof.ts",
+    "products/factory/src/device-gates.ts",
+    "products/factory/src/shepherd/stale-gates.ts",
+    "packages/hitl/src/resolver-policy.ts",
+    "packages/hitl/src/base-store.ts",
+    "packages/hitl/src/sqlite-store.ts",
+    "packages/hitl/src/memory-store.ts",
+  ])(
     "holds a gate-resolve actor or evidence rule in %s g10-adversary",
     async (path) => {
       const r = rig([file(path, 10)]);

@@ -1134,10 +1134,13 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
-Policy paths include the rules for who may resolve a gate, not only the owner's rule file: the
-factory's `coordinator-evidence*.ts` and `coordinator-allowances*.ts`, its `gate-resolve*.ts`,
-and hitl's `resolver-policy.ts`. A change to any of them can widen gate resolves past the owner,
-so it takes `g10-adversary`. A change to their test files alone does not.
+Policy paths include every file on the route that decides who may resolve a gate, not only the
+owner's rule file. In the factory: the answer entry points `gate-resolve*.ts`,
+`gate-answer-rpc.ts`, `gate-answer-check.ts` and `resolve-proof.ts`; the store wiring in
+`host.ts`; `coordinator-evidence*.ts`, `coordinator-allowances*.ts`, `device-gates.ts` and
+`shepherd/stale-gates.ts`. In hitl: `resolver-policy.ts` and the stores that apply it,
+`base-store.ts`, `sqlite-store.ts` and `memory-store.ts`. A change to any of them can widen gate
+resolves past the owner, so it takes `g10-adversary`. A change to their test files alone does not.
 
 **Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
 edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
