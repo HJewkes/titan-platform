@@ -59,5 +59,8 @@ every command with an invocation, where state and logs live, and how it fails.
 
 ## Working here
 
+- **[Autoresearch](/guides/autoresearch)** — the ratcheted improvement loop: the run
+  lifecycle, the CLI and config, and how to add a target.
+
 - **[Working in the repo](/guides/contributing)** — the scaffold, the DAG check, changesets,
   and how a release happens.
