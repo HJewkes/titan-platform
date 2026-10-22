@@ -101,7 +101,7 @@ const mergePolicies = (w: World) => Object.values(w.host.runtime.status(w.runId)
 const pendingGate = ({ host, runId }: World) => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"));
 
 async function waitingForRetarget({ host, runId }: World): Promise<void> {
-  await vi.waitFor(() => expect(host.runtime.status(runId)?.currentStep).toMatch(/^base-wait/), { timeout: 10_000, interval: 5 });
+  await vi.waitFor(() => expect(host.runtime.status(runId)?.currentStep).toMatch(/^base-wait/), { interval: 5 });
 }
 
 describe("a stacked PR whose MERGE evidence was read on the parent branch", () => {
@@ -117,7 +117,7 @@ describe("a stacked PR whose MERGE evidence was read on the parent branch", () =
     expect(w.fake.pr(1).merged).toBe(false);
 
     w.fake.pr(1).baseRef = "main";
-    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
     expect(w.mergedInto).toEqual(["main"]);
     expect(pendingGate(w)).toBeUndefined();
@@ -130,7 +130,7 @@ describe("a stacked PR whose MERGE evidence was read on the parent branch", () =
   it("re-reads evidence taken on the parent branch when GitHub retargets before land looks, so it never decides on the stale record", async () => {
     const w = world(PARENT, AUTO, (fake) => (fake.pr(1).baseRef = "main"));
 
-    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
     const reads = Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${H1}`);
     expect(reads).toHaveLength(2);
@@ -170,7 +170,7 @@ describe("a stacked PR on a seat that grants merge-into-feature-base", () => {
   it("keeps today's path: it never waits at base-wait and decides on the stacked base", async () => {
     const w = world(PARENT, { ...AUTO, featureBase: true });
 
-    await vi.waitFor(() => expect(mergePolicies(w).length).toBeGreaterThan(0), { timeout: 10_000 });
+    await vi.waitFor(() => expect(mergePolicies(w).length).toBeGreaterThan(0));
 
     expect(stepIds(w).filter((id) => id.startsWith("base-wait"))).toEqual([]);
     expect(stepIds(w).filter((id) => id === `${MERGE_EVIDENCE_STEP}:${H1}`)).toHaveLength(1);
