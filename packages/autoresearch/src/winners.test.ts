@@ -21,7 +21,7 @@ const PROPOSALS: Record<string, Partial<Proposal>> = {
 };
 const POLICY: Policy = {
   ...FIXTURE_POLICY,
-  mechanisms: { a: { metrics: { [CC]: -4 } }, b: { metrics: { [CC]: -3 } }, "b-cancelled": { metrics: { [CC]: -3 } }, "a-same-file": { metrics: { [CC]: -3 } } },
+  mechanisms: { a: { metrics: { [CC]: -4 } }, "a-2": { metrics: { [CC]: -4 } }, b: { metrics: { [CC]: -3 } }, "b-cancelled": { metrics: { [CC]: -3 } }, "a-same-file": { metrics: { [CC]: -3 } } },
   /** With `a` in the tree, `b-cancelled` loses its gain and a little more. */
   interactions: { "a+b-cancelled": { metrics: { [CC]: 3.5 } } },
   usd: { eval: 0.1 },
@@ -83,13 +83,18 @@ describe("a later winner re-evaluated on top of the round's new head", () => {
   });
 
   it("requeues a winner whose merge conflicts on its own lineage, and the next round picks it", async () => {
-    const { run } = await loop(["a", "a-same-file"], { config: { ...CONFIG, rounds: 2 } });
-    const original = seedOf(run, "ar-queue:1", z.object({ queue: z.array(IdeaSchema) })).queue.find((idea) => idea.id === id("a-same-file"))!;
+    const followup = (mechanism: string, bold: boolean) => proposal(mechanism, { parent: id("a"), source: "followup", bold });
+    const followups = { add: [followup("a-2", true), followup("a-same-file", false)] };
+    const script = ({ round }: { round: number }) => (round === 1 ? { add: [proposed("a")] } : round === 2 ? followups : { exempt: { bold: "test", followup: "test" } });
+    const { repo, ports } = await world([], { planner: script });
+    const host = openHost(ports);
+    const run = await host.runtime.wait(start(host, repo, { ...CONFIG, rounds: 3 }));
+    const queueOf = (round: number) => seedOf(run, `ar-queue:${round}`, z.object({ queue: z.array(IdeaSchema) })).queue;
 
-    expect(reevalOf(run, "a-same-file")).toMatchObject({ decision: "requeued", reason: "conflict", merge: null, conflict: expect.arrayContaining(["src/gate/gates.py"]) });
-    expect(summaryOf(run).superseded).toEqual([id("a-same-file")]);
-    const requeued = seedOf(run, "ar-queue:2", z.object({ queue: z.array(IdeaSchema) })).queue.find((idea) => idea.id === id("a-same-file"));
-    expect(requeued).toMatchObject({ source: "requeue", lineage: original.lineage, round: 2 });
+    expect(seedOf(run, `ar-reeval:2/${id("a-same-file")}`, ReevalSchema)).toMatchObject({ decision: "requeued", reason: "conflict", merge: null, conflict: expect.arrayContaining(["src/gate/gates.py"]) });
+    expect(seedOf(run, "ar-summary:2", RoundSummarySchema).superseded).toEqual([id("a-same-file")]);
+    expect(queueOf(3).find((idea) => idea.id === id("a-same-file"))).toMatchObject({ source: "requeue", lineage: id("a"), round: 3 });
+    expect(seedOf(run, "ar-select:3", z.object({ picks: z.array(IdeaSchema) })).picks.map((idea) => idea.id)).toContain(id("a-same-file"));
   });
 
   it("keeps a winner that still clears the new B: two moves, a merge commit on the ratchet and B's runs from the re-evaluation", async () => {
