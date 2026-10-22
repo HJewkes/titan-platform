@@ -61,6 +61,7 @@ graph TD
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
+    autoresearch["autoresearch"]
     codeGraph["code-graph"]
     codeRead["code-read"]
     coordinator["coordinator"]
@@ -72,6 +73,7 @@ graph TD
     pm["pm"]
     queueMirror["queue-mirror"]
     reviewPanel["review-panel"]
+    reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
     sessionGraph["session-graph"]
     sessionRead["session-read"]
@@ -101,6 +103,8 @@ graph TD
   agent --> agentProtocol
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  autoresearch --> rpcClient
+  autoresearch --> workflow
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
@@ -139,6 +143,10 @@ graph TD
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
+  reviewWorkflow --> agentDispatch
+  reviewWorkflow --> evidence
+  reviewWorkflow --> github
+  reviewWorkflow --> reviewPanel
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
@@ -203,6 +211,7 @@ graph TD
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
+  factory --> autoresearch
   factory --> coordinator
   factory --> daemon
   factory --> fixProof

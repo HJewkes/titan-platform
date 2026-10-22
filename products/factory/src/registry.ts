@@ -9,6 +9,7 @@ import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
+import { ownerOpPreview } from "./owner-ops/preview.js";
 import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
 import { GH_GATEWAY_COMMANDS } from "./shepherd/gh-gateway.js";
@@ -179,6 +180,6 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, gatesReview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
+  for (const cmd of [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

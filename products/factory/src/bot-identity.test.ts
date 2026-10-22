@@ -186,6 +186,20 @@ describe("bot identity: the token's expiry header (V7)", () => {
   });
 });
 
+describe("bot identity: the F11 usage meter", () => {
+  it("feeds every bot response's rate-limit headers to the meter, refused calls included", async () => {
+    const bot = openBotIdentity({ path: tokenFile(), fetch: fakeGitHub([], 403, 0, { "x-ratelimit-used": "4321" }), alarmed: new Set() });
+
+    await okClient(bot).request("GET /repos/{owner}/{repo}", { owner: "fixture-org", repo: "fixture-repo" }).catch(() => undefined);
+
+    expect(bot.usage?.current().map(({ resource, used, limit }) => ({ resource, used, limit }))).toEqual([{ resource: "core", used: 4321, limit: 5000 }]);
+  });
+
+  it("has no meter when the token was not read", () => {
+    expect(openBotIdentity({ path: undefined }).usage).toBeUndefined();
+  });
+});
+
 describe("botAccess", () => {
   it("is blocked, not a throw, in a runtime built without serve's capabilities", () => {
     const bare = { capability: (name: string) => { throw new Error(`unknown capability: ${name}`); } };

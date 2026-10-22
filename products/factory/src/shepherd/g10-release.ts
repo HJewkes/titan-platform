@@ -173,10 +173,11 @@ const isTwoMergeAsk = (raw: unknown): boolean => typeof raw === "object" && raw 
 
 /**
  * The hold is read after the PR head, and released only if it is still held under the reason that was judged, so a re-hold in between
- * stands. `twoMerge` is `shepherd.gateReset.twoMergeRelease`; absent (off) never releases a g10-adversary hold.
+ * stands. `twoMerge` is `shepherd.gateReset.twoMergeRelease`, read per step when a function; absent (off) never releases a g10-adversary hold.
  */
-export function g10ReleaseRoutes(deps: ShepherdDeps, twoMerge?: TwoMergeMode) {
-  return [codeRoute(G10_RELEASE_STEP, deps.now, (raw: unknown) => (isTwoMergeAsk(raw) ? releaseOnTwoMerges(deps, twoMerge, raw) : releaseOnReview(deps, raw)))];
+export function g10ReleaseRoutes(deps: ShepherdDeps, twoMerge?: TwoMergeMode | (() => TwoMergeMode | undefined)) {
+  const modeNow = () => (typeof twoMerge === "function" ? twoMerge() : twoMerge);
+  return [codeRoute(G10_RELEASE_STEP, deps.now, (raw: unknown) => (isTwoMergeAsk(raw) ? releaseOnTwoMerges(deps, modeNow(), raw) : releaseOnReview(deps, raw)))];
 }
 
 /** Marks a MERGE as the verdict of the reviewer Shepherd spawned with `profile`; an external, resumed or carried verdict has none. */
@@ -254,9 +255,12 @@ function twoMergesAt(reviews: ReadonlyMap<string, Verdict>, head: string): TwoMe
 
 /**
  * At a head a clean merge-up made, a `behind` read whose own required checks are green counts as green: a strict base that keeps moving
- * would otherwise hold the run forever. The merge step still gates on the base. Any other head waits for its update and a green read.
+ * would otherwise hold the run forever. The merge step still gates on the base. So does a `baseMoved` read: a non-strict base that moved
+ * past the head's green, which land merges as it stands, so it is never updated and would hold the run forever too (TP-3933). Any other
+ * head waits for its update and a green read.
  */
-const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean => ci.verdict === "green" || (mergeUp !== undefined && ci.verdict === "behind" && ci.checksGreen === true);
+const greenAt = (ci: CiSnapshot, mergeUp: MergeUp | undefined): boolean =>
+  ci.verdict === "green" || (ci.verdict === "behind" && ci.checksGreen === true && (mergeUp !== undefined || ci.baseMoved === true));
 
 /** What the release step is asked at a head: the verdict refs it judges, and the key that marks them used once they released. */
 interface Ask {

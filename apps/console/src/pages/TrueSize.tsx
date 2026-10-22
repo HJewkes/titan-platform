@@ -58,7 +58,7 @@ const share = (px: number, of: number): string => `${(px / of) * 100}%`;
 export const pinnableFrame = (loadable: boolean, media: FrameMedia | undefined): boolean => !playsMedia(media) && (loadable || media?.scale !== undefined);
 
 /** The share of its declared width a fitted frame is drawn at, never above 1; undefined until its box has been measured. */
-function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
+export function useFitScale(ref: RefObject<HTMLElement | null>, width: number): number | undefined {
   const [scale, setScale] = useState<number>();
   useEffect(() => {
     const element = ref.current;

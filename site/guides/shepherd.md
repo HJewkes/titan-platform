@@ -60,6 +60,8 @@ the old run still reads. The verb prints `restarted after failed run <id>` or
 `restarted after run <id> stopped not-mergeable`. A run that merged, or stopped for any other
 reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back unchanged.
 
+A deploy can park a run as `recovery_required` with `replay diverged`. Serve's sweep restarts such a run unless an owner gate is still pending on it (`products/factory/src/shepherd/diverged-sweep.ts`). If the owner answers that run's approve-merge gate with `merge` while it is parked, the next sweep merges the PR at the approved head instead of restarting it. The run never read that answer. The merge waits for the same reads land makes first: the head is unchanged, the required checks are green, the head is not behind on a strict repo, it does not conflict, and the base is the default branch the gate named. The run then ends `cancelled` with a `sh-carried-merge` step naming the gate. If any of those reads fails, the head moved, or the answer was `abandon` or `send-back`, the sweep restarts the run as before (`diverged-merge.ts`, TP-3918).
+
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
@@ -69,7 +71,13 @@ head an earlier merge-up carried that MERGE to), its second parent is on the bas
 its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
 commit or a rebase gets a fresh review. The run log records each clean merge-up as an
 `sh-merge-up` step naming the reviewed head, the new head, the base commit and the rule
-`clean-merge-up`. The kind also opens the fix-proof gate described next: `correctness`,
+`clean-merge-up`. A run that never held a G10 hold also carries a tree-equal update whose
+first parent is off that line, such as a merge-up over an earlier merge-up that never reached a
+review, when the pull request's own diff is unchanged: the probe's `patchEqual` compares a
+patch id (blob ids, hunk line numbers and whitespace dropped) of the new head's diff against
+its second parent with the reviewed head's diff against its merge base with that commit. That
+carry records no `sh-merge-up` step, so no G10 release follows it (TP-3725). The kind also
+opens the fix-proof gate described next: `correctness`,
 `security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
 `correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
@@ -194,6 +202,15 @@ read, correction turn and usage-limit hold. Every other member gets `sh-review:<
 and `sh-await-verdict:<head>:<shape>`, at its planned profile, with its shape's brief, and
 checks out under `<review checkouts>/<shape>`. All members are started before any verdict is
 awaited.
+
+A head gets at most one premium member, opus (`bd-reviewer`) or Fable (`fable-reviewer`);
+a later premium member is planned at its sonnet fallback. A g10-adversary hold's member
+(`shepherd.review.adversaryProfile`, default `fable-reviewer`) is outside that cap: it keeps
+its profile beside an opus correctness member, and neither is lowered. Before it records the
+intent, Shepherd checks that every fallback a member is lowered to is an installed headless
+agent-chat profile. If one is not, the intent step is refused with
+`UninstalledProfileError`, naming the profile, rather than dispatching a member that could
+only come back with no verdict.
 
 The aggregate decides:
 

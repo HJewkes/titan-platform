@@ -62,7 +62,7 @@ describe("on a 390px phone", () => {
   it("wraps an initiative's long title inside the page instead of widening it", async () => {
     await renderAt("#/initiatives/orbit-relay");
 
-    const title = screen.getByRole("heading", { level: 1 });
+    const title = screen.getByRole("heading", { name: "Orbit relay: message routing between stations" });
     expect(isCappedToRow(title)).toBe(true);
   });
 

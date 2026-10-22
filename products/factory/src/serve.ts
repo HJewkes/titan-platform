@@ -11,6 +11,7 @@ import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import type { GithubApiHealth } from "./github-api/status.js";
+import { startUsageLog } from "./github-api/usage-meter.js";
 import { createPassStamp, resolveSources, type PassStamp, type SourcesReader } from "./github-sources/mode.js";
 import { restartDivergedLogged } from "./shepherd/diverged-sweep.js";
 import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
@@ -176,6 +177,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const reconcilerSweep = startReconcilerSweep(options.reconciler, options.sources ?? DEFAULT_SOURCES, host.db, log, options.now, passStamp);
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
   sweeps.push(digestSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, reconcilerSweep);
+  if (bot.usage) sweeps.push(...startUsageLog(bot.usage, "bot", log));
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);
   return { port: daemon.port, host, hub: daemon.hub, close: () => (closing ??= close()) };
 }

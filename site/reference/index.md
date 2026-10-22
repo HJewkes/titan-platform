@@ -62,6 +62,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
+| [`autoresearch`](/reference/autoresearch) | Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports | `rpc-client`, `workflow` |
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `retrieval`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
@@ -73,6 +74,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks | none |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `evidence`, `fix-proof`, `session-read` |
+| [`review-workflow`](/reference/review-workflow) | PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome | `agent-dispatch`, `evidence`, `github`, `review-panel` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `review-panel`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |
@@ -101,7 +103,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 | [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-protocol`, `cluster`, `daemon`, `decider`, `locator`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
 | `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `evidence`, `graph-layout`, `pm`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet` |
-| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
+| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `autoresearch`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput` |
 | `titan` | The titan host CLI: health sampling of the factory and the host | `daemon`, `health` |
