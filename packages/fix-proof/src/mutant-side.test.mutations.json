@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a source diff skips without reading its specs",
+      "file": "packages/fix-proof/src/mutant-side.ts",
+      "find": "    await orRefuse(refusal, () => readSpecsAtHead(ctx, plan, shas.head));\n",
+      "replace": "",
+      "kills": [
+        "execMutants with source in the diff, a spec over the mutation cap is refused, not skipped",
+        "execMutants with source in the diff, a spec with no test beside it is refused"
+      ]
+    },
+    {
+      "name": "a refusal is never written to mutants.refused",
+      "file": "packages/fix-proof/src/mutant-side.ts",
+      "find": "    if (refusal.error !== undefined) fs.writeFileSync(path.join(options.out, MUTANTS_REFUSED), refusal.error);\n",
+      "replace": "",
+      "kills": [
+        "execMutants with source in the diff, a spec over the mutation cap is refused, not skipped",
+        "execMutants with source in the diff, a spec with no test beside it is refused",
+        "execMutants a spec whose find is not in the merge-base file writes an error marker and is refused"
+      ]
+    }
+  ]
+}

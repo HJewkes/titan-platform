@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "exec never checks for a refused spec",
+      "file": "scripts/fix-proof-run.sh",
+      "find": "  refused_spec \"$side\" \"$out\"\n",
+      "replace": "",
+      "kills": [
+        "fix-proof-run.sh exec base side sandbox exec mutants fails the job when the runner refused a spec, after the report is written"
+      ]
+    },
+    {
+      "name": "every side fails on a refused spec",
+      "file": "scripts/fix-proof-run.sh",
+      "find": "  [ \"$1\" = mutants ] && [ -f \"$file\" ] || return 0\n",
+      "replace": "  [ -f \"$file\" ] || return 0\n",
+      "kills": [
+        "fix-proof-run.sh exec base side sandbox exec head ignores a mutants.refused file, which only the mutants side reads"
+      ]
+    }
+  ]
+}
