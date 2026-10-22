@@ -93,6 +93,9 @@ export const ImplementerSchema = z.object({
 const CheckRowSchema = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: nonnegative.optional() });
 export const L0RecordSchema = z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(CheckRowSchema).default([]) });
 
+/** What re-evaluating a later winner on top of the round's new head decided; `vs` is that head. */
+export const ReevalVerdictSchema = z.object({ vs: z.string(), decision: z.enum(["kept", "rejected", "requeued"]), reason: z.string() });
+
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
 export const OutcomeSchema = z.object({
   ideaId: z.string(),
@@ -117,6 +120,8 @@ export const OutcomeSchema = z.object({
   l0: L0RecordSchema.optional(),
   micro: ArMicroSchema.optional(),
   usage: z.object({ implementUsd: nonnegative, evalUsd: nonnegative, microUsd: nonnegative }).optional(),
+  /** Set when the round re-evaluated this winner; its own `delta` stays the solo ladder's. */
+  reeval: ReevalVerdictSchema.optional(),
 });
 export type Outcome = z.infer<typeof OutcomeSchema>;
 

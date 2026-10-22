@@ -57,7 +57,7 @@ export interface RoundContext {
   slots: LaneSlots;
 }
 
-interface Built {
+export interface Built {
   idea: Idea;
   tree: string;
   base: string;
@@ -89,8 +89,11 @@ async function confirm(rc: RoundContext, scope: string, built: Built, runs: ArRe
   return finish(built, "L3", verdict, decision.reason, { runs: [...runs, ...confirms], delta });
 }
 
-/** L2 one run, then L3 repeats and the keep rule; an L2 run with a zero-tolerance violation or clearly worse stops here. */
-async function caseRungs(rc: RoundContext, scope: string, built: Built): Promise<Outcome> {
+/**
+ * L2 one run, then L3 repeats and the keep rule against `rc.best`; an L2 run with a zero-tolerance violation or clearly
+ * worse stops here. A re-evaluation passes a context rebased on the round's new head and a scope of its own.
+ */
+export async function caseRungs(rc: RoundContext, scope: string, built: Built): Promise<Outcome> {
   const first = await evalRun(rc, scope, built.tree, "r1");
   const firstDelta = improvement(rc.best.runs, [first], rc.keep);
   const violation = zeroToleranceHit([first], rc.keep);

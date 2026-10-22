@@ -164,7 +164,7 @@ function replayRound(steps: Steps, round: number): Replayed | undefined {
   if (!selection || !queue) return undefined;
   const summary = summaryOf(steps, round);
   const stops = selection.picks.flatMap((idea) => seeded(steps, `${arStepId("stop")}:${round}/${idea.id}`, OutcomeSchema) ?? []);
-  const outcomes = summary ? finalOutcomes(stops, { sigma: summary.against.sigma, superseded: summary.superseded }) : [];
+  const outcomes = summary ? finalOutcomes(stops, { sigma: summary.against.sigma, superseded: summary.superseded, reevals: summary.reevals }) : [];
   return { round, queue, selection, plan: planOf(steps, round), summary, outcomes };
 }
 
