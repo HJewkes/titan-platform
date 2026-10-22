@@ -545,6 +545,39 @@ declare const ImplementedSchema: z.ZodObject<{
         retries: z.ZodNumber;
     }, z.core.$strip>>;
 }, z.core.$strip>;
+/** The planner that answered a round (G2) and what its turn cost (G4); `ops` is checked against the queue schema later. */
+declare const PlannerSchema: z.ZodObject<{
+    agent: z.ZodString;
+    sessionId: z.ZodOptional<z.ZodString>;
+    mode: z.ZodOptional<z.ZodEnum<{
+        spawn: "spawn";
+        resume: "resume";
+    }>>;
+    usage: z.ZodOptional<z.ZodObject<{
+        usd: z.ZodNumber;
+        cacheReadTokens: z.ZodOptional<z.ZodNumber>;
+        cacheWrite5mTokens: z.ZodOptional<z.ZodNumber>;
+        cacheWrite1hTokens: z.ZodOptional<z.ZodNumber>;
+        retries: z.ZodNumber;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+declare const PlannedSchema: z.ZodObject<{
+    agent: z.ZodOptional<z.ZodString>;
+    sessionId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    mode: z.ZodOptional<z.ZodOptional<z.ZodEnum<{
+        spawn: "spawn";
+        resume: "resume";
+    }>>>;
+    usage: z.ZodOptional<z.ZodOptional<z.ZodObject<{
+        usd: z.ZodNumber;
+        cacheReadTokens: z.ZodOptional<z.ZodNumber>;
+        cacheWrite5mTokens: z.ZodOptional<z.ZodNumber>;
+        cacheWrite1hTokens: z.ZodOptional<z.ZodNumber>;
+        retries: z.ZodNumber;
+    }, z.core.$strip>>>;
+    ops: z.ZodUnknown;
+}, z.core.$strip>;
+type Planner = z.infer<typeof PlannerSchema>;
 /** One row per L0 check, in the order they ran; `diff` is measured and replaces the implementer's own count on the outcome. */
 declare const StaticCheckSchema: z.ZodObject<{
     ok: z.ZodBoolean;
@@ -579,7 +612,16 @@ declare const HeadSchema: z.ZodObject<{
 declare const ReleasedSchema: z.ZodObject<{
     released: z.ZodString;
 }, z.core.$strip>;
-interface RatchetRequest {
+/**
+ * Which run's pin an evaluator step runs under. Recorded by the pin step, so a host that restarted after it rebuilds
+ * its evaluator from these and refuses when the frozen files no longer hash to `frozenHash`.
+ */
+interface RunPin {
+    runId: string;
+    pin: string;
+    frozenHash?: string;
+}
+interface RatchetRequest extends RunPin {
     tree: string;
     ratchetRef: string;
     ratchetPrefix: string;
@@ -593,11 +635,12 @@ interface RatchetRequest {
     sigma: number;
     /** sha256 of each kept run's canonical JSON, so the record names the evidence the move rests on. */
     runDigests: string[];
-    pin: string;
 }
 type Fork = "exploit" | "explore";
 type PlanMode = "spawn" | "resume";
 interface ImplementRequest {
+    /** A host names its implementers from the run, not from the tree it was handed. */
+    runId: string;
     idea: Idea;
     tree: string;
     base: string;
@@ -609,7 +652,7 @@ interface ImplementRequest {
     /** An exploit lane resumes this agent, the last winner's implementer. */
     resumeFrom?: string;
 }
-interface MicroRequest {
+interface MicroRequest extends RunPin {
     idea: Idea;
     tree: string;
     rung: string;
@@ -631,6 +674,8 @@ interface RoundRecord {
     }[];
     registries: Registries;
     evidence: EvidenceRow[];
+    /** Absent when the host's planner reports no agent. */
+    planner?: Planner;
 }
 /** Everything the loop touches outside its own run, so tests inject fakes and no test calls a model. */
 interface ArPorts {
@@ -639,14 +684,17 @@ interface ArPorts {
         runId: string;
         pin: string;
     }, signal: AbortSignal): Promise<Pinned>;
-    /** The central planner's queue ops for one round, which the workflow checks against the schema and quotas. Round 1 spawns the planner; later rounds resume it. */
+    /**
+     * The central planner's queue ops for one round, which the workflow checks against the schema and quotas, and the
+     * agent that wrote them. Round 1 spawns the planner; later rounds resume it.
+     */
     plan(input: {
         runId: string;
         round: number;
         digest: Digest;
         violations: string[];
         mode: PlanMode;
-    }, signal: AbortSignal): Promise<unknown>;
+    }, signal: AbortSignal): Promise<z.input<typeof PlannedSchema>>;
     allocTree(input: {
         runId: string;
         ideaId: string;
@@ -655,7 +703,7 @@ interface ArPorts {
     }, signal: AbortSignal): Promise<z.infer<typeof TreeSchema>>;
     implement(input: ImplementRequest, signal: AbortSignal): Promise<z.input<typeof ImplementedSchema>>;
     /** L0: bounds post-check, unit suite and test proof; never a model call. */
-    staticCheck(input: {
+    staticCheck(input: RunPin & {
         idea: Idea;
         tree: string;
         base: string;
@@ -663,7 +711,7 @@ interface ArPorts {
     }, signal: AbortSignal): Promise<z.input<typeof StaticCheckSchema>>;
     micro(input: MicroRequest, signal: AbortSignal): Promise<ArMicro>;
     /** `key` is unique per run, scope and repeat, since a target may use it as a cache directory. */
-    evalCase(input: {
+    evalCase(input: RunPin & {
         tree: string;
         case: string;
         key: string;
@@ -676,9 +724,13 @@ interface ArPorts {
     releaseTree(input: {
         tree: string;
     }, signal: AbortSignal): Promise<void>;
-    /** Waits for machine load to fall before a stage starts; a host with no gate omits it and the step answers at once. */
+    /**
+     * Waits for machine load to fall before a stage starts; a host with no gate omits it and the step answers at once.
+     * `firstStartedAt` is when the step first started, kept across a restart, so a deadline does not reset.
+     */
     loadWait?(input: {
         stage: string;
+        firstStartedAt?: string;
     }, signal: AbortSignal): Promise<z.input<typeof LoadWaitSchema>>;
     /** Writes the round's record and artifacts somewhere durable; a host with no archive omits it. */
     archive?(input: {
@@ -706,12 +758,17 @@ interface ArStepDeclaration {
 declare const arStepId: (name: ArDispatchStep | ArSeedStep) => string;
 declare const AUTORESEARCH_STEPS: readonly ArStepDeclaration[];
 
+/** What the runtime knows about this try of the step, which never goes in the step's input, so a replay sees the same input. */
+interface StepTiming {
+    /** When the step's first attempt started; a restart keeps it. */
+    firstStartedAt?: string;
+}
 /** One dispatch step's port call; a host wraps it in a route and answers with its result under `result`. */
 interface ArStepHandler {
     name: ArDispatchStep;
     onRestart: RestartRule;
     /** Checks the step's JSON input against its schema, then calls the port. */
-    run(input: unknown, signal: AbortSignal): Promise<object>;
+    run(input: unknown, signal: AbortSignal, timing?: StepTiming): Promise<object>;
 }
 /**
  * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it.
@@ -869,4 +926,4 @@ declare function quotaViolations(ops: QueueOps, quota: QuotaContext): string[];
 /** Applies the planner's ops mechanically: adds pass dedup, the bounds pre-check and the dead-end rule, at no model cost. */
 declare function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueContext): Applied;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_WORKFLOW, type ArDispatchStep, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArStepDeclaration, type ArStepHandler, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, type KeepSettings, LoadWaitSchema, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, type PostCheck, type PostCheckInput, type Proposal, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, type Registries, ReleasedSchema, type RoundRecord, StaticCheckSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arStepHandlers, arStepId, band, betaDraw, buildDigest, changedParams, confirmRule, evidenceRow, frozenOverlap, ideaId, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_WORKFLOW, type ArDispatchStep, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArStepDeclaration, type ArStepHandler, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, type KeepSettings, LoadWaitSchema, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, type Registries, ReleasedSchema, type RoundRecord, type RunPin, StaticCheckSchema, type StepTiming, type Target, TargetSchema, TreeSchema, addPair, applyOps, arStepHandlers, arStepId, band, betaDraw, buildDigest, changedParams, confirmRule, evidenceRow, frozenOverlap, ideaId, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
