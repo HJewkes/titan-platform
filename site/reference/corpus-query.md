@@ -1,7 +1,7 @@
 # corpus-query
 
 **Product.** Private, never published. Depends on `@titan-design/app-paths`,
-`@titan-design/store-sqlite`, `commander` and `zod`.
+`@titan-design/evidence`, `@titan-design/store-sqlite`, `commander` and `zod`.
 
 ```sh
 pnpm --filter @titan-design/corpus-query build
