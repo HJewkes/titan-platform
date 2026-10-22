@@ -18,7 +18,7 @@ export function App(): ReactNode {
   return (
     <AppShell
       brand={BRAND}
-      topBar={<TopBar leading={<BrandLockup brand={BRAND} wordmark="TITAN CONSOLE" subtitle="read-only" />} />}
+      topBar={<TopBar brand={BRAND} leading={<BrandLockup brand={BRAND} wordmark="TITAN CONSOLE" subtitle="read-only" />} />}
       navItems={NAV_ITEMS}
       activeKey={route.view}
       onNavigate={navigate}

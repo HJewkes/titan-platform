@@ -29,7 +29,15 @@ const REMOTE_PROTOCOLS = new Set(["https:", "file:"]);
  * is an independent second source for a head. Null when the remote has no such ref; a failed read throws `LsRemoteError`.
  */
 export async function lsRemotePullHead(exec: GitExec, remoteUrl: string, n: number, options: LsRemoteOptions = {}): Promise<string | null> {
-  const ref = `refs/pull/${checkPositiveInt("n", n)}/head`;
+  return lsRemoteRef(exec, remoteUrl, `refs/pull/${checkPositiveInt("n", n)}/head`, options);
+}
+
+/** As `lsRemotePullHead`, for `refs/heads/<branch>`: a branch tip from git's transport. */
+export async function lsRemoteBranchHead(exec: GitExec, remoteUrl: string, branch: string, options: LsRemoteOptions = {}): Promise<string | null> {
+  return lsRemoteRef(exec, remoteUrl, `refs/heads/${checkBranch(branch)}`, options);
+}
+
+async function lsRemoteRef(exec: GitExec, remoteUrl: string, ref: string, options: LsRemoteOptions): Promise<string | null> {
   const args = ["ls-remote", "--", checkRemoteUrl(remoteUrl), ref];
   const secrets = Object.values(options.env ?? {});
   const env = { ...options.env, GIT_TERMINAL_PROMPT: "0" };
@@ -40,7 +48,15 @@ export async function lsRemotePullHead(exec: GitExec, remoteUrl: string, n: numb
     throw new LsRemoteError(redact(`git ls-remote ${ref} failed: ${error instanceof Error ? error.message : String(error)}`, secrets));
   }
   if (result.code !== 0) throw new LsRemoteError(redact(`git ls-remote ${ref} exited ${result.code}: ${result.stderr.trim()}`, secrets));
-  return pullHeadOf(result.stdout, ref);
+  return refHeadOf(result.stdout, ref);
+}
+
+/** git's own ref-name rules, narrowed: no glob, no `..`, no leading dash or slash, so the name is one exact ref. */
+const BRANCH_NAME = /^(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9_][A-Za-z0-9._/-]*(?<![./])$/;
+
+function checkBranch(branch: string): string {
+  if (!BRANCH_NAME.test(branch) || branch.endsWith(".lock")) throw new GitHubInputError("branch", branch.slice(0, 80), "expected a plain branch name");
+  return branch;
 }
 
 /** A credential in the URL would put the token on argv, where any process listing can read it. */
@@ -57,7 +73,7 @@ function checkRemoteUrl(remoteUrl: string): string {
 }
 
 /** git matches a pattern against the tail of each ref name, so only an exact name counts. */
-function pullHeadOf(stdout: string, ref: string): string | null {
+function refHeadOf(stdout: string, ref: string): string | null {
   const rows = stdout.split("\n").filter((line) => line !== "").map((line) => line.split("\t"));
   const matches = rows.filter(([, name]) => name === ref);
   if (matches.length === 0) return null;

@@ -48,9 +48,16 @@ every caller plans, briefs and aggregates the same way:
 - `planPanel(cls, policy, headroom)`: the pure planner. The correctness member always
   runs, at the policy's `roles` profile for the class. A `panel` table adds shapes by
   class and touch, in priority order; with no table the plan is correctness alone, which
-  is how Shepherd routes its single reviewer today. At most 3 members and 1 opus member;
-  a later opus member is planned at its sonnet profile. `headroom.opus === false` plans
-  every opus member at its sonnet profile with `degraded: true`.
+  is how Shepherd routes its single reviewer today. At most 3 members and 1 premium
+  member. Premium is a price class, read from `sonnetFor`: `bd-reviewer` (opus) and
+  `fable-reviewer` (Fable, priced above opus) by default, both priced at `points.opus`. A
+  later premium member is planned at its sonnet profile. A rule with `uncapped: true`
+  takes no premium seat and keeps its profile; Shepherd sets it on a g10-adversary hold's
+  member, so the cap is per head excluding the hold member, and an opus correctness
+  member beside an opus or Fable hold member keeps its profile too. `headroom.opus ===
+  false` plans every premium member, uncapped ones included, at its sonnet profile with
+  `degraded: true`. With `policy.installed`, a premium member lowered to a profile it
+  reports missing throws `UninstalledProfileError`, naming both profiles, at plan time.
 - `PanelVerdict`: the panel's outcome in Shepherd's vocabulary (`MERGE`, `FIX_FIRST`,
   `no-verdict`, `timeout`), the labelled findings, the dissenting members, and
   `satisfiesG10`.
@@ -90,7 +97,10 @@ every caller plans, briefs and aggregates the same way:
   finding is kept whatever it cites. Findings are in shape order, each member bounded to an
   equal share of 16,000 characters. `satisfiesG10` needs a g10 class, a MERGE, no degraded
   member, the correctness member at an opus profile (a key of `sonnetFor`) and the
-  adversary's MERGE.
+  adversary's MERGE. A vacuous fix-proof line that `provedByMutants` proves is not a bad
+  fix-proof. `fixProofShortfall` is set on a `no-verdict` whose only missing blocking member
+  is the tests member a bad fix-proof requires but the plan never scheduled, since no fresh
+  reviewer can fill it.
 - `reviewPullRequest(request, ports, opts?)`: the one entry point. It classifies the PR,
   plans the panel (asking `ports.headroom()` once), runs every member in parallel and
   returns `aggregate`'s verdict. Each member is spawned under `memberName(target, shape)`
@@ -176,8 +186,12 @@ const brief = shapeBrief("adversary", {
 - `ReviewerReader.read` returns messages oldest first; the last one is the final message.
 - `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap. The default
   weights (`DEFAULT_MEMBER_POINTS`) are placeholders until the scorecard measures spend.
-- A profile counts as opus only when `sonnetFor` maps it to a sonnet profile; an opus
-  profile missing from that map is never degraded or capped.
+- A profile counts as premium only when `sonnetFor` maps it to a sonnet profile; a
+  premium profile missing from that map is never degraded or capped, and is priced as
+  sonnet. The class is never guessed from the profile's name. A custom `sonnetFor`
+  replaces the default table, so list `fable-reviewer` in it if you use it.
+- Without `policy.installed` a lowering is not checked, and a fallback that is not
+  installed is refused only at dispatch, where a blocking member then reads as no verdict.
 - A shape brief's `hash` changes with any edit to its overlay; record the hash with each
   verdict so evals compare variants, not ids.
 - The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line

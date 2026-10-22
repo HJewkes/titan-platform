@@ -1,10 +1,12 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync, existsSync, lstatSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { z } from "zod";
+import { releaseCli, withTail, type NodeRun } from "./release-smoke.js";
 import type { CommandResult, UpdatePorts } from "./update.js";
 
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
@@ -13,6 +15,10 @@ const POLL_MS = 1_000;
 const HEALTH_TIMEOUT_MS = 2_000;
 /** A cold start reads the session graph and the upstreams; the factory's deployer waits about as long. */
 const SERVE_WAIT_MS = 60_000;
+/** The smoke verb's own wait plus its spare port, page check and teardown. */
+const SMOKE_RUN_TIMEOUT_MS = SERVE_WAIT_MS + 60_000;
+const KILL_GRACE_MS = 10_000;
+const STDERR_KEEP_CHARS = 16 * 1024;
 
 function run(file: string, args: readonly string[], cwd?: string, env?: NodeJS.ProcessEnv): Promise<CommandResult> {
   return new Promise((resolve) => {
@@ -41,10 +47,10 @@ async function healthSha(port: number): Promise<string | null | undefined> {
   }
 }
 
-async function pollSha(port: number, want: string, waitMs: number = SERVE_WAIT_MS): Promise<string | null | undefined> {
+async function pollSha(port: number, want: string, waitMs: number = SERVE_WAIT_MS, stop?: AbortSignal): Promise<string | null | undefined> {
   const deadline = Date.now() + waitMs;
   let last: string | null | undefined;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && stop?.aborted !== true) {
     last = await healthSha(port);
     if (last === want) return last;
     await sleep(POLL_MS);
@@ -63,10 +69,13 @@ function sparePort(): Promise<number> {
   });
 }
 
-/** Only the port and a scratch state dir: no LAN listener, no owner writes, no pid file shared with the served console. */
-function smokeEnv(port: number, stateDir: string): NodeJS.ProcessEnv {
+/**
+ * Only the port and a scratch state dir: no LAN listener, no owner writes, no pid file shared with the served console.
+ * The story origin is off: its default port is the served console's, and a bind failure stops the smoke build before /health.
+ */
+export function smokeEnv(port: number, stateDir: string): NodeJS.ProcessEnv {
   const kept = Object.entries(process.env).filter(([key]) => !key.startsWith("TITAN_CONSOLE_"));
-  return { ...Object.fromEntries(kept), TITAN_CONSOLE_PORT: String(port), TITAN_CONSOLE_STATE: stateDir };
+  return { ...Object.fromEntries(kept), TITAN_CONSOLE_PORT: String(port), TITAN_CONSOLE_STORY_PORT: "0", TITAN_CONSOLE_STATE: stateDir };
 }
 
 async function pageAnswers(port: number): Promise<boolean> {
@@ -79,18 +88,66 @@ async function pageAnswers(port: number): Promise<boolean> {
   }
 }
 
-async function smokeRelease(release: string, sha: string): Promise<string | undefined> {
+/** Keeps only the end of a stream, which is where a crash says why. */
+function streamTail(stream: Readable | null): () => string {
+  let text = "";
+  stream?.setEncoding("utf8");
+  stream?.on("data", (chunk: string) => {
+    text = `${text}${chunk}`.slice(-STDERR_KEEP_CHARS);
+  });
+  return () => text;
+}
+
+interface SmokeOptions {
+  waitMs?: number;
+  /** Ends the wait early, as SIGTERM does for the smoke verb, so its daemon is still stopped. */
+  signal?: AbortSignal;
+}
+
+/** Undefined once the release's bin answers /health as `sha` and serves its page; else why not, with the end of its stderr. */
+export async function smokeRelease(release: string, sha: string, options: SmokeOptions = {}): Promise<string | undefined> {
   const port = await sparePort();
   const stateDir = mkdtempSync(path.join(tmpdir(), "titan-console-smoke-"));
-  const child = spawn(process.execPath, [path.join(release, "apps/console/dist/cli.js")], { env: smokeEnv(port, stateDir), stdio: "ignore" });
+  const child = spawn(process.execPath, [releaseCli(release)], { env: smokeEnv(port, stateDir), stdio: ["ignore", "ignore", "pipe"] });
+  const stderr = streamTail(child.stderr);
+  const closed = new AbortController();
+  child.once("close", () => closed.abort());
+  const stop = options.signal === undefined ? closed.signal : AbortSignal.any([closed.signal, options.signal]);
   try {
-    const answered = await pollSha(port, sha);
-    if (answered !== sha) return `the new build on spare port ${port} answered /health ${answered === undefined ? "with nothing" : `as ${answered ?? "no build sha"}`}, not ${sha}`;
-    return (await pageAnswers(port)) ? undefined : `the new build on spare port ${port} did not serve its page at /`;
+    const answered = await pollSha(port, sha, options.waitMs, stop);
+    if (answered !== sha) return withTail(`the new build on spare port ${port} ${notAnswered(child, answered, sha)}`, stderr());
+    return (await pageAnswers(port)) ? undefined : withTail(`the new build on spare port ${port} did not serve its page at /`, stderr());
   } finally {
     child.kill("SIGTERM");
     rmSync(stateDir, { recursive: true, force: true });
   }
+}
+
+function notAnswered(child: ChildProcess, answered: string | null | undefined, sha: string): string {
+  if (child.exitCode !== null || child.signalCode !== null) return `exited (${child.signalCode ?? `code ${child.exitCode}`}) before answering /health as ${sha}`;
+  return `answered /health ${answered === undefined ? "with nothing" : `as ${answered ?? "no build sha"}`}, not ${sha}`;
+}
+
+/** SIGTERM at the deadline lets the smoke verb stop its own daemon; SIGKILL follows for one that does not exit. */
+function runNode(script: string, args: readonly string[], timeoutMs: number = SMOKE_RUN_TIMEOUT_MS): Promise<NodeRun> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [script, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const stdout = streamTail(child.stdout);
+    const stderr = streamTail(child.stderr);
+    let timedOut = false;
+    const term = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    const kill = setTimeout(() => child.kill("SIGKILL"), timeoutMs + KILL_GRACE_MS);
+    const finish = (code: number, why = ""): void => {
+      clearTimeout(term);
+      clearTimeout(kill);
+      resolve({ code, stdout: stdout(), stderr: `${stderr()}${why}`, timedOut });
+    };
+    child.once("error", (error) => finish(1, error.message));
+    child.once("close", (code) => finish(code ?? 1));
+  });
 }
 
 function swapLink(link: string, target: string): void {
@@ -147,7 +204,8 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     remove: (file) => rmSync(file, { force: true }),
     createExclusive,
     isAlive,
-    smoke: smokeRelease,
+    smoke: (release, sha) => smokeRelease(release, sha),
+    runNode: (script, args) => runNode(script, args),
     servedSha: (port, want) => pollSha(port, want),
     alarm: async (deposit) => void (await writeDeposit(inboxDir, deposit)),
     log: (line) => console.log(line),

@@ -30,28 +30,28 @@ describe("a17Event", () => {
 });
 
 describe("feed shape", () => {
-  it("gives a delivery then a backstop re-observation in webhook, one observation in polling", () => {
-    expect(openFeed("webhook").fact(status())).toEqual(["inserted", "occurrence"]);
-    expect(openFeed("polling").fact(status())).toEqual(["inserted"]);
+  it("gives a delivery then a backstop re-observation in webhook, one observation in polling", async () => {
+    expect(await (await openFeed("webhook")).fact(status())).toEqual(["inserted", "occurrence"]);
+    expect(await (await openFeed("polling")).fact(status())).toEqual(["inserted"]);
   });
 
-  it("delivers a transient fact in webhook only", () => {
-    const webhook = openFeed("webhook");
-    const polling = openFeed("polling");
+  it("delivers a transient fact in webhook only", async () => {
+    const webhook = await openFeed("webhook");
+    const polling = await openFeed("polling");
 
-    webhook.transient(status({ outcome: "failure" }));
-    polling.transient(status({ outcome: "failure" }));
+    await webhook.transient(status({ outcome: "failure" }));
+    await polling.transient(status({ outcome: "failure" }));
 
     expect([webhook.headSeq(), polling.headSeq()]).toEqual([1, 0]);
   });
 
-  it("advances the fake clock by the mode's interval by default", () => {
-    const webhook = openFeed("webhook");
-    const polling = openFeed("polling");
+  it("advances the fake clock by the mode's interval by default", async () => {
+    const webhook = await openFeed("webhook");
+    const polling = await openFeed("polling");
     const [w0, p0] = [webhook.now(), polling.now()];
 
-    webhook.advance();
-    polling.advance();
+    await webhook.advance();
+    await polling.advance();
 
     expect(webhook.now() - w0).toBeGreaterThan(polling.now() - p0);
   });

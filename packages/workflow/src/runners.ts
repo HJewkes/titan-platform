@@ -44,11 +44,16 @@ function outputText(output: unknown): string {
 }
 
 function stepUsage(usage: AgentUsage): StepUsage {
+  const names = Object.keys(usage.modelUsage);
   const models = Object.values(usage.modelUsage);
+  const cacheRead = models.filter((model) => typeof (model as Partial<typeof model>).cacheReadInputTokens === "number");
   return {
     costUsd: usage.totalCostUsd,
     inputTokens: models.reduce((sum, model) => sum + model.inputTokens, 0),
     outputTokens: models.reduce((sum, model) => sum + model.outputTokens, 0),
+    ...(cacheRead.length === 0 ? {} : { cacheReadTokens: cacheRead.reduce((sum, model) => sum + model.cacheReadInputTokens, 0) }),
+    ...(usage.cacheCreation ? { cacheWrite5mTokens: usage.cacheCreation.ephemeral5m, cacheWrite1hTokens: usage.cacheCreation.ephemeral1h } : {}),
+    ...(names.length === 1 ? { model: names[0] } : {}),
   };
 }
 

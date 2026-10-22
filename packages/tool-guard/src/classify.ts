@@ -8,7 +8,8 @@ import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
 import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
-import { hasOpaqueShebang, isSwappableShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets, SOURCERS } from "./scripts.js";
+import { hasOpaqueShebang, isSwappableShebang, MAX_SCRIPT_DEPTH, refuseOpaqueShebang, runsNatively, ScriptDepthError, scriptTargets } from "./scripts.js";
+import { SOURCERS } from "./shell/sourced.js";
 import type { ScriptTarget } from "./scripts.js";
 import { addPathWrite, newPathState, refuseSwappedShells, scriptPathState, takeScriptPath } from "./path-swap.js";
 import type { PathState } from "./path-swap.js";
@@ -232,6 +233,8 @@ function targetReadings(ctx: ClassifyContext, target: ScriptTarget): string[] {
   try {
     return scriptReadings(ctx, target.path);
   } catch (error) {
+    // An optional file the shell finds no regular file at runs nothing; one cut at the cap still runs past it.
+    if (target.optional && error instanceof UnreadableScriptError && error.head === null) return [];
     if ((target.kind === "shell" && !target.relayed) || !(error instanceof UnreadableScriptError)) throw error;
     return error.head === null ? [] : [error.head];
   }

@@ -251,6 +251,17 @@ describe("an owner gate opens only when the seat notice cannot be sent", () => {
     await gateOpened(host, gateId(runOf(host), "stuck-behind"));
   });
 
+  it("opens stuck-behind for the owner when no single seat owns the repo, even though the run's registrant could be told", async () => {
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), (pr.behind = true));
+    const { sends, ports } = seat();
+    const host = world(fake, { ...ports, seatFor: () => undefined, lineageSeat: async () => "tp-operator" }, phases({ kind: "unhandled", reason: GONE }));
+
+    await gateOpened(host, gateId(runOf(host), "stuck-behind"));
+
+    expect(sends).toEqual([]);
+  });
+
   it("leaves the owner-gate approve-merge as it was: a green, reviewed head asks the owner and tells no seat", async () => {
     const fake = fakeGitHub();
     green(fake);

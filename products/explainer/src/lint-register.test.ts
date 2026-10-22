@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS } from "./eval-l0.js";
-import { REGISTER_CHECK_IDS, REGISTER_MEASURES, REGISTER_METRICS, registerCheck, spokenText, type RegisterMetric } from "./lint-register.js";
+import {
+  REGISTER_CHECK_IDS,
+  REGISTER_MEASURES,
+  REGISTER_METRICS,
+  numberSpans,
+  registerCheck,
+  spokenText,
+  triadSpans,
+  deviceSpans,
+  type DeviceMetric,
+  type RegisterMetric,
+} from "./lint-register.js";
 import { lint, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const measure = (metric: RegisterMetric, ...spoken: string[]): number | undefined => REGISTER_MEASURES[metric](spokenText(spoken));
@@ -165,19 +176,36 @@ describe("Q-V11 register rows", () => {
     expect(emitted.every((row) => row.severity === "warning")).toBe(true);
   });
 
-  it("passes a beat with one number and warns on a beat with two, naming the beat", () => {
-    const row = rows("It took 3 runs.", "It took 3 runs and 12 ms.", FILLER).get("register:numbers-per-beat");
+  const CROWDED = "It took 3 runs and 12 ms.";
+  const perBeat = (crowded: number, total: number, line = CROWDED) =>
+    rows(...Array.from({ length: total }, (_, i) => (i < crowded ? line : FILLER))).get("register:numbers-per-beat");
 
-    expect(row).toMatchObject({ severity: "warning", pass: false, value: 1, detail_beats: ["w4"] });
-    expect(rows("It took 3 runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true, value: 0 });
+  it("passes one crowded beat in twenty, a 5% share under the cap", () => {
+    expect(perBeat(1, 20)).toMatchObject({ severity: "warning", pass: true, value: 0.05, threshold: 0.24, detail_beats: ["h1"] });
+  });
+
+  it("warns on five crowded beats in twenty, a 25% share, naming the beats", () => {
+    expect(perBeat(5, 20)).toMatchObject({ pass: false, value: 0.25, threshold: 0.24, detail_beats: ["h1", "w4", "c1", "b3", "b4"] });
+  });
+
+  it("passes a script with no crowded beat", () => {
+    expect(perBeat(0, 20)).toMatchObject({ pass: true, value: 0, detail_beats: [] });
+  });
+
+  it("reports but never warns on a 100-word script whose every beat is crowded", () => {
+    const hundred = "It took 3 runs and 12 ms on the free worker.";
+    const short = rows(...Array.from({ length: 10 }, () => hundred)).get("register:numbers-per-beat");
+
+    expect(short).toMatchObject({ pass: true, value: 1 });
+    expect(short?.detail_beats).toHaveLength(10);
   });
 
   it("counts a run of number words in a beat as one mention", () => {
-    expect(rows("It took two hundred and five runs.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: true });
+    expect(perBeat(5, 20, "It took two hundred and five runs.")).toMatchObject({ pass: true, value: 0 });
   });
 
-  it("warns on a beat whose number words are split by other words", () => {
-    expect(rows("It took two runs and five retries.", FILLER, FILLER).get("register:numbers-per-beat")).toMatchObject({ pass: false, detail_beats: ["h1"] });
+  it("counts a beat whose number words are split by other words as crowded", () => {
+    expect(perBeat(5, 20, "It took two runs and five retries.")).toMatchObject({ pass: false, value: 0.25 });
   });
 
   it("warns on a rate over the band's cap and passes one inside it", () => {
@@ -209,5 +237,49 @@ describe("Q-V11 register rows", () => {
     const unpunctuated = Array.from({ length: 54 }, () => "word").join(" ");
 
     expect(rows(unpunctuated, unpunctuated, unpunctuated).get("register:sentence-cv")).toMatchObject({ value: 0, pass: true });
+  });
+});
+
+describe("numberSpans and triadSpans", () => {
+  const LINES = [
+    "It took two hundred and five runs and 3 retries.",
+    "We saw 12 ms of lag, then one more stall.",
+    "The desk, the ledger and the scanner all agree.",
+    "Pick red, green or blue, then the queue, the worker and the log.",
+    "Nothing here counts.",
+  ];
+
+  it("finds as many spans as the rows count, on every line", () => {
+    for (const line of LINES) {
+      const words = spokenText([line]).words.length;
+
+      expect(numberSpans(line).length).toBeCloseTo(((measure("numbers", line) ?? 0) * words) / 1000);
+      expect(triadSpans(line).length).toBeCloseTo(((measure("triads", line) ?? 0) * words) / 1000);
+    }
+  });
+
+  it("returns each span's text at its index", () => {
+    const line = LINES[3]!;
+    const spans = triadSpans(line);
+
+    expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
+    expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
+  });
+});
+
+describe("deviceSpans", () => {
+  const LINES: readonly (readonly [DeviceMetric, string])[] = [
+    ["colon-reveals", "The desk keeps one thing: the rows. Nothing else stays."],
+    ["not-x-tails", "The ledger keeps the rows, not by hand. It never asks twice."],
+    ["semicolons", "The desk checks a scan; the ledger keeps it. Then it waits."],
+    ["lets", "Let's follow one scan. We let us see the ledger."],
+  ];
+
+  it.each(LINES)("finds as many %s spans as the row counts", (metric, line) => {
+    const text = spokenText([line]);
+    const counted = REGISTER_MEASURES[metric](text) ?? 0;
+    const perScript = metric === "not-x-tails" ? counted : (counted * text.words.length) / 1000;
+    expect(deviceSpans(metric, text.text).length).toBeGreaterThan(0);
+    expect(deviceSpans(metric, text.text)).toHaveLength(Math.round(perScript));
   });
 });

@@ -158,7 +158,8 @@ const cases = [
     rule: "R47 zod is a peer dependency",
     check: checkZodIsPeer,
     root: () => fixture("zod-dependency"),
-    message: "`@titan-design/a` lists zod under dependencies. Move it to peerDependencies and devDependencies.",
+    message:
+      "`@titan-design/a` lists zod under dependencies. Move it to peerDependencies and devDependencies, unless the package ships a bin.",
   },
   {
     rule: "R49 no npm token in workflows",
@@ -227,6 +228,16 @@ const cases = [
     message: "Rule `no-debugger` is set to warn in `eslint.config.js`. Set it to error or remove it. Warnings are not allowed.",
   },
 ];
+
+describe("R47 a package that ships a bin", () => {
+  it("may list zod under dependencies, because npx runs the bin with no host to supply the peer", () => {
+    const root = tempRoot("structure-zod-bin-");
+    mkdirSync(join(root, "packages", "a"), { recursive: true });
+    const pkg = { name: "@titan-design/a", bin: { a: "./dist/bin.js" }, dependencies: { zod: "^4.0.0" } };
+    writeFileSync(join(root, "packages", "a", "package.json"), JSON.stringify(pkg));
+    expect(checkZodIsPeer(root)).toEqual([]);
+  });
+});
 
 describe("R59 Python sample input is data only under the two named style fixtures", () => {
   it.each(["style-analyzer", "style-checker"])("allows .py under packages/%s/fixtures", (name) => {

@@ -204,6 +204,18 @@ describe("kokoroProvider unknown words", () => {
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining("Zyxquor, Vrebnik"));
   });
 
+  // Mutation caught: Python's double advance past a null word drifts every later timing and drops the last word.
+  it("times every ordinary word, the last included, when one word has no phonemes", async () => {
+    const { onWarning, provider } = strictSetup();
+
+    const { words } = await provider.synthesize({ text: "the cat met a Vrebnik and then sat" }, "af_heart");
+
+    const ordinary = words?.filter((w) => w.word !== "Vrebnik") ?? [];
+    expect(ordinary.map((w) => w.end - w.start > 0)).toEqual(ordinary.map(() => true));
+    expect(onWarning).toHaveBeenCalledTimes(1);
+    expect(onWarning).toHaveBeenCalledWith(expect.stringMatching(/does not speak 1 word\(s\).*: Vrebnik$/));
+  });
+
   // Mutation caught: parseKokoroConfig drops unknownWords, so a profile asking for "fail" silently warns.
   it("takes unknownWords from a profile entry through the registry", async () => {
     const registry = createTtsRegistry().register("kokoro", kokoroFactory({ g2p: gapG2p(), loadEngine: () => Promise.resolve(fakeEngine()) }));

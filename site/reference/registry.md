@@ -74,7 +74,9 @@ toolNameToCommandName("miner__task__done", { prefix: "miner__" }); // 'task.done
 
 `invokeCommand` validates, runs, and **always returns an envelope. It never throws.** Thrown
 errors map to a code through their numeric `code` property by default; pass `formatError` to
-use your own error hierarchy.
+use your own error hierarchy. `formatInvalidArgs(issues)` customizes validation wording
+without a prefix while retaining `invalidArgsCode`; omitted formatters keep the existing
+message. If a validation formatter throws, `formatError` handles it.
 
 ## The projections
 
@@ -86,9 +88,19 @@ kind. An array-typed field's flag repeats (`--tag a --tag b` yields `["a", "b"]`
 `collectOptionParser` gives commander's accumulator for it, and each element is coerced by
 the array's element kind.
 
+Use `CliOption.valueName` for a value flag placeholder. Booleans and exact
+`z.literal(true)` fields (including optional wrappers) remain bare. String, false
+and mixed literals take a value; nullable and default-wrapped true literals are not
+supported as switches yet. Array positionals render `<text...>` / `[brief...]`, must be
+last, coerce each element, and are left out of the args when omitted.
+`optionDefault(command, key)` returns an explicit field default (including zero
+or false) for Commander, without parsing args or running schema transforms.
+
 **MCP.** `commandToTool` builds the descriptor; `inputSchema` comes from zod 4's native
 `toJSONSchema` with `$schema` and `definitions` stripped, because some MCP clients reject
-them at the root. Tool names are `${prefix}${command.replaceAll(".", "__")}`.
+them at the root. Its optional third argument accepts zod's `io` and `override`: use
+`{ io: "input" }` for accepted-input schemas, and `override` for a consumer's schema
+representation. Omitted `io` preserves the existing output-mode default. Tool names are `${prefix}${command.replaceAll(".", "__")}`.
 
 **HTTP.** [`daemon`](/reference/daemon) mounts `POST /rpc/:name` over the same
 `invokeCommand`, so the envelope and exit codes are identical on every surface.

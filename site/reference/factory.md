@@ -110,6 +110,12 @@ be read exits 2 and names its path. A bad flag, config or seat book also exits 2
 charter 8 adds a hold class, add it to `HOLD_CLASSES` in `shepherd/hold-reason.ts` too, or
 holds of that class are listed as untyped.
 
+## GitHub event sources
+
+The top-level `github` block in the config file (`sources`, `ingress`, `pollingIntervalMs`, `backstopIntervalMs`) chooses
+polling or webhook intake. Polling is the default and a permanent, supported configuration. The keys, bounds, effective-mode
+table and what `health.sources` reports are in [GitHub event sources](/guides/factory#github-event-sources).
+
 ## Scorecard
 
 `scorecard` prints the factory scorecard, one row per metric, from ledgers only. It ports

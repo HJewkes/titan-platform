@@ -33,7 +33,7 @@ export function landGateHead(stepId: string, prompt: string): string | undefined
 }
 
 /** The base a land gate names; a gate from before the base was named reads as none. */
-const landGateBase = (prompt: string): string | undefined => LAND_GATE.exec(prompt)?.[2];
+export const landGateBase = (prompt: string): string | undefined => LAND_GATE.exec(prompt)?.[2];
 
 /** The owner reviews a skill diff at its own head, so a skill-path gate is never answered by an earlier approval. */
 function isSkillPathGate(prompt: string): boolean {

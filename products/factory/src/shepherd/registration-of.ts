@@ -31,6 +31,7 @@ export function registrationOf(row: RegistrationRow): Registration {
     reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
     ownerHold,
     ...registrationFactsOf(row),
+    registrant: row.registrant ? { name: row.registrant, fixer: row.registrant_fixer === 1 } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

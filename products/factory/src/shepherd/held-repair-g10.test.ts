@@ -1,12 +1,13 @@
 import { DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { WAIT_DEMOTIONS } from "./freeze-wait.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
 import type { ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -87,6 +88,10 @@ async function restsAt(w: Held, step: RegExp): Promise<void> {
 }
 
 describe("under heldRepair on, a g10 hold gates the merge and not the repair (decision 423(1))", () => {
+  // The MERGE here carries no merge facts, so approve-merge opens only as it did before no-facts waited at its head (TP-3734 r3b).
+  beforeEach(() => void (WAIT_DEMOTIONS.noFacts = false));
+  afterEach(() => void (WAIT_DEMOTIONS.noFacts = true));
+
   it("a red held head wakes exactly one ci-red fixer, and the fixed head is reviewed but not merged while held, even when approved", async () => {
     const w = heldRun({ heldRepair: "on" });
     await gateOpened(w.host, gateId(w.runId, "approve-merge"));

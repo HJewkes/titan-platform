@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a two-PR Send back sends its note untrimmed",
+      "file": "apps/console/src/pages/ShipPrs.tsx",
+      "find": "const comment = verdicts.notes[question.id]?.trim() ?? \"\";",
+      "replace": "const comment = verdicts.notes[question.id] ?? \"\";",
+      "kills": [
+        "a Ship round with two PRs (TP-3329) ships one PR at its own head and sends the other back with its note, in one submit"
+      ]
+    }
+  ]
+}

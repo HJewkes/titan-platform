@@ -3,6 +3,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import { buildInfoCommands } from "./build-info.js";
 import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
+import { autoresearchCommands, type AutoresearchSource } from "./autoresearch.js";
 import type { ActiveWork } from "./active-work.js";
 import { configStoreCommands, type ConfigStoreSource } from "./config-store/compare.js";
 import { configSurfacesCommands, unconfigured, type SurfaceReader } from "./config-surfaces/catalog.js";
@@ -10,7 +11,7 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
-import type { DecisionLog } from "./decision-log.js";
+import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
@@ -48,12 +49,14 @@ export interface ConsoleSources {
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
+  /** Optional so test sources need not build one; absent, the `autoresearch.*` reads are not served. */
+  autoresearch?: AutoresearchSource;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for the coordinator files. */
   coordinatorRoots?: CoordinatorRoots;
   /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
   factory?: FactoryNeeds;
   /** Optional so test sources need not build one; absent, `rounds.submit` records nothing and returns no `log`. */
-  decisionLog?: DecisionLog;
+  decisionLog?: RoundDecisionLog;
   /** Optional so test sources need not build one; absent, a submitted round triggers nothing. */
   listeners?: RoundListeners;
   /** Optional so test sources need not build one; absent, `config.surfaces` answers one gap for this host's files. */
@@ -117,7 +120,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -135,6 +138,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
+    ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),
     ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
