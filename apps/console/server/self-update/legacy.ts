@@ -4,13 +4,13 @@ import path from "node:path";
 /** Runs `node <script>` with the output inherited and the given env, and resolves its exit code. */
 export type SpawnNode = (script: string, env: NodeJS.ProcessEnv) => Promise<number>;
 
-export interface LegacyOptions {
+interface LegacyOptions {
   root: string;
   stateDir: string;
 }
 
 const FAILED = 1;
-export const BOOTSTRAP_IN_RELEASE = "apps/console/deploy/titan-console-bootstrap.mts";
+const BOOTSTRAP_IN_RELEASE = "apps/console/deploy/titan-console-bootstrap.mts";
 
 /**
  * The bare `self-update` a timer unit from before the bootstrap still runs. It runs the serving release's own copy of
