@@ -30,7 +30,7 @@ export function AutoresearchHeader({ run }: { run: ArRunView }): ReactNode {
       <SectionHeader title={`${run.target.name} · ${run.runId}`} subtitle={`Phase ${run.target.phases[0]}`} trailing={<RunStatusBadge status={run.status} />} />
       <SectionContent>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat id="round" label="Round" figure={roundText(run)} caption={<>Started <DateTime value={run.startedAt} format="datetime" /></>} />
+          <Stat id="round" label="Round" figure={roundText(run)} caption={<RoundCaption run={run} />} />
           <Stat id="best" label={`Best ${run.target.metric.primary}`} figure={best.figure} caption={best.caption} />
           <Stat id="noise" label="Noise" figure={noise.figure} caption={noise.caption} />
           <Stat id="decisions" label="Decisions" figure={`kept ${decisions.kept}`} caption={`rejected ${decisions.rejected} · stopped ${decisions.stopped} · superseded ${decisions.superseded}`} />
@@ -71,7 +71,17 @@ export function RunStatusBadge({ status }: { status: ArRunSummary["status"] }): 
   );
 }
 
-const roundText = (run: ArRunView): string => `${run.rounds.at(-1)?.round ?? 0} / ${run.settings.rounds}`;
+/** C-256 S4c: an ended run names why, in the engine's own code. */
+function RoundCaption({ run }: { run: ArRunView }): ReactNode {
+  return (
+    <>
+      Started <DateTime value={run.startedAt} format="datetime" />
+      {run.stopReason === undefined ? null : ` · ended: ${run.stopReason}`}
+    </>
+  );
+}
+
+const roundText =(run: ArRunView): string => `${run.rounds.at(-1)?.round ?? 0} / ${run.settings.rounds}`;
 
 const liveLadders = (run: ArRunView): number => ladders(run).filter((ladder) => ladder.active !== null).length;
 

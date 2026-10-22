@@ -6,7 +6,7 @@ import { href, open } from "../router.js";
 import { AutoresearchIdeaRecord } from "./AutoresearchIdeaRecord.js";
 import { AutoresearchStageStepper } from "./AutoresearchStageStepper.js";
 import { RatchetMove } from "./AutoresearchRatchet.js";
-import { keptMove, reasonLabel } from "./autoresearch-format.js";
+import { depthSuffix, keptMove, reasonLabel } from "./autoresearch-format.js";
 import { implementerRoute, stageSpans } from "./autoresearch-lanes.js";
 
 /** Design §2.2 and §2.4: the card's detail, opened by `?idea=` so a reload or a shared link reopens it. */
@@ -48,7 +48,11 @@ function IdeaFacts({ ladder }: { ladder: ArLadder }): ReactNode {
       <Typography variant="body2">{idea.hypothesis}</Typography>
       <DataRow label="Expected effect" value={`${idea.expectedEffect.metric} ${idea.expectedEffect.direction} · ${idea.expectedEffect.microSignal}`} />
       <DataRow label="Source" value={idea.source} />
-      <DataRow label="Lineage" value={idea.parent === undefined ? idea.lineage : `${idea.lineage} (parent ${idea.parent})`} />
+      <DataRow
+        label="Lineage"
+        value={`${idea.parent === undefined ? idea.lineage : `${idea.lineage} (parent ${idea.parent})`}${depthSuffix(idea)}`}
+        testID="autoresearch-drawer-lineage"
+      />
       {idea.differsFrom === undefined ? null : <DataRow label="Differs from" value={idea.differsFrom} />}
       {outcome === null ? null : <DataRow label="Verdict" value={`${outcome.verdict} at ${outcome.rungReached} · ${reasonLabel(outcome.reason) ?? outcome.reason}`} />}
       {outcome?.lesson === undefined ? null : <DataRow label="Lesson" value={outcome.lesson} />}
