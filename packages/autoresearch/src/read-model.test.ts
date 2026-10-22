@@ -325,6 +325,27 @@ describe("G13: snapshots and syncs", () => {
     expect(arRunSummary(run).openSnapshot).toBeNull();
   });
 
+  it("keeps the snapshot open while a held sync's gate waits for the owner", async () => {
+    const sync = async () => ({ state: "merged" as const, frozen: ["src/gate/measure.py"] });
+    const { repo, host } = await world({ planner: byRounds([["a"]]), sync }, WINNERS);
+    const runId = host.runtime.start(AUTORESEARCH_WORKFLOW, { pin: repo.pin, config: JSON.stringify({ lanes: 2, minPool: 0, rounds: 2, snapshot: { keptIdeas: 1 } }) });
+    await until(() => host.runtime.status(runId)?.status === "paused", "the sync gate");
+
+    const paused = host.runtime.status(runId)!;
+
+    expect(arRunView(paused)!.syncs.map((entry) => [entry.round, entry.state, entry.gate])).toEqual([[2, "merged", { answered: false }]]);
+    expect(arRunSummary(paused).openSnapshot).toEqual({ k: 1, pr: 101 });
+  });
+
+  it("shows a held last sync with no gate, since the run's end opens none", async () => {
+    const sync = async () => ({ state: "merged" as const, conflict: ["src/config.json"] });
+    const { run, view } = await winnersRun([["a"]], { rounds: 1, snapshot: { keptIdeas: 1 } }, { sync });
+
+    expect(run.status).toBe("completed");
+    expect(view.syncs).toEqual([{ round: "end", pr: 101, state: "merged", conflict: ["src/config.json"] }]);
+    expect(Object.keys(view.syncs[0]!)).not.toContain("gate");
+  });
+
   it("reopens nothing after a closed PR, and the next cut opens under the next k", async () => {
     const { run, view } = await winnersRun([["a"], ["b"]], { rounds: 2, snapshot: { keptIdeas: 1 } }, { sync: async () => ({ state: "closed" as const }) });
 
