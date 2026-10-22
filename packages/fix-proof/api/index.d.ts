@@ -138,9 +138,10 @@ type MutationCheck = {
 declare function parseMutationSpec(text: string): MutationSpecResult;
 /**
  * Whether one mutation can run against the merge base: its file must be code under test, not a test, carried file, spec or
- * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once.
+ * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once. `at` names
+ * the commit `baseText` came from in the error, for a caller that checks against another one.
  */
-declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig): MutationCheck;
+declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig, at?: string): MutationCheck;
 
 /** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
 declare const MAX_ENCODED_BYTES = 900000;
@@ -421,7 +422,8 @@ type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 /**
  * Runs every declared mutation of a test-only diff against the merge base with the head's tests overlaid and writes one
  * `mutants.report`: a skipped marker with no spec or with source in the diff, an error marker on any failure, never a throw.
- * With a sandbox user, every build and vitest call after the overlay runs inside the sandbox, since head code ran there.
+ * A spec that does not read, pair or check, source diff or not, also writes its reason to `mutants.refused`, which fails
+ * the mutants job. With a sandbox user, every build and vitest call after the overlay runs inside the sandbox.
  */
 declare function execMutants(options: ExecMutantsOptions): Promise<void>;
 

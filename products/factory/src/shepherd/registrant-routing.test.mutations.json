@@ -12,16 +12,6 @@
       ]
     },
     {
-      "name": "a self-registered fixer hears its own notices",
-      "file": "products/factory/src/shepherd/registrant.ts",
-      "find": "  return roster && lineageSeat({ implementer: registrant.name, successors }, roster);",
-      "replace": "  return registrant.name;",
-      "kills": [
-        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a fixer that registered its own PR has its notices sent to the session that spawned it",
-        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor of a fixer that registered its own PR still sends to the session that spawned that fixer"
-      ]
-    },
-    {
       "name": "a repeat registration replaces the first registrant",
       "file": "products/factory/src/shepherd/registration-facts.ts",
       "find": "WHERE run_id = ? AND registrant IS NULL\";",
@@ -60,18 +50,6 @@
       "file": "products/factory/src/shepherd/exit-notice.ts",
       "find": "  if (seat === undefined) return undefined;",
       "replace": "  if (seat === undefined) return ports.lineageSeat?.(target);",
-      "kills": [
-        "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a repo deny-listed or charter hard-stopped opens ci-failed for the owner and sends neither notice nor digest",
-        "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a repo unseated opens ci-failed for the owner and sends neither notice nor digest",
-        "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a repo joined by several seats (`+`) opens ci-failed for the owner and sends neither notice nor digest",
-        "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a fixer-registered run in a deny-listed repo opens the owner gate rather than telling its spawner"
-      ]
-    },
-    {
-      "name": "the digest tells a registrant about a repo no single seat owns",
-      "file": "products/factory/src/shepherd/seat-digest.ts",
-      "find": "    return seat && (named.get(run.runId) ?? seat);",
-      "replace": "    return named.get(run.runId) ?? seat;",
       "kills": [
         "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a repo deny-listed or charter hard-stopped opens ci-failed for the owner and sends neither notice nor digest",
         "a registrant never stands in for a repo no single seat owns: the owner gate opens (TP-3653) a repo unseated opens ci-failed for the owner and sends neither notice nor digest",

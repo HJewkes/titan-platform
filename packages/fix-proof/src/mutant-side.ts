@@ -7,7 +7,7 @@ import type { Mutation } from "./mutation.js";
 import { normalizeRelative } from "./paths.js";
 import { testOnlyOf } from "./plan.js";
 import { addTree, overlay, prepare, runInTree, testReport, withSandbox, type ExecSideOptions } from "./side.js";
-import { readBlob, readSpecs } from "./spec-read.js";
+import { readBlob, readSpecs, readSpecsAtHead, SpecError } from "./spec-read.js";
 import { toolchainOf } from "./toolchain.js";
 import { encodeError, encodeMutantsReport, encodeMutantsSkipped, type MutantRun } from "./transport.js";
 
@@ -15,6 +15,8 @@ import { encodeError, encodeMutantsReport, encodeMutantsSkipped, type MutantRun 
 export const DEFAULT_MUTANTS_BUDGET_MS = 13 * 60_000;
 /** The mutants side writes its one combined report as `<out>/mutants.report`. */
 export const MUTANTS_REPORT = "mutants";
+/** Written beside the report only when a spec is refused; fix-proof-run.sh fails the mutants job on it. */
+const MUTANTS_REFUSED = "mutants.refused";
 
 export type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 
@@ -97,11 +99,29 @@ async function runAll(mt: MutantTree, specs: readonly SpecUnderTest[]): Promise<
   return encodeMutantsReport({ baseline, runs });
 }
 
-async function runMutants(ctx: Context, shas: Shas, sandboxUser: string | undefined): Promise<string> {
+interface Refusal {
+  error?: string;
+}
+
+// A source diff's judge reads no spec, so there a git failure or timeout is a refusal too, or the specs would land unread.
+async function orRefuse<T>(refusal: Refusal, read: () => Promise<T>, anyError = false): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (anyError || error instanceof SpecError) refusal.error = messageOf(error);
+    throw error;
+  }
+}
+
+async function runMutants(ctx: Context, shas: Shas, sandboxUser: string | undefined, refusal: Refusal): Promise<string> {
   const plan = await planDiff(ctx, shas);
   if (plan.mutations.length === 0) return encodeMutantsSkipped("no mutation spec in the diff");
-  if (!testOnlyOf(plan)) return encodeMutantsSkipped(`the diff changes source: ${plan.source[0] ?? ""}`);
-  const specs = await readSpecs(ctx, plan, shas);
+  if (!testOnlyOf(plan)) {
+    // The judge never reads a source diff's specs, so without this a spec no later test-only diff could run lands unread.
+    await orRefuse(refusal, () => readSpecsAtHead(ctx, plan, shas.head), true);
+    return encodeMutantsSkipped(`the diff changes source: ${plan.source[0] ?? ""}`);
+  }
+  const specs = await orRefuse(refusal, () => readSpecs(ctx, plan, shas));
   const tree = await addTree(ctx, "mutants", shas.base);
   const pnpm = fs.existsSync(path.join(tree, "pnpm-lock.yaml"));
   // As on the base side, the merge base installs and builds before any head file lands in its tree.
@@ -114,17 +134,20 @@ async function runMutants(ctx: Context, shas: Shas, sandboxUser: string | undefi
 /**
  * Runs every declared mutation of a test-only diff against the merge base with the head's tests overlaid and writes one
  * `mutants.report`: a skipped marker with no spec or with source in the diff, an error marker on any failure, never a throw.
- * With a sandbox user, every build and vitest call after the overlay runs inside the sandbox, since head code ran there.
+ * A spec that does not read, pair or check, source diff or not, also writes its reason to `mutants.refused`, which fails
+ * the mutants job. With a sandbox user, every build and vitest call after the overlay runs inside the sandbox.
  */
 export async function execMutants(options: ExecMutantsOptions): Promise<void> {
+  const refusal: Refusal = {};
   const report = await withContext(
     { ...options, budgetMs: options.budgetMs ?? DEFAULT_MUTANTS_BUDGET_MS },
-    (ctx, shas) => runMutants(ctx, shas, options.sandboxUser),
+    (ctx, shas) => runMutants(ctx, shas, options.sandboxUser, refusal),
     (_shas, error) => encodeError(error),
   ).catch((error: unknown) => encodeError(`mutants: cleanup failed: ${messageOf(error)}`));
   try {
     fs.mkdirSync(options.out, { recursive: true });
     fs.writeFileSync(path.join(options.out, `${MUTANTS_REPORT}.report`), report);
+    if (refusal.error !== undefined) fs.writeFileSync(path.join(options.out, MUTANTS_REFUSED), refusal.error);
   } catch {
     // The judge reads an absent report as a mutants error, so swallowing a write failure still fails closed.
   }

@@ -4,8 +4,8 @@
     {
       "name": "the host never applies the registrant migration",
       "file": "products/factory/src/workflows.ts",
-      "find": "repoFreezeMigration(33), registrantMigration(38)];",
-      "replace": "repoFreezeMigration(33)];",
+      "find": "registrantMigration(38), gateCancelKindMigration(39)];",
+      "replace": "gateCancelKindMigration(39)];",
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"
       ]
