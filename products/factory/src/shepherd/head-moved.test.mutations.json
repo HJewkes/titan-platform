@@ -17,8 +17,9 @@
       "find": "if (!dryRun && !cancelUnlessSettled(",
       "replace": "if (!cancelUnlessSettled(",
       "kills": [
+        "a pending approve-merge gate whose pull request head moved a dry run reports the moved gate and supersedes nothing",
         "a pending shepherd-merge-guard approve-merge gate a dry run reports it and cancels nothing",
-        "a pending approve-merge gate whose pull request head moved a dry run reports the moved gate and supersedes nothing"
+        "a pending shepherd-route failed-rounds approve-merge gate a dry run reports it and cancels nothing"
       ]
     },
     {
@@ -27,8 +28,13 @@
       "find": "return pr.state === \"open\" && pr.headSha !== asked ? pr.headSha : undefined;",
       "replace": "return pr.state === \"open\" ? pr.headSha : undefined;",
       "kills": [
+        "a pending approve-merge gate read through the PR snapshot a snapshot row behind the gate's head is confirmed through the port and the live gate stays",
+        "a pending approve-merge gate whose pull request head moved leaves a gate alone while the head it asks about is still the pull request's head",
+        "a pending ci-failed gate whose pull request head moved stays with the owner while the red head is still the pull request's head",
+        "a pending sh-sent-back gate whose pull request head moved stays with the owner while the head it asks about is still the pull request's head",
         "a pending shepherd-merge-guard approve-merge gate is kept while the head it asks about is still the pull request's head",
-        "a pending approve-merge gate whose pull request head moved leaves a gate alone while the head it asks about is still the pull request's head"
+        "a pending shepherd-route failed-rounds approve-merge gate is kept while the head it asks about is still the pull request's head",
+        "a pending shepherd-route fix-first-runaway approve-merge gate is kept while the head it asks about is still the pull request's head"
       ]
     }
   ]
