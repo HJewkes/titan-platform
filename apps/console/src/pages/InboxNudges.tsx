@@ -11,11 +11,14 @@ type TapState = { status: "idle" | "sending" } | { status: "sent"; already: bool
 
 const alreadySubmitted = (data: unknown): boolean => typeof data === "object" && data !== null && "status" in data && data.status === "already-submitted";
 
-/** Rounds left open over six hours, one row each, with the recommendations stated and, where every question has one, the one tap. */
+/**
+ * Rounds left open over six hours, one row each, with the recommendations stated and, where every question has one, the
+ * one tap. An after-answer round states none: its owner answers blind, so its tap accepts recommendations unseen.
+ */
 export function NudgeSection({ nudges }: { nudges: readonly RoundNudge[] }): ReactNode {
   return (
     <Section testID="inbox-nudges">
-      <SectionHeader title={`Waiting over 6 h (${nudges.length})`} subtitle="Rounds with no answer yet; the recommendation is stated" />
+      <SectionHeader title={`Waiting over 6 h (${nudges.length})`} subtitle="Rounds with no answer yet" />
       <SectionContent>
         <VStack gap={3}>
           {nudges.map((nudge) => (
@@ -68,7 +71,7 @@ function RecTap({ nudge }: { nudge: RoundNudge }): ReactNode {
   return (
     <VStack gap={2}>
       <Button size="sm" isDisabled={state.status === "sending"} onPress={() => void tap()} testID={`inbox-nudge-rec-${nudge.roundId}`}>
-        <ButtonText>Answer all with recommendation</ButtonText>
+        <ButtonText>{nudge.recommendationsHidden ? "Accept all recommendations (unseen)" : "Answer all with recommendation"}</ButtonText>
       </Button>
       {state.status === "failed" ? <Alert status="error" message={`Not answered: ${state.error}`} /> : null}
     </VStack>

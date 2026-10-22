@@ -1,6 +1,7 @@
 /**
  * The round age nudge (TP-4044): a round left open more than six hours with no feedback.json and no withdrawal gets
- * one "reply rec" line, stating each question's recommendation. The inbox lists every due round as one row, read
+ * one "reply rec" line, stating each question's recommendation, except in an after-answer round: the owner chose to
+ * answer that one blind, so its nudge only counts the questions and keeps every recommendation hidden. The inbox lists every due round as one row, read
  * only. The digest (`titan-console rounds nudge`) claims each due round once with a `nudged.json` marker beside it,
  * written with `wx`, so a second digest finds the marker and says nothing; the marker lives on disk, so a restart
  * does not nudge again.
@@ -36,7 +37,9 @@ export interface RoundNudge {
   round: number;
   openedAt: string;
   manifestSha256: string;
+  /** Empty while `recommendationsHidden`: an after-answer round's nudge must not show what its answers would be blind to. */
   recommendations: StatedRecommendation[];
+  recommendationsHidden: boolean;
   /** True when the one tap may answer every question; otherwise `withoutTap` says why not. */
   oneTap: boolean;
   withoutTap?: string;
@@ -85,8 +88,9 @@ function statedRecommendations(manifest: Manifest): StatedRecommendation[] {
 
 const hoursOpen = (openedAt: string, now: number): number => Math.floor((now - Date.parse(openedAt)) / (60 * 60 * 1000));
 
-function nudgeLine(round: QueueRound, recommendations: readonly StatedRecommendation[], oneTap: boolean, now: number): string {
+function nudgeLine(round: QueueRound, recommendations: readonly StatedRecommendation[] | null, oneTap: boolean, now: number): string {
   const waited = `${round.id} has waited ${hoursOpen(round.updatedAt, now)} h`;
+  if (recommendations === null) return `${waited}: ${round.manifest.questions.length} questions; recommendations hidden until you answer`;
   const stated = recommendations.map(({ questionId, answer }) => `${questionId}: ${answer}`).join("; ");
   if (!oneTap) return `${waited}; open it to answer${stated === "" ? "" : ` (recommended: ${stated})`}`;
   return `${waited}: reply rec to answer all ${round.manifest.questions.length} with the recommendation (${stated})`;
@@ -96,14 +100,15 @@ function nudgeLine(round: QueueRound, recommendations: readonly StatedRecommenda
 const isDue = (round: QueueRound, now: number): boolean => round.feedback === null && round.withdrawn === null && now - Date.parse(round.updatedAt) > NUDGE_AFTER_MS;
 
 function nudgeOf(round: QueueRound, now: number, nudgedAt: string | null): RoundNudge {
-  const recommendations = statedRecommendations(round.manifest);
+  const recommendationsHidden = round.manifest.recommendations === "after-answer";
+  const recommendations = recommendationsHidden ? [] : statedRecommendations(round.manifest);
   const answered = recAnswers(round.manifest);
   const oneTap = "answers" in answered;
   const { unit, round: number } = round.manifest;
   return {
-    roundId: round.id, unit, round: number, openedAt: round.updatedAt, manifestSha256: round.manifestSha256, recommendations, oneTap,
+    roundId: round.id, unit, round: number, openedAt: round.updatedAt, manifestSha256: round.manifestSha256, recommendations, recommendationsHidden, oneTap,
     ...("reason" in answered && { withoutTap: answered.reason }),
-    line: nudgeLine(round, recommendations, oneTap, now),
+    line: nudgeLine(round, recommendationsHidden ? null : recommendations, oneTap, now),
     nudgedAt,
   };
 }

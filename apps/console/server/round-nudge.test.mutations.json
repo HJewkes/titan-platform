@@ -27,6 +27,15 @@
       "kills": [
         "rounds.answer-rec answers every question with its recommendation through rounds.submit, marked answered-by-rec"
       ]
+    },
+    {
+      "name": "an after-answer round's nudge prints its recommendations",
+      "file": "apps/console/server/round-nudge.ts",
+      "find": "const recommendationsHidden = round.manifest.recommendations === \"after-answer\";",
+      "replace": "const recommendationsHidden = false;",
+      "kills": [
+        "the round age nudge states no recommendation for an after-answer round, in the inbox or the digest, yet its one tap still answers through rounds.submit"
+      ]
     }
   ]
 }

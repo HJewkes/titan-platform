@@ -93,20 +93,36 @@ afterEach(async () => {
 });
 
 describe("the round age nudge", () => {
-  it("surfaces a 7 h round once in the inbox, with every recommendation stated, and once in the digest", async () => {
-    await stageRound("kiln-r1", [RAMP, HOLD, COLUMNS]);
+  it("surfaces a 7 h shown round once in the inbox, with every recommendation stated, and once in the digest", async () => {
+    await stageRound("kiln-r1", [RAMP, HOLD, COLUMNS], { recommendations: "shown" });
 
     const inbox = await nudgesNow();
     const first = await nudgeRounds(dir, new Date(NOW));
     const second = await nudgeRounds(dir, new Date(NOW + HOUR));
 
     expect(inbox).toHaveLength(1);
-    expect(inbox[0]).toMatchObject({ roundId: "kiln-r1", oneTap: true, nudgedAt: null });
+    expect(inbox[0]).toMatchObject({ roundId: "kiln-r1", oneTap: true, recommendationsHidden: false, nudgedAt: null });
     expect(inbox[0]!.recommendations.map((each) => each.answer)).toEqual(["Staged", "4", "Segment, Hold"]);
     expect(inbox[0]!.line).toBe("kiln-r1 has waited 7 h: reply rec to answer all 3 with the recommendation (ramp: Staged; hold: 4; columns: Segment, Hold)");
     expect(first.map((nudge) => nudge.roundId)).toEqual(["kiln-r1"]);
     expect(second).toEqual([]);
     expect((await nudgesNow())[0]!.nudgedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it("states no recommendation for an after-answer round, in the inbox or the digest, yet its one tap still answers through rounds.submit", async () => {
+    const manifestSha256 = await stageRound("kiln-r1", [RAMP, HOLD, COLUMNS]);
+    const line = "kiln-r1 has waited 7 h: 3 questions; recommendations hidden until you answer";
+
+    const [inbox] = await nudgesNow();
+    const [digest] = await nudgeRounds(dir, new Date(NOW));
+    const tap = answerRec({ id: "kiln-r1", manifestSha256 });
+    const { envelope } = await tap.run();
+
+    expect(inbox).toMatchObject({ oneTap: true, recommendationsHidden: true, recommendations: [], line });
+    expect(digest).toMatchObject({ recommendations: [], line });
+    expect(JSON.stringify([inbox, digest])).not.toMatch(/Staged|Segment|"4"/);
+    expect(envelope).toMatchObject({ ok: true, data: { status: "submitted" } });
+    expect(tap.recorded).toHaveLength(3);
   });
 
   it("does not nudge a round open exactly 6 h, and nudges it a millisecond later", async () => {
@@ -136,7 +152,7 @@ describe("the round age nudge", () => {
   });
 
   it("offers no one-tap answer when a question lacks a recommendation, or is a Ship", async () => {
-    await stageRound("kiln-r1", [RAMP, NOTES]);
+    await stageRound("kiln-r1", [RAMP, NOTES], { recommendations: "shown" });
     await stageRound("ship-r1", [SHIP]);
 
     const nudges = await nudgesNow();

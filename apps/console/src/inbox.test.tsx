@@ -85,7 +85,7 @@ const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], g
 const ROUND_SHA = "e".repeat(64);
 
 const nudge = (roundId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  roundId, unit: roundId.replace(/-r\d+$/, ""), round: 1, openedAt: ago(7 * HOUR), manifestSha256: ROUND_SHA, oneTap: true, nudgedAt: null,
+  roundId, unit: roundId.replace(/-r\d+$/, ""), round: 1, openedAt: ago(7 * HOUR), manifestSha256: ROUND_SHA, oneTap: true, nudgedAt: null, recommendationsHidden: false,
   recommendations: [{ questionId: "ramp", prompt: "Which ramp by default?", answer: "Staged" }],
   line: `${roundId} has waited 7 h: reply rec to answer all 1 with the recommendation (ramp: Staged)`,
   ...overrides,
@@ -446,6 +446,17 @@ describe("the round age nudge", () => {
     expect(within(kiln).getByText("ramp: Staged")).toBeTruthy();
     expect(within(screen.getByTestId("inbox-nudge-lamp-r1")).getByText('No one-tap answer: question "notes" has no recommendation that answers it')).toBeTruthy();
     expect(screen.queryByTestId("inbox-nudge-rec-lamp-r1")).toBeNull();
+  });
+
+  it("states no recommendation for an after-answer round, and offers its tap as accepting them unseen", async () => {
+    const hidden = { recommendationsHidden: true, recommendations: [], line: "kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer" };
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1", hidden)] }), { "rounds.answer-rec": () => Promise.resolve(successEnvelope({ status: "submitted", path: "/synthetic/feedback.json", sha256: "f".repeat(64), headSha: null })) });
+
+    const kiln = await screen.findByTestId("inbox-nudge-kiln-r1");
+
+    expect(within(kiln).queryByText(/Staged/)).toBeNull();
+    expect(within(kiln).getByText("kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer")).toBeTruthy();
+    expect(within(kiln).getByText("Accept all recommendations (unseen)")).toBeTruthy();
   });
 
   it("answers every question with one tap through rounds.answer-rec, bound to the round it showed", async () => {

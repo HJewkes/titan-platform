@@ -580,7 +580,10 @@ A round open more than six hours (by its `round.json` mtime) with no `feedback.j
 due a nudge (`server/round-nudge.ts`, TP-4044). `inbox.list` returns each due round once in `nudges`, read only,
 with each question's recommendation stated, and the inbox shows them under "Waiting over 6 h" with Answer all with
 recommendation when every question has a recommendation that answers it and none is a Ship; Home counts them
-beside the blocking count. The digest's verb claims each due round once with a `nudged.json` marker beside it,
+beside the blocking count. An after-answer round (the schema default) is answered blind, so its nudge states no
+recommendation: its line reads "<id> has waited <n> h: <N> questions; recommendations hidden until you answer",
+`recommendationsHidden` is true with `recommendations` empty, and its tap reads Accept all recommendations
+(unseen). The tap still records each question in `revealed.json` and tags each answer seen. The digest's verb claims each due round once with a `nudged.json` marker beside it,
 written with `wx`, so a later run prints nothing for it:
 
 ```sh

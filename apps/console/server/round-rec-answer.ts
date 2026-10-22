@@ -4,8 +4,8 @@
  * `rounds.submit`'s own pipeline, so the decision log, the listeners and the seat notice hear it as they hear a phone
  * answer. The feedback's `general` says `answered-by-rec`, as the strict feedback@1 schema has no field for it.
  *
- * The nudge stated each recommendation, so each answer is tagged seen; in an after-answer round each is recorded in
- * `revealed.json` first, as `rounds.reveal` would, since `rounds.submit` takes a seen tag only on a revealed question.
+ * Each answer is tagged seen: it is the recommendation, whether the nudge stated it or, in an after-answer round, the
+ * owner accepted it unseen. An after-answer round records each in `revealed.json` first, as `rounds.reveal` would, since `rounds.submit` takes a seen tag only on a revealed question.
  * The request names the round.json sha256 the nudge was built from, and a changed round is refused.
  */
 import path from "node:path";
