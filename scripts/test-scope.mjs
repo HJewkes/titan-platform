@@ -25,6 +25,8 @@ const FULL_PATHS = new Set([
   "eslint.config.js",
   "eslint.typed.config.js",
   "scripts/vitest-tmpdir.mjs",
+  "scripts/vitest-wait-budget.mjs",
+  "scripts/wait-budget.mjs",
   "scripts/test-affected.mjs",
   "scripts/test-scope.mjs",
 ]);
