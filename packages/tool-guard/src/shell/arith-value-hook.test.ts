@@ -3,6 +3,10 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { countWork } from "../test-support/work-count.js";
+
+/** The costlier line reads 158 characters a character; reading the value again at every read of it would be hundreds of times that. */
+const WORK_PER_CHAR = 300;
 
 const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
@@ -43,23 +47,22 @@ describe("the hook verdict on a value that arithmetic reads (TP-1624)", () => {
   it("denies a push after a value that holds many substitutions read again and again", async () => {
     const value = `X='a[${"$(echo 1)".repeat(200)}]'`;
     const command = `${value}${";a[X]=1".repeat(800)}; ${PUSH}`;
-    const started = performance.now();
+    let result = "";
 
-    const result = await verdict(command);
+    await countWork(async () => (result = await verdict(command)), command.length * WORK_PER_CHAR);
 
     expect(result).toBe("deny");
-    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it("denies a push when a variable the value uses changes before every read", async () => {
     const head = `X='a[${"$(echo $C)".repeat(150)}]'`;
     const reads = Array.from({ length: 450 }, (_, i) => `;C=${i};a[X]=1`).join("");
-    const started = performance.now();
+    const command = `${head}${reads}; ${PUSH}`;
+    let result = "";
 
-    const result = await verdict(`${head}${reads}; ${PUSH}`);
+    await countWork(async () => (result = await verdict(command)), command.length * WORK_PER_CHAR);
 
     expect(result).toBe("deny");
-    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it("denies a push hidden in a value that also holds an unbalanced quote", async () => {

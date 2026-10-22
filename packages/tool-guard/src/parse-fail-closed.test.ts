@@ -9,6 +9,8 @@ import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
+import { withinWallBudget } from "./test-support/cpu-budget.js";
+import { countWork } from "./test-support/work-count.js";
 
 const HOME = "/home/you";
 const ts = new Date("2026-01-02T03:04:05.000Z");
@@ -52,10 +54,18 @@ function decisionOf(stdout: string): string | null {
   return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
-async function timedDecision(command: string): Promise<{ decision: string | null; ms: number }> {
-  const start = performance.now();
-  const result = await handle(bash(command), {}, port);
-  return { decision: decisionOf(result.stdout), ms: performance.now() - start };
+/**
+ * Work the hook may do on one of the lines below, in characters read: parsing the event and classifying a short command
+ * read up to 8 400, and the costliest line, a quoted subscript 100 deep, 579 a character. A walk that went exponential in
+ * the nesting would pass this many times over.
+ */
+const EVENT_WORK = 10_000;
+const WORK_PER_CHAR = 800;
+
+async function countedDecision(command: string): Promise<string | null> {
+  let stdout = "";
+  await countWork(async () => ({ stdout } = await handle(bash(command), {}, port)), EVENT_WORK + command.length * WORK_PER_CHAR);
+  return decisionOf(stdout);
 }
 
 const pushShapes: [string, string][] = [
@@ -69,11 +79,8 @@ const pushShapes: [string, string][] = [
 ];
 
 describe("handle: a command that fails to parse", () => {
-  it.each(pushShapes)("denies %s within a second", async (_, command) => {
-    const { decision, ms } = await timedDecision(command);
-
-    expect(decision).toBe("deny");
-    expect(ms).toBeLessThan(1000);
+  it.each(pushShapes)("denies %s within its work budget", async (_, command) => {
+    expect(await countedDecision(command)).toBe("deny");
   });
 
   it.each(["'", "$(", "`"])("denies git push and gh pr merge followed by an unclosed %s tail", async (tail) => {
@@ -118,15 +125,16 @@ const home = mkdtempSync(join(tmpdir(), "tool-guard-fail-closed-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 describe("the built hook on a command that fails to parse", () => {
-  it.each(pushShapes)("denies %s within a second", (_, command) => {
+  // Node's start-up runs in the child, where thread CPU cannot see it, so only the bench times the run (TP-4047). The
+  // hook's own 3.5 s deadline ends a check that runs on.
+  it.each(pushShapes)("denies %s, within a second under the bench", async (_, command) => {
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
 
-    const start = performance.now();
-    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 5000 });
-    const ms = performance.now() - start;
+    const run = await withinWallBudget(1000, () =>
+      spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8" }),
+    );
 
     expect(run.status).toBe(0);
     expect(decisionOf(run.stdout)).toBe("deny");
-    expect(ms).toBeLessThan(1000);
   });
 });

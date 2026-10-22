@@ -44,7 +44,8 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "TOOL_GUARD_BENCH=1 vitest run --root ../.. packages/tool-guard"
   },
   "dependencies": {
     "@titan-design/authority": "workspace:^",

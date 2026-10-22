@@ -1,18 +1,51 @@
 # Budget tests in tool-guard
 
-A budget test asserts thread CPU (the hook stays under a parse budget) or a time ratio (a walk
-stays linear). Write it with `cpuBudgetIt(name, cpuMs, body)` or `cpuBudgetIt.each(rows)(...)`
-from `cpu-budget.ts`, and time work only through `cpuStopwatch`, `withinParseBudget` or
-`expectLinearTime`. Never pass a per-test timeout to one, and never read a clock in a test
-yourself: `clock-rule.test.ts` fails on any test module other than `cpu-budget.ts` that calls
-`process.threadCpuUsage`, `process.cpuUsage`, `process.hrtime`, `performance.now` or
-`Date.now`. Its allowlist holds the deadline tests, where wall time is the behavior, and
-the wall-clock cost checks TP-3884 moves onto the helper. It only shrinks.
+No assertion under `pnpm test` compares a time reading with a constant. A cost is checked in one of three ways:
 
-Pick `cpuMs` from the slowest CI wall time of the test on a green run. That is an upper bound
-on its CPU there, which runs about four times local CPU. Allow about twice it.
+- **Work, counted.** `countWork`, `expectWorkPerChar` and `expectLinearWork` in `work-count.ts` count the characters
+  the code reads through the string and regex primitives (`indexOf`, `includes`, `exec`, `charCodeAt` and others, each
+  weighed by what it read) and the items it `push`es. A cap is a measured figure with headroom, written beside it, and
+  the count is the same on every machine and under any load. The call that passes the cap stops the walk.
+- **A ratio of thread CPU** at two sizes, interleaved, best of N, in one process: `expectLinearTime` in `linear-time.ts`.
+  Use it only where the risk is regex backtracking, which a count cannot see (merge-lint, the GraphQL escape passes,
+  `hooked-params`).
+- **Fake timers** for the deadline itself: `deadline.test.ts` and `built-hook.test.ts` advance the hook's own timer.
 
-## Why (TP-3877)
+Absolute budgets in milliseconds, which do matter (the hook's 3.5 s deadline on a real machine), run only under the
+bench: `pnpm --filter @titan-design/tool-guard bench` sets `TOOL_GUARD_BENCH=1`. There `cpuBudgetIt` checks each
+budget test's thread CPU, `withinParseBudget` its parse budget, and `withinWallBudget` the built binary's wall time.
+The bench is not part of `pnpm test` or CI: run it on a quiet machine after a change to the classifier's hot paths.
+
+Write a budget test with `cpuBudgetIt(name, cpuMs, body)` or `cpuBudgetIt.each(rows)(...)`; its wall timeout is
+`max(30 s, 12 x cpuMs)` and never a per-test timeout. Never read a clock in a test yourself: `clock-rule.test.ts` fails
+on any test module other than `cpu-budget.ts` that calls `process.threadCpuUsage`, `process.cpuUsage`,
+`process.hrtime`, `performance.now` or `Date.now`. Its allowlist is empty, and it only shrinks.
+
+## Why not time (TP-4047)
+
+TP-3877 moved these tests from wall time to thread CPU. That is load-resistant, not load-proof, and the same class
+failed twice more on 2026-10-22: `join-cost` at 1 032 ms against a 1 000 ms CPU budget on main (TP-4040, which then
+quartered the row's size), and `hook.test.ts`'s near-linear ratio in a full local `pnpm test`. Each kind of check
+fails for its own reason:
+
+- **An absolute CPU budget** moves with the runner. CI thread CPU runs about four times local, and more when the
+  runner is busy: SMT siblings, cache and memory contention and cold JIT all count as this thread's CPU. A budget that
+  has room on a quiet runner has none on a loaded one, and raising it each time only waits for the next load.
+- **An absolute wall budget** (`< 500 ms`, `< 2 s`, `< 4 s`, and the spawned binary's `< 1 s`, which includes node's
+  start-up) moves with every other process on the machine: 4 workers on 4 vCPUs beside the main thread's imports and
+  every git, bash and node child the tests spawn.
+- **A wall-clock ratio from two samples** (`hook.test.ts`, best of 2, small side floored at 5 ms) breaks on one
+  preemption of the large run. The scheduler preempts a long run more often than a short one (TP-3612).
+- **The deadline tests** waited on real time for a timer to fire beside a busy worker.
+
+Counted work replaces each of them where the walk's cost is in the primitives, which is nearly everywhere. Weighing a
+search by the characters it read matters: a rescan to the end through `indexOf` is one call, so a plain call count
+would miss it. Measuring with the weights found one such rescan in the source, the `$${` row of
+`subscript-comment.test.ts`, which TP-4051 tracks. The CPU-spin mutants in the `parse-budget.sweep` and
+`subscript-comment` sidecars became mutants that add counted work, since a spin with no work is something only the
+bench can see.
+
+## Why not a wall timeout (TP-3877)
 
 Four tool-guard timing upkeep tasks landed in seven days: TP-3262, TP-3506, TP-3612 and
 TP-3876. They share one cause: the property each test proves is work, but its limit was wall
