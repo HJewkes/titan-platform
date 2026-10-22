@@ -11,10 +11,9 @@ const searched = (text: string, from: number, index: number, found: number): num
 type Weigh = (self: unknown, args: unknown[], result: unknown, from: number) => number;
 
 /** The characters a regex call read: up to the end of its match, or to the end of the input when it found none. */
-const execWeight: Weigh = (_self, [input], result, from) => {
-  const match = result as RegExpExecArray | null;
-  return match === null ? len(input) - from : match.index + match[0].length - from;
-};
+const isMatch = (result: unknown): result is RegExpExecArray => Array.isArray(result) && "index" in result;
+const execWeight: Weigh = (_self, [input], result, from) => (isMatch(result) ? result.index + result[0].length - from : len(input) - from);
+const indexIn = (result: unknown): number => (typeof result === "number" ? result : -1);
 
 const startOf = (self: unknown): number => (self instanceof RegExp && (self.global || self.sticky) ? self.lastIndex : 0);
 
@@ -26,9 +25,9 @@ const startOf = (self: unknown): number => (self instanceof RegExp && (self.glob
  * (TP-4047). A regex's backtracking is not seen; time those with `expectLinearTime`.
  */
 const WEIGHED: Array<[object, string, Weigh]> = [
-  [String.prototype, "indexOf", (self, [search, from], index) => searched(String(self), at(from, 0), index as number, len(search))],
-  [String.prototype, "lastIndexOf", (self, _args, index) => len(self) - Math.max(0, index as number)],
-  [String.prototype, "includes", (self, [search, from]) => searched(String(self), at(from, 0), Reflect.apply(indexOf, self, [search, from]) as number, len(search))],
+  [String.prototype, "indexOf", (self, [search, from], index) => searched(String(self), at(from, 0), indexIn(index), len(search))],
+  [String.prototype, "lastIndexOf", (self, _args, index) => len(self) - Math.max(0, indexIn(index))],
+  [String.prototype, "includes", (self, [search, from]) => searched(String(self), at(from, 0), indexIn(Reflect.apply(indexOf, self, [search, from])), len(search))],
   [String.prototype, "startsWith", (_self, [search]) => len(search)],
   [String.prototype, "endsWith", (_self, [search]) => len(search)],
   // V8 slices a long string by reference, without copying it; reading the slice later is what costs.
@@ -44,7 +43,10 @@ const WEIGHED: Array<[object, string, Weigh]> = [
 
 class WorkCapExceeded extends Error {}
 
-function wrap(original: (...args: unknown[]) => unknown, weigh: Weigh, onWork: (weight: number) => void) {
+type Primitive = (...args: unknown[]) => unknown;
+const isPrimitive = (value: unknown): value is Primitive => typeof value === "function";
+
+function wrap(original: Primitive, weigh: Weigh, onWork: (weight: number) => void) {
   return function (this: unknown, ...args: unknown[]): unknown {
     const from = startOf(this);
     const result = Reflect.apply(original, this, args);
@@ -57,8 +59,8 @@ function patch(onWork: (weight: number) => void): () => void {
   const originals = WEIGHED.map(([proto, key]) => Object.getOwnPropertyDescriptor(proto, key));
   WEIGHED.forEach(([proto, key, weigh], i) => {
     const original: unknown = originals[i]?.value;
-    if (typeof original !== "function") throw new Error(`no ${key} to count`);
-    Object.defineProperty(proto, key, { configurable: true, writable: true, value: wrap(original as (...args: unknown[]) => unknown, weigh, onWork) });
+    if (!isPrimitive(original)) throw new Error(`no ${key} to count`);
+    Object.defineProperty(proto, key, { configurable: true, writable: true, value: wrap(original, weigh, onWork) });
   });
   return () => WEIGHED.forEach(([proto, key], i) => Object.defineProperty(proto, key, originals[i] ?? {}));
 }
