@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { codeRecordRoute } from "./code-step.js";
 import { mapItems } from "./fan-out.js";
 import { routedRunner, type RouteRunner, type StepRoute } from "./routed-runner.js";
@@ -42,11 +43,13 @@ function workRoute(outcomes: (StepRunOutcome | "hang")[], calls: string[]): Step
   return { match: "work", onRestart: "repeat", runner: scripted(outcomes, calls) };
 }
 
+const StoredColumn = z.record(z.string(), z.record(z.string(), z.unknown()));
+
 /** Rewrites one column of a stored run through `edit`, as an older release or a restart long ago would have left it. */
 function rewriteColumn(db: Db, runId: string, column: "active_steps" | "step_results", edit: (value: Record<string, Record<string, unknown>>) => void): void {
   const stored: unknown = db.prepare(`SELECT ${column} FROM workflow_run WHERE id = ?`).pluck().get(runId);
   if (typeof stored !== "string") throw new Error(`run ${runId} has no ${column}`);
-  const value = JSON.parse(stored) as Record<string, Record<string, unknown>>;
+  const value = StoredColumn.parse(JSON.parse(stored));
   edit(value);
   db.prepare(`UPDATE workflow_run SET ${column} = ? WHERE id = ?`).run(JSON.stringify(value), runId);
 }
