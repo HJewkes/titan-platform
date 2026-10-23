@@ -29,8 +29,8 @@ export function runDirWord(name: string, options: readonly WordToken[]): WordTok
   const spec = Object.hasOwn(CHDIR, name) ? CHDIR[name] : undefined;
   if (spec === undefined) return undefined;
   let dir: WordToken | null | undefined;
-  for (let i = 0; i < options.length; i++) {
-    const word = options[i] as WordToken;
+  let i = 0;
+  for (let word = options[i]; word !== undefined; word = options[++i]) {
     const operand = word.dynamic ? undefined : chdirOperand(word.value, spec);
     if (operand !== undefined) {
       const named = operand === null ? options[++i] : { ...word, value: operand };

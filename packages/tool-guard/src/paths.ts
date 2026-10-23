@@ -195,7 +195,7 @@ function expandFirstList(word: string): string[] {
   const list = BRACE_LIST_RE.exec(word);
   if (list === null) return [word];
   const [before, after] = [word.slice(0, list.index), word.slice(list.index + list[0].length)];
-  return (list[1] as string).split(",").map((alternative) => before + alternative + after);
+  return (list[1] ?? "").split(",").map((alternative) => before + alternative + after);
 }
 
 function covers(entry: GuardedPath, path: string, home: string): boolean {
@@ -269,7 +269,7 @@ function globPiece(glob: string, i: number): [string, number] {
   const rest = glob.slice(i);
   if (rest.startsWith("/**/")) return ["(?:/.*)?/", 4];
   if (rest === "/**") return ["(?:/.*)?", 3];
-  const c = glob[i] as string;
+  const c = glob.charAt(i);
   if (c === "*") return ["[^/]*", 1];
   if (c === "?") return ["[^/]", 1];
   if (c === "[") {
@@ -288,7 +288,7 @@ function bracketClass(glob: string, i: number): [string, number] | null {
   const body = glob.slice(start, end);
   let members = "";
   for (let n = 0; n < body.length; n++) {
-    const lo = body[n] as string;
+    const lo = body.charAt(n);
     const hi = body[n + 2];
     if (body[n + 1] === "-" && hi !== undefined && lo <= hi) {
       members += `${classChar(lo)}-${classChar(hi)}`;

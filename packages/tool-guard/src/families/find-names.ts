@@ -14,11 +14,15 @@ const EXPRESSION_START_RE = /^[-(!]/;
  * `readOnly` names on what it finds.
  */
 export function findReaches(cmd: SimpleCommand, readOnly: ReadonlySet<string>): WordToken[] {
-  if (cmd.name !== "find" || !changesFound(cmd.args, readOnly)) return [];
+  const first = cmd.args[0];
+  if (cmd.name !== "find" || first === undefined || !changesFound(cmd.args, readOnly)) return [];
   const end = cmd.args.findIndex((a) => EXPRESSION_START_RE.test(a.value));
   const starts = cmd.args.slice(0, end < 0 ? cmd.args.length : end);
-  const roots = starts.length > 0 ? starts : [{ ...(cmd.args[0] as WordToken), value: "." }];
-  const names = cmd.args.flatMap((a, i) => (NAME_TESTS.has(a.value) && cmd.args[i + 1] ? [cmd.args[i + 1] as WordToken] : []));
+  const roots = starts.length > 0 ? starts : [{ ...first, value: "." }];
+  const names = cmd.args.flatMap((a, i) => {
+    const name = cmd.args[i + 1];
+    return NAME_TESTS.has(a.value) && name !== undefined ? [name] : [];
+  });
   if (names.length === 0) return roots;
   // A starting point only known at run time may be any directory, so its names are matched under the root.
   const under = (root: WordToken) => (root.dynamic ? "" : root.value.replace(/\/+$/, ""));
