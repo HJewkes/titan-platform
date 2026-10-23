@@ -23,7 +23,8 @@ describe("checkBeatSpecs", () => {
     ["a minimum duration above the default", beatSpec("code-walk", { durationS: [12, 10, 20] }), "duration-order"],
     ["a recipe over 200 words", beatSpec("code-walk", { recipe: Array.from({ length: 201 }, () => "word").join(" ") }), "recipe-length"],
     ["an emphasis target that is not a slot", beatSpec("code-walk", { emphasis: { targets: ["rows"], treatments: ["highlight"] } }), "emphasis-target"],
-    ["an emphasis target whose items carry no id", beatSpec("code-walk", { emphasis: { targets: ["path"], treatments: ["highlight"] } }), "emphasis-target"],
+    ["an emphasis target that is not a list", beatSpec("code-walk", { emphasis: { targets: ["path"], treatments: ["highlight"] } }), "emphasis-target"],
+    ["an emphasis target whose items carry no id", beatSpec("code-walk", { slots: "dsm", emphasis: { targets: ["cells"], treatments: ["highlight"] } }), "emphasis-target"],
   ])("reports %s", (_name, spec, code) => {
     expect(codes(spec)).toEqual([code]);
   });
