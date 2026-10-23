@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { RoutedStepInput, StepRoute } from "./routed-runner.js";
-import type { WorkflowContext } from "./types.js";
+import type { StepUsage, WorkflowContext } from "./types.js";
 
 const INPUT_VAR = "CODE_STEP_INPUT";
 const TEMPLATE = `{{${INPUT_VAR}}}`;
@@ -26,17 +26,21 @@ export function codeRoute<I>(match: string, fn: (input: I, step: RoutedStepInput
   return codeRecordRoute(match, async (input: I, step) => ({ result: await fn(input, step) }), options);
 }
 
+/** A record body's answer; `usage` is what a model call inside the body cost, and is kept off the stored record. */
+export type CodeRecord = object & { usage?: StepUsage };
+
 /**
- * Like `codeRoute`, for a body that returns the whole record: `result` plus trace keys beside it.
+ * Like `codeRoute`, for a body that returns the whole record: `result` plus trace keys beside it, and optionally
+ * `usage`, which becomes the step's usage so a model call made in code is summed like a dispatch's.
  * Every code step reads before it writes, so a crash repeats it and a throw is never retried.
  */
-export function codeRecordRoute<I>(match: string, fn: (input: I, step: RoutedStepInput) => Promise<object>, options: CodeRouteOptions = {}): StepRoute {
+export function codeRecordRoute<I>(match: string, fn: (input: I, step: RoutedStepInput) => Promise<CodeRecord>, options: CodeRouteOptions = {}): StepRoute {
   const envelope = options.envelope ?? ((record: object) => record);
   const errorText = options.errorText ?? ((message: string) => message);
   const run = async (step: RoutedStepInput) => {
     try {
-      const record = await fn(JSON.parse(step.prompt) as I, step);
-      return { ok: true as const, output: JSON.stringify(envelope(record, step)) };
+      const { usage, ...record } = await fn(JSON.parse(step.prompt) as I, step);
+      return { ok: true as const, output: JSON.stringify(envelope(record, step)), ...(usage ? { usage } : {}) };
     } catch (error) {
       return { ok: false as const, error: errorText(error instanceof Error ? error.message : String(error)), retryable: false };
     }
