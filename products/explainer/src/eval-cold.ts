@@ -31,6 +31,13 @@ const whatWhyText = (item: string): string => `What is "${item}", and why is it 
 // leaves it undefined. Item labels keep the looser bar; asked beside the stricter one, v4's ch9 went from 0 to 22 a minute.
 const termText = (term: string): string => `What does "${term}" mean here, and why is it there?`;
 const invariantText = (item: string): string => `"${item}" must always hold. What keeps it, or how does it break today?`;
+/** What the viewer was asked for each scored kind; an inv item is asked both what-why and invariant. */
+export const COLD_QUESTION_TEXT: Readonly<Record<ScoredKind, (item: string) => string>> = {
+  "what-why": whatWhyText,
+  invariant: invariantText,
+  "spoken-term": termText,
+  "viewer-term": termText,
+};
 const oddOneOutText = (items: readonly string[]): string =>
   `Of ${items.map((i) => `"${i}"`).join(", ")}: which item is a different kind of thing, if any?`;
 
@@ -217,6 +224,10 @@ export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): str
   });
 
 const missing = (reply: ColdReply): ColdGrade => ({ score: 0, void_reason: reply.ok ? "not answered" : `call failed: ${reply.reason}` });
+
+/** A zero code wrote in the judge's place: a bare list item, a reply that skipped the question, or a failed call. */
+export const codeDecidedZero = (voidReason: string): boolean =>
+  voidReason === BARE.void_reason || voidReason === "not answered" || voidReason.startsWith("call failed: ");
 
 function pickOf(answer: ColdAnswer | undefined, items: readonly string[]): string | null {
   const key = answer?.odd_one_out?.trim().toLowerCase();

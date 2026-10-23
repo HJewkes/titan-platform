@@ -19,6 +19,24 @@
         "titan-factory service deploy fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build",
         "titan-factory service deploy records a Version Packages merge as skipped without building or restarting"
       ]
+    },
+    {
+      "name": "an ask the checkout is already past is refused again",
+      "file": "products/factory/src/deploy.ts",
+      "find": "return planFor(deploy, main, prepareOnly);",
+      "replace": "return refuse(past);",
+      "kills": [
+        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha"
+      ]
+    },
+    {
+      "name": "an ask the checkout is already past deploys the checkout's rolled-back head",
+      "file": "products/factory/src/deploy.ts",
+      "find": "return planFor(deploy, main, prepareOnly);",
+      "replace": "return planFor(deploy, head, prepareOnly);",
+      "kills": [
+        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha"
+      ]
     }
   ]
 }

@@ -42,6 +42,7 @@ export interface PaceBeat {
 // orphan is an attribute: it marks nodes already on screen as unreached, naming nothing new.
 // wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
 // edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
+// step-markers is an attribute: it marks the memo state of recipe steps already on screen, like stamp on a row.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -72,6 +73,7 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   stamp: "attribute",
   line: "attribute",
   orphan: "attribute",
+  "step-markers": "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -105,6 +107,8 @@ export interface PaceSourceBeat {
   origin?: string;
   render?: string;
   mapBeside: boolean;
+  /** The beat names a beat spec, so each cue target is one of the spec's emphasis element ids, not `kind:label`. */
+  emphasisCues?: boolean;
   cues: { target: string; atCue?: string }[];
   titles: string[];
   reveals: (Cued & { id: string })[];
@@ -122,7 +126,14 @@ const COUNT_KINDS = new Set(["card", "fan"]);
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
   beat.render === "HookBeat" && COUNT_KINDS.has(kind) && /^\d/.test(label);
 
+// An emphasis cue lights an element the beat spec already put on screen, so it qualifies a shown item (an
+// attribute) whatever id the author gave the element.
+function emphasisItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  return beat.cues.map(({ target, atCue }) => ({ label: target, kind: "emphasis", role: "attribute", atS: atS(atCue), source: "cue", ...cueWord(atCue) }));
+}
+
 function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  if (beat.emphasisCues) return emphasisItems(beat, atS);
   return beat.cues.flatMap(({ target, atCue }) => {
     const colon = target.indexOf(":");
     const kind = colon < 0 ? target : target.slice(0, colon);
@@ -201,6 +212,7 @@ function v1SourceBeat(beat: ScriptBeat): PaceSourceBeat {
     plannedS: beat.plannedS,
     ...(beat.kind === undefined ? {} : { render: beat.kind }),
     mapBeside: state !== undefined,
+    ...(beat.visual.beat === undefined ? {} : { emphasisCues: true }),
     cues: beat.visual.cues,
     titles: [],
     reveals: (state?.reveal ?? []).map((r) => ({ id: r.id, label: r.id, atCue: r.atCue })),

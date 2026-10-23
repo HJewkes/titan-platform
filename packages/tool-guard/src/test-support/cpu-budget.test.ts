@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget, wallTimeoutMs, withinCpuBudget } from "./cpu-budget.js";
+import { BENCH, cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget, wallTimeoutMs, withinCpuBudget, withinWallBudget } from "./cpu-budget.js";
 import { expectLinearTime } from "./linear-time.js";
 
 function spinCpu(ms: number): void {
@@ -12,6 +12,11 @@ function spinCpu(ms: number): void {
 describe("a budget test's wall timeout", () => {
   it("is twelve times its CPU budget, the 30 s a 2.5 s hook budget had before (TP-3876)", () => {
     expect(wallTimeoutMs(2500)).toBe(30_000);
+    expect(wallTimeoutMs(8000)).toBe(96_000);
+  });
+
+  it("is never shorter than the suite's 30 s, since a small budget says nothing about a loaded runner (TP-4047)", () => {
+    expect(wallTimeoutMs(100)).toBe(30_000);
   });
 
   it("refuses to time CPU outside a budget test, whose wall timeout would not cover it", () => {
@@ -20,9 +25,9 @@ describe("a budget test's wall timeout", () => {
   });
 });
 
-describe("a budget test's CPU check", () => {
+describe("a budget test's CPU check under the bench", () => {
   it("fails on an assertion, not a timeout, when the body spends more than its budget", async () => {
-    const outcome = withinCpuBudget(20, () => spinCpu(40));
+    const outcome = withinCpuBudget(20, () => spinCpu(40), true);
 
     await expect(outcome).rejects.toMatchObject({ name: "AssertionError", message: expect.stringMatching(/20 ms budget/) });
   });
@@ -37,13 +42,35 @@ describe("a budget test's CPU check", () => {
       }
     };
 
-    await expect(withinCpuBudget(50, loop)).rejects.toMatchObject({ name: "AssertionError" });
+    await expect(withinCpuBudget(50, loop, true)).rejects.toMatchObject({ name: "AssertionError" });
     expect(runs).toBeGreaterThanOrEqual(5);
     expect(runs).toBeLessThanOrEqual(6);
   });
 
   it("passes a body under its budget", async () => {
-    await expect(withinCpuBudget(1000, () => spinCpu(5))).resolves.toBeUndefined();
+    await expect(withinCpuBudget(1000, () => spinCpu(5), true)).resolves.toBeUndefined();
+  });
+});
+
+describe("a budget test's CPU check under pnpm test", () => {
+  it("is off unless the bench asks for it", () => {
+    expect(BENCH).toBe(process.env.TOOL_GUARD_BENCH === "1");
+  });
+
+  it("passes a body over its budget, which only the bench judges", async () => {
+    await expect(withinCpuBudget(5, () => spinCpu(20), false)).resolves.toBeUndefined();
+  });
+});
+
+describe("a wall budget", () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("fails a step past it under the bench, on an assertion", async () => {
+    await expect(withinWallBudget(5, () => sleep(30), true)).rejects.toMatchObject({ name: "AssertionError", message: expect.stringMatching(/5 ms budget/) });
+  });
+
+  it("returns the step's result and judges nothing under pnpm test", async () => {
+    await expect(withinWallBudget(5, async () => (await sleep(30), "done"), false)).resolves.toBe("done");
   });
 });
 

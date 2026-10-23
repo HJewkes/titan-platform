@@ -6,6 +6,10 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { extractCommands } from "./commands.js";
 import { SplicedReadingError } from "./unsure-readings.js";
+import { countWork } from "../test-support/work-count.js";
+
+/** The refusal reads 70 characters a character; 2^8 walks of the line would read it 256 times over. */
+const WORK_PER_CHAR = 140;
 
 const HOME = "/home/you";
 const noFs: ReadFs = {
@@ -33,14 +37,13 @@ function bash(command: string): string {
 }
 
 describe("the budget for text that splicing a substitution's output adds", () => {
-  it("refuses an 8 KiB line of eight nested evals in well under a second, not after 2^8 walks", async () => {
+  it("refuses an 8 KiB line of eight nested evals with work linear in its length, not after 2^8 walks", async () => {
     const line = nested(`${"echo hi;".repeat(900)}${PUSH}`, 8);
-    const started = performance.now();
+    let result = { stdout: "" };
 
-    const result = await handle(bash(line), {}, port);
+    await countWork(async () => (result = await handle(bash(line), {}, port)), line.length * WORK_PER_CHAR);
 
     expect(line.length).toBeLessThan(8 * 1024);
-    expect(performance.now() - started).toBeLessThan(1000);
     expect(result.stdout).toContain('"permissionDecision":"deny"');
     expect(result.stdout).toContain(SPLICED_REASON);
   });

@@ -10,3 +10,7 @@ export { runRunCli, type RunCliDeps } from "./run-cli.js";
 export { ChildStageFailure, StageRunStore, runStageCached, stageRunsMigration } from "./stage-cache.js";
 export { STAGE_VERSIONS, StageSpecSchema, VariantSchema, stageKey, stageSpec, type StageConfig, type StageSpec, type Variant } from "./stage-spec.js";
 export { runStageCli } from "./stage-cli.js";
+export { compareArms, compareTable, NOISE_SIGMAS, armVerdict, type ArmVerdict, type NoiseFloor, type RowCompare } from "./samples-compare.js";
+export { runSamples, sampleRange, SAMPLED_STAGES, targetRowsOf, type SampleCase, type SampledStage, type SampleEnv, type SampleResult, type SampleRun } from "./samples-measure.js";
+export { loadCases } from "./samples-cases.js";
+export { runAbCli } from "./samples-cli.js";

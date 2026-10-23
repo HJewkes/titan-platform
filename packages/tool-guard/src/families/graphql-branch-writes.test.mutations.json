@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each key a text names is followed to its colon",
+      "file": "packages/tool-guard/src/families/graphql-branch-writes.ts",
+      "find": "  texts.some((t) => objectKeyRe(key).test(t)) || variables",
+      "replace": "  texts.some((t) => [...t.matchAll(new RegExp(`\\\\b${key}\\\\b`, \"g\"))].map((m) => t.indexOf(\":\", m.index)).length >= 0 && objectKeyRe(key).test(t)) || variables",
+      "kills": [
+        "graphqlBranchWrites cost on crafted texts reads commented id keys with work linear in their length"
+      ]
+    }
+  ]
+}

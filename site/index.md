@@ -4,7 +4,8 @@ layout: home
 hero:
   name: titan-platform
   text: A multi-agent software factory, and the shared packages it is built from.
-  tagline: <!-- generated:package-count start -->60<!-- generated:package-count end --> packages and <!-- generated:test-file-count start -->2,000+<!-- generated:test-file-count end --> test files, with the products composed from them.
+  # site/home-counts.data.mjs fills both counts when the site builds.
+  tagline: "{package-count} packages and {test-file-count} test files, with the products composed from them."
   actions:
     - theme: brand
       text: Get started

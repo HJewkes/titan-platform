@@ -8,6 +8,10 @@ import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 import { MAX_ADDED_RUNS } from "./xargs-readings.js";
+import { countWork } from "../test-support/work-count.js";
+
+/** The costlier row reads 6.2 M characters; every reading the cap allows, read in full, would be many times that. */
+const XARGS_WORK = 12_500_000;
 
 const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
@@ -64,11 +68,10 @@ describe("added xargs readings on a long input", () => {
   it.each([
     ["-I -i -J %", `git push origin HEAD:main; printf '${words}' | xargs -I -i -J % -d "$D" -n "$N" git %`],
     ["-I{} -J %", `git push origin HEAD:main; printf '${words}' | xargs -I{} -J % -d "$D" -n "$N" git %`],
-  ])("stay under the cap and the hook timeout under %s", async (_how, command) => {
-    const start = performance.now();
+  ])("stay under the cap and the hook's work budget under %s", async (_how, command) => {
     const commands = extractCommands(command, { cwd: REPO, home: HOME });
-    const verdict = await decision(command);
-    expect(performance.now() - start).toBeLessThan(1000);
+    let verdict: string | null = null;
+    await countWork(async () => (verdict = await decision(command)), XARGS_WORK);
     expect(commands.length).toBeLessThan(400 + MAX_ADDED_RUNS);
     expect(verdict).toBe("deny");
   });

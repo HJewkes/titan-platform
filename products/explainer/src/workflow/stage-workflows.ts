@@ -5,10 +5,10 @@ import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
-import { isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
+import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
-import { failedGates, runStageChecks } from "./stage-checks.js";
+import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from "./stage-checks.js";
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 
 interface BodyDeps {
@@ -107,18 +107,21 @@ const ChecksInputSchema = z.object({ spec: StageSpecSchema, body: StageRecordSch
  * The route for every child's `checks:<stage>` step: it adds the stage's checks to the body's record. Any failed
  * gate, the body's or its own, fails the stage and leaves the record, verdicts included, in `failed/<stage>.json`.
  */
-export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChecks" | "now">): StepRoute {
+export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChecks" | "now"> & { judge?: CheckJudge }): StepRoute {
   const now = deps.now ?? (() => new Date());
   return codeRecordRoute(CHECKS_STEP, async (raw: z.input<typeof ChecksInputSchema>, step) => {
     const { spec, body } = ChecksInputSchema.parse(raw);
-    const run = runStageChecks(spec.stage, { artifacts: { ...spec.inputs, ...body.outputs }, store: deps.store, l0Checks: deps.evalChecks ?? L0_CHECKS });
+    const input = { artifacts: { ...spec.inputs, ...body.outputs }, store: deps.store, l0Checks: deps.evalChecks ?? L0_CHECKS };
+    const run = runStageChecks(spec.stage, input);
+    // A stage that already failed a gate is done; the model-backed checks would spend on a script nobody keeps.
+    const judged = await runJudgedChecks(spec.stage, input, failedGates([...body.checks, ...run.checks]).length === 0 ? deps.judge : undefined);
     const endedAt = now();
     const record: StageRecord = {
-      ...body, endedAt: endedAt.toISOString(), wallMs: endedAt.getTime() - Date.parse(body.startedAt),
-      checks: [...body.checks, ...run.checks], notes: [...body.notes, ...run.notes],
+      ...body, endedAt: endedAt.toISOString(), wallMs: endedAt.getTime() - Date.parse(body.startedAt), usage: addUsage(body.usage, judged.usage),
+      checks: [...body.checks, ...run.checks, ...judged.checks], notes: [...body.notes, ...run.notes, ...judged.notes],
     };
     const red = failedGates(record.checks);
-    if (red.length === 0) return { result: record };
+    if (red.length === 0) return { result: record, ...(judged.usage.calls > 0 ? { usage: stepUsage(judged.usage) } : {}) };
     const message = `${spec.stage}: gate ${red.map((check) => `${check.name} failed (${check.detail ?? "no detail"})`).join("; ")}`;
     writeJson(runPaths(deps.dataDir, step.runId).failed(spec.stage), { ...record, notes: [...record.notes, message] });
     throw new Error(message);

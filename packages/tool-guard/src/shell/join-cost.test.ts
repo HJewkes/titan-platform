@@ -5,6 +5,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { cpuBudgetIt } from "../test-support/cpu-budget.js";
+import { countWork, expectWorkPerChar } from "../test-support/work-count.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
 
@@ -12,8 +13,9 @@ const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 const JOIN = "\\\n";
 /**
- * Past this thread-CPU time a hook timeout would let the command through; a linear reading takes milliseconds. It
- * also backs the counted rows below for the work they cannot count, such as indexing a string one character at a time.
+ * Past this thread-CPU time the hook nears its deadline, where it denies the command; a linear reading takes
+ * milliseconds. The bench checks it, for the work a count cannot see, such as indexing a string one character at a time;
+ * under pnpm test the hook rows count work instead, which load on the runner cannot move (TP-2785, TP-4047).
  */
 const BUDGET_MS = 1000;
 
@@ -28,64 +30,17 @@ const noFs: ReadFs = {
 };
 
 /**
- * The most a linear reading of any shape below was measured to spend per source character is 23 counted calls, for
- * unclosed subscripts and for one long name before many brackets; this leaves about 30% headroom. A quadratic spends
+ * The most a linear reading of any shape below was measured to read per source character is 34 characters, for
+ * unclosed subscripts and for one long name before many brackets; this leaves about 30% headroom. A quadratic reads
  * thousands per character.
  */
-const WORK_PER_CHAR = 30;
-
-class WorkCapExceeded extends Error {}
+const WORK_PER_CHAR = 45;
 
 /**
- * The string and pattern primitives the lexer reads its source through. Every guarded memo stops one of these from
- * repeating per bracket or per join, so a quadratic that slips a memo shows up in their count. `push` is here because
- * the bracket scan indexes characters directly: the `[`s it pushes are the only calls a rescan per bracket repeats.
+ * The same through the whole hook, which reads the script more than once: the most measured is 175 characters a
+ * character, for unclosed subscripts. A rescan per command of even a sixty-fourth of the script would be 1 000.
  */
-const COUNTED: Array<[object, string]> = [
-  ...[
-    "startsWith",
-    "endsWith",
-    "includes",
-    "indexOf",
-    "lastIndexOf",
-    "slice",
-    "charAt",
-    "charCodeAt",
-    "codePointAt",
-  ].map((key): [object, string] => [String.prototype, key]),
-  [RegExp.prototype, "test"],
-  [RegExp.prototype, "exec"],
-  [Array.prototype, "push"],
-];
-
-/** Calls `read` with every `COUNTED` primitive counted, stopping it once the count passes `cap`. */
-function countWork(read: () => unknown, cap: number): number {
-  let calls = 0;
-  const originals = COUNTED.map(([proto, key]) =>
-    Object.getOwnPropertyDescriptor(proto, key)
-  );
-  COUNTED.forEach(([proto, key], i) => {
-    const original: unknown = originals[i]?.value;
-    if (typeof original !== "function") throw new Error(`no ${key} to count`);
-    Object.defineProperty(proto, key, {
-      configurable: true,
-      writable: true,
-      value: function (this: unknown, ...args: unknown[]): unknown {
-        if (++calls > cap)
-          throw new WorkCapExceeded(`more than ${cap} counted calls`);
-        return Reflect.apply(original, this, args);
-      },
-    });
-  });
-  try {
-    read();
-    return calls;
-  } finally {
-    COUNTED.forEach(([proto, key], i) =>
-      Object.defineProperty(proto, key, originals[i] ?? {})
-    );
-  }
-}
+const HOOK_WORK_PER_CHAR = 250;
 
 /** A refused line is still a deny, so a `ParseError` ends the reading as the hook would. */
 function tokenizeOrRefuse(src: string): void {
@@ -133,12 +88,10 @@ const SUBSCRIPTS: Shape[] = [
     7_000,
   ],
   ["assignments with no joins", (n) => `${"a[0]=1 ".repeat(n)}\n`, 9_000],
-  // Quarter size: the hook spends about 25 µs a command locally and four times that on a loaded CI runner, where
-  // 10 500 commands passed the budget (TP-4040). The tokenizing check below still catches a scan per bracket.
   [
     "commands each with an unclosed subscript",
     (n) => `${"a[;".repeat(n)}\n`,
-    5_250,
+    21_000,
   ],
   [
     "one long name before many brackets",
@@ -180,7 +133,9 @@ describe("a script of many subscripts", () => {
     "the hook denies a push after %s, within the budget",
     BUDGET_MS,
     async (_name, script) => {
-      const stdout = await hookStdout(script);
+      let stdout = "";
+
+      await expectWorkPerChar(async () => (stdout = await hookStdout(script)), script.length, HOOK_WORK_PER_CHAR);
 
       expect(stdout).toContain('"permissionDecision":"deny"');
     }
@@ -192,7 +147,9 @@ describe("a long run of backslash-newlines", () => {
     "the hook denies a push after a script holding %s, within the budget",
     BUDGET_MS,
     async (_name, script) => {
-      const stdout = await hookStdout(script);
+      let stdout = "";
+
+      await expectWorkPerChar(async () => (stdout = await hookStdout(script)), script.length, HOOK_WORK_PER_CHAR);
 
       expect(stdout).toContain('"permissionDecision":"deny"');
     }
@@ -202,7 +159,7 @@ describe("a long run of backslash-newlines", () => {
 describe("tokenizing a 64 KB script", () => {
   it.each([...SCRIPTS, ...SUBSCRIPTS, SPACED_SUBSCRIPT])(
     "reads %s with work linear in its size",
-    (_name, script, n) => {
+    async (_name, script, n) => {
       const work = (size: number) => {
         // The leading space keeps this source apart from the hook rows' copy, which the per-source caches would hold.
         const src = ` ${script(size)}`;
@@ -212,7 +169,7 @@ describe("tokenizing a 64 KB script", () => {
         );
       };
 
-      const ratio = work(n) / work(n / 4);
+      const ratio = (await work(n)) / (await work(n / 4));
 
       // Every shape measures 3.99 to 4.00. Four times the input is sixteen times the work when quadratic, and
       // already 4.6 times when the work grows as n^1.1.

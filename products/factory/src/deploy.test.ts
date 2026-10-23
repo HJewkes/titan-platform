@@ -451,14 +451,18 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
-  it("refuses a target behind the checkout's main and names the commit to deploy instead", async () => {
-    const machine = fakeMachine({ head: TIP });
+  it("deploys origin/main when a rollback left the checkout's main past the asked sha", async () => {
+    const rolledBack = { outcome: "rolled-back", target: CORE, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "1 more run(s) failed during the watch" };
+    const machine = fakeMachine({ head: CORE, files: { [RECORD]: JSON.stringify(rolledBack) } });
 
-    const { code, err } = await deploy(machine, CORE);
+    const { code, out, err } = await deploy(machine, DOCS);
 
-    expect(code).toBe(1);
-    expect(err).toContain(`already past ${CORE}; deploy that commit instead with titan-factory service deploy --expect ${TIP}`);
-    expect(machine.mutations()).toEqual([]);
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(out).toContain(`the checkout's main is at ${CORE}, already past ${DOCS}; deploying origin/main at ${TIP} instead`);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build", `launchctl kickstart -k ${TARGET}`]);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
   });
 
   it("refuses before the fast-forward when the lockfile changes a native-build package, naming it", async () => {

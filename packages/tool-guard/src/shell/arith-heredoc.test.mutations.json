@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "arithmetic trials are charged an eighth of what they read",
+      "file": "packages/tool-guard/src/shell/arith-trials.ts",
+      "find": "  trials.spend.left -= cost;",
+      "replace": "  trials.spend.left -= cost / 8;",
+      "kills": [
+        "the cost of finding where an arithmetic command ends does work linear in the length of a run of 20000 (",
+        "the cost of finding where an arithmetic command ends does work linear in the length of 20 levels of (( $( through heredoc bodies",
+        "the cost of finding where an arithmetic command ends does work linear in the length of 40 levels of (( $( through heredoc bodies"
+      ]
+    },
+    {
+      "name": "each heredoc body is scanned with trials of its own",
+      "file": "packages/tool-guard/src/shell/procsub-heredoc.ts",
+      "find": "scanSubstitutions(body, 0, body.length, sameSpend(s.trials))",
+      "replace": "scanSubstitutions(body, 0, body.length, { ...sameSpend(s.trials), spend: { left: Math.max(4096, 16 * body.length) } })",
+      "kills": [
+        "the cost of finding where an arithmetic command ends does work linear in the length of 20 levels of (( $( through heredoc bodies",
+        "the cost of finding where an arithmetic command ends does work linear in the length of 40 levels of (( $( through heredoc bodies"
+      ]
+    }
+  ]
+}

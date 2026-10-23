@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { countWork } from "../test-support/work-count.js";
 import { expandCurlGlob } from "./curl-glob.js";
 
 const API = "https://api.github.com/repos/o/r";
+/** Refusing reads 54 characters of the whole 800 KB; listing what the ranges expand to would push every URL. */
+const CURL_WORK_PER_CHAR = 1;
 
 describe("expandCurlGlob expands what curl would request", () => {
   it.each([
@@ -54,15 +57,14 @@ describe("expandCurlGlob returns null where curl refuses the glob or it is too l
   it.each([
     ["wide ranges", "[0-4094]"],
     ["ranges each under the cap", "[1-8]"],
-  ])("refuses a long run of %s without listing them", (_name, range) => {
+  ])("refuses a long run of %s without listing them", async (_name, range) => {
     const text = `h/${range.repeat(100_000)}`;
     const heapBefore = process.memoryUsage().heapUsed;
-    const started = performance.now();
+    let urls: string[] | null = [];
 
-    const urls = expandCurlGlob(text);
+    await countWork(() => (urls = expandCurlGlob(text)), CURL_WORK_PER_CHAR * text.length);
 
     expect(urls).toBeNull();
-    expect(performance.now() - started).toBeLessThan(200);
     expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(16 * 1024 * 1024);
   });
 
