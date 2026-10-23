@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ScriptBeat, ScriptChapter } from "../../script-schema.js";
 import type { SpineV1 } from "../../spine-schema.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
@@ -6,6 +7,7 @@ import { ExplainerFactSchema, type ExplainerFact, type FactKind } from "./schema
 /** The companion doc's name in a run; the tour and every cut of it link into this one file. */
 export const COMPANION_FILE = "companion.md";
 const CONTENTS_ANCHOR = "contents";
+const CONTENTS_TITLE = "Contents";
 
 export interface CompanionSection {
   id: string;
@@ -38,25 +40,35 @@ export interface CompanionChapter {
   factIds: readonly string[];
 }
 
-export interface FactLink {
-  id: string;
-  href: string;
-}
+const FactLinkSchema = z.object({ id: z.string(), href: z.string() });
+export type FactLink = z.infer<typeof FactLinkSchema>;
 
 /** Where a chapter's card points: its section, and each fact it cites at that fact's own anchor. */
-export interface ChapterLink {
-  chapter: string;
-  section: string;
-  href: string;
-  facts: FactLink[];
-}
+const ChapterLinkSchema = z.object({ chapter: z.string(), section: z.string(), href: z.string(), facts: z.array(FactLinkSchema) });
+export type ChapterLink = z.infer<typeof ChapterLinkSchema>;
 
 /** The run's `chapter-links` artifact: the companion doc by name and content hash, and every chapter's link into it. */
-export interface ChapterLinks {
-  schema: "explainer.chapter-links/v1";
-  doc: typeof COMPANION_FILE;
-  docSha: string;
-  links: ChapterLink[];
+export const ChapterLinksSchema = z.object({
+  schema: z.literal("explainer.chapter-links/v1"),
+  doc: z.literal(COMPANION_FILE),
+  docSha: z.string(),
+  links: z.array(ChapterLinkSchema),
+});
+export type ChapterLinks = z.infer<typeof ChapterLinksSchema>;
+
+/** The `companion-link` beat's slots: the card names the section it opens and links straight to it. */
+export interface CompanionLinkSlots {
+  title: string;
+  section: string;
+  href: string;
+}
+
+/** A chapter's `companion-link` slots from the run's chapter links, or undefined when the links hold no such chapter. */
+export function companionLinkSlots(links: ChapterLinks, chapter: string): CompanionLinkSlots | undefined {
+  const link = links.links.find((entry) => entry.chapter === chapter);
+  if (link === undefined) return undefined;
+  const title = COMPANION_SECTIONS.find((section) => section.id === link.section)?.title ?? CONTENTS_TITLE;
+  return { title, section: link.section, href: link.href };
 }
 
 export interface CompanionResult {
@@ -91,7 +103,7 @@ function sectionBlock(section: CompanionSection, facts: readonly ExplainerFact[]
 function contents(bySection: ReadonlyMap<string, ExplainerFact[]>, hasSummary: boolean): string {
   const rows = COMPANION_SECTIONS.map((section) => `- [${section.title}](#${section.id}): ${bySection.get(section.id)!.length} facts`);
   const absent = hasSummary ? [] : ["", "_The review SUMMARY gave no facts; the sections below hold only the other review files' facts._"];
-  return [`<a id="${CONTENTS_ANCHOR}"></a>`, "", "## Contents", "", ...rows, ...absent].join("\n");
+  return [`<a id="${CONTENTS_ANCHOR}"></a>`, "", `## ${CONTENTS_TITLE}`, "", ...rows, ...absent].join("\n");
 }
 
 function renderDoc(facts: readonly ExplainerFact[]): string {

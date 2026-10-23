@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadProfiles, profileFor } from "../../profile-load.js";
-import { COMPANION_FILE, COMPANION_SECTIONS, companionChapters, factAnchor, renderCompanion, reviewFacts, type ChapterSource, type CompanionResult } from "./companion.js";
+import { COMPANION_FILE, COMPANION_SECTIONS, companionChapters, companionLinkSlots, factAnchor, renderCompanion, reviewFacts, type ChapterLinks, type ChapterSource, type CompanionResult } from "./companion.js";
 import { gatherReview } from "./gather.js";
 import { FACT_KINDS, type ExplainerFact } from "./schemas.js";
 
@@ -113,6 +113,19 @@ describe("the repo companion doc over the whiteboard review", () => {
     expect(result.diagnostics.map((d) => d.code)).toEqual(["W-CHAPTER-UNMAPPED", "W-FACT-UNKNOWN"]);
     expect(result.links).toEqual([{ chapter: "ch1", section: "contents", href: `${COMPANION_FILE}#contents`, facts: [] }]);
     expect(anchors(result.markdown).has("contents")).toBe(true);
+  });
+
+  it("gives a chapter's companion-link card its section's title, or the contents' for an unmapped chapter", () => {
+    const result = renderCompanion(facts, [{ id: "ch1", blocks: ["health"], factIds: [] }, { id: "ch2", blocks: ["scan"], factIds: [] }]);
+    const links: ChapterLinks = { schema: "explainer.chapter-links/v1", doc: COMPANION_FILE, docSha: "d".repeat(64), links: result.links };
+
+    const slots = ["ch1", "ch2", "ch3"].map((chapter) => companionLinkSlots(links, chapter));
+
+    expect(slots).toEqual([
+      { title: "Health", section: "health", href: `${COMPANION_FILE}#health` },
+      { title: "Contents", section: "contents", href: `${COMPANION_FILE}#contents` },
+      undefined,
+    ]);
   });
 });
 

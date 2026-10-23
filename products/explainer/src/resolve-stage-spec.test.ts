@@ -22,6 +22,14 @@ describe("resolve stage spec", () => {
     expect(resolveConfig(RESOLVE_ROWS.slice(1)).doctrine).not.toBe(resolveConfig().doctrine);
   });
 
+  it("keys on the chapter links when the script stage wrote them, so a new companion re-resolves the cards", () => {
+    const bare = spec({ script: "a".repeat(64) });
+    const linked = spec({ script: "a".repeat(64), "chapter-links": "l".repeat(64) });
+
+    expect(linked.inputs).toEqual({ script: "a".repeat(64), "chapter-links": "l".repeat(64) });
+    expect(linked.key).not.toBe(bare.key);
+  });
+
   it("fails before the stage starts when no script exists", () => {
     expect(() => spec({ code: "c".repeat(64) })).toThrow(`stage resolve needs artifact "script"`);
   });

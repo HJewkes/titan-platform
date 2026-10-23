@@ -41,7 +41,7 @@ export const BridgeFileSchema = z.object({
   schema: z.literal("explainer-bridge/v1"),
   workdir: z.string(),
   stages: z.partialRecord(z.enum(BRIDGE_STAGES), BridgeStageSchema),
-  /** Where the export stage links the finished video: `<dir>/<stem><suffix>` per artifact name. */
+  /** Where the export stage links the finished video: `<dir>/<stem><suffix>` per artifact name; a companion doc is always `<dir>/companion.md`. */
   theater: z.object({ dir: z.string(), stem: z.string(), files: z.record(z.string(), z.string()) }),
 });
 export type BridgeFile = z.infer<typeof BridgeFileSchema>;
