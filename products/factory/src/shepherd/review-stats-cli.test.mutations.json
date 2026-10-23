@@ -25,7 +25,8 @@
       "find": "afterScoped: fixRoundCut(after.filter((row) => row.scoped === 1))",
       "replace": "afterScoped: fixRoundCut(after.filter((row) => row.scoped !== null))",
       "kills": [
-        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full"
+        "shepherd stats --reviews by cause and shape prints fix-round p50 and p90 dollars and tokens per shape, before and after the first scoped round, split scoped vs full",
+        "shepherd stats --reviews by cause and shape splits at --since-scoped when given, and prints the split in text mode"
       ]
     },
     {

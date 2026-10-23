@@ -86,8 +86,10 @@ export function rereviewOf(rows: readonly RereviewInput[], sinceScoped: number |
 
 const usdText = (value: number | null): string => (value === null ? "-" : `$${value.toFixed(2)}`);
 const tokenText = (value: number | null): string => (value === null ? "-" : String(value));
-const cutLine = (shape: string, label: string, c: FixRoundCut): string =>
-  `  ${shape}  ${label.padEnd(12)} n ${c.n}  usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}  tokens p50 ${tokenText(c.tokens.p50)} p90 ${tokenText(c.tokens.p90)}`;
+const cutLine = (shape: string, label: string, c: FixRoundCut): string => {
+  const usd = `usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}`;
+  return `  ${shape}  ${label.padEnd(12)} n ${c.n}  ${usd}  tokens p50 ${tokenText(c.tokens.p50)} p90 ${tokenText(c.tokens.p90)}`;
+};
 
 /** Text mode: one line per shape and side of the cutoff; nothing when the range has no fix round. */
 export function rereviewLines(rereview: Rereview): string[] {

@@ -184,20 +184,28 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     rounds: spread(dist(prs.map((pr) => pr.rounds), tenth)),
     prs,
   };
-  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null }, perReview, perPr, rereview: rereviewOf(rows.map(rereviewInput), range.sinceScoped) };
+  const echoed = { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null };
+  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview: rereviewOf(rows.map(rereviewInput), range.sinceScoped) };
   return withRows ? { ...report, rows: rows.map(record) } : report;
 }
 
 const usdText = (value: number | null): string => (value === null ? "-" : `$${value.toFixed(2)}`);
 const minText = (value: number | null): string => (value === null ? "-" : `${value}m`);
-const distLine = (label: string, d: Dist, text: (value: number | null) => string): string => `  ${label.padEnd(10)} p50 ${text(d.p50)}  p90 ${text(d.p90)}  mean ${text(d.mean)}  total ${text(d.total)}`;
+const distLine = (label: string, d: Dist, text: (value: number | null) => string): string =>
+  `  ${label.padEnd(10)} p50 ${text(d.p50)}  p90 ${text(d.p90)}  mean ${text(d.mean)}  total ${text(d.total)}`;
 
 function cutLines(title: string, cuts: Record<string, Cut>): string[] {
-  const lines = Object.entries(cuts).map(([name, c]) => `  ${name}  reviews ${c.n}  usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}  tokens p50 ${c.tokens.p50 ?? "-"} p90 ${c.tokens.p90 ?? "-"}  review p50 ${minText(c.reviewMinutes.p50)} p90 ${minText(c.reviewMinutes.p90)}`);
+  const lines = Object.entries(cuts).map(([name, c]) => {
+    const usd = `usd p50 ${usdText(c.usd.p50)} p90 ${usdText(c.usd.p90)} total ${usdText(c.usd.total)}`;
+    return `  ${name}  reviews ${c.n}  ${usd}  tokens p50 ${c.tokens.p50 ?? "-"} p90 ${c.tokens.p90 ?? "-"}  review p50 ${minText(c.reviewMinutes.p50)} p90 ${minText(c.reviewMinutes.p90)}`;
+  });
   return lines.length === 0 ? [] : [`${title}:`, ...lines];
 }
 
-const prLine = (pr: PrRow): string => `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${usdText(pr.usd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged"}`;
+const prLine = (pr: PrRow): string => {
+  const merged = pr.merged ? `merged after ${minText(pr.registeredToMergeMinutes)}` : "not merged";
+  return `  ${pr.repo}#${pr.pr}  rounds ${pr.rounds}  ${usdText(pr.usd)}  review ${minText(pr.reviewMinutes)}  queue ${minText(pr.queueMinutes)}  ${merged}`;
+};
 
 /** Text mode: the per-review distribution, its cuts, and the ten PRs whose reviews cost most. */
 export function formatReviewReport(report: ReviewReport): string {
