@@ -38,6 +38,16 @@ export function topicKey(name: string): string {
   return relationKey("topic", normalName(name));
 }
 
+/**
+ * The key an alarm deposit carries for the thing that raised it, such as `alarm:console-update`. Open
+ * deposits from one asker with the same alarm key are one alarm repeating (`collapseRepeats`).
+ */
+export function alarmKey(source: string): string {
+  const trimmed = source.trim();
+  if (trimmed === "") throw new Error("alarm key needs a source");
+  return `alarm:${trimmed}`;
+}
+
 /** A PR key pinned to its head, in the canonical form `mergeByKeys` compares. */
 export function prKey(repo: string, pr: number, headSha: string): string {
   return `pr:${repo.trim()}#${pr}@${headSha.trim()}`.toLowerCase();

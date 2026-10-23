@@ -39,6 +39,15 @@
         "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha",
         "titan-factory service deploy after a containing deploy rolls back and the pause is cleared, the older asked sha deploys origin/main and the origin/main re-ask finds it deployed (TP-4083)"
       ]
+    },
+    {
+      "name": "a rolled-back deploy withdraws the deploy alarms",
+      "file": "products/factory/src/deploy.ts",
+      "find": "if (why !== undefined) return rollBackRestart(deploy, go, backup, why);",
+      "replace": "if (why !== undefined) return resolveAlarms(deploy.ports, deploy.io).then(() => rollBackRestart(deploy, go, backup, why));",
+      "kills": [
+        "service deploy rollback pause leaves the deploy alarms open when the restarted build rolls back"
+      ]
     }
   ]
 }

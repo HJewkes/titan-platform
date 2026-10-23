@@ -43,6 +43,8 @@ interface Scenario {
   liveHolder?: number;
   /** Where `current` points before the pass. */
   serving?: string;
+  /** Why withdrawing the resolved update alarms throws, if it does. */
+  resolveFails?: string;
 }
 
 function fakePorts(scenario: Scenario = {}): Fake {
@@ -77,6 +79,11 @@ function fakePorts(scenario: Scenario = {}): Fake {
     runNode: async (script, args) => (calls.push(`node ${script} ${args.join(" ")}`), scenario.releaseSmoke ?? verdict()),
     servedSha: async () => restarts.shift(),
     alarm: async (deposit) => void alarms.push(deposit),
+    resolveAlarms: async () => {
+      calls.push("resolve alarms");
+      if (scenario.resolveFails !== undefined) throw new Error(scenario.resolveFails);
+      return 2;
+    },
     log: () => {},
     now: () => Date.parse("2031-03-05T12:00:00.000Z"),
   };
@@ -151,7 +158,7 @@ describe("the console updater the bootstrap hands off to", () => {
     expect(served(fake)).toBe(PREV);
     expect(fake.calls.some((call) => call.startsWith("systemctl"))).toBe(false);
     expect(fake.alarms).toHaveLength(1);
-    expect(fake.alarms[0]).toMatchObject({ asker: "titan-console", kind: "do", keys: ["console-update"] });
+    expect(fake.alarms[0]).toMatchObject({ asker: "titan-console", kind: "do", keys: ["console-update", "alarm:console-update"] });
     expect(fake.alarms[0]!.context).toContain("aaaaaaa keeps serving");
     expect(record(fake)?.why).toBe("the new build on spare port 40123 answered /health with nothing");
     expect(removed(fake)).toEqual([RELEASE]);
@@ -201,6 +208,41 @@ describe("the console updater the bootstrap hands off to", () => {
 
     expect(record(fake)).toMatchObject({ stage: "smoke", why: "the new build's smoke check did not finish in time; its stderr ended: still waiting on /health" });
     expect(fake.calls.some((call) => call.startsWith("smoke ") || call.startsWith("systemctl"))).toBe(false);
+  });
+
+  it("withdraws the open update alarms once a verified swap serves the new sha", async () => {
+    const fake = fakePorts();
+    const lines: string[] = [];
+    fake.ports.log = (line) => void lines.push(line);
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    expect(fake.calls.filter((call) => call === "resolve alarms")).toEqual(["resolve alarms"]);
+    expect(lines).toContain("withdrew 2 resolved update alarm(s) from the owner inbox");
+  });
+
+  it("leaves the update alarms open when the smoke fails, the restart rolls back or nothing changed", async () => {
+    const fakes = [
+      fakePorts({ releaseSmoke: verdict("the new build on spare port 40123 answered /health with nothing") }),
+      fakePorts({ afterRestart: [OLD, OLD] }),
+      fakePorts({ changed: ["apps/console/README.md"] }),
+    ];
+
+    for (const fake of fakes) await apply(fake);
+
+    expect(fakes.map((fake) => fake.calls.includes("resolve alarms"))).toEqual([false, false, false]);
+  });
+
+  it("still counts the update as done, and logs why, when the alarms cannot be withdrawn", async () => {
+    const fake = fakePorts({ resolveFails: "EACCES: the spool is not writable" });
+    const lines: string[] = [];
+    fake.ports.log = (line) => void lines.push(line);
+
+    expect(await apply(fake)).toBe(EXIT.OK);
+
+    expect(served(fake)).toBe(RELEASE);
+    expect(record(fake)).toMatchObject({ outcome: "updated" });
+    expect(lines).toContain("error: could not withdraw resolved update alarms: EACCES: the spool is not writable");
   });
 
   it("refuses a second run while another holds the lock", async () => {

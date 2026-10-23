@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
-import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { answerFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { alarmKey, depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
+import { answerFileName, depositFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { withdrawDeposit } from "@titan-design/owner-queue/withdraw";
 import { invokeCommand } from "@titan-design/registry";
 import { roundQueueItems, spoolQueueItems } from "./approval-items.js";
 import type { ConsoleContext } from "./owner-guard.js";
@@ -235,6 +236,36 @@ describe("spoolQueueItems", () => {
   });
 
   it("answers an empty leg with no gaps when the spool does not exist yet", async () => {
-    expect(await spoolQueueItems(spool)).toEqual({ open: [], answered: [], gaps: [] });
+    expect(await spoolQueueItems(spool)).toEqual({ open: [], answered: [], withdrawn: [], gaps: [] });
+  });
+
+  it("lists a deposit its seat withdrew as withdrawn, never as open or answered", async () => {
+    await writeDeposit(spool, deposit("ask-1"));
+    await writeDeposit(spool, deposit("ask-2"));
+    const withdrawn = depositItemId(ASKER, "ask-2");
+    await withdrawDeposit(spool, withdrawn, { reason: "obsolete", as: ASKER });
+
+    const items = await spoolQueueItems(spool);
+
+    expect(items.open.map((item) => item.id)).toEqual([depositItemId(ASKER, "ask-1")]);
+    expect(items.answered).toEqual([]);
+    expect(items.withdrawn).toEqual([{ item: expect.objectContaining({ id: withdrawn, status: "withdrawn" }), was: "open", pr: "", reason: "obsolete" }]);
+  });
+
+  it("collapses open repeats of one alarm into the newest, with the repeat count", async () => {
+    const alarm = (depositId: string): OwnerItemDeposit => ({ ...deposit(depositId), keys: [alarmKey("console-update")] });
+    const filed = { "fail-1": "2031-03-01T00:00:00Z", "fail-2": "2031-03-03T00:00:00Z", "fail-3": "2031-03-02T00:00:00Z" };
+    for (const [depositId, at] of Object.entries(filed)) {
+      await writeDeposit(spool, alarm(depositId));
+      await utimes(path.join(spool, depositFileName(ASKER, depositId)), new Date(at), new Date(at));
+    }
+    await writeDeposit(spool, deposit("ask-1"));
+
+    const items = await spoolQueueItems(spool);
+
+    expect(items.open.map((item) => [item.id, item.repeats])).toEqual([
+      [depositItemId(ASKER, "ask-1"), undefined],
+      [depositItemId(ASKER, "fail-2"), 3],
+    ]);
   });
 });

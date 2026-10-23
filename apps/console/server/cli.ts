@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
-// `inbox file` lets an agent file an owner item, `decisions file` lets a seat file a questions-only decision round,
+// `inbox file` lets an agent file an owner item, `inbox withdraw`/`restore`/`withdraw-matching` let a seat take back its own,
+// `decisions file` lets a seat file a questions-only decision round,
 // `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
 // and proposes ones the decisions file cites as answered, `rounds nudge` prints each round waiting over six hours once,
 // `rounds subscribe` tells a seat of answers,
@@ -10,6 +11,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
+import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
 import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
 import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
@@ -29,6 +31,14 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox file [<json>|-]
                                         file an owner item on loopback and print its id;
                                         with - or no argument, the JSON comes from stdin
+       titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> [--json]
+                                        withdraw a deposit --as filed; no answer is written, and the
+                                        spool's withdrawals.jsonl logs who, when and why
+       titan-console inbox restore <item-id> --as <asker> [--json]
+                                        undo a withdraw, so the deposit is open again
+       titan-console inbox withdraw-matching --as <asker> --key <key>... --reason <reason> [--dry-run] [--json]
+                                        withdraw every open deposit --as filed that carries a --key;
+                                        --dry-run lists them and writes nothing
        titan-console decisions file [<round.json>|-] [--seat <name>] [--initiative <slug>] [--json]
                                         file a questions-only round@2 into the rounds dir and print its
                                         id, asker and console URL; the round comes from stdin with - or
@@ -110,6 +120,7 @@ const roundsWithdraw = roundsWithdrawArgs(argv);
 const roundsSweep = roundsSweepArgs(argv);
 const roundsNudge = roundsNudgeArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
+const inboxWithdraw = inboxWithdrawArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
 const configVerb = configArgs(argv);
@@ -118,6 +129,7 @@ if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
 else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fileInbox(resolveConfig(), argv[2]);
+else if (inboxWithdraw !== null) await inboxWithdrawCli(resolveConfig(), inboxWithdraw);
 else if (decisionsFile !== null) await fileDecisionCli(resolveConfig(), decisionsFile, readSource);
 else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);
 else if (roundsWithdraw !== null) await withdrawRoundCli(resolveConfig(), roundsWithdraw);

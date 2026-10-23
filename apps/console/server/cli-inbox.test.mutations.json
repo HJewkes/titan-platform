@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unknown id exits 65 like a refusal",
+      "file": "apps/console/server/cli-inbox.ts",
+      "find": "error.kind === \"unknown\" ? EXIT.NOINPUT : EXIT.DATAERR",
+      "replace": "EXIT.DATAERR",
+      "kills": [
+        "titan-console inbox withdraw and restore exits 66 with one line for an id the spool does not hold"
+      ]
+    }
+  ]
+}

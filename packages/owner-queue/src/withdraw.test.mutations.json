@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the asker check is dropped",
+      "file": "packages/owner-queue/src/withdraw.ts",
+      "find": "if (item.asker !== as) throw",
+      "replace": "if (item.asker === undefined) throw",
+      "kills": [
+        "withdrawDeposit refuses a seat that did not file the deposit",
+        "restoreDeposit refuses a seat that did not file the deposit and leaves it withdrawn"
+      ]
+    }
+  ]
+}
