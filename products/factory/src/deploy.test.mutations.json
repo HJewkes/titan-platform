@@ -19,6 +19,16 @@
         "titan-factory service deploy fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build",
         "titan-factory service deploy records a Version Packages merge as skipped without building or restarting"
       ]
+    },
+    {
+      "name": "a target behind the checkout's main is not refused",
+      "file": "products/factory/src/deploy.ts",
+      "find": "  if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));\n",
+      "replace": "",
+      "kills": [
+        "titan-factory service deploy refuses a target behind the checkout's main and names the commit to deploy instead",
+        "titan-factory service deploy after a containing deploy rolls back and the pause is cleared, refuses the older asked sha but deploys origin/main (TP-4083)"
+      ]
     }
   ]
 }
