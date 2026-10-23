@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a capped compare file list clears the commits",
+      "file": "products/factory/src/behind-main.ts",
+      "find": "listed === files.length && listed < COMPARE_FILE_CAP;",
+      "replace": "listed === files.length;",
+      "kills": [
+        "behindMain against the deploy pacer's path filter counts the commits when GitHub capped the file list"
+      ]
+    },
+    {
+      "name": "an unreadable closure clears the commits",
+      "file": "products/factory/src/deploy-closure.ts",
+      "find": "  return closure === undefined || touchedPaths(changed, closure).length > 0;",
+      "replace": "  return closure !== undefined && touchedPaths(changed, closure).length > 0;",
+      "kills": [
+        "behindMain against the deploy pacer's path filter counts the commits when the closure cannot be read"
+      ]
+    }
+  ]
+}
