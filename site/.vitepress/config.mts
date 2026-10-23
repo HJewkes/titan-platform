@@ -3,6 +3,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 // Emitted by `pnpm docs:reference` from the workspace and the DAG in
 // .codewatch/check.json, so a new package never needs a hand edit here.
 import referenceSidebar from "./reference-sidebar.json";
+import homeCounts, { fillCounts } from "../home-counts.data.mjs";
 
 // GitHub Pages serves this as a project site under /titan-platform/, not the
 // repo root, so every asset and link needs that prefix baked in.
@@ -13,6 +14,12 @@ export default withMermaid(
       "Reusable @titan-design/* packages arranged as a strict acyclic DAG, and the products composed from them.",
     base: "/titan-platform/",
     cleanUrls: true,
+
+    transformPageData(pageData) {
+      if (pageData.relativePath !== "index.md") return;
+      const hero = pageData.frontmatter.hero;
+      hero.tagline = fillCounts(hero.tagline, homeCounts.load());
+    },
 
     themeConfig: {
       nav: [
