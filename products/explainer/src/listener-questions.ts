@@ -10,14 +10,17 @@ export const LISTENER_EVAL_ID = "L1-listener";
 export const LIST_SPREAD_MIN_SENTENCES = 2;
 /** "Then seal." is a fragment on its length alone; the listener names the longer ones. */
 export const FRAGMENT_MAX_WORDS = 3;
+/** Fewer items than this is a pair, not a list. */
+export const LIST_MIN_ITEMS = 3;
+const CONTINUES = /^(?:then|and|also|plus)\s+/i;
 
 // The owner's exercise (TP-4080): one paragraph, heard once, and every question it raises. The chapter is played with
 // nothing before it, as in the hand run the fixture-v4 baseline comes from.
 export const LISTENER_PROMPT = `You are hearing one chapter of a narrated explainer video, played once. You have heard nothing before it, you cannot replay it, and there is no screen.
 
-List every question the chapter raises in your mind and leaves unanswered: a word or name it uses before saying what it is, a vague phrase ("keep what going?"), a step or link it skips, a claim with no reason, a count that does not add up. One question for each thing you cannot work out; do not merge two into one and do not pad. Tag each question with the id of the sentence that raised it. When a question asks what a term means, put the term in \`term\` exactly as spoken; otherwise \`term\` is null.
+List every question the chapter raises in your mind and leaves unanswered: a word or name it uses before saying what it is, a vague phrase ("keep what going?"), a step or link it skips, a claim with no reason, a count that does not add up, a sentence whose tie to the one before is not said. Each question asks one thing. "What is a docket, and who files it?" is two questions; write them as two. Do not pad and do not repeat one. Tag each question with the id of the sentence that raised it. When a question asks what a word or name means, put it in \`term\` exactly as spoken; otherwise \`term\` is null.
 
-Also give every list the chapter reads out, with its items and the ids of the sentences its items fall in, and the ids of the sentences that are fragments rather than whole sentences.
+Also give every list the chapter reads out: its items, and the ids of every sentence its items fall in. A list that carries on into the next sentence is one list over both: in "Five checks run: weigh, scan and label. Then seal and ship." the list is weigh, scan, label, seal, ship, over both sentences. Last, give the ids of the sentences that are fragments rather than whole sentences.
 
 Reply with JSON only.`;
 
@@ -93,8 +96,23 @@ const inOrder = (sentences: readonly ListenerSentence[], ids: Iterable<string>):
 
 const wordCount = (text: string): number => text.split(/\s+/).filter((w) => /\w/.test(w)).length;
 
+/** "weigh, scan and label": the items after a sentence's last colon, split at commas and "and". */
+const listItems = (text: string): string[] =>
+  text.slice(text.lastIndexOf(":") + 1).replace(/[.!?]+$/, "").split(/,\s*(?:and\s+)?|\s+and\s+/).map((item) => item.trim()).filter((item) => item.length > 0);
+
+/** A list the next sentence carries on with "Then ...", found in the text whether or not the listener names it. */
+function carriedLists(sentences: readonly ListenerSentence[]): ListenerChapter["flags"]["list_spread"] {
+  return sentences.slice(1).flatMap((next, i) => {
+    const head = listItems(sentences[i]!.text);
+    const tail = listItems(next.text.replace(CONTINUES, ""));
+    return CONTINUES.test(next.text) && head.length >= LIST_MIN_ITEMS && tail.length >= LIST_MIN_ITEMS ? [{ items: [...head, ...tail], sentences: [sentences[i]!.id, next.id] }] : [];
+  });
+}
+
 function flagsOf(sentences: readonly ListenerSentence[], reply: ListenerReply): ListenerChapter["flags"] {
-  const lists = reply.lists.map((list) => ({ items: list.items, sentences: inOrder(sentences, list.sentences) }));
+  const named = reply.lists.map((list) => ({ items: list.items, sentences: inOrder(sentences, list.sentences) }));
+  const key = (list: { sentences: readonly string[] }) => list.sentences.join(",");
+  const lists = [...named, ...carriedLists(sentences).filter((list) => !named.some((n) => key(n) === key(list)))];
   const short = sentences.filter((s) => wordCount(s.text) <= FRAGMENT_MAX_WORDS).map((s) => s.id);
   return {
     list_spread: lists.filter((list) => list.sentences.length >= LIST_SPREAD_MIN_SENTENCES),
@@ -126,7 +144,7 @@ const listenerPrompt = (sentences: readonly ListenerSentence[]): string =>
   `${LISTENER_PROMPT}\n\n## The chapter, played once\n\n${sentences.map((s) => `[${s.id}] ${s.text}`).join("\n")}\n`;
 
 export const listenerEvalVersion = (judge: JudgeConfig): string =>
-  evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, { split: SENTENCE.source, list_spread_min_sentences: LIST_SPREAD_MIN_SENTENCES, fragment_max_words: FRAGMENT_MAX_WORDS, memory: "none" });
+  evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, { split: SENTENCE.source, list_spread_min_sentences: LIST_SPREAD_MIN_SENTENCES, list_min_items: LIST_MIN_ITEMS, carried: CONTINUES.source, fragment_max_words: FRAGMENT_MAX_WORDS, memory: "none" });
 
 export interface ListenerInput {
   beats: readonly PaceBeat[];

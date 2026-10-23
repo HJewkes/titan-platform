@@ -43,6 +43,23 @@ describe("tallying one chapter's reply", () => {
     expect(tallyChapter("c2", c2(), reply).flags.list_spread).toEqual([{ items: ["weigh", "scan", "label", "seal"], sentences: ["S1", "S2"] }]);
   });
 
+  it("flags a list carried into a sentence that opens on Then, though the listener named no list", () => {
+    expect(tallyChapter("c2", c2(), quiet()).flags.list_spread).toEqual([]);
+
+    const sentences = chapterSentences([beat("b", "c1", "Five checks run: weigh, scan and label. Then seal, stamp and ship. The van leaves.")]);
+
+    expect(tallyChapter("c1", sentences, quiet()).flags.list_spread).toEqual([{ items: ["weigh", "scan", "label", "seal", "stamp", "ship"], sentences: ["S1", "S2"] }]);
+  });
+
+  it("does not flag a Then sentence that is not itself a list, or a list the listener already named", () => {
+    const plain = chapterSentences([beat("b", "c1", "Five checks run: weigh, scan and label. Then the van leaves.")]);
+    const both = chapterSentences([beat("b", "c1", "Checks: weigh, scan and label. Then seal, stamp and ship.")]);
+    const named = { ...quiet(), lists: [{ items: ["weigh", "ship"], sentences: ["S1", "S2"] }] };
+
+    expect(tallyChapter("c1", plain, quiet()).flags.list_spread).toEqual([]);
+    expect(tallyChapter("c1", both, named).flags.list_spread).toEqual([{ items: ["weigh", "ship"], sentences: ["S1", "S2"] }]);
+  });
+
   it("does not count an unknown sentence toward a list's spread", () => {
     const reply = { ...quiet(), lists: [{ items: ["weigh", "seal"], sentences: ["S1", "S7"] }] };
 
