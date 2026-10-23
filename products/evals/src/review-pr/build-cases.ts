@@ -119,7 +119,7 @@ async function holdsCommit(git: BundleGit, sha: string): Promise<boolean> {
     await git.git(["cat-file", "-e", `${sha}^{commit}`]);
     return true;
   } catch (error) {
-    if (typeof (error as { code?: unknown }).code === "number") return false;
+    if (error instanceof Error && "code" in error && typeof error.code === "number") return false;
     throw error;
   }
 }
