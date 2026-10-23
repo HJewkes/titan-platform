@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "pick takes the lowest total",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "b.r.total - a.r.total",
+      "replace": "a.r.total - b.r.total",
+      "kills": [
+        "audition pick picks the highest total and names the runner-up with the margin"
+      ]
+    },
+    {
+      "name": "a tie goes to the lower likelihood",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "b.r.likelihood - a.r.likelihood",
+      "replace": "a.r.likelihood - b.r.likelihood",
+      "kills": [
+        "audition pick a tie goes to the higher stated likelihood, then the earlier slot"
+      ]
+    },
+    {
+      "name": "a full tie goes to the later slot",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "|| a.i - b.i",
+      "replace": "|| b.i - a.i",
+      "kills": [
+        "audition pick a tie goes to the higher stated likelihood, then the earlier slot"
+      ]
+    },
+    {
+      "name": "margin is the pick's total alone",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "margin: round(pick.total - runnerUp.total)",
+      "replace": "margin: round(pick.total)",
+      "kills": [
+        "audition pick picks the highest total and names the runner-up with the margin"
+      ]
+    },
+    {
+      "name": "runner-up is the last candidate",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "order[1]!.r]",
+      "replace": "order[order.length - 1]!.r]",
+      "kills": [
+        "audition pick picks the highest total and names the runner-up with the margin"
+      ]
+    }
+  ]
+}

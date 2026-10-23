@@ -32,7 +32,7 @@ function spinesFor(prompt: string, beatAt: (slot: number) => number) {
   }));
 }
 
-export interface FakeAuditionModel {
+interface FakeAuditionModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
   prompts: string[];
   budgets: number[];

@@ -31,14 +31,14 @@ export function auditionConfig(type: string, models: { model: string; judge: Jud
   return { profile: { type, version: profile.version, sha: sha256(canonicalJson(profile)) }, structures: registrySha(set.structures), ...models };
 }
 
-export interface AuditionDeps {
+interface AuditionDeps {
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
   signal?: AbortSignal;
 }
 
 /** The sampling call's own ceiling; plan §A.3 prices it at $0.05 to $0.15 at sonnet. */
-export const SAMPLE_CALL_USD = 1;
+const SAMPLE_CALL_USD = 1;
 
 function mapSummary(map: MaterialMap): string[] {
   const holding = map.signals.filter((row) => row.holds === true).map((row) => row.id);
