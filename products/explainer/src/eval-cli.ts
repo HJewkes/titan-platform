@@ -5,6 +5,7 @@ import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { itemsCommand } from "./eval-items-cli.js";
+import { listenerCommand } from "./listener-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
@@ -159,6 +160,7 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(l2Command(deps, onResult))
     .addCommand(coldCommand(deps, onResult))
     .addCommand(itemsCommand(deps, onResult))
+    .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult));
   const program = new Command("explainer").exitOverride().addCommand(evalCommand);
