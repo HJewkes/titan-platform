@@ -12,9 +12,9 @@ runtime: { targetS: 300, minS: 240, maxS: 480, splitAboveS: 600 }
 structure:
   order: heuristic
   heuristic:
-    - { signal: deciding, ask: "Does the paper bear on a change we are deciding (should we change X)?", macro: scqa }
-    - { signal: surprising-number, ask: "Is there a number that should not be true, which a model can rebuild?", macro: mystery }
-    - { signal: elegant-idea, ask: "Is the headline an elegant algorithm?", macro: kishotenketsu }
+    - { macro: scqa, ask: "Does the paper bear on a change we are deciding (should we change X)?" }
+    - { macro: mystery, ask: "Is there a number that should not be true, which a model can rebuild?" }
+    - { macro: kishotenketsu, ask: "Is the headline an elegant algorithm?" }
   fallback: lab-report
   macros:
     lab-report: [example, key-idea, method, result, limits, so-for-us]

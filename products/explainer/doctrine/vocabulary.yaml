@@ -59,3 +59,37 @@ types:
 audiences:
   - owner-internal
   - public-youtube
+# Structures are the narrative structures of doctrine/structures/ (plan §A.2); a rule scoped to one
+# reaches only a video that picks it. Signals are the material-map facts a structure's fit
+# predicate reads (plan §A.3); the material map (TP-4008) computes them.
+structures:
+  - design-journey
+  - scqa
+  - scqa-c4
+  - mystery
+  - three-act
+  - abt
+  - kishotenketsu
+  - countdown
+  - attempt-journey
+  - review-saga
+  - before-after
+  - lab-report
+  - timeline
+  - board-walk
+  - bluf
+signals:
+  - task-journey
+  - decision-pending
+  - repo-overview
+  - anomaly
+  - central-problem
+  - elegant-idea
+  - parallel-findings
+  - attempts-failed
+  - many-review-rounds
+  - before-after
+  - experiment
+  - cascade
+  - board-moved
+  - status-report

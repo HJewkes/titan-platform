@@ -1,5 +1,6 @@
 import type { ProfileSet } from "./profile-load.js";
 import type { AudiencePack, HeuristicStructure, TypeProfile } from "./profile-schema.js";
+import type { NarrativeStructure, StructureFit } from "./structure-schema.js";
 import { VOCABULARY } from "./doctrine-fixtures.test-helpers.js";
 
 // Invented profiles over the invented doctrine vocabulary; none is a shipped profile.
@@ -44,14 +45,42 @@ export const fixedProfile = (overrides: Partial<TypeProfile> = {}): TypeProfile 
   ...overrides,
 });
 
-/** Deciding → scqa, anomaly → mystery, problem → long or short form, else abt. */
+/** A sound structure fitting on `fit`; overrides replace whole top-level fields. */
+export const narrativeStructure = (id: string, fit: Partial<StructureFit> = {}, overrides: Partial<NarrativeStructure> = {}): NarrativeStructure => ({
+  schema: "narrative-structure/v1",
+  id,
+  version: "0.1.0",
+  source: `${id} source`,
+  summary: `${id} summary.`,
+  fit: { ask: `${id}?`, all: [], any: [], none: [], ...fit },
+  blocks: [
+    { id: "open", goal: "Open.", share: 0.4 },
+    { id: "close", goal: "Close.", share: 0.6 },
+  ],
+  hook: "Hook.",
+  ending: "button",
+  spine: [{ title: "Only", body: "<fill>" }],
+  ...overrides,
+});
+
+/** Deciding → scqa, anomaly → mystery, problem → three-act at 300 s or longer, else abt. */
+export const STRUCTURES: ReadonlyMap<string, NarrativeStructure> = new Map(
+  [
+    narrativeStructure("scqa-c4", { any: ["deciding"] }),
+    narrativeStructure("scqa", { any: ["deciding"] }),
+    narrativeStructure("mystery", { any: ["anomaly"] }),
+    narrativeStructure("three-act", { all: ["problem"], minRuntimeS: 300 }),
+    narrativeStructure("abt", { all: ["problem"] }),
+  ].map((structure) => [structure.id, structure]),
+);
+
 export const HEURISTIC: HeuristicStructure = {
   order: "heuristic",
   heuristic: [
-    { signal: "deciding", ask: "Deciding?", macro: "scqa" },
-    { signal: "anomaly", ask: "Anomaly?", macro: "mystery" },
-    { signal: "problem", ask: "Long problem?", macro: "three-act", minRuntimeS: 300 },
-    { signal: "problem", ask: "Short problem?", macro: "abt" },
+    { macro: "scqa", ask: "Deciding?" },
+    { macro: "mystery", ask: "Anomaly?" },
+    { macro: "three-act", ask: "Long problem?" },
+    { macro: "abt", ask: "Short problem?" },
   ],
   fallback: "abt",
   macros: { scqa: ["setup", "answer", "close"], mystery: ["anomaly", "reveal", "close"], "three-act": ["setup", "struggle", "answer", "close"], abt: ["setup", "turn", "close"] },
@@ -68,4 +97,8 @@ export const heuristicProfile = (overrides: Partial<TypeProfile> = {}): TypeProf
     ...overrides,
   });
 
-export const setOf = (...profiles: TypeProfile[]): ProfileSet => ({ profiles: new Map(profiles.map((profile) => [profile.type, profile])), audiences: AUDIENCES });
+export const setOf = (...profiles: TypeProfile[]): ProfileSet => ({
+  profiles: new Map(profiles.map((profile) => [profile.type, profile])),
+  audiences: AUDIENCES,
+  structures: STRUCTURES,
+});

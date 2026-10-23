@@ -12,12 +12,12 @@ runtime: { targetS: 240, minS: 210, maxS: 300, splitAboveS: 360 }
 structure:
   order: heuristic
   heuristic:
-    - { signal: deciding, ask: "Is the viewer deciding something (adopt, fund, migrate) and the verdict is the product?", macro: scqa }
-    - { signal: anomaly, ask: "Is there one surprising finding: a bug, a docs-versus-behaviour contradiction, a how-is-this-possible?", macro: mystery }
-    - { signal: central-problem, ask: "Is there one central problem the code works through over time, at five minutes or longer?", macro: three-act, minRuntimeS: 300 }
-    - { signal: central-problem, ask: "Is there one central problem the code works through, under five minutes?", macro: abt }
-    - { signal: elegant-idea, ask: "Is the headline an elegant idea with no real problem?", macro: kishotenketsu }
-    - { signal: parallel-findings, ask: "Are the findings parallel and independent?", macro: countdown }
+    - { macro: scqa, ask: "Is the viewer deciding something (adopt, fund, migrate) and the verdict is the product?" }
+    - { macro: mystery, ask: "Is there one surprising finding: a bug, a docs-versus-behaviour contradiction, a how-is-this-possible?" }
+    - { macro: three-act, ask: "Is there one central problem the code works through over time, at five minutes or longer?" }
+    - { macro: abt, ask: "Is there one central problem the code works through, under five minutes?" }
+    - { macro: kishotenketsu, ask: "Is the headline an elegant idea with no real problem?" }
+    - { macro: countdown, ask: "Are the findings parallel and independent?" }
   fallback: abt
   macros:
     scqa: [situation, complication, answer, supports, takeaway]

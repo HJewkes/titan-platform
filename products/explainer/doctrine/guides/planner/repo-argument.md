@@ -64,9 +64,48 @@ Must differ from the previous video: structure, hook-kind, chapter-labels, close
 
 Sample 3 or more spines, each under a different macro structure, and stop at the storyboard.
 
+## Structures
+
+The spine you write follows the structure you pick. The runner-up goes in the render notes.
+
+### scqa
+
+Situation, complication, question, then the answer by 25% of runtime and its supports by importance. (story-structure §2.7 (Minto pyramid / SCQA), §4 row 1)
+
+Spine sections: 1. Situation; 2. Complication; 3. Question and answer; 4. Supports, by importance.
+
+### mystery
+
+Cold open on an anomaly, follow the clues and false leads, then reveal the cause. (story-structure §2.10 (mystery / open loop), §4 row 2)
+
+Spine sections: 1. Anomaly; 2. Clues and false leads; 3. Reveal; 4. Open loops.
+
+### three-act
+
+Setup, a confrontation of attempts that each break something, then the resolution. (story-structure §2.1 (three-act), §4 row 3 at five minutes or longer)
+
+Spine sections: 1. Setup; 2. Attempts; 3. Resolution.
+
+### abt
+
+And (what holds), but (the problem), therefore (the resolution), in under five minutes. (story-structure §2.6 (And-But-Therefore), §4 row 3 under five minutes and the default row)
+
+Spine sections: 1. ABT sentence; 2. And; 3. But; 4. Therefore.
+
+### kishotenketsu
+
+Introduce, develop, twist with an unexpected angle, reconcile: an elegant idea with no conflict. (story-structure §2.4 (kishōtenketsu), §4 row 5)
+
+Spine sections: 1. Idea; 2. Development; 3. Twist; 4. Reconciliation.
+
+### countdown
+
+Parallel findings counted down by stakes inside an ABT frame, never a bare list. (story-structure §2.9 (listicle / countdown), §4 row 6)
+
+Spine sections: 1. Frame; 2. Countdown; 3. What they add up to.
+
 ## Rules for the plan stage
 
-- **owner-FB1**: Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it.
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.

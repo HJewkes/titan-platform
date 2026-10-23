@@ -17,14 +17,14 @@ Aim for 2:30, within 1:30-4:00. Above 5:00, split into episodes.
 Pick the macro structure: ask these in order and stop at the first yes.
 
 1. Is the PR waiting on the viewer at a gate? Then **scqa**.
-2. Is it a bug fix with attempts that broke along the way? Then **journey**.
+2. Is it a bug fix with attempts that broke along the way? Then **attempt-journey**.
 3. Did review take three or more rounds? Then **review-saga**.
 4. None of these: **before-after**.
 
 Block order per macro:
 
 - **scqa**: summary → changes → proof → ask
-- **journey**: summary → attempt → breaks → proof → ask
+- **attempt-journey**: summary → attempt → breaks → proof → ask
 - **review-saga**: summary → rounds → changes → proof → ask
 - **before-after**: summary → problem → changes → interactions → shortcomings → proof → ask
 
@@ -59,9 +59,36 @@ Must differ from the previous video: structure, hook-kind, chapter-labels, close
 
 Sample 3 or more spines, each under a different macro structure, and stop at the storyboard.
 
+## Structures
+
+The spine you write follows the structure you pick. The runner-up goes in the render notes.
+
+### scqa
+
+Situation, complication, question, then the answer by 25% of runtime and its supports by importance. (story-structure §2.7 (Minto pyramid / SCQA), §4 row 1)
+
+Spine sections: 1. Situation; 2. Complication; 3. Question and answer; 4. Supports, by importance.
+
+### attempt-journey
+
+The fix told as its attempts: what was tried, where each broke and why, then what holds. (video-profiles plan §B.1 (journey of attempts); story-structure §2.5 (story spine))
+
+Spine sections: 1. Summary; 2. Attempts; 3. Proof.
+
+### review-saga
+
+A change told through its review rounds: what each round caught, and the change that survived. (video-profiles plan §B.1 (review rounds as the spine))
+
+Spine sections: 1. Summary; 2. Rounds; 3. What survived.
+
+### before-after
+
+The problem, the change as before against after grouped by purpose, then its proof and shortcomings. (story-structure §2.8 (problem–solution); video-profiles plan §B.1 (CL order))
+
+Spine sections: 1. Problem; 2. Before and after; 3. Shortcomings.
+
 ## Rules for the plan stage
 
-- **owner-FB1**: Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it.
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
