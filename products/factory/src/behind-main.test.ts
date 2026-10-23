@@ -1,6 +1,6 @@
 import type { GhExec } from "@titan-design/github";
 import { describe, expect, it, vi } from "vitest";
-import { behindMain, BEHIND_MAIN_TTL_MS } from "./behind-main.js";
+import { behindMain, BEHIND_MAIN_TTL_MS, COMPARE_FILE_CAP } from "./behind-main.js";
 
 const ok = (stdout: string) => async () => ({ code: 0, stdout, stderr: "" });
 
@@ -76,5 +76,32 @@ describe("behindMain", () => {
     await behindMain({ sha: "abc", repo: "acme/fork", exec }).refresh();
 
     expect(exec.mock.calls[0]?.[0]).toContain("repos/acme/fork/compare/abc...main");
+  });
+});
+
+describe("behindMain against the deploy pacer's path filter", () => {
+  const closure = () => ["products/factory"];
+  const read = async (stdout: string, closureRead: () => readonly string[] | undefined = closure) => {
+    const probe = behindMain({ sha: "abc", exec: ok(stdout), closure: closureRead });
+    await probe.refresh();
+    return probe.status();
+  };
+
+  it("reads 0 when every changed path is one the factory build never reads", async () => {
+    expect(await read("2\n2\ndocs/guide.md\npackages/explainer/src/a.ts\n")).toBe(0);
+  });
+
+  it("counts every commit once a changed path reaches the factory build", async () => {
+    expect(await read("2\n2\ndocs/guide.md\nproducts/factory/src/a.ts\n")).toBe(2);
+  });
+
+  it("counts the commits when the closure cannot be read", async () => {
+    expect(await read("1\n1\ndocs/guide.md\n", () => undefined)).toBe(1);
+  });
+
+  it("counts the commits when GitHub capped the file list", async () => {
+    const files = Array.from({ length: COMPARE_FILE_CAP }, (_, index) => `docs/page-${index}.md`);
+
+    expect(await read(`4\n${COMPARE_FILE_CAP}\n${files.join("\n")}\n`)).toBe(4);
   });
 });
