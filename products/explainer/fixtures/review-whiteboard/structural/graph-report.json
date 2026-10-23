@@ -1,0 +1,113 @@
+{
+  "snapshot": {
+    "id": 1,
+    "ref": "review-history",
+    "commitHash": "2ddf3eb6c13d97b1d04a932c21de9a92029adaf9"
+  },
+  "windowDays": "lifetime",
+  "hotspots": [
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/notebook/browser/view/renderers/webviewPreloads.ts",
+      "churn": 3186,
+      "complexity": 916,
+      "loc": 2702,
+      "recency": 1,
+      "score": 2918376
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/chat/browser/voiceClient/voiceSessionController.ts",
+      "churn": 3746,
+      "complexity": 412,
+      "loc": 3492,
+      "recency": 1,
+      "score": 1543352
+    },
+    {
+      "nodeId": "packages/review/src/review-api/http.ts",
+      "churn": 3781,
+      "complexity": 404,
+      "loc": 1649,
+      "recency": 1,
+      "score": 1527524
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts",
+      "churn": 4912,
+      "complexity": 181,
+      "loc": 4367,
+      "recency": 1,
+      "score": 889072
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/chat/browser/widget/input/chatModelPicker.ts",
+      "churn": 2039,
+      "complexity": 303,
+      "loc": 1872,
+      "recency": 1,
+      "score": 617817
+    },
+    {
+      "nodeId": "packages/review/src/review-api/store.ts",
+      "churn": 4204,
+      "complexity": 135,
+      "loc": 1444,
+      "recency": 1,
+      "score": 567540
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/extensions/browser/extensionsActions.ts",
+      "churn": 3496,
+      "complexity": 149,
+      "loc": 3032,
+      "recency": 1,
+      "score": 520904
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/chatThinkingContentPart.ts",
+      "churn": 2428,
+      "complexity": 171,
+      "loc": 2101,
+      "recency": 1,
+      "score": 415188
+    }
+  ],
+  "busFactorRisks": [
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/editor/common/config/editorOptions.ts",
+      "busFactor": 1,
+      "topAuthorShare": 1,
+      "churn": 6897
+    },
+    {
+      "nodeId": "packages/local-vcs/src/index.ts",
+      "busFactor": 1,
+      "topAuthorShare": 0.931,
+      "churn": 6525
+    },
+    {
+      "nodeId": "packages/review-protocol/src/contracts.ts",
+      "busFactor": 1,
+      "topAuthorShare": 0.632,
+      "churn": 5915
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/review/browser/parts/canvas/reviewCanvasPart.ts",
+      "busFactor": 1,
+      "topAuthorShare": 0.554,
+      "churn": 4953
+    },
+    {
+      "nodeId": "apps/review-desktop/code-oss/src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts",
+      "busFactor": 1,
+      "topAuthorShare": 1,
+      "churn": 4912
+    }
+  ],
+  "testCoverageRisks": [],
+  "couplingClusters": [],
+  "centralFiles": [],
+  "unusedExports": [],
+  "deadModules": [],
+  "growthRisks": [],
+  "untestedRisks": []
+}

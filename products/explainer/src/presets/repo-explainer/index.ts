@@ -30,6 +30,8 @@ export {
   type FactOptions,
 } from "./summary-facts.js";
 export { digestFacts } from "./digest-facts.js";
+export { historyFacts } from "./history-facts.js";
+export { skimFacts } from "./skim-facts.js";
 export {
   gatherReview,
   gitHead,

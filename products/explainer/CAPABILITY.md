@@ -81,7 +81,7 @@ it voids any verdict without a verbatim quote, plants a name-only canary beat pe
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
 `explainer eval calibrate` prints that report.
-For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included, and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
+For a repo explainer, `gatherReview` reads a finished repo review (pinned clone, final label, `unread=0`) into a `review-bundle/v1` and schema-checked `ExplainerFact`s, tour kinds included (plus docs-skim and lifetime-history facts when the review has them), and refuses with coded diagnostics (`GATHER_CODES`) rather than throwing.
 `enrichStructure` then adds the code structure: a `structure/v1` with repo-map levels, code-read centrality and reading order, entry points and code-graph call paths as map flows, and each fact's `centrality`, `reading_rank` and `module`.
 For a PR video, `gatherPr` writes the pr-overview profile's `facts.jsonl` from the PR diff, its reviews and comments (through `gh`) and the code-graph calls between changed files at the head commit, with stable content-derived ids and coded refusals (`PR_GATHER_CODES`).
 `explainer pr trigger` (`runPrVideoTrigger`, `autoBriefTargets`) starts a decision-brief run (the `gather` stage, then the audition;

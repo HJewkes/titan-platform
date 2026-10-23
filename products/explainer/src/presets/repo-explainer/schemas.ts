@@ -1,7 +1,7 @@
 import { isFullSha } from "@titan-design/evidence";
 import { z } from "zod";
 
-export const FACT_SOURCES = ["topic", "row", "claim", "summary", "digest", "readme"] as const;
+export const FACT_SOURCES = ["topic", "row", "claim", "summary", "digest", "readme", "skim", "history"] as const;
 export const FACT_KINDS = [
   "feature",
   "gotcha",
@@ -16,6 +16,10 @@ export const FACT_KINDS = [
   "fact",
   "shape",
   "pain",
+  "actor",
+  "job",
+  "hotspot",
+  "silo",
 ] as const;
 export const VERIFIED_LEVELS = ["yes", "partial", "no", "docs"] as const;
 
