@@ -14,7 +14,7 @@ const GRID = ANCHOR_COLUMNS.length;
 export type AnchorId = `${(typeof ANCHOR_COLUMNS)[number]}${(typeof ANCHOR_ROWS)[number]}`;
 
 /** Every cell, row by row: the order every anchor list in this package is sorted in. */
-export const ANCHOR_IDS: readonly AnchorId[] = ANCHOR_ROWS.flatMap((row) => ANCHOR_COLUMNS.map((col) => `${col}${row}` as AnchorId));
+export const ANCHOR_IDS: readonly AnchorId[] = ANCHOR_ROWS.flatMap((row) => ANCHOR_COLUMNS.map((col) => `${col}${row}` as const));
 
 export interface Stage {
   width: number;

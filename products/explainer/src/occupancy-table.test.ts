@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CUSTOM_LAYER_ELEMENT,
@@ -7,12 +6,12 @@ import {
   layoutsFromScript,
   occupancyForMark,
   pixelAnchors,
-  type OccupancyInput,
 } from "./occupancy-table.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { ScriptSchema } from "./script-schema.js";
+import { marksFixture } from "./occupancy-fixtures.test-helpers.js";
 
-const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/anchors/marks.json", import.meta.url), "utf8")) as OccupancyInput;
+const FIXTURE = marksFixture();
 const STAGE = FIXTURE.stage;
 const tables = buildOccupancy(FIXTURE);
 const byBeat = (beat: string) => tables.find((table) => table.beat === beat)!;

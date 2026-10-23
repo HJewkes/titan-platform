@@ -1,11 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { OCCUPANCY_FILE, occupancyPathFor, readOccupancy, writeOccupancy } from "./occupancy-file.js";
-import { buildOccupancy, type OccupancyInput } from "./occupancy-table.js";
+import { buildOccupancy } from "./occupancy-table.js";
+import { marksFixture } from "./occupancy-fixtures.test-helpers.js";
 
-const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/anchors/marks.json", import.meta.url), "utf8")) as OccupancyInput;
+const FIXTURE = marksFixture();
 const dirs: string[] = [];
 const scratch = () => {
   const dir = mkdtempSync(join(tmpdir(), "occupancy-"));
@@ -32,8 +33,8 @@ describe("the occupancy file", () => {
 
   it("refuses a table with a cell off the grid and writes nothing", () => {
     const qa = join(scratch(), "qa.json");
-    const bad = [{ mark: "b@1s", beat: "b", t: 1, source: "dom" as const, cells: { G7: ["x"] } }];
-    expect(() => writeOccupancy(qa, FIXTURE.stage, bad as never)).toThrow(/A1 to F6/);
+    const bad = [{ mark: "b@1s", beat: "b", t: 1, source: "dom" as const, cells: Object.fromEntries([["G7", ["x"]]]) }];
+    expect(() => writeOccupancy(qa, FIXTURE.stage, bad)).toThrow(/A1 to F6/);
     expect(existsSync(occupancyPathFor(qa))).toBe(false);
   });
 

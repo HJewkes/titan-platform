@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { attributeFindings } from "./attribute.js";
 import { anchorFindings, collisions, elementAnchors, emptySpace, formatAnchoredFinding, type QaFinding } from "./occupancy-checks.js";
-import { buildOccupancy, type OccupancyInput, type OccupancyTable } from "./occupancy-table.js";
+import { buildOccupancy, type OccupancyTable } from "./occupancy-table.js";
+import { marksFixture } from "./occupancy-fixtures.test-helpers.js";
 
-const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/anchors/marks.json", import.meta.url), "utf8")) as OccupancyInput;
+const FIXTURE = marksFixture();
 const tables = buildOccupancy(FIXTURE);
 const byBeat = (beat: string) => tables.find((table) => table.beat === beat)!;
 const table = (cells: OccupancyTable["cells"], beat = "beat-03", t = 4): OccupancyTable => ({ mark: `${beat}@${t}s`, beat, t, source: "dom", cells });
