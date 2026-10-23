@@ -107,7 +107,7 @@ async function runStage(stage: StageName, input: ModelStageInput, deps: StageDep
     return runScriptStage(input, { model: plan.scriptModel, ...seams });
   }
   if (stage === "rewrite") return runRewriteStage(input, { judge: plan.judge, rounds: plan.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
-  if (stage === "eval") return runEvalStage(input, deps.evalChecks);
+  if (stage === "eval") return runEvalStage(input, { judge: plan.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
   if (stage === "export") return runExportStage(input, deps.bridge());
   if (!isBridgeStage(stage)) throw new Error(`no body for stage ${stage}`);
   return runBridgeStage({ stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec, logDir: runPaths(deps.dataDir, input.from.runId).logs });
