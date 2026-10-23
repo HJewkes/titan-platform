@@ -17,7 +17,7 @@ import { failure } from "./active-work.js";
 import { runVerb } from "./cli-rounds.js";
 import type { ConsoleConfig } from "./config.js";
 
-export type InboxWithdrawArgs =
+type InboxWithdrawArgs =
   | { verb: "withdraw"; id: string; reason: string; as: string; json: boolean }
   | { verb: "restore"; id: string; as: string; json: boolean }
   | { verb: "withdraw-matching"; as: string; keys: string[]; reason: string; dryRun: boolean; json: boolean };
