@@ -7,6 +7,7 @@ import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
+import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
@@ -150,6 +151,11 @@ function headOf(result: StepResult): string | undefined {
   return typeof head === "string" ? head : undefined;
 }
 
+/** A running ci-wait judges the PR's live head, which may have moved past every recorded one (TP-4092). */
+function ciWaitHeadOf(run: WorkflowRun, { repo, pr }: Registration): string | undefined {
+  return run.currentStep !== null && stepIdMatches("ci-wait", run.currentStep) ? ciWaitHead(repo, pr) : undefined;
+}
+
 function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase): string {
   const ended = endedAt(run, steps);
   if (ended !== undefined) return ended;
@@ -276,7 +282,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = ciWaitHeadOf(run, registration) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
