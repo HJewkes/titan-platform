@@ -6,6 +6,7 @@ import { readColdRubric, rubricBeatsFromPace, rubricNote, runColdRubric } from "
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
 import { canonicalSha } from "../eval-store.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
+import { repairHint } from "../l0-repair-hints.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
@@ -84,11 +85,34 @@ function replyObject(text: string): unknown {
   return JSON.parse(text.slice(start, end + 1));
 }
 
+/** Deletes, in place, each key zod reports as unrecognized, and returns its dotted path. */
+function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
+  return issues.flatMap((issue) => {
+    if (issue.code !== "unrecognized_keys") return [];
+    const owner = issue.path.reduce<unknown>((node, key) => (node as Record<PropertyKey, unknown> | undefined)?.[key], raw);
+    if (typeof owner !== "object" || owner === null) return [];
+    for (const key of issue.keys) delete (owner as Record<string, unknown>)[key];
+    return issue.keys.map((key) => [...issue.path, key].join("."));
+  });
+}
+
+interface Checked {
+  script?: ScriptV1;
+  error?: string;
+  /** Keys the schema does not allow, dropped so the rest of the reply parses. */
+  stripped?: string[];
+}
+
+// The stage planned the spine under this structure, so the script records it whatever the reply says.
+const planned = (script: ScriptV1): ScriptV1 => ({ ...script, structure: GUIDE_PLAN_STRUCTURE });
+
 /**
  * The reply is checked here rather than through the CLI's `--json-schema`: that flag refuses the tuple keywords
  * ScriptSchema converts to, and zod refinements (unknown chapters, unspoken cues) never reach a JSON schema anyway.
+ * A reply whose only faults are extra keys ("cues", "chips" on a beat) loses them rather than the whole script: the
+ * schema retry was measured failing on the same keys again.
  */
-function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string } {
+function checked(outcome: StepRunOutcome): Checked {
   if (!outcome.ok) return { error: outcome.error };
   let raw: unknown;
   try {
@@ -97,9 +121,12 @@ function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string }
     return { error: "the reply holds no JSON object" };
   }
   const parsed = ScriptSchema.safeParse(raw);
-  // The stage planned the spine under this structure, so the script records it whatever the reply says.
-  if (parsed.success) return { script: { ...parsed.data, structure: GUIDE_PLAN_STRUCTURE } };
-  return { error: issueText(parsed.error.issues) };
+  if (parsed.success) return { script: planned(parsed.data) };
+  const { issues } = parsed.error;
+  if (!issues.every((issue) => issue.code === "unrecognized_keys")) return { error: issueText(issues) };
+  const stripped = stripUnknownKeys(raw, issues);
+  const again = ScriptSchema.safeParse(raw);
+  return again.success ? { script: planned(again.data), stripped } : { error: issueText([...issues, ...again.error.issues]) };
 }
 
 const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outcome.code === "schema_invalid";
@@ -122,9 +149,7 @@ export interface ScriptStageDeps {
 
 type Call = (prompt: string) => Promise<StepRunOutcome>;
 
-interface Draft {
-  script?: ScriptV1;
-  error?: string;
+interface Draft extends Checked {
   usage: StageUsage;
   retried: boolean;
 }
@@ -140,10 +165,14 @@ async function draftScript(call: Call, prompt: string): Promise<Draft> {
 
 const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
 
-function failureList(rows: readonly L0Result[], rules: RuleRegistry): string {
+function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
-  return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})`).join("\n");
+  const found = (row: L0Result) => {
+    const hint = repairHint(row, script);
+    return hint ? `\n  Found: ${hint}` : "";
+  };
+  return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})${found(row)}`).join("\n");
 }
 
 const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>
@@ -153,6 +182,8 @@ interface Repair {
   script: ScriptV1;
   usage: StageUsage;
   check: Check;
+  /** The kept repair's dropped keys; absent while the draft is still the script. */
+  stripped?: string[];
 }
 
 /** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red. */
@@ -169,15 +200,25 @@ async function repairScript(call: Call, prompt: string, draft: ScriptV1, lint: (
   let script = draft;
   let failing = failingErrors(lint(draft));
   let usage = NO_USAGE;
+  let stripped: string[] | undefined;
   for (let round = 0; round < MAX_REPAIR_ROUNDS && failing.length > 0; round++) {
-    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules)));
+    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script)));
     usage = addUsage(usage, stageUsage(outcome.usage));
-    const repaired = checked(outcome).script;
-    const after = repaired ? failingErrors(lint(repaired)) : failing;
-    if (repaired && after.length < failing.length) [script, failing] = [repaired, after];
+    const reply = checked(outcome);
+    const after = reply.script ? failingErrors(lint(reply.script)) : failing;
+    if (reply.script && after.length < failing.length) [script, failing, stripped] = [reply.script, after, reply.stripped ?? []];
   }
   const detail = `${first} failing error checks before repair, ${failing.length} after`;
-  return { script, usage, check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
+  return { script, usage, ...(stripped ? { stripped } : {}), check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
+}
+
+const SHOWN_KEYS = 10;
+
+/** Reported only: the kept script parsed once these keys were dropped, so a reader sees what the model added. */
+function unknownKeysCheck(stripped: readonly string[]): Check[] {
+  if (stripped.length === 0) return [];
+  const shown = stripped.slice(0, SHOWN_KEYS).join(", ") + (stripped.length > SHOWN_KEYS ? ` and ${stripped.length - SHOWN_KEYS} more` : "");
+  return [{ name: "script-unknown-keys", gate: false, pass: false, detail: `dropped ${stripped.length} key(s) the schema does not allow: ${shown}` }];
 }
 
 /** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, then the L0 repair rounds. */
@@ -194,7 +235,8 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const spine = parseSpine(spineText);
   const repair = await repairScript(call, prompt, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
-  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...(repair ? [repair.check] : [])];
+  const stripped = repair?.stripped ?? draft.stripped ?? [];
+  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(stripped), ...(repair ? [repair.check] : [])];
   return { outputs: { draft: putJson(input, repair?.script ?? draft.script, "script") }, usage, retries, checks };
 }
 

@@ -8,6 +8,8 @@ const ANNOUNCEMENT = /^(here is|here's|now \w+|two more|three more|zoom (in|out)
 const ANAPHORA = /^(this|that|these|those|it|its|they|their)\b/i;
 const TURN = /^(but|so|therefore)\b/i;
 const PIVOT = /\bwhat it does\b[^.?!]*\bhow\b|\bnow,? how (does|do|is)\b/i;
+/** The pivot sentences PIVOT counts, in words a repair prompt can quote. */
+export const PIVOT_FORM = '"Now, how does (do, is) ...?", or one sentence that says what it does and then how';
 const GOOD_QUESTION = /^(why|how (does|do|did|can|could|come|is|are))\b|\b(you|your)\b/i;
 const RECAP = /\b(to recap|in summary|recap|we (saw|covered|learned))\b/i;
 const CAUSAL = /\b(but|so|therefore|because|which means|otherwise)\b/gi;
@@ -28,8 +30,15 @@ const isTodo = (value: unknown): value is string => typeof value === "string" &&
 const connectiveOf = (beat: ScriptBeat): string | undefined =>
   beat.connector_in ?? CONNECTIVE.exec(first(beat.spoken))?.[1]?.toLowerCase();
 
-/** Q-F1: body-to-body boundaries inside a chapter link by a connective or a shared entity. */
-function boundaryLinks(beats: readonly ScriptBeat[]): L0Result {
+interface BoundaryLinks {
+  ratio: number;
+  unlinked: string[];
+  /** The connective that opens more than its share of linked boundaries, with its count, if one does. */
+  overused?: { word: string; count: number; linked: number };
+}
+
+/** Q-F1's measurement: body-to-body boundaries inside a chapter link by a connective or a shared entity. */
+export function boundaryLinks(beats: readonly ScriptBeat[]): BoundaryLinks {
   const boundaries = beats.flatMap((beat, i) => {
     const prev = beats[i - 1];
     return prev && prev.chapter === beat.chapter && !isChapterOpen(prev, i - 1, beats) ? [{ prev, beat }] : [];
@@ -42,9 +51,15 @@ function boundaryLinks(beats: readonly ScriptBeat[]): L0Result {
     const word = connectiveOf(beat);
     if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  const overused = linked.length >= 3 && [...counts.values()].some((n) => n / linked.length > MAX_CONNECTIVE_SHARE);
+  const [word, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
+  const overused = linked.length >= 3 && count / linked.length > MAX_CONNECTIVE_SHARE ? { word, count, linked: linked.length } : undefined;
   const ratio = boundaries.length ? linked.length / boundaries.length : 1;
   const unlinked = boundaries.filter((b) => !linked.includes(b)).map(({ beat }) => beat.id);
+  return { ratio, unlinked, ...(overused ? { overused } : {}) };
+}
+
+function boundaryRow(beats: readonly ScriptBeat[]): L0Result {
+  const { ratio, unlinked, overused } = boundaryLinks(beats);
   return ruleRow("Q-F1", { value: ratio, threshold: MIN_LINKED, pass: ratio >= MIN_LINKED && !overused, beats: unlinked });
 }
 
@@ -70,19 +85,44 @@ const voices = (spoken: string, claim: string): boolean => {
   return terms.length > 0 && terms.filter((t) => said.has(t)).length / terms.length >= 0.6;
 };
 
+const percent = (share: number): string => `${Math.round(share * 100)} %`;
+
+/** Where each thesis ref must start, as a share of planned time: the open, the midpoint and the button. */
+const THESIS_SLOTS = [
+  { name: "open", fits: (at: number) => at <= 0.2, where: "by 20 %" },
+  { name: "midpoint", fits: (at: number) => at >= 0.35 && at <= 0.65, where: "between 35 % and 65 %" },
+  { name: "button", fits: (at: number) => at >= 0.8, where: "at 80 % or later" },
+] as const;
+const ACT_ONE_TWO = 0.2;
+
+function mechanismDefect({ video, beats }: ScriptV1, shares: ReadonlyMap<string, number>): string[] {
+  const actOneTwo = beats.filter((b) => (shares.get(b.id) ?? 1) < ACT_ONE_TWO);
+  if (isTodo(video.thesis_mechanism)) return ["thesis_mechanism is still a TODO"];
+  if (actOneTwo.some((b) => voices(b.spoken, video.thesis_mechanism))) return [];
+  const terms = [...contentTerms(video.thesis_mechanism)];
+  const missing = (b: ScriptBeat) => terms.filter((t) => !contentTerms(b.spoken).has(t));
+  const closest = [...actOneTwo].sort((a, b) => missing(a).length - missing(b).length)[0];
+  const near = closest ? ` (closest: ${closest.id}, which never says ${missing(closest).join(", ")})` : "";
+  return [`no beat before ${percent(ACT_ONE_TWO)} of planned time speaks 60 % of thesis_mechanism's content words${near}`];
+}
+
+/** Q-F4's defects in words: each thesis ref outside its slot, and a mechanism act 1–2 never voices. */
+export function thesisDefects(script: ScriptV1): string[] {
+  const shares = startShares(script.beats);
+  const refs = script.video.thesis_refs ?? [];
+  const misplaced = THESIS_SLOTS.flatMap(({ name, fits, where }, i) => {
+    const id = refs[i];
+    const at = id === undefined ? undefined : shares.get(id);
+    if (at !== undefined && fits(at)) return [];
+    return [`the ${name} thesis ref ${id ?? "(none)"} starts at ${at === undefined ? "no beat" : percent(at)} of planned time; it must start ${where}`];
+  });
+  return [...misplaced, ...mechanismDefect(script, shares)];
+}
+
 /** Q-F4: the thesis lands at the open, the midpoint and the button, and its mechanism is said in act 1–2. */
-function thesisPlacement({ video, beats }: ScriptV1): L0Result {
-  const shares = startShares(beats);
-  const [open, mid, button] = (video.thesis_refs ?? []).map((id) => shares.get(id) ?? -1);
-  const misplaced = [
-    open === undefined || open > 0.2,
-    mid === undefined || mid < 0.35 || mid > 0.65,
-    button === undefined || button < 0.8,
-  ].filter(Boolean).length;
-  const actOneTwo = beats.filter((b) => (shares.get(b.id) ?? 1) < 0.2);
-  const voiced = !isTodo(video.thesis_mechanism) && actOneTwo.some((b) => voices(b.spoken, video.thesis_mechanism));
-  const defects = misplaced + (voiced ? 0 : 1);
-  return ruleRow("Q-F4", { value: defects, threshold: 0, pass: defects === 0, beats: video.thesis_refs ?? [], mode: "tagged" });
+function thesisPlacement(script: ScriptV1): L0Result {
+  const defects = thesisDefects(script).length;
+  return ruleRow("Q-F4", { value: defects, threshold: 0, pass: defects === 0, beats: script.video.thesis_refs ?? [], mode: "tagged" });
 }
 
 function pivotLines(beats: readonly ScriptBeat[]): L0Result {
@@ -178,7 +218,7 @@ function plainOpening(beats: readonly ScriptBeat[]): L0Result {
 export const flowCheck: L0Check = ({ script }) => {
   const { beats } = script;
   return [
-    boundaryLinks(beats),
+    boundaryRow(beats),
     chapterHandoffs(beats),
     thesisPlacement(script),
     pivotLines(beats),
