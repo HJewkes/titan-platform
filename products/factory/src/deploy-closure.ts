@@ -74,6 +74,11 @@ export function touchedPaths(changed: readonly string[] | undefined, closure: re
   return changed.filter((path) => isRootInput(path) || (!NON_RUNTIME.test(path) && closure.some((dir) => path.startsWith(`${dir}/`))));
 }
 
+/** Whether a change would make the deployer build; an unread closure counts every change, so a lag is never hidden. */
+export function reachesFactoryBuild(changed: readonly string[] | undefined, closure: readonly string[] | undefined): boolean {
+  return closure === undefined || touchedPaths(changed, closure).length > 0;
+}
+
 function manifestWithoutVersion(text: string | undefined): Record<string, unknown> | undefined {
   try {
     const value = JSON.parse(text ?? "") as unknown;
