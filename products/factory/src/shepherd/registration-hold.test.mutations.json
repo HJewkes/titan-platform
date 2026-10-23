@@ -2,53 +2,23 @@
   "v": 1,
   "mutations": [
     {
-      "name": "merge-facts.ts leaves the owner's skill-diff guard",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
-      "replace": "[\"skill-paths.ts\", \"approval-carry.ts\"]",
-      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/merge-facts.ts g10-adversary as policy, though it builds no resolver"]
-    },
-    {
-      "name": "skill-paths.ts leaves the owner's skill-diff guard",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
-      "replace": "[\"merge-facts.ts\", \"approval-carry.ts\"]",
-      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/skill-paths.ts g10-adversary as policy, though it builds no resolver"]
-    },
-    {
-      "name": "approval-carry.ts leaves the owner's skill-diff guard",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "[\"merge-facts.ts\", \"skill-paths.ts\", \"approval-carry.ts\"]",
-      "replace": "[\"merge-facts.ts\", \"skill-paths.ts\"]",
-      "kills": ["the G10 hold Shepherd places at registration holds the owner's skill-diff guard in products/factory/src/shepherd/approval-carry.ts g10-adversary as policy, though it builds no resolver"]
-    },
-    {
-      "name": "the land workflow's gate rules leave the held set",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "  \"products/factory/src/workflows/land-approval.ts\",\n",
-      "replace": "",
-      "kills": ["the G10 hold Shepherd places at registration holds a gate-resolve actor or evidence rule in products/factory/src/workflows/land-approval.ts g10-adversary"]
-    },
-    {
-      "name": "workflow types.ts leaves the held set",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "  \"packages/workflow/src/types.ts\",\n",
-      "replace": "",
-      "kills": ["the G10 hold Shepherd places at registration holds a gate-resolve actor or evidence rule in packages/workflow/src/types.ts g10-adversary"]
-    },
-    {
       "name": "a list past the cap is read again",
       "file": "products/factory/src/shepherd/registration-hold.ts",
       "find": "      if (error.expected >= PR_FILES_CAP) throw error;\n",
       "replace": "",
-      "kills": ["the G10 hold Shepherd places at registration does not re-read a file list cut short at GitHub's cap"]
+      "kills": [
+        "the G10 hold Shepherd places at registration does not re-read a file list cut short at GitHub's cap"
+      ]
     },
     {
       "name": "a short list is read again without waiting",
       "file": "products/factory/src/shepherd/registration-hold.ts",
       "find": "      await pause(LIST_SETTLE_MS);\n",
       "replace": "",
-      "kills": ["the G10 hold Shepherd places at registration reads again after a wait when the count outruns the list below the cap, and classes the whole list", "the G10 hold Shepherd places at registration holds as unread when the list is short of its count on both reads, waiting once"]
+      "kills": [
+        "the G10 hold Shepherd places at registration reads again after a wait when the count outruns the list below the cap, and classes the whole list",
+        "the G10 hold Shepherd places at registration holds as unread when the list is short of its count on both reads, waiting once"
+      ]
     }
   ]
 }
