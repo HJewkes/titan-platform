@@ -212,6 +212,18 @@ describe("deploy pacer", () => {
     expect(next).toEqual(wantedAt("b", 20, 20));
   });
 
+  it("the next green merge replaces an ask whose deployer was refused and recorded nothing, and deploys after its own quiet window (TP-4085)", () => {
+    const p = pacer();
+    p.merge("a");
+    p.ticksUntil(30);
+
+    p.merge("b");
+    p.ticksUntil(60);
+
+    expect(p.wanted()).toMatchObject({ sha: "b", firstAt: new Date(30 * MIN).toISOString(), spawnedSha: "b" });
+    expect(p.spawns).toEqual([[15, "a"], [45, "b"]]);
+  });
+
   it("an older sha the queued one contains keeps the queued record, spawn mark and all", () => {
     const spawned = wantedAt("b", 0, 5, { spawnedSha: "b", spawnedAt: new Date(15 * MIN).toISOString() });
 

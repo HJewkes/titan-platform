@@ -21,13 +21,21 @@
       ]
     },
     {
-      "name": "a target behind the checkout's main is not refused",
+      "name": "an ask the checkout is already past is refused again",
       "file": "products/factory/src/deploy.ts",
-      "find": "  if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));\n",
-      "replace": "",
+      "find": "return planFor(deploy, main, prepareOnly);",
+      "replace": "return refuse(past);",
       "kills": [
-        "titan-factory service deploy refuses a target behind the checkout's main and names the commit to deploy instead",
-        "titan-factory service deploy after a containing deploy rolls back and the pause is cleared, refuses the older asked sha but deploys origin/main (TP-4083)"
+        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha"
+      ]
+    },
+    {
+      "name": "an ask the checkout is already past deploys the checkout's rolled-back head",
+      "file": "products/factory/src/deploy.ts",
+      "find": "return planFor(deploy, main, prepareOnly);",
+      "replace": "return planFor(deploy, head, prepareOnly);",
+      "kills": [
+        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha"
       ]
     }
   ]

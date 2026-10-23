@@ -52,6 +52,16 @@ describe("explainer units", () => {
     expect(owned.filter((c) => c.split !== "holdout").map((c) => `${c.unit.id}/${c.id}`)).toEqual([]);
   });
 
+  it("keeps every judge check reported, never required or critical, until its owner agreement is recorded (TP-4012)", () => {
+    const judged = ALL_UNITS.flatMap((unit) => {
+      const suite = parseSpec(readJson(join(UNITS, unit, "suite.json")), "strict");
+      return suite.schema === "titan.suite/v1" ? suite.checks.filter((check) => check.family === "judge" || ("params" in check && check.params.judge === true)) : [];
+    });
+
+    expect(judged.length).toBeGreaterThan(0);
+    expect(judged.filter((check) => check.role !== "reported" || check.critical === true).map((check) => check.id)).toEqual([]);
+  });
+
   it("freezes cases as artifact shas only, so no script text or fact reaches this public repo", () => {
     const leaks = ALL_UNITS.flatMap(caseFiles).map(caseOf).flatMap((c) => {
       const { inputs, ...rest } = z.looseObject({ inputs: z.record(z.string(), z.string()) }).parse(c.input);
