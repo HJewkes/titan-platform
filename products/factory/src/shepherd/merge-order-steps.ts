@@ -14,8 +14,8 @@ import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
 
 const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = "sh-order-wait";
-const RELEASE_STEP = "sh-order-release";
-export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT_STEP, RELEASE_STEP].map((id) => ({ id, kind: "dispatch" }));
+const UNRESERVE_STEP = "sh-order-unreserve";
+export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT_STEP, UNRESERVE_STEP].map((id) => ({ id, kind: "dispatch" }));
 
 interface OrderInput extends PrTarget {
   runId: string;
@@ -119,7 +119,7 @@ export function mergeOrderRoutes(deps: MergeOrderStepDeps): StepRoute[] {
   return [
     codeRoute(RESERVE_STEP, deps.now, (input: OrderInput) => reserve(deps, input)),
     codeRoute(WAIT_STEP, deps.now, (input: OrderInput, signal) => waitTurn(deps, input, signal)),
-    codeRoute(RELEASE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId) })),
+    codeRoute(UNRESERVE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId) })),
   ];
 }
 
@@ -150,6 +150,6 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
 
 /** The run's reservation ends with the run; liveness at read time covers a run that stops without reaching this. */
 export async function releaseOrder(run: OrderRun): Promise<void> {
-  if (replayingWithout(run.ctx, RELEASE_STEP)) return;
-  await step(run.ctx, `${RELEASE_STEP}:${run.orderSteps}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
+  if (replayingWithout(run.ctx, UNRESERVE_STEP)) return;
+  await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
 }

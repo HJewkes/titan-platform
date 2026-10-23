@@ -1431,7 +1431,7 @@ merge of main happens at the base they leave behind. A push to the pull request 
 wait ends it with no wake; the next land round reads the new head.
 
 **TTL and release.** The rule file `merge-order.json` sets the TTL per repo (120 minutes for
-titan-platform). The run deletes its row in `sh-order-release` when it ends, merged or not.
+titan-platform). The run deletes its row in `sh-order-unreserve` when it ends, merged or not.
 A row whose run crashed stops blocking once the run no longer drives, so no sweeper is
 needed. A seat's repair-stop still wins over the conflict wake; the reservation keeps
 blocking under it until the TTL.

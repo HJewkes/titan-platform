@@ -86,7 +86,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-train-leave": "merging",
   "sh-order-reserve": "merging",
   "sh-order-wait": "merging",
-  "sh-order-release": "merging",
+  "sh-order-unreserve": "merging",
   "sh-landed": "post-merge",
   "sh-stack-children": "post-merge",
   "sh-restack": "post-merge",
