@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a workflow-ci NO_REPRO wakes the fixer again",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "if (noFixerAnswers(run.ctx, verdict)) throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "a workflow-only NO_REPRO on a held PR read behind with green checks (TP-4109, tp#2325) wakes no fixer at r0 or at r1 after main moved, and asks the owner a waivable send-back at each head"
+      ]
+    },
+    {
+      "name": "the workflow-ci gate offers no waive-proof",
+      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "find": "after a workflow-only NO_REPRO\", prompt, true);",
+      "replace": "after a workflow-only NO_REPRO\", prompt, false);",
+      "kills": [
+        "a workflow-only NO_REPRO on a held PR read behind with green checks (TP-4109, tp#2325) wakes no fixer at r0 or at r1 after main moved, and asks the owner a waivable send-back at each head"
+      ]
+    },
+    {
+      "name": "any NO_REPRO skips the fixer, not only a workflow-ci read",
+      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "find": "return read.success && !read.data.proved && !recordedWake(ctx);",
+      "replace": "return !read.data?.proved && !recordedWake(ctx);",
+      "kills": [
+        "a workflow-only NO_REPRO on a held PR read behind with green checks (TP-4109, tp#2325) still wakes the fix-proof fixer for a NO_REPRO that is no workflow-ci read"
+      ]
+    },
+    {
+      "name": "a replay ignores the fixer wake its record holds",
+      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "find": "return read.success && !read.data.proved && !recordedWake(ctx);",
+      "replace": "return read.success && !read.data.proved;",
+      "kills": [
+        "a workflow-ci NO_REPRO recorded before TP-4109 replays the fixer wake it recorded, and asks the gate live or where the record asked it"
+      ]
+    }
+  ]
+}

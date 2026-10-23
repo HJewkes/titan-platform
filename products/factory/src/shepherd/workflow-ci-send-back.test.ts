@@ -1,4 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { partialFake } from "@titan-design/test-kit";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
@@ -10,6 +12,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
 import type { WorkflowCiRead } from "./workflow-ci-proof.js";
+import { noFixerAnswers } from "./workflow-ci-send-back.js";
 
 const H2 = fakeSha("workflow-ci-merge-up");
 const BASE = fakeSha("workflow-ci-base");
@@ -21,8 +24,8 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const green = (head: string) => ["validate", "dag-check"].map((name, i) => ({ name, sha: head, runId: i + 1, conclusion: "success" }));
 
 /** The fix-proof's read of a workflow-only head whose required checks passed at the merge base and at the head. */
-function workflowCiRead(head: string, proved = false): WorkflowCiRead {
-  return { kind: "workflow-ci", proved, head, mergeBase: BASE, base: green(BASE), atHead: green(head), reason: "the PR changes only .github/workflows/" };
+function workflowCiRead(head: string): WorkflowCiRead {
+  return { kind: "workflow-ci", proved: false, head, mergeBase: BASE, base: green(BASE), atHead: green(head), reason: "the PR changes only .github/workflows/" };
 }
 
 /** tp#2325: a held workflow-only PR whose every head is read behind with its own checks green, and no fixer pushes anything. */
@@ -55,6 +58,7 @@ describe("a workflow-only NO_REPRO on a held PR read behind with green checks (T
     const first = gateId(w.runId, "sh-sent-back");
     await gateOpened(w.host, first);
 
+    expect(w.wakes).toEqual([]);
     expect(w.host.gates.get(first)?.prompt).toContain(`at head ${H1}: the PR changes only workflows`);
     w.host.runtime.signal(w.runId, "sh-sent-back", { decision: "await-new-head" }, OWNER);
     w.fake.pushHead(1, H2);
@@ -73,5 +77,15 @@ describe("a workflow-only NO_REPRO on a held PR read behind with green checks (T
     await vi.waitFor(() => expect(w.wakes).toHaveLength(1), { timeout: 5_000 });
 
     expect(w.wakes[0]).toMatchObject({ kind: "fix-proof", headSha: H1 });
+  });
+});
+
+describe("a workflow-ci NO_REPRO recorded before TP-4109", () => {
+  const recordedNext = (next: string | undefined) => partialFake<WorkflowContext>({ historyNext: () => next });
+
+  it("replays the fixer wake it recorded, and asks the gate live or where the record asked it", () => {
+    expect(noFixerAnswers(recordedNext(`sh-held-check:r0:${H1}`), noRepro(H1))).toBe(false);
+    expect(noFixerAnswers(recordedNext(undefined), noRepro(H1))).toBe(true);
+    expect(noFixerAnswers(recordedNext("sh-sent-back"), noRepro(H1))).toBe(true);
   });
 });
