@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
+import { loadBeatSpecs } from "./beat-load.js";
+import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
+import { shippedVisualRouter } from "./visual-router.js";
 import { tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 // Synthetic: an invented parcel desk; nothing here quotes a real repo or video.
@@ -18,6 +21,19 @@ export function resolveScript(beats: [id: string, fn: string, extra?: Record<str
 
 /** One parsed beat with `extra` laid over the defaults. */
 export const oneBeat = (fn = "WHAT", extra: Record<string, unknown> = {}): ScriptBeat => resolveScript([["b1", fn, extra]]).beats[0]!;
+
+export const shippedSpecs = loadBeatSpecs();
+export const shippedRouter = shippedVisualRouter();
+
+/** Resolves one beat against the shipped registry and router. */
+export const resolveOne = (fn: string, extra: Record<string, unknown> = {}) => resolveBeat(oneBeat(fn, extra), shippedSpecs, shippedRouter);
+
+/** Like `resolveOne`, but throws when the beat is refused. */
+export function resolvedOne(fn: string, extra: Record<string, unknown> = {}): ResolvedBeat {
+  const found = resolveOne(fn, extra);
+  if ("code" in found) throw new Error(`expected a resolved beat, got ${found.code}: ${found.detail}`);
+  return found;
+}
 
 /** `count` words of filler speech. */
 export const wordsLong = (count: number): string => Array.from({ length: count }, (_, i) => (i === 0 ? "Parcels" : "parcels")).join(" ");
