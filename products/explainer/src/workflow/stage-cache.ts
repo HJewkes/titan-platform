@@ -58,11 +58,13 @@ export class ChildStageFailure extends Error {
 
 export const childWorkflow = (stage: string): string => `explainer.${stage}`;
 export const BODY_STEP = "body";
+/** The step after the body that runs the stage's deterministic checks; its record is the stage's final one. */
+export const CHECKS_STEP = "checks";
 const ChildRecordSchema = z.object({ result: StageRecordSchema });
 
-/** The record a finished child stage run stored. */
+/** The record a finished child stage run stored: its checks step's. */
 export function childRecord(run: WorkflowRun): StageRecord | undefined {
-  const result = Object.values(run.stepResults).find((r) => r.stepId.startsWith(`${BODY_STEP}:`) && r.output !== undefined);
+  const result = Object.values(run.stepResults).find((r) => r.stepId.startsWith(`${CHECKS_STEP}:`) && r.output !== undefined);
   return result ? ChildRecordSchema.parse(JSON.parse(result.output!)).result : undefined;
 }
 

@@ -3,7 +3,8 @@ import { Argument, Command, CommanderError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, runOneStage } from "./host.js";
-import { CACHED_STAGES, type CachedStage } from "./records.js";
+import { CACHED_STAGES, type CachedStage, type StageRecord } from "./records.js";
+import { ChildStageFailure } from "./stage-cache.js";
 import { budget, dataDirOption, hostFor, rounds, sampleIndex, shaPair, type RunCliDeps } from "./run-cli.js";
 
 interface StageFlags {
@@ -19,6 +20,8 @@ interface StageFlags {
 }
 
 const shortShas = (outputs: Record<string, string>): string => Object.entries(outputs).map(([name, sha]) => `${name}=${sha}`).join(" ");
+const verdicts = (record: StageRecord): string =>
+  record.checks.map((check) => `${check.name} ${check.pass ? "pass" : "FAIL"} (${check.gate === true ? "gate" : "reported"})`).join(", ") || "none";
 
 function stageCommand(deps: RunCliDeps, out: (text: string) => void): Command {
   return new Command("stage")
@@ -39,12 +42,21 @@ function stageCommand(deps: RunCliDeps, out: (text: string) => void): Command {
       const record = await runOneStage({
         stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
         ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}),
-      }, hostFor(flags, deps));
+      }, hostFor(flags, deps)).catch((error: unknown) => {
+        // A failed gate still has verdicts; a caller scoring checks reads them from the record, exit code 1 or not.
+        if (flags.json && error instanceof ChildStageFailure && error.record) out(`${JSON.stringify(error.record, null, 2)}\n`);
+        throw error;
+      });
       if (flags.json) return out(`${JSON.stringify(record, null, 2)}\n`);
-      out(`stage ${stage}: ${record.cached ? "cache hit" : "ran"}; child run ${record.childRunId}; key ${record.key}\n`);
-      out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
-      out(`outputs: ${shortShas(record.outputs)}\n`);
+      printRecord(stage, record, out);
     });
+}
+
+function printRecord(stage: CachedStage, record: StageRecord, out: (text: string) => void): void {
+  out(`stage ${stage}: ${record.cached ? "cache hit" : "ran"}; child run ${record.childRunId}; key ${record.key}\n`);
+  out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
+  out(`outputs: ${shortShas(record.outputs)}\n`);
+  out(`checks: ${verdicts(record)}\n`);
 }
 
 /** `explainer stage <name> --in name=sha ...`: exit 0 when the stage finished, 1 when it failed, 2 on usage. */

@@ -1,0 +1,82 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-rewrite",
+    "version": "1.0.0"
+  },
+  "id": "explainer-rewrite-checks",
+  "version": "1.0.0",
+  "cases": [
+    "083c3be971b6dd9f0318486ed1a15fd22735371c2390141bbfa9874b14a83c84",
+    "5f8cd54c470dcb5fafdfc9acec4c43f3333c3da3d2128b792d986f59e295a269",
+    "5f8da334f3f1ac4913e04174588c724a49e1bfccc559a453ea7796a909c8fa27",
+    "6d94ab96f94b44df3201fc97e6992400bbe92a0c2ae4873d74ca471220199dad",
+    "75b7468dad598ab4fdab441c7b12d1962fa88f0795cd8b205617828a9deb405e",
+    "91091f637fae9f2fefe10bc1d16a43751a635f60a7eac2025be1240cdd8f0521",
+    "b2561fdcd6c52c7a046096dc4dba8532b3f18be9155d37d0b9b4ea715abadfb3",
+    "c8b8d09ab9af9eefcd569b62dd1a87ea40fe1d562301c372e8457a8e59bf1418",
+    "de395ee206353fc7e4c95e6a2b81babf69f0393fdada829fe19a076f2e547866",
+    "e00e5b5327bf7e6ebc81eeb8f03ad420d099105c95c64a8b986927a4d3991830"
+  ],
+  "checks": [
+    {
+      "id": "no-new-l0-error",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "rewrite/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "rewrite",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=no-new-l0-error]",
+        "gate": true
+      }
+    },
+    {
+      "id": "rewrite-rows",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "rewrite/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "rewrite",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=rewrite-rows]",
+        "gate": false
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "rewrite/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "rewrite/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "rewrite/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}
