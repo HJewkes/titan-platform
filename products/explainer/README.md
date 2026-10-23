@@ -516,7 +516,8 @@ spoken line, headline, labels and chips, with spelled numbers read as digits ("P
 A pull request (`PR 12`, `#12`, `owner/repo#12`, or a short repo such as `ac#12`) or a task id must appear in some
 fact's id or fields. A count, a number with a known noun or a state ("three open PRs", "79 merged"), must equal a
 value in a fact the beat cites, or the number of cited facts that carry its noun and state; a beat that cites
-none reads every fact. `NOT_A_CLAIM` skips ordinals, durations, years and indexes such as "chapter 2". Each
+none reads every fact. Ordinals and durations never read as counts; `NOT_A_CLAIM` skips an index ("chapter 2
+merged"), a year after "in" or "since", and a pronoun "one" ("which one merged"). Each
 unbacked claim is a `claimFindings` row naming the beat, the claim and the nearest fact, and the error row fails
 those beats. The registered `claimsCheck` has no facts, so it emits a passing Q-E20 warning that says the check
 did not run.
