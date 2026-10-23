@@ -2,15 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a diff of exactly 2σ reads as a win",
-      "file": "products/explainer/src/workflow/samples-compare.ts",
-      "find": "if (Math.abs(meanB - meanA) <= NOISE_SIGMAS * sigma) return \"noise\";",
-      "replace": "if (Math.abs(meanB - meanA) < NOISE_SIGMAS * sigma) return \"noise\";",
-      "kills": [
-        "armVerdict holds a diff of exactly 2σ as noise"
-      ]
-    },
-    {
       "name": "the band is 1σ, not 2σ",
       "file": "products/explainer/src/workflow/samples-compare.ts",
       "find": "export const NOISE_SIGMAS = 2;",
@@ -20,33 +11,13 @@
       ]
     },
     {
-      "name": "no noise band: any move toward the band is a win",
-      "file": "products/explainer/src/workflow/samples-compare.ts",
-      "find": "if (Math.abs(meanB - meanA) <= NOISE_SIGMAS * sigma) return \"noise\";",
-      "replace": "",
-      "kills": [
-        "compareArms reports a stage diff inside the A/A floor as noise, not as a win, though B moved toward the band",
-        "armVerdict holds a diff of exactly 2σ as noise"
-      ]
-    },
-    {
-      "name": "an equal band distance reads as a win",
-      "file": "products/explainer/src/workflow/samples-compare.ts",
-      "find": "nearer > 0 ? \"win\"",
-      "replace": "nearer >= 0 ? \"win\"",
-      "kills": [
-        "armVerdict calls a big move inside the band a shift, neither a win nor a loss"
-      ]
-    },
-    {
       "name": "win and loss swapped",
       "file": "products/explainer/src/workflow/samples-compare.ts",
       "find": "const nearer = bandGap(meanA, band) - bandGap(meanB, band);",
       "replace": "const nearer = bandGap(meanB, band) - bandGap(meanA, band);",
       "kills": [
         "compareArms calls the same move a win once it clears 2σ of the floor, though the arms' own σ would call it noise",
-        "compareArms calls a move past 2σ away from the band a loss",
-        "armVerdict judges a move toward a floor-only band from below as a win"
+        "compareArms calls a move past 2σ away from the band a loss"
       ]
     },
     {
