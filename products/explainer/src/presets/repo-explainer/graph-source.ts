@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexPaths, openCodeGraph, type CodeGraphStore } from "@titan-design/code-graph";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
+import { reviewScopeFiles, scopedSource } from "./review-scope.js";
 import type { StructureSource } from "./structure-schema.js";
 
 /** Where a finished review keeps its code-graph index, relative to the review dir. */
@@ -57,29 +58,45 @@ async function workDir(cacheDir: string | undefined): Promise<{ dir: string; cle
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
+interface ReviewIndex {
+  /** Set when the review db holds a snapshot at the pin. */
+  snapshot?: { store: CodeGraphStore; snapshotId: number };
+  /** The files the review read, for a fresh index to stay inside. */
+  scope: string[];
+}
+
 // A review db is copied before it is opened, because opening runs migrations and the review stays read-only.
 // Its write-ahead log goes with it: rows committed but not yet checkpointed live only there.
-async function reviewSnapshot(options: GraphSourceOptions, dir: string, out: GatherDiagnostic[]) {
+async function reviewIndex(options: GraphSourceOptions, dir: string, out: GatherDiagnostic[]): Promise<ReviewIndex> {
   const reviewDb = join(options.reviewDir, REVIEW_GRAPH_DB);
-  if (!existsSync(reviewDb)) return undefined;
+  if (!existsSync(reviewDb)) return { scope: [] };
   const copy = join(dir, "review-graph.db");
   await copyFile(reviewDb, copy);
   if (existsSync(`${reviewDb}-wal`)) await copyFile(`${reviewDb}-wal`, `${copy}-wal`);
   const store = openCodeGraph(copy);
   const snapshotId = snapshotAt(store, options.pin);
-  if (snapshotId !== undefined) return { store, snapshotId };
+  if (snapshotId !== undefined) return { snapshot: { store, snapshotId }, scope: [] };
+  const scope = reviewScopeFiles(store);
   store.close();
   out.push(diag("W-INDEX-PIN", `${REVIEW_GRAPH_DB} has no snapshot at ${options.pin}; indexing the clone fresh`, REVIEW_GRAPH_DB));
-  return undefined;
+  return { scope };
 }
 
-async function freshSnapshot(options: GraphSourceOptions, dir: string) {
+function indexScope(options: GraphSourceOptions, scope: readonly string[], out: GatherDiagnostic[]) {
+  if (scope.length === 0) {
+    out.push(diag("W-INDEX-SCOPE", "the review holds no file list to scope the index; indexing the whole clone", options.clonePath));
+    return { paths: [options.clonePath] };
+  }
+  return { paths: [options.clonePath], source: scopedSource(options.clonePath, scope) };
+}
+
+async function freshSnapshot(options: GraphSourceOptions, dir: string, scope: readonly string[], out: GatherDiagnostic[]) {
   const store = openCodeGraph(join(dir, "graph.db"));
   const cached = snapshotAt(store, options.pin);
   if (cached !== undefined) return { store, snapshotId: cached };
   const index = options.index ?? indexPaths;
   try {
-    const result = await index(store, { paths: [options.clonePath], commitHash: options.pin, computeMetrics: true, computeChurn: false });
+    const result = await index(store, { ...indexScope(options, scope, out), commitHash: options.pin, computeMetrics: true, computeChurn: false });
     return { store, snapshotId: result.snapshotId };
   } catch (error) {
     store.close();
@@ -96,15 +113,15 @@ export async function openStructureGraph(options: GraphSourceOptions): Promise<G
   const diagnostics: GatherDiagnostic[] = [];
   const { dir, cleanup } = await workDir(options.cacheDir);
   try {
-    const review = await reviewSnapshot(options, dir, diagnostics);
-    const opened = review ?? (await freshSnapshot(options, dir));
+    const review = await reviewIndex(options, dir, diagnostics);
+    const opened = review.snapshot ?? (await freshSnapshot(options, dir, review.scope, diagnostics));
     const files = fileCount(opened.store, opened.snapshotId);
     if (files === 0) diagnostics.push(diag("W-NO-INDEX", `the index at ${options.pin} holds no source files`, options.clonePath));
     const close = async () => {
       opened.store.close();
       await cleanup();
     };
-    const source: StructureSource = review === undefined ? "fresh-index" : "review-index";
+    const source: StructureSource = review.snapshot === undefined ? "fresh-index" : "review-index";
     return { ok: true, graph: { ...opened, source, files, close }, diagnostics };
   } catch (error) {
     await cleanup();
