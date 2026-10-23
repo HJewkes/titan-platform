@@ -1,7 +1,7 @@
 import { isBuiltin } from "node:module";
 
 /** Reads a repo-relative file at head; null when no regular file is there. */
-export type ReadAtHead = (path: string) => Promise<string | null>;
+type ReadAtHead = (path: string) => Promise<string | null>;
 
 // Bounds the git reads one changed test can cost the judge; a larger closure is read as leaving carry.
 const MAX_FILES = 200;
