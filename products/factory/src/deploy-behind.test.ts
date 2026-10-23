@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { gitBehind } from "./deploy-behind.js";
 import { deployHealth, withGitBehind } from "./deploy-health.js";
@@ -7,7 +11,8 @@ const NOW = Date.parse("2026-10-07T12:00:00Z");
 const minutesAgo = (minutes: number): number => NOW - minutes * 60_000;
 const quiet = deployHealth({ entries: [], runningSha: RUNNING, now: NOW });
 
-const gitLog = (times: number[], code = 0, stderr = "") => async () => ({ code, stdout: times.map((time) => `${time / 1000}\n`).join(""), stderr });
+const record = (sha: string, time: number, paths: readonly string[]): string => `\u0001${sha} ${time / 1000}\n\n${paths.map((path) => `${path}\n`).join("")}`;
+const gitLog = (times: number[], code = 0, stderr = "") => async () => ({ code, stdout: times.map((time, index) => record(`${index}`.repeat(40), time, ["docs/a.md"])).join(""), stderr });
 const GRACE_MIN = 20;
 
 describe("a running sha behind origin/main with no deploy asked", () => {
@@ -74,5 +79,88 @@ describe("fail closed when git cannot be read", () => {
     await gitBehind("/checkout", async (_file, args) => (seen.push([...args]), { code: 0, stdout: "", stderr: "" }))(`${RUNNING}-dirty`);
 
     expect(seen[0]).toContain(`${RUNNING}..origin/main`);
+  });
+});
+
+const FACTORY = ["products/factory"];
+const DOCS_SHA = "d".repeat(40);
+const FACTORY_SHA = "f".repeat(40);
+const RELEASE_SHA = "e".repeat(40);
+const manifest = (version: string): string => JSON.stringify({ name: "@titan-design/factory", version });
+
+/** Answers git log with `records`, and git show with the factory manifest at 1.0.0 on a parent and 1.0.1 on its child. */
+const fakeGit = (records: string) => async (_file: string, args: readonly string[]) => {
+  const show = args.indexOf("show");
+  if (show === -1) return { code: 0, stdout: records, stderr: "" };
+  return { code: 0, stdout: manifest(String(args[show + 1]).includes("^:") ? "1.0.0" : "1.0.1"), stderr: "" };
+};
+
+describe("commits the deploy pacer would skip", () => {
+  it("reads no lag when serve's only missing commit changes no path the factory build reads", async () => {
+    const run = fakeGit(record(DOCS_SHA, minutesAgo(197), ["docs/guide.md", "packages/explainer/src/a.ts", "products/factory/README.md"]));
+
+    const git = await gitBehind("/checkout", run, () => FACTORY)(RUNNING);
+
+    expect(git).toEqual({ commitTimes: [] });
+    expect(withGitBehind(quiet, git, NOW)).toMatchObject({ behind: 0, behindMinutes: 0, alarm: false });
+  });
+
+  it("starts the alarm clock at the oldest commit that reaches the build", async () => {
+    const run = fakeGit(record(FACTORY_SHA, minutesAgo(90), ["products/factory/src/a.ts"]) + record(DOCS_SHA, minutesAgo(197), ["docs/guide.md"]));
+
+    const result = withGitBehind(quiet, await gitBehind("/checkout", run, () => FACTORY)(RUNNING), NOW);
+
+    expect(result).toMatchObject({ behind: 1, behindMinutes: 90, alarm: true });
+    expect(result.causes).toEqual([expect.stringContaining("origin/main has held a commit serve does not run for 90 min")]);
+  });
+
+  it("skips a release that only bumps a factory manifest's version, as the deployer does", async () => {
+    const run = fakeGit(record(RELEASE_SHA, minutesAgo(90), ["products/factory/package.json", "products/factory/CHANGELOG.md"]));
+
+    expect(await gitBehind("/checkout", run, () => FACTORY)(RUNNING)).toEqual({ commitTimes: [] });
+  });
+
+  it("counts every commit when the build closure cannot be read", async () => {
+    const run = fakeGit(record(DOCS_SHA, minutesAgo(90), ["docs/guide.md"]));
+
+    expect(await gitBehind("/checkout", run, () => undefined)(RUNNING)).toEqual({ commitTimes: [minutesAgo(90)] });
+  });
+});
+
+const git = (dir: string, ...args: string[]): string =>
+  execFileSync("git", ["-C", dir, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+
+function commitFile(repo: string, path: string, text: string): string {
+  mkdirSync(dirname(join(repo, path)), { recursive: true });
+  writeFileSync(join(repo, path), text);
+  git(repo, "add", "--all");
+  git(repo, "commit", "--quiet", "-m", path);
+  return git(repo, "rev-parse", "HEAD");
+}
+
+/** A deploy checkout running `deployed` that has fetched an origin/main one commit past it. */
+function checkoutBehindBy(path: string): { checkout: string; deployed: string } {
+  const dir = mkdtempSync(join(tmpdir(), "factory-behind-paths-"));
+  const origin = join(dir, "origin");
+  git(dir, "init", "--quiet", "--initial-branch=main", origin);
+  commitFile(origin, "pnpm-workspace.yaml", "packages:\n  - products/*\n");
+  const deployed = commitFile(origin, "products/factory/package.json", manifest("1.0.0"));
+  git(dir, "clone", "--quiet", origin, join(dir, "checkout"));
+  commitFile(origin, path, "changed\n");
+  git(join(dir, "checkout"), "fetch", "--quiet");
+  return { checkout: join(dir, "checkout"), deployed };
+}
+
+describe("against a real checkout", () => {
+  it("reads the closure from the checkout and skips a docs-only commit", async () => {
+    const { checkout, deployed } = checkoutBehindBy("docs/guide.md");
+
+    expect(await gitBehind(checkout)(deployed)).toEqual({ commitTimes: [] });
+  });
+
+  it("counts a commit that changes factory source", async () => {
+    const { checkout, deployed } = checkoutBehindBy("products/factory/src/a.ts");
+
+    expect(await gitBehind(checkout)(deployed)).toMatchObject({ commitTimes: [expect.any(Number)] });
   });
 });
