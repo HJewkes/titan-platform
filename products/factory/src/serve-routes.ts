@@ -3,6 +3,7 @@ import { mountConsoleAction } from "./console-action/route.js";
 import { mountGateAnswer, type ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { FactoryHost } from "./host.js";
 import type { OwnerKeys } from "./owner-keys.js";
+import { agentChatRetirePort } from "./owner-ops/retire-agent.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 
@@ -29,5 +30,7 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, .
   mountResolveProof(app, { ...deps, port: shepherd?.port, store: shepherd?.store });
   if (consoleAnswers) mountGateAnswer(app, { host: deps.host, port: shepherd?.port, roundsDir: consoleAnswers.roundsDir, stateDir, now: deps.now, log: deps.log });
   if (consoleAnswers?.actionsDir === undefined) return;
-  mountConsoleAction(app, { host: deps.host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir: consoleAnswers.actionsDir, stateDir, now: deps.now, log: deps.log });
+  const { actionsDir, agentChatBin } = consoleAnswers;
+  const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
+  mountConsoleAction(app, { host: deps.host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, now: deps.now, log: deps.log, agentChat });
 }

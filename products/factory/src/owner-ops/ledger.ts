@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { OwnerOp } from "@titan-design/owner-queue";
 
@@ -28,6 +28,27 @@ export function ownerOpsLedger(stateDir: string): OwnerOpsLedger {
       }
     },
   };
+}
+
+/** Every `done` result the ledger holds for one action id, oldest first; a missing ledger holds none. */
+export async function doneResults(stateDir: string, actionId: string): Promise<object[]> {
+  const text = await readFile(join(stateDir, OWNER_OPS_LEDGER), { encoding: "utf8", flag: constants.O_RDONLY | constants.O_NOFOLLOW }).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
+  });
+  return text.split("\n").flatMap((line) => {
+    const entry = parsedLine(line);
+    return entry?.phase === "done" && entry.actionId === actionId && entry.result !== undefined ? [entry.result] : [];
+  });
+}
+
+function parsedLine(line: string): Partial<LedgerEntry> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Partial<LedgerEntry>) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 interface LoggedOp {
