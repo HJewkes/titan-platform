@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
 import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-design/workflow";
+import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
@@ -153,6 +154,17 @@ export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?
     },
   });
   return { runnerFor, prompts, budgets };
+}
+
+/** The decision brief's two models: the sampling call answers the audition's prompt, `script` the script stage's. */
+export function fakeBriefModels(script = fakeScriptModel()): FakeScriptModel & { script: FakeScriptModel } {
+  const audition = fakeAuditionModel();
+  const runnerFor = (options: AgentRunnerOptions) => {
+    const sampler = audition.runnerFor(options);
+    const writer = script.runnerFor(options);
+    return { run: (input: StepRunInput) => (input.stepId === "audition" ? sampler : writer).run(input) };
+  };
+  return { runnerFor, prompts: [], budgets: [], script };
 }
 
 /** One L0 row, so a test picks the eval stage's verdict without writing a script the whole L0 set passes. */

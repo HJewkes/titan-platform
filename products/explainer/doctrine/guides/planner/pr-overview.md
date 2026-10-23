@@ -1,6 +1,6 @@
 # Planner guide: pr-overview
 
-<!-- Generated from doctrine/types/pr-overview.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/pr-overview.yaml (profile 0.4.0) by `explainer guide types`. Do not edit. -->
 
 Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do.
 

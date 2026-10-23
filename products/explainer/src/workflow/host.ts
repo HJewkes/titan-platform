@@ -5,6 +5,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { L0Check } from "../eval-l0.js";
+import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
@@ -146,12 +147,17 @@ function checkPins(pins: Record<string, string>, store: ArtifactStore): Record<s
 /** A run from `audition` or `script` starts from its input files; a later start needs a base run or pins. */
 const startsFresh = (from: StageName): boolean => STAGES.indexOf(from) <= STAGES.indexOf("script");
 
+/** True when the profile's audition writes the spine, so a run through the audition needs none given. */
+const auditionWritesSpine = (profile: string | undefined): boolean =>
+  profile !== undefined && profileFor(loadProfiles(), profile).spine?.from === "audition-pick";
+
 /** The input files a run reads: facts for the audition, spine and facts once it reaches the script. */
-function neededInputs(from: StageName, to: StageName): string[] {
+function neededInputs(from: StageName, to: StageName, profile: string | undefined): string[] {
   const reachesScript = startsFresh(from) && STAGES.indexOf(to) >= STAGES.indexOf("script");
   const needed = new Set([...(from === "audition" ? ["facts"] : []), ...(reachesScript ? RUN_INPUTS : [])]);
   // A run from gather makes its own facts.
   if (from === "gather") needed.delete("facts");
+  if (STAGES.indexOf(from) <= STAGES.indexOf("audition") && auditionWritesSpine(profile)) needed.delete("spine");
   return [...needed];
 }
 
@@ -173,7 +179,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
   const artifacts = { ...fromBase.artifacts, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
-  const missing = neededInputs(from, to).filter((name) => artifacts[name] === undefined);
+  const missing = neededInputs(from, to, profile).filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`this run needs ${missing.map((m) => `--${m}`).join(" and ")}`);
   const videoId = request.video ?? (base ? videoIdOf(runs, base) : undefined);
   return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings };

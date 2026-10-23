@@ -61,6 +61,21 @@ describe("audition stage", () => {
     await expect(runVideo({ from: "audition", to: "audition", facts: factsFile().file }, fakeHost(fx, fakeAuditionModel(), fakeBridge()))).rejects.toThrow(/--profile/);
   });
 
+  it("a run from audition to script needs --spine for a profile whose spine is not its audition pick", async () => {
+    fx = fixture();
+
+    await expect(runVideo({ from: "audition", to: "script", facts: factsFile().file, profile: "repo-tour" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()))).rejects.toThrow(/--spine/);
+  });
+
+  it("writes the pick as the spine for pr-overview, so a run to script needs no --spine", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "pr-overview" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+
+    const spine = result.report.rows.find((r) => r.stage === "audition")!.outputs.spine!;
+    expect(readFileSync(path.join(fx.dataDir, "artifacts", spine), "utf8")).toMatch(/^# Story spine: pr-overview-scqa\n/);
+  });
+
   it("a default run from script skips the audition", async () => {
     fx = fixture();
 

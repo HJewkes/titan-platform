@@ -1,6 +1,6 @@
 import { appDirs } from "@titan-design/app-paths";
-import { Command, CommanderError, InvalidArgumentError } from "commander";
-import { briefRunStart } from "../../workflow/brief-run.js";
+import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
+import { BRIEF_DEFAULT_STOP, BRIEF_STOPS, briefRunStart, type BriefStop } from "../../workflow/brief-run.js";
 import type { RunHost } from "../../workflow/host.js";
 import { pairs } from "../../workflow/run-cli.js";
 import type { CallEdgeReader } from "./call-edges.js";
@@ -50,20 +50,21 @@ const rowLine = (row: TriggerRow): string => `${row.outcome} ${row.pr} ${row.hea
 function triggerCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Command {
   return new Command("trigger")
     .description("Start a decision-brief run (gather, then audition) for each PR held at the owner's visual gate (visual-gate2); no other PR auto-starts")
+    .addOption(new Option("--through <stage>", "the last stage each run takes; script spends about $1 more a head").choices(BRIEF_STOPS).default(BRIEF_DEFAULT_STOP))
     .option("--data-dir <dir>", "where pr-briefs/ is written (default: the per-user data dir)")
     .option("--clone <repo=dir>", "the clone to index for a repo (repeatable)", pairs("--clone", (_repo, dir) => dir), {})
     .option("--port <n>", "port titan-factory serve listens on", port)
     .option("--dry-run", "list what would start and start nothing")
     .option("--json", "print the rows as JSON")
     .exitOverride()
-    .action(async (flags: { dataDir?: string; clone: Record<string, string>; port?: number; dryRun?: boolean; json?: boolean }) => {
+    .action(async (flags: { dataDir?: string; clone: Record<string, string>; port?: number; through: BriefStop; dryRun?: boolean; json?: boolean }) => {
       const dataDir = flags.dataDir ?? appDirs("explainer").data;
       const { gh, ...rest } = readers(deps);
       const host: RunHost = { ...deps.host, dataDir, gather: { ...(gh ? { prGh: gh } : {}), ...rest, ...deps.host?.gather } };
       const rows = await runPrVideoTrigger({
         dataDir,
         readWaiting: () => (deps.readWaiting ?? shepherdWaiting)(flags.port),
-        start: briefRunStart(host, (repo) => flags.clone[repo]),
+        start: briefRunStart(host, (repo) => flags.clone[repo], flags.through),
         dryRun: flags.dryRun ?? false,
       });
       if (flags.json) io.out(`${JSON.stringify(rows, null, 2)}\n`);
