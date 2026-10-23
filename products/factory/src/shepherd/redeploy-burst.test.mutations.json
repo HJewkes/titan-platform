@@ -57,6 +57,24 @@
       "kills": [
         "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
+    },
+    {
+      "name": "a spawned ask holds against every later merge",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "previous !== undefined && previous.sha === heldBy",
+      "replace": "previous !== undefined && (previous.sha === heldBy || previous.spawnedSha !== undefined)",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) replaces an ask whose deployer was refused and recorded nothing with the next green merge (TP-4085)"
+      ]
+    },
+    {
+      "name": "a later merge keeps the spawned ask's window",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "const firstAt = previous?.spawnedSha === undefined ? previous?.firstAt : undefined;",
+      "replace": "const firstAt = previous?.firstAt;",
+      "kills": [
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) replaces an ask whose deployer was refused and recorded nothing with the next green merge (TP-4085)"
+      ]
     }
   ]
 }
