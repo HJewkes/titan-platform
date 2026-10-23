@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the merge-order steps are declared orphan-safe",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": ".map((id) => ({ id, kind: \"dispatch\" }));",
+      "replace": ".map((id) => ({ id, kind: \"dispatch\", orphanSafe: true }));",
+      "kills": [
+        "restart contract lists every dispatch step that is not orphan-safe in RESTART_WRITE_STEPS, and nothing else"
+      ]
+    }
+  ]
+}

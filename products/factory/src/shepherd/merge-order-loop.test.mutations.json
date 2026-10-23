@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the conflicted run skips the order wait",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "  const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);\n  return waited.moved ? undefined : wake();",
+      "replace": "  return wake();",
+      "kills": [
+        "TP-4098 slice C: the #2301 loop lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves",
+        "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round"
+      ]
+    },
+    {
+      "name": "no run already merging is let through first",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "if (theirs.unread !== undefined || overlapping(",
+      "replace": "if (theirs.unread !== undefined && overlapping(",
+      "kills": [
+        "TP-4098 slice C: the #2301 loop lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves"
+      ]
+    },
+    {
+      "name": "a push during the wait is never seen",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "  return read !== undefined && read.headSha !== input.headSha;",
+      "replace": "  return false;",
+      "kills": [
+        "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round"
+      ]
+    },
+    {
+      "name": "a run that ends keeps its reservation",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "    if (final) await releaseOrder(run);\n",
+      "replace": "",
+      "kills": [
+        "TP-4098 slice C: the #2301 loop releases the reservation when its run lands"
+      ]
+    },
+    {
+      "name": "a run held behind a live reservation counts as merging",
+      "file": "products/factory/src/shepherd/merge-order-steps.ts",
+      "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",
+      "replace": "",
+      "kills": [
+        "TP-4098 slice C: the #2301 loop never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring",
+        "TP-4098 slice C: the #2301 loop stops waiting on a run it let merge first once that run is held behind a live reservation"
+      ]
+    }
+  ]
+}
