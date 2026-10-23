@@ -13,15 +13,6 @@
       ]
     },
     {
-      "name": "anchors ignore the pack's P1 marks",
-      "file": "products/explainer/src/audition-score.ts",
-      "find": "if (p1.length) return p1;",
-      "replace": "",
-      "kills": [
-        "audition code scores coverage averages P1 facts placed and the coverage items the cited facts evidence"
-      ]
-    },
-    {
       "name": "anchors take every holding signal, not the ones the fit reads",
       "file": "products/explainer/src/audition-score.ts",
       "find": "row.holds === true && read.has(row.id)",
@@ -46,6 +37,15 @@
       "replace": "profile.pacing.reHookS[1]",
       "kills": [
         "audition code scores a block the profile bands longer than the re-hook ceiling is held to its own band"
+      ]
+    },
+    {
+      "name": "a block's item cap earns no limit on coverage credit",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "cap === undefined ? [] : cited.slice(cap)",
+      "replace": "[]",
+      "kills": [
+        "audition code scores a block's own item cap a countdown citing seven anchors scores the same coverage as one citing five, and reports the excess"
       ]
     }
   ]

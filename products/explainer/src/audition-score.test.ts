@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpineCandidate } from "./audition-sample.js";
-import { anchorFacts, codeScores, coverageScore, fitScore, freshnessScore, rangeScore, tensionChecks, type ScoreContext } from "./audition-score.js";
+import { anchorFacts, capFindings, codeScores, coverageScore, fitScore, freshnessScore, rangeScore, tensionChecks, type ScoreContext } from "./audition-score.js";
 import { loadDoctrine } from "./doctrine-load.js";
 import type { MaterialFact } from "./material-facts.js";
 import { buildMaterialMap } from "./material-map.js";
@@ -91,6 +91,31 @@ describe("audition code scores", () => {
     const painOnly = spine({ hook: { fact: "U1", line: "Slow." }, blocks: spine().blocks.map((b) => ({ ...b, facts: ["U1"] })) });
 
     expect(coverageScore(painOnly, abt, { map: mapOf(facts), profile, facts })).toBe(1);
+  });
+
+  describe("a block's own item cap", () => {
+    const countdown = structureFor(set.structures, "countdown");
+    const findings: MaterialFact[] = Array.from({ length: 10 }, (_, i) => ({ id: `K${i + 1}`, text: `Finding ${i + 1} is a check that fails.` }));
+    const tenCtx = { map: mapOf(findings), profile, facts: findings };
+    const citing = (n: number) => spine({
+      structure: "countdown", payoff: "countdown", hook: { fact: "X0", line: "Ten checks." },
+      blocks: [{ id: "countdown", question: "Which checks?", facts: findings.slice(0, n).map((f) => f.id), seconds: 60, beat: "list", covers: [] }],
+    });
+
+    it("a 10-finding countdown anchors all ten findings", () => {
+      expect(anchorFacts(countdown, tenCtx)).toEqual(findings.map((f) => f.id));
+    });
+
+    it("a countdown citing seven anchors scores the same coverage as one citing five, and reports the excess", () => {
+      expect(coverageScore(citing(7), countdown, tenCtx)).toBe(coverageScore(citing(5), countdown, tenCtx));
+      expect(coverageScore(citing(5), countdown, tenCtx)).toBeGreaterThan(coverageScore(citing(4), countdown, tenCtx));
+      expect(capFindings(citing(7), countdown, tenCtx)).toEqual(["block countdown cites 7 anchor facts, over its cap of 5; the 2 past the cap earn no coverage credit"]);
+    });
+
+    it("a countdown citing the cap or fewer gets no finding", () => {
+      expect(capFindings(citing(5), countdown, tenCtx)).toEqual([]);
+      expect(capFindings(citing(4), countdown, tenCtx)).toEqual([]);
+    });
   });
 
   it("tension checks the stake, the complication, the re-hook band and where the payoff lands", () => {

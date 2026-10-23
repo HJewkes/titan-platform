@@ -49,7 +49,34 @@ export function fitScore({ fit }: NarrativeStructure, map: MaterialMap): number 
   return round(mean(terms));
 }
 
-const placedFacts = (spine: SpineCandidate) => new Set([spine.hook.fact, ...spine.blocks.flatMap((b) => b.facts)]);
+/** A block that cites more anchor facts than its structure's `maxItems` cap. */
+export interface CapExcess {
+  block: string;
+  cap: number;
+  cited: number;
+}
+
+/** The facts the spine earns credit for: a capped block keeps its first `maxItems` anchor facts and loses the rest. */
+function creditedFacts(spine: SpineCandidate, structure: NarrativeStructure, anchors: readonly string[]): { placed: Set<string>; excess: CapExcess[] } {
+  const isAnchor = new Set(anchors);
+  const excess: CapExcess[] = [];
+  const placed = new Set([spine.hook.fact]);
+  for (const block of spine.blocks) {
+    const cap = structure.blocks.find((b) => b.id === block.id)?.maxItems;
+    const cited = [...new Set(block.facts.filter((id) => isAnchor.has(id)))];
+    if (cap !== undefined && cited.length > cap) excess.push({ block: block.id, cap, cited: cited.length });
+    const dropped = new Set(cap === undefined ? [] : cited.slice(cap));
+    block.facts.filter((id) => !dropped.has(id)).forEach((id) => placed.add(id));
+  }
+  return { placed, excess };
+}
+
+/** The blocks of a spine that cite more anchor facts than the block's own cap allows; they earn no credit past the cap. */
+export function capFindings(spine: SpineCandidate, structure: NarrativeStructure, ctx: Pick<ScoreContext, "facts" | "map">): string[] {
+  return creditedFacts(spine, structure, anchorFacts(structure, ctx)).excess.map(
+    (e) => `block ${e.block} cites ${e.cited} anchor facts, over its cap of ${e.cap}; the ${e.cited - e.cap} past the cap earn no coverage credit`,
+  );
+}
 
 /** The cues that mark a fact as evidence for a profile coverage item; an item listed here is scored from cited facts. */
 export const COVERAGE_CUES: Readonly<Record<string, readonly CueId[]>> = {
@@ -70,7 +97,7 @@ export const COVERAGE_CUES: Readonly<Record<string, readonly CueId[]>> = {
   "merged-work": ["transition"],
 };
 
-export const COVERAGE_RULE = "coverage reads only the fact ids the hook and blocks cite: the share of anchor facts placed (the pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged with the share of coverage items a cited fact evidences by cue, over the items some fact in the pack evidences; covers tags are not scored";
+export const COVERAGE_RULE = "coverage reads only the fact ids the hook and blocks cite: the share of anchor facts placed (the pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged with the share of coverage items a cited fact evidences by cue, over the items some fact in the pack evidences; covers tags are not scored; a block that cites more anchor facts than its own item cap (a countdown's at most five) earns credit for the first cap and is reported as a finding";
 
 /** The facts a spine must place: the pack's P1 facts, or with none marked, the facts its structure's fit rests on. */
 export function anchorFacts(structure: NarrativeStructure, ctx: Pick<ScoreContext, "facts" | "map">): string[] {
@@ -82,8 +109,8 @@ export function anchorFacts(structure: NarrativeStructure, ctx: Pick<ScoreContex
 
 /** The share of anchor facts the spine cites, averaged with the share of evidenced coverage items its cited facts carry. */
 export function coverageScore(spine: SpineCandidate, structure: NarrativeStructure, ctx: Pick<ScoreContext, "facts" | "map" | "profile">): number {
-  const placed = placedFacts(spine);
   const anchors = anchorFacts(structure, ctx);
+  const { placed } = creditedFacts(spine, structure, anchors);
   const cues = tagFacts(ctx.facts);
   const evidence = (item: string) => COVERAGE_CUES[item]!.flatMap((cue) => cues(cue).map((hit) => hit.fact));
   const items = ctx.profile.coverage.filter((item) => Object.hasOwn(COVERAGE_CUES, item) && evidence(item).length > 0);
