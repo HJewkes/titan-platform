@@ -2,8 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { partialFake } from "@titan-design/test-kit";
+import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { reviewScope, scopeFromDiff, type ReviewScopeResult } from "./review-scope.js";
+import { reviewScope, reviewScopeStep, scopeFromDiff, type ReviewScopeResult } from "./review-scope.js";
 
 const REPO = "acme/widgets";
 const TEST_GIT_ENV = {
@@ -172,5 +174,33 @@ describe("scopeFromDiff", () => {
     const unified = ['diff --git "a/src/\\303\\251.ts" "b/src/\\303\\251.ts"', '--- "a/src/\\303\\251.ts"', '+++ "b/src/\\303\\251.ts"', "@@ -0,0 +1 @@", "+x"].join("\n");
 
     expect(scopeFromDiff(numstat, unified)).toEqual({ scoped: false, reason: "the fix diff has a header it cannot read" });
+  });
+});
+
+/** A context whose journal already holds `recorded`, as a restarted run's would. */
+function replaying(recorded: unknown): { ctx: WorkflowContext; steps: string[] } {
+  const steps: string[] = [];
+  async function dispatch<T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
+    steps.push(stepId);
+    return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: options.schema?.parse({ result: recorded }) };
+  }
+  return { ctx: partialFake<WorkflowContext>({ runId: "run-1", dispatch }), steps };
+}
+
+describe("reviewScopeStep", () => {
+  const input = { repo: REPO, baseRef: "main", sinceHead: "a".repeat(40), head: "b".repeat(40) };
+
+  it("replays the scope recorded for the head under a step keyed by that head", async () => {
+    const recorded = { scoped: true, sinceHead: "a".repeat(40), mergedBase: false, paths: ["src/a.ts"], hunks: [{ path: "src/a.ts", start: 3, count: 1 }], changedLines: 2 };
+    const { ctx, steps } = replaying(recorded);
+
+    expect(await reviewScopeStep(ctx, input)).toEqual(recorded);
+    expect(steps).toEqual([`sh-review-scope:${"b".repeat(40)}`]);
+  });
+
+  it("refuses a recorded scope that lacks its hunks rather than reading it as scoped", async () => {
+    const { ctx } = replaying({ scoped: true, sinceHead: "a".repeat(40), mergedBase: false, paths: ["src/a.ts"], changedLines: 2 });
+
+    await expect(reviewScopeStep(ctx, input)).rejects.toThrow();
   });
 });

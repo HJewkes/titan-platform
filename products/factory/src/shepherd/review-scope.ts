@@ -23,8 +23,8 @@ import {
 
 /** Which part of a fix-round head a re-review may read as the fix (TP-3735); a refusal means a full review, never a skipped one. */
 export const REVIEW_SCOPE_STEP = "sh-review-scope";
-export const SCOPE_MAX_LINES = 400;
-export const SCOPE_MAX_PATHS = 40;
+const SCOPE_MAX_LINES = 400;
+const SCOPE_MAX_PATHS = 40;
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ScopeInputSchema = z
@@ -34,7 +34,7 @@ type ReviewScopeInput = z.infer<typeof ScopeInputSchema>;
 
 /** Changed lines at the head: `count` lines from `start`, or for `count` 0 a pure deletion just after line `start`, as `git diff -U0` writes them. */
 const HunkSchema = z.object({ path: z.string(), start: z.number().int(), count: z.number().int() });
-export type ScopeHunk = z.infer<typeof HunkSchema>;
+type ScopeHunk = z.infer<typeof HunkSchema>;
 
 const ScopedSchema = z.object({
   scoped: z.literal(true),
@@ -49,7 +49,7 @@ const FullSchema = z.object({ scoped: z.literal(false), reason: z.string() });
 const ReviewScopeResultSchema = z.discriminatedUnion("scoped", [ScopedSchema, FullSchema]);
 export type ReviewScopeResult = z.infer<typeof ReviewScopeResultSchema>;
 type Full = z.infer<typeof FullSchema>;
-export type ScopeDiff = Pick<z.infer<typeof ScopedSchema>, "paths" | "hunks" | "changedLines">;
+type ScopeDiff = Pick<z.infer<typeof ScopedSchema>, "paths" | "hunks" | "changedLines">;
 
 const full = (reason: string): Full => ({ scoped: false, reason });
 
