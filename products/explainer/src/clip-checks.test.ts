@@ -54,7 +54,7 @@ describe("clippedText", () => {
   });
 
   it("omits the moment when the measurement has none", () => {
-    const { t: _t, ...untimed } = threeLineHeadline();
+    const untimed: MeasuredText = { ...threeLineHeadline(), t: undefined };
     expect(clippedText([untimed])[0]).not.toHaveProperty("t");
   });
 });
