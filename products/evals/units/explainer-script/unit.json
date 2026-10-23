@@ -1,0 +1,129 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "explainer-script",
+  "version": "1.0.0",
+  "title": "Write a script/v1 draft from a spine and a facts pack",
+  "description": "One claude-print call from the spine, the facts pack and the script guide, one schema retry, then up to two L0 repair calls; the checks step gates on L0 error rows and pace.",
+  "input": {
+    "type": "object",
+    "required": [
+      "inputs"
+    ],
+    "properties": {
+      "inputs": {
+        "type": "object",
+        "required": [
+          "spine",
+          "facts"
+        ],
+        "properties": {
+          "spine": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "facts": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "files": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "outputs",
+      "checks"
+    ],
+    "properties": {
+      "outputs": {
+        "type": "object",
+        "required": [
+          "draft"
+        ],
+        "properties": {
+          "draft": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "checks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "pass"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "pass": {
+              "type": "boolean"
+            },
+            "gate": {
+              "type": "boolean"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "objective": {
+    "constraints": [
+      {
+        "metric": "l0-error-rows",
+        "max": 0
+      },
+      {
+        "metric": "pace-error-rows",
+        "max": 0
+      }
+    ],
+    "noCriticalFailures": true,
+    "primary": {
+      "name": "cold-undefined-items-per-min",
+      "direction": "minimize"
+    }
+  },
+  "acceptance": {
+    "levels": [
+      {
+        "level": 1,
+        "minCases": 2
+      },
+      {
+        "level": 2,
+        "successLowerBound": 0.7
+      },
+      {
+        "level": 3,
+        "successLowerBound": 0.85
+      },
+      {
+        "level": 4,
+        "holdDays": 14
+      }
+    ]
+  },
+  "visibility": "public"
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "titan.case/v1",
+  "id": "fixture-v4",
+  "unit": {
+    "id": "explainer-video",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "spine": "ba44bbc931b65e462e0e1d92dd1ef1b68c54c698fbb10ca6175cd6eb83fbe44b",
+      "facts": "000dc1cc848ebb44ffd023cfc3afd8a02e054691a9d7b426e5caf2fbbe6a8354"
+    },
+    "files": {
+      "spine": "products/explainer/fixtures/spike/redesign-explainer-v4/spine.md"
+    }
+  },
+  "fixture": {
+    "kind": "repo",
+    "repo": "HJewkes/titan-platform",
+    "sha": "5a288f3b2d346a03c3aa1326e361022e8f714cf0"
+  },
+  "split": "dev",
+  "tags": [
+    "fixture"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "explainer artifact store, by sha",
+    "labelVersion": 1
+  },
+  "visibility": "private"
+}
