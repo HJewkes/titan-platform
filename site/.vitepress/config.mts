@@ -3,7 +3,10 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 // Emitted by `pnpm docs:reference` from the workspace and the DAG in
 // .codewatch/check.json, so a new package never needs a hand edit here.
 import referenceSidebar from "./reference-sidebar.json";
-import homeCounts, { fillCounts } from "../home-counts.data.mjs";
+
+// Node loads the counts loader rather than the config bundler: a literal import would inline
+// scripts/gen-docs-reference.mjs, and esbuild rejects its shebang once it is no longer line 1.
+const { default: homeCounts, fillCounts } = await import(new URL("../home-counts.data.mjs", import.meta.url).href);
 
 // GitHub Pages serves this as a project site under /titan-platform/, not the
 // repo root, so every asset and link needs that prefix baked in.
