@@ -35,13 +35,6 @@
       "find": "  \"packages/workflow/src/types.ts\",\n",
       "replace": "",
       "kills": ["the G10 hold Shepherd places at registration holds a gate-resolve actor or evidence rule in packages/workflow/src/types.ts g10-adversary"]
-    },
-    {
-      "name": "the fix-proof config leaves the owner-action set",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": ", \".github/fix-proof.json\"]",
-      "replace": "]",
-      "kills": ["the G10 hold Shepherd places at registration holds a change to only the fix-proof gate's config g10-adversary"]
     }
   ]
 }

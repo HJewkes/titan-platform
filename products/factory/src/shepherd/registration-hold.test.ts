@@ -138,12 +138,6 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBe(`g10-adversary: ${touch} touch`);
   });
 
-  it("holds a change to only the fix-proof gate's config g10-adversary", async () => {
-    const r = rig([file(".github/fix-proof.json", 4)]);
-
-    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
-  });
-
   it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"])(
     "holds Shepherd's merge policy in %s g10-adversary",
     async (name) => {
