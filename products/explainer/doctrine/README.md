@@ -9,6 +9,19 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `vocabulary.yaml` | The allowed beats, video types and audiences a craft rule may scope to | `loadDoctrine` |
 | `evidence.tsv` | A verbatim copy of the narrative evidence ledger (`E##` ids and grades) | `loadDoctrine` |
 | `visual-router.json` | A pinned copy of titan-design's visual router; rewrite it with `scripts/pin-visual-router.mjs`, never by hand | `loadVisualRouter` |
+| `types/<type>.yaml` | One `type-profile/v1` per video type | `loadProfiles` |
+| `audiences/<id>.yaml` | The audience packs a profile allows (`audience-pack/v1`) | `loadProfiles` |
+| `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
+
+`checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` must also return no issues.
+
+## Adding a type profile
+
+Name the file after its `type`, which must be in `vocabulary.yaml`. Each block's beats come from
+the vocabulary; a beat a profile needs that is missing there waits for the beat-spec registry
+rather than being added alongside the profile. List in `series.mustVary` every `SERIES_BASE`
+field, plus `structure` when the order is `heuristic`. A fixed order lists neither `structure`
+nor `chapter-labels` there. Then run `explainer guide types` and commit the regenerated guides.
 
 `checkDoctrine(loadDoctrine(), loadRuleRegistry())` returns every issue in the craft registry; it
 must return none.

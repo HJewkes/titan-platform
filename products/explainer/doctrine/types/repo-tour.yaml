@@ -1,0 +1,40 @@
+# Repo tour (VT §2): the explain-repo default (decision 326.1). SCQA verdict with a fixed C4 chapter
+# skeleton; the chapter order never moves, because chapters are the viewer's navigation (VT §2.2).
+# Coverage restores the owner's seven subjects (VT §7.2) and the titan verdict (VT §5.3).
+schema: type-profile/v1
+type: repo-tour
+version: 0.1.0
+family: review-repo
+intent: "After one watch the viewer can say what the repo is for, how it is laid out, where execution starts, its 2-4 key features and where each lives, one or two things worth knowing, and what titan should adopt, adapt or avoid, and where to read first."
+audience: { default: owner-internal, allow: [owner-internal, public-youtube] }
+inputs: { adapters: [gatherReview], preconditions: [] }
+runtime: { targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 }
+structure:
+  order: fixed
+  macro: scqa-c4
+  blocks:
+    - { id: cold-open, goal: "The thing in action or its pain, what it is in one line, and the verdict line.", seconds: [25, 40], beats: [hook, promise, scorecard], require: [hook] }
+    - { id: purpose, goal: "Who uses it and which problem it solves; the system as one box among its users.", seconds: [45, 75], beats: [context-map, claim-card, stat] }
+    - { id: entry-points, goal: "Real, verified commands; one user flow; the running example introduced.", seconds: [60, 90], beats: [entry-points, user-flow] }
+    - { id: architecture, goal: "Packages named one by one, runtime arrows, a size or hotspot overlay.", seconds: [60, 120], beats: [arch-map, metrics-panel, dsm], require: [arch-map] }
+    - { id: request-walk, goal: "The running example traced from the entry point, slow pass then fast replay.", seconds: [60, 120], beats: [request-walk, sequence] }
+    - { id: features, goal: "Two to four feature chapters, each opening at its map station with a question and ending on a verdict chip.", seconds: [120, 480], beats: [chapter-open, zoom, info-flow, schema, sequence, code-walk, verdict-chip], require: [chapter-open, verdict-chip] }
+    - { id: worth-knowing, goal: "One algorithm and/or two or three surprising facts.", seconds: [45, 120], beats: [algo-trace, fact-flash, docs-vs-code, history] }
+    - { id: health, goal: "Hotspots, test gaps, coupling, licences and risks for us, pinned on the map.", seconds: [45, 90], beats: [issue-pin, metrics-panel, fix] }
+    - { id: scorecard, goal: "The scorecard fills its last rows: adopt, adapt, avoid, each pointing back to its chapter.", seconds: [45, 90], beats: [scorecard], require: [scorecard] }
+    - { id: read-first, goal: "Five files lit on the map, then the button.", seconds: [15, 30], beats: [reading-list, button, outro], require: [button] }
+cuts:
+  - { id: tour-short, when: "The owner wants the tour in less time: keep cold-open, purpose, architecture, request-walk, one feature, scorecard and read-first.", runtimeS: [300, 420] }
+  - { id: review-digest, when: "A repo in the routine review batch, not one the owner is deciding on (owner Q8 A).", runtimeS: [120, 180] }
+  - { id: argument, type: repo-argument, when: "One idea from the repo should land for an outside viewer.", runtimeS: [210, 300] }
+hook: "State the verdict in one line by 10% of runtime; grey scorecard rows open the loops the chapters close."
+ending: scorecard+button
+series:
+  mayRepeat: [frame-chrome, intro-outro, chapter-rail, house-look, captions, voice, structure, chapter-labels]
+  mustVary: [hook-kind, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
+audition: { k: 3, storyboardOnly: true }
+layers: { customMin: 1, templateMaxShare: 0.7, componentMaxShare: 0.3 }
+variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
+pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 120] }
+coverage: [purpose, layout, entry-point, key-features, worth-knowing, adopt-adapt-avoid, read-first, titan-verdict]
+publish: { ownerAskPerVideo: true, checks: [no-titan-verdict-on-screen] }
