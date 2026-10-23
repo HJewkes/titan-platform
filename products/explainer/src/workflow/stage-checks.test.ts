@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { L0Check } from "../eval-l0.js";
+import { DEFAULT_JUDGE } from "./host.js";
+import { runEvalStage, StageFailure } from "./model-stages.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
@@ -122,5 +124,19 @@ describe("running a stage's checks", () => {
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
       eval: [], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });
+  });
+});
+
+describe("eval stage gates", () => {
+  it("fails with its gate verdicts attached, before the rubric spends", async () => {
+    const { artifacts, store } = input({ script: json(choppy()), spine: SPINE });
+    const stage = { artifacts, store: { ...store, putText: () => "unused" } as never, from: { runId: "r", stage: "eval" }, remainingUsd: 1 };
+    let judged = 0;
+
+    const failure = await runEvalStage(stage, { judge: DEFAULT_JUDGE, harnessFor: () => { judged++; throw new Error("no judge"); } }, [l0Check(false)]).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(StageFailure);
+    expect((failure as StageFailure).checks.map((c) => [c.name, c.gate, c.pass])).toEqual([["l0", true, false], ["pace", true, true]]);
+    expect(judged).toBe(0);
   });
 });
