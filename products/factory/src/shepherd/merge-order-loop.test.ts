@@ -136,6 +136,25 @@ async function finish(loop: Loop, ...prs: number[]): Promise<void> {
   await Promise.all(prs.map((pr) => loop.host.runtime.wait(loop.runs.get(pr)!)));
 }
 
+/** A run the owner holds in its merge step, which reads as merging to every other run. */
+function heldInMerge(loop: Loop, pr: number): string {
+  const runId = shepherd(loop, pr);
+  loop.store.hold(runId, "owner hold in this test");
+  return runId;
+}
+
+/** R stands in for a conflicted run that reserved while `ahead` was merging, so it waits on `ahead` and holds the rest. */
+function reserveAhead(loop: Loop, r: string, ahead: string): void {
+  const since = "2026-10-23T10:00:00.000Z";
+  loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths: [CAPABILITY], ahead: [ahead], since, reason: "R waits on X" });
+}
+
+/** X conflicts at its current head with nothing merged, until its fixer pushes. */
+function dirtyUntilPushed(loop: Loop): void {
+  const head = loop.fake.pr(X).headSha;
+  loop.fake.onGetPr = ((greenRuns) => (pr, reads) => (greenRuns(pr, reads), pr.number === X && pr.headSha === head && (pr.mergeableState = "dirty")))(loop.fake.onGetPr!);
+}
+
 /** Y lands first, so X starts out conflicted; Z's review waits until X's conflict is under way. */
 async function afterY(loop: Loop): Promise<void> {
   shepherd(loop, Y);
@@ -220,6 +239,49 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     expect(loop.wakes).toEqual([]);
     expect(loop.merged).toEqual([Y, X]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: true }]);
+  });
+
+  it("never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring", async () => {
+    const loop = loopWorld(true);
+    const r = heldInMerge(loop, Y);
+    const x = heldInMerge(loop, X);
+    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, X)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
+    reserveAhead(loop, r, x);
+    shepherd(loop, Z);
+    await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
+
+    dirtyUntilPushed(loop);
+    loop.store.release(x);
+    await finish(loop, X);
+    loop.store.release(r);
+    await finish(loop, Y, Z);
+
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [] }]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
+    expect(loop.wakes).toHaveLength(1);
+    expect(loop.merged).toEqual([X, Y, Z]);
+  });
+
+  it("stops waiting on a run it let merge first once that run is held behind a live reservation", async () => {
+    const loop = loopWorld(true);
+    loop.fake.prFiles.set(Y, [{ path: "products/other/README.md", status: "modified" }]);
+    const r = heldInMerge(loop, Y);
+    const z = heldInMerge(loop, Z);
+    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, Z)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
+    dirtyUntilPushed(loop);
+    const x = shepherd(loop, X);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
+
+    reserveAhead(loop, r, x);
+    await finish(loop, X);
+    loop.store.release(r);
+    loop.store.release(z);
+    await finish(loop, Y, Z);
+
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
+    expect(loop.wakes).toHaveLength(1);
+    expect(loop.merged).toEqual([X, Y, Z]);
   });
 
   it("releases the reservation when its run lands", async () => {

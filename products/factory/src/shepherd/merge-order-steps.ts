@@ -7,7 +7,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { PrTarget } from "./gates.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
 import { stillOpen } from "./merge-order-guard.js";
-import { blockers, overlapping, withinTtl, type MergeOrder, type MergeOrderRule, type MergeOrderRules } from "./merge-order.js";
+import { blockers, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
@@ -48,14 +48,35 @@ function mergingPeer(run: WorkflowRun, input: OrderInput, reserved: ReadonlySet<
   return pr > 0 && stage?.stage === "train" ? { pr, headSha: stage.headSha } : undefined;
 }
 
-/** The runs already in their merge step that overlap `paths`; an unread peer counts, so it is never held behind the reservation. */
+type PeerPaths = () => Promise<{ paths: string[]; unread?: string }>;
+
+/**
+ * A run in its merge step may be waiting there behind a live reservation rather than merging. Counting it as merging
+ * lets three runs wait on each other in a ring until the TTL, so a peer counts only when the guard would let it merge.
+ */
+async function heldByOrder(deps: MergeOrderStepDeps, repo: RepoSlug, runId: string, read: PeerPaths, reservations: readonly Reservation[], rule: MergeOrderRule): Promise<boolean> {
+  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), (id) => deps.order().isDriving(id));
+  if (live({ repo, runId, paths: [], unread: true }).length === 0) return false;
+  const theirs = await read();
+  for (const blocker of live({ repo, runId, paths: theirs.paths, unread: theirs.unread !== undefined })) {
+    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;
+  }
+  return false;
+}
+
+const peerPaths = (port: GitHubPort, repo: RepoSlug, pr: number, headSha: string): PeerPaths => () => pinnedPaths(port, { repo, pr, head: headSha }, headSha);
+
+/** The runs merging now that overlap `paths`; an unread peer counts, so it is never held behind the reservation. */
 async function mergingAhead(deps: MergeOrderStepDeps, input: OrderInput, paths: readonly string[], rule: MergeOrderRule): Promise<string[]> {
-  const reserved = new Set(deps.order().list(input.repo).map((reservation) => reservation.runId));
+  const reservations = deps.order().list(input.repo);
+  const reserved = new Set(reservations.map((reservation) => reservation.runId));
+  const others = reservations.filter((reservation) => reservation.runId !== input.runId);
   const ahead: string[] = [];
   for (const run of deps.order().driving()) {
     const peer = mergingPeer(run, input, reserved);
     if (peer === undefined) continue;
     const theirs = await pinnedPaths(deps.port, { repo: input.repo, pr: peer.pr, head: peer.headSha }, peer.headSha);
+    if (await heldByOrder(deps, input.repo, run.id, async () => theirs, others, rule)) continue;
     if (theirs.unread !== undefined || overlapping(input.repo, paths, theirs.paths, rule).length > 0) ahead.push(run.id);
   }
   return ahead;
@@ -79,6 +100,19 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   return { reserved: true, ahead };
 }
 
+/** The PRs of the `ahead` runs still driving and not since held behind a live reservation, read again on every poll. */
+async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: readonly string[], reservations: readonly Reservation[], rule: MergeOrderRule): Promise<number[]> {
+  const runs = new Map(deps.order().driving().map((run) => [run.id, run]));
+  const prs: number[] = [];
+  for (const run of ahead.flatMap((runId) => runs.get(runId) ?? [])) {
+    const pr = Number(run.params.pr);
+    const headSha = stageOf(run)?.headSha;
+    if (headSha !== undefined && (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;
+    prs.push(pr);
+  }
+  return prs;
+}
+
 /** The open PRs the reserving run still waits on: earlier live overlapping reservations, then the runs it let merge first. */
 async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<number[]> {
   const rule = deps.rules(input.repo);
@@ -87,8 +121,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const own = reservations.find((reservation) => reservation.runId === input.runId);
   if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now())) return [];
   const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), (id) => order.isDriving(id));
-  const prs = new Map(order.driving().map((run) => [run.id, Number(run.params.pr)]));
-  const ahead = own.ahead.flatMap((runId) => (prs.has(runId) ? [prs.get(runId)!] : []));
+  const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
   for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOpen(deps.port, input.repo, pr)) open.push(pr);
   return open;
