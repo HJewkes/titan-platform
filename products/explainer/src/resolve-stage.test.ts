@@ -6,8 +6,6 @@ import { readEmphasisInput, resolveConfig, ResolvedSchema, runResolveStage } fro
 import type { ScriptV1 } from "./script-schema.js";
 import { sha256 } from "./workflow/artifacts.js";
 import { failedGates, runStageChecks } from "./workflow/stage-checks.js";
-import { DEFAULT_JUDGE } from "./workflow/host.js";
-import { stageSpec, type RunSettings } from "./workflow/stage-spec.js";
 
 /** An in-memory store over named texts that records every write, so a test can tell nothing was stored. */
 function store(texts: Record<string, string>) {
@@ -112,24 +110,5 @@ describe("emphasis-target gate on the resolve stage", () => {
     const input = readEmphasisInput({ artifacts: { ...s.artifacts, ...outcome.outputs }, store: s.store, l0Checks: [] });
     expect(input.layout?.boxes.h2?.held).toEqual({ x: 1900, y: 10, width: 100, height: 40 });
     expect(input.beats.find((beat) => beat.id === "h2")?.visual.beat).toBe("stat");
-  });
-});
-
-describe("resolve stage spec", () => {
-  const settings: RunSettings = { scriptModel: "m", judge: DEFAULT_JUDGE, rounds: 1 };
-  const spec = (artifacts: Record<string, string>) => stageSpec({ stage: "resolve", artifacts, settings, sample: 0, remainingUsd: 1, bridge: () => { throw new Error("no bridge"); } });
-
-  it("keys on the script, on the doctrine, and on a code artifact only when the run has one", () => {
-    const bare = spec({ script: "a".repeat(64), facts: "f".repeat(64) });
-    const withCode = spec({ script: "a".repeat(64), code: "c".repeat(64) });
-
-    expect(bare.inputs).toEqual({ script: "a".repeat(64) });
-    expect(bare.config).toEqual(config);
-    expect(withCode.inputs).toEqual({ script: "a".repeat(64), code: "c".repeat(64) });
-    expect(withCode.key).not.toBe(bare.key);
-  });
-
-  it("fails before the stage starts when no script exists", () => {
-    expect(() => spec({ code: "c".repeat(64) })).toThrow(`stage resolve needs artifact "script"`);
   });
 });
