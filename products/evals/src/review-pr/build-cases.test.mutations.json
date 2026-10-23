@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a head the clone lacks aborts the build",
+      "file": "products/evals/src/review-pr/build-cases.ts",
+      "find": "    return void bump(context.skipped, \"head-unreachable\");",
+      "replace": "    throw new Error(\"head unreachable\");",
+      "kills": [
+        "buildReviewPrCases counts a head the clone does not hold as head-unreachable and still builds the rest"
+      ]
+    }
+  ]
+}

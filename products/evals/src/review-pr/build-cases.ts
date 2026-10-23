@@ -113,7 +113,16 @@ function historyCase(context: BuildContext, heads: Heads, kind: "defect" | "clea
   });
 }
 
+/** A head or next head the clone no longer holds (force-pushed away, never fetched) skips that row instead of aborting the build. */
 async function draftOf(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
+  try {
+    return await draftFromClone(context, row, kind);
+  } catch {
+    return void bump(context.skipped, "head-unreachable");
+  }
+}
+
+async function draftFromClone(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
   const git = context.gitFor(row.repo);
   if (!git) return void bump(context.skipped, "no-clone");
   const heads = { repo: row.repo, pr: row.pr, head: row.head, base: await baseOf(git, row, context.mainRef) };

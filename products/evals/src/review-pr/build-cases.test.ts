@@ -182,4 +182,18 @@ describe("buildReviewPrCases", () => {
     expect(written).not.toContain(PRIVATE_SLUG);
     expect(written).not.toContain("household-notes");
   });
+
+  it("counts a head the clone does not hold as head-unreachable and still builds the rest", async () => {
+    const missing = "0123456789abcdef0123456789abcdef01234567";
+    const rows = [
+      ...corpus(fixture),
+      row({ pr: 20, head: missing, verdict: "FIX_FIRST", label: "caught", nextHead: fixture.fix, citedPaths: ["a.ts"] }),
+      row({ pr: 21, head: missing, verdict: "MERGE", label: "clean", mergeSha: missing }),
+    ];
+
+    const { manifest } = await build(rows);
+
+    expect(manifest.skipped).toEqual({ pending: 1, "superseded-clean": 1, "head-unreachable": 2 });
+    expect(manifest.counts).toEqual({ defect: 1, clean: 2, control: 6 });
+  });
 });
