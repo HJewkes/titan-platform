@@ -37,6 +37,7 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `parseScript` also rejects a `structure` the registry lacks,
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
+`emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and
