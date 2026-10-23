@@ -53,14 +53,19 @@ function readNumberRun(run: string): string {
   };
   for (const word of run.toLowerCase().split(/\s+/)) {
     if (word === "and") {
-      if (last !== "hundred" && last !== "scale") (flush(), out.push("and"));
+      if (last !== "hundred" && last !== "scale") {
+        flush();
+        out.push("and");
+      }
       continue;
     }
     const { kind, value } = wordValue(word);
     if (!continues(last, kind)) flush();
     if (kind === "hundred") current = (current || 1) * 100;
-    else if (kind === "scale") (total += (current || 1) * value, (current = 0));
-    else current += value;
+    else if (kind === "scale") {
+      total += (current || 1) * value;
+      current = 0;
+    } else current += value;
     last = kind;
   }
   flush();
