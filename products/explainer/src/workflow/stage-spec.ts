@@ -5,6 +5,7 @@ import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { sha256 } from "./artifacts.js";
+import { auditionConfig } from "./audition-stage.js";
 import type { BridgeFile } from "./bridge.js";
 import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
 
@@ -12,10 +13,10 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { script: "x4", rewrite: "x4", eval: "x4", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8", script: "x4", rewrite: "x4", eval: "x4", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
-const MODEL_INPUTS: Record<"script" | "rewrite" | "eval", readonly string[]> = { script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"] };
+const IN_PROCESS_INPUTS: Record<"audition" | "script" | "rewrite" | "eval", readonly string[]> = { audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"] };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
 export const VariantSchema = z.object({
@@ -35,6 +36,9 @@ export const StageConfigSchema = z.object({
   model: z.string().optional(),
   judge: JudgeConfigSchema.optional(),
   rounds: z.number().optional(),
+  /** The audition's profile and structure registry, by version and content hash. */
+  profile: z.object({ type: z.string(), version: z.string(), sha: z.string() }).optional(),
+  structures: z.string().optional(),
   /** A bridged stage's own block of `bridge.json`, so an edited command misses the cache. */
   bridge: z.unknown().optional(),
   vars: z.record(z.string(), z.string()).optional(),
@@ -59,6 +63,8 @@ export interface RunSettings {
   scriptModel: string;
   judge: JudgeConfig;
   rounds: number;
+  /** The video type whose profile the audition reads; a run with no audition has none. */
+  profile?: string;
 }
 
 /** `sha(stage, definition version, config with the variant, the inputs the stage reads, sample)`: never the outputs, which TTS does not reproduce byte for byte. */
@@ -81,6 +87,11 @@ function bridgeConfig(stage: BridgeStage, params: Variant["params"], bridge: () 
 }
 
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
+  if (stage === "audition") {
+    z.strictObject({}).parse(params);
+    if (!settings.profile) throw new Error("stage audition needs a profile: pass --profile <type>");
+    return auditionConfig(settings.profile);
+  }
   if (stage === "script") return { model: ScriptParamsSchema.parse(params).model ?? settings.scriptModel };
   if (stage === "rewrite") {
     const p = RewriteParamsSchema.parse(params);
@@ -91,7 +102,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
 }
 
 const inputNames = (stage: CachedStage, bridge: () => BridgeFile): readonly string[] =>
-  isBridgeStage(stage) ? Object.keys(bridgeBlock(stage, bridge).inputs) : MODEL_INPUTS[stage];
+  isBridgeStage(stage) ? Object.keys(bridgeBlock(stage, bridge).inputs) : IN_PROCESS_INPUTS[stage];
 
 export interface SpecRequest {
   stage: CachedStage;

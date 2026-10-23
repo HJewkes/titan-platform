@@ -122,6 +122,8 @@ const ScriptVisualSchema = z
     framing: z.enum(FRAMINGS).optional(),
     anchors: z.array(AnchorId).min(1).optional(),
     scene: Text.optional(),
+    // A beat-spec name: the emphasis gate reads the spec's target lists before template fill writes the slots.
+    beat: Kebab.optional(),
     // `target` is an element id the beat's emphasis mapping resolves; atCue to untilCue is the spoken span it covers.
     cues: z
       .array(

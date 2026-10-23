@@ -287,7 +287,19 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
     because vitest reports those as a plain `Error`.
 - **Coverage.** A killed spec proves only the test file beside it. The judge lists every
   changed test file (`plan.tests`) that no spec in the diff sits beside as
-  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
+  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. One kind of changed
+  test is left out: a test matching the config's `carry` globs (such as one under
+  `test-support/`) whose runtime imports, followed through every carried file they reach,
+  load only carried files, vitest and an allow-list of builtins that cannot start a process, a
+  worker or evaluated source (`fs`, `path`, `url`, `assert` and the like). `checkMutation`
+  refuses a carried file as a target, so a spec could reach such a test only through a file it
+  reads. A carried test needs a spec if anywhere in that closure it loads non-carried source,
+  another package, `child_process`, `worker_threads`, `vm` or any unlisted builtin, a relative
+  import the judge cannot resolve at head, or runs code outside the import graph (a computed
+  `import()`, `eval`, `new Function`, `vi.importActual`). Type-only imports are ignored, as the
+  test never loads them. The rule assumes a carried test reads files through `fs` only to judge
+  tests or carried files; one that asserts on the text of non-carried source would be exempt
+  although a spec could cover it. A line from a judge
   before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
   diff that deletes a test or renames one out of the tests is not test-only
   (`testOnlyReading`), so the judge attaches no `mutants` to it at all.

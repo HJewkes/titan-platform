@@ -24,6 +24,7 @@ interface RunFlags {
   scriptModel: string;
   judge?: string;
   rounds: number;
+  profile?: string;
 }
 
 /** Everything but the data dir is injectable, so the CLI runs on fakes in a test. */
@@ -91,7 +92,8 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .description("Make one explainer video end to end on the workflow runtime, then write run-report.md (see also `run report --help`, `run resume --help`)")
     .addOption(dataDirOption())
     .option("--spine <file>", "story spine markdown; required from script unless --base supplies it")
-    .option("--facts <file>", "facts pack markdown; required from script unless --base supplies it")
+    .option("--facts <file>", "facts pack, markdown or JSON lines; required from audition or script unless --base supplies it")
+    .option("--profile <type>", "the video type whose profile the audition reads; required from audition")
     .addOption(new Option("--from <stage>", "first stage to run; earlier stages reuse the base run's outputs").choices(STAGES).default("script"))
     .addOption(new Option("--to <stage>", "last stage to run; a run that stops before export never reaches the theater").choices(STAGES).default("export"))
     .option("--base <runId>", "the run whose outputs stand in for the stages before --from (default: the latest run, unless --pin is given)")
@@ -110,6 +112,7 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
         ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
         ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
         from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
+        ...(flags.profile ? { profile: flags.profile } : {}),
       }, hostFor(flags, deps));
       onResult(summary(result, io));
     });
