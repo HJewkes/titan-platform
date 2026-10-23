@@ -33,6 +33,9 @@ export const GATHER_CODES = {
   "W-NO-SKIM": { severity: "warning" },
   "W-NO-HISTORY": { severity: "warning" },
   "W-HISTORY-PIN": { severity: "warning" },
+  "W-NO-SUMMARY": { severity: "warning" },
+  "W-CHAPTER-UNMAPPED": { severity: "warning" },
+  "W-FACT-UNKNOWN": { severity: "warning" },
 } as const satisfies Record<string, CodeSpec>;
 
 export type GatherCode = keyof typeof GATHER_CODES;

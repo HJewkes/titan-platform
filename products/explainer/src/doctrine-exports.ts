@@ -102,4 +102,12 @@ export {
   type EnrichResult,
   type ReviewBundle,
   type Structure,
+  COMPANION_FILE,
+  COMPANION_SECTIONS,
+  companionChapters,
+  renderCompanion,
+  type ChapterLink,
+  type ChapterLinks,
+  type CompanionChapter,
+  type CompanionResult,
 } from "./presets/repo-explainer/index.js";

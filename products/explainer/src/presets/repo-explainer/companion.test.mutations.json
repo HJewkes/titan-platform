@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a merged digest chapter links its last tour block",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "const section = chapter.blocks.find(",
+      "replace": "const section = [...chapter.blocks].reverse().find(",
+      "kills": [
+        "the repo companion doc over the whiteboard review links the tour and the digest into the same doc, a merged digest chapter at its first tour chapter's anchor"
+      ]
+    },
+    {
+      "name": "the chapter rows of the spine are ignored",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "row === undefined ? [position + 1]",
+      "replace": "true ? [position + 1]",
+      "kills": [
+        "the repo companion doc over the whiteboard review links the tour and the digest into the same doc, a merged digest chapter at its first tour chapter's anchor"
+      ]
+    },
+    {
+      "name": "a section loses its anchor",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "return `<a id=\"${section.id}\"></a>",
+      "replace": "return `<a id=\"s-${section.id}\"></a>",
+      "kills": [
+        "the repo companion doc over the whiteboard review gives every tour and digest chapter a link whose anchor the doc holds"
+      ]
+    },
+    {
+      "name": "a fact loses its anchor",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "return `- <a id=\"${factAnchor(fact.id)}\"></a>",
+      "replace": "return `- <a id=\"f-${fact.id}\"></a>",
+      "kills": [
+        "the repo companion doc over the whiteboard review places each fact a chapter cites in that chapter's section, at the fact's own anchor",
+        "the repo companion doc over the whiteboard review puts every gathered fact in the doc once"
+      ]
+    },
+    {
+      "name": "a review with no SUMMARY facts gives no warning",
+      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
+      "find": "if (!facts.some((fact) => fact.source === \"summary\")) diagnostics.push(",
+      "replace": "if (facts.length < 0) diagnostics.push(",
+      "kills": [
+        "the repo companion doc over the whiteboard review warns W-NO-SUMMARY, and still renders every section, when no fact comes from the SUMMARY"
+      ]
+    }
+  ]
+}
