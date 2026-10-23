@@ -1107,6 +1107,9 @@ importers:
       '@titan-design/agent':
         specifier: workspace:^
         version: link:../../packages/agent
+      '@titan-design/agent-protocol':
+        specifier: workspace:^
+        version: link:../../packages/agent-protocol
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
