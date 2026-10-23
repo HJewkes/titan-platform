@@ -4,7 +4,7 @@ import type { ScriptV1 } from "./script-schema.js";
 /** A token the voice must say, as speech-tts's strict mode counts it: one holding a letter or a digit. */
 const IS_WORD = /[\p{L}\p{N}]/u;
 
-export interface UnknownWord {
+interface UnknownWord {
   beat: string;
   word: string;
 }

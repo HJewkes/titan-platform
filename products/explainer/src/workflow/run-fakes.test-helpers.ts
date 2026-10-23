@@ -141,7 +141,7 @@ interface FakeScriptModel {
 const LEAD_LINE = /^- (\S+): ([a-z0-9-]+) \(emphasis targets: ([^)]+)\)/gm;
 
 /** `script` with each lead beat the prompt lists on its chapter's first beat, cued once per target on a word it speaks. */
-export function withLeadBeats(script: ScriptV1, prompt: string): ScriptV1 {
+function withLeadBeats(script: ScriptV1, prompt: string): ScriptV1 {
   const leads = new Map([...prompt.matchAll(LEAD_LINE)].map(([, chapter, spec, targets]) => [chapter!, { spec: spec!, targets: targets!.split(", ") }]));
   const beats = script.beats.map((beat) => {
     const lead = leads.get(beat.chapter);
