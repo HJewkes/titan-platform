@@ -393,6 +393,35 @@ stage, the spend and wall time delta, the stages the run took from a cache, and 
 `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
 
+### `explainer pr`: PR videos
+
+`gatherPr` (`src/presets/pr-overview/`) is the pr-overview profile's gather stage body (`inputs.adapters:
+[gatherPr]`). `explainer pr gather <owner/repo#N> --clone <dir> --out <dir>` runs it on request. It reads the PR
+through two `gh pr` calls (`view --json` and `diff`), and indexes the head commit's tree with code-graph from the
+clone's git objects, so the clone needs the commit (`git fetch origin pull/N/head`) but no checkout of it. It writes
+`facts.jsonl` (`PrFactSchema`, sorted by kind then id) and `gather.json` (outcome and diagnostics):
+
+| Kind | Id | Feeds |
+|---|---|---|
+| `pr` | `pr` | `summary`: title, linked task, head sha |
+| `change` | `change:<path>` | `changes`: status, +/- counts, head-side hunk line spans |
+| `finding` | `finding:<sha256(origin, body)[:12]>` | `shortcomings`: each review or comment with a body, and its `Verdict:` |
+| `call` | `call:<from>-><to>` | `interactions`, the sequence slot: calls between two different changed files |
+
+Ids come from content, never position, so two gathers of one head write the same bytes and a new comment renumbers
+nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`, `E-EMPTY-DIFF`, `E-LINKED-TASK`
+(no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
+index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
+
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--json] [--data-dir <dir>]` is the only
+automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
+only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+Every other PR, seat gates and other owner holds included, is on request only. A start writes
+`<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`) and
+then the gather into the same directory; a directory that already holds `brief.json` is `already`, so a repeated
+sweep starts each head once. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an
