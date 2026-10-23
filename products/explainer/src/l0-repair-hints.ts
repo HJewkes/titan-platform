@@ -1,5 +1,6 @@
 import type { L0Result } from "./eval-l0.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
+import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import type { ScriptV1 } from "./script-schema.js";
@@ -38,6 +39,11 @@ function plainOpeningHint(script: ScriptV1): string | undefined {
   return `the first identifier the voice says is "${first.word}" in ${first.beat}, after ${percent(first.share)} of the words (needs ${percent(MIN_PLAIN_SHARE)}); say it in plain words there, or name it later`;
 }
 
+function headlineHint(script: ScriptV1): string {
+  const named = overlongHeadlines(script.beats).map((beat) => `${beat.id} "${beat.visual.assertion}" (${headlineLines(beat.visual.assertion)} lines)`);
+  return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
+}
+
 const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F1": linkHint,
   "Q-F3": threadHint,
@@ -45,6 +51,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
+  "Q-V13": headlineHint,
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
