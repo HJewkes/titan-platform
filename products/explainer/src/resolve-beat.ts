@@ -4,8 +4,7 @@ import type { ScriptBeat } from "./script-schema.js";
 import { FRAMING_ANCHORS, matchRow, RESOLVE_ROWS, type ContentShape, type Framing, type ResolveKey, type ResolveRow, type VisualLayer } from "./resolve-tables.js";
 import { findVisualType, type VisualRouter } from "./visual-router.js";
 
-export const RESOLVE_CODES = ["E-RESOLVE-JOB-UNSET", "E-RESOLVE-NO-ROW", "E-RESOLVE-UNKNOWN-BEAT", "E-RESOLVE-STILL-MOTION", "E-RESOLVE-CITATION"] as const;
-export type ResolveCode = (typeof RESOLVE_CODES)[number];
+type ResolveCode = "E-RESOLVE-JOB-UNSET" | "E-RESOLVE-NO-ROW" | "E-RESOLVE-UNKNOWN-BEAT" | "E-RESOLVE-STILL-MOTION" | "E-RESOLVE-CITATION";
 
 export interface ResolveRefusal {
   beat: string;
@@ -37,7 +36,7 @@ export interface ResolvedBeat {
 
 type Beat = Pick<ScriptBeat, "id" | "chapter" | "function" | "kind" | "visual">;
 
-export function contentShape(visual: ScriptBeat["visual"]): ContentShape {
+function contentShape(visual: ScriptBeat["visual"]): ContentShape {
   if (visual.code) return "code";
   if (visual.map_state) return "map";
   if (visual.labels.length > 0 || visual.chips.length > 0) return "items";
@@ -45,7 +44,7 @@ export function contentShape(visual: ScriptBeat["visual"]): ContentShape {
 }
 
 /** The beat's resolver key, or a refusal when its job is still the writer's placeholder, not a visual job. */
-export function resolveKey(beat: Beat, router: VisualRouter): ResolveKey | ResolveRefusal {
+function resolveKey(beat: Beat, router: VisualRouter): ResolveKey | ResolveRefusal {
   const job = VisualSchema.shape.job.safeParse(beat.visual.job);
   if (!job.success) return { beat: beat.id, code: "E-RESOLVE-JOB-UNSET", detail: "visual.job is not authored yet" };
   const route = beat.kind !== undefined && findVisualType(router, beat.kind) ? beat.kind : "none";

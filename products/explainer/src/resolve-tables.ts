@@ -11,8 +11,8 @@ import type { BEAT_FUNCTIONS, FRAMINGS, VISUAL_LAYERS } from "./script-schema.js
 /** What a beat's visual track carries, read off its fields: the resolver's `content` key. */
 export const CONTENT_SHAPES = ["code", "map", "items", "statement"] as const;
 
-export type BeatFunction = (typeof BEAT_FUNCTIONS)[number];
-export type VisualJob = z.infer<typeof VisualSchema.shape.job>;
+type BeatFunction = (typeof BEAT_FUNCTIONS)[number];
+type VisualJob = z.infer<typeof VisualSchema.shape.job>;
 export type ContentShape = (typeof CONTENT_SHAPES)[number];
 export type Framing = (typeof FRAMINGS)[number];
 export type VisualLayer = (typeof VISUAL_LAYERS)[number];

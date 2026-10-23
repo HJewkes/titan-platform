@@ -37,7 +37,7 @@ export const ResolvedSchema = z.object({
   beats: z.array(ResolvedBeatSchema),
   budgets: z.array(BudgetRowSchema),
 });
-export type Resolved = z.infer<typeof ResolvedSchema>;
+type Resolved = z.infer<typeof ResolvedSchema>;
 
 /** The doctrine the resolve stage reads, by content hash: beat specs, profiles and the pinned router. */
 export function resolveConfig(): { doctrine: string } {

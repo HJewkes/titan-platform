@@ -7,7 +7,7 @@ import type { ScriptBeat } from "./script-schema.js";
  * Words a second each speech band may carry (TP-2670's caps, adopted in decision 317a: DIRECTION §4): hook and story
  * 3.2, concept 2.8, code 2.3, takeaways 2.8, and a held beat at most 1.5.
  */
-export const BAND_WORDS_PER_S: Readonly<Record<SpeechBand, number>> = { story: 3.2, concept: 2.8, code: 2.3, takeaways: 2.8, held: 1.5 };
+const BAND_WORDS_PER_S: Readonly<Record<SpeechBand, number>> = { story: 3.2, concept: 2.8, code: 2.3, takeaways: 2.8, held: 1.5 };
 
 export interface BudgetRow {
   scope: "beat" | "block";
@@ -19,7 +19,7 @@ export interface BudgetRow {
   cap: number;
 }
 
-export interface BlockBudgets {
+interface BlockBudgets {
   rows: BudgetRow[];
   /** Chapters whose id names no block of the profile, so no block cap applies to their beats. */
   unplaced: string[];
@@ -59,7 +59,7 @@ export function blockBudgets(beats: readonly Pick<ScriptBeat, "chapter" | "spoke
   return { rows, unplaced };
 }
 
-export const overBudget = (rows: readonly BudgetRow[]): BudgetRow[] => rows.filter((budget) => budget.words > budget.cap);
+const overBudget = (rows: readonly BudgetRow[]): BudgetRow[] => rows.filter((budget) => budget.words > budget.cap);
 
 /** The word-budget gate's verdict: pass when no beat or block runs over its cap. */
 export function budgetVerdict(rows: readonly BudgetRow[]): { pass: boolean; detail: string } {

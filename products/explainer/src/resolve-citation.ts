@@ -4,7 +4,7 @@ import type { ResolveRefusal } from "./resolve-beat.js";
 import type { ScriptBeat } from "./script-schema.js";
 
 /** The `code` artifact: the cited files' text at the video's sha, by repo path. */
-export const CodeSourcesSchema = z.object({ files: z.record(z.string().min(1), z.string()) }).strict();
+const CodeSourcesSchema = z.object({ files: z.record(z.string().min(1), z.string()) }).strict();
 
 export const codeSource = (text: string): LineSource => lineSourceFromTexts(CodeSourcesSchema.parse(JSON.parse(text)).files);
 

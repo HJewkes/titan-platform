@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the resolver ignores the beat's function",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "allows(when.function, key.function) && ",
+      "replace": "",
+      "kills": [
+        "resolver tables picks by beat function: a numbers hook is a hook beat, a numbers stake a stakes beat"
+      ]
+    },
+    {
+      "name": "the resolver ignores the router type",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "allows(when.route, key.route));",
+      "replace": "true);",
+      "kills": [
+        "resolver tables routes by the visual-router type the beat's kind names"
+      ]
+    },
+    {
+      "name": "an unmatched beat falls back to a list",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "return rows.find(({ when })",
+      "replace": "return [...rows, { id: \"list\", when: {}, then: { beat: \"list\", framing: \"full\", layer: \"template\" } } as ResolveRow].find(({ when })",
+      "kills": [
+        "resolver tables refuses a beat that matches no row with a coded error, and never falls back to a list",
+        "resolver tables throws one ResolveError naming every refused beat"
+      ]
+    },
+    {
+      "name": "a code excerpt is not read as code content",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (visual.code) return \"code\";",
+      "replace": "",
+      "kills": [
+        "resolver tables routes a beat with a code excerpt to the code walk whatever its job"
+      ]
+    },
+    {
+      "name": "a cast-in-motion beat may resolve to a still template",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (key.job === \"cast-in-motion\" && layer !== \"custom\")",
+      "replace": "if (key.job === \"cast-in-motion\" && layer === \"none\")",
+      "kills": [
+        "resolver tables resolves a cast-in-motion beat to a moving layer and refuses one authored as a still template"
+      ]
+    },
+    {
+      "name": "refused beats do not stop the resolver",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (refused.length > 0) throw new ResolveError(refused);",
+      "replace": "",
+      "kills": [
+        "resolver tables throws one ResolveError naming every refused beat"
+      ]
+    }
+  ]
+}

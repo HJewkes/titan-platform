@@ -29,6 +29,11 @@ describe("word budget", () => {
     expect(budgetVerdict([beatBudget({ id: "b1", spoken: wordsLong(24), plannedS: 10 }, "code")]).pass).toBe(false);
   });
 
+  it("rounds a fractional cap down: a 5 s code slot holds 11 words, not 12", () => {
+    expect(beatBudget({ id: "b1", spoken: wordsLong(12), plannedS: 5 }, "code")).toMatchObject({ cap: 11 });
+    expect(budgetVerdict([beatBudget({ id: "b1", spoken: wordsLong(12), plannedS: 5 }, "code")]).pass).toBe(false);
+  });
+
   it("caps a profile block at its longest airtime, at the fastest rate its beat types allow", () => {
     // repo-tour's cold-open runs at most 40 s and allows hook (story, 3.2 w/s): 128 words.
     const beats = [{ chapter: "cold-open", spoken: wordsLong(70) }, { chapter: "cold-open", spoken: wordsLong(60) }, { chapter: "purpose", spoken: wordsLong(10) }];
