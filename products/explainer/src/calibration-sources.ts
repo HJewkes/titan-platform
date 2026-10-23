@@ -21,7 +21,7 @@ export const ManifestSchema = z.object({
     format: z.enum(["spike", "v1"]).default("v1"),
   }).strict()).min(1),
 }).strict();
-export type Manifest = z.infer<typeof ManifestSchema>;
+type Manifest = z.infer<typeof ManifestSchema>;
 type ManifestCase = Manifest["cases"][number];
 
 const BEAT_QUESTIONS: Record<string, string> = {
@@ -47,7 +47,7 @@ const spokenOf = (beats: readonly PaceBeat[]): string => beats.map((b) => b.spok
 const screenOf = (beat: PaceBeat): string => (beat.items.length === 0 ? "" : `\nOn screen: ${beat.items.map((i) => i.label).join(", ")}`);
 
 /** The whole script as heard, one paragraph a chapter, for the section the owner reads first. */
-export function scriptText(beats: readonly PaceBeat[]): string {
+function scriptText(beats: readonly PaceBeat[]): string {
   const chapters = [...new Set(beats.map((b) => b.chapter))];
   return chapters.map((c) => `[${c}] ${spokenOf(beats.filter((b) => b.chapter === c))}`).join("\n\n");
 }

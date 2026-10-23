@@ -36,7 +36,7 @@ export interface QueueItem {
   excerpt: string;
 }
 
-export const KeyEntrySchema = z
+const KeyEntrySchema = z
   .object({
     id: z.string().min(1),
     judge: z.enum(CALIBRATION_JUDGES),
@@ -91,7 +91,7 @@ function roundRobin(groups: readonly JudgedOutput[][], size: number): JudgedOutp
   return picked;
 }
 
-export const eligible = (output: CaseRef): boolean => output.split !== "holdout" && !output.ownerNamed;
+const eligible = (output: CaseRef): boolean => output.split !== "holdout" && !output.ownerNamed;
 
 /** Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. */
 export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012"): CalibrationQueue {

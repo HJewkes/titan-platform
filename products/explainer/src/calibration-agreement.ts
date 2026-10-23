@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AGREEMENT_BAR, CALIBRATION_JUDGES, MIN_LABELS_PER_JUDGE, type CalibrationJudge, type KeyEntry } from "./calibration-queue.js";
 
-export const LABEL_OPTIONS = { yes: "Yes", no: "No", unsure: "Can't tell" } as const;
+const LABEL_OPTIONS = { yes: "Yes", no: "No", unsure: "Can't tell" } as const;
 export type OwnerLabel = keyof typeof LABEL_OPTIONS;
 
 const FeedbackSchema = z.object({
@@ -23,7 +23,7 @@ export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
   }));
 }
 
-export const JudgeAgreementSchema = z.object({
+const JudgeAgreementSchema = z.object({
   judge: z.enum(CALIBRATION_JUDGES),
   items: z.number().int(),
   labelled: z.number().int(),

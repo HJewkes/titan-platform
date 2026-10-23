@@ -11,7 +11,7 @@ export interface RoundCase {
   script: string;
 }
 
-export interface RoundOptions {
+interface RoundOptions {
   unit: string;
   cases: ReadonlyMap<string, RoundCase>;
 }
