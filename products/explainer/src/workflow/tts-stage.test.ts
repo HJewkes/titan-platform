@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { decodeWav, TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
+import { decodeWav, TtsUnknownWordsError, type KokoroEngine, type TtsProvider } from "@titan-design/speech-tts";
+import type { Lexicon } from "@titan-design/speech-vet";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -194,5 +195,70 @@ describe("tts stage: Kokoro strict words", () => {
     const { provider } = await kokoroEngine();
 
     await expect(provider.synthesize({ text: "the zqxvbrt gate" }, "af_heart")).rejects.toBeInstanceOf(TtsUnknownWordsError);
+  });
+});
+
+/** A Kokoro engine that records the phoneme string of every chunk and returns a short tone, so no model loads. */
+function phonemeRecorder() {
+  const phonemes: string[] = [];
+  const engine: KokoroEngine = {
+    tokenize(ps) {
+      phonemes.push(ps);
+      return [0, ...[...ps].map((_, k) => k + 1), 0];
+    },
+    voicePack: () => Promise.resolve(new Float32Array(510 * 256)),
+    run: ({ ids }) => Promise.resolve({ waveform: new Float32Array(ids.length * 2 * 600).fill(0.1), durations: Float32Array.from(ids, () => 2) }),
+    dispose: () => Promise.resolve(),
+  };
+  return { phonemes, loadEngine: () => Promise.resolve(engine) };
+}
+
+const ZQX_LEXICON: Lexicon = { schema: "lexicon.v1", entries: [{ term: "zqxbuild", phonemes: { misaki: "zˈikjubˌɪld" } }, { term: "respelt", respell: "rispelt" }] };
+
+/** The two-beat fixture with the first beat speaking a word only the lexicon knows. */
+function lexiconBeats(spoken = "we ship the zqxbuild today"): ScriptV1 {
+  const script = twoBeats();
+  return { ...script, beats: [{ ...script.beats[0]!, spoken }, ...script.beats.slice(1)] };
+}
+
+describe("tts stage: Kokoro lexicon", () => {
+  it("voices a lexicon word with its misaki phonemes and keeps the word as written in words.json", async () => {
+    const { store, input, takesDir } = harness(lexiconBeats());
+    const recorder = phonemeRecorder();
+
+    const outcome = await runTtsStage(input, SPEECH, { engine: () => kokoroEngine({ lexicon: ZQX_LEXICON, loadEngine: recorder.loadEngine }), takesDir });
+
+    expect(recorder.phonemes.some((ps) => ps.includes("zˈikjubˌɪld"))).toBe(true);
+    const words = WordsSchema(store.readText(outcome.outputs.words!));
+    expect(words.beats[0]!.words.map((w) => w.word)).toContain("zqxbuild");
+  });
+
+  it("still refuses a word neither misaki nor the lexicon knows, before the model loads", async () => {
+    const { input, takesDir } = harness(lexiconBeats("we ship the zqxbuild and zqxvbrt today"));
+    const recorder = phonemeRecorder();
+
+    const run = runTtsStage(input, SPEECH, { engine: () => kokoroEngine({ lexicon: ZQX_LEXICON, loadEngine: recorder.loadEngine }), takesDir });
+
+    await expect(run).rejects.toBeInstanceOf(TtsUnknownWordsError);
+    expect(recorder.phonemes).toEqual([]);
+  });
+
+  it("re-voices every take when the lexicon's phonemes change, and not for a respelling-only edit", async () => {
+    const respellOnly: Lexicon = { ...ZQX_LEXICON, entries: [ZQX_LEXICON.entries[0]!] };
+    const changed: Lexicon = { ...ZQX_LEXICON, entries: [{ term: "zqxbuild", phonemes: { misaki: "zˈækbˌɪld" } }] };
+
+    const [base, same, other] = await Promise.all([ZQX_LEXICON, respellOnly, changed].map((lexicon) => kokoroEngine({ lexicon })));
+
+    expect(same!.version).toBe(base!.version);
+    expect(other!.version).not.toBe(base!.version);
+  });
+
+  it("voices ffmpeg from the doctrine lexicon", async () => {
+    const recorder = phonemeRecorder();
+    const { provider } = await kokoroEngine({ loadEngine: recorder.loadEngine });
+
+    await provider.synthesize({ text: "we rebuilt ffmpeg" }, "af_heart");
+
+    expect(recorder.phonemes.join(" ")).toMatch(/ɛf.*ɛf.*ɛm.*pˈɛɡ/);
   });
 });
