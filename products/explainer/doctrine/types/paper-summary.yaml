@@ -3,7 +3,7 @@
 # owner ask per video (owner Q4 B). Simulations are TypeScript only (owner Q3 A).
 schema: type-profile/v1
 type: paper-summary
-version: 0.1.0
+version: 0.2.0
 family: review-paper
 intent: "One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us."
 audience: { default: owner-internal, allow: [owner-internal, public-youtube] }
@@ -27,12 +27,12 @@ structure:
     - { id: situation, goal: "Where they stand, in one number.", seconds: [15, 40], beats: [stat, claim-card] }
     - { id: complication, goal: "Where we stand against it.", seconds: [15, 40], beats: [compare, stat] }
     - { id: answer, goal: "The change that closes the gap, by 25% of runtime.", seconds: [20, 50], beats: [claim-card, compare] }
-    - { id: anomaly, goal: "The number that should not be true.", seconds: [15, 40], beats: [hook, stat] }
-    - { id: method, goal: "How it was shown, as a diagram.", seconds: [40, 90], beats: [info-flow, schema, sequence] }
-    - { id: twist, goal: "The unexpected angle.", seconds: [30, 60], beats: [compare, algo-trace] }
-    - { id: result, goal: "The result with its interval and grade.", seconds: [30, 70], beats: [stat, chart, compare] }
+    - { id: anomaly, goal: "The number that should not be true.", seconds: [15, 40], beats: [hook, stat, sim] }
+    - { id: method, goal: "How it was shown, as a diagram.", seconds: [40, 90], beats: [info-flow, schema, sequence, sim] }
+    - { id: twist, goal: "The unexpected angle.", seconds: [30, 60], beats: [sim, compare, algo-trace] }
+    - { id: result, goal: "The result with its interval and grade.", seconds: [30, 70], beats: [replot, stat, compare] }
     - { id: limits, goal: "How far to trust it.", seconds: [15, 40], beats: [claim-card, list] }
-    - { id: so-for-us, goal: "What it changes for us, then the button.", seconds: [20, 50], beats: [takeaways, compare, button], require: [button] }
+    - { id: so-for-us, goal: "What it changes for us, then the button.", seconds: [20, 50], beats: [takeaways, rule-diff, compare, button], require: [button] }
 cuts: []
 hook: "Open on the concrete example or the number, never on the paper's title."
 ending: takeaways+button

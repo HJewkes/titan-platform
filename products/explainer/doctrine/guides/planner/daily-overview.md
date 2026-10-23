@@ -1,6 +1,6 @@
 # Planner guide: daily-overview
 
-<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.1.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.2.0) by `explainer guide types`. Do not edit. -->
 
 What the owner must know and decide today: the bottom line, the facts behind it, the decisions waiting, then the rest at speed.
 
@@ -30,13 +30,13 @@ Block order per macro:
 
 Blocks:
 
-- **bottom-line** (10-25 s): The verdict of the day and how many items need the owner. Beats: hook, claim-card, stat; must include claim-card.
+- **bottom-line** (10-25 s): The verdict of the day and how many items need the owner. Beats: verdict-card, claim-card, stat; must include verdict-card.
 - **decisions** (20-50 s): The top decisions, each with its recommendation. Beats: list, claim-card.
-- **facts** (20-50 s): The two or three facts behind the bottom line. Beats: stat, metrics-panel, chart.
-- **situation** (20-45 s): The blocking item and what waiting on it costs. Beats: issue-pin, stat, history.
-- **day** (30-70 s): The day on a timeline, from the first event to its last effect. Beats: history, sequence, chart.
-- **board** (30-70 s): Work moving across the board. Beats: chart, list, metrics-panel.
-- **segments** (30-80 s): Background on demand: the remaining segments at speed, ranked by change. Beats: fact-flash, chart, metrics-panel.
+- **facts** (20-50 s): The two or three facts behind the bottom line. Beats: stat, metrics-panel, chart, forecast.
+- **situation** (20-45 s): The blocking item and what waiting on it costs. Beats: issue-pin, attempt, stat, history.
+- **day** (30-70 s): The day on a timeline, from the first event to its last effect. Beats: gantt, history, sequence.
+- **board** (30-70 s): Work moving across the board. Beats: kanban-flow, metrics-panel, chart; must include kanban-flow.
+- **segments** (30-80 s): Background on demand: the remaining segments at speed, ranked by change. Beats: fact-flash, chart, metrics-panel, forecast.
 - **ask** (10-20 s): What the owner does next, then the button to the digest. Beats: button; must include button.
 
 ## Hook and ending
@@ -80,6 +80,24 @@ Spine sections: 1. Bottom line; 2. Moves; 3. Decisions left.
 The bottom line first, the decisions waiting, the facts behind them, then the rest at speed. (video-profiles plan §B.4 (bottom line up front))
 
 Spine sections: 1. Bottom line; 2. Decisions; 3. Segments.
+
+## Beats
+
+- **verdict-card** (open, 5-16 s): The bottom line first: an imperative one-line summary, the call and why.
+- **claim-card** (explain, 4-14 s): One claim, stated plainly, with its source.
+- **stat** (evidence, 4-12 s): One to four numbers that carry the point.
+- **list** (explain, 5-18 s): Up to five marked rows: tick, cross, risk, open or dot.
+- **metrics-panel** (evidence, 6-18 s): A small table: measure, today, target.
+- **chart** (evidence, 6-20 s): A small chart: bars, a line, a spark or a gauge.
+- **forecast** (evidence, 6-20 s): Where a measure is heading, with p50 and p80.
+- **issue-pin** (evidence, 6-20 s): Problems pinned where they live on the map.
+- **attempt** (explain, 6-22 s): What was tried, what happened and why.
+- **history** (explain, 8-30 s): Dated events on a time axis with a playhead.
+- **gantt** (evidence, 10-35 s): Tasks on a date axis, with milestones.
+- **sequence** (explain, 10-35 s): Who calls whom, in order: actors, lifelines and messages.
+- **kanban-flow** (evidence, 10-35 s): Work moving across the board's columns.
+- **fact-flash** (evidence, 3-9 s): One to four quick facts at speed.
+- **button** (close, 3-8 s): The one action to take next.
 
 ## Rules for the plan stage
 

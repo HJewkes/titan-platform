@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: verdict-chip
+summary: "A chapter's call as one chip and a reason."
+role: close
+component: { name: VerdictChip, maturity: doc }
+slots: verdict-chip
+speech: { band: concept }
+durationS: [2, 4, 8]
+preset: false
+recipe: "End a chapter on its call and one reason. The call uses the profile's verdict words."
