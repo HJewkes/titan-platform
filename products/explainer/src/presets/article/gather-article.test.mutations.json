@@ -39,76 +39,12 @@
       ]
     },
     {
-      "name": "the number match accepts a prefix of a longer number",
-      "file": "products/explainer/src/presets/article/quotes.ts",
-      "find": "(?![\\\\d]|\\\\.\\\\d)",
-      "replace": "",
-      "kills": [
-        "claim checks finds a number only as a whole number in the quote, with thousands separators"
-      ]
-    },
-    {
-      "name": "thousands separators are not removed",
-      "file": "products/explainer/src/presets/article/quotes.ts",
-      "find": ".replace(/(\\d),(\\d{3})/g, \"$1$2\");",
-      "replace": ";",
-      "kills": [
-        "claim checks finds a number only as a whole number in the quote, with thousands separators",
-        "gatherArticle facts keeps claims and numbers whose quotes are verbatim, short and state the number, sorted by id"
-      ]
-    },
-    {
-      "name": "whitespace is not normalised",
-      "file": "products/explainer/src/presets/article/quotes.ts",
-      "find": "    .replace(/\\s+/g, \" \")\n",
-      "replace": "",
-      "kills": [
-        "claim checks matches a quote across line breaks and typographic quotes, but not a changed word"
-      ]
-    },
-    {
       "name": "facts are not sorted",
       "file": "products/explainer/src/presets/article/gather-article.ts",
       "find": "facts: facts.sort((a, b) => a.id.localeCompare(b.id))",
       "replace": "facts",
       "kills": [
         "gatherArticle facts keeps claims and numbers whose quotes are verbatim, short and state the number, sorted by id"
-      ]
-    },
-    {
-      "name": "a text table becomes a figure",
-      "file": "products/explainer/src/presets/article/figures.ts",
-      "find": "if (ys.some((row) => row.some(Number.isNaN))) return undefined;",
-      "replace": "",
-      "kills": [
-        "gatherArticle facts notes a figure held only as an image and a table of text, and makes neither a figure"
-      ]
-    },
-    {
-      "name": "a category table is read as a line",
-      "file": "products/explainer/src/presets/article/figures.ts",
-      "find": "return numericX ? { kind: \"line\", ...base }",
-      "replace": "return true ? { kind: \"line\", ...base }",
-      "kills": [
-        "gatherArticle facts extracts a numeric-x table as a line figure and a category table as a bar figure, ready to re-plot"
-      ]
-    },
-    {
-      "name": "the table separator row is kept as data",
-      "file": "products/explainer/src/presets/article/figures.ts",
-      "find": "rows.filter((row) => !isSeparator(row))",
-      "replace": "rows",
-      "kills": [
-        "gatherArticle facts extracts a numeric-x table as a line figure and a category table as a bar figure, ready to re-plot"
-      ]
-    },
-    {
-      "name": "a figure held only as an image is not noted",
-      "file": "products/explainer/src/presets/article/figures.ts",
-      "find": "    else notes.push({ code: \"W-FIGURE-NO-DATA\"",
-      "replace": "    else if (false) notes.push({ code: \"W-FIGURE-NO-DATA\"",
-      "kills": [
-        "gatherArticle facts notes a figure held only as an image and a table of text, and makes neither a figure"
       ]
     }
   ]

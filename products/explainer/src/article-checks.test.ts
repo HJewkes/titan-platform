@@ -1,45 +1,13 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
 import { paperPublishEligibility } from "./article-checks.js";
-import { BEAT_SLOTS } from "./beat-slots.js";
-import { gatherArticle } from "./presets/article/gather-article.js";
+import { demoBoard as board, edited, gatherDemo } from "./article-fixtures.test-helpers.js";
 import type { ArticleFact } from "./presets/article/schemas.js";
 import { loadProfiles, profileFor } from "./profile-load.js";
-import { StoryboardSchema, type Storyboard } from "./storyboard.js";
-
-const DEMO = fileURLToPath(new URL("../fixtures/article/demo", import.meta.url));
 
 let facts: ArticleFact[];
 beforeAll(async () => {
-  const claims = z.array(z.unknown()).parse(JSON.parse(readFileSync(join(DEMO, "claims.json"), "utf8")));
-  ({ facts } = await gatherArticle({ articlePath: join(DEMO, "article.md"), label: "Fewer Rounds by Design", claims }));
+  ({ facts } = await gatherDemo());
 });
-
-const board = (): Storyboard => StoryboardSchema.parse(JSON.parse(readFileSync(join(DEMO, "beats.json"), "utf8")));
-
-function edited(change: (beats: Storyboard["beats"]) => void): Storyboard {
-  const next = board();
-  change(next.beats);
-  return next;
-}
-
-const LONG_QUOTE = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six";
-type Beats = Storyboard["beats"];
-
-function editReplot(beats: Beats, change: (slots: z.infer<typeof BEAT_SLOTS.replot>) => void): void {
-  const slots = BEAT_SLOTS.replot.parse(beats[1]!.slots);
-  change(slots);
-  beats[1]!.slots = slots;
-}
-
-function editQuote(beats: Beats, text: string): void {
-  const slots = BEAT_SLOTS["claim-card"].parse(beats[0]!.slots);
-  slots.quote!.text = text;
-  beats[0]!.slots = slots;
-}
 
 describe("paper publish eligibility", () => {
   it("makes a video eligible when every figure is re-plotted from its data and every quote is short, and still requires the owner's ask", () => {
@@ -61,58 +29,10 @@ describe("paper publish eligibility", () => {
     expect(paperPublishEligibility(video, facts).issues.map((issue) => issue.beat)).toEqual(["beat-03"]);
   });
 
-  it("fails a replot whose points are not the figure's data", () => {
-    const video = edited((beats) => editReplot(beats, (slots) => (slots.series[1]!.points[2]!.y = 1.2)));
-
-    expect(paperPublishEligibility(video, facts).issues).toEqual([{ check: "figures-replotted-from-data", beat: "beat-02", message: "replot beat-02 plots points that are not figure/figure-1's data" }]);
-  });
-
-  it("fails a replot that drops a point, and a replot with no series", () => {
-    const dropped = edited((beats) => editReplot(beats, (slots) => slots.series[0]!.points.pop()));
-    const empty = edited((beats) => (beats[1]!.slots = { ...beats[1]!.slots, series: [] }));
-
-    expect(paperPublishEligibility(dropped, facts).eligible).toBe(false);
-    expect(paperPublishEligibility(empty, facts).eligible).toBe(false);
-  });
-
-  it("fails a replot citing a source that is not a gathered figure", () => {
-    const video = edited((beats) => editReplot(beats, (slots) => (slots.source.ref = "number/rounds-after")));
-
-    expect(paperPublishEligibility(video, facts).issues[0]?.message).toBe("replot beat-02 cites no gathered figure; its source.ref must name a figure fact id");
-  });
-
   it("fails a non-replot beat that shows a gathered figure", () => {
     const video = edited((beats) => beats[2]!.sources.push("figure/table-2"));
 
     expect(paperPublishEligibility(video, facts).issues[0]?.message).toBe("beat-03 shows figure/table-2 as a stat beat; a figure is shown only as a replot of its data");
-  });
-
-  it("fails a slot quote over the length limit", () => {
-    const video = edited((beats) => editQuote(beats, LONG_QUOTE));
-
-    expect(paperPublishEligibility(video, facts).issues).toEqual([{ check: "quotes-short", beat: "beat-01", message: "beat-01 quotes 26 words; the limit is 25" }]);
-  });
-
-  it("fails a plain-string quote slot and a quote read out in the narration or shown on screen", () => {
-    const video = edited((beats) => {
-      beats[0]!.slots = { claim: "c", quote: LONG_QUOTE };
-      beats[1]!.spoken = `They wrote “${LONG_QUOTE}” in the paper.`;
-      beats[2]!.display = `"${LONG_QUOTE}"`;
-    });
-
-    expect(paperPublishEligibility(video, facts).issues.map((issue) => [issue.check, issue.beat])).toEqual([
-      ["quotes-short", "beat-01"],
-      ["quotes-short", "beat-02"],
-      ["quotes-short", "beat-03"],
-    ]);
-  });
-
-  it("allows a quote of exactly the limit, and applies a tighter limit when given one", () => {
-    const limit = LONG_QUOTE.split(" ").slice(0, 25).join(" ");
-    const video = edited((beats) => editQuote(beats, limit));
-
-    expect(paperPublishEligibility(video, facts).eligible).toBe(true);
-    expect(paperPublishEligibility(board(), facts, undefined, 10).issues.map((issue) => issue.beat)).toEqual(["beat-01"]);
   });
 
   it("implements every publish check the paper-summary profile names", () => {

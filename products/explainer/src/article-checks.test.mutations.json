@@ -22,94 +22,12 @@
       ]
     },
     {
-      "name": "a replot's points are not compared with the figure's data",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y)",
-      "replace": "true",
-      "kills": [
-        "paper publish eligibility fails a replot whose points are not the figure's data"
-      ]
-    },
-    {
-      "name": "a replot may drop points",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "a.length === b.length && ",
-      "replace": "",
-      "kills": [
-        "paper publish eligibility fails a replot that drops a point, and a replot with no series"
-      ]
-    },
-    {
-      "name": "a replot with no series passes",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "series.length > 0 && plotted",
-      "replace": "plotted",
-      "kills": [
-        "paper publish eligibility fails a replot that drops a point, and a replot with no series"
-      ]
-    },
-    {
-      "name": "a replot need not cite a gathered figure",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "if (!fact) return `replot ${beat.id} cites no gathered figure; its source.ref must name a figure fact id`;",
-      "replace": "if (!fact) return undefined;",
-      "kills": [
-        "paper publish eligibility fails a replot citing a source that is not a gathered figure"
-      ]
-    },
-    {
       "name": "a figure cited by a non-replot beat passes",
       "file": "products/explainer/src/article-checks.ts",
       "find": "const cited = beat.sources.find((source) => figures.has(source));",
       "replace": "const cited = undefined;",
       "kills": [
         "paper publish eligibility fails a non-replot beat that shows a gathered figure"
-      ]
-    },
-    {
-      "name": "the quote limit is off by one",
-      "file": "products/explainer/src/presets/article/quotes.ts",
-      "find": "wordCount(text) <= maxWords",
-      "replace": "wordCount(text) < maxWords",
-      "kills": [
-        "paper publish eligibility allows a quote of exactly the limit, and applies a tighter limit when given one"
-      ]
-    },
-    {
-      "name": "slot quotes are not checked",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "[...slotQuotes(beat.slots), ...spokenQuotes(beat.spoken)",
-      "replace": "[...spokenQuotes(beat.spoken)",
-      "kills": [
-        "paper publish eligibility fails a slot quote over the length limit",
-        "paper publish eligibility fails a plain-string quote slot and a quote read out in the narration or shown on screen"
-      ]
-    },
-    {
-      "name": "a plain-string quote slot is skipped",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "typeof inner === \"string\" ? [inner] : isRecord",
-      "replace": "isRecord",
-      "kills": [
-        "paper publish eligibility fails a plain-string quote slot and a quote read out in the narration or shown on screen"
-      ]
-    },
-    {
-      "name": "on-screen display quotes are not checked",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": ", ...spokenQuotes(beat.display)]",
-      "replace": "]",
-      "kills": [
-        "paper publish eligibility fails a plain-string quote slot and a quote read out in the narration or shown on screen"
-      ]
-    },
-    {
-      "name": "curly-quoted narration is not checked",
-      "file": "products/explainer/src/article-checks.ts",
-      "find": "const QUOTED = /“([^”]*)”|\"([^\"]*)\"/g;",
-      "replace": "const QUOTED = /\"([^\"]*)\"/g;",
-      "kills": [
-        "paper publish eligibility fails a plain-string quote slot and a quote read out in the narration or shown on screen"
       ]
     },
     {

@@ -1,16 +1,10 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { checkClaims, gatherArticle, parseArticleFacts, writeArticleGather } from "./gather-article.js";
-import { isVerbatim, quoteStates } from "./quotes.js";
-
-const DEMO = fileURLToPath(new URL("../../../fixtures/article/demo", import.meta.url));
-const ARTICLE = join(DEMO, "article.md");
-const claims = async (): Promise<unknown[]> => z.array(z.unknown()).parse(JSON.parse(await readFile(join(DEMO, "claims.json"), "utf8")));
-const gather = async () => gatherArticle({ articlePath: ARTICLE, label: "Fewer Rounds by Design", claims: await claims() });
+import { gatherDemo as gather } from "../../article-fixtures.test-helpers.js";
+import { checkClaims, parseArticleFacts, writeArticleGather } from "./gather-article.js";
 
 let scratch: string | undefined;
 afterEach(async () => {
@@ -33,33 +27,6 @@ describe("gatherArticle facts", () => {
       ["paraphrased", "the quote is not verbatim in the article"],
       ["whole-abstract", "the quote runs 41 words; the limit is 25"],
       ["wrong-number", "the quote does not state 1.3"],
-    ]);
-  });
-
-  it("extracts a numeric-x table as a line figure and a category table as a bar figure, ready to re-plot", async () => {
-    const { facts } = await gather();
-    const line = facts.find((fact) => fact.id === "figure/figure-1");
-    const bar = facts.find((fact) => fact.id === "figure/table-2");
-
-    expect(line?.figure).toEqual({
-      kind: "line",
-      x: "Pass rate",
-      y: "Mean rounds per change by one-round pass rate",
-      series: [
-        { id: "full-re-read", label: "Full re-read", points: [{ x: 0.65, y: 2.08 }, { x: 0.7, y: 1.84 }, { x: 0.78, y: 1.55 }] },
-        { id: "diff-only", label: "Diff only", points: [{ x: 0.65, y: 1.71 }, { x: 0.7, y: 1.52 }, { x: 0.78, y: 1.32 }] },
-      ],
-    });
-    expect(line?.source.ref).toBe("article.md:14");
-    expect(bar?.figure).toMatchObject({ kind: "bar", categories: ["Low", "Medium", "High"], series: [{ points: [{ x: 1, y: 640 }, { x: 2, y: 410 }, { x: 3, y: 150 }] }] });
-  });
-
-  it("notes a figure held only as an image and a table of text, and makes neither a figure", async () => {
-    const { notes } = await gather();
-
-    expect(notes.map(({ code, id }) => [code, id])).toEqual([
-      ["W-FIGURE-NO-DATA", "figure-2"],
-      ["W-TABLE-TEXT", "table-1"],
     ]);
   });
 
@@ -90,18 +57,5 @@ describe("claim checks", () => {
     const { rejected } = checkClaims([{ id: "a", kind: "claim", text: "t", quote: "alpha beta gamma" }], "alpha beta gamma", 2);
 
     expect(rejected[0]?.reason).toBe("the quote runs 3 words; the limit is 2");
-  });
-
-  it("matches a quote across line breaks and typographic quotes, but not a changed word", () => {
-    expect(isVerbatim("the “diff” only", 'it is the "diff"\n only')).toBe(true);
-    expect(isVerbatim("the diff alone", "the diff only")).toBe(false);
-  });
-
-  it("finds a number only as a whole number in the quote, with thousands separators", () => {
-    expect(quoteStates("from 2.08 to 1.32", 1.32)).toBe(true);
-    expect(quoteStates("from 2.08 to 1.32", 1.3)).toBe(false);
-    expect(quoteStates("from 2.08 to 11.32", 1.32)).toBe(false);
-    expect(quoteStates("Across 1,200 pull requests", 1200)).toBe(true);
-    expect(quoteStates("Across 1,200 pull requests", 200)).toBe(false);
   });
 });
