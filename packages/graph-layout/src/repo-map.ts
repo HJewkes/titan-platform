@@ -173,15 +173,15 @@ function protocolLabel(edges: readonly ProtocolEdge[]): string {
 
 /** One arrow per ordered container pair; a call inside one container, or from a file off the map, draws none. */
 function protocolArrows(edges: readonly ProtocolEdge[], groups: Map<string, Box>): PlannedEdge[] {
-  const byPair = new Map<string, ProtocolEdge[]>();
+  const byPair = new Map<string, { srcId: string; dstId: string; folded: ProtocolEdge[] }>();
   for (const e of edges) {
-    const [src, dst] = [packageId(packageOf(e.srcId)), packageId(packageOf(e.dstId))];
-    if (src === dst || !groups.has(src) || !groups.has(dst)) continue;
-    const key = JSON.stringify([src, dst]);
-    byPair.set(key, [...(byPair.get(key) ?? []), e]);
+    const [srcId, dstId] = [packageId(packageOf(e.srcId)), packageId(packageOf(e.dstId))];
+    if (srcId === dstId || !groups.has(srcId) || !groups.has(dstId)) continue;
+    const key = JSON.stringify([srcId, dstId]);
+    const pair = byPair.get(key) ?? { srcId, dstId, folded: [] };
+    byPair.set(key, { ...pair, folded: [...pair.folded, e] });
   }
-  return [...byPair].map(([key, folded]) => {
-    const [srcId, dstId] = JSON.parse(key) as [string, string];
+  return [...byPair.values()].map(({ srcId, dstId, folded }) => {
     const protocols = [...new Set(folded.map((e) => e.kind))].sort(byText).join("+");
     const [id, label] = [`protocol:${edgeId(srcId, dstId)}`, protocolLabel(folded)];
     return { srcId, dstId, kind: "calls", level: PACKAGE, weight: folded.length, edgeSource: "protocol", id, protocols, label };

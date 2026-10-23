@@ -4,8 +4,8 @@
     {
       "name": "a call inside one container draws a self arrow",
       "file": "packages/graph-layout/src/repo-map.ts",
-      "find": "if (src === dst || !groups.has(src) || !groups.has(dst)) continue;",
-      "replace": "if (!groups.has(src) || !groups.has(dst)) continue;",
+      "find": "if (srcId === dstId || !groups.has(srcId) || !groups.has(dstId)) continue;",
+      "replace": "if (!groups.has(srcId) || !groups.has(dstId)) continue;",
       "kills": [
         "emitRepoMap protocol arrows on the whiteboard-shaped repo leaves a call inside one container, or to a file not on the map, off the container map"
       ]
@@ -13,8 +13,8 @@
     {
       "name": "a call from a file off the map draws an arrow",
       "file": "packages/graph-layout/src/repo-map.ts",
-      "find": "if (src === dst || !groups.has(src) || !groups.has(dst)) continue;",
-      "replace": "if (src === dst) continue;",
+      "find": "if (srcId === dstId || !groups.has(srcId) || !groups.has(dstId)) continue;",
+      "replace": "if (srcId === dstId) continue;",
       "kills": [
         "emitRepoMap protocol arrows on the whiteboard-shaped repo leaves a call inside one container, or to a file not on the map, off the container map"
       ]
