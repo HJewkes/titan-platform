@@ -26,7 +26,8 @@
       "find": "return read === undefined || (read.state === \"open\" && !read.merged);",
       "replace": "return true;",
       "kills": [
-        "the merge-order guard stops holding once the reserving PR has merged or closed"
+        "the merge-order guard stops holding once the reserving PR has merged or closed",
+        "a merge step behind a merge-order reservation waits in the merge step and answers held, merging nothing, while an overlapping reservation is live"
       ]
     },
     {
