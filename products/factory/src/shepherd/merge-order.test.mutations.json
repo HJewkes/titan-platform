@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a later reservation no longer yields to an earlier one",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "(own === undefined || before(reservation, own))",
+      "replace": "true",
+      "kills": [
+        "which reservations a PR waits behind lets the earlier of two overlapping reservations go and holds the later one"
+      ]
+    },
+    {
+      "name": "the rule's ignore globs are not applied",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "?? []), ...rule.ignore]);",
+      "replace": "?? [])]);",
+      "kills": [
+        "which paths two PRs overlap on never counts changeset files or generated files such as CAPABILITIES.md"
+      ]
+    },
+    {
+      "name": "a reservation never expires",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000 && driving(reservation.runId)",
+      "replace": "driving(reservation.runId)",
+      "kills": [
+        "which reservations a PR waits behind stops waiting once the reservation is older than the TTL or its run no longer drives"
+      ]
+    }
+  ]
+}
