@@ -8,7 +8,7 @@ import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
-import type { z } from "zod";
+import { z } from "zod";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 import type { TtsEngine } from "./tts-stage.js";
@@ -187,9 +187,11 @@ export function fakeVoice(options: { dropWord?: string } = {}): FakeVoice {
   return { engine: async () => ({ provider, version: "fake/1" }), spoken };
 }
 
+const SpokenSchema = z.object({ beats: z.array(z.object({ spoken: z.string() })) });
+
 /** The spoken text, one beat a line, of a script/v1 or a words.json in the fixture's store. */
 export function spokenOf(fx: Fixture, sha: string): string {
-  const beats = (JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", sha), "utf8")) as { beats: { spoken: string }[] }).beats;
+  const { beats } = SpokenSchema.parse(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", sha), "utf8")));
   return beats.map((beat) => beat.spoken).join("\n");
 }
 

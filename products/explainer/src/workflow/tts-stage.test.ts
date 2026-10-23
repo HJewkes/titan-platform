@@ -4,6 +4,7 @@ import path from "node:path";
 import { decodeWav, TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
@@ -59,11 +60,13 @@ function harness(script: ScriptV1 = twoBeats()) {
   return { store, input, takesDir: path.join(root, "takes") };
 }
 
-const WordsSchema = (text: string) =>
-  JSON.parse(text) as {
-    beats: { id: string; startS: number; durationS: number; words: { word: string; start: number; end: number }[] }[];
-    absolute: { beat: string; word: string; start: number; end: number }[];
-  };
+const Word = z.object({ word: z.string(), start: z.number(), end: z.number() });
+const WordsFile = z.object({
+  beats: z.array(z.object({ id: z.string(), startS: z.number(), durationS: z.number(), words: z.array(Word) })),
+  absolute: z.array(Word.extend({ beat: z.string() })),
+});
+const WordsSchema = (text: string) => WordsFile.parse(JSON.parse(text));
+const TreeFile = z.object({ entries: z.array(z.object({ path: z.string(), sha: z.string() })) });
 
 describe("tts stage: duration truing and absolute words", () => {
   it("trues a 5 s planned beat whose voice runs 6.1 s to 7.3 s, and shifts the next beat's words by its start", async () => {
@@ -94,7 +97,7 @@ describe("tts stage: duration truing and absolute words", () => {
 
     const outcome = await runTtsStage(input, VOICE, { engine: voice.engine, takesDir });
 
-    const tree = JSON.parse(store.readText(outcome.outputs.audio!)) as { entries: { path: string; sha: string }[] };
+    const tree = TreeFile.parse(JSON.parse(store.readText(outcome.outputs.audio!)));
     const b2 = decodeWav(readFileSync(store.path(tree.entries.find((e) => e.path === `${B2}.wav`)!.sha)));
     expect(b2.samples.length).toBe(Math.round((DEFAULT_PADDING.leadS + 2) * RATE));
     expect(b2.samples[0]).toBe(0);
@@ -127,7 +130,7 @@ describe("tts stage: voice and take cache", () => {
     const beats = twoBeats().beats.length;
     expect(voice.calls).toHaveLength(beats + 1);
     expect(voice.calls.at(-1)!.text).toBe("seven nine");
-    const entries = (sha: string) => (JSON.parse(store.readText(sha)) as { entries: { sha: string }[] }).entries.map((e) => e.sha);
+    const entries = (sha: string) => TreeFile.parse(JSON.parse(store.readText(sha))).entries.map((e) => e.sha);
     expect(entries(second.outputs.audio!)[0]).toBe(entries(first.outputs.audio!)[0]);
   });
 
