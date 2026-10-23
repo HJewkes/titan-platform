@@ -4,6 +4,7 @@ import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader }
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
@@ -34,7 +35,8 @@ const vacuousLine = formatResultLine({
   tests: [],
   truncated: false,
 });
-const actionsLog = (line: string) => ["Run pnpm fix-proof", line, "Post job cleanup."].map((text) => `2026-10-22T12:00:00.0000000Z ${text}`).join("\n");
+const StepOutput = z.looseObject({ result: z.unknown() });
+const actionsLog =(line: string) => ["Run pnpm fix-proof", line, "Post job cleanup."].map((text) => `2026-10-22T12:00:00.0000000Z ${text}`).join("\n");
 
 /** What the test-only classifier reads: the merge base, the fix-proof config there and at main, and each changed file's blobs. */
 function seedDiffReads(fake: FakeGitHub, files: readonly PrFile[]): void {
@@ -111,7 +113,7 @@ describe("a test-only head on a g10-adversary hold with a vacuous proof (tp#2258
     const { dispatch, reader, spawns } = reviewers(tests, () => clock);
     const results: Record<string, unknown> = {};
     const record = (stepId: string, outcome: Awaited<ReturnType<StepRoute["runner"]["run"]>>) => {
-      if (outcome.ok) results[stepId] = (JSON.parse(outcome.output) as { result: unknown }).result;
+      if (outcome.ok) results[stepId] = StepOutput.parse(JSON.parse(outcome.output)).result;
       return outcome;
     };
     const routes = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, holdMember: { profile: DEFAULT_ADVERSARY_PROFILE } }).map((route): StepRoute => ({ ...route, runner: { run: async (step) => record(step.stepId, await route.runner.run(step)) } }));

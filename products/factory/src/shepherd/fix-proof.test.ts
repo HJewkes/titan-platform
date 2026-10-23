@@ -4,6 +4,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
@@ -124,7 +125,7 @@ interface Scene {
   legacyIntent?: boolean;
 }
 
-const beforeTestsMember = (prompt: string): string => JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(prompt) as object).filter(([key]) => key !== "testOnlyProof")));
+const beforeTestsMember = (prompt: string): string => JSON.stringify(Object.fromEntries(Object.entries(z.record(z.string(), z.unknown()).parse(JSON.parse(prompt))).filter(([key]) => key !== "testOnlyProof")));
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
   const fake = {
