@@ -316,6 +316,30 @@ beats that fail at least one error-severity row. Borderline labels count as neit
 a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
 carries is "not run", not zero.
 
+**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, and L1's
+beat dimensions) stay reported only until the owner's labels show they agree with the owner.
+
+- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--size 20]
+  [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
+  judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
+  script). Keep the manifest outside this repo, because it names private scripts.
+- The command takes the judges' unvoided rows for that exact script. It turns each row into a yes or no question:
+  - cold probe: does the chapter say what an item is (a score above 0)?
+  - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
+  - L1: does the beat pass a B dimension?
+- It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a
+  judge, its video types and verdicts also take turns.
+- It writes `round.json`, a questions-only console round with one section per video. A section shows the script
+  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones. The round shows no judge
+  name, verdict or recommendation. The verdicts go to the answer key, which is kept outside the round directory.
+  The command never overwrites an existing round or key.
+- `explainer eval calibrate agreement --key <key.json> --feedback <round>/feedback.json [--record <file>]
+  [--format table|json]` reads the owner's labels from the console's `feedback.json`. For each judge it prints the
+  labelled and can't-tell counts, the agreement (the share of labelled items where owner and judge agree), and the
+  recall on the items the owner failed. `--record` writes the `judge-agreement/v1` record.
+- `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
+  agreement below 0.8. The evals units test checks that every judge check stays `reported`.
+
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached
 `codex login`), `model`, and optionally `reasoning_effort`, `max_budget_usd`, `wall_time_s`
