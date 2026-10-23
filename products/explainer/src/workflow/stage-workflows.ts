@@ -60,15 +60,17 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     if (!config.judge) throw new Error("eval stage spec has no judge");
     return runEvalStage(input, { judge: config.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
   }
-  if (stage === "tts") {
-    if (!config.voice) throw new Error("tts stage spec has no voice");
-    const takesDir = path.join(deps.dataDir, "tts-takes");
-    return runTtsStage({ ...input, store: deps.store }, config.voice, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
-  }
+  if (stage === "tts") return runTtsBody(config, input, deps);
   return runBridgeStage({
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
   });
+}
+
+function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.voice) throw new Error("tts stage spec has no voice");
+  const takesDir = path.join(deps.dataDir, "tts-takes");
+  return runTtsStage({ ...input, store: deps.store }, config.voice, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
 }
 
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {
