@@ -25,6 +25,30 @@ diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
 warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
 
+`gatherArticle` (`src/presets/article/`) is the `paper-summary` profile's gather stage. It
+reads an article or paper as markdown text, kept in a directory of its own because the source
+is untrusted, and a list of proposed claims (from a model pass or a hand edit). It writes
+`facts.jsonl` (`ArticleFactSchema`) and `rejected.json`:
+
+- A claim or number is kept only when its quote is verbatim in the text, at most
+  `QUOTE_MAX_WORDS` (25) words, and, for a number, states the value. A failing claim is kept
+  in `rejected.json` with its reason.
+- Each captioned figure or table (`Figure 2: ...`, `Table 1: ...`) whose data the text carries
+  as a markdown table becomes a `figure/<id>` fact with its series, ready to re-plot. A figure
+  held only as an image is noted `W-FIGURE-NO-DATA`; a table of text is noted `W-TABLE-TEXT`.
+
+`paperPublishEligibility` (`src/article-checks.ts`) runs the profile's `publish.checks` over a
+paper video's `beats.json` against those facts. `figures-replotted-from-data` fails any image
+in a beat's slots, a `replot` whose `source.ref` is not a figure fact id or whose points are
+not that figure's data, and any other beat citing a figure fact. `quotes-short` fails any
+quote over the limit in the slots, the narration or the on-screen text. A check it does not
+know fails the video.
+
+Passing makes a video eligible to publish, nothing more. Publishing third-party text and
+figures needs the owner's explicit ask for that one video (owner Q4 B). No code here
+publishes, and eligibility never triggers a publish. `fixtures/article/demo/` is a synthetic
+paper the tests gather.
+
 `video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
 registry under `products/explainer/doctrine/` now names the allowed beats, video types and
 audiences (`vocabulary.yaml`) and holds the craft rules (`craft/`). Type profiles (TP-2746) and
