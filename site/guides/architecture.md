@@ -210,6 +210,7 @@ graph TD
   explainer --> agentProtocol
   explainer --> appPaths
   explainer --> codeGraph
+  explainer --> codeRead
   explainer --> evidence
   explainer --> github
   explainer --> graphLayout

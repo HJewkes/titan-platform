@@ -39,6 +39,7 @@
     "@titan-design/agent-protocol": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/code-graph": "workspace:^",
+    "@titan-design/code-read": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/graph-layout": "workspace:^",

@@ -1188,6 +1188,9 @@ importers:
       '@titan-design/code-graph':
         specifier: workspace:^
         version: link:../../packages/code-graph
+      '@titan-design/code-read':
+        specifier: workspace:^
+        version: link:../../packages/code-read
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence

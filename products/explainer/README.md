@@ -16,6 +16,7 @@ from disk; plan, audio, assembly and render land in later slices.
 | `lexicon.json` | `LexiconSchema`: written term to spoken form |
 | `review-bundle.json` | `ReviewBundleSchema` (`review-bundle/v1`): repo pin, label, coverage, licenses, per-file sha256, fact counts |
 | `facts.jsonl` | `ExplainerFactSchema`: one fact per line, with its source, kind, evidence spans, verified level and license safety |
+| `structure.json` | `StructureSchema` (`structure/v1`): snapshot, repo-map levels with box summaries and a focus graph, file centrality, reading order, entry points, call paths, edge sources |
 
 `gatherReview` (`src/presets/repo-explainer/`) reads a repo review's README, SUMMARY,
 `licenses.tsv`, ledger, `synthesis/final/` TSVs and digests into a bundle and its facts,
@@ -24,6 +25,23 @@ capability). It checks every precondition before deciding, and refuses with all 
 diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-COLUMNS`, and
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
 warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
+
+`enrichStructure` is the structure stage after gather. It opens the review's
+`structural/graph.db` when that holds a snapshot at the pin (copied first, so the review stays
+read-only), else indexes the clone with `@titan-design/code-graph` (`W-INDEX-PIN` when the
+review db was taken at another commit). It returns a `structure/v1` and the facts with
+`centrality` (rank-based, 1 for the most central file), `reading_rank`, `module` and
+`shape_hints.graph`, all from `@titan-design/code-read`'s centrality lens; a cited code path
+outside the index is `W-UNRESOLVED` and leaves the fact's centrality null. Call paths run from
+the README entry files, then from unimported root files for a target those miss, to each P1/P2
+topic's cited symbol: one search per target through code-graph's `findCallPath` over the
+snapshot's edges (what `snapshotCallPath` reads). They become `MapFlow`s on the
+`@titan-design/graph-layout` `emitRepoMap` levels; a target no entry reaches is
+`W-NO-CALL-PATH`. Protocol edges come from code-graph's `extractProtocolEdges`; with none
+declared the stage warns `W-NO-PROTOCOL` (code-graph's `no-protocol-source`) and the container
+arrows read "imports only". An index that cannot be opened or built is `E-INDEX` and no
+structure; an empty one is `W-NO-INDEX`. `fixtures/structure-ts/` is the synthetic repo the
+tests index.
 
 `gatherDaily` (`src/presets/daily/`) is the `daily-overview` facts adapter. For one UTC day it reads PRs opened
 and merged in each `--repo` (`gh pr list`), the top-level Claude Code sessions active in the window (`session-read`;
