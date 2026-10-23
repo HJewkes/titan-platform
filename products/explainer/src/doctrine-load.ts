@@ -8,6 +8,7 @@ import {
   DOCTRINE_GRADES,
   DoctrineVocabularySchema,
   type DoctrineRegistry,
+  type DoctrineVocabulary,
   type DoctrineRule,
   type DoctrineGrade,
 } from "./doctrine-schema.js";
@@ -63,7 +64,12 @@ function loadCraft(dir: string): DoctrineRule[] {
  * rule's shape. A shape error throws naming the file and rule id; `checkDoctrine` reports the rest.
  */
 export function loadDoctrine(dir: string = DEFAULT_DOCTRINE_DIR): DoctrineRegistry {
-  const vocabulary = DoctrineVocabularySchema.parse(parse(readFileSync(join(dir, "vocabulary.yaml"), "utf8")));
+  const vocabulary = loadVocabulary(dir);
   const evidence = parseEvidenceTsv(readFileSync(join(dir, "evidence.tsv"), "utf8"));
   return { vocabulary, evidence, rules: loadCraft(dir) };
+}
+
+/** Reads `vocabulary.yaml` under `dir` alone, for registries that check names without the craft rules. */
+export function loadVocabulary(dir: string = DEFAULT_DOCTRINE_DIR): DoctrineVocabulary {
+  return DoctrineVocabularySchema.parse(parse(readFileSync(join(dir, "vocabulary.yaml"), "utf8")));
 }

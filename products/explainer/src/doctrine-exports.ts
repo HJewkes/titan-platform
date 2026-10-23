@@ -16,7 +16,7 @@ export {
   type DoctrineSource,
   type DoctrineVocabulary,
 } from "./doctrine-schema.js";
-export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine-load.js";
+export { DEFAULT_DOCTRINE_DIR, loadDoctrine, loadVocabulary, parseEvidenceTsv } from "./doctrine-load.js";
 export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
 export { findPromptLeaks, sliceForStage, type PromptLeak, type StageRequest, type StageSlice } from "./doctrine-slice.js";
 export {
@@ -59,6 +59,8 @@ export {
 export { BEAT_SLOTS, isSlotRef, isTargetField, type BeatSlotRef } from "./beat-slots.js";
 export { BeatSlotError, UnknownBeatError, beatSpecFor, cueElement, emphasisTargets, loadBeatSpecs, parseBeatSlots } from "./beat-load.js";
 export { BEAT_ISSUE_CODES, checkBeatSpecs, type BeatIssue, type BeatIssueCode } from "./beat-checks.js";
+export { BeatSystemSchema, placeBeatSystem, type BeatSystem, type BeatSystemPlacement, type BeatSystemStep, type PlacementBlock } from "./beat-system-schema.js";
+export { BeatSystemError, UnknownBeatSystemError, beatSystemFor, beatSystemProblems, loadBeatSystems } from "./beat-system-load.js";
 export {
   EvidenceSpanSchema,
   ExplainerFactSchema,
