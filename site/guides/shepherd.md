@@ -1167,7 +1167,10 @@ and device-gate rules. The owner's skill-diff guard (`merge-facts.ts`, `skill-pa
 `approval-carry.ts`) is held beside it. A change to any of them takes `g10-adversary`; a change to
 their test files alone does not.
 
-What CI checks is the part of that list the type checker can derive.
+The closure is a heuristic trigger for the `g10-adversary` hold, not a completeness proof.
+Nothing static over this code can be complete: who may resolve a gate also depends on which
+owner-identity check each composition root binds. The boundary against a same-user agent is the
+OS (TP-3584). What CI checks is the part of that list the type checker can derive.
 `gate-resolve-sites.test.ts` builds one TypeScript program per package, product or app whose
 dependencies reach a resolve sink, and collects every non-test source file that does one of these:
 
@@ -1175,7 +1178,7 @@ dependencies reach a resolve sink, and collects every non-test source file that 
   either `QueueSource.resolve`;
 - implements one of those interfaces;
 - calls a function that forwards one of its own parameters into a sink's who-answered argument;
-- declares or names a function that returns a `GateResolver`;
+- declares or names a function that synchronously returns a `GateResolver`;
 - writes an object literal typed as a `GateResolver`.
 
 The checker resolves the receiver, so a destructured, aliased, optional-chained or bracketed call
@@ -1185,6 +1188,19 @@ files pin each spelling an earlier text scan missed. Fix-proof mutates only prod
 test-support file, so the closure's own rules (destructuring, forwarders, implementers, factories)
 are proved another way: each has an off switch, and a row shows the probe that rule alone finds
 goes missing when it is off.
+
+**Not covered (filed as gap tasks).** The closure misses these forms:
+
+- A receiver re-typed to a structurally identical local type, such as round 5's `Answerer`
+  (TP-4063).
+- Async resolver factories that return `Promise<GateResolver>` (TP-4064).
+- Owner-identity checks supplied by composition roots: the `presence` that `cli.ts` and `bin.ts`
+  pass, `serve.ts`'s `ownerKeys`, and a `QueueMirror` composer's `ownerUserId` (TP-4067). The
+  CLI's owner-presence proof is also an unverifiable UUID (TP-4066).
+- Edits to `gate-resolve-sites.test.ts` or its mutations sidecar alone, which are test-exempt
+  (TP-4065).
+
+TP-4068 and TP-4069 (the actor matrix) are the planned behavioural check.
 
 **Accepted residual.** The closure does not reach the following:
 

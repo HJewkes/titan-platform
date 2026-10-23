@@ -78,7 +78,8 @@ const ALL_RULES: ClosureRules = { destructuring: true, forwarders: true, impleme
  * Who answers a gate, traced by the type checker over the repo (TP-4052): files that call, reference or implement a
  * resolve sink, forward a parameter into one, or build a `GateResolver` (a literal typed as one, or a function that
  * returns one, declared or referenced). The checker resolves receivers, destructuring, aliases and element access to
- * the declaration, so the spelling of a call does not decide whether it is found.
+ * the declaration, so the spellings the probes pin (destructured, aliased, optional-chained, bracketed) resolve to
+ * the same declaration.
  */
 export class GateResolveClosure {
   /** Each sink's key and the argument slots that say who answered; a forwarder can take that from several parameters. */

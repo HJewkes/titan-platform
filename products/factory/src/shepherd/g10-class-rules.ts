@@ -11,10 +11,11 @@ export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts"
 export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts"];
 
 /**
- * Who may resolve a gate (TP-4052, tp#2253): every file that builds a `GateResolver` or hands one to a resolve sink,
- * and the checks those files lean on. A diff here can widen gate resolves past the owner as surely as an authority
- * table edit. `gate-resolve-sites.test.ts` traces the resolve sinks with the type checker and fails when a file in
- * their closure is missing from this list.
+ * Who may resolve a gate (TP-4052, tp#2253): files that build a `GateResolver` or hand one to a resolve sink, and
+ * checks they lean on. A diff here can widen gate resolves past the owner as surely as an authority table edit.
+ * `gate-resolve-sites.test.ts` is a heuristic trigger: it fails when a file the type-checker closure finds is not
+ * held. It does not prove the list complete. Forms it misses are filed as gap tasks (owner decision on round
+ * tp3584-boundary r1 Q5).
  */
 const GATE_RESOLVE_ACTOR_FILES = [
   // hitl is the gate store itself: the resolver refusal, allowances, payload schema and the stores that apply them.

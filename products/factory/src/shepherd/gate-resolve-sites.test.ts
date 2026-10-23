@@ -21,7 +21,7 @@ describe("the gate-resolve closure of the repo", () => {
     closure = repoClosure(ROOT);
   }, PROGRAM_TIMEOUT_MS);
 
-  it("is held g10-adversary, so a new resolve path cannot land without an adversary review", () => {
+  it("holds g10-adversary every file the closure finds", () => {
     expect(closure.filter((path) => !isHeld(path))).toEqual([]);
   });
 
@@ -94,7 +94,7 @@ function probeHost(files: Map<string, string>): ts.CompilerHost {
   return host;
 }
 
-describe("a resolve site written the ways a name or regex scan misses", () => {
+describe("resolve-site spellings earlier reviews found (pinned, not exhaustive)", () => {
   let closure: string[] = [];
   let scanWith: (rules: Partial<ClosureRules>) => string[] = () => [];
 
