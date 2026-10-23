@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path, { join } from "node:path";
@@ -76,6 +76,25 @@ describe("explainer pr trigger", () => {
     expect(code).toBe(0);
     expect(ports).toEqual([7411, 7411]);
     expect(JSON.parse(out.join(""))).toMatchObject([{ pr: `${REPO}#7`, outcome: "started" }]);
+  });
+
+  it("runs each brief through the script only when --through script opts in", async () => {
+    const stagesRun = async (...extra: string[]) => {
+      const { run, out } = cli({ readWaiting: async () => ({ owner: [gate()], seat: [] }), host: briefHost() });
+      await run("trigger", "--data-dir", await scratch(), "--clone", `${REPO}=/clone/widgets`, "--json", ...extra);
+      const [row] = JSON.parse(out.join(""));
+      const { stages } = JSON.parse(readFileSync(join(row.dir, "run.json"), "utf8"));
+      return stages.filter((s: { status: string }) => s.status !== "not run").map((s: { stage: string }) => s.stage);
+    };
+
+    expect(await stagesRun()).toEqual(["gather", "audition"]);
+    expect(await stagesRun("--through", "script")).toEqual(["gather", "audition", "script"]);
+  });
+
+  it("refuses a --through stage past the script", async () => {
+    const { run } = cli({ readWaiting: async () => ({ owner: [gate()], seat: [] }) });
+
+    expect(await run("trigger", "--data-dir", await scratch(), "--through", "tts")).toBe(2);
   });
 
   it("exits 1 when a visual-gate PR has no clone to index", async () => {

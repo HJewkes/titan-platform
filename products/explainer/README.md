@@ -421,12 +421,12 @@ nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`
 (no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
 index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
 
-`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--json] [--data-dir <dir>]` is the only
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--through audition|script] [--json] [--data-dir <dir>]` is the only
 automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
 only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
 Every other PR, seat gates and other owner holds included, is on request only. A start writes
 `<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`), then
-runs an `explainer-video` run from `gather` to `script` (`briefRunStart`), the script planned on the spine the audition writes from its pick: the gather stage writes `facts.jsonl` and
+runs an `explainer-video` run from `gather` to `audition` (`briefRunStart`). `--through script` opts in to the script as well, planned on the spine the audition writes from its pick, at about $1 more a head; it is off by default while most champion scripts still fail L0 (TP-4095), so most such runs would pay to end `refused`: the gather stage writes `facts.jsonl` and
 `gather.json` into the same directory, and `run.json` names the run, its status and each stage's status. A directory
 that already holds `brief.json` is `already`, so a repeated sweep starts each head once. Right before each start the
 sweep reads the gates again, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
