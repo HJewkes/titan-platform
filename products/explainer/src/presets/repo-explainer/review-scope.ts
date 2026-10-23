@@ -41,9 +41,9 @@ export function scopedSource(clonePath: string, files: readonly string[]): Index
   const seen = (path: string): string => (hidden(path) ? `${path}${ABSENT}` : path);
   const fileSystem = new Proxy(base.fileSystem, {
     get(target, key, receiver) {
-      const member = Reflect.get(target, key, receiver) as unknown;
+      const member: unknown = Reflect.get(target, key, receiver);
       if (typeof member !== "function") return member;
-      const bound = member.bind(target) as (path: unknown, ...rest: unknown[]) => unknown;
+      const bound = (...args: unknown[]): unknown => Reflect.apply(member, target, args);
       const readsFile = key === "fileExists" || key === "fileExistsSync" || key === "readFile" || key === "readFileSync";
       return readsFile ? (path: string, ...rest: unknown[]) => bound(seen(path), ...rest) : bound;
     },
