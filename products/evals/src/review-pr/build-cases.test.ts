@@ -196,4 +196,22 @@ describe("buildReviewPrCases", () => {
     expect(manifest.skipped).toEqual({ pending: 1, "superseded-clean": 1, "head-unreachable": 2 });
     expect(manifest.counts).toEqual({ defect: 1, clean: 2, control: 6 });
   });
+
+  it("counts a caught row whose next head is missing as head-unreachable", async () => {
+    const missing = "89abcdef0123456789abcdef0123456789abcdef";
+    const rows = [...corpus(fixture), row({ pr: 22, head: fixture.caught, verdict: "FIX_FIRST", label: "caught", nextHead: missing, citedPaths: ["a.ts"] })];
+
+    const { manifest } = await build(rows);
+
+    expect(manifest.skipped).toMatchObject({ "head-unreachable": 1 });
+    expect(manifest.counts).toEqual({ defect: 1, clean: 2, control: 6 });
+  });
+
+  it("still aborts on a main ref the clone does not have, rather than counting every head unreachable", async () => {
+    const out = join(scratch, `out-${outs++}`);
+    const options = { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => cloneGit, mainRef: "origin/nope", seed: "test" };
+
+    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow();
+  });
+
 });

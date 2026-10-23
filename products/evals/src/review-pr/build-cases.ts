@@ -113,18 +113,29 @@ function historyCase(context: BuildContext, heads: Heads, kind: "defect" | "clea
   });
 }
 
-/** A head or next head the clone no longer holds (force-pushed away, never fetched) skips that row instead of aborting the build. */
-async function draftOf(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
+/** True unless git answers that the commit is absent; a failure to run git at all is not an answer and propagates. */
+async function holdsCommit(git: BundleGit, sha: string): Promise<boolean> {
   try {
-    return await draftFromClone(context, row, kind);
-  } catch {
-    return void bump(context.skipped, "head-unreachable");
+    await git.git(["cat-file", "-e", `${sha}^{commit}`]);
+    return true;
+  } catch (error) {
+    if (typeof (error as { code?: unknown }).code === "number") return false;
+    throw error;
   }
 }
 
-async function draftFromClone(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
+/** A head or next head the clone no longer holds (force-pushed away, never fetched) skips that row instead of aborting the build. */
+async function draftOf(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
   const git = context.gitFor(row.repo);
   if (!git) return void bump(context.skipped, "no-clone");
+  const wanted = kind === "defect" && row.nextHead !== null ? [row.head, row.nextHead] : [row.head];
+  for (const sha of wanted) {
+    if (!(await holdsCommit(git, sha))) return void bump(context.skipped, "head-unreachable");
+  }
+  return draftFromClone(context, git, row, kind);
+}
+
+async function draftFromClone(context: BuildContext, git: BundleGit, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
   const heads = { repo: row.repo, pr: row.pr, head: row.head, base: await baseOf(git, row, context.mainRef) };
   const ref = `${row.runId}@${row.head}`;
   if (kind === "clean") return wrap(row, heads, "clean", historyCase(context, heads, "clean", { verdict: "MERGE", defects: [] }, ref));
