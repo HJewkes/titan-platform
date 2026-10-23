@@ -1,0 +1,19 @@
+# The house pack: titan's own orange on warm charcoal, for the daily, which may repeat its look (owner Q2).
+schema: style-pack/v1
+id: ember-desk
+theme: dark
+feel: "The house orange on warm charcoal, raised cards with a soft lift, the display face for headlines, and a brisk spring that suits a short briefing."
+tokens:
+  ground: color-background-default
+  surface: color-surface-raised
+  text: color-text-primary
+  textMuted: color-text-secondary
+  accent: color-brand-primary
+  accentSoft: color-brand-primary-subtle
+  rule: color-hairline-default
+  lift: lift-2
+  heading: font-family-heading
+  body: font-family-body
+  code: font-family-mono
+  duration: duration-fast
+  ease: ease-spring

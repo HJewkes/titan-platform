@@ -225,7 +225,10 @@ a fresh child.
 
 A variant file (`explainer.variant/v1`: `stage`, `name`, `params`) sets `model` for `script`, `model` and `rounds`
 for `rewrite`, and any declared `vars` for a bridged stage; `--variant render=w8.json` reruns render and whatever
-reads its outputs. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
+reads its outputs. A render variant may also set `stylePack` to a pack in `doctrine/style-packs/`: the pack's
+content hash joins the render key (an edit to the pack's file misses the cache), and the bridge gets `{var.stylePack}`,
+`{var.styleTheme}` (`dark` or `light`) and `{var.styleCss}` (`--pack-<slot>: var(--<token>);` per slot). No other
+stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
 `--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
 the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
 

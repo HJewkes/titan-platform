@@ -70,6 +70,17 @@ const HeuristicStructureSchema = z
 
 const Share = z.number().min(0).max(1);
 
+/** The packs a profile's videos may render in; `house` is the one it repeats when it has a house look. */
+const StylesSchema = z.object({ allow: z.array(Kebab).min(1), house: Kebab.optional() }).strict();
+
+/**
+ * The profile's voice band (plan §A.4, W13/W14): a Kokoro voice id and its speed. The voice varies
+ * per profile, not per video, to break the series tell without buying a premium voice.
+ */
+const VoiceBandSchema = z
+  .object({ id: z.string().regex(/^[a-z]{2}_[a-z]+$/, "expected a Kokoro voice id such as af_heart"), rate: z.number().min(0.5).max(2) })
+  .strict();
+
 /**
  * One video type's profile (VT §5.3 plus plan §A.5). It carries no spend cap (owner Q5: exact cost
  * is tracked, with a runaway backstop only) and no signature requirement (the signature layer is a
@@ -96,6 +107,8 @@ export const TypeProfileSchema = z
     pacing: z.object({ pictureChangeMaxS: z.number().positive(), staticMaxS: z.number().positive(), held: Band, reHookS: Band }).strict(),
     coverage: z.array(Kebab),
     publish: z.object({ ownerAskPerVideo: z.boolean(), checks: z.array(Kebab) }).strict().optional(),
+    styles: StylesSchema,
+    voice: VoiceBandSchema,
   })
   .strict();
 
@@ -103,6 +116,7 @@ export type TypeProfile = z.infer<typeof TypeProfileSchema>;
 export type ProfileBlock = z.infer<typeof BlockSchema>;
 export type HeuristicStructure = z.infer<typeof HeuristicStructureSchema>;
 export type SystemBinding = z.infer<typeof SystemBindingSchema>;
+export type VoiceBand = z.infer<typeof VoiceBandSchema>;
 
 /** An audience parameter pack (VT §5.2): who watches, and whether the video may leave the machine. */
 export const AudiencePackSchema = z
