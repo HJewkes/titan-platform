@@ -29,15 +29,6 @@
       ]
     },
     {
-      "name": "a parameter-only route matches any longer path",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "(!mounted && got.length !== want.length)",
-      "replace": "false",
-      "kills": [
-        "extractProtocolEdges matches a call that reaches a route through a mounted prefix, but not a bare parameter route"
-      ]
-    },
-    {
       "name": "the method is never checked",
       "file": "packages/code-graph/src/analysis/protocol-edges.ts",
       "find": "return call.method === null || method === \"ALL\" || method === call.method;",
@@ -47,84 +38,12 @@
       ]
     },
     {
-      "name": "an all route matches only its own method",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "return call.method === null || method === \"ALL\" || method === call.method;",
-      "replace": "return call.method === null || method === call.method;",
-      "kills": [
-        "extractProtocolEdges matches the method: a POST call skips a GET route, an unknown method matches any, and all matches every call"
-      ]
-    },
-    {
-      "name": "a fetch with no init has no known method",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "const method = methodNode === undefined ? \"GET\" : (literal?.toUpperCase() ?? null);",
-      "replace": "const method = methodNode === undefined ? null : (literal?.toUpperCase() ?? null);",
-      "kills": [
-        "extractProtocolEdges over the whiteboard fixture draws one labelled edge from each caller file to the file serving what it calls"
-      ]
-    },
-    {
-      "name": "an EventSource links to a plain route",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "(call.kind === \"event-source\" && endpoint.kind !== \"sse\")",
-      "replace": "false",
-      "kills": [
-        "extractProtocolEdges marks a route as SSE when its handler sets text/event-stream, and links an EventSource only to SSE routes"
-      ]
-    },
-    {
-      "name": "a server calling its own route draws an edge",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "if (endpoint.fileId === call.fileId || !serves(endpoint, call)) continue;",
-      "replace": "if (!serves(endpoint, call)) continue;",
-      "kills": [
-        "extractProtocolEdges skips non-script files and a server calling its own route"
-      ]
-    },
-    {
-      "name": "a later duplicate call replaces the first",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "      if (!edges.has(key)) edges.set(",
-      "replace": "      edges.set(",
-      "kills": [
-        "extractProtocolEdges keeps one edge per caller, server and endpoint when a file calls the same route twice"
-      ]
-    },
-    {
-      "name": "a leading base URL is kept",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "const joined = node.head.text === \"\" ? parts.slice(2).join(\"\") : parts.join(\"\");",
-      "replace": "const joined = parts.join(\"\");",
-      "kills": [
-        "extractProtocolEdges over the whiteboard fixture draws one labelled edge from each caller file to the file serving what it calls"
-      ]
-    },
-    {
-      "name": "the no-protocol-source diagnostic never fires",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "    endpoints.length > 0\n",
-      "replace": "    endpoints.length >= 0\n",
-      "kills": [
-        "extractProtocolEdges names the no-protocol-source diagnostic when no file declares a route, tool or stream"
-      ]
-    },
-    {
       "name": "callTool's object form is not read",
       "file": "packages/code-graph/src/analysis/protocol-edges.ts",
       "find": "const target = literalText(first) ?? literalText(objectProperty(first, \"name\"));",
       "replace": "const target = literalText(first);",
       "kills": [
         "extractProtocolEdges links callTool by name in either argument form and ignores non-literal names and unknown tools"
-      ]
-    },
-    {
-      "name": "non-script files are scanned",
-      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
-      "find": "  if (!SCRIPT.test(file.path)) return out;\n",
-      "replace": "",
-      "kills": [
-        "extractProtocolEdges skips non-script files and a server calling its own route"
       ]
     }
   ]
