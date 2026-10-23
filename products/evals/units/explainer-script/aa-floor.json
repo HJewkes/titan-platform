@@ -2,18 +2,18 @@
   "schema": "explainer.aa-floor/v1",
   "stage": "script",
   "stageVersion": "x4",
-  "measuredAt": "2026-10-23T08:12:16.882Z",
+  "measuredAt": "2026-10-23T08:51:06.785Z",
   "cases": [
     "fixture-v4",
     "recent-02"
   ],
   "samplesPerArm": 3,
   "sigma": {
-    "register:numbers": 6.905704851787396,
-    "register:numbers-per-beat": 0.057156947667511664,
-    "register:triads": 1.1532782983015564,
-    "register:sentence-mean": 0.38906993801457673,
-    "register:sentence-cv": 0.03500416641868032
+    "register:numbers": 8.501991007013197,
+    "register:numbers-per-beat": 0.0867582849069759,
+    "register:triads": 1.4838474483584896,
+    "register:sentence-mean": 0.39004422826136015,
+    "register:sentence-cv": 0.0331297952503986
   },
   "rows": [
     {
@@ -22,10 +22,10 @@
         "min": 11.92,
         "max": 25.62
       },
-      "meanA": 54.1635,
-      "meanB": 62.848499999999994,
-      "diff": 8.684999999999995,
-      "sigma": 6.905704851787396,
+      "meanA": 58.021,
+      "meanB": 62.67733333333332,
+      "diff": 4.656333333333322,
+      "sigma": 8.501991007013197,
       "sigmaFrom": "floor",
       "verdict": "noise"
     },
@@ -34,10 +34,10 @@
       "band": {
         "max": 0.24
       },
-      "meanA": 0.3520833333333333,
-      "meanB": 0.4444166666666667,
-      "diff": 0.09233333333333338,
-      "sigma": 0.057156947667511664,
+      "meanA": 0.3956666666666667,
+      "meanB": 0.44666666666666666,
+      "diff": 0.050999999999999934,
+      "sigma": 0.0867582849069759,
       "sigmaFrom": "floor",
       "verdict": "noise"
     },
@@ -46,10 +46,10 @@
       "band": {
         "max": 2.21
       },
-      "meanA": 3.769666666666667,
-      "meanB": 3.5045,
-      "diff": -0.265166666666667,
-      "sigma": 1.1532782983015564,
+      "meanA": 4.159000000000001,
+      "meanB": 3.1311666666666667,
+      "diff": -1.027833333333334,
+      "sigma": 1.4838474483584896,
       "sigmaFrom": "floor",
       "verdict": "noise"
     },
@@ -59,10 +59,10 @@
         "min": 12.51,
         "max": 25.82
       },
-      "meanA": 10.400416666666667,
-      "meanB": 10.137583333333334,
-      "diff": -0.26283333333333303,
-      "sigma": 0.38906993801457673,
+      "meanA": 10.443333333333333,
+      "meanB": 10.221833333333333,
+      "diff": -0.2215000000000007,
+      "sigma": 0.39004422826136015,
       "sigmaFrom": "floor",
       "verdict": "noise"
     },
@@ -72,15 +72,15 @@
         "min": 0.51,
         "max": 0.79
       },
-      "meanA": 0.42091666666666666,
-      "meanB": 0.4241666666666667,
-      "diff": 0.0032500000000000306,
-      "sigma": 0.03500416641868032,
+      "meanA": 0.42600000000000005,
+      "meanB": 0.42300000000000004,
+      "diff": -0.0030000000000000027,
+      "sigma": 0.0331297952503986,
       "sigmaFrom": "floor",
       "verdict": "noise"
     }
   ],
-  "spentUsd": 12.2550372,
-  "runs": 12,
+  "spentUsd": 14.6542372,
+  "runs": 14,
   "failedRuns": 2
 }
