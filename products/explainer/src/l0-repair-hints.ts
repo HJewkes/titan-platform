@@ -1,5 +1,6 @@
 import type { L0Result } from "./eval-l0.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
+import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import { CUE_KIND_ROLES, fromScriptV1 } from "./pace-items.js";
@@ -55,6 +56,11 @@ function itemTrackHint(script: ScriptV1): string | undefined {
   return `the item track cannot read ${faults.join("; ")}. A cue target is kind:label, with kind one of ${Object.keys(CUE_KIND_ROLES).join(", ")}; fix those cues and this row is measured again`;
 }
 
+function headlineHint(script: ScriptV1): string {
+  const named = overlongHeadlines(script.beats).map((beat) => `${beat.id} "${beat.visual.assertion}" (${headlineLines(beat.visual.assertion)} lines)`);
+  return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
+}
+
 const ITEM_TRACK_ROWS = ["Q-E7", "Q-E9", "Q-E11", "Q-E16", "Q-E17"] as const;
 
 const HINTS: Readonly<Record<string, Hint>> = {
@@ -64,6 +70,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
+  "Q-V13": headlineHint,
   ...Object.fromEntries(ITEM_TRACK_ROWS.map((id) => [id, itemTrackHint])),
 };
 
