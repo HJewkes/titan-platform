@@ -17,6 +17,7 @@
       "find": "isScopeRefusal(refusal) ? \"This is your only correction. Shepherd takes",
       "replace": "false ? \"This is your only correction. Shepherd takes",
       "kills": [
+        "correctionPrompt does not parse as a verdict and stays within the cap for scope_untagged, owner brief true",
         "correctionPrompt tells a scope_untagged FIX_FIRST the rule it broke and that its reply stands",
         "correctionPrompt tells a repeated_finding FIX_FIRST the rule it broke and that its reply stands"
       ]
