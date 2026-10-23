@@ -2,48 +2,50 @@
   "v": 1,
   "mutations": [
     {
-      "name": "pick takes the lowest total",
+      "name": "coverage reads the covers tags again",
       "file": "products/explainer/src/audition-score.ts",
-      "find": "b.r.total - a.r.total",
-      "replace": "a.r.total - b.r.total",
+      "find": "items.filter((item) => evidence(item).some((id) => placed.has(id))).length",
+      "replace": "items.filter((item) => spine.blocks.some((b) => b.covers.includes(item))).length",
       "kills": [
-        "audition pick picks the highest total and names the runner-up with the margin"
+        "audition code scores coverage averages P1 facts placed and the coverage items the cited facts evidence",
+        "audition code scores coverage ignores the spine's own covers tags",
+        "audition code scores with no P1 facts marked, the anchors are the facts behind the holding signals the structure's fit reads"
       ]
     },
     {
-      "name": "a tie goes to the lower likelihood",
+      "name": "anchors ignore the pack's P1 marks",
       "file": "products/explainer/src/audition-score.ts",
-      "find": "b.r.likelihood - a.r.likelihood",
-      "replace": "a.r.likelihood - b.r.likelihood",
+      "find": "if (p1.length) return p1;",
+      "replace": "",
       "kills": [
-        "audition pick a tie goes to the higher stated likelihood, then the earlier slot"
+        "audition code scores coverage averages P1 facts placed and the coverage items the cited facts evidence"
       ]
     },
     {
-      "name": "a full tie goes to the later slot",
+      "name": "anchors take every holding signal, not the ones the fit reads",
       "file": "products/explainer/src/audition-score.ts",
-      "find": "|| a.i - b.i",
-      "replace": "|| b.i - a.i",
+      "find": "row.holds === true && read.has(row.id)",
+      "replace": "row.holds === true",
       "kills": [
-        "audition pick a tie goes to the higher stated likelihood, then the earlier slot"
+        "audition code scores with no P1 facts marked, the anchors are the facts behind the holding signals the structure's fit reads"
       ]
     },
     {
-      "name": "margin is the pick's total alone",
+      "name": "an item no fact evidences counts as failed",
       "file": "products/explainer/src/audition-score.ts",
-      "find": "margin: round(pick.total - runnerUp.total)",
-      "replace": "margin: round(pick.total)",
+      "find": " && evidence(item).length > 0",
+      "replace": "",
       "kills": [
-        "audition pick picks the highest total and names the runner-up with the margin"
+        "audition code scores a coverage item no fact in the pack evidences is left out rather than failed"
       ]
     },
     {
-      "name": "runner-up is the last candidate",
+      "name": "re-hook ignores the block's own band",
       "file": "products/explainer/src/audition-score.ts",
-      "find": "order[1]!.r]",
-      "replace": "order[order.length - 1]!.r]",
+      "find": "Math.max(profile.pacing.reHookS[1], band?.[1] ?? 0)",
+      "replace": "profile.pacing.reHookS[1]",
       "kills": [
-        "audition pick picks the highest total and names the runner-up with the margin"
+        "audition code scores a block the profile bands longer than the re-hook ceiling is held to its own band"
       ]
     }
   ]
