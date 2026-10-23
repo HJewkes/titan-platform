@@ -42,7 +42,7 @@ describe("explainer run CLI", () => {
 
     expect(code).toBe(0);
     expect(reportCode).toBe(0);
-    expect(out.join("")).toContain("| tts | ran | **bridge** |");
+    expect(out.join("")).toContain("| tts | ran | in-process |");
   });
 
   it("exits 1 on a stopped run and prints how to resume it", async () => {
@@ -80,7 +80,7 @@ describe("explainer stage and run variants CLI", () => {
     out.length = 0;
     await run("report", second!, "--compare", first!);
 
-    expect(out.join("")).toContain("| tts | cached | **bridge** |");
+    expect(out.join("")).toContain("| tts | cached | in-process |");
     expect(out.join("")).toContain(`## Compare: ${second} against ${first}`);
     expect(out.join("")).toContain("Cache hits in");
   });

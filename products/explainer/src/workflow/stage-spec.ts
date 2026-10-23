@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import { canonicalJson } from "../eval-store.js";
+import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
 import type { StylePack } from "../style-pack-schema.js";
@@ -14,11 +15,11 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "x6", render: "x4", qa: "x4", sheets: "x4" };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
-const IN_PROCESS_INPUTS: Record<"audition" | "script" | "rewrite" | "eval" | "resolve", readonly string[]> = {
-  audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"],
+const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly string[]> = {
+  audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
@@ -35,6 +36,10 @@ export type Variant = z.infer<typeof VariantSchema>;
 
 const ScriptParamsSchema = z.strictObject({ model: z.string().min(1).optional() });
 const RewriteParamsSchema = z.strictObject({ model: z.string().min(1).optional(), rounds: z.number().int().min(1).max(MAX_REWRITE_ROUNDS).optional() });
+const TtsParamsSchema = z.strictObject({ voice: z.string().min(1).optional(), rate: z.number().min(0.5).max(2).optional() });
+
+/** The voice a run with no profile speaks in: the bridge's voice at Kokoro's natural rate. */
+export const DEFAULT_VOICE = { id: "af_heart", rate: 1 } as const;
 
 /** What a stage body runs with: the run's settings with the variant's params laid over them. */
 export const StageConfigSchema = z.object({
@@ -50,6 +55,8 @@ export const StageConfigSchema = z.object({
   /** A bridged stage's own block of `bridge.json`, so an edited command misses the cache. */
   bridge: z.unknown().optional(),
   vars: z.record(z.string(), z.string()).optional(),
+  /** The tts stage's voice band: the profile's, with a tts variant's `voice` and `rate` over it. */
+  voice: z.object({ id: z.string(), rate: z.number(), source: z.string() }).optional(),
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
 });
@@ -94,6 +101,13 @@ function bridgeConfig(stage: BridgeStage, params: Variant["params"], bridge: () 
   return { bridge: block, vars };
 }
 
+/** Read when the spec is built, so a profile's new voice is a new key. */
+function ttsVoice(profile: string | undefined, params: z.infer<typeof TtsParamsSchema>): NonNullable<StageConfig["voice"]> {
+  const band = profile ? profileFor(loadProfiles(), profile).voice : DEFAULT_VOICE;
+  const source = params.voice !== undefined || params.rate !== undefined ? "variant" : profile ? `profile ${profile}` : "default";
+  return { id: params.voice ?? band.id, rate: params.rate ?? band.rate, source };
+}
+
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
   if (stage === "audition") {
     z.strictObject({}).parse(params);
@@ -107,6 +121,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   }
   if (stage === "eval") return { ...z.strictObject({}).parse(params), judge: settings.judge };
   if (stage === "resolve") return { ...z.strictObject({}).parse(params), ...resolveConfig() };
+  if (stage === "tts") return { voice: ttsVoice(settings.profile, TtsParamsSchema.parse(params)) };
   return bridgeConfig(stage, params, bridge);
 }
 
