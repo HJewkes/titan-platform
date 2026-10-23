@@ -58,6 +58,7 @@ import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
+import { noFixerAnswers, workflowCiGate } from "./workflow-ci-send-back.js";
 
 export { SHEPHERD_STEPS };
 
@@ -303,6 +304,7 @@ const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_F
 async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<never> {
   const wake = SEND_BACK[verdict.kind];
   if (!wake) throw new Error(`shepherd-pr: a ${verdict.kind} verdict has no send-back`);
+  if (noFixerAnswers(run.ctx, verdict)) throw new LeaveLand(await workflowCiGate(run, headSha));
   if (await woken(run, wake, headSha, wake === "review" ? withEarlier(verdict, run.fixFirstTrail, headSha) : verdict)) throw new LeaveLand();
   throw new LeaveLand(await unhandledSendBack(run, verdict.kind, headSha));
 }
