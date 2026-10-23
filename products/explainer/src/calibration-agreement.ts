@@ -9,7 +9,7 @@ const FeedbackSchema = z.object({
   answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional() }).loose()),
 }).loose();
 
-export const OWNER_LABELS = Object.keys(LABEL_OPTIONS) as OwnerLabel[];
+export const OWNER_LABELS: readonly OwnerLabel[] = ["yes", "no", "unsure"];
 
 /** The console refuses an option text that two questions share, so each option names its item. */
 export const optionText = (label: OwnerLabel, item: string): string => `${LABEL_OPTIONS[label]} (${item})`;

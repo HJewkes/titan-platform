@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { AgreementRecordSchema } from "./calibration-agreement.js";
 import { QueueKeySchema, type QueueKey } from "./calibration-queue.js";
 import { runEvalCli } from "./eval-cli.js";
@@ -45,7 +46,7 @@ function manifest(): string {
 const printed = (): string => log.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 const readKey = (): QueueKey => QueueKeySchema.parse(readJson(join(dir, "key.json")));
-interface Round { questions: object[]; sections: { title: string }[] }
+const RoundSchema = z.looseObject({ questions: z.array(z.looseObject({})), sections: z.array(z.looseObject({ title: z.string() })) });
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "explainer-calibrate-judges-"));
@@ -63,7 +64,7 @@ describe("explainer eval calibrate queue", () => {
 
     expect(error.mock.calls).toEqual([]);
     expect(code).toBe(0);
-    const round = readJson(join(dir, "round", "round.json")) as Round;
+    const round = RoundSchema.parse(readJson(join(dir, "round", "round.json")));
     const key = readKey();
     expect(round).toMatchObject({ schema: "titan-review/round@2", unit: "judge-cal-r1", variants: [] });
     expect(round.questions).toHaveLength(20);
