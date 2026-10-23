@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_DOCTRINE_DIR } from "./doctrine-load.js";
 import { canonicalJson } from "./eval-store.js";
-import { SLOT_FAMILIES, StylePackSchema, StyleTokensFileSchema, type StylePack, type StyleSlot } from "./style-pack-schema.js";
+import { SLOT_FAMILIES, STYLE_SLOTS, StylePackSchema, StyleTokensFileSchema, type StylePack, type StyleSlot } from "./style-pack-schema.js";
 import { sha256 } from "./workflow/artifacts.js";
 import { readYamlDir } from "./yaml-dir.js";
 
@@ -32,7 +32,10 @@ export function loadStyleTokens(dir: string = DEFAULT_DOCTRINE_DIR): Set<string>
 }
 
 const slotEntries = (pack: StylePack): [StyleSlot, string][] =>
-  Object.entries(pack.tokens).filter((entry): entry is [StyleSlot, string] => entry[1] !== undefined);
+  STYLE_SLOTS.flatMap((slot): [StyleSlot, string][] => {
+    const token = pack.tokens[slot];
+    return token === undefined ? [] : [[slot, token]];
+  });
 
 const squash = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]/g, "");
 

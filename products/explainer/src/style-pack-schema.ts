@@ -23,6 +23,8 @@ const StyleTokensSchema = z
 
 export type StyleSlot = keyof z.infer<typeof StyleTokensSchema>;
 
+export const STYLE_SLOTS: readonly StyleSlot[] = StyleTokensSchema.keyof().options;
+
 /**
  * The token families each slot may pick from, by name prefix: a slot holds a token of its kind (a
  * colour for the ground, an ease for the motion), never a raw value.
