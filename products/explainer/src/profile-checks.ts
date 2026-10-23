@@ -16,6 +16,9 @@ export const PROFILE_ISSUE_CODES = [
   "publish-unguarded",
   "unknown-beat-system",
   "beat-system-order",
+  "unknown-style-pack",
+  "style-pack-unvaried",
+  "voice-shared",
 ] as const;
 
 export type ProfileIssueCode = (typeof PROFILE_ISSUE_CODES)[number];
@@ -154,9 +157,27 @@ function beatSystems(profile: TypeProfile, { beatSystems: registry }: ProfileSet
   });
 }
 
-const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish, beatSystems];
+/** Each pack a profile allows is a loaded pack, its house pack is one it allows, and a varied pack has another to vary to. */
+function stylePacks(profile: TypeProfile, { stylePacks: packs }: ProfileSet): ProfileIssue[] {
+  const { allow, house } = profile.styles;
+  const unknown = allow.filter((id) => !packs.has(id)).map((id) => issue("unknown-style-pack", profile, `style pack ${id} has no style-packs/${id}.yaml`));
+  const outside = house && !allow.includes(house) ? [issue("unknown-style-pack", profile, `the house pack ${house} is not in styles.allow`)] : [];
+  const unvaried = profile.series.mustVary.includes("style-pack") && allow.length < 2 ? [issue("style-pack-unvaried", profile, "mustVary lists style-pack, so styles.allow names at least two packs")] : [];
+  return [...unknown, ...outside, ...unvaried];
+}
+
+const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish, beatSystems, stylePacks];
+
+/** The voice varies per profile (plan §A.4): two profiles never share a voice id at the same rate. */
+function sharedVoices(profiles: readonly TypeProfile[]): ProfileIssue[] {
+  return profiles.flatMap((profile, i) => {
+    const twin = profiles.slice(0, i).find((other) => other.voice.id === profile.voice.id && other.voice.rate === profile.voice.rate);
+    return twin ? [issue("voice-shared", profile, `voice ${profile.voice.id} at rate ${profile.voice.rate} is ${twin.type}'s too`)] : [];
+  });
+}
 
 /** Every cross-field and cross-file refinement over the loaded profiles. Empty when sound. */
 export function checkProfiles(set: ProfileSet, vocabulary: DoctrineVocabulary): ProfileIssue[] {
-  return [...set.profiles.values()].flatMap((profile) => PROFILE_CHECKS.flatMap((check) => check(profile, set, vocabulary)));
+  const profiles = [...set.profiles.values()];
+  return [...profiles.flatMap((profile) => PROFILE_CHECKS.flatMap((check) => check(profile, set, vocabulary))), ...sharedVoices(profiles)];
 }

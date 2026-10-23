@@ -46,6 +46,8 @@ structure:
 cuts: []
 hook: "Open on the pain or the anomaly by 0.5 s; the complication lands by 25% of runtime."
 ending: takeaways+button
+styles: { allow: [night-drafting, mono-console, paper-margin] }
+voice: { id: am_michael, rate: 1.0 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]

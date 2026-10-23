@@ -38,6 +38,8 @@ structure:
 cuts: []
 hook: "The bottom line and the count of items that need the owner, in the first 20 s."
 ending: button
+styles: { allow: [ember-desk, night-drafting, paper-margin], house: ember-desk }
+voice: { id: bm_george, rate: 1.1 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines, lead-story, featured-visual]

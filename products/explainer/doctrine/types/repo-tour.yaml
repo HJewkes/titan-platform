@@ -33,6 +33,8 @@ cuts:
   - { id: argument, type: repo-argument, when: "One idea from the repo should land for an outside viewer.", runtimeS: [210, 300] }
 hook: "State the verdict in one line by 10% of runtime; grey scorecard rows open the loops the chapters close."
 ending: scorecard+button
+styles: { allow: [paper-margin, night-drafting, ember-desk] }
+voice: { id: af_heart, rate: 1.0 }
 series:
   mayRepeat: [frame-chrome, intro-outro, chapter-rail, house-look, captions, voice, structure, chapter-labels]
   mustVary: [hook-kind, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
