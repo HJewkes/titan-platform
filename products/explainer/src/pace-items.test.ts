@@ -78,8 +78,8 @@ describe("the v4 item track", () => {
 });
 
 describe("the kind table", () => {
-  // Mutation: defaulting an unknown kind to "item" lets a new renderer's cues go uncounted as errors.
-  it("throws on an unknown cue kind and names it", () => {
+  // Mutation: reading an unknown kind as "attribute" lets a new renderer's cues go uncounted.
+  it("counts an unknown cue kind as an item and keeps its kind, so the item track never throws on it", () => {
     const Cue = z.looseObject({ target: z.string() });
     const script = z
       .looseObject({ beats: z.array(z.looseObject({ visual: z.looseObject({ cues: z.array(Cue).default([]) }) })) })
@@ -88,7 +88,10 @@ describe("the kind table", () => {
     if (!firstCue) throw new Error("r1-1-hook has no cue");
     firstCue.target = "widget:4 stores";
 
-    expect(() => fromSpikeScript(script)).toThrow(/unknown cue kind "widget"/);
+    const items = fromSpikeScript(script).beats[0]?.items ?? [];
+
+    expect(items.find((item) => item.kind === "widget")).toMatchObject({ role: "item", label: "4 stores", source: "cue" });
+    expect(() => cueKindRole("widget")).toThrow(/unknown cue kind "widget"/);
     expect(cueKindRole("detail")).toBe("attribute");
   });
 });

@@ -8,7 +8,7 @@ import { canonicalSha } from "../eval-store.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { repairHint } from "../l0-repair-hints.js";
 import { paceRows } from "../lint-pace.js";
-import { fromScriptV1 } from "../pace-items.js";
+import { CUE_KIND_ROLES, fromScriptV1, unknownCueKinds } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
@@ -116,6 +116,24 @@ const planned = (script: ScriptV1): ScriptV1 => ({ ...script, structure: GUIDE_P
  * schema retry was measured failing on the same keys again.
  */
 function checked(outcome: StepRunOutcome): Checked {
+  const result = parsedReply(outcome);
+  const fault = result.script ? cueKindFault(result.script) : undefined;
+  return fault ? { error: fault } : result;
+}
+
+/**
+ * script/v1 admits a cue target of any kind, because a beat spec assigned later reads its targets as element ids, but a
+ * draft's cue targets are `kind:label`: the item track counts them by kind, so the retry names the kind and the beat.
+ */
+function cueKindFault(script: ScriptV1): string | undefined {
+  const kinds = Object.keys(CUE_KIND_ROLES).join(", ");
+  const faults = script.beats.flatMap((beat, i) =>
+    unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
+  );
+  return faults.length > 0 ? faults.join("; ") : undefined;
+}
+
+function parsedReply(outcome: StepRunOutcome): Checked {
   if (!outcome.ok) return { error: outcome.error };
   let raw: unknown;
   try {

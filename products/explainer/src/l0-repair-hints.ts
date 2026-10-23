@@ -2,7 +2,7 @@ import type { L0Result } from "./eval-l0.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
-import { CUE_KIND_ROLES, fromScriptV1 } from "./pace-items.js";
+import { CUE_KIND_ROLES, unknownCueKinds } from "./pace-items.js";
 import type { ScriptV1 } from "./script-schema.js";
 
 type Hint = (script: ScriptV1, row: L0Result) => string | undefined;
@@ -39,18 +39,14 @@ function plainOpeningHint(script: ScriptV1): string | undefined {
   return `the first identifier the voice says is "${first.word}" in ${first.beat}, after ${percent(first.share)} of the words (needs ${percent(MIN_PLAIN_SHARE)}); say it in plain words there, or name it later`;
 }
 
-const projectionFault = (script: ScriptV1, beat: ScriptV1["beats"][number]): string | undefined => {
-  try {
-    fromScriptV1({ ...script, beats: [beat] });
-    return undefined;
-  } catch (error) {
-    return `${beat.id}: ${(error instanceof Error ? error.message : String(error)).replace(/: add it to CUE_KIND_ROLES$/, "")}`;
-  }
+const projectionFault = (beat: ScriptV1["beats"][number]): string | undefined => {
+  const [kind] = unknownCueKinds(beat);
+  return kind === undefined ? undefined : `${beat.id}: unknown cue kind "${kind}"`;
 };
 
 /** One beat the item track cannot read fails these rows on every beat, so the repair hears the beat and the cause. */
 function itemTrackHint(script: ScriptV1): string | undefined {
-  const faults = script.beats.flatMap((beat) => projectionFault(script, beat) ?? []);
+  const faults = script.beats.flatMap((beat) => projectionFault(beat) ?? []);
   if (faults.length === 0) return undefined;
   return `the item track cannot read ${faults.join("; ")}. A cue target is kind:label, with kind one of ${Object.keys(CUE_KIND_ROLES).join(", ")}; fix those cues and this row is measured again`;
 }
