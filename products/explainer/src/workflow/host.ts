@@ -18,6 +18,7 @@ import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigrati
 import type { CheckJudge } from "./stage-checks.js";
 import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
+import type { TtsEngine } from "./tts-stage.js";
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -31,6 +32,8 @@ export interface RunHost {
   listener?: { threshold?: number };
   /** Runs a bridged command; tests pass a fake. */
   exec?: BridgeExec;
+  /** The tts stage's engine; speech-tts Kokoro by default, tests pass a fake. */
+  ttsEngine?: () => Promise<TtsEngine>;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   leaseMs?: number;
@@ -239,7 +242,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const body = bodyRoute({
     dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
-    ...(host.signal ? { signal: host.signal } : {}),
+    ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
   const styles = host.stylePacks ? { stylePacks: host.stylePacks } : {};

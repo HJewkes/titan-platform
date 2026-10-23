@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
 import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-design/workflow";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
@@ -11,6 +12,7 @@ import type { z } from "zod";
 import { ScriptSchema } from "../script-schema.js";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
+import type { TtsEngine } from "./tts-stage.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
 export const SPINE = `# Story spine: parcel-desk
@@ -49,12 +51,6 @@ export interface Fixture {
 const BRIDGE: Omit<z.input<typeof BridgeFileSchema>, "workdir" | "theater"> = {
   schema: "explainer-bridge/v1",
   stages: {
-    tts: {
-      inputs: { script: "script.json" },
-      outputs: { words: { path: "out/words.json", tree: false }, audio: { path: "out/audio", tree: true } },
-      commands: [{ argv: ["node", "tools/tts.mjs", "{in.script}", "{out.audio}"], timeoutS: 60 }],
-      vars: {},
-    },
     render: {
       inputs: { words: "out/words.json", audio: "out/audio" },
       outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false } },
@@ -88,8 +84,6 @@ interface FakeBridge {
   exec: BridgeExec;
   /** Each command's script name, in order. */
   calls: string[];
-  /** sha of the script.json the tts command was handed, per call. */
-  ttsInputs: string[];
 }
 
 const write = (file: string, text: string) => {
@@ -99,33 +93,15 @@ const write = (file: string, text: string) => {
 
 const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
 
-/** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
-/** A words.json that voices every beat word for word, one word a second; `drop` leaves that word unspoken everywhere. */
-function wordsFile(scriptText: string, drop?: string): string {
-  const beats = ScriptSchema.parse(JSON.parse(scriptText)).beats.map((beat) => {
-    const spoken = beat.spoken.split(/\s+/).filter((word) => word !== drop);
-    return { id: beat.id, durationS: spoken.length + 1, words: spoken.map((word, i) => ({ word, start: i, end: i + 1 })) };
-  });
-  return JSON.stringify({ voice: { provider: "fake" }, beats });
-}
-
 interface BridgeOptions {
   qaFails?: boolean;
   /** The variety lint (a reported-only check) exits non-zero. */
   varietyFails?: boolean;
-  /** TTS never voices this word, so any cue on it does not resolve. */
-  dropWord?: string;
 }
 
-function templateBodies(options: BridgeOptions, ttsInputs: string[]): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
+/** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
+function templateBodies(options: BridgeOptions): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
   return {
-    "tts.mjs": (req) => {
-      const script = readFileSync(req.argv[2]!, "utf8");
-      ttsInputs.push(sha256(script));
-      write(path.join(req.argv[3]!, "b1.wav"), `wav:${sha256(script)}`);
-      write(at(req, "out/words.json"), wordsFile(script, options.dropWord));
-      return { code: 0, stdout: "1 beat in 0.1s\n" };
-    },
     "render.ts": (req) => {
       write(req.argv[2]!, `mp4:workers=${req.argv[4]}:${readFileSync(at(req, "out/words.json"), "utf8")}`);
       write(at(req, "out/demo.vtt"), "WEBVTT\n");
@@ -146,15 +122,14 @@ function templateBodies(options: BridgeOptions, ttsInputs: string[]): Record<str
 /** Stands in for the template commands and records which ran. */
 export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   const calls: string[] = [];
-  const ttsInputs: string[] = [];
-  const bodies = templateBodies(options, ttsInputs);
+  const bodies = templateBodies(options);
   const exec: BridgeExec = async (req) => {
     const name = path.basename(req.argv[1]!);
     calls.push(name);
     const { code, stdout } = bodies[name]!(req);
     return { code, stdout, stderr: code === 0 ? "" : "held errors at b1\n" };
   };
-  return { exec, calls, ttsInputs };
+  return { exec, calls };
 }
 
 interface FakeScriptModel {
@@ -187,11 +162,43 @@ export const l0Check = (pass: boolean): L0Check => () => [{ check_id: "fake-l0",
 type Fakes = { rewriter: ReturnType<typeof fakeRewriter>; rubric: ReturnType<typeof fakeRubricJudge> };
 
 /** A host on fakes, with a clock that moves one second per read so stage wall times are exact; `rubric` judges J8 to J12. */
+export interface FakeVoice {
+  engine: () => Promise<TtsEngine>;
+  /** The text of every take synthesized, in order; a take the cache served is not here. */
+  spoken: string[];
+}
+
+const FAKE_RATE = 1000;
+
+/** A voice that speaks one word a second and times each word itself; `dropWord` has no phonemes, as Kokoro's strict mode refuses. */
+export function fakeVoice(options: { dropWord?: string } = {}): FakeVoice {
+  const spoken: string[] = [];
+  const provider: TtsProvider = {
+    id: "fake-voice",
+    capabilities: { phonemeInput: [], wordTimestamps: true, speedControl: true, voices: [], languages: ["en-US"], sampleRate: FAKE_RATE },
+    synthesize: async (input) => {
+      const words = ("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
+      const unknown = words.map((word, index) => ({ word, index })).filter((w) => w.word === options.dropWord);
+      if (unknown.length > 0) throw new TtsUnknownWordsError("fake-voice", unknown);
+      spoken.push(words.join(" "));
+      const audio = { samples: new Float32Array(words.length * FAKE_RATE).fill(0.1), sampleRate: FAKE_RATE };
+      return { audio, durationS: words.length, words: words.map((word, i) => ({ word, start: i, end: i + 1 })) };
+    },
+  };
+  return { engine: async () => ({ provider, version: "fake/1" }), spoken };
+}
+
+/** The spoken text, one beat a line, of a script/v1 or a words.json in the fixture's store. */
+export function spokenOf(fx: Fixture, sha: string): string {
+  const beats = (JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", sha), "utf8")) as { beats: { spoken: string }[] }).beats;
+  return beats.map((beat) => beat.spoken).join("\n");
+}
+
 export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
   const rewriter = extra.rewriter ?? fakeRewriter();
   const rubric = extra.rubric ?? fakeRubricJudge();
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
+  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
 }
