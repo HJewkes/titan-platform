@@ -122,6 +122,21 @@ function addGatherOptions(command: Command): Command {
     .option("--dry-run", "gather and print the plan, then stop before any stage runs");
 }
 
+async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<number> {
+  const facts = await factsFor(flags, deps, io);
+  if (flags.dryRun) {
+    io.out(`dry run: would run ${flags.from} to ${flags.to}${facts ? ` with facts ${facts}` : ""}\n`);
+    return EXIT.OK;
+  }
+  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
+  const result = await runVideo({
+    ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
+    ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
+    from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
+  }, hostFor(flags, deps));
+  return summary(result, io);
+}
+
 function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
   return addGatherOptions(new Command("run"))
     .description("Make one explainer video end to end on the workflow runtime, then write run-report.md (see also `run report --help`, `run resume --help`)")
@@ -140,20 +155,7 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--judge <file>", "model config JSON for the rewrite stage, as for `explainer rewrite` (default: claude-print sonnet)")
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, rounds, MAX_REWRITE_ROUNDS)
     .exitOverride()
-    .action(async (flags: RunFlags) => {
-      const facts = await factsFor(flags, deps, io);
-      if (flags.dryRun) {
-        io.out(`dry run: would run ${flags.from} to ${flags.to}${facts ? ` with facts ${facts}` : ""}\n`);
-        return onResult(EXIT.OK);
-      }
-      const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
-      const result = await runVideo({
-        ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
-        ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
-        from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-      }, hostFor(flags, deps));
-      onResult(summary(result, io));
-    });
+    .action(async (flags: RunFlags) => onResult(await runAction(flags, deps, io)));
 }
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
