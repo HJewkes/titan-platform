@@ -16,7 +16,7 @@ export interface GatherDeps {
   listTasks?: (initiative: string) => Promise<SnapshotTask[]>;
 }
 
-export interface GatherFlags {
+interface GatherFlags {
   factsFrom: FactAdapter;
   type?: string;
   day?: string;
@@ -25,7 +25,7 @@ export interface GatherFlags {
   initiative: string;
 }
 
-export interface Gathered {
+interface Gathered {
   type: string;
   day: string;
   facts: string;
