@@ -140,6 +140,14 @@ interface GraphRetrieverOptions {
     hops?: number;
     /** Follow edges in both directions (default) or only source to target. */
     direction?: "both" | "out";
+    /**
+     * A non-seed node with at least this many followed edges is returned but not expanded. Uncapped
+     * when omitted: the edge table cannot list every node's degree, so pass
+     * `defaultHubDegree(degrees)` from your own counts to get the walk's p99 default.
+     */
+    hubDegree?: number;
+    /** Stop once this many neighbours have been reached (default unlimited). */
+    maxNodes?: number;
 }
 /**
  * Expand a set of seed ids through the edge table, ranking neighbours by hop
@@ -151,6 +159,50 @@ declare function expandGraph(edges: EdgeTable, seeds: string[], options?: GraphR
 declare function graphRetriever(edges: EdgeTable, seededBy: Retriever, options?: GraphRetrieverOptions & {
     seedLimit?: number;
 }): Retriever;
+
+/*!
+ * The hub cap (a non-seed node of degree >= max(50, p99 degree) is returned but never
+ * expanded) is adapted from graphify, https://github.com/Graphify-Labs/graphify,
+ * graphify/serve.py (_bfs, _dfs). Copyright 2026 Safi Shamsi and the Graphify contributors,
+ * licensed under the Apache License 2.0, http://www.apache.org/licenses/LICENSE-2.0.
+ * Changed here: the walk runs over any adjacency through a neighbours/degree pair instead of a
+ * networkx graph, keeps the discovery order and the edge each node was reached by, and stops
+ * at an optional node limit.
+ * @license Apache-2.0
+ */
+interface WalkNeighbour {
+    id: string;
+    relation: string;
+}
+/** The adjacency a walk needs. `degrees` lists every node's degree so the default hub cap can take the p99. */
+interface WalkGraph {
+    neighbours(id: string): WalkNeighbour[];
+    degree(id: string): number;
+    degrees?(): Iterable<number>;
+}
+interface WalkOptions {
+    /** How far to walk from the seeds (default 1). */
+    hops?: number;
+    /** A non-seed node at or above this degree is returned but not expanded. Default `defaultHubDegree(graph.degrees())`. */
+    hubDegree?: number;
+    /** Stop once this many nodes have been reached (default unlimited). */
+    maxNodes?: number;
+}
+/** One reached node: the hop it was found at and the node and relation it was reached through. */
+interface WalkStep {
+    id: string;
+    hop: number;
+    via: string;
+    relation: string;
+}
+/** max(50, p99 degree): the floor keeps a small graph from treating its busiest node as a hub. */
+declare function defaultHubDegree(degrees: Iterable<number>): number;
+/**
+ * Breadth-first walk from the seeds, in hop then discovery order. A hub stays in the output,
+ * but its neighbours are only reached through it when it is a seed, so one busy node cannot
+ * flood the result with everything it touches.
+ */
+declare function walkGraph(graph: WalkGraph, seeds: string[], options?: WalkOptions): WalkStep[];
 
 /** Scores query/candidate pairs; higher is more relevant. Cross-encoders live here. */
 interface Reranker {
@@ -216,4 +268,4 @@ declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
-export { BruteForceVectorIndex, type Candidate, type CrossEncoderOptions, type Degradation, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultMatchExpression, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, rerankCandidates, vectorRetriever };
+export { BruteForceVectorIndex, type Candidate, type CrossEncoderOptions, type Degradation, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, rerankCandidates, vectorRetriever, walkGraph };

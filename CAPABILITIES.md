@@ -744,8 +744,8 @@ Key exports:
 - `retrievers/fts`: `defaultMatchExpression`, `ftsRetriever`
 - `retrievers/vector`: `BruteForceVectorIndex`, `vectorRetriever`
 - `retrievers/graph`: `expandGraph`, `graphRetriever`
-- `rerank`: `crossEncoderReranker`, `rerankCandidates`
-- `engine`: `createRetrievalEngine`
+- `retrievers/walk`: `defaultHubDegree`, `walkGraph`
+- `rerank`: `crossEncoderReranker`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/retrieval)
 
 <a id="cap-rpc-client"></a>
