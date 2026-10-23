@@ -211,7 +211,13 @@ describe("buildReviewPrCases", () => {
     const out = join(scratch, `out-${outs++}`);
     const options = { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => cloneGit, mainRef: "origin/nope", seed: "test" };
 
-    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow();
+    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow(/is not a git repo/);
   });
 
+  it("aborts when a repo's clone directory does not exist, rather than counting its heads unreachable", async () => {
+    const out = join(scratch, `out-${outs++}`);
+    const options = { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => localCloneGit(join(scratch, "no-such-clone")), mainRef: fixture.base, seed: "test" };
+
+    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow(/is not a git repo/);
+  });
 });

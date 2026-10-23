@@ -56,6 +56,7 @@ interface Heads {
 interface BuildContext extends Required<Omit<BuildOptions, "policy" | "gitFor">> {
   gitFor: BuildOptions["gitFor"];
   skipped: Record<string, number>;
+  verifiedClones: Set<BundleGit>;
 }
 
 const text = (buffer: Buffer): string => buffer.toString("utf8").trim();
@@ -113,6 +114,21 @@ function historyCase(context: BuildContext, heads: Heads, kind: "defect" | "clea
   });
 }
 
+/**
+ * Git exits 128 for an absent commit, a missing clone directory and a non-repository alike, so `holdsCommit` can read
+ * a failure as "absent" only after the clone is known to be a repo in which the main ref resolves. Once per clone.
+ */
+async function verifyClone(context: BuildContext, git: BundleGit, repo: string): Promise<void> {
+  if (context.verifiedClones.has(git)) return;
+  try {
+    await git.git(["rev-parse", "--git-dir"]);
+    await git.git(["rev-parse", "--verify", `${context.mainRef}^{commit}`]);
+  } catch (error) {
+    throw new Error(`the clone for ${repo} is not a git repo in which ${context.mainRef} resolves: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  context.verifiedClones.add(git);
+}
+
 /** True unless git answers that the commit is absent; a failure to run git at all is not an answer and propagates. */
 async function holdsCommit(git: BundleGit, sha: string): Promise<boolean> {
   try {
@@ -128,6 +144,7 @@ async function holdsCommit(git: BundleGit, sha: string): Promise<boolean> {
 async function draftOf(context: BuildContext, row: CorpusRow, kind: "defect" | "clean"): Promise<Draft | undefined> {
   const git = context.gitFor(row.repo);
   if (!git) return void bump(context.skipped, "no-clone");
+  await verifyClone(context, git, row.repo);
   const wanted = kind === "defect" && row.nextHead !== null ? [row.head, row.nextHead] : [row.head];
   for (const sha of wanted) {
     if (!(await holdsCommit(git, sha))) return void bump(context.skipped, "head-unreachable");
@@ -289,7 +306,7 @@ function writeOutput(outDir: string, cases: readonly Draft[], manifest: Omit<Bui
 export async function buildReviewPrCases(rows: readonly CorpusRow[], options: BuildOptions): Promise<BuildManifest> {
   await assertOutsideWorkTree(options.outDir);
   assertFreshOut(options.outDir);
-  const context: BuildContext = { outDir: options.outDir, gitFor: options.gitFor, mainRef: options.mainRef ?? "origin/main", controls: options.controls ?? 6, seed: options.seed ?? "review-pr", skipped: {} };
+  const context: BuildContext = { outDir: options.outDir, gitFor: options.gitFor, mainRef: options.mainRef ?? "origin/main", controls: options.controls ?? 6, seed: options.seed ?? "review-pr", skipped: {}, verifiedClones: new Set() };
   const { kept, excluded } = filterPrivate(await historyDrafts(context, rows), options.policy);
   const controls = await plantControls(context, kept.filter((draft) => draft.kind === "clean"));
   const cases = [...kept, ...controls];
