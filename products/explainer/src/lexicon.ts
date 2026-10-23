@@ -21,6 +21,12 @@ export function mentions(text: string, term: string): boolean {
 /** The term as `text` spells it at its first whole-term mention, or null if it is not mentioned. */
 export const spelledAs = (text: string, term: string): string | null => termPattern(term).exec(text)?.[0] ?? null;
 
+/**
+ * Heard forms that stand for a script word when the TTS stage re-times words (the map `realign.py` carried): a
+ * recogniser or tokenizer spelling on the left, the script's word on the right, both lower case.
+ */
+export const HOMOPHONES: Readonly<Record<string, string>> = { crip: "crib", tightens: "titans", roots: "routes", docks: "docs" };
+
 /** The entries whose term appears in any of the texts, in lexicon order. */
 export function lexiconEntriesFor(lexicon: Lexicon, texts: readonly string[]): LexiconEntry[] {
   return lexicon.entries.filter((entry) => texts.some((text) => mentions(text, entry.term)));

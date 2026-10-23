@@ -12,7 +12,7 @@ import { runStageCached } from "./stage-cache.js";
 import { stageSpec, type RunSettings } from "./stage-spec.js";
 import { stylePack } from "../profile-fixtures.test-helpers.js";
 import type { StylePack } from "../style-pack-schema.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeHost, fakeScriptModel, fixture, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -89,7 +89,7 @@ describe("stage cache over whole runs", () => {
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ audition: "not run", script: "cached", rewrite: "ran", eval: "ran", resolve: "ran", tts: "ran", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(unchanged.prompts.length).toBeGreaterThan(0);
-    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
   });
 
   it("a variant file for another stage is refused before any stage runs", async () => {
@@ -137,7 +137,7 @@ describe("pins over a base run", () => {
 
     expect(repair.status, repair.error).toBe("completed");
     expect(row(repair, "eval").status).toBe("ran");
-    expect(bridge.ttsInputs.at(-1)).toBe(draft);
+    expect(spokenOf(fx, row(repair, "tts").outputs.words!)).toBe(spokenOf(fx, draft));
   });
 
   it("a run based on a pinned run keeps the pin, not the output the pinned run only reused", async () => {
@@ -358,10 +358,9 @@ describe("stage key", () => {
 
   it("refuses a style pack on any stage but render, and a pack with no file", () => {
     const tts = { schema: "explainer.variant/v1" as const, stage: "tts" as const, name: "styled", params: { stylePack: "night-drafting" } };
-    const ttsBridge = () => BridgeFileSchema.parse({ ...BRIDGE("4"), stages: { tts: { outputs: {}, commands: [{ argv: ["t"] }] } } });
     const loud = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "loud", params: { stylePack: "loud" } } };
 
-    expect(() => stageSpec({ stage: "tts", artifacts: {}, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: ttsBridge, variant: { sha: "c".repeat(64), value: tts } })).toThrow(/only a render variant/);
+    expect(() => stageSpec({ stage: "tts", artifacts: { script: "a".repeat(64) }, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: () => BRIDGE("4"), variant: { sha: "c".repeat(64), value: tts } })).toThrow(/only a render variant/);
     expect(() => keyOf({ variant: loud })).toThrow(/unknown style pack loud/);
   });
 

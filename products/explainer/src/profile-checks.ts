@@ -1,3 +1,4 @@
+import { KOKORO_CAPABILITIES } from "@titan-design/speech-tts";
 import { placeBeatSystem } from "./beat-system-schema.js";
 import type { DoctrineVocabulary } from "./doctrine-schema.js";
 import type { ProfileSet } from "./profile-load.js";
@@ -19,6 +20,7 @@ export const PROFILE_ISSUE_CODES = [
   "unknown-style-pack",
   "style-pack-unvaried",
   "voice-shared",
+  "unknown-voice",
 ] as const;
 
 export type ProfileIssueCode = (typeof PROFILE_ISSUE_CODES)[number];
@@ -166,7 +168,14 @@ function stylePacks(profile: TypeProfile, { stylePacks: packs }: ProfileSet): Pr
   return [...unknown, ...outside, ...unvaried];
 }
 
-const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish, beatSystems, stylePacks];
+/** The voices the explainer's Kokoro provider can speak; a profile naming any other fails at the TTS stage. */
+const KOKORO_VOICES: ReadonlySet<string> = new Set(KOKORO_CAPABILITIES.voices.map((voice) => voice.id));
+
+function voice(profile: TypeProfile): ProfileIssue[] {
+  return KOKORO_VOICES.has(profile.voice.id) ? [] : [issue("unknown-voice", profile, `voice ${profile.voice.id} is not one speech-tts Kokoro can synthesize`)];
+}
+
+const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish, beatSystems, stylePacks, voice];
 
 /** The voice varies per profile (plan §A.4): two profiles never share a voice id at the same rate. */
 function sharedVoices(profiles: readonly TypeProfile[]): ProfileIssue[] {
