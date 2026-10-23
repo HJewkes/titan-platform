@@ -6,8 +6,11 @@ import { DECISION_BRIEF_CUT, writeBrief, type StartBrief } from "../presets/pr-o
 import { runVideo, type RunHost } from "./host.js";
 import type { StageName } from "./records.js";
 
-/** A decision brief runs its gather stage, then the storyboard-only audition; the script waits on a spine. */
-const BRIEF_LAST_STAGE: StageName = "audition";
+/**
+ * A decision brief runs gather, the audition, and the script on the spine pr-overview's audition writes from its pick.
+ * It stops before rewrite: past the script each stage spends again, and tts and render need the bridge's renderer.
+ */
+export const BRIEF_LAST_STAGE: StageName = "script";
 
 /**
  * The trigger's production start: writes `brief.json`, then runs the decision-brief video from its gather stage. The
