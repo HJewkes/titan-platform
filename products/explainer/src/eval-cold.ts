@@ -218,6 +218,10 @@ export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): str
 
 const missing = (reply: ColdReply): ColdGrade => ({ score: 0, void_reason: reply.ok ? "not answered" : `call failed: ${reply.reason}` });
 
+/** A zero code wrote in the judge's place: a bare list item, a reply that skipped the question, or a failed call. */
+export const codeDecidedZero = (voidReason: string): boolean =>
+  voidReason === BARE.void_reason || voidReason === "not answered" || voidReason.startsWith("call failed: ");
+
 function pickOf(answer: ColdAnswer | undefined, items: readonly string[]): string | null {
   const key = answer?.odd_one_out?.trim().toLowerCase();
   return items.find((i) => i.trim().toLowerCase() === key) ?? null;

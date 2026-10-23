@@ -152,7 +152,8 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
   const onResult = (next: number): void => {
     code = next;
   };
-  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride()
+  // Positional at every level, or a parent option such as calibrate's --format takes a subcommand's same-named flag.
+  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride().enablePositionalOptions()
     .addCommand(l0Command(deps, onResult))
     .addCommand(paceCommand(deps, onResult))
     .addCommand(l1Command(deps, onResult))
@@ -161,7 +162,7 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(itemsCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult));
-  const program = new Command("explainer").exitOverride().addCommand(evalCommand);
+  const program = new Command("explainer").exitOverride().enablePositionalOptions().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });
   } catch (error) {

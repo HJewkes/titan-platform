@@ -26,6 +26,9 @@ export interface JudgedOutput extends CaseRef {
   question: string;
   excerpt: string;
   pass: boolean;
+  /** The judge config and run the verdict came from, so an agreement names what it calibrated. */
+  configId: string;
+  run: string;
 }
 
 /** What the owner sees: no judge, no verdict. */
@@ -44,6 +47,8 @@ const KeyEntrySchema = z
     videoType: z.string().min(1),
     target: z.string().min(1),
     pass: z.boolean(),
+    configId: z.string(),
+    run: z.string(),
   })
   .strict();
 export type KeyEntry = z.infer<typeof KeyEntrySchema>;
@@ -100,6 +105,6 @@ export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, 
   const id = (i: number): string => `q${String(i + 1).padStart(2, "0")}`;
   return {
     items: ordered.map((o, i) => ({ id: id(i), case: o.case, question: o.question, excerpt: o.excerpt })),
-    key: ordered.map((o, i) => ({ id: id(i), judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass })),
+    key: ordered.map((o, i) => ({ id: id(i), judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run })),
   };
 }

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CaseRef, JudgedOutput } from "./calibration-queue.js";
+import { codeDecidedZero } from "./eval-cold.js";
 import { paceInput } from "./eval-pace-cli.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { PaceBeat } from "./pace-items.js";
@@ -59,10 +60,22 @@ interface Source {
   evals: string;
 }
 
+/** The script's own verdicts that the judge gave: an empty score is voided, and a code-decided zero is not the judge's. */
 const rows = (source: Source, file: string): Record<string, string>[] => {
   const path = join(source.evals, file);
-  return existsSync(path) ? readTsv(path).filter((r) => r.script_sha === source.sha && r.score !== "") : [];
+  const judged = (r: Record<string, string>) => r.script_sha === source.sha && r.score !== "" && !codeDecidedZero(r.void_reason ?? "");
+  return existsSync(path) ? readTsv(path).filter(judged) : [];
 };
+
+const origin = (r: Record<string, string>) => ({ configId: r.config_id ?? "", run: r.run ?? "" });
+
+/**
+ * A bench appends a row per run and per invocation, so one question can carry several verdicts. The owner labels
+ * each question once, against the last verdict written: the latest config's last run.
+ */
+function latestPerTarget(outputs: readonly JudgedOutput[]): JudgedOutput[] {
+  return [...new Map(outputs.map((o) => [`${o.judge}\0${o.target}`, o])).values()];
+}
 
 function coldOutputs(source: Source): JudgedOutput[] {
   return rows(source, "cold-scores.tsv").filter((r) => COLD_KINDS.has(r.kind!)).map((r) => ({
@@ -72,6 +85,7 @@ function coldOutputs(source: Source): JudgedOutput[] {
     question: `A first-time viewer hears only this chapter. Does it tell them what "${r.item}" is?`,
     excerpt: `[${r.chapter}] ${spokenOf(source.beats.filter((b) => b.chapter === r.chapter))}`,
     pass: Number(r.score) > 0,
+    ...origin(r),
   }));
 }
 
@@ -83,6 +97,7 @@ function rubricOutputs(source: Source): JudgedOutput[] {
     question: `Whole video. ${RUBRIC_QUESTIONS[r.dim!]}`,
     excerpt: "(judge the whole script shown at the top of this section)",
     pass: Number(r.score) >= 3,
+    ...origin(r),
   }));
 }
 
@@ -92,18 +107,15 @@ function beatOutputs(source: Source): JudgedOutput[] {
     const at = index.get(r.beat!)!;
     const beat = source.beats[at]!;
     const previous = r.dim === "B3" && at > 0 ? `Previous beat: ${source.beats[at - 1]!.spoken}\n\n` : "";
-    return { ...source.ref, judge: "l1", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt: `${previous}This beat: ${beat.spoken}${screenOf(beat)}`, pass: r.score === "1" };
+    return { ...source.ref, judge: "l1", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt: `${previous}This beat: ${beat.spoken}${screenOf(beat)}`, pass: r.score === "1", ...origin(r) };
   });
 }
 
-/**
- * Only the script's own scored rows. An empty score is a voided verdict; a cold zero also carries a void_reason
- * ("not stated"), but it is the judge's answer, so it is kept.
- */
+/** A cold zero the judge gave ("not stated", or a quote not in the chapter) carries a void_reason too, and is kept. */
 export function judgedOutputs(entry: ManifestCase): { outputs: JudgedOutput[]; script: string } {
   const raw: unknown = JSON.parse(readFileSync(entry.script, "utf8"));
   const beats = paceInput(raw, entry.format, undefined).beats;
   const ref = { case: entry.case, videoType: entry.video_type, split: entry.split, ownerNamed: entry.owner_named };
   const source = { ref, sha: scriptSha(raw), beats, evals: join(entry.bench, "evals") };
-  return { outputs: [...coldOutputs(source), ...rubricOutputs(source), ...beatOutputs(source)], script: scriptText(beats) };
+  return { outputs: latestPerTarget([...coldOutputs(source), ...rubricOutputs(source), ...beatOutputs(source)]), script: scriptText(beats) };
 }

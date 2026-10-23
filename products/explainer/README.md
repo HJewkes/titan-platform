@@ -323,7 +323,10 @@ beat dimensions) stay reported only until the owner's labels show they agree wit
   [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
   judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
   script). Keep the manifest outside this repo, because it names private scripts.
-- The command takes the judges' unvoided rows for that exact script. It turns each row into a yes or no question:
+- The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
+  than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
+  last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
+  no question:
   - cold probe: does the chapter say what an item is (a score above 0)?
   - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
   - L1: does the beat pass a B dimension?

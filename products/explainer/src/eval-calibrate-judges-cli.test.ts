@@ -13,7 +13,7 @@ let dir: string;
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
-const SCORE = ["script_sha", "chapter", "kind", "beat", "item", "dim", "score", "void_reason"] as const;
+const SCORE = ["config_id", "run", "script_sha", "chapter", "kind", "beat", "item", "dim", "score", "void_reason"] as const;
 type Score = Partial<Record<(typeof SCORE)[number], string>>;
 const SCRIPT = tour();
 const BEATS = SCRIPT.beats.slice(0, 6);
@@ -21,14 +21,22 @@ const BEATS = SCRIPT.beats.slice(0, 6);
 const tsv = (bench: string, file: string, rows: Score[]): void =>
   appendTsv(join(bench, "evals", file), SCORE, rows.map((r) => ({ void_reason: "", ...r })));
 
-/** A synthetic bench: one judged script with cold, rubric and l1 rows that alternate pass and fail. */
+const CODE_ZEROS = { "bare-item": "named only in a list", "skipped-item": "not answered", "failed-item": "call failed: timeout" };
+
+/**
+ * A synthetic bench: one judged script with cold, rubric and l1 rows that alternate pass and fail. Cold runs three
+ * viewers, the rubric was judged by an older config before the current one, and code wrote some cold zeros.
+ */
 function bench(name: string): { script: string; bench: string } {
   const script = join(dir, `${name}.json`);
   writeFileSync(script, JSON.stringify(SCRIPT));
   const sha = scriptSha(SCRIPT);
   const root = join(dir, `bench-${name}`);
-  tsv(root, "cold-scores.tsv", BEATS.map((beat, i) => ({ script_sha: sha, chapter: beat.chapter, kind: "what-why", beat: beat.id, item: `item-${i}`, score: String(i % 3), void_reason: i % 3 === 0 ? "not stated" : "" })));
-  tsv(root, "cold-rubric-scores.tsv", ["J8", "J9", "J10", "J11", "J12"].map((dim, i) => ({ script_sha: sha, dim, score: String(i + 1) })));
+  const cold = (run: string) => BEATS.map((beat, i) => ({ run, script_sha: sha, chapter: beat.chapter, kind: "what-why", beat: beat.id, item: `item-${i}`, score: String(i % 3), void_reason: i % 3 === 0 ? "not stated" : "" }));
+  tsv(root, "cold-scores.tsv", ["1", "2", "3"].flatMap(cold));
+  tsv(root, "cold-scores.tsv", Object.entries(CODE_ZEROS).map(([item, reason]) => ({ script_sha: sha, chapter: BEATS[0]!.chapter, kind: "what-why", beat: BEATS[0]!.id, item, score: "0", void_reason: reason })));
+  const rubric = (config: string) => ["J8", "J9", "J10", "J11", "J12"].map((dim, i) => ({ config_id: config, run: "1", script_sha: sha, dim, score: String(i + 1) }));
+  tsv(root, "cold-rubric-scores.tsv", [...rubric("cfg-old"), ...rubric("cfg-new")]);
   tsv(root, "beat-scores.tsv", BEATS.flatMap((beat, i) => ["B1", "B3"].map((dim) => ({ script_sha: sha, beat: beat.id, dim, score: String(i % 2) }))));
   tsv(root, "beat-scores.tsv", [{ script_sha: "another", beat: BEATS[0]!.id, dim: "B1", score: "1" }, { script_sha: sha, beat: BEATS[1]!.id, dim: "B2", score: "", void_reason: "no quote" }]);
   return { script, bench: root };
@@ -77,6 +85,18 @@ describe("explainer eval calibrate queue", () => {
     expect(JSON.parse(printed())).toMatchObject({ items: 20, minutes: 35 });
   });
 
+  it("queues each question once, from the judge's own latest verdict, and names the config and run it came from", async () => {
+    expect(await queue("--size", "200")).toBe(0);
+
+    const entries = readKey().entries;
+    const targets = entries.map((e) => `${e.case} ${e.judge} ${e.target}`);
+    expect(new Set(targets).size).toBe(targets.length);
+    expect(targets.filter((t) => /bare-item|skipped-item|failed-item/.test(t))).toEqual([]);
+    expect(entries.some((e) => e.judge === "cold" && e.target.endsWith("item-0") && !e.pass)).toBe(true);
+    expect(entries.filter((e) => e.judge === "cold").map((e) => e.run)).toEqual(entries.filter((e) => e.judge === "cold").map(() => "3"));
+    expect(new Set(entries.filter((e) => e.judge === "cold-rubric").map((e) => e.configId))).toEqual(new Set(["cfg-new"]));
+  });
+
   it("refuses to overwrite a round that is already published", async () => {
     expect(await queue()).toBe(0);
     expect(await queue()).toBe(2);
@@ -100,5 +120,17 @@ describe("explainer eval calibrate agreement", () => {
     expect(record.judges.filter((j) => (j.agreement ?? 0) < 0.8).length).toBeGreaterThan(0);
     expect(printed()).toMatch(/l1\t.*may be promoted/);
     expect(printed()).toMatch(/below 0\.8/);
+  });
+
+  it("prints the agreement record as JSON when asked, though calibrate itself also takes --format", async () => {
+    expect(await queue()).toBe(0);
+    const answers = readKey().entries.map((e) => ({ questionId: e.id, pick: `Yes (${e.id})` }));
+    writeFileSync(join(dir, "round", "feedback.json"), JSON.stringify({ schema: "titan-review/feedback@1", answers }));
+    log.mockClear();
+
+    const args = ["--key", join(dir, "key.json"), "--feedback", join(dir, "round", "feedback.json"), "--format", "json"];
+    expect(await runEvalCli(["eval", "calibrate", "agreement", ...args])).toBe(0);
+
+    expect(AgreementRecordSchema.parse(JSON.parse(printed())).round).toBe("judge-cal-r1");
   });
 });

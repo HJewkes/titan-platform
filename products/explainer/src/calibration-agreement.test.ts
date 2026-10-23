@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { agreement, labelsFromFeedback, promotionRefusal, type AgreementRecord, type JudgeAgreement, type OwnerLabel } from "./calibration-agreement.js";
 import type { CalibrationJudge, KeyEntry } from "./calibration-queue.js";
 
-const entry = (id: string, judge: CalibrationJudge, pass: boolean): KeyEntry => ({ id, judge, case: "c", videoType: "repo-tour", target: id, pass });
+const entry = (id: string, judge: CalibrationJudge, pass: boolean): KeyEntry => ({ id, judge, case: "c", videoType: "repo-tour", target: id, pass, configId: "cfg", run: "1" });
 const record = (...judges: JudgeAgreement[]): AgreementRecord => ({ schema: "judge-agreement/v1", round: "r", recorded_at: "2026-10-22T00:00:00Z", judges });
 const row = (judge: CalibrationJudge, labelled: number, agreement: number | null): JudgeAgreement =>
   ({ judge, items: labelled, labelled, unsure: 0, agreed: Math.round((agreement ?? 0) * labelled), agreement, fail_recall: null });

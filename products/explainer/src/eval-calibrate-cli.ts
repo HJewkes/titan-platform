@@ -62,6 +62,8 @@ export function calibrateCommand(onResult: (code: number) => void): Command {
     .option("--labels <file>", "labels/v1 JSON, e.g. fixtures/spike/redesign-explainer-v4/labels.json")
     .option("--script-sha <sha>", "score only rows for this script_sha")
     .addOption(new Option("--format <format>", "output format").choices(["table", "json"]).default("table"))
+    // With the ancestors' too (runEvalCli), keeps calibrate's own --format out of `agreement --format json`.
+    .enablePositionalOptions()
     .addCommand(queueCommand(onResult))
     .addCommand(agreementCommand(onResult))
     .exitOverride()

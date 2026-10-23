@@ -3,7 +3,7 @@ import { buildQueue, CALIBRATION_JUDGES, type CalibrationJudge, type JudgedOutpu
 
 const output = (judge: CalibrationJudge, n: number, over: Partial<JudgedOutput> = {}): JudgedOutput => ({
   case: "explainer-eval/a", videoType: "repo-tour", split: "dev", ownerNamed: false,
-  judge, target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, ...over,
+  judge, target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, configId: "cfg", run: "1", ...over,
 });
 
 const many = (judge: CalibrationJudge, count: number, over: Partial<JudgedOutput> = {}): JudgedOutput[] =>
