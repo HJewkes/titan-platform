@@ -7,6 +7,7 @@ import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
+import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
@@ -276,7 +277,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = ciWaitHead(run.currentStep, registration.repo, registration.pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
