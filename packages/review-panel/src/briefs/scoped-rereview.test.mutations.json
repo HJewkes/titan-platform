@@ -44,9 +44,9 @@
       ]
     },
     {
-      "name": "the callers, unchanged-line and no-repeat rule lines dropped",
+      "name": "the unchanged-line rule line dropped",
       "file": "packages/review-panel/src/briefs/scoped-rereview.ts",
-      "find": "    \"For every function whose behaviour the fix changes, read its callers at this head, even when the callers are unchanged.\",\n    `A new blocking item on a line outside those ranges is allowed only when it starts with \\`${IMPORTANT_TAG}\\` and has a line \\`${CLASS_TAG} <class>\\` naming its class; leave out any other finding outside them.`,\n    \"Never restate an earlier finding as a new blocking item: one that is still open goes in the earlier findings checklist as not fixed or partly fixed.\",\n",
+      "find": "    `A new blocking item on a line outside those ranges is allowed only when it starts with \\`${IMPORTANT_TAG}\\` and has a line \\`${CLASS_TAG} <class>\\` naming its class; leave out any other finding outside them.`,\n",
       "replace": "",
       "kills": [
         "a scoped fix-round brief states the unchanged-line, no-repeat and callers rules"
