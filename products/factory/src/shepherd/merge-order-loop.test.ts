@@ -1,5 +1,6 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -22,7 +23,7 @@ const FILES: Readonly<Record<number, string[]>> = { [X]: [CAPABILITY, "products/
 const ORDER = (enabled: boolean): MergeOrderRules => () => ({ enabled, ttlMinutes: 10_000, ignore: [".changeset/**"] });
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>({});
 /** Every poll of every run sleeps through the tick; a run that never stops waiting fails here instead of polling forever. */
 const MAX_SLEEPS = 3_000;
 const WAIT = { timeout: 5_000 };

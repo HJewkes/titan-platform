@@ -757,8 +757,10 @@ describe("shepherd-pr after land", () => {
     w.host.runtime.signal(runId, "after-stages", { decision: "acknowledged", mergeSha: w.fake.pr(1).mergeSha }, OWNER);
     await w.host.runtime.wait(runId);
 
-    expect(before.filter((id) => /deploy|release|activation/.test(id))).toEqual([]);
-    expect(stepIds(w, runId).filter((id) => /deploy|release|activation/.test(id))).toEqual([]);
+    // sh-order-release is the merge order's own step, not an after stage.
+    const stage = (id: string) => /deploy|release|activation/.test(id) && !id.startsWith("sh-order-");
+    expect(before.filter(stage)).toEqual([]);
+    expect(stepIds(w, runId).filter(stage)).toEqual([]);
     const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
     expect(main?.data).toMatchObject({ result: { after: ["deploy", "release"] } });
   });

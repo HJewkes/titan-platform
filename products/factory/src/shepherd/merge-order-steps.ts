@@ -7,7 +7,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { PrTarget } from "./gates.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
 import { stillOpen } from "./merge-order-guard.js";
-import { blockers, overlapping, withinTtl, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type Reservation } from "./merge-order.js";
+import { blockers, overlapping, withinTtl, type MergeOrder, type MergeOrderRule, type MergeOrderRules } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
