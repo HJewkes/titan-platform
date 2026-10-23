@@ -23,7 +23,7 @@ describe("explainer run", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
 
     expect(result.status, result.error).toBe("completed");
-    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, "ran"]));
+    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "audition" ? "not run" : "ran"]));
     expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
@@ -303,7 +303,7 @@ describe("run report", () => {
     const { report } = result;
     const rewrite = row(result, "rewrite");
     // One clock read for the body's start and one each for its end and the checks step's end; export has no checks step.
-    expect(report.rows.map((r) => r.wallMs)).toEqual([...Array(7).fill(2000), 1000]);
+    expect(report.rows.filter((r) => r.status !== "not run").map((r) => r.wallMs)).toEqual([...Array(7).fill(2000), 1000]);
     expect(report.totals.wallMs).toBe(15000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);

@@ -8,7 +8,7 @@ import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
-const ReportRowsSchema = z.object({ rows: z.array(z.object({ outputs: z.record(z.string(), z.string()) })) });
+const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
@@ -20,7 +20,7 @@ async function scriptDraft({ run, out }: ReturnType<typeof cli>): Promise<string
   const runId = /^run (\S+):/.exec(out[0] ?? "")?.[1];
   out.length = 0;
   await run("report", runId!, "--json");
-  return ReportRowsSchema.parse(JSON.parse(out.join(""))).rows[0]!.outputs.draft!;
+  return ReportRowsSchema.parse(JSON.parse(out.join(""))).rows.find((r) => r.stage === "script")!.outputs.draft!;
 }
 
 function cli(host: ReturnType<typeof fakeHost>) {

@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an image in the slots passes",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "if (strings(beat.slots).some((value) => IMAGE.test(value.trim())))",
+      "replace": "if (false)",
+      "kills": [
+        "paper publish eligibility fails a beat that shows a figure as an image",
+        "paper publish eligibility fails an inline data-url image nested deep in the slots",
+        "paper publish eligibility implements every publish check the paper-summary profile names"
+      ]
+    },
+    {
+      "name": "nested slot strings are not searched for images",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "if (value && typeof value === \"object\") return Object.values(value).flatMap(strings);",
+      "replace": "",
+      "kills": [
+        "paper publish eligibility fails an inline data-url image nested deep in the slots"
+      ]
+    },
+    {
+      "name": "a figure cited by a non-replot beat passes",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "const cited = beat.sources.find((source) => figures.has(source));",
+      "replace": "const cited = undefined;",
+      "kills": [
+        "paper publish eligibility fails a non-replot beat that shows a gathered figure"
+      ]
+    },
+    {
+      "name": "an unknown check is skipped",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": ": [{ check, message: `publish check ${check} is not implemented; the video is not eligible` }]",
+      "replace": ": []",
+      "kills": [
+        "paper publish eligibility fails a video on a check it does not implement, and on a profile naming no checks"
+      ]
+    },
+    {
+      "name": "a profile naming no checks is eligible",
+      "file": "products/explainer/src/article-checks.ts",
+      "find": "if (checks.length === 0) issues.push",
+      "replace": "if (false) issues.push",
+      "kills": [
+        "paper publish eligibility fails a video on a check it does not implement, and on a profile naming no checks"
+      ]
+    }
+  ]
+}

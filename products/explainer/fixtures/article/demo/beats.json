@@ -1,0 +1,45 @@
+{
+  "video_type": "paper-summary",
+  "title": "Fewer rounds by design",
+  "beats": [
+    {
+      "id": "beat-01",
+      "type": "claim-card",
+      "duration_s": 8,
+      "spoken": "The study puts it plainly: \"Teams that re-review only the diff converge faster.\"",
+      "slots": {
+        "claim": "Re-reviewing only the diff converges faster.",
+        "quote": {
+          "text": "Teams that re-review only the diff converge faster than teams that re-read the whole change.",
+          "source": { "label": "Fewer Rounds by Design", "ref": "claim/diff-only-converges" }
+        }
+      },
+      "sources": ["claim/diff-only-converges"]
+    },
+    {
+      "id": "beat-02",
+      "type": "replot",
+      "duration_s": 14,
+      "spoken": "Here is their figure, rebuilt from the numbers in the paper.",
+      "slots": {
+        "kind": "line",
+        "x": "Pass rate",
+        "y": "Mean rounds per change",
+        "source": { "label": "Fewer Rounds by Design", "ref": "figure/figure-1" },
+        "series": [
+          { "id": "full", "label": "Full re-read", "points": [{ "x": 0.65, "y": 2.08 }, { "x": 0.7, "y": 1.84 }, { "x": 0.78, "y": 1.55 }] },
+          { "id": "diff", "label": "Diff only", "points": [{ "x": 0.65, "y": 1.71 }, { "x": 0.7, "y": 1.52 }, { "x": 0.78, "y": 1.32 }] }
+        ]
+      },
+      "sources": ["figure/figure-1"]
+    },
+    {
+      "id": "beat-03",
+      "type": "stat",
+      "duration_s": 6,
+      "spoken": "Mean rounds fall to one point three two.",
+      "slots": { "figures": [{ "id": "rounds", "value": 1.32, "unit": "rounds", "label": "Mean rounds per change" }] },
+      "sources": ["number/rounds-after"]
+    }
+  ]
+}
