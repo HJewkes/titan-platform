@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "build output counts as test files",
+      "file": "site/home-counts.data.mjs",
+      "find": "new Set([\"node_modules\", \"dist\", \"coverage\"])",
+      "replace": "new Set([\"node_modules\", \"coverage\"])",
+      "kills": [
+        "landing page counts floors the test files under the workspace globs to the hundred, skipping build output and dependencies"
+      ]
+    },
+    {
+      "name": "the test count rounds instead of flooring",
+      "file": "site/home-counts.data.mjs",
+      "find": "Math.floor(count / 100)",
+      "replace": "Math.round(count / 100)",
+      "kills": [
+        "landing page counts floors the test-file count with a thousands separator and a plus sign"
+      ]
+    },
+    {
+      "name": "a tagline missing a token fills silently",
+      "file": "site/home-counts.data.mjs",
+      "find": "if (!out.includes(`{${name}}`)) throw new Error(`no {${name}} token in: ${text}`);",
+      "replace": "if (!out.includes(`{${name}}`)) continue;",
+      "kills": [
+        "landing page counts fills each count token in the tagline and refuses a tagline that lost one"
+      ]
+    },
+    {
+      "name": "private packages count on the landing page",
+      "file": "scripts/gen-docs-reference.mjs",
+      "find": "entries.filter((e) => e.group === \"packages\" && !e.private).length",
+      "replace": "entries.filter((e) => e.group === \"packages\").length",
+      "kills": [
+        "landing page counts counts only the publishable packages under packages/"
+      ]
+    }
+  ]
+}

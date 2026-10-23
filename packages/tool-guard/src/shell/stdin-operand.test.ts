@@ -7,6 +7,10 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { countWork } from "../test-support/work-count.js";
+
+/** The refusal reads 340 characters of the 64 KB line; reading the here-string once per reading of the line would be many times the line. */
+const WORK_PER_CHAR = 2;
 
 const PUSH = "git push --no-verify origin HEAD:main";
 const SHELLS = ["bash", "zsh", "dash", "sh"].filter((s) => spawnSync(s, ["-c", "true"]).status === 0);
@@ -168,13 +172,13 @@ describe("stdin text that is data for a literal operand, not a script", () => {
 });
 
 describe("stdin text read for a literal operand is charged to the script budget", () => {
-  it("refuses or reads a 64KB here-string under an operand without timing out", async () => {
-    const started = Date.now();
+  it("refuses or reads a 64KB here-string under an operand with work linear in its length", async () => {
     const big = `${"#".repeat(64 * 1024)}\n${PUSH}`;
+    const command = `bash real.sh <<< '${big}'`;
+    let verdict: string | null = null;
 
-    const verdict = await decision(`bash real.sh <<< '${big}'`);
+    await countWork(async () => (verdict = await decision(command)), command.length * WORK_PER_CHAR);
 
     expect(verdict).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(4000);
   });
 });

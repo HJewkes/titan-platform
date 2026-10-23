@@ -3,6 +3,12 @@ import { ifsChanged, namesIfs, splittingWords } from "./ifs.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
 import type { Vars } from "./vars.js";
+import { countWork } from "../test-support/work-count.js";
+
+/** Refusing the brace list reads 41 460 characters; expanding it would push 250 x 65 535 words. */
+const BRACE_WORK = 100_000;
+/** Eight nested evals of 64 KB read 68 characters a character; reading every level's text again per level would be several times that. */
+const EVAL_WORK_PER_CHAR = 150;
 
 const words = (src: string) => tokenize(src).filter((t): t is WordToken => t.type === "word");
 const splitting = (src: string) => [...splittingWords(words(src))];
@@ -104,14 +110,14 @@ describe("namesIfs", () => {
     expect(namesIfs(nestedEvals("declare I\\FS=,", levels))).toBe(true);
   });
 
-  it("fails closed fast on a brace list whose expansion would be huge", () => {
+  it("fails closed without expanding a brace list whose expansion would be huge", async () => {
     const items = Array.from({ length: 250 }, (_, i) => `a${i}`).join(",");
-    const started = performance.now();
+    const line = `echo {${items}}{\u0001..￿}`;
+    let named = false;
 
-    const named = namesIfs(`echo {${items}}{\u0001..￿}`);
+    await countWork(() => (named = namesIfs(line)), BRACE_WORK);
 
     expect(named).toBe(true);
-    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it.each([
@@ -519,15 +525,14 @@ describe("namesIfs", () => {
     expect(namesIfs(line)).toBe(false);
   });
 
-  it("reads 64KB under 8 nested evals in under 200 ms", () => {
+  it("reads 64KB under 8 nested evals with work linear in its length", async () => {
     const line = nestedEvals(`echo ${"$a ".repeat(21_000)}; declare $a$b$c=,`, 8);
-    const started = performance.now();
+    let named = false;
 
-    const named = namesIfs(line);
+    await countWork(() => (named = namesIfs(line)), line.length * EVAL_WORK_PER_CHAR);
 
     expect(line.length).toBeGreaterThan(64 * 1024);
     expect(named).toBe(true);
-    expect(performance.now() - started).toBeLessThan(200);
   });
 
   it("does not match a numeric range", () => {

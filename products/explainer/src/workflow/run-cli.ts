@@ -33,6 +33,8 @@ interface RunFlags {
   initiative: string;
   dryRun?: boolean;
   profile?: string;
+  listenerQuestions?: boolean;
+  listenerThreshold?: number;
 }
 
 /** Everything but the data dir is injectable, so the CLI runs on fakes in a test. */
@@ -68,6 +70,13 @@ const stageName = (flag: string, name: string): StageName => {
 export function sampleIndex(text: string): number {
   const value = Number(text);
   if (!Number.isInteger(value) || value < 0) throw new InvalidArgumentError(`a sample index is an integer from 0, got "${text}"`);
+  return value;
+}
+
+/** A sample count for `--samples`; a measure past 20 samples per case is a typo, not a plan. */
+export function sampleCount(text: string): number {
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 1 || value > 20) throw new InvalidArgumentError(`--samples must be an integer from 1 to 20, got "${text}"`);
   return value;
 }
 
@@ -135,8 +144,19 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
     ...(flags.profile ? { profile: flags.profile } : {}),
-  }, hostFor(flags, deps));
+  }, withListener(hostFor(flags, deps), flags));
   return summary(result, io);
+}
+
+function threshold(text: string): number {
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < 0) throw new InvalidArgumentError(`--listener-threshold must be a number of questions a sentence, 0 or more, got "${text}"`);
+  return value;
+}
+
+function withListener(host: RunHost, flags: RunFlags): RunHost {
+  if (!flags.listenerQuestions && flags.listenerThreshold === undefined) return host;
+  return { ...host, listener: flags.listenerThreshold === undefined ? {} : { threshold: flags.listenerThreshold } };
 }
 
 function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
@@ -157,6 +177,8 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--script-model <model>", "model for the script stage", DEFAULT_SCRIPT_MODEL)
     .option("--judge <file>", "model config JSON for the rewrite stage, as for `explainer rewrite` (default: claude-print sonnet)")
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, rounds, MAX_REWRITE_ROUNDS)
+    .option("--listener-questions", "also run the reported listener-questions check on the script stage, on the --judge model (it spends)")
+    .option("--listener-threshold <q>", "questions a sentence above which listener-questions reports red (implies --listener-questions; default: none)", threshold)
     .exitOverride()
     .action(async (flags: RunFlags) => onResult(await runAction(flags, deps, io)));
 }
