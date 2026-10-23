@@ -1181,7 +1181,10 @@ dependencies reach a resolve sink, and collects every non-test source file that 
 The checker resolves the receiver, so a destructured, aliased, optional-chained or bracketed call
 is found the same as `host.gates.resolve(...)`. The test fails when a file in that closure is not
 held, and it checks that known sites are found, so an empty closure cannot pass. Synthetic probe
-files pin each spelling an earlier text scan missed.
+files pin each spelling an earlier text scan missed. Fix-proof mutates only product source, never a
+test-support file, so the closure's own rules (destructuring, forwarders, implementers, factories)
+are proved another way: each has an off switch, and a row shows the probe that rule alone finds
+goes missing when it is off.
 
 **Accepted residual.** The closure does not reach the following:
 

@@ -4,7 +4,8 @@ import { pathTouches } from "@titan-design/review-panel";
 import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
 import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
-import { type ClosureRules, COMPILER_OPTIONS, GateResolveClosure, repoClosure, sourceProgram } from "./gate-resolve-closure.test-helpers.js";
+import { type ClosureRules, COMPILER_OPTIONS, GateResolveClosure, sourceProgram } from "./gate-resolve-closure.test-helpers.js";
+import { repoClosure } from "./gate-resolve-repo.test-helpers.js";
 import { adversaryTouches } from "./signoffs.js";
 
 const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
