@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runAaFloorCli } from "./aa-floor-cli.js";
+import { runAudioCli } from "./audio-cli.js";
 import { runEvalCli } from "./eval-cli.js";
 import { runGuideCli } from "./guide-plan-cli.js";
 import { runPrCli } from "./presets/pr-overview/pr-cli.js";
@@ -13,6 +14,7 @@ const argv = process.argv.slice(2);
 const SUBCOMMANDS = new Map<string | undefined, (argv: string[]) => Promise<number>>([
   ["aa-floor", runAaFloorCli],
   ["ab", runAbCli],
+  ["audio", runAudioCli],
   ["guide", runGuideCli],
   ["pr", runPrCli],
   ["rewrite", runRewriteCli],
