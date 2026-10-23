@@ -11,7 +11,7 @@ interface Cue {
   field?: "group" | "verdict";
 }
 
-export const CUES = {
+const CUES = {
   tension: { pattern: /\b(but|however|yet|although|though|despite|instead|contradict\w*|tension|trade-?offs?)\b/, kinds: ["gotcha", "should-not"] },
   change: { pattern: /\b(before|after|no longer|used to|went from|replac\w*|chang\w*|from \S+ to)\b|→/ },
   mechanism: { pattern: /\b(algorithm|loop|pipeline|comput\w*|simulat\w*|state machine|pars(es|er|ing)|render(s|er|ing)?|execut\w*|runs?)\b|`[^`]+`/, kinds: ["entry-point"] },

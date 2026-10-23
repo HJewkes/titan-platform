@@ -8,7 +8,7 @@ import type { ModelStageInput } from "./model-stages.js";
 import type { StageOutcome } from "./records.js";
 
 /** What the audition's stage key covers beyond the facts sha: the profile's version and content, and the registry's. */
-export interface AuditionConfig {
+interface AuditionConfig {
   profile: { type: string; version: string; sha: string };
   structures: string;
 }

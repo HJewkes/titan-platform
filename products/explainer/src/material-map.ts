@@ -7,16 +7,16 @@ import type { TypeProfile } from "./profile-schema.js";
 import { fits, type NarrativeStructure } from "./structure-schema.js";
 
 /** One signal: it holds, it does not, or (`null`) no deterministic rule reads it. */
-export interface SignalRow {
+interface SignalRow {
   id: string;
   holds: boolean | null;
   rule: string;
   facts: string[];
 }
 
-export type FitVerdict = "fits" | "no" | "undecided";
+type FitVerdict = "fits" | "no" | "undecided";
 
-export interface FitRow {
+interface FitRow {
   structure: string;
   version: string;
   /** The profile lists this structure as one its video may take. */
@@ -46,7 +46,7 @@ export function registrySha(structures: ReadonlyMap<string, NarrativeStructure>)
 }
 
 /** The structures a profile's video may take: the fixed macro, or every heuristic row, macro and the fallback. */
-export function allowedStructures(profile: TypeProfile): Set<string> {
+function allowedStructures(profile: TypeProfile): Set<string> {
   const { structure } = profile;
   if (structure.order === "fixed") return new Set([structure.macro]);
   return new Set([...structure.heuristic.map((row) => row.macro), ...Object.keys(structure.macros), structure.fallback]);
@@ -72,7 +72,7 @@ function maxDelta(facts: readonly MaterialFact[], changes: readonly CueHit[]): n
 }
 
 /** Every vocabulary signal in vocabulary order; one with neither a rule nor a listed gap throws. */
-export function signalRows(vocabulary: readonly string[], cues: CueTable, facts: readonly MaterialFact[]): SignalRow[] {
+function signalRows(vocabulary: readonly string[], cues: CueTable, facts: readonly MaterialFact[]): SignalRow[] {
   return vocabulary.map((id) => {
     const gap = SIGNAL_GAPS[id];
     if (gap) return { id, holds: null, rule: `gap: ${gap}`, facts: [] };
@@ -106,7 +106,7 @@ function reasons(structure: NarrativeStructure, signals: readonly SignalRow[], r
 }
 
 /** A predicate that reads a gap signal fits only when it fits whichever way the gap falls; split outcomes are undecided. */
-export function fitRow(structure: NarrativeStructure, signals: readonly SignalRow[], runtimeS: number, allowed: ReadonlySet<string>): FitRow {
+function fitRow(structure: NarrativeStructure, signals: readonly SignalRow[], runtimeS: number, allowed: ReadonlySet<string>): FitRow {
   const held = new Set(signals.filter((row) => row.holds === true).map((row) => row.id));
   const read = [...structure.fit.all, ...structure.fit.any, ...structure.fit.none];
   const gaps = read.filter((id) => signals.find((row) => row.id === id)?.holds === null);
@@ -115,7 +115,7 @@ export function fitRow(structure: NarrativeStructure, signals: readonly SignalRo
   return { structure: structure.id, version: structure.version, allowed: allowed.has(structure.id), fit, reasons: reasons(structure, signals, runtimeS) };
 }
 
-export interface MapInput {
+interface MapInput {
   factsSha: string;
   format: FactsFormat;
   facts: readonly MaterialFact[];

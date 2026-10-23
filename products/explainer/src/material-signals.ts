@@ -2,7 +2,7 @@ import { roundsIn, type CueHit, type CueId, type CueTable } from "./material-cue
 import type { MaterialFact } from "./material-facts.js";
 
 /** What a signal rule saw: whether it holds, and the facts behind it. */
-export interface SignalEval {
+interface SignalEval {
   holds: boolean;
   facts: string[];
 }
