@@ -4,35 +4,70 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeEdges, fakeGh, gate, HEAD, REPO, VIEW } from "../presets/pr-overview/pr-fakes.test-helpers.js";
 import { runPrVideoTrigger } from "../presets/pr-overview/trigger.js";
-import { briefRunStart } from "./brief-run.js";
+import { BRIEF_LAST_STAGE, BRIEF_STOPS, briefRunStart, type BriefStop } from "./brief-run.js";
+import { STAGES } from "./records.js";
 import type { ReadAt } from "./run-gather.js";
-import { fakeBridge, fakeHost, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeBriefModels, fakeHost, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
-afterEach(() => fx.cleanup());
 
 /** A synthetic clone: each file at a head reads as one line naming both. */
 const fakeClone: ReadAt = async (_clone, head, file) => `export const at = "${file}@${head.slice(0, 7)}";\n`;
 
-function sweep(options: { view?: typeof VIEW } = {}) {
-  const host = fakeHost(fx, fakeAuditionModel(), fakeBridge(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
+function sweep(options: { view?: typeof VIEW; models?: ReturnType<typeof fakeBriefModels>; through?: BriefStop } = {}) {
+  const models = options.models ?? fakeBriefModels();
+  const host = fakeHost(fx, models, fakeBridge(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
   const waiting = { owner: [gate()], seat: [] };
-  return runPrVideoTrigger({ dataDir: fx.dataDir, readWaiting: async () => waiting, start: briefRunStart(host, (repo) => (repo === REPO ? "/clone/widgets" : undefined)) });
+  return runPrVideoTrigger({ dataDir: fx.dataDir, readWaiting: async () => waiting, start: briefRunStart(host, (repo) => (repo === REPO ? "/clone/widgets" : undefined), options.through) });
 }
 
 const runJson = (dir: string) => JSON.parse(readFileSync(path.join(dir, "run.json"), "utf8"));
+const ran = (run: { stages: { stage: string; status: string }[] }): string[] => run.stages.filter((s) => s.status !== "not run").map((s) => s.stage);
+
+describe("the decision brief's stage list", () => {
+  it("stops at the script stage at most, before any stage that spends again or needs the renderer", () => {
+    expect(STAGES.slice(0, STAGES.indexOf(BRIEF_LAST_STAGE) + 1)).toEqual(["gather", "audition", "script"]);
+    expect(BRIEF_STOPS.at(-1)).toBe(BRIEF_LAST_STAGE);
+  });
+});
 
 describe("a triggered decision-brief run", () => {
-  it("runs the gather stage, then the audition on the facts.jsonl it gathered", async () => {
-    fx = fixture();
+  afterEach(() => fx.cleanup());
 
-    const [row] = await sweep();
+  it("by default runs gather, then the audition on the facts.jsonl it gathered, and spends nothing on a script", async () => {
+    fx = fixture();
+    const models = fakeBriefModels();
+
+    const [row] = await sweep({ models });
     const run = runJson(row!.dir);
 
     expect(row?.outcome, run.error).toBe("started");
-    expect(run.stages.filter((s: { status: string }) => s.status !== "not run")).toEqual([{ stage: "gather", status: "ran" }, { stage: "audition", status: "ran" }]);
+    expect(ran(run)).toEqual(["gather", "audition"]);
+    expect(models.script.prompts).toEqual([]);
     expect(existsSync(path.join(row!.dir, "facts.jsonl"))).toBe(true);
     expect(JSON.parse(readFileSync(path.join(row!.dir, "brief.json"), "utf8"))).toMatchObject({ cut: "decision-brief", head: HEAD });
+  });
+
+  it("opted in through script, runs the script on the audition's spine as well", async () => {
+    fx = fixture();
+
+    const [row] = await sweep({ through: "script" });
+    const run = runJson(row!.dir);
+
+    expect(row?.outcome, run.error).toBe("started");
+    expect(ran(run)).toEqual(["gather", "audition", "script"]);
+  });
+
+  it("hands the script model the audition pick as its story spine", async () => {
+    fx = fixture();
+    const models = fakeBriefModels();
+
+    const [row] = await sweep({ models, through: "script" });
+    const report = JSON.parse(readFileSync(path.join(fx.dataDir, "runs", runJson(row!.dir).runId, "run-report.json"), "utf8"));
+    const audition = report.rows.find((r: { stage: string }) => r.stage === "audition");
+    const { pick } = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", audition.outputs.audition), "utf8"));
+
+    expect(models.script.prompts[0]).toContain(`# Story spine: pr-overview-${pick.structure}`);
   });
 
   it("leaves a code artifact holding each changed file the head still has", async () => {

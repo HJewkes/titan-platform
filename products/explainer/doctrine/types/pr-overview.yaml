@@ -2,7 +2,7 @@
 # and automatically only as the decision-brief cut for a PR waiting at the visual gate (owner Q6).
 schema: type-profile/v1
 type: pr-overview
-version: 0.3.0
+version: 0.4.0
 family: review-pr
 intent: "Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do."
 audience: { default: owner-internal, allow: [owner-internal] }
@@ -46,6 +46,8 @@ series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
 audition: { k: 3, storyboardOnly: true }
+# The decision brief is triggered with no planner in the loop, so the audition pick is the script stage's spine.
+spine: { from: audition-pick }
 layers: { customMin: 1, templateMaxShare: 0.7, componentMaxShare: 0.3 }
 variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
 pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }

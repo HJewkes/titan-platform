@@ -1,9 +1,10 @@
 import { tmpdir } from "node:os";
 import { agentRunner, type StepRunOutcome } from "@titan-design/workflow";
 import { auditionPool, type AuditionPool } from "../audition-pool.js";
-import { auditionNotes, auditionRecord, rubricCandidate, skippedRows, withoutSkipped, type AuditionCandidate } from "../audition-record.js";
+import { auditionNotes, auditionRecord, rubricCandidate, skippedRows, withoutSkipped, type AuditionCandidate, type AuditionRecord } from "../audition-record.js";
 import { checkSample, samplePrompt, sampleRetryPrompt, slotBlocks, type SampleContext, type SpineCandidate } from "../audition-sample.js";
 import { capFindings, codeScores, type ScoreContext } from "../audition-score.js";
+import { pickSpine } from "../audition-spine.js";
 import { loadDoctrine } from "../doctrine-load.js";
 import { readColdRubric, scoreCandidates, type ColdRubricResult } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig } from "../eval-harness.js";
@@ -109,6 +110,13 @@ function caller(input: ModelStageInput, config: AuditionConfig, deps: AuditionDe
   return (prompt) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "audition", iteration: 0, prompt, signal });
 }
 
+/** The pick as the script stage's spine, for a profile that declares its spine comes from the audition. */
+function spineOutput(input: ModelStageInput, profile: TypeProfile, record: AuditionRecord, facts: readonly MaterialFact[]): Record<string, string> {
+  if (profile.spine?.from !== "audition-pick") return {};
+  const pick = record.candidates.find((c) => c.id === record.pick.candidate)!;
+  return { spine: input.store.putText(pickSpine(`${profile.type}-${pick.structure}`, pick.spine, facts), "spine", input.from) };
+}
+
 /**
  * The audition (plan §A.3): the material map, a pool of structures, k spines from one verbalized-sampling call, each
  * scored by code and by the reported-only cold-viewer rubric, and the agent's pick by the code total. It stops at the
@@ -132,7 +140,7 @@ export async function runAuditionStage(input: ModelStageInput, config: AuditionC
   const auditionSha = input.store.putText(`${JSON.stringify(record, null, 2)}\n`, "audition", input.from);
   const scored = candidates.length >= profile.audition.k && candidates.every((c) => Number.isFinite(c.scores.total));
   return {
-    outputs: { "material-map": mapSha, audition: auditionSha },
+    outputs: { "material-map": mapSha, audition: auditionSha, ...spineOutput(input, profile, record, facts) },
     usage: addUsage(sampled.usage, rubricUsage(rubric.results)),
     retries: sampled.retries,
     checks: [
