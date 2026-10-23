@@ -110,7 +110,8 @@ async function withdrawnDeposit(dir: string, item: OwnerItem, items: QueueItems)
   try {
     const withdrawal = await readWithdrawal(dir, item.id);
     if (withdrawal === undefined) return false;
-    items.withdrawn.push({ item: { ...item, status: "withdrawn" }, was: "open", pr: "", reason: withdrawal.reason });
+    const { reason, actor } = withdrawal;
+    items.withdrawn.push({ item: { ...item, status: "withdrawn" }, was: "open", pr: "", reason, ...(actor === undefined ? {} : { actor }) });
     return true;
   } catch {
     items.gaps.push(`${item.id}: its withdrawal file is malformed`);

@@ -31,12 +31,13 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox file [<json>|-]
                                         file an owner item on loopback and print its id;
                                         with - or no argument, the JSON comes from stdin
-       titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> [--json]
+       titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> --actor <seat> [--json]
                                         withdraw a deposit --as filed; no answer is written, and the
-                                        spool's withdrawals.jsonl logs who, when and why
-       titan-console inbox restore <item-id> --as <asker> [--json]
+                                        spool's withdrawals.jsonl logs asker, --actor, when and why;
+                                        a missing --actor exits 65
+       titan-console inbox restore <item-id> --as <asker> --actor <seat> [--json]
                                         undo a withdraw, so the deposit is open again
-       titan-console inbox withdraw-matching --as <asker> --key <key>... --reason <reason> [--dry-run] [--json]
+       titan-console inbox withdraw-matching --as <asker> --actor <seat> --key <key>... --reason <reason> [--dry-run] [--json]
                                         withdraw every open deposit --as filed that carries a --key;
                                         --dry-run lists them and writes nothing
        titan-console decisions file [<round.json>|-] [--seat <name>] [--initiative <slug>] [--json]

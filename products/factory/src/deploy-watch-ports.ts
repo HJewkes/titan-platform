@@ -96,5 +96,5 @@ export function configuredDeployIncident(env: NodeJS.ProcessEnv): (incident: Dep
 /** After a good deploy: every open deploy alarm and incident the factory filed is resolved. */
 export function configuredDeployResolve(env: NodeJS.ProcessEnv): () => Promise<number> {
   const inbox = ownerInboxDir(env);
-  return async () => (await withdrawMatching(inbox, { asker: DEPLOY_ALARM_ASKER, keys: DEPLOY_ALARM_KEYS, reason: "resolved" })).length;
+  return async () => (await withdrawMatching(inbox, { asker: DEPLOY_ALARM_ASKER, actor: DEPLOY_ALARM_ASKER, keys: DEPLOY_ALARM_KEYS, reason: "resolved" })).length;
 }

@@ -400,12 +400,12 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 
 ### Withdrawing a deposit
 
-A seat takes back its own deposit, without an answer, from a shell on the console's machine:
+A seat takes back a deposit, without an answer, from a shell on the console's machine:
 
 ```sh
-titan-console inbox withdraw deposit:<32 hex> --reason obsolete --as my-agent
-titan-console inbox restore deposit:<32 hex> --as my-agent       # open it again
-titan-console inbox withdraw-matching --as my-agent --key my-alarm --reason resolved [--dry-run]
+titan-console inbox withdraw deposit:<32 hex> --reason obsolete --as my-agent --actor my-agent
+titan-console inbox restore deposit:<32 hex> --as my-agent --actor my-agent       # open it again
+titan-console inbox withdraw-matching --as my-agent --actor my-agent --key my-alarm --reason resolved [--dry-run]
 ```
 
 - **Its own status.** Withdrawal writes `<id>.withdrawn` beside the deposit and never an answer
@@ -413,8 +413,13 @@ titan-console inbox withdraw-matching --as my-agent --key my-alarm --reason reso
   against the open-deposit caps. A deposit the owner already answered is refused.
 - **Reasons.** `obsolete`, `resolved` or `superseded:<item id>`. A second withdraw keeps the first
   reason and prints `already-withdrawn`.
-- **Audited.** Every withdraw and restore appends `{ op, id, reason?, by, at }` to
-  `withdrawals.jsonl` in the spool. `restore` deletes the marker; the log keeps both lines.
+- **Audited.** Every withdraw and restore appends `{ op, id, reason?, by, actor, at }` to
+  `withdrawals.jsonl` in the spool: `by` is the deposit's asker and `actor` the seat that ran the
+  verb. `restore` deletes the marker; the log keeps both lines. The marker carries the actor too,
+  and the inbox read model's withdrawn entry reports it beside the reason.
+- **Actor required.** `--actor <seat>` names who runs the verb, so a seat closing items a retired
+  automation filed shows as itself, not as the automation. A missing `--actor` exits 65 with one
+  line on stderr and writes nothing.
 - **Own items only.** `--as` must equal the deposit's `asker`. An id that is not a deposit (a
   hitl gate, a round question) is refused. A refusal exits 65 and an unknown id 66, each with one
   line on stderr. `--as` is self-declared like `asker`, so this guards against a mistake, not a
@@ -424,15 +429,15 @@ titan-console inbox withdraw-matching --as my-agent --key my-alarm --reason reso
 - **Auto-withdraw.** A verified console update withdraws every open `titan-console` deposit keyed
   `console-update` (see `docs/self-update.md`). A factory deploy that holds through its watch
   withdraws every open `titan-factory` deposit keyed `deploy-alarm` or `deploy-incident`. Both use
-  reason `resolved`. A withdrawn depositId filed again stays withdrawn until it is restored.
+  reason `resolved` and record their own name as actor. A withdrawn depositId filed again stays withdrawn until it is restored.
 
 **One-time cleanup of a spool from before auto-withdraw.** After checking that the console serves
 a current sha (`/health`) and that the factory's last deploy is `deployed`
 (`titan-factory shepherd status --json --deploy`), list, then withdraw:
 
 ```sh
-titan-console inbox withdraw-matching --as titan-console --key console-update --reason resolved --dry-run
-titan-console inbox withdraw-matching --as titan-factory --key deploy-alarm --key deploy-incident --reason resolved --dry-run
+titan-console inbox withdraw-matching --as titan-console --actor my-agent --key console-update --reason resolved --dry-run
+titan-console inbox withdraw-matching --as titan-factory --actor my-agent --key deploy-alarm --key deploy-incident --reason resolved --dry-run
 ```
 
 Run each again without `--dry-run`. `withdraw-matching` takes `TITAN_CONSOLE_INBOX_DIR` or

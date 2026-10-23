@@ -995,8 +995,8 @@ deploy lock, so it is refused while a deployer runs.
 The incident item and the stall alarm's item both go to the console's inbox spool as asker
 `titan-factory`, keyed `deploy-incident` or `deploy-alarm` plus an `alarm:<kind>:titan-factory`
 key that folds repeats into one inbox item. Once a later deploy records `deployed`, the deployer
-withdraws every open one of them with reason `resolved` (owner-queue's `withdrawMatching`), and
-logs how many. A failed withdraw is printed and does not fail the deploy; a `skipped`, `held` or
+withdraws every open one of them with reason `resolved` and actor `titan-factory` (owner-queue's
+`withdrawMatching`), and logs how many. A failed withdraw is printed and does not fail the deploy; a `skipped`, `held` or
 rolled-back deploy withdraws nothing.
 
 `/health` carries the same pause as `deployPaused: {paused, since, reason, lastRollback}`, where

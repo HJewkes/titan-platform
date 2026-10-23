@@ -9,6 +9,33 @@
       "kills": [
         "titan-console inbox withdraw and restore exits 66 with one line for an id the spool does not hold"
       ]
+    },
+    {
+      "name": "a missing --actor is not refused",
+      "file": "apps/console/server/cli-inbox.ts",
+      "find": "if (actor === null) throw failure(",
+      "replace": "if (actor === \"\") throw failure(",
+      "kills": [
+        "titan-console inbox withdraw and restore exits 65 with one line and writes nothing when --actor is missing"
+      ]
+    },
+    {
+      "name": "withdraw records the asker as actor",
+      "file": "apps/console/server/cli-inbox.ts",
+      "find": "{ reason: args.reason, as: args.as, actor }",
+      "replace": "{ reason: args.reason, as: args.as, actor: args.as }",
+      "kills": [
+        "titan-console inbox withdraw and restore withdraws a deposit and records both its asker and the --actor seat"
+      ]
+    },
+    {
+      "name": "restore records the asker as actor",
+      "file": "apps/console/server/cli-inbox.ts",
+      "find": "restoreDeposit(dir, args.id, { as: args.as, actor })",
+      "replace": "restoreDeposit(dir, args.id, { as: args.as, actor: args.as })",
+      "kills": [
+        "titan-console inbox withdraw and restore restores a withdrawn deposit with --json"
+      ]
     }
   ]
 }

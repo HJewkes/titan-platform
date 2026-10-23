@@ -72,7 +72,7 @@ The new release's updater (`self-update --apply <sha>`) then:
    file an alarm. Nothing else writes the shim, so the first update after this change creates it.
 8. Withdraws every open update-failure item it filed earlier (asker `titan-console`, key
    `console-update`) with reason `resolved`, since a newer sha now serves. Each lands in the
-   spool's `withdrawals.jsonl`. A failed withdraw is logged and does not undo the update. An
+   spool's `withdrawals.jsonl` with `titan-console` as its actor. A failed withdraw is logged and does not undo the update. An
    unchanged, failed or rolled-back pass withdraws nothing.
 
 Every failure records `self-update.json` (`outcome`, `stage`, `target`, `served`, `why`) and files an
