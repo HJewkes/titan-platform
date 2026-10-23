@@ -6,21 +6,21 @@
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "  \"products/factory/src/needs/*-source.ts\",\n",
       "replace": "",
-      "kills": ["the gate-resolve closure of the repo is held g10-adversary, so a new resolve path cannot land without an adversary review"]
+      "kills": ["the gate-resolve closure of the repo holds g10-adversary every file the closure finds"]
     },
     {
       "name": "the queue mirror's answer path leaves the held set",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "  \"packages/queue-mirror/src/**\",\n",
       "replace": "",
-      "kills": ["the gate-resolve closure of the repo is held g10-adversary, so a new resolve path cannot land without an adversary review"]
+      "kills": ["the gate-resolve closure of the repo holds g10-adversary every file the closure finds"]
     },
     {
       "name": "the round ship sweep leaves the held set",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
       "find": "  \"products/factory/src/shepherd/round-ship-sweep.ts\",\n",
       "replace": "",
-      "kills": ["the gate-resolve closure of the repo is held g10-adversary, so a new resolve path cannot land without an adversary review"]
+      "kills": ["the gate-resolve closure of the repo holds g10-adversary every file the closure finds"]
     }
   ]
 }

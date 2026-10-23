@@ -14,8 +14,7 @@ export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps
  * Who may resolve a gate (TP-4052, tp#2253): files that build a `GateResolver` or hand one to a resolve sink, and
  * checks they lean on. A diff here can widen gate resolves past the owner as surely as an authority table edit.
  * `gate-resolve-sites.test.ts` is a heuristic trigger: it fails when a file the type-checker closure finds is not
- * held. It does not prove the list complete. Forms it misses are filed as gap tasks (owner decision on round
- * tp3584-boundary r1 Q5).
+ * held. It does not prove the list complete. Forms it misses are filed as gap tasks TP-4063 to TP-4067.
  */
 const GATE_RESOLVE_ACTOR_FILES = [
   // hitl is the gate store itself: the resolver refusal, allowances, payload schema and the stores that apply them.
