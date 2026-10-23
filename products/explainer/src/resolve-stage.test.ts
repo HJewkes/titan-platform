@@ -6,7 +6,8 @@ import { readEmphasisInput, resolveConfig, ResolvedSchema, runResolveStage } fro
 import type { ScriptV1 } from "./script-schema.js";
 import { sha256 } from "./workflow/artifacts.js";
 import { failedGates, runStageChecks } from "./workflow/stage-checks.js";
-import { stageSpec } from "./workflow/stage-spec.js";
+import { DEFAULT_JUDGE } from "./workflow/host.js";
+import { stageSpec, type RunSettings } from "./workflow/stage-spec.js";
 
 /** An in-memory store over named texts that records every write, so a test can tell nothing was stored. */
 function store(texts: Record<string, string>) {
@@ -115,7 +116,7 @@ describe("emphasis-target gate on the resolve stage", () => {
 });
 
 describe("resolve stage spec", () => {
-  const settings = { scriptModel: "m", judge: { model: "j" }, rounds: 1 } as Parameters<typeof stageSpec>[0]["settings"];
+  const settings: RunSettings = { scriptModel: "m", judge: DEFAULT_JUDGE, rounds: 1 };
   const spec = (artifacts: Record<string, string>) => stageSpec({ stage: "resolve", artifacts, settings, sample: 0, remainingUsd: 1, bridge: () => { throw new Error("no bridge"); } });
 
   it("keys on the script, on the doctrine, and on a code artifact only when the run has one", () => {

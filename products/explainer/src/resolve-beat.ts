@@ -81,5 +81,5 @@ export function resolveBeats(beats: readonly Beat[], specs: ReadonlyMap<string, 
   const found = beats.map((beat) => resolveBeat(beat, specs, router, rows));
   const refused = found.filter(isRefusal);
   if (refused.length > 0) throw new ResolveError(refused);
-  return found as ResolvedBeat[];
+  return found.filter((beat): beat is ResolvedBeat => !isRefusal(beat));
 }

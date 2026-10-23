@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadBeatSpecs } from "./beat-load.js";
-import { ResolveError, resolveBeat, resolveBeats, type ResolvedBeat, type ResolveRefusal } from "./resolve-beat.js";
+import { ResolveError, resolveBeat, resolveBeats, type ResolvedBeat } from "./resolve-beat.js";
 import { oneBeat, resolveScript, visual } from "./resolve-fixtures.test-helpers.js";
 import { FRAMING_ANCHORS, RESOLVE_ROWS } from "./resolve-tables.js";
 import { shippedVisualRouter } from "./visual-router.js";
@@ -8,7 +8,11 @@ import { shippedVisualRouter } from "./visual-router.js";
 const specs = loadBeatSpecs();
 const router = shippedVisualRouter();
 const resolve = (fn: string, extra: Record<string, unknown> = {}) => resolveBeat(oneBeat(fn, extra), specs, router);
-const resolved = (fn: string, extra: Record<string, unknown> = {}): ResolvedBeat => resolve(fn, extra) as ResolvedBeat;
+function resolved(fn: string, extra: Record<string, unknown> = {}): ResolvedBeat {
+  const found = resolve(fn, extra);
+  if ("code" in found) throw new Error(`expected a resolved beat, got ${found.code}: ${found.detail}`);
+  return found;
+}
 const CODE = { file: "src/desk.ts", lines: [4, 8] };
 
 describe("resolver tables", () => {
@@ -44,9 +48,7 @@ describe("resolver tables", () => {
   });
 
   it("refuses a beat that matches no row with a coded error, and never falls back to a list", () => {
-    const refusal = resolve("WHAT", { visual: visual({ job: "code-proof" }) }) as ResolveRefusal;
-
-    expect(refusal).toMatchObject({ beat: "b1", code: "E-RESOLVE-NO-ROW", detail: "no resolver row matches function WHAT, job code-proof, content statement, route none" });
+    expect(resolve("WHAT", { visual: visual({ job: "code-proof" }) })).toEqual({ beat: "b1", code: "E-RESOLVE-NO-ROW", detail: "no resolver row matches function WHAT, job code-proof, content statement, route none" });
   });
 
   it("refuses a beat whose job is still a TODO placeholder", () => {
@@ -79,7 +81,7 @@ describe("resolver tables", () => {
       }
     })();
     expect(thrown).toBeInstanceOf(ResolveError);
-    expect((thrown as ResolveError).refusals.map((r) => `${r.beat}:${r.code}`)).toEqual(["b2:E-RESOLVE-NO-ROW", "b3:E-RESOLVE-JOB-UNSET"]);
+    expect(thrown instanceof ResolveError && thrown.refusals.map((r) => `${r.beat}:${r.code}`)).toEqual(["b2:E-RESOLVE-NO-ROW", "b3:E-RESOLVE-JOB-UNSET"]);
   });
 
   describe("table invariants", () => {
