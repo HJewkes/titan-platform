@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the export count comes back, so two pull requests that add exports conflict on it",
+      "name": "the export count comes back, so exports added by two PRs conflict",
       "file": "scripts/gen-capabilities.mjs",
       "find": "`- More in the [reference page](${links.reference(entry.dir)})`",
       "replace": "`- +${more} more in the [reference page](${links.reference(entry.dir)})`",
