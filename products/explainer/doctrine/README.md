@@ -37,7 +37,7 @@ must return none.
 
 Add the id to `structures` in `vocabulary.yaml` and name the file after it. The fit predicate
 reads only names in the vocabulary's `signals`; a new signal is a vocabulary change of its own,
-and the material map (TP-4008) must compute it. `fit.ask` is the story-structure §4 question the
+and the material map must compute it: a rule in `src/material-signals.ts`, or a listed gap there. `fit.ask` is the story-structure §4 question the
 predicate encodes. Block shares sum to 1. The spine sections are the template the planner fills
 for a video that picks the structure. `design-journey`'s spine is the `spine/v1` template, so a
 change to its section numbers is a `spine/v1` change. A heuristic profile names the structure as

@@ -194,6 +194,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 | Stage | Path | Inputs → outputs |
 |---|---|---|
+| `audition` | in-process, no model call: the material map and the fit predicates (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map |
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
@@ -254,9 +255,20 @@ stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k
 `--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
 the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
 
-`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--json] [--data-dir <dir>]` runs one
-stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its child run,
-key, spend, output shas and check verdicts. Exit 0 when it finished, 1 when it failed, 2 on usage.
+`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--profile <type>] [--json] [--data-dir <dir>]`
+runs one stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its
+child run, key, spend, output shas, check verdicts and notes. Exit 0 when it finished, 1 when it failed, 2 on usage.
+
+**Material map** (`audition`, plan §A.3 step 1). `parseFacts` reads a facts pack: JSON lines of gather facts, or the
+rows of every markdown table whose header has an `Id` column. A cue lexicon (`material-cues.ts`) marks each fact as
+material: claims, tensions, changes, quantities, time series, mechanisms, flows and parallel items. One rule per
+`vocabulary.yaml` signal (`material-signals.ts`) says whether it holds and which facts carry it; a signal no rule can
+read without judgement (`elegant-idea`) is listed in `gaps`, never sent to a model. Each registered structure's fit
+predicate is scored on the signals and the profile's `runtime.targetS`, with one reason per term; a predicate whose
+outcome turns on a gap is `undecided`. `candidates` are the structures that fit and that the profile allows (its
+fixed macro, or its heuristic rows, macros and fallback). The stage key covers the facts sha, the profile's version
+and content hash, and a hash over the structure registry, so a doctrine edit is a new key; a body whose doctrine no
+longer matches its key refuses. `material-map.json` holds fact ids and cue words, not the facts' text.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
@@ -399,3 +411,27 @@ A verdict with no quote, or a quote not in that beat's text on that track, is vo
 scores 0 (L2, cold). Every beat call ends with one known-bad canary beat, and every viewer call
 asks about a component that does not exist. A run whose judge passes a canary, or whose call
 fails, is untrusted: its rows are still written, and the command exits 1.
+
+### Emphasis mapping and the target gate
+
+A script beat's `visual.cues` are its emphasis cues. Each one maps a spoken span, `atCue` to `untilCue`, to
+`target`: the id of one element in the beat. The optional `visual.beat` names the beat spec, and the spec's
+`emphasis.targets` lists the slot lists whose item ids a cue may name. How the element is emphasised (pointer,
+highlight, trace, scale, colour, camera) is the template's choice from the spec's `treatments`. This package adds no
+pointer layer and no default treatment.
+
+- `emphasisCues(beat)` lists each cue's word range and target. `targetsForSpan(beat, span, timings?)` maps a word
+  range, or a time range through the beat's word timings, to the targets whose cues overlap it.
+- `emphasisTargetGate({ beats, specs, slots, layout?, marks? })` is the resolve stage's gate. It fails a cue when:
+  - its beat names no spec (`no-beat-spec`), or the beat's slots fail the spec (`bad-slots`);
+  - the target names no element (`no-element`), or names more than one, such as a node and an edge that share an id
+    (`ambiguous`);
+  - once laid out, the element's box is missing or not wholly inside the frame (`off-frame`);
+  - given the mark frames either side of the step, the step changes under 2 % of the target's box. A pixel counts as
+    changed when a channel moves by more than 8 levels (`unchanged`; `changedShare`, `emphasisStepChanges`).
+- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The workflow has no resolve stage
+  yet; the resolver task (TP-2614) registers the gate when it adds the stage.
+
+Stubbed: the mark frames come from beat-aware marks (TP-3000), which are not built yet. The rule takes two decoded
+RGBA frames and the target box, and its tests use synthetic frames. `fixtures/emphasis/` holds a synthetic script,
+slots and layout.

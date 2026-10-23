@@ -37,7 +37,7 @@ describe("stage cache over whole runs", () => {
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, variants: { render: variantFile("render", "w8", { workers: 8 }) } }, fakeHost(fx, model, bridge));
 
     expect(second.status, second.error).toBe("completed");
-    expect(statuses(second)).toEqual({ script: "cached", rewrite: "cached", eval: "cached", tts: "cached", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
+    expect(statuses(second)).toEqual({ audition: "not run", script: "cached", rewrite: "cached", eval: "cached", tts: "cached", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
     expect(model.prompts).toHaveLength(1);
     expect(second.report.totals.usd).toBe(0);
@@ -87,7 +87,7 @@ describe("stage cache over whole runs", () => {
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, variants: { rewrite: variantFile("rewrite", "haiku", { model: "haiku" }) } }, fakeHost(fx, model, bridge, { harnessFor }));
 
     expect(second.status, second.error).toBe("completed");
-    expect(statuses(second)).toEqual({ script: "cached", rewrite: "ran", eval: "ran", tts: "ran", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
+    expect(statuses(second)).toEqual({ audition: "not run", script: "cached", rewrite: "ran", eval: "ran", tts: "ran", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(unchanged.prompts.length).toBeGreaterThan(0);
     expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
   });
