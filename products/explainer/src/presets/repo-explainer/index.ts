@@ -57,3 +57,17 @@ export {
 export { REVIEW_GRAPH_DB, openStructureGraph, type GraphSourceOptions, type GraphSourceResult, type StructureGraph } from "./graph-source.js";
 export { reviewScopeFiles, scopedSource } from "./review-scope.js";
 export { enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";
+export {
+  COMPANION_FILE,
+  COMPANION_SECTIONS,
+  companionChapters,
+  factAnchor,
+  renderCompanion,
+  reviewFacts,
+  type ChapterLink,
+  type ChapterLinks,
+  type CompanionChapter,
+  type CompanionResult,
+  type CompanionSection,
+  type FactLink,
+} from "./companion.js";
