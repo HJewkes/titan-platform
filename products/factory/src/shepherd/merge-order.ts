@@ -44,7 +44,10 @@ export interface Reservation {
 const Row = z.object({ repo: z.string(), run_id: z.string(), pr: z.number(), head_sha: z.string(), base_sha: z.string(), paths: z.string(), ahead: z.string(), since: z.string(), reason: z.string() });
 const Strings = z.array(z.string());
 
-const fromRow = (row: z.infer<typeof Row>): Reservation => ({ repo: row.repo, runId: row.run_id, pr: row.pr, headSha: row.head_sha, baseSha: row.base_sha, paths: Strings.parse(JSON.parse(row.paths)), ahead: Strings.parse(JSON.parse(row.ahead)), since: row.since, reason: row.reason });
+const fromRow = (row: z.infer<typeof Row>): Reservation => ({
+  ...{ repo: row.repo, runId: row.run_id, pr: row.pr, headSha: row.head_sha, baseSha: row.base_sha },
+  ...{ paths: Strings.parse(JSON.parse(row.paths)), ahead: Strings.parse(JSON.parse(row.ahead)), since: row.since, reason: row.reason },
+});
 
 /** A paused, parked or finished run no longer drives its PR, so its reservation stops blocking, as the train judges its holder. */
 const DRIVING: ReadonlySet<WorkflowStatus> = new Set(["running", "cancelling"]);

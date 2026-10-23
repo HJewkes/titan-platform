@@ -169,8 +169,9 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const order = mergeOrderRef();
+  const ordered = mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: deps.mergeOrderRules ?? fileRules, now: deps.now });
   const adversary = adversaryGuard({ store: holds, carry: (input) => carry(input, deps.review?.carry) });
-  const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: deps.mergeOrderRules ?? fileRules, now: deps.now }));
+  const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, ordered);
   const satisfy = holdSatisfierFor(deps);
   const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
   const train = deps.train ?? mergeTrainRef(deps.now);

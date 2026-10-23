@@ -30,15 +30,10 @@ async function stillOpen(port: GitHubPort, repo: RepoSlug, pr: number): Promise<
   return read === undefined || (read.state === "open" && !read.merged);
 }
 
-/**
- * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
- * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
- * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation.
- */
-export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
-  const now = deps.now ?? Date.now;
+/** A PR's changed paths, read once per head and only when the read is whole; an unread list is read again next time. */
+function pinnedPerHead(): (port: GitHubPort, repo: RepoSlug, pr: number, head: string | undefined) => Promise<Pick<OrderSelf, "paths" | "unread">> {
   const pinned = new Map<string, readonly string[]>();
-  const pathsAt = async (port: GitHubPort, repo: RepoSlug, pr: number, head: string | undefined): Promise<Pick<OrderSelf, "paths" | "unread">> => {
+  return async (port, repo, pr, head) => {
     const key = `${repo.toLowerCase()}#${pr}@${head}`;
     const cached = pinned.get(key);
     if (cached !== undefined) return { paths: cached };
@@ -49,6 +44,16 @@ export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
     pinned.set(key, read.paths);
     return { paths: read.paths };
   };
+}
+
+/**
+ * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
+ * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
+ * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation.
+ */
+export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
+  const now = deps.now ?? Date.now;
+  const pathsAt = pinnedPerHead();
   return {
     async reason(port, repo, pr, baseRef, head, branch) {
       const rule = deps.rules(repo);
