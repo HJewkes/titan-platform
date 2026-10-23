@@ -11,6 +11,7 @@ import { registerCheck } from "./lint-register.js";
 import { spokenDigitsCheck } from "./spoken-numbers.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
 import { ledgerCheck } from "./lint-ledger.js";
+import { checksOutsideStructure, shippedRuleRegistry } from "./rules.js";
 import { spineCheck } from "./lint-spine.js";
 import { paceCheck } from "./lint-pace.js";
 import { headlineCheck } from "./lint-headline.js";
@@ -62,9 +63,11 @@ export const L0_CHECKS: readonly L0Check[] = [
   heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, headlineCheck,
 ];
 
+/** Every check's rows, less the rows of a rule scoped (`structures` in rules.yaml) away from the script's structure. */
 export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming, spine?: SpineV1): L0Result[] {
   const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}), ...(spine ? { spine } : {}) };
-  return checks.flatMap((check) => check(input));
+  const outside = checksOutsideStructure(shippedRuleRegistry(), script.structure);
+  return checks.flatMap((check) => check(input)).filter((result) => !outside.has(result.check_id));
 }
 
 /** L0 filters on errors only; a warning is recorded but never fails a script. */
