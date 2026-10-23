@@ -52,9 +52,9 @@ export interface ShapeBriefInput extends ReviewerBriefInput {
  * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` is dropped.
  */
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
-  const { fixProof, holdContext, scope: _fullDiff, ...base } = input;
+  const { fixProof, holdContext, ...base } = input;
   const proved = waivedLines(input.head, input.fixProofWaivedAt).length > 0 || workflowCiLines(input.head, input.workflowCiProof).length > 0;
   const testsLines = () => ["", ...fixProofLines(input.head, fixProof), ...testOnlyMemberLines(input.fixProofUnverified)];
   const extra = shape === "tests" && !proved ? testsLines() : shape === "adversary" ? holdContextLines(holdContext) : [];
-  return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief(base)].join("\n");
+  return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief({ ...base, scope: undefined })].join("\n");
 }

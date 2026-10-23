@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EARLIER_FINDINGS_END, EARLIER_FINDINGS_START, reviewerBrief } from "../reviewer-brief.js";
+import { EARLIER_FINDINGS_END, EARLIER_FINDINGS_START, reviewerBrief, type EarlierFinding } from "../reviewer-brief.js";
 import { shapeBrief } from "./shape-brief.js";
 import type { ReviewScope } from "./scoped-rereview.js";
 
 const head = "0123456789abcdef0123456789abcdef01234567";
 const since = "a".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head, checkoutRoot: "/data/checkouts/reviews", fixFirsts: 1 };
-const earlierFindings = [{ head: since, defectClass: "Unbounded retry", text: "1. src/retry.ts:12 never stops retrying." }];
+const earlierFindings: EarlierFinding[] = [{ head: since, defectClass: "Unbounded retry", text: "1. src/retry.ts:12 never stops retrying." }];
 const scope: ReviewScope = {
   sinceHead: since,
   paths: ["src/retry.ts", "src/retry.test.ts"],
