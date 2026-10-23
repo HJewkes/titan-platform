@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: finding-card
+summary: "Review findings, said aloud, with severity and status."
+role: evidence
+component: { name: ListBeat, maturity: spike }
+slots: finding-card
+speech: { band: code }
+durationS: [6, 12, 22]
+preset: false
+emphasis: { targets: [findings], treatments: [highlight, pointer, colour] }
+recipe: "One to four findings, each with its severity, status and the round that raised it. Say shortcomings plainly; do not soften them."

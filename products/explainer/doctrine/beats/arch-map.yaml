@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: arch-map
+summary: "The system's parts and how they connect; the map later beats return to."
+role: explain
+component: { name: MapBeat, maturity: spike }
+slots: map
+speech: { band: concept }
+durationS: [10, 18, 40]
+preset: false
+emphasis: { targets: [nodes, edges], treatments: [pointer, highlight, camera] }
+recipe: "Lay out two to twelve nodes once and keep the layout fixed for the whole video. Reveal nodes as they are named and draw edges for runtime arrows. Later beats pin, zoom and trace on this same map."

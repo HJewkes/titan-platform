@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: diff-map
+summary: "The architecture with what the change added, removed or changed."
+role: explain
+component: { name: SplitMapBeat, maturity: spike }
+slots: diff-map
+speech: { band: concept }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [nodes, edges], treatments: [highlight, colour, camera] }
+recipe: "Show the map with each node and edge marked added, removed, changed or the same. The layout matches the base map, so the change reads as a difference."

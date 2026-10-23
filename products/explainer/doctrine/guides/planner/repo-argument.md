@@ -104,6 +104,32 @@ Parallel findings counted down by stakes inside an ABT frame, never a bare list.
 
 Spine sections: 1. Frame; 2. Countdown; 3. What they add up to.
 
+## Beats
+
+- **hook** (open, 4-15 s): The stake or the thing in action, before any context.
+- **promise** (open, 4-12 s): What the video will show, as the chapters ahead.
+- **context-map** (explain, 8-20 s): The system as one box among its users and neighbours.
+- **misconception** (explain, 6-18 s): What people believe, then what is true.
+- **stakes** (open, 5-15 s): What it costs if this goes wrong, or what it opens if it goes right.
+- **issue-pin** (evidence, 6-20 s): Problems pinned where they live on the map.
+- **stat** (evidence, 4-12 s): One to four numbers that carry the point.
+- **claim-card** (explain, 4-14 s): One claim, stated plainly, with its source.
+- **arch-map** (explain, 10-40 s): The system's parts and how they connect; the map later beats return to.
+- **code-walk** (evidence, 10-35 s): A short code excerpt with a moving focus band.
+- **info-flow** (explain, 8-30 s): How data or work moves through the parts, left to right.
+- **sequence** (explain, 10-35 s): Who calls whom, in order: actors, lifelines and messages.
+- **compare** (evidence, 8-25 s): Two things side by side, row by row.
+- **docs-vs-code** (evidence, 8-25 s): What the docs say beside what the code does.
+- **zoom** (explain, 6-25 s): A push into one part of the map to show what is inside it.
+- **history** (explain, 8-30 s): Dated events on a time axis with a playhead.
+- **algo-trace** (explain, 12-45 s): An algorithm stepping through real state.
+- **fix** (evidence, 8-25 s): The change that fixes an issue, as a small diff.
+- **schema** (explain, 8-25 s): The data model: tables, keys and relations.
+- **chapter** (navigate, 2-5 s): A chapter card: number, title and its question.
+- **takeaways** (close, 6-18 s): What to remember, as a short list.
+- **button** (close, 3-8 s): The one action to take next.
+- **outro** (close, 2-6 s): The closing line.
+
 ## Rules for the plan stage
 
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.

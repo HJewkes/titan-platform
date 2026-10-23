@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: takeaways
+summary: "What to remember, as a short list."
+role: close
+component: { name: ListBeat, maturity: spike }
+slots: takeaways
+speech: { band: takeaways }
+durationS: [6, 10, 18]
+preset: false
+emphasis: { targets: [items], treatments: [highlight] }
+recipe: "One to five takeaways, each a full sentence the viewer can act on. Each lands on its word."

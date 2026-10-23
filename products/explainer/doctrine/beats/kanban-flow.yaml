@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: kanban-flow
+summary: "Work moving across the board's columns."
+role: evidence
+component: { name: Board, maturity: doc }
+slots: kanban-flow
+speech: { band: story }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [columns, cards], treatments: [trace, highlight] }
+recipe: "Two to six columns; cards move from their start column to their end column as the narration names them. Real task data only."
