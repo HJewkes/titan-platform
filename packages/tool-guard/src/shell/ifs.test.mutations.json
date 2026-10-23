@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a brace word is checked for a letter range once per alternative",
+      "file": "packages/tool-guard/src/shell/ifs.ts",
+      "find": "  return holdsIfsInOrder(value) || LETTER_RANGE_RE.test(value);",
+      "replace": "  return holdsIfsInOrder(value) || value.split(\",\").map((item) => LETTER_RANGE_RE.test(value + item)).some(Boolean);",
+      "kills": [
+        "namesIfs fails closed without expanding a brace list whose expansion would be huge"
+      ]
+    },
+    {
+      "name": "the IFS walk relexes scripts twice as deep",
+      "file": "packages/tool-guard/src/shell/ifs.ts",
+      "find": "const RELEX_DEPTH = 8;",
+      "replace": "const RELEX_DEPTH = 16;",
+      "kills": [
+        "namesIfs reads 64KB under 8 nested evals with work linear in its length"
+      ]
+    }
+  ]
+}

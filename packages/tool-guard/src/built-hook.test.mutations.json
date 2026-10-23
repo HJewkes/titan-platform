@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "past the deadline the hook waits for the check to finish instead of denying",
+      "file": "packages/tool-guard/src/deadline.ts",
+      "find": "    timer = setTimeout(() => resolve(deny(\"timeout\")), port.deadlineMs);",
+      "replace": "    timer = setTimeout(() => resolve(running.result.then(checked)), port.deadlineMs);",
+      "kills": [
+        "the built tool-guard on a line whose check outruns its deadline (TP-3224) denies as the deadline passes through the built worker, telling the agent to split the command"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "arithmetic read two ways may nest one level deeper",
+      "file": "packages/tool-guard/src/shell/nested-reading.ts",
+      "find": "const MAX_BOTH_READINGS = 4;",
+      "replace": "const MAX_BOTH_READINGS = 5;",
+      "kills": [
+        "a quoted paren in $(( )) reads quoted-paren arithmetic nested past the limit (5 deep) in bounded time and denys it",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through a heredoc, 5 deep, in bounded time",
+        "a quoted paren in $(( )) refuses quoted-paren arithmetic nested through double quotes, 5 deep, in bounded time"
+      ]
+    }
+  ]
+}
