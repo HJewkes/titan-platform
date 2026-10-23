@@ -47,12 +47,19 @@ export const BridgeFileSchema = z.object({
 export type BridgeFile = z.infer<typeof BridgeFileSchema>;
 type BridgeCommand = z.infer<typeof CommandSchema>;
 
-export const bridgeFilePath = (dataDir: string): string => path.join(dataDir, "bridge.json");
+/** A host file written while tts was bridged. */
+const PortedStagesSchema = z.object({ stages: z.object({ tts: z.unknown().refine((block) => block !== undefined) }) });
+
+export const bridgeFilePath =(dataDir: string): string => path.join(dataDir, "bridge.json");
 
 export function readBridgeFile(dataDir: string): BridgeFile {
   const file = bridgeFilePath(dataDir);
   if (!existsSync(file)) throw new Error(`no bridge host file at ${file}; see the explainer README, "explainer run"`);
-  return BridgeFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+  const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+  if (PortedStagesSchema.safeParse(raw).success) {
+    throw new Error(`${file} still has a "tts" block, but tts runs in TypeScript now; delete it, and move any command it ran that is not TTS (a sample builder) to the start of "render"`);
+  }
+  return BridgeFileSchema.parse(raw);
 }
 
 export interface ExecResult {

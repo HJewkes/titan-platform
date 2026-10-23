@@ -5,7 +5,7 @@ export const STAGES = ["audition", "script", "rewrite", "eval", "resolve", "tts"
 export type StageName = (typeof STAGES)[number];
 
 /** Stages that run today's template commands through the host's bridge file until their TypeScript ports land. */
-export const BRIDGE_STAGES = ["tts", "render", "qa", "sheets"] as const;
+export const BRIDGE_STAGES = ["render", "qa", "sheets"] as const;
 export type BridgeStage = (typeof BRIDGE_STAGES)[number];
 export const isBridgeStage = (stage: StageName): stage is BridgeStage => (BRIDGE_STAGES as readonly string[]).includes(stage);
 

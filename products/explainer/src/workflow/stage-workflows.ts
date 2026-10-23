@@ -1,3 +1,4 @@
+import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
@@ -11,6 +12,8 @@ import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
 import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from "./stage-checks.js";
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
+import { kokoroEngine } from "./tts-engine.js";
+import { runTtsStage, type TtsEngine } from "./tts-stage.js";
 
 interface BodyDeps {
   dataDir: string;
@@ -23,6 +26,7 @@ interface BodyDeps {
   evalChecks?: readonly L0Check[];
   signal?: AbortSignal;
   now?: () => Date;
+  ttsEngine?: () => Promise<TtsEngine>;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, then the stage's checks over its artifacts. */
@@ -56,10 +60,17 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     if (!config.judge) throw new Error("eval stage spec has no judge");
     return runEvalStage(input, { judge: config.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
   }
+  if (stage === "tts") return runTtsBody(config, input, deps);
   return runBridgeStage({
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
   });
+}
+
+function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.voice) throw new Error("tts stage spec has no voice");
+  const takesDir = path.join(deps.dataDir, "tts-takes");
+  return runTtsStage({ ...input, store: deps.store }, config.voice, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
 }
 
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {
