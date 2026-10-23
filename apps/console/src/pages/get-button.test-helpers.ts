@@ -4,6 +4,7 @@ const ROLES = {
   button: "button, [role='button']",
   tab: "[role='tab']",
   checkbox: "input[type='checkbox'], [role='checkbox']",
+  radio: "input[type='radio'], [role='radio']",
 } as const;
 
 type FastRole = keyof typeof ROLES;
