@@ -1,5 +1,5 @@
 export { StoryboardSchema, beatNumber, type Beat, type Storyboard } from "./storyboard.js";
-export { DigestSchema, type Digest } from "./digest.js";
+export { DigestSchema, type Digest, type DigestItem } from "./digest.js";
 export { LexiconSchema, lexiconEntriesFor, type Lexicon, type LexiconEntry } from "./lexicon.js";
 export {
   DEFAULT_PACKET_MAX_BYTES,
@@ -36,6 +36,7 @@ export * from "./occupancy-exports.js";
 export * from "./emphasis-exports.js";
 export * from "./audition-exports.js";
 export * from "./workflow/index.js";
+export * from "./presets/daily/index.js";
 export { AaFloorSchema, floorSection, measureAaFloor, readFloor, writeFloorNotes, type AaFloor } from "./aa-floor.js";
 export { runAaFloorCli } from "./aa-floor-cli.js";
 export * from "./presets/article/index.js";

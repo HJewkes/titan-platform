@@ -6,6 +6,7 @@ import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
+import { FACT_ADAPTERS, gatherRunFacts, type FactAdapter, type GatherDeps } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
 
@@ -24,6 +25,13 @@ interface RunFlags {
   scriptModel: string;
   judge?: string;
   rounds: number;
+  factsFrom?: FactAdapter;
+  type?: string;
+  day?: string;
+  repo: string[];
+  transcripts: string[];
+  initiative: string;
+  dryRun?: boolean;
   profile?: string;
   listenerQuestions?: boolean;
   listenerThreshold?: number;
@@ -32,6 +40,7 @@ interface RunFlags {
 /** Everything but the data dir is injectable, so the CLI runs on fakes in a test. */
 export interface RunCliDeps {
   host?: Omit<RunHost, "dataDir">;
+  gather?: GatherDeps;
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -96,6 +105,49 @@ function summary(result: RunOutcome, io: Io): number {
   return result.status === "completed" ? EXIT.OK : EXIT.FAILED;
 }
 
+const collect = (value: string, acc: string[] = []): string[] => [...acc, value];
+
+function isDay(text: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new InvalidArgumentError(`--day takes YYYY-MM-DD, got "${text}"`);
+  return text;
+}
+
+/** With `--facts-from`, the type's adapter writes the facts pack the run starts from; its notes go to stderr. */
+async function factsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<string | undefined> {
+  if (!flags.factsFrom) return flags.facts;
+  const gathered = await gatherRunFacts({ ...flags, factsFrom: flags.factsFrom }, hostFor(flags, deps).dataDir, deps.gather);
+  io.out(`gathered ${gathered.items} facts for ${gathered.type} ${gathered.day}: ${gathered.facts} (digest ${gathered.digest})\n`);
+  for (const note of gathered.notes) io.err(`note: ${note}\n`);
+  return gathered.facts;
+}
+
+function addGatherOptions(command: Command): Command {
+  return command
+    .addOption(new Option("--facts-from <adapter>", "gather the facts pack with the type's facts adapter instead of --facts").choices(FACT_ADAPTERS).conflicts("facts"))
+    .option("--type <type>", "the video type whose profile lists the --facts-from adapter (daily-overview for gatherDaily)")
+    .option("--day <date>", "the UTC day gatherDaily covers, YYYY-MM-DD (default: today)", isDay)
+    .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
+    .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
+    .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
+    .option("--dry-run", "gather and print the plan, then stop before any stage runs");
+}
+
+async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<number> {
+  const facts = await factsFor(flags, deps, io);
+  if (flags.dryRun) {
+    io.out(`dry run: would run ${flags.from} to ${flags.to}${facts ? ` with facts ${facts}` : ""}\n`);
+    return EXIT.OK;
+  }
+  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
+  const result = await runVideo({
+    ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
+    ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
+    from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
+    ...(flags.profile ? { profile: flags.profile } : {}),
+  }, withListener(hostFor(flags, deps), flags));
+  return summary(result, io);
+}
+
 function threshold(text: string): number {
   const value = Number(text);
   if (!Number.isFinite(value) || value < 0) throw new InvalidArgumentError(`--listener-threshold must be a number of questions a sentence, 0 or more, got "${text}"`);
@@ -108,7 +160,7 @@ function withListener(host: RunHost, flags: RunFlags): RunHost {
 }
 
 function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
-  return new Command("run")
+  return addGatherOptions(new Command("run"))
     .description("Make one explainer video end to end on the workflow runtime, then write run-report.md (see also `run report --help`, `run resume --help`)")
     .addOption(dataDirOption())
     .option("--spine <file>", "story spine markdown; required from script unless --base supplies it")
@@ -128,17 +180,7 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--listener-questions", "also run the reported listener-questions check on the script stage, on the --judge model (it spends)")
     .option("--listener-threshold <q>", "questions a sentence above which listener-questions reports red (implies --listener-questions; default: none)", threshold)
     .exitOverride()
-    .action(async (flags: RunFlags) => onResult(summary(await runFromFlags(flags, deps), io)));
-}
-
-function runFromFlags(flags: RunFlags, deps: RunCliDeps): Promise<RunOutcome> {
-  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
-  return runVideo({
-    ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
-    ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
-    from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-    ...(flags.profile ? { profile: flags.profile } : {}),
-  }, withListener(hostFor(flags, deps), flags));
+    .action(async (flags: RunFlags) => onResult(await runAction(flags, deps, io)));
 }
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {

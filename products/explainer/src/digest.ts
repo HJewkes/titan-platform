@@ -9,7 +9,11 @@ const DigestItemSchema = z.object({
   repo: z.string().min(1).optional(),
   url: z.url().optional(),
   summary: z.string().optional(),
+  /** What happened to the item that day: a PR `opened` or `merged`, a task `opened`, `closed`, `moved` or `owner-gated`. */
+  change: z.string().min(1).optional(),
 });
+
+export type DigestItem = z.infer<typeof DigestItemSchema>;
 
 /** `digest.json`: what happened in a window, the gather step's output and the plan step's input. */
 export const DigestSchema = z

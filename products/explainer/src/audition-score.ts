@@ -1,4 +1,5 @@
 import type { SpineCandidate } from "./audition-sample.js";
+import { tagFacts, type CueId } from "./material-cues.js";
 import type { MaterialFact } from "./material-facts.js";
 import type { MaterialMap } from "./material-map.js";
 import type { TypeProfile } from "./profile-schema.js";
@@ -50,14 +51,45 @@ export function fitScore({ fit }: NarrativeStructure, map: MaterialMap): number 
 
 const placedFacts = (spine: SpineCandidate) => new Set([spine.hook.fact, ...spine.blocks.flatMap((b) => b.facts)]);
 
-/** The share of P1 facts the spine places and of the profile's coverage items its blocks cover, averaged. */
-export function coverageScore(spine: SpineCandidate, ctx: Pick<ScoreContext, "facts" | "profile">): number {
+/** The cues that mark a fact as evidence for a profile coverage item; an item listed here is scored from cited facts. */
+export const COVERAGE_CUES: Readonly<Record<string, readonly CueId[]>> = {
+  "pain-or-anomaly": ["pain", "anomaly"],
+  "mechanism-shown": ["mechanism", "flow"],
+  method: ["mechanism"],
+  "decisions-waiting": ["decision"],
+  verdict: ["decision"],
+  "adopt-adapt-avoid": ["decision"],
+  risk: ["anomaly", "failure"],
+  proof: ["experiment"],
+  "result-with-grade": ["experiment"],
+  purpose: ["purpose"],
+  layout: ["layout"],
+  "entry-point": ["entry"],
+  "read-first": ["readFirst"],
+  "key-features": ["parallel"],
+  "merged-work": ["transition"],
+};
+
+export const COVERAGE_RULE = "coverage reads only the fact ids the hook and blocks cite: the share of anchor facts placed (the pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged with the share of coverage items a cited fact evidences by cue, over the items some fact in the pack evidences; covers tags are not scored";
+
+/** The facts a spine must place: the pack's P1 facts, or with none marked, the facts its structure's fit rests on. */
+export function anchorFacts(structure: NarrativeStructure, ctx: Pick<ScoreContext, "facts" | "map">): string[] {
+  const p1 = ctx.facts.filter((fact) => /^p1$/i.test(fact.priority ?? "")).map((fact) => fact.id);
+  if (p1.length) return p1;
+  const read = new Set([...structure.fit.all, ...structure.fit.any]);
+  return [...new Set(ctx.map.signals.filter((row) => row.holds === true && read.has(row.id)).flatMap((row) => row.facts))];
+}
+
+/** The share of anchor facts the spine cites, averaged with the share of evidenced coverage items its cited facts carry. */
+export function coverageScore(spine: SpineCandidate, structure: NarrativeStructure, ctx: Pick<ScoreContext, "facts" | "map" | "profile">): number {
   const placed = placedFacts(spine);
-  const p1 = ctx.facts.filter((fact) => /^p1$/i.test(fact.priority ?? ""));
-  const covered = new Set(spine.blocks.flatMap((b) => b.covers));
+  const anchors = anchorFacts(structure, ctx);
+  const cues = tagFacts(ctx.facts);
+  const evidence = (item: string) => COVERAGE_CUES[item]!.flatMap((cue) => cues(cue).map((hit) => hit.fact));
+  const items = ctx.profile.coverage.filter((item) => Object.hasOwn(COVERAGE_CUES, item) && evidence(item).length > 0);
   const parts = [
-    ...(p1.length ? [p1.filter((fact) => placed.has(fact.id)).length / p1.length] : []),
-    ...(ctx.profile.coverage.length ? [ctx.profile.coverage.filter((item) => covered.has(item)).length / ctx.profile.coverage.length] : []),
+    ...(anchors.length ? [anchors.filter((id) => placed.has(id)).length / anchors.length] : []),
+    ...(items.length ? [items.filter((item) => evidence(item).some((id) => placed.has(id))).length / items.length] : []),
   ];
   return round(mean(parts));
 }
@@ -74,18 +106,26 @@ function starts(spine: SpineCandidate): number[] {
   return spine.blocks.map((_, i) => spine.blocks.slice(0, i).reduce((sum, b) => sum + b.seconds, 0) / total);
 }
 
+/** The longest a block may run before it needs a re-hook: the profile's ceiling, or the longer band the profile gives the block itself. */
+function reHookLimit(profile: TypeProfile, block: string): number {
+  const band = profile.structure.blocks.find((b) => b.id === block)?.seconds;
+  return Math.max(profile.pacing.reHookS[1], band?.[1] ?? 0);
+}
+
+export const REHOOK_RULE = "each block, scaled to the profile's target runtime, runs no longer than the profile's re-hook ceiling, or than the block's own band when the profile bands it longer: a long block (supports, countdown, clues) is a run of items, each its own re-hook";
+
 /** DIR §4's tension curve over the spine: stake by 15 %, complication by 25 %, a re-hook in the profile's band, payoff set up by 40 %. */
 export function tensionChecks(spine: SpineCandidate, ctx: Pick<ScoreContext, "map" | "profile">): Record<string, boolean> {
   const stakes = stakeFacts(ctx.map);
   const at = starts(spine);
   const staked = (i: number) => spine.blocks[i]!.facts.some((id) => stakes.has(id));
   const total = spine.blocks.reduce((sum, b) => sum + b.seconds, 0);
-  const longestS = Math.max(...spine.blocks.map((b) => (b.seconds / total) * ctx.profile.runtime.targetS));
+  const reHooked = spine.blocks.every((b) => (b.seconds / total) * ctx.profile.runtime.targetS <= reHookLimit(ctx.profile, b.id));
   const payoffAt = at[spine.blocks.findIndex((b) => b.id === spine.payoff)] ?? 1;
   return {
     "stake by 15%": stakes.has(spine.hook.fact) || at.some((s, i) => s <= 0.15 && staked(i)),
     "complication by 25%": at.some((s, i) => i > 0 && s <= 0.25 && staked(i)),
-    [`re-hook within ${ctx.profile.pacing.reHookS[1]} s`]: longestS <= ctx.profile.pacing.reHookS[1],
+    [`re-hook within ${ctx.profile.pacing.reHookS[1]} s or the block's band`]: reHooked,
     "payoff set up by 40%": payoffAt <= 0.4,
   };
 }
@@ -109,7 +149,7 @@ export function codeScores(spine: SpineCandidate, structure: NarrativeStructure,
   const tension = tensionChecks(spine, ctx);
   const parts = {
     fit: fitScore(structure, ctx.map),
-    coverage: coverageScore(spine, ctx),
+    coverage: coverageScore(spine, structure, ctx),
     tension: round(mean(Object.values(tension).map((ok) => (ok ? 1 : 0)))),
     range: rangeScore(spine),
     freshness: freshnessScore(spine, ctx),

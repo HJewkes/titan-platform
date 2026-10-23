@@ -43,6 +43,15 @@ arrows read "imports only". An index that cannot be opened or built is `E-INDEX`
 structure; an empty one is `W-NO-INDEX`. `fixtures/structure-ts/` is the synthetic repo the
 tests index.
 
+`gatherDaily` (`src/presets/daily/`) is the `daily-overview` facts adapter. For one UTC day it reads PRs opened
+and merged in each `--repo` (`gh pr list`), the top-level Claude Code sessions active in the window (`session-read`;
+subagent sidechains are left out), and the day's task deltas from `readTaskSnapshot`. That reader lists an
+initiative's tasks read-only (`active-work task list <slug> --status all`), stores the day as a `task-snapshot/v1`
+under `<data dir>/task-snapshots/`, and reports each task whose board column (done, owner-gated, blocked, or its
+status) changed against the latest earlier snapshot as `opened`, `closed`, `moved` or `owner-gated`. With no earlier
+snapshot it reports only what the task dates show. Every digest id comes from its source (`pr/<repo>#<n>/<change>`,
+`session/<id>`, `task/<id>/<change>`), never a clock, and items are sorted by id. `fixtures/daily/` is synthetic.
+
 `gatherArticle` (`src/presets/article/`) is the `paper-summary` profile's gather stage. It
 reads an article or paper as markdown text, kept in a directory of its own because the source
 is untrusted, and a list of proposed claims (from a model pass or a hand edit). It writes
@@ -334,15 +343,23 @@ for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` ca
   the signature layer and its cuts. A reply that names an unknown fact, a block out of order, a beat or coverage
   item the profile does not list, or the wrong slot is retried once with its issues, then fails the stage with its
   spend recorded; nothing is adopted unscored.
-- **Scores** (`audition-score.ts`), each 0 to 1. Fit: the share of the predicate's terms met. Coverage: P1 facts
-  placed and the profile's coverage items covered. Tension: stake by 15 %, complication by 25 %, every block within
-  the profile's `reHookS` bound, payoff by 40 %. Range: distinct lead beats over blocks, until the resolver (PP-6)
-  can say what it would draw. Freshness: the profile's must-vary `structure` and `signature-layer` against the
-  series window; 1 until the PP-9 fingerprint records the series (TP-4019). The cold-viewer rubric (J8 to J12) runs
-  on every candidate's hook, signature layer and block questions and is recorded only.
+- **Scores** (`audition-score.ts`), each 0 to 1. Fit: the share of the predicate's terms met. Coverage reads only
+  the fact ids the hook and blocks cite, never the spine's own `covers` tags: the share of anchor facts placed (the
+  pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged
+  with the share of coverage items a cited fact evidences by cue (`COVERAGE_CUES`), over the items some fact in the
+  pack evidences. Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
+  each block to the profile's target runtime and holds it to the profile's `reHookS` ceiling, or to the block's own
+  band when the profile bands it longer: supports (60 to 120 s) and countdown (90 to 150 s) are runs of items, each
+  its own re-hook. Range: distinct lead beats over blocks, until the resolver (PP-6) can say what it would draw.
+  Freshness: the profile's must-vary `structure` and `signature-layer` against the series window; 1 until the PP-9
+  fingerprint records the series (TP-4019). The cold-viewer rubric (J8 to J12) runs on every candidate's hook,
+  signature layer and block questions and is recorded only. Only the signature layer goes on screen, so J12 (visual
+  consistency) is skipped with a reason in `skipped` while a storyboard has fewer than two quotable visuals.
 - **Pick.** The agent picks with no owner gate: the highest code total, ties to the higher stated likelihood, then
   the earlier slot. `audition.json` (`audition/v1`) keeps every candidate with its spine and scores, the pick, the
-  runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. The stage
+  runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. `pick.chapters`
+  maps script chapter n to the profile block that block n of the picked spine plays (null when the profile names no
+  such block), so per-block word caps can apply downstream. The stage
   stops at the storyboard: it writes no script and renders nothing. A gate check, `audition-scored`, fails the stage
   if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
 
@@ -380,6 +397,10 @@ to a stopped or failed one from the stage it did not finish. `explainer run repo
 tokens, calls, retries, whether it was reused (a cache hit), check counts (pass, gate fail, reported fail) and
 output shas, with each bridged stage marked, a "Checks" table with every verdict, its role and its detail, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
 stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
+`--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
+[--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
+`<data dir>/gather/<type>/<day>/`, and the run starts from that facts pack. The type's profile must list the adapter in
+`inputs.adapters`. `--dry-run` gathers, prints the plan and stops before any stage.
 `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
 
