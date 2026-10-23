@@ -2,6 +2,8 @@ import { loadBeatSystems } from "./beat-system-load.js";
 import type { BeatSystem } from "./beat-system-schema.js";
 import { DEFAULT_DOCTRINE_DIR } from "./doctrine-load.js";
 import { AudiencePackSchema, TypeProfileSchema, type AudiencePack, type TypeProfile } from "./profile-schema.js";
+import { loadStylePacks } from "./style-pack-load.js";
+import type { StylePack } from "./style-pack-schema.js";
 import { NarrativeStructureSchema, type NarrativeStructure } from "./structure-schema.js";
 import { readYamlDir } from "./yaml-dir.js";
 
@@ -13,11 +15,12 @@ export interface ProfileSet {
   audiences: ReadonlyMap<string, AudiencePack>;
   structures: ReadonlyMap<string, NarrativeStructure>;
   beatSystems: ReadonlyMap<string, BeatSystem>;
+  stylePacks: ReadonlyMap<string, StylePack>;
 }
 
 /**
- * Reads every `types/<type>.yaml`, `audiences/<id>.yaml`, `structures/<id>.yaml` and
- * `beat-systems/<id>.yaml` under `dir`. A shape error throws naming the file.
+ * Reads every `types/<type>.yaml`, `audiences/<id>.yaml`, `structures/<id>.yaml`,
+ * `beat-systems/<id>.yaml` and `style-packs/<id>.yaml` under `dir`. A shape error throws naming the file.
  */
 export function loadProfiles(dir: string = DEFAULT_DOCTRINE_DIR): ProfileSet {
   return {
@@ -25,6 +28,7 @@ export function loadProfiles(dir: string = DEFAULT_DOCTRINE_DIR): ProfileSet {
     audiences: readYamlDir(dir, "audiences", AudiencePackSchema, (pack) => pack.id),
     structures: loadStructures(dir),
     beatSystems: loadBeatSystems(dir),
+    stylePacks: loadStylePacks(dir),
   };
 }
 

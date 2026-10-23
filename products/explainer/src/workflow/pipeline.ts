@@ -4,6 +4,7 @@ import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@tit
 import { z } from "zod";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import type { ArtifactStore } from "./artifacts.js";
+import type { StylePack } from "../style-pack-schema.js";
 import type { BridgeFile } from "./bridge.js";
 import { isCachedStage, NO_USAGE, STAGES, StageRecordSchema, type StageOutcome, type StageRecord, type Stop } from "./records.js";
 import { runPaths, writeJson } from "./run-dir.js";
@@ -84,6 +85,7 @@ export interface StageDeps {
   plan: RunPlan;
   bridge: () => BridgeFile;
   cache: CacheDeps;
+  stylePacks?: () => ReadonlyMap<string, StylePack>;
   now?: () => Date;
 }
 
@@ -122,7 +124,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date): Pr
   const variant = variantSha ? { sha: variantSha, value: VariantSchema.parse(JSON.parse(deps.store.readText(variantSha))) } : undefined;
   const spec = stageSpec({
     stage, artifacts: input.artifacts, settings: deps.plan, sample: deps.plan.samples[stage] ?? 0,
-    remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(variant ? { variant } : {}),
+    remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(variant ? { variant } : {}), ...(deps.stylePacks ? { stylePacks: deps.stylePacks } : {}),
   });
   return runStageCached(deps.cache, spec);
 }
