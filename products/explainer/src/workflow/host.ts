@@ -340,7 +340,7 @@ export async function resumeVideo(runId: string, host: RunHost, overrides: Pick<
   return runVideo({
     from: resumeStage(host.dataDir, run), to: plan.to, base: runId, budgetUsd: overrides.budgetUsd ?? plan.budgetUsd, scriptModel: plan.scriptModel,
     judge: plan.judge, rounds: plan.rounds, variantShas: plan.variants, samples: plan.samples, ...(plan.profile ? { profile: plan.profile } : {}),
-    ...(plan.gather ? { gather: plan.gather } : {}),
+    ...(plan.gather ? { gather: plan.gather } : {}), ...(plan.theater ? { theater: plan.theater } : {}),
   }, host);
 }
 

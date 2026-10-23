@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BridgeFileSchema, type BridgeExec } from "./bridge.js";
-import { runVideo } from "./host.js";
+import { resumeVideo, runVideo } from "./host.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture | undefined;
@@ -86,6 +86,19 @@ describe("--theater", () => {
     const result = await runVideo({ from: "render", pins, theater: scratch }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
 
     expect(result.status, result.error).toBe("completed");
+    expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
+    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
+  });
+
+  it("keeps the given folder when a run that failed before export is resumed", async () => {
+    fx = fixture();
+    const scratch = path.join(fx.dataDir, "..", "scratch-theater");
+    const failed = await runVideo({ spine: fx.spine, facts: fx.facts, theater: scratch }, fakeHost(fx, fakeScriptModel(), fakeBridge({ qaFails: true })));
+
+    const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+
+    expect(failed.status).toBe("failed");
+    expect(resumed.status, resumed.error).toBe("completed");
     expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
     expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
   });
