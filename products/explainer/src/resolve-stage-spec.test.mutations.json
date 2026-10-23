@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a code artifact stays out of the stage key",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "    if (sha !== undefined) inputs[name] = sha;\n",
+      "replace": "",
+      "kills": [
+        "resolve stage spec keys on the script, on the doctrine, and on a code artifact only when the run has one"
+      ]
+    }
+  ]
+}

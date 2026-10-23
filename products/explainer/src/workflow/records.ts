@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** The parent run's stages in order; `--from` names one of them. */
-export const STAGES = ["audition", "script", "rewrite", "eval", "tts", "render", "qa", "sheets", "export"] as const;
+export const STAGES = ["audition", "script", "rewrite", "eval", "resolve", "tts", "render", "qa", "sheets", "export"] as const;
 export type StageName = (typeof STAGES)[number];
 
 /** Stages that run today's template commands through the host's bridge file until their TypeScript ports land. */
@@ -10,7 +10,7 @@ export type BridgeStage = (typeof BRIDGE_STAGES)[number];
 export const isBridgeStage = (stage: StageName): stage is BridgeStage => (BRIDGE_STAGES as readonly string[]).includes(stage);
 
 /** Every stage but `export` runs as its own `explainer.<stage>` child workflow behind the stage cache; export only links files. */
-export const CACHED_STAGES = ["audition", "script", "rewrite", "eval", "tts", "render", "qa", "sheets"] as const;
+export const CACHED_STAGES = ["audition", "script", "rewrite", "eval", "resolve", "tts", "render", "qa", "sheets"] as const;
 export type CachedStage = (typeof CACHED_STAGES)[number];
 export const isCachedStage = (stage: StageName): stage is CachedStage => (CACHED_STAGES as readonly string[]).includes(stage);
 
