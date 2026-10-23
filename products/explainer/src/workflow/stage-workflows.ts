@@ -79,7 +79,8 @@ export function bodyRoute(deps: BodyDeps): StepRoute {
     const startedAt = now();
     const input: ModelStageInput = { artifacts: spec.inputs, store: deps.store, from: { runId: step.runId, stage: spec.stage }, remainingUsd: spec.remainingUsd };
     try {
-      const record = stageRecord(spec.stage, startedAt, now(), await runBody(spec, input, deps));
+      const outcome = await runBody(spec, input, deps);
+      const record = stageRecord(spec.stage, startedAt, now(), outcome);
       return { result: record, ...(record.usage.calls > 0 ? { usage: stepUsage(record.usage) } : {}) };
     } catch (error) {
       writeJson(runPaths(deps.dataDir, step.runId).failed(spec.stage), failedRecord(spec.stage, startedAt, now(), error));

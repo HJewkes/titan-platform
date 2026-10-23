@@ -114,7 +114,8 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date): Pr
   const { stage } = input;
   if (!isCachedStage(stage)) {
     const startedAt = now();
-    return stageRecord(stage, startedAt, now(), runExportStage(input.artifacts, deps.store, deps.bridge()));
+    const outcome = runExportStage(input.artifacts, deps.store, deps.bridge());
+    return stageRecord(stage, startedAt, now(), outcome);
   }
   const variantSha = deps.plan.variants[stage];
   const variant = variantSha ? { sha: variantSha, value: VariantSchema.parse(JSON.parse(deps.store.readText(variantSha))) } : undefined;

@@ -41,6 +41,21 @@ describe("stage cache over whole runs", () => {
     expect(row(second, "render").outputs.mp4).not.toBe(row(first, "render").outputs.mp4);
   });
 
+  it("a stage's wall time spans its body, read from the clock after the body returns", async () => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    let clock = Date.parse("2026-10-22T00:00:00Z");
+    const exec: typeof bridge.exec = async (req) => {
+      if (req.argv[1]!.endsWith("render.ts")) clock += 42_000;
+      return bridge.exec(req);
+    };
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { exec, now: () => new Date(clock) }));
+
+    expect(row(result, "render").wallMs).toBe(42_000);
+    expect(row(result, "qa").wallMs).toBe(0);
+  });
+
   it("a new rewrite variant runs rewrite and every stage whose input it changed", async () => {
     fx = fixture();
     const model = fakeScriptModel();
