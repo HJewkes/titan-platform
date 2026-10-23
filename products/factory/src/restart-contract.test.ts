@@ -90,6 +90,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-stopped": `${RECORD}: the run's stopped outcome`,
   "sh-override": `${RECORD}: the owner's override and when it was taken`,
   "sh-conflict-check": `${READ}: whether the PR is mergeable`,
+  "sh-conflict-base": `${RECORD}: the base sha at a conflict and whether the head merged the last one`,
   "sh-freeze-hold": `${WRITE}: holds the run behind a freeze`,
   "sh-freeze-wait": `${READ}: waits for the freeze to thaw`,
   "sh-base-wait": `${READ}: waits for the base to move`,
