@@ -101,7 +101,9 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
           <ButtonText>{done ? "Close" : "Cancel"}</ButtonText>
         </Button>
         {done ? null : (
-          <Button color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
+          // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
+          // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
+          <Button key={sheet.status} color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
             <ButtonText>Confirm</ButtonText>
           </Button>
         )}
