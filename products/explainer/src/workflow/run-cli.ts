@@ -121,16 +121,17 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--listener-questions", "also run the reported listener-questions check on the script stage, on the --judge model (it spends)")
     .option("--listener-threshold <q>", "questions a sentence above which listener-questions reports red (implies --listener-questions; default: none)", threshold)
     .exitOverride()
-    .action(async (flags: RunFlags) => {
-      const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
-      const result = await runVideo({
-        ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
-        ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
-        from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-        ...(flags.profile ? { profile: flags.profile } : {}),
-      }, withListener(hostFor(flags, deps), flags));
-      onResult(summary(result, io));
-    });
+    .action(async (flags: RunFlags) => onResult(summary(await runFromFlags(flags, deps), io)));
+}
+
+function runFromFlags(flags: RunFlags, deps: RunCliDeps): Promise<RunOutcome> {
+  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
+  return runVideo({
+    ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
+    ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
+    from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
+    ...(flags.profile ? { profile: flags.profile } : {}),
+  }, withListener(hostFor(flags, deps), flags));
 }
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
