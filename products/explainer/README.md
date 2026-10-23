@@ -145,6 +145,41 @@ last line gives the verdict. `--max-usd` stops before a run whose cost, estimate
 the total past the cap. A run already in `<dir>` is reused and its spend counted (its L0 is re-scored, at no cost), so a stopped measure can be resumed.
 Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
+### `explainer run`: one video end to end
+
+`explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--base <runId>] [--budget-usd 20]
+[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--data-dir <dir>]` makes one video as an
+`explainer-video` run on `@titan-design/workflow` (`src/workflow/`, the corpus-query host pattern). The data dir
+(default: the per-user data dir) holds `state.sqlite3`, the content-addressed artifact store `artifacts/<sha256>`
+(a directory is stored as a tree of file shas), one `runs/<runId>/` directory per run, and the bridge host file
+`bridge.json`. Each stage is one code step, in this order:
+
+| Stage | Path | Inputs → outputs |
+|---|---|---|
+| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
+| `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
+| `eval` | in-process L0 (with the spine lints) and pace; an error-severity failure stops the run | script, spine → l0 |
+| `tts`, `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `export` | hard links the declared artifacts into the theater folder; the run ends here | mp4 and sidecars → the same shas |
+
+The bridge is temporary: it runs today's template commands, Python included, from a host file kept outside the repo,
+so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
+(`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
+the commands run), `outputs` (name → path, `tree: true` for a directory) and `commands` (`argv`, optional `cwd`,
+`env`, `timeoutS`, and `check`, which records the command's verdict). `{workdir}`, `{in.<name>}` and `{out.<name>}`
+expand to absolute paths. `theater` names the folder, the file stem and the suffix per artifact for `export`.
+
+Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
+checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost and
+links the two runs; a stage with no input fails at once, naming the missing artifact. `--budget-usd` is a high
+runaway backstop: once model spend reaches it, the run stops before the next stage, writes `stop.json` naming that
+stage, and fails. `explainer run resume <runId> [--budget-usd <usd>]` drives a crashed run on, or starts a run linked
+to a stopped or failed one from the stage it did not finish. `explainer run report <runId> [--json]` writes
+`run-report.md` and `run-report.json` into the run directory: per stage the wall time and its share, usd and its share,
+tokens, calls, retries, whether it was reused (a cache hit), check verdicts and output shas, with each bridged stage
+marked, and the cost of the linked runs. `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
+a stopped or failed one, 2 on usage.
+
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
 Q-E7, Q-E8, Q-E9 and Q-E10, plan ids M1, M2, M4 and M7, plus Q-E11 to Q-E14 for M5, M9 and M3). Q-E11 is an

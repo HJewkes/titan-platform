@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { isFullSha } from "@titan-design/evidence";
 import { readReviewPin } from "@titan-design/pm";
+import { EXPLAIN_REPO_DEFAULT_TYPE } from "../../profile-load.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import { digestFacts } from "./digest-facts.js";
 import { ExplainerFactSchema, ReviewBundleSchema, type ExplainerFact, type FactSource, type ReviewBundle } from "./schemas.js";
 import { entryPointFacts, readCoverage, readPin, summaryFacts, type FactOptions } from "./summary-facts.js";
 import { claimFacts, ledgerFacts, topicFacts } from "./tsv-facts.js";
 
-/** Stand-in for TP-2746's type profiles: only a repo argument needs a pain fact (decision 326). */
+/** The repo types `gatherReview` serves; only the argument profile lists the pain-fact precondition (decision 326). */
 export type GatherProfile = "repo-tour" | "repo-argument";
 
 export interface GatherOptions {
@@ -251,7 +252,7 @@ function sortedRecord(record: Record<string, string>): Record<string, string> {
  * before deciding, so one refusal lists everything the operator must fix; any error means no bundle.
  */
 export async function gatherReview(options: GatherOptions): Promise<GatherResult> {
-  const profile = options.profile ?? "repo-tour";
+  const profile = options.profile ?? EXPLAIN_REPO_DEFAULT_TYPE;
   const reader = reviewReader(options.reviewDir);
   const [label, readme, summary, licensesText] = await Promise.all(
     [FILES.label, FILES.readme, FILES.summary, FILES.licenses].map((file) => reader.read(file)),

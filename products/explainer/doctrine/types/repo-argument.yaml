@@ -1,0 +1,55 @@
+# Repo argument (DIRECTION §1a, moved there by decision 326.5): make one idea from a repo land and
+# stick. The macro structure comes from story-structure §4's heuristic, asked in order, first yes wins.
+# Freytag (6 min and up) and the hero's journey (onboarding) fall outside this type's runtime and intent.
+schema: type-profile/v1
+type: repo-argument
+version: 0.1.0
+family: review-repo
+intent: "One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away."
+audience: { default: public-youtube, allow: [public-youtube, owner-internal] }
+inputs: { adapters: [gatherReview], preconditions: [pain-fact] }
+runtime: { targetS: 240, minS: 210, maxS: 300, splitAboveS: 360 }
+structure:
+  order: heuristic
+  heuristic:
+    - { signal: deciding, ask: "Is the viewer deciding something (adopt, fund, migrate) and the verdict is the product?", macro: scqa }
+    - { signal: anomaly, ask: "Is there one surprising finding: a bug, a docs-versus-behaviour contradiction, a how-is-this-possible?", macro: mystery }
+    - { signal: central-problem, ask: "Is there one central problem the code works through over time, at five minutes or longer?", macro: three-act, minRuntimeS: 300 }
+    - { signal: central-problem, ask: "Is there one central problem the code works through, under five minutes?", macro: abt }
+    - { signal: elegant-idea, ask: "Is the headline an elegant idea with no real problem?", macro: kishotenketsu }
+    - { signal: parallel-findings, ask: "Are the findings parallel and independent?", macro: countdown }
+  fallback: abt
+  macros:
+    scqa: [situation, complication, answer, supports, takeaway]
+    mystery: [anomaly, clues, reveal, takeaway]
+    three-act: [situation, complication, struggle, resolution, takeaway]
+    abt: [situation, complication, resolution, takeaway]
+    kishotenketsu: [situation, development, twist, reconcile, takeaway]
+    countdown: [situation, complication, countdown, takeaway]
+  blocks:
+    - { id: situation, goal: "What the viewer already accepts, in one beat.", seconds: [15, 40], beats: [hook, promise, context-map] }
+    - { id: complication, goal: "The but: the pain fact or the naive way that fails.", seconds: [20, 50], beats: [misconception, stakes, issue-pin, stat] }
+    - { id: answer, goal: "The answer, by 25% of runtime.", seconds: [20, 40], beats: [claim-card, arch-map] }
+    - { id: supports, goal: "The supports, ordered by importance.", seconds: [60, 120], beats: [code-walk, info-flow, sequence, compare] }
+    - { id: anomaly, goal: "Cold open on the anomaly.", seconds: [15, 40], beats: [hook, stat, docs-vs-code] }
+    - { id: clues, goal: "Deep dives as clues and false leads.", seconds: [60, 120], beats: [code-walk, info-flow, zoom, history] }
+    - { id: reveal, goal: "The cause, shown in the code.", seconds: [30, 60], beats: [code-walk, algo-trace, fix] }
+    - { id: struggle, goal: "Attempts and what each one broke.", seconds: [60, 120], beats: [code-walk, history, sequence] }
+    - { id: resolution, goal: "The therefore: how the repo resolves it.", seconds: [40, 90], beats: [code-walk, arch-map, info-flow, fix] }
+    - { id: development, goal: "The idea developed in its plain form.", seconds: [40, 80], beats: [info-flow, code-walk, schema] }
+    - { id: twist, goal: "The unexpected angle that recasts it.", seconds: [30, 60], beats: [compare, algo-trace, zoom] }
+    - { id: reconcile, goal: "The two halves joined.", seconds: [20, 40], beats: [arch-map, claim-card] }
+    - { id: countdown, goal: "At most five findings, each a mini-ABT, ordered by stakes.", seconds: [90, 150], beats: [chapter, code-walk, claim-card, stat] }
+    - { id: takeaway, goal: "The one thing to take away, then the button.", seconds: [15, 30], beats: [takeaways, button, outro], require: [button] }
+cuts: []
+hook: "Open on the pain or the anomaly by 0.5 s; the complication lands by 25% of runtime."
+ending: takeaways+button
+series:
+  mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
+  mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
+audition: { k: 3, storyboardOnly: true }
+layers: { customMin: 1, templateMaxShare: 0.7, componentMaxShare: 0.3 }
+variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
+pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }
+coverage: [pain-or-anomaly, one-claim, mechanism-shown, takeaway]
+publish: { ownerAskPerVideo: true, checks: [no-titan-verdict-on-screen] }

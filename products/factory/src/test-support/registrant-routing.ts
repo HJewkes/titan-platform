@@ -31,7 +31,12 @@ const LIVE_SEATS = [REPO_SEAT, "tp-operator"].map((name) => ({ ...liveRow(name),
 /** The agent-chat the production ports talk to: a fixed roster, and every message's recipient. */
 function agentChat(roster: readonly AgentRow[] = []) {
   const told: string[] = [];
-  return { told, roster: async () => [...LIVE_SEATS, ...roster], message: async (name: string) => void told.push(name) };
+  const texts: string[] = [];
+  const message = async (name: string, text = ""): Promise<void> => {
+    told.push(name);
+    texts.push(text);
+  };
+  return { told, texts, roster: async () => [...LIVE_SEATS, ...roster], message };
 }
 
 const merge = (headSha: string): Verdict => ({ kind: "MERGE", headSha, evidence: {} });
@@ -76,17 +81,22 @@ export async function redRun(registered: Registrant, roster?: readonly AgentRow[
   return world;
 }
 
+/** A sweep's seat memory, fresh by default; pass one map to several sweeps to keep what each seat was told. */
+interface SweepClock {
+  states?: Map<string, SeatState>;
+  now?: Date;
+}
+
 /** One digest sweep as serve runs it, over the same store, the production roster port and the config's fallback seats. */
-export async function digestSweep(world: RedWorld, roster?: readonly AgentRow[], fallbacks: NoticeFallbacks = {}, unreadable = false) {
+export async function digestSweep(world: RedWorld, roster?: readonly AgentRow[], fallbacks: NoticeFallbacks = {}, unreadable = false, { states = new Map(), now }: SweepClock = {}) {
   const digests = agentChat(roster);
-  const states = new Map<string, SeatState>();
   const services = { store: world.store, port: githubPort(world.fake.wire), seats: () => world.book };
   const ports = {
     seatLookup: () => (repo: string) => singleSeat(world.book, repo),
     roster: unreadable ? async () => Promise.reject(new Error("broker down")) : digests.roster,
     fallbackSeats: (repo: string) => fallbackSeats(fallbacks, repo),
-    send: (seat: string) => digests.message(seat),
+    send: (seat: string, text: string) => digests.message(seat, text),
   };
-  const result = await sweepSeatDigests(world.host, services, ports, { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) });
-  return { told: digests.told, ...result };
+  const result = await sweepSeatDigests(world.host, services, ports, { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) }, now);
+  return { told: digests.told, texts: digests.texts, ...result };
 }

@@ -20,6 +20,21 @@ export { DEFAULT_DOCTRINE_DIR, loadDoctrine, parseEvidenceTsv } from "./doctrine
 export { DOCTRINE_ISSUE_CODES, checkDoctrine, isCodeEnforced, type DoctrineIssue, type DoctrineIssueCode } from "./doctrine-checks.js";
 export { findPromptLeaks, sliceForStage, type PromptLeak, type StageRequest, type StageSlice } from "./doctrine-slice.js";
 export {
+  AudiencePackSchema,
+  PROFILE_FAMILIES,
+  SERIES_FIELDS,
+  TypeProfileSchema,
+  type AudiencePack,
+  type ProfileBlock,
+  type ProfileFamily,
+  type SeriesField,
+  type TypeProfile,
+} from "./profile-schema.js";
+export { EXPLAIN_REPO_DEFAULT_TYPE, UnknownProfileError, loadProfiles, profileFor, type ProfileSet } from "./profile-load.js";
+export { PAPER_PUBLISH_CHECKS, PROFILE_ISSUE_CODES, SERIES_BASE, checkProfiles, type ProfileIssue, type ProfileIssueCode } from "./profile-checks.js";
+export { chapterOrder, type ChapterOrder, type MaterialSignals } from "./profile-order.js";
+export { guideForType, writeTypeGuides, type TypeGuideDeps } from "./guide-type.js";
+export {
   EvidenceSpanSchema,
   ExplainerFactSchema,
   FACT_KINDS,
