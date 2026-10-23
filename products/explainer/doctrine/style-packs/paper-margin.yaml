@@ -1,0 +1,20 @@
+# A light pack: warm paper ground with grain, notes in the secondary brand blue, unhurried reveals.
+schema: style-pack/v1
+id: paper-margin
+theme: light
+feel: "Warm paper ground with a fine grain, cards set on it like pinned notes, the secondary blue for annotations, and slow eased reveals that leave time to read."
+tokens:
+  ground: color-background-subtle
+  surface: color-surface-base
+  text: color-text-primary
+  textMuted: color-text-secondary
+  accent: color-brand-secondary-solid
+  accentSoft: color-brand-secondary-subtle
+  rule: color-hairline-default
+  lift: material-paper-shadow
+  grain: material-paper-grain
+  heading: font-family-heading
+  body: font-family-body
+  code: font-family-mono
+  duration: duration-slow
+  ease: ease-in-out

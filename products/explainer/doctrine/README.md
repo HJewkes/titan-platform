@@ -14,6 +14,8 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
 | `beat-systems/<id>.yaml` | One `beat-system/v1` per beat system: an ordered beat pattern a profile plays inside a structure's blocks | `loadBeatSystems` |
 | `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
+| `style-packs/<id>.yaml` | One `style-pack/v1` per style pack: existing titan-design token names by slot | `loadStylePacks` |
+| `style-tokens.json` | The token names of react-ui's `tokens.css`, the file the explainer template imports; rewrite it with `scripts/pin-style-tokens.mjs`, never by hand | `loadStylePacks` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
 
 `checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` and
@@ -94,6 +96,31 @@ recipe: "Show one to six checks with their result at base and at head. Show proo
   no model. Beat rules stay in `craft/` as `B` rules naming the beat; the spec does not list them.
 
 Then run `explainer guide types` and commit the regenerated guides.
+
+## Adding a style pack
+
+A pack picks among titan-design tokens the template already loads; it never adds a token or a
+value. Name the file after its `id`, and fill every slot with a name from `style-tokens.json`
+(without the leading `--`). Each slot takes one family (`SLOT_FAMILIES` in
+`src/style-pack-schema.ts`): a colour for `ground`, an ease for `ease`. `grain` is optional.
+
+```yaml
+schema: style-pack/v1
+id: night-drafting
+theme: dark
+feel: "The near-black frame ground with strong hairline rules and one cool teal accent."
+tokens: { ground: color-background-frame, surface: color-surface-base, text: color-text-primary, ... }
+```
+
+- **Our own look.** A pack copies no channel's look; `loadStylePacks` rejects an id or feel that
+  names one in `IMITATED_CHANNELS`.
+- **Judged on pilots.** There is no stills round (owner Q7 B): packs are variant parameters, kept,
+  cut or tweaked after the owner sees rendered pilots.
+- **A token the packs need that tokens.css lacks** is a titan-design change, not a pack field.
+
+Then allow it in each profile that may render in it, under `styles.allow`. A profile whose series
+must vary `style-pack` allows at least two. `voice` is the profile's band: a Kokoro voice id and
+rate that no other profile shares at the same rate.
 
 ## Adding a craft rule
 

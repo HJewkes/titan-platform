@@ -6,6 +6,7 @@ import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, wor
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
+import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
 import { readBridgeFile, spawnExec, type BridgeExec } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
@@ -27,6 +28,8 @@ export interface RunHost {
   evalChecks?: readonly L0Check[];
   /** Runs a bridged command; tests pass a fake. */
   exec?: BridgeExec;
+  /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
+  stylePacks?: () => ReadonlyMap<string, StylePack>;
   leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -229,7 +232,8 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.signal ? { signal: host.signal } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}) });
-  const routes = plan ? [body, checks, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now })] : [body, checks];
+  const styles = host.stylePacks ? { stylePacks: host.stylePacks } : {};
+  const routes = plan ? [body, checks, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now, ...styles })] : [body, checks];
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
   if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
@@ -332,7 +336,7 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     };
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
-      remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge,
+      remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}),
       ...(variantSha ? { variant: { sha: variantSha, value: VariantSchema.parse(JSON.parse(rt.store.readText(variantSha))) } } : {}),
     });
     return await runStageCached(rt.cache, spec);

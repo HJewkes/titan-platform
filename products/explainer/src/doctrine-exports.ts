@@ -29,6 +29,7 @@ export {
   type ProfileFamily,
   type SeriesField,
   type TypeProfile,
+  type VoiceBand,
 } from "./profile-schema.js";
 export {
   EXPLAIN_REPO_DEFAULT_TYPE,
@@ -43,6 +44,18 @@ export {
 export { NarrativeStructureSchema, fits, renderSpine, type FitInput, type NarrativeStructure, type StructureFit } from "./structure-schema.js";
 export { STRUCTURE_ISSUE_CODES, checkStructures, type StructureIssue, type StructureIssueCode } from "./structure-checks.js";
 export { PAPER_PUBLISH_CHECKS, PROFILE_ISSUE_CODES, SERIES_BASE, checkProfiles, type ProfileIssue, type ProfileIssueCode } from "./profile-checks.js";
+export { SLOT_FAMILIES, StylePackSchema, type StylePack, type StyleSlot } from "./style-pack-schema.js";
+export {
+  IMITATED_CHANNELS,
+  StylePackError,
+  UnknownStylePackError,
+  loadStylePacks,
+  loadStyleTokens,
+  stylePackCss,
+  stylePackFor,
+  stylePackProblems,
+  stylePackSha,
+} from "./style-pack-load.js";
 export { chapterOrder, type ChapterOrder, type MaterialSignals } from "./profile-order.js";
 export { guideForType, writeTypeGuides, type TypeGuideDeps } from "./guide-type.js";
 export {

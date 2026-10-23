@@ -2,6 +2,8 @@ import { z } from "zod";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import { canonicalJson } from "../eval-store.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
+import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
+import type { StylePack } from "../style-pack-schema.js";
 import { sha256 } from "./artifacts.js";
 import { auditionConfig } from "./audition-stage.js";
 import type { BridgeFile } from "./bridge.js";
@@ -40,6 +42,8 @@ export const StageConfigSchema = z.object({
   /** A bridged stage's own block of `bridge.json`, so an edited command misses the cache. */
   bridge: z.unknown().optional(),
   vars: z.record(z.string(), z.string()).optional(),
+  /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
+  stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
 });
 export type StageConfig = z.infer<typeof StageConfigSchema>;
 
@@ -108,6 +112,32 @@ export interface SpecRequest {
   sample: number;
   remainingUsd: number;
   bridge: () => BridgeFile;
+  /** The style packs a render variant's `stylePack` param picks from; the shipped ones by default. */
+  stylePacks?: () => ReadonlyMap<string, StylePack>;
+}
+
+let shipped: ReadonlyMap<string, StylePack> | undefined;
+const shippedStylePacks = (): ReadonlyMap<string, StylePack> => (shipped ??= loadStylePacks());
+
+interface StyleChoice {
+  stylePack: { id: string; sha: string };
+  vars: Record<string, string>;
+}
+
+/** The render variant param that picks a style pack (plan §A.2): the pack is a render setting, never a TTS one. */
+export const STYLE_PACK_PARAM = "stylePack";
+
+/**
+ * Lifts the style pack out of a render variant's params: the pack's id, theme and CSS reach the bridge as
+ * `{var.stylePack}`, `{var.styleTheme}` and `{var.styleCss}`, and its content hash goes into the config.
+ */
+function styleConfig(stage: CachedStage, params: Variant["params"], packs: () => ReadonlyMap<string, StylePack>): { params: Variant["params"]; style?: StyleChoice } {
+  const { [STYLE_PACK_PARAM]: id, ...rest } = params;
+  if (id === undefined) return { params };
+  if (stage !== "render") throw new Error(`variant for ${stage} sets ${STYLE_PACK_PARAM}, which only a render variant may set`);
+  const pack = stylePackFor(packs(), String(id));
+  const vars = { stylePack: pack.id, styleTheme: pack.theme, styleCss: stylePackCss(pack) };
+  return { params: rest, style: { stylePack: { id: pack.id, sha: stylePackSha(pack) }, vars } };
 }
 
 /** Builds a stage's spec and key from what it reads; a missing input fails here, before any child run starts. */
@@ -120,9 +150,12 @@ export function stageSpec(request: SpecRequest): StageSpec {
     if (sha === undefined) throw new Error(`stage ${stage} needs artifact "${name}", which no earlier stage produced and no --pin supplied`);
     inputs[name] = sha;
   }
+  const { params, style } = styleConfig(stage, variant?.value.params ?? {}, request.stylePacks ?? shippedStylePacks);
+  const settings = settingsConfig(stage, request.settings, params, request.bridge);
   const config: StageConfig = {
     ...(variant ? { variant: { name: variant.value.name, sha: variant.sha } } : {}),
-    ...settingsConfig(stage, request.settings, variant?.value.params ?? {}, request.bridge),
+    ...settings,
+    ...(style ? { stylePack: style.stylePack, vars: { ...settings.vars, ...style.vars } } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };
   return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd };

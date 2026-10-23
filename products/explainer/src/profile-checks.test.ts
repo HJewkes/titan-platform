@@ -38,9 +38,19 @@ describe("checkProfiles", () => {
     ["a beat system scoped to a block outside its macro", bound({ system: "hook-close", macro: "scqa-c4", blocks: ["ghost"] }), "dangling-ref"],
     ["a required step no block allows", bound({ system: "walk-first", macro: "scqa-c4" }), "beat-system-order"],
     ["a required step that only an earlier block allows", bound({ system: "walk-first", macro: "scqa-c4" }, [blockOf("open", "hook"), blockOf("walk", "code-walk")]), "beat-system-order"],
+    ["an allowed style pack with no file", fixedProfile({ styles: { allow: ["plain", "loud"] } }), "unknown-style-pack"],
+    ["a house pack outside styles.allow", fixedProfile({ styles: { allow: ["plain", "bold"], house: "loud" } }), "unknown-style-pack"],
+    ["one allowed pack where the series must vary it", fixedProfile({ styles: { allow: ["plain"] } }), "style-pack-unvaried"],
     ["a paper profile without the re-plot check", fixedProfile({ family: "review-paper", publish: { ownerAskPerVideo: true, checks: ["quotes-short"] } }), "publish-unguarded"],
   ])("reports %s", (_name, profile, code) => {
     expect(codes(profile)).toEqual([code]);
+  });
+
+  it("reports a second profile that takes the first one's voice band, and not one that changes its rate", () => {
+    const tour = fixedProfile();
+
+    expect(codes(tour, heuristicProfile({ voice: tour.voice }))).toEqual(["voice-shared"]);
+    expect(codes(tour, heuristicProfile({ voice: { ...tour.voice, rate: 1.1 } }))).toEqual([]);
   });
 
   it("finds nothing in a beat system whose steps land in order, optional ones dropped or scoped to one block", () => {
