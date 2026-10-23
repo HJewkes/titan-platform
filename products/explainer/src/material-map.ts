@@ -54,11 +54,11 @@ function allowedStructures(profile: TypeProfile): Set<string> {
 
 function material(facts: readonly MaterialFact[], cues: CueTable): MaterialMap["material"] {
   const quantities = facts.filter((fact) => numbersIn(fact.text).length > 0).map((fact) => ({ fact: fact.id, by: numbersIn(fact.text).join(",") }));
-  const timeSeries = quantities.filter((q) => cues.dated.some((hit) => hit.fact === q.fact));
+  const timeSeries = quantities.filter((q) => cues("dated").some((hit) => hit.fact === q.fact));
   return {
     claims: facts.map((fact) => ({ fact: fact.id, by: fact.kind ? `kind:${fact.kind}` : "fact" })),
-    tensions: cues.tension, changes: cues.change, quantities, timeSeries: timeSeries.length >= 3 ? timeSeries : [],
-    mechanisms: cues.mechanism, flows: cues.flow, parallel: cues.parallel,
+    tensions: cues("tension"), changes: cues("change"), quantities, timeSeries: timeSeries.length >= 3 ? timeSeries : [],
+    mechanisms: cues("mechanism"), flows: cues("flow"), parallel: cues("parallel"),
   };
 }
 
@@ -139,7 +139,7 @@ export function buildMaterialMap(input: MapInput): MaterialMap {
     profile: { type: profile.type, version: profile.version, runtimeS },
     structures: { registrySha: registrySha(structures), count: structures.size },
     material: material(facts, cues),
-    metrics: { p1Count: facts.filter((fact) => /^p1$/i.test(fact.priority ?? "")).length, maxDeltaVsBaseline: maxDelta(facts, cues.change) },
+    metrics: { p1Count: facts.filter((fact) => /^p1$/i.test(fact.priority ?? "")).length, maxDeltaVsBaseline: maxDelta(facts, cues("change")) },
     signals,
     gaps: signals.filter((row) => row.holds === null).map((row) => row.id),
     fits: fitRows,

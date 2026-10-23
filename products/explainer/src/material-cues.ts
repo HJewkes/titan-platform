@@ -67,19 +67,20 @@ export function roundsIn(text: string): number {
   return Math.max(0, ...counts);
 }
 
-export type CueTable = Record<CueId | "taskRef", CueHit[]>;
+/** A cue's hits over the facts, in fact order; a cue that marked nothing has none. */
+export type CueTable = (cue: CueId | "taskRef") => CueHit[];
 
-/** Every cue's hits over the facts, in fact order. */
 export function tagFacts(facts: readonly MaterialFact[]): CueTable {
-  const table = Object.fromEntries([...Object.keys(CUES), "taskRef"].map((id) => [id, [] as CueHit[]])) as CueTable;
+  const table = new Map<string, CueHit[]>();
+  const add = (id: string, hit: CueHit) => table.set(id, [...(table.get(id) ?? []), hit]);
   for (const fact of facts) {
     const lower = fact.text.toLowerCase();
-    for (const [id, cue] of Object.entries(CUES) as [CueId, Cue][]) {
+    for (const [id, cue] of Object.entries(CUES)) {
       const by = cueHit(cue, fact, lower);
-      if (by !== undefined) table[id].push({ fact: fact.id, by });
+      if (by !== undefined) add(id, { fact: fact.id, by });
     }
     const ref = fact.text.match(TASK_REF);
-    if (ref) table.taskRef.push({ fact: fact.id, by: ref[0] });
+    if (ref) add("taskRef", { fact: fact.id, by: ref[0] });
   }
-  return table;
+  return (cue) => [...(table.get(cue) ?? [])];
 }
