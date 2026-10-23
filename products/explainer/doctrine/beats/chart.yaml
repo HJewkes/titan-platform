@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: chart
+summary: "A small chart: bars, a line, a spark or a gauge."
+role: evidence
+component: { name: BarChartBeat, maturity: spike }
+slots: chart
+speech: { band: concept }
+durationS: [6, 10, 20]
+preset: false
+emphasis: { targets: [series], treatments: [highlight, colour] }
+recipe: "One chart, one point. Label the unit; draw a cap when there is one. Highlight the bar the narration names."

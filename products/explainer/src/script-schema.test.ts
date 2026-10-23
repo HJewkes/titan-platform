@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
@@ -87,5 +88,49 @@ describe("script/v1", () => {
     const script = { ...base, video: { ...base.video, invariants: ["One holds.", "Two holds.", "Three holds."] } };
 
     expect(issues(script)).toEqual([]);
+  });
+});
+
+describe("script/v1 profile fields", () => {
+  const visual = (extra: Record<string, unknown>) => scriptWith({ visual: { assertion: "Every scan meets the desk", job: "map", ...extra } });
+  const top = (extra: Record<string, unknown>) => ({ ...scriptWith(), ...extra });
+
+  it("parses the layer, framing, anchors, scene, an emphasis span, the structure and a signature layer", () => {
+    const cues = [{ action: "V9", target: "desk-server", atCue: "scan", untilCue: "ledger" }];
+    const script = top({ ...visual({ layer: "custom", framing: "split", anchors: ["A1", "F6"], scene: "desk-floor", cues }), structure: "design-journey", signature_layer: { kind: "sim", source: ["F1"] } });
+
+    expect(issues(script)).toEqual([]);
+  });
+
+  it("parses a legacy script with none of them, so no check requires a signature layer", () => {
+    const script = ScriptSchema.parse(scriptWith());
+
+    expect(script).not.toHaveProperty("signature_layer");
+    expect(script.beats[0]?.visual).not.toHaveProperty("layer");
+  });
+
+  // Mutation: each case passes when its field accepts any string or an empty list.
+  it.each([
+    ["a layer outside template and custom", visual({ layer: "overlay" })],
+    ["a framing outside the list", visual({ framing: "wide" })],
+    ["an anchor off the 6x6 grid", visual({ anchors: ["G1"] })],
+    ["an empty anchor list", visual({ anchors: [] })],
+    ["a structure that is not a kebab-case name", top({ structure: "Design Journey" })],
+    ["a signature layer with no source", top({ signature_layer: { kind: "sim", source: [] } })],
+  ])("rejects %s", (_name, script) => {
+    expect(ScriptSchema.safeParse(script).success).toBe(false);
+  });
+
+  // Mutation: leaving untilCue out of beatCues lets an unspoken span end through.
+  it("rejects an emphasis span that ends on a word the beat never speaks", () => {
+    const script = visual({ cues: [{ action: "V9", target: "desk-server", atCue: "scan", untilCue: "router" }] });
+
+    expect(issues(script)).toContain('cue "router" is not spoken in c2-1-stations');
+  });
+
+  it("puts the new fields in the JSON Schema the script stage sends", () => {
+    const schema = JSON.stringify(z.toJSONSchema(ScriptSchema, { io: "input", unrepresentable: "any" }));
+
+    for (const field of ["layer", "framing", "anchors", "scene", "untilCue", "structure", "signature_layer"]) expect(schema).toContain(`"${field}"`);
   });
 });

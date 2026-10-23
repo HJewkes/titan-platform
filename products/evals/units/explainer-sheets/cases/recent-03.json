@@ -1,0 +1,24 @@
+{
+  "schema": "titan.case/v1",
+  "id": "recent-03",
+  "unit": {
+    "id": "explainer-sheets",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "mp4": "4a657e0e617ecec72a1782373e4e884e0d7cb71f12dbef01772ca624e2537bd2",
+      "script": "f1b25fe5fc5a009cf0a9b4f53372a26668c427873747495bcbdbbc9f93f9181a"
+    }
+  },
+  "split": "dev",
+  "tags": [
+    "recent-render"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "explainer artifact store, by sha",
+    "labelVersion": 1
+  },
+  "visibility": "private"
+}

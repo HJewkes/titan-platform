@@ -1,9 +1,9 @@
 # Daily briefing (video-profiles plan §B.4): BLUF. For now the daily gets the full audition and the
 # same variety rules as the review videos (owner Q2 B), so it does not hold one house layout.
-# kanban-flow, gantt and forecast wait for the beat-spec registry (TP-2867) and titan-design.
+# The board, the day and the forecast use kanban-flow, gantt and forecast; their components are not built yet.
 schema: type-profile/v1
 type: daily-overview
-version: 0.1.0
+version: 0.3.0
 family: briefing
 intent: "What the owner must know and decide today: the bottom line, the facts behind it, the decisions waiting, then the rest at speed."
 audience: { default: owner-internal, allow: [owner-internal] }
@@ -21,18 +21,25 @@ structure:
     scqa: [bottom-line, situation, decisions, ask]
     timeline: [bottom-line, day, decisions, ask]
     board-walk: [bottom-line, board, decisions, ask]
+  systems:
+    - { system: bluf, macro: bluf }
+    - { system: journey-of-attempts, macro: bluf, blocks: [segments] }
+    - { system: journey-of-attempts, macro: scqa, blocks: [situation] }
+    - { system: board-walk, macro: board-walk }
   blocks:
-    - { id: bottom-line, goal: "The verdict of the day and how many items need the owner.", seconds: [10, 25], beats: [hook, claim-card, stat], require: [claim-card] }
+    - { id: bottom-line, goal: "The verdict of the day and how many items need the owner.", seconds: [10, 25], beats: [verdict-card, claim-card, stat], require: [verdict-card] }
     - { id: decisions, goal: "The top decisions, each with its recommendation.", seconds: [20, 50], beats: [list, claim-card] }
-    - { id: facts, goal: "The two or three facts behind the bottom line.", seconds: [20, 50], beats: [stat, metrics-panel, chart] }
-    - { id: situation, goal: "The blocking item and what waiting on it costs.", seconds: [20, 45], beats: [issue-pin, stat, history] }
-    - { id: day, goal: "The day on a timeline, from the first event to its last effect.", seconds: [30, 70], beats: [history, sequence, chart] }
-    - { id: board, goal: "Work moving across the board.", seconds: [30, 70], beats: [chart, list, metrics-panel] }
-    - { id: segments, goal: "Background on demand: the remaining segments at speed, ranked by change.", seconds: [30, 80], beats: [fact-flash, chart, metrics-panel] }
+    - { id: facts, goal: "The two or three facts behind the bottom line.", seconds: [20, 50], beats: [stat, metrics-panel, chart, forecast] }
+    - { id: situation, goal: "The blocking item and what waiting on it costs.", seconds: [20, 45], beats: [issue-pin, attempt, stat, history] }
+    - { id: day, goal: "The day on a timeline, from the first event to its last effect.", seconds: [30, 70], beats: [gantt, history, sequence] }
+    - { id: board, goal: "Work moving across the board.", seconds: [30, 70], beats: [kanban-flow, metrics-panel, chart], require: [kanban-flow] }
+    - { id: segments, goal: "Background on demand: the remaining segments at speed, ranked by change.", seconds: [30, 80], beats: [fact-flash, chart, metrics-panel, forecast, attempt, issue-pin, stat] }
     - { id: ask, goal: "What the owner does next, then the button to the digest.", seconds: [10, 20], beats: [button], require: [button] }
 cuts: []
 hook: "The bottom line and the count of items that need the owner, in the first 20 s."
 ending: button
+styles: { allow: [ember-desk, night-drafting, paper-margin], house: ember-desk }
+voice: { id: bm_george, rate: 1.1 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines, lead-story, featured-visual]

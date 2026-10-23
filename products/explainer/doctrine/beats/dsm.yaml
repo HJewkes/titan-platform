@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: dsm
+summary: "A dependency matrix showing coupling between modules."
+role: evidence
+component: { maturity: gap }
+slots: dsm
+speech: { band: concept }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [modules], treatments: [highlight] }
+recipe: "Show modules on both axes with dependency weights in the cells. Point out the one cluster or cycle the narration is about."

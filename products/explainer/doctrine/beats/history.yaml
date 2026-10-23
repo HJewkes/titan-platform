@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: history
+summary: "Dated events on a time axis with a playhead."
+role: explain
+component: { name: Timeline, maturity: shipped }
+slots: history
+speech: { band: story }
+durationS: [8, 14, 30]
+preset: false
+emphasis: { targets: [events], treatments: [highlight, camera] }
+recipe: "Two to eight dated events; the playhead moves to each as it is named. Only dates the sources give."

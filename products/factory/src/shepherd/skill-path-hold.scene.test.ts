@@ -9,6 +9,7 @@ import { resolveGate } from "../gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { authorityGateReason, pendingCheck } from "../test-support/authority-reason.js";
 import { gateId } from "../test-support/land.js";
+import { fakeOwnerHelper } from "../test-support/owner-edges.js";
 import { factoryRoutesFor } from "../workflows.js";
 import type { ReviewAccounts } from "./account-limit.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -187,8 +188,9 @@ describe("releasing that skill-path gate", () => {
   it("refuses an agent shell's gate resolve merge without the owner's presence, and the run stays held", async () => {
     const { host, gate, runId, sources, fake } = await heldAtSkillGate();
     const io = { stdout: () => undefined, stderr: () => undefined, env: { AGENT_CHAT_AGENT_ID: "agent-synthetic", AGENT_CHAT_NAME: "tc-synthetic-coord" } };
+    fakeOwnerHelper(undefined);
 
-    const outcome = await resolveGate(host, io, runId, "approve-merge", JSON.stringify(MERGE), async () => undefined, sources).then(
+    const outcome = await resolveGate(host, io, runId, "approve-merge", JSON.stringify(MERGE), sources).then(
       (exit) => `resolved with exit ${exit}`,
       (error: unknown) => (error instanceof GateResolverRefused ? "refused" : String(error)),
     );

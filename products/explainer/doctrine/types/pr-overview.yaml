@@ -1,10 +1,8 @@
 # PR review (video-profiles plan §B.1): the CL / CodeRabbit order inside each macro. Made on request,
 # and automatically only as the decision-brief cut for a PR waiting at the visual gate (owner Q6).
-# The PR beats the plan names (verdict-card, change-group, diff-map, finding-card, proof) wait for the
-# beat-spec registry (TP-2867); until then the blocks use the vocabulary's beats.
 schema: type-profile/v1
 type: pr-overview
-version: 0.1.0
+version: 0.3.0
 family: review-pr
 intent: "Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do."
 audience: { default: owner-internal, allow: [owner-internal] }
@@ -22,21 +20,28 @@ structure:
     attempt-journey: [summary, attempt, breaks, proof, ask]
     review-saga: [summary, rounds, changes, proof, ask]
     before-after: [summary, problem, changes, interactions, shortcomings, proof, ask]
+  systems:
+    - { system: cl-order, macro: before-after }
+    - { system: cl-order, macro: scqa }
+    - { system: cl-order, macro: review-saga }
+    - { system: journey-of-attempts, macro: attempt-journey }
   blocks:
-    - { id: summary, goal: "An imperative one-line summary that stands alone, with the verdict.", seconds: [10, 25], beats: [claim-card, verdict-chip, hook], require: [claim-card] }
+    - { id: summary, goal: "An imperative one-line summary that stands alone, with the verdict.", seconds: [10, 25], beats: [verdict-card, claim-card, hook], require: [verdict-card] }
     - { id: problem, goal: "The problem, and why this approach.", seconds: [15, 40], beats: [claim-card, stakes, compare] }
-    - { id: changes, goal: "The changes grouped into two to four rows of related files.", seconds: [30, 70], beats: [arch-map, code-walk, list] }
+    - { id: changes, goal: "The changes grouped into two to four rows of related files.", seconds: [30, 70], beats: [change-group, diff-map, code-walk, frame-flow], require: [change-group] }
     - { id: interactions, goal: "A sequence diagram, only if interactions changed.", seconds: [15, 40], beats: [sequence, info-flow] }
-    - { id: attempt, goal: "What was tried, in the code.", seconds: [20, 45], beats: [code-walk, history] }
+    - { id: attempt, goal: "What was tried, in the code.", seconds: [20, 45], beats: [attempt, code-walk], require: [attempt] }
     - { id: breaks, goal: "Where it broke and why.", seconds: [20, 45], beats: [issue-pin, sequence, info-flow] }
-    - { id: rounds, goal: "The review rounds and what each one caught.", seconds: [20, 50], beats: [history, issue-pin] }
-    - { id: shortcomings, goal: "Shortcomings, said aloud.", seconds: [10, 30], beats: [issue-pin, fix] }
-    - { id: proof, goal: "Tests or a benchmark that show it holds.", seconds: [15, 40], beats: [stat, chart, compare] }
+    - { id: rounds, goal: "The review rounds and what each one caught.", seconds: [20, 50], beats: [history, finding-card] }
+    - { id: shortcomings, goal: "Shortcomings, said aloud.", seconds: [10, 30], beats: [finding-card, fix], require: [finding-card] }
+    - { id: proof, goal: "Tests or a benchmark that show it holds.", seconds: [15, 40], beats: [proof, stat, compare], require: [proof] }
     - { id: ask, goal: "Risk or effort, then the ask.", seconds: [10, 25], beats: [metrics-panel, button], require: [button] }
 cuts:
   - { id: decision-brief, type: decision-brief, when: "The PR waits at the visual gate: verdict, one change row, proof and the ask, in BLUF order.", runtimeS: [45, 90] }
 hook: "Stake first: the verdict and what it costs or opens, in the first sentence."
 ending: button
+styles: { allow: [mono-console, night-drafting, ember-desk] }
+voice: { id: bf_emma, rate: 1.05 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]

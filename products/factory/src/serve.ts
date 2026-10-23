@@ -111,8 +111,6 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   gateNotify?: GateNotifyOptions;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
-  /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
-  ownerKeys?: () => OwnerKeys;
   /** Replaces the bot identity read from the code-fixed `BOT_TOKEN_PATH`; tests inject it. No flag or config reaches this. */
   bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
@@ -232,7 +230,7 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
 
 /** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */
 function ownerProofs(options: FactoryServerOptions): OwnerProofs {
-  return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
+  return { keys: loadOwnerKeys(), aud: options.aud ?? hostname() };
 }
 
 type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot" | "reconciler">;

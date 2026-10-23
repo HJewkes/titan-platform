@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: issue-pin
+summary: "Problems pinned where they live on the map."
+role: evidence
+component: { name: MapCard, maturity: shipped }
+slots: issue-pin
+speech: { band: code }
+durationS: [6, 10, 20]
+preset: false
+emphasis: { targets: [issues], treatments: [pointer, colour] }
+recipe: "Pin one to five issues on the map nodes they belong to, each with a severity. Say the worst one first."

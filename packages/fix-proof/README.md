@@ -30,7 +30,10 @@ the `fix-proof` bin does the git and vitest work.
   verdict `error`, naming the spec, mutation and kill. `encodeMutantsReport` and
   `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
 - `provedByMutants(result)`: true when a `vacuous` result's `mutants` verdict is `killed`, no
-  changed test file lacks a spec of its own (`mutants.uncovered` present and empty), no test was
+  changed test file lacks a spec of its own (`mutants.uncovered` present and empty; a changed
+  carried test whose runtime imports, followed through carried files, reach only carried files,
+  vitest and builtins that cannot start a process, worker or evaluated source needs none, since
+  no mutation may target a carried file), no test was
   deleted or renamed out of the tests, and every selected test ran and passed at head: the proof a test-only diff can give.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests

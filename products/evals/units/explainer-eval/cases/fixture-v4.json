@@ -1,0 +1,33 @@
+{
+  "schema": "titan.case/v1",
+  "id": "fixture-v4",
+  "unit": {
+    "id": "explainer-eval",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "script": "81264c99c9d11ba3b56cf53050d0cd9c6d79868a9b95ea558522a437537cf50f",
+      "spine": "ba44bbc931b65e462e0e1d92dd1ef1b68c54c698fbb10ca6175cd6eb83fbe44b"
+    },
+    "files": {
+      "script": "products/explainer/fixtures/spike/redesign-explainer-v4/script.json",
+      "spine": "products/explainer/fixtures/spike/redesign-explainer-v4/spine.md"
+    }
+  },
+  "fixture": {
+    "kind": "repo",
+    "repo": "HJewkes/titan-platform",
+    "sha": "5a288f3b2d346a03c3aa1326e361022e8f714cf0"
+  },
+  "split": "dev",
+  "tags": [
+    "fixture"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "repo fixture",
+    "labelVersion": 1
+  },
+  "visibility": "public"
+}

@@ -10,6 +10,7 @@ import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
 import type * as Host from "./host.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 
 vi.mock("./host.js", async (importOriginal) => {
   const actual = await importOriginal<typeof Host>();
@@ -33,7 +34,9 @@ const approval = defineWorkflow({
     await ctx.dispatch("ship", "ship");
   },
 });
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 } };
+// The owner never confirms presence here, so no test can open the real helper's dialog.
+beforeEach(() => void fakeOwnerHelper(undefined));
 
 /** A home whose config file holds `config`; the database path is returned and never created by the test. */
 function home(config: object): { env: NodeJS.ProcessEnv; dbPath: string } {

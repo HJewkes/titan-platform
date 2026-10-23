@@ -136,6 +136,16 @@ and the next map beat resumes it.
   `thesis_refs` name beats.
 - Required authored fields accept a `TODO:` placeholder, so a draft parses and the lints
   report every gap at once.
+- The profile fields are optional, so a legacy script still parses. A beat's visual may give its
+  `layer` (`template` or `custom`), its `framing` (`FRAMINGS`), the 6×6 grid cells it uses
+  (`anchors`, `A1` to `F6`) and a `scene`. A cue's `target` is an element id the beat's emphasis
+  mapping resolves, and `untilCue` ends the spoken span it covers.
+- `structure` records the structure registry name the script was planned under, and
+  `parseScript(raw, structures?)` throws `UnknownStructureError` for a name the registry lacks.
+  `explainer eval l0` and `explainer run` parse through it, and the script stage records
+  `design-journey`, the structure its spine template comes from.
+- `signature_layer` (`kind` and its source fact ids) is a hypothesis the pilots measure. It is
+  optional, and no check requires it.
 - `deriveEvalView(script, layout?)` returns the view judges and lints read: `nodes_shown`,
   `edges_shown`, `you_are_here` (the camera station, else the focus) and `state_changes`
   ordered by where their cue is spoken. It is derived, never authored.
@@ -219,8 +229,8 @@ structure, cuts, hook and ending, series fields, audition size, layer shares, va
 values, coverage and publish checks. It has no spend cap, since cost is tracked rather than
 capped, and no signature-layer requirement.
 
-- `loadProfiles(dir?)` reads those directories and `doctrine/structures/`, and throws on a shape
-  error, naming the file.
+- `loadProfiles(dir?)` reads those directories, `doctrine/structures/` and
+  `doctrine/beat-systems/`, and throws on a shape error, naming the file.
   `profileFor(set, type)` throws `UnknownProfileError` for a type with no profile.
 - `checkProfiles(set, vocabulary)` returns coded `ProfileIssue`s:
   - names missing from the vocabulary, or audiences with no pack;
@@ -232,14 +242,18 @@ capped, and no signature-layer requirement.
   - a fixed order that varies its structure or chapter labels, or a heuristic order that does
     not vary its structure;
   - a publishable audience with no per-video owner ask, or a paper profile without the
-    `PAPER_PUBLISH_CHECKS`.
+    `PAPER_PUBLISH_CHECKS`;
+  - a bound beat system with no file (`unknown-beat-system`), bound to a macro the profile never
+    plays or a block outside it, or whose required step lands in no block after the step before
+    it (`beat-system-order`).
 - `chapterOrder(profile, { signals, runtimeS? }, structures)` gives one video's block order. A
   `fixed` structure ignores the material. A `heuristic` one takes the first row whose registered
   structure `fits` the material, as story-structure §4 asks its questions, and otherwise the
   fallback (`fallback: true`).
 - `guideForType(type)` renders a type's planner guide: the profile, each structure it may pick
   with its spine sections and the rules scoped to that structure, then the `plan` slice for the
-  type and its default audience. `explainer guide types` writes every guide to
+  type and its default audience, then each bound beat system with its steps, then a beat index of every beat its blocks allow (role, duration
+  range and purpose, from the beat specs). `explainer guide types` writes every guide to
   `doctrine/guides/planner/<type>.md`, and `explainer guide plan --type <type>` prints one.
   A test fails when a checked-in guide differs from its profile. Tracked by TP-2746.
 
@@ -263,3 +277,56 @@ each video and the runner-up goes in the render notes; there is no owner pick.
 - `renderSpine(structure)` renders the structure's spine as a fillable template. `design-journey`
   is the owner's journey (owner-FB1, now scoped to it): its spine is the `spine/v1` template, and
   `explainer guide plan` prints it. Tracked by TP-4006.
+
+## Beat specs
+
+`doctrine/beats/<type>.yaml` holds one `beat-spec/v1` per vocabulary beat, including the review
+and briefing beats `verdict-card`, `change-group`, `diff-map`, `finding-card`, `proof`,
+`frame-flow`, `replot`, `sim`, `rule-diff`, `kanban-flow`, `gantt`, `forecast`, `history-why`,
+`attempt` and `companion-link`. A spec gives the beat's purpose and role, its component and that
+component's maturity, a slot schema ref, the speech band, a `[min, default, max]` duration, the
+packet recipe (200 words or fewer), whether it is a no-model preset, and its emphasis contract.
+
+- `BEAT_SLOTS` holds the zod slot schema each spec's `slots` names.
+- The emphasis contract lists the slot lists whose item ids a script cue may target and the
+  treatments (`pointer`, `highlight`, `trace`, `scale`, `colour`, `camera`) the template may use.
+  There is no default treatment and no separate pointer layer.
+- `loadBeatSpecs(dir?)` reads the registry and throws on a shape error, naming the file.
+  `beatSpecFor(specs, type)` throws `UnknownBeatError` for a beat with no spec.
+- `parseBeatSlots(specs, type, slots)` validates one beat's slots. It throws `BeatSlotError` for a
+  slot the schema rejects or for an emphasis element id used twice. `emphasisTargets(spec, slots)`
+  lists the ids a cue may name, and `cueElement(spec, slots, target)` throws `BeatSlotError`
+  unless the target names exactly one of them.
+- `checkBeatSpecs(specs, vocabulary)` returns coded `BeatIssue`s:
+  - a spec missing from the vocabulary, or a vocabulary beat with no spec;
+  - a slots ref with no schema;
+  - a duration out of order;
+  - a recipe over 200 words;
+  - an emphasis target that is not a list of elements with ids.
+
+Tracked by TP-2867.
+
+## Beat systems
+
+`doctrine/beat-systems/<id>.yaml` holds one `beat-system/v1` per beat system: `bluf`, `cl-order`,
+`example-first`, `martini-glass`, `journey-of-attempts`, `chapter-question`, `countdown-rung`,
+`lab-cycle` and `board-walk`. A beat system is an ordered beat pattern that plays inside a
+structure's blocks; it is not a structure. The structure owns the macro shape (blocks, shares,
+fit, spine). The system owns the beat order within those blocks. So `cl-order` serves
+`before-after`, `scqa` and `review-saga`, and `journey-of-attempts` plays over the whole
+`attempt-journey` macro in a PR video but only inside the daily's `segments` block. Each step
+lists the vocabulary beats that may play it and what it does, and may be optional.
+
+A profile binds systems under `structure.systems` as `{ system, macro, blocks? }`, and the
+audition picks among the systems a macro lists. Xu's opening styles and Wei's climax patterns
+are not systems: they are known only from abstracts.
+
+- `loadBeatSystems(dir?)` reads the registry against that dir's `vocabulary.yaml` (`beatSystems`).
+  It throws `BeatSystemError` for a system the vocabulary does not name, a vocabulary system with
+  no file, or a step beat outside the vocabulary. `beatSystemFor(systems, id)` throws
+  `UnknownBeatSystemError` for an unregistered id.
+- `placeBeatSystem(system, blocks)` lands each step in the earliest block at or after the step
+  before it that allows one of its beats. It returns the placed steps and the required steps it
+  could not land; an optional step that cannot land is dropped.
+
+Tracked by TP-4007.

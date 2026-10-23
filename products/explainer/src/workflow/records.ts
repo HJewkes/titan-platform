@@ -9,6 +9,11 @@ export const BRIDGE_STAGES = ["tts", "render", "qa", "sheets"] as const;
 export type BridgeStage = (typeof BRIDGE_STAGES)[number];
 export const isBridgeStage = (stage: StageName): stage is BridgeStage => (BRIDGE_STAGES as readonly string[]).includes(stage);
 
+/** Every stage but `export` runs as its own `explainer.<stage>` child workflow behind the stage cache; export only links files. */
+export const CACHED_STAGES = ["script", "rewrite", "eval", "tts", "render", "qa", "sheets"] as const;
+export type CachedStage = (typeof CACHED_STAGES)[number];
+export const isCachedStage = (stage: StageName): stage is CachedStage => (CACHED_STAGES as readonly string[]).includes(stage);
+
 /** The artifacts a run starts from, before any stage. */
 export const RUN_INPUTS = ["spine", "facts"] as const;
 
@@ -25,7 +30,8 @@ export type StageUsage = z.infer<typeof StageUsageSchema>;
 
 export const NO_USAGE: StageUsage = { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 };
 
-export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), detail: z.string().optional() });
+/** A check's verdict. `gate: true` means a failed check failed its stage; any other check is reported only. */
+export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), gate: z.boolean().optional(), detail: z.string().optional() });
 export type Check = z.infer<typeof CheckSchema>;
 
 /**
@@ -37,6 +43,11 @@ export const StageRecordSchema = z.object({
   bridged: z.boolean(),
   /** The run whose outputs this stage reused instead of running; it then cost nothing here. */
   reusedFrom: z.string().optional(),
+  /** The stage key, and the child run that made (or, on a hit, first made) the outputs. */
+  key: z.string().optional(),
+  childRunId: z.string().optional(),
+  /** The outputs came from the stage cache: the child run with this key had already finished. */
+  cached: z.boolean().optional(),
   startedAt: z.string(),
   endedAt: z.string(),
   wallMs: z.number(),

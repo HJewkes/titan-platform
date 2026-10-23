@@ -18,7 +18,7 @@ export function registerResume(program: Command, { io, withHost }: Verbs): void 
     .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
 }
 
-export function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
+export function registerGate(program: Command, { io, withHost }: Verbs): void {
   program
     .command("gate")
     .description("human gates")
@@ -26,7 +26,7 @@ export function registerGate(program: Command, { io, deps, withHost }: Verbs): v
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
     .action((runId: string, stepId: string, opts: { json: string }) =>
-      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
+      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd))),
     );
 }
 

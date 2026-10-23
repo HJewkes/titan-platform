@@ -1,0 +1,12 @@
+schema: beat-system/v1
+id: board-walk
+version: 0.1.0
+source: "video-profiles plan §B.4 (the board walk)"
+summary: "The board as it stands, the moves replayed column by column, then the decisions the board leaves."
+steps:
+  - { beats: [verdict-card], does: "The bottom line, and how much moved." }
+  - { beats: [kanban-flow], does: "The board as it stands now." }
+  - { beats: [kanban-flow], does: "The moves replayed, column by column, real task data moving." }
+  - { beats: [metrics-panel, chart], does: "What the moves add up to.", optional: true }
+  - { beats: [list, claim-card], does: "The decisions the board leaves, each with its recommendation." }
+  - { beats: [button], does: "What to do next." }
