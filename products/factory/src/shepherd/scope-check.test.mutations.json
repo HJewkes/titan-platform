@@ -8,7 +8,9 @@
       "replace": "cites.every((cite) => inside(hunks, cite.path, cite.line))",
       "kills": [
         "scopeViolations flags a new item that cites only a line outside the fix's ranges and carries no tag",
-        "scopeViolations still flags an Important: item that names no Class:"
+        "scopeViolations still flags an Important: item that names no Class:",
+        "scopeViolations flags nothing for an item whose cite falls inside the fix's ranges, a deletion point included",
+        "scopeViolations never reads the earlier-findings checklist or the defect-class section as new items"
       ]
     },
     {
