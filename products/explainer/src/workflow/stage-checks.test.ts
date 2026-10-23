@@ -123,7 +123,7 @@ describe("running a stage's checks", () => {
       audition: [],
       script: ["l0:gate", "l0-warnings:reported", "pace:gate"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
-      eval: [], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
+      eval: [], resolve: ["emphasis-target:gate", "word-budget:gate"], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });
   });
 });

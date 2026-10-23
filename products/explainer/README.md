@@ -201,6 +201,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
+| `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned) → resolved |
 | `tts`, `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder; the run ends here | mp4 and sidecars → the same shas |
 
@@ -522,9 +523,40 @@ pointer layer and no default treatment.
   - once laid out, the element's box is missing or not wholly inside the frame (`off-frame`);
   - given the mark frames either side of the step, the step changes under 2 % of the target's box. A pixel counts as
     changed when a channel moves by more than 8 levels (`unchanged`; `changedShare`, `emphasisStepChanges`).
-- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The workflow has no resolve stage
-  yet; the resolver task (TP-2614) registers the gate when it adds the stage.
+- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The `resolve` stage registers it as
+  its `emphasis-target` gate (below).
 
 Stubbed: the mark frames come from beat-aware marks (TP-3000), which are not built yet. The rule takes two decoded
 RGBA frames and the target box, and its tests use synthetic frames. `fixtures/emphasis/` holds a synthetic script,
 slots and layout.
+
+### The resolve stage
+
+`explainer.resolve` (workflow plan §2.3 stage 6, profiles plan slice 6) runs after `eval` and before `tts`. It reads
+the rewritten `script` and, when a pin or an earlier stage supplies them, `code` (`{ "files": { path: text } }`, the
+cited files at the video's sha), `slots` (template slots by beat id) and `layout` (element boxes). Its config pins the
+beat specs, profiles and pinned router by content hash, so a doctrine edit is a new stage key.
+
+- **Resolver tables** (`resolve-tables.ts`). Each beat's key is `{function, job, content, route}`: `content` is
+  `code`, `map`, `items` or `statement`, read off the visual track, and `route` is the visual-router type its `kind`
+  names, or `none`. `RESOLVE_ROWS` is ordered, most specific first, and the first matching row picks
+  `{beat, framing, layer}`. `FRAMING_ANCHORS` gives the anchors. The beat spec gives the component and speech band. An
+  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything.
+- **Refusals** (`resolve-beat.ts`, `resolve-citation.ts`) are coded and listed together in one `ResolveError`, before
+  the stage stores anything:
+  - `E-RESOLVE-NO-ROW`: no row matches. There is no list fallback.
+  - `E-RESOLVE-JOB-UNSET`: the job is still a placeholder.
+  - `E-RESOLVE-UNKNOWN-BEAT`: the beat spec is not in the registry.
+  - `E-RESOLVE-STILL-MOTION`: a `cast-in-motion` beat is not on a custom layer.
+  - `E-RESOLVE-CITATION`: a code beat cites a missing file, a range past the end of the file or a highlight outside
+    its range, or the run has no `code` artifact. This is evidence's `verifyRange`, the quote-free half of
+    `verifyCitation`.
+- **Word budget** (`resolve-budget.ts`). A beat holds `floor(plannedS × rate)` words at its beat type's speech band:
+  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670). A chapter whose id names a
+  profile block is also held to that block's longest airtime at the fastest rate its beat types allow. Other
+  chapters are listed in a note and not capped.
+- **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
+  layer and anchors, plus every budget row.
+- **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
+  chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
+  `word-budget` fails on any beat or block over its cap.
