@@ -160,8 +160,9 @@ export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?
 export function fakeBriefModels(script = fakeScriptModel()): FakeScriptModel & { script: FakeScriptModel } {
   const audition = fakeAuditionModel();
   const runnerFor = (options: AgentRunnerOptions) => {
-    const runners = { audition: audition.runnerFor(options), script: script.runnerFor(options) };
-    return { run: (input: StepRunInput) => runners[input.stepId as keyof typeof runners].run(input) };
+    const sampler = audition.runnerFor(options);
+    const writer = script.runnerFor(options);
+    return { run: (input: StepRunInput) => (input.stepId === "audition" ? sampler : writer).run(input) };
   };
   return { runnerFor, prompts: [], budgets: [], script };
 }
