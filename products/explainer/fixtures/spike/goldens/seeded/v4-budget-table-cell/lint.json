@@ -1,0 +1,14 @@
+{
+ "script": "v4-budget-table-cell",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r2-1-jobs",
+   "check": "S7",
+   "severity": "error",
+   "message": "job cell 'ask the owner, rarely' is 21 chars, cap 19"
+  }
+ ]
+}

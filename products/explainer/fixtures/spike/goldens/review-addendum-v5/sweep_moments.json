@@ -1,0 +1,4155 @@
+{
+ "moments": [
+  {
+   "beat": "a1-1-why",
+   "local": 0.0,
+   "t": 0.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 0.5,
+   "t": 0.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 1.0,
+   "t": 1.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 1.5,
+   "t": 1.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 2.0,
+   "t": 2.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 2.5,
+   "t": 2.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 3.0,
+   "t": 3.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 3.5,
+   "t": 3.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 4.0,
+   "t": 4.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 4.5,
+   "t": 4.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 5.0,
+   "t": 5.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 5.5,
+   "t": 5.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 6.0,
+   "t": 6.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 6.5,
+   "t": 6.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 7.0,
+   "t": 7.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 7.5,
+   "t": 7.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 8.0,
+   "t": 8.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 8.5,
+   "t": 8.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 9.0,
+   "t": 9.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 9.5,
+   "t": 9.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 10.0,
+   "t": 10.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 10.5,
+   "t": 10.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 11.0,
+   "t": 11.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 11.5,
+   "t": 11.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 12.0,
+   "t": 12.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 12.5,
+   "t": 12.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 13.0,
+   "t": 13.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 13.5,
+   "t": 13.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 14.0,
+   "t": 14.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-1-why",
+   "local": 14.5,
+   "t": 14.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 0.067,
+   "t": 15.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 0.567,
+   "t": 15.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 1.067,
+   "t": 16.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 1.567,
+   "t": 16.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 2.067,
+   "t": 17.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 2.567,
+   "t": 17.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 3.067,
+   "t": 18.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 3.567,
+   "t": 18.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 4.067,
+   "t": 19.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 4.567,
+   "t": 19.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 5.067,
+   "t": 20.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 5.567,
+   "t": 20.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 6.067,
+   "t": 21.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 6.567,
+   "t": 21.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 7.067,
+   "t": 22.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 7.567,
+   "t": 22.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 8.067,
+   "t": 23.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 8.567,
+   "t": 23.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 9.067,
+   "t": 24.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 9.567,
+   "t": 24.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 10.067,
+   "t": 25.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 10.567,
+   "t": 25.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 11.067,
+   "t": 26.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-2-pin",
+   "local": 11.567,
+   "t": 26.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 0.2,
+   "t": 27.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 0.7,
+   "t": 27.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 1.2,
+   "t": 28.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 1.7,
+   "t": 28.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 2.2,
+   "t": 29.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 2.7,
+   "t": 29.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 3.2,
+   "t": 30.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 3.7,
+   "t": 30.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 4.2,
+   "t": 31.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 4.7,
+   "t": 31.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 5.2,
+   "t": 32.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 5.7,
+   "t": 32.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 6.2,
+   "t": 33.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 6.7,
+   "t": 33.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 7.2,
+   "t": 34.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 7.7,
+   "t": 34.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 8.2,
+   "t": 35.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 8.7,
+   "t": 35.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 9.2,
+   "t": 36.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a1-3-verdict",
+   "local": 9.7,
+   "t": 36.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 0.2,
+   "t": 37.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 0.7,
+   "t": 37.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 1.2,
+   "t": 38.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 1.7,
+   "t": 38.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 2.2,
+   "t": 39.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 2.7,
+   "t": 39.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 3.2,
+   "t": 40.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 3.7,
+   "t": 40.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 4.2,
+   "t": 41.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 4.7,
+   "t": 41.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 5.2,
+   "t": 42.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 5.7,
+   "t": 42.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 6.2,
+   "t": 43.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 6.7,
+   "t": 43.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 7.2,
+   "t": 44.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 7.7,
+   "t": 44.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 8.2,
+   "t": 45.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 8.7,
+   "t": 45.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 9.2,
+   "t": 46.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 9.7,
+   "t": 46.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 10.2,
+   "t": 47.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 10.7,
+   "t": 47.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 11.2,
+   "t": 48.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 11.7,
+   "t": 48.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 12.2,
+   "t": 49.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 12.7,
+   "t": 49.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 13.2,
+   "t": 50.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 13.7,
+   "t": 50.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 14.2,
+   "t": 51.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 14.7,
+   "t": 51.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 15.2,
+   "t": 52.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 15.7,
+   "t": 52.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 16.2,
+   "t": 53.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 16.7,
+   "t": 53.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 17.2,
+   "t": 54.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 17.7,
+   "t": 54.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 18.2,
+   "t": 55.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 18.7,
+   "t": 55.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 19.2,
+   "t": 56.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 19.7,
+   "t": 56.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 20.2,
+   "t": 57.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 20.7,
+   "t": 57.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1-orphan",
+   "local": 21.2,
+   "t": 58.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 0.233,
+   "t": 58.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 0.733,
+   "t": 59.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 1.233,
+   "t": 59.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 1.733,
+   "t": 60.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 2.233,
+   "t": 60.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 2.733,
+   "t": 61.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 3.233,
+   "t": 61.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 3.733,
+   "t": 62.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 4.233,
+   "t": 62.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 4.733,
+   "t": 63.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 5.233,
+   "t": 63.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 5.733,
+   "t": 64.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 6.233,
+   "t": 64.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 6.733,
+   "t": 65.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 7.233,
+   "t": 65.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 7.733,
+   "t": 66.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 8.233,
+   "t": 66.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 8.733,
+   "t": 67.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 9.233,
+   "t": 67.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 9.733,
+   "t": 68.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 10.233,
+   "t": 68.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 10.733,
+   "t": 69.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-1f-orphan-fix",
+   "local": 11.233,
+   "t": 69.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 0.033,
+   "t": 70.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 0.533,
+   "t": 70.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 1.033,
+   "t": 71.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 1.533,
+   "t": 71.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 2.033,
+   "t": 72.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 2.533,
+   "t": 72.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 3.033,
+   "t": 73.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 3.533,
+   "t": 73.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 4.033,
+   "t": 74.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 4.533,
+   "t": 74.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 5.033,
+   "t": 75.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 5.533,
+   "t": 75.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 6.033,
+   "t": 76.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 6.533,
+   "t": 76.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 7.033,
+   "t": 77.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 7.533,
+   "t": 77.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 8.033,
+   "t": 78.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 8.533,
+   "t": 78.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 9.033,
+   "t": 79.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 9.533,
+   "t": 79.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 10.033,
+   "t": 80.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 10.533,
+   "t": 80.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 11.033,
+   "t": 81.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 11.533,
+   "t": 81.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 12.033,
+   "t": 82.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 12.533,
+   "t": 82.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 13.033,
+   "t": 83.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 13.533,
+   "t": 83.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2-patchid",
+   "local": 14.033,
+   "t": 84.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 0.367,
+   "t": 84.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 0.867,
+   "t": 85.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 1.367,
+   "t": 85.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 1.867,
+   "t": 86.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 2.367,
+   "t": 86.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 2.867,
+   "t": 87.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 3.367,
+   "t": 87.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 3.867,
+   "t": 88.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 4.367,
+   "t": 88.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 4.867,
+   "t": 89.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 5.367,
+   "t": 89.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 5.867,
+   "t": 90.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 6.367,
+   "t": 90.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-2f-patchid-fix",
+   "local": 6.867,
+   "t": 91.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 0.0,
+   "t": 91.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 0.5,
+   "t": 92.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 1.0,
+   "t": 92.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 1.5,
+   "t": 93.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 2.0,
+   "t": 93.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 2.5,
+   "t": 94.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 3.0,
+   "t": 94.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 3.5,
+   "t": 95.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 4.0,
+   "t": 95.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 4.5,
+   "t": 96.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 5.0,
+   "t": 96.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 5.5,
+   "t": 97.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 6.0,
+   "t": 97.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 6.5,
+   "t": 98.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 7.0,
+   "t": 98.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 7.5,
+   "t": 99.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 8.0,
+   "t": 99.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 8.5,
+   "t": 100.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 9.0,
+   "t": 100.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 9.5,
+   "t": 101.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 10.0,
+   "t": 101.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 10.5,
+   "t": 102.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 11.0,
+   "t": 102.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 11.5,
+   "t": 103.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 12.0,
+   "t": 103.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 12.5,
+   "t": 104.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 13.0,
+   "t": 104.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 13.5,
+   "t": 105.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3-revert",
+   "local": 14.0,
+   "t": 105.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 0.2,
+   "t": 106.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 0.7,
+   "t": 106.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 1.2,
+   "t": 107.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 1.7,
+   "t": 107.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 2.2,
+   "t": 108.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 2.7,
+   "t": 108.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 3.2,
+   "t": 109.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 3.7,
+   "t": 109.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 4.2,
+   "t": 110.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 4.7,
+   "t": 110.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 5.2,
+   "t": 111.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 5.7,
+   "t": 111.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 6.2,
+   "t": 112.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 6.7,
+   "t": 112.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-3f-revert-fix",
+   "local": 7.2,
+   "t": 113.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 0.333,
+   "t": 113.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 0.833,
+   "t": 114.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 1.333,
+   "t": 114.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 1.833,
+   "t": 115.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 2.333,
+   "t": 115.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 2.833,
+   "t": 116.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 3.333,
+   "t": 116.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 3.833,
+   "t": 117.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 4.333,
+   "t": 117.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 4.833,
+   "t": 118.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 5.333,
+   "t": 118.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 5.833,
+   "t": 119.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 6.333,
+   "t": 119.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 6.833,
+   "t": 120.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 7.333,
+   "t": 120.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 7.833,
+   "t": 121.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 8.333,
+   "t": 121.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 8.833,
+   "t": 122.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 9.333,
+   "t": 122.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 9.833,
+   "t": 123.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 10.333,
+   "t": 123.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 10.833,
+   "t": 124.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 11.333,
+   "t": 124.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 11.833,
+   "t": 125.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 12.333,
+   "t": 125.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 12.833,
+   "t": 126.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 13.333,
+   "t": 126.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 13.833,
+   "t": 127.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4-path",
+   "local": 14.333,
+   "t": 127.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 0.233,
+   "t": 128.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 0.733,
+   "t": 128.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 1.233,
+   "t": 129.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 1.733,
+   "t": 129.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 2.233,
+   "t": 130.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 2.733,
+   "t": 130.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 3.233,
+   "t": 131.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 3.733,
+   "t": 131.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 4.233,
+   "t": 132.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 4.733,
+   "t": 132.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 5.233,
+   "t": 133.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 5.733,
+   "t": 133.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 6.233,
+   "t": 134.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 6.733,
+   "t": 134.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 7.233,
+   "t": 135.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 7.733,
+   "t": 135.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a2-4f-path-fix",
+   "local": 8.233,
+   "t": 136.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 0.333,
+   "t": 136.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 0.833,
+   "t": 137.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 1.333,
+   "t": 137.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 1.833,
+   "t": 138.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 2.333,
+   "t": 138.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 2.833,
+   "t": 139.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 3.333,
+   "t": 139.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 3.833,
+   "t": 140.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 4.333,
+   "t": 140.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 4.833,
+   "t": 141.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 5.333,
+   "t": 141.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 5.833,
+   "t": 142.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 6.333,
+   "t": 142.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 6.833,
+   "t": 143.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 7.333,
+   "t": 143.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 7.833,
+   "t": 144.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 8.333,
+   "t": 144.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 8.833,
+   "t": 145.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 9.333,
+   "t": 145.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 9.833,
+   "t": 146.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 10.333,
+   "t": 146.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 10.833,
+   "t": 147.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 11.333,
+   "t": 147.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 11.833,
+   "t": 148.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 12.333,
+   "t": 148.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 12.833,
+   "t": 149.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 13.333,
+   "t": 149.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 13.833,
+   "t": 150.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 14.333,
+   "t": 150.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 14.833,
+   "t": 151.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 15.333,
+   "t": 151.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 15.833,
+   "t": 152.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 16.333,
+   "t": 152.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 16.833,
+   "t": 153.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 17.333,
+   "t": 153.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 17.833,
+   "t": 154.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 18.333,
+   "t": 154.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 18.833,
+   "t": 155.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 19.333,
+   "t": 155.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-1-merge",
+   "local": 19.833,
+   "t": 156.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 0.367,
+   "t": 156.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 0.867,
+   "t": 157.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 1.367,
+   "t": 157.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 1.867,
+   "t": 158.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 2.367,
+   "t": 158.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 2.867,
+   "t": 159.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 3.367,
+   "t": 159.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 3.867,
+   "t": 160.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 4.367,
+   "t": 160.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 4.867,
+   "t": 161.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 5.367,
+   "t": 161.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 5.867,
+   "t": 162.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 6.367,
+   "t": 162.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 6.867,
+   "t": 163.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 7.367,
+   "t": 163.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 7.867,
+   "t": 164.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 8.367,
+   "t": 164.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 8.867,
+   "t": 165.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 9.367,
+   "t": 165.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 9.867,
+   "t": 166.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 10.367,
+   "t": 166.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 10.867,
+   "t": 167.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 11.367,
+   "t": 167.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 11.867,
+   "t": 168.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 12.367,
+   "t": 168.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 12.867,
+   "t": 169.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 13.367,
+   "t": 169.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 13.867,
+   "t": 170.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 14.367,
+   "t": 170.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-2-dedupe",
+   "local": 14.867,
+   "t": 171.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 0.367,
+   "t": 171.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 0.867,
+   "t": 172.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 1.367,
+   "t": 172.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 1.867,
+   "t": 173.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 2.367,
+   "t": 173.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 2.867,
+   "t": 174.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 3.367,
+   "t": 174.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 3.867,
+   "t": 175.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 4.367,
+   "t": 175.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 4.867,
+   "t": 176.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 5.367,
+   "t": 176.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 5.867,
+   "t": 177.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 6.367,
+   "t": 177.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 6.867,
+   "t": 178.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 7.367,
+   "t": 178.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 7.867,
+   "t": 179.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 8.367,
+   "t": 179.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 8.867,
+   "t": 180.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 9.367,
+   "t": 180.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 9.867,
+   "t": 181.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 10.367,
+   "t": 181.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 10.867,
+   "t": 182.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-3-milestones",
+   "local": 11.367,
+   "t": 182.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 0.2,
+   "t": 183.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 0.7,
+   "t": 183.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 1.2,
+   "t": 184.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 1.7,
+   "t": 184.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 2.2,
+   "t": 185.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 2.7,
+   "t": 185.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 3.2,
+   "t": 186.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 3.7,
+   "t": 186.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 4.2,
+   "t": 187.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 4.7,
+   "t": 187.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 5.2,
+   "t": 188.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 5.7,
+   "t": 188.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 6.2,
+   "t": 189.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 6.7,
+   "t": 189.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 7.2,
+   "t": 190.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 7.7,
+   "t": 190.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 8.2,
+   "t": 191.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 8.7,
+   "t": 191.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 9.2,
+   "t": 192.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 9.7,
+   "t": 192.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 10.2,
+   "t": 193.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 10.7,
+   "t": 193.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 11.2,
+   "t": 194.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 11.7,
+   "t": 194.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 12.2,
+   "t": 195.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 12.7,
+   "t": 195.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 13.2,
+   "t": 196.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 13.7,
+   "t": 196.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 14.2,
+   "t": 197.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 14.7,
+   "t": 197.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a3-4-observed",
+   "local": 15.2,
+   "t": 198.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 0.233,
+   "t": 198.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 0.733,
+   "t": 199.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 1.233,
+   "t": 199.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 1.733,
+   "t": 200.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 2.233,
+   "t": 200.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 2.733,
+   "t": 201.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 3.233,
+   "t": 201.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 3.733,
+   "t": 202.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 4.233,
+   "t": 202.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 4.733,
+   "t": 203.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 5.233,
+   "t": 203.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 5.733,
+   "t": 204.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 6.233,
+   "t": 204.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 6.733,
+   "t": 205.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 7.233,
+   "t": 205.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 7.733,
+   "t": 206.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 8.233,
+   "t": 206.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 8.733,
+   "t": 207.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 9.233,
+   "t": 207.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 9.733,
+   "t": 208.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 10.233,
+   "t": 208.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 10.733,
+   "t": 209.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 11.233,
+   "t": 209.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 11.733,
+   "t": 210.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 12.233,
+   "t": 210.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 12.733,
+   "t": 211.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 13.233,
+   "t": 211.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 13.733,
+   "t": 212.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 14.233,
+   "t": 212.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 14.733,
+   "t": 213.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 15.233,
+   "t": 213.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-1-fact",
+   "local": 15.733,
+   "t": 214.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 0.433,
+   "t": 214.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 0.933,
+   "t": 215.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 1.433,
+   "t": 215.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 1.933,
+   "t": 216.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 2.433,
+   "t": 216.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 2.933,
+   "t": 217.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 3.433,
+   "t": 217.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 3.933,
+   "t": 218.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 4.433,
+   "t": 218.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 4.933,
+   "t": 219.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 5.433,
+   "t": 219.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 5.933,
+   "t": 220.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 6.433,
+   "t": 220.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 6.933,
+   "t": 221.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 7.433,
+   "t": 221.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 7.933,
+   "t": 222.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 8.433,
+   "t": 222.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 8.933,
+   "t": 223.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 9.433,
+   "t": 223.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 9.933,
+   "t": 224.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 10.433,
+   "t": 224.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 10.933,
+   "t": 225.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-2-queue",
+   "local": 11.433,
+   "t": 225.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 0.033,
+   "t": 226.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 0.533,
+   "t": 226.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 1.033,
+   "t": 227.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 1.533,
+   "t": 227.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 2.033,
+   "t": 228.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 2.533,
+   "t": 228.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 3.033,
+   "t": 229.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 3.533,
+   "t": 229.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 4.033,
+   "t": 230.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 4.533,
+   "t": 230.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 5.033,
+   "t": 231.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 5.533,
+   "t": 231.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 6.033,
+   "t": 232.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 6.533,
+   "t": 232.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 7.033,
+   "t": 233.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 7.533,
+   "t": 233.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 8.033,
+   "t": 234.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 8.533,
+   "t": 234.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-3-ingress",
+   "local": 9.033,
+   "t": 235.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 0.433,
+   "t": 235.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 0.933,
+   "t": 236.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 1.433,
+   "t": 236.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 1.933,
+   "t": 237.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 2.433,
+   "t": 237.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 2.933,
+   "t": 238.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 3.433,
+   "t": 238.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 3.933,
+   "t": 239.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 4.433,
+   "t": 239.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 4.933,
+   "t": 240.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 5.433,
+   "t": 240.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 5.933,
+   "t": 241.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 6.433,
+   "t": 241.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 6.933,
+   "t": 242.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 7.433,
+   "t": 242.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 7.933,
+   "t": 243.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 8.433,
+   "t": 243.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 8.933,
+   "t": 244.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 9.433,
+   "t": 244.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 9.933,
+   "t": 245.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 10.433,
+   "t": 245.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 10.933,
+   "t": 246.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 11.433,
+   "t": 246.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 11.933,
+   "t": 247.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 12.433,
+   "t": 247.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 12.933,
+   "t": 248.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 13.433,
+   "t": 248.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 13.933,
+   "t": 249.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 14.433,
+   "t": 249.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-4-hashes",
+   "local": 14.933,
+   "t": 250.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 0.133,
+   "t": 250.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 0.633,
+   "t": 251.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 1.133,
+   "t": 251.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 1.633,
+   "t": 252.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 2.133,
+   "t": 252.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 2.633,
+   "t": 253.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 3.133,
+   "t": 253.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 3.633,
+   "t": 254.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 4.133,
+   "t": 254.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 4.633,
+   "t": 255.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 5.133,
+   "t": 255.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 5.633,
+   "t": 256.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 6.133,
+   "t": 256.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 6.633,
+   "t": 257.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 7.133,
+   "t": 257.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 7.633,
+   "t": 258.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 8.133,
+   "t": 258.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 8.633,
+   "t": 259.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 9.133,
+   "t": 259.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 9.633,
+   "t": 260.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 10.133,
+   "t": 260.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 10.633,
+   "t": 261.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a4-5-built",
+   "local": 11.133,
+   "t": 261.5,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 0.133,
+   "t": 262.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 0.633,
+   "t": 262.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 1.133,
+   "t": 263.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 1.633,
+   "t": 263.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 2.133,
+   "t": 264.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 2.633,
+   "t": 264.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 3.133,
+   "t": 265.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 3.633,
+   "t": 265.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 4.133,
+   "t": 266.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 4.633,
+   "t": 266.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 5.133,
+   "t": 267.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 5.633,
+   "t": 267.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 6.133,
+   "t": 268.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 6.633,
+   "t": 268.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 7.133,
+   "t": 269.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 7.633,
+   "t": 269.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 8.133,
+   "t": 270.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 8.633,
+   "t": 270.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 9.133,
+   "t": 271.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 9.633,
+   "t": 271.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 10.133,
+   "t": 272.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 10.633,
+   "t": 272.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 11.133,
+   "t": 273.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 11.633,
+   "t": 273.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 12.133,
+   "t": 274.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 12.633,
+   "t": 274.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 13.133,
+   "t": 275.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 13.633,
+   "t": 275.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-1-design",
+   "local": 14.133,
+   "t": 276.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 0.367,
+   "t": 276.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 0.867,
+   "t": 277.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 1.367,
+   "t": 277.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 1.867,
+   "t": 278.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 2.367,
+   "t": 278.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 2.867,
+   "t": 279.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 3.367,
+   "t": 279.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 3.867,
+   "t": 280.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 4.367,
+   "t": 280.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 4.867,
+   "t": 281.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 5.367,
+   "t": 281.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 5.867,
+   "t": 282.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 6.367,
+   "t": 282.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 6.867,
+   "t": 283.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 7.367,
+   "t": 283.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 7.867,
+   "t": 284.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 8.367,
+   "t": 284.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 8.867,
+   "t": 285.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 9.367,
+   "t": 285.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-2-accounts",
+   "local": 9.867,
+   "t": 286.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 0.4,
+   "t": 286.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 0.9,
+   "t": 287.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 1.4,
+   "t": 287.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 1.9,
+   "t": 288.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 2.4,
+   "t": 288.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 2.9,
+   "t": 289.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 3.4,
+   "t": 289.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 3.9,
+   "t": 290.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 4.4,
+   "t": 290.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 4.9,
+   "t": 291.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 5.4,
+   "t": 291.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 5.9,
+   "t": 292.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 6.4,
+   "t": 292.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 6.9,
+   "t": 293.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 7.4,
+   "t": 293.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 7.9,
+   "t": 294.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 8.4,
+   "t": 294.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 8.9,
+   "t": 295.0,
+   "kind": "end",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 9.4,
+   "t": 295.5,
+   "kind": "cue",
+   "why": "2 Hz"
+  },
+  {
+   "beat": "a5-3-next",
+   "local": 9.9,
+   "t": 296.0,
+   "kind": "cue",
+   "why": "2 Hz"
+  }
+ ]
+}

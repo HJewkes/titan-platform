@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-rule3",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "a5-2-accounts",
+   "check": "rule3",
+   "severity": "error",
+   "message": "5 items, cap 4"
+  }
+ ]
+}

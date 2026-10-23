@@ -1,0 +1,20 @@
+{
+ "script": "v4-pin-hits-edge-label",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r3-6-owner",
+   "check": "map",
+   "severity": "error",
+   "message": "pin 'console' hits 'spawn'"
+  },
+  {
+   "beat": "r3-6-owner",
+   "check": "map",
+   "severity": "error",
+   "message": "pin 'console' hits 'events'"
+  }
+ ]
+}

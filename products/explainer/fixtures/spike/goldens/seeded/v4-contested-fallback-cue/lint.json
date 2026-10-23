@@ -1,0 +1,14 @@
+{
+ "script": "v4-contested-fallback-cue",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r3-2-sentence",
+   "check": "contested",
+   "severity": "error",
+   "message": "fallback lacks cue 'recipe'"
+  }
+ ]
+}

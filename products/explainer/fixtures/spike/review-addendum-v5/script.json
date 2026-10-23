@@ -1,0 +1,2120 @@
+{
+ "schema": "script/v1",
+ "id": "review-addendum-v5-2026-10-14",
+ "profile": "repo-tour",
+ "facts_pack": "facts.md",
+ "video": {
+  "audience": {
+   "persona": "the owner: saw the redesign explainer v4, decides the v5 reviews' open calls after watching",
+   "proximity": "builder",
+   "viewer_knows": [
+    "the redesign explainer v4",
+    "Shepherd",
+    "markers and recipes"
+   ],
+   "viewer_needs": [
+    "what the two reviews found",
+    "what each finding would need",
+    "what to buy",
+    "the calls that are yours"
+   ],
+   "gloss": "engineer"
+  },
+  "stake": {
+   "who": "the owner",
+   "loses_what": "v5 is not ready to build: both adversaries say not converged",
+   "number": "8 blockers from opus, 6 from vc",
+   "fact_ids": [
+    "A03",
+    "A04"
+   ]
+  },
+  "promise": "By the end, you can name what the two reviews found, what each finding would need, what to buy, and the calls that are yours.",
+  "thesis_mechanism": "Each step leaves a marker that stays valid until its pin moves: the code tree, the diff, or an event it depends on.",
+  "thesis_refs": [
+   "a1-2-pin",
+   "a2-2-patchid",
+   "a3-4-observed"
+  ],
+  "generic_model": {
+   "name": "three pin kinds",
+   "slots": [
+    "tree",
+    "diff",
+    "event"
+   ]
+  },
+  "predecessor": {
+   "name": "the v4 explainer's design (pipeline-redesign v4), which v5 revised",
+   "how_shaped_differently": "v5 keys each marker by a pin per fact class instead of the head",
+   "fact_ids": [
+    "A02"
+   ]
+  },
+  "running_example": {
+   "scenario": "one slice's recipe, broken and fixed once per finding in chapters 2 and 3",
+   "anchor": "one recipe",
+   "fact_ids": [
+    "A05"
+   ]
+  },
+  "invariants": [
+   "CI passes on the merged tree.",
+   "A verdict counts only at its exact diff."
+  ],
+  "simplifications": [
+   "Shows three pin kinds (tree, diff, event); v5's fourth, the item pin, is left out."
+  ],
+  "scope": "v5 reviews, 2026-10-14",
+  "non_scope": [
+   "opus B6 and B8 (not in either joint finding or the single-finding chapter)",
+   "latency targets",
+   "the v6 text"
+  ],
+  "close_type": "open-calls"
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "label": "Reviews · What were they for?",
+   "question": "What did the reviews set out to answer?"
+  },
+  {
+   "id": "ch2",
+   "label": "Agreed · What did both find?",
+   "question": "Which findings appear in both reviews?"
+  },
+  {
+   "id": "ch3",
+   "label": "Single · What did only one find?",
+   "question": "What did only one reviewer find?"
+  },
+  {
+   "id": "ch4",
+   "label": "Build or buy · What do we buy?",
+   "question": "What should be built, and what bought?"
+  },
+  {
+   "id": "ch5",
+   "label": "Your calls · What is asked of you?",
+   "question": "What do the reviews ask of you?"
+  }
+ ],
+ "beats": [
+  {
+   "id": "a1-1-why",
+   "chapter": "ch1",
+   "function": "HOOK",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Before anyone builds version five, two adversaries tried to break it, apart: one with the web, one who knew versions one to four. Is it ready, and what should we build or buy?",
+   "fact_ids": [
+    "A01"
+   ],
+   "visual": {
+    "assertion": "Two reviews before anyone builds v5",
+    "job": "map",
+    "render": "StepRailBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "rail:v5 draft, two reviews, ready yet?",
+      "atCue": "version"
+     },
+     {
+      "action": "V11",
+      "target": "rail:build or buy",
+      "atCue": "buy"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "pipeline-redesign-v5-2026-10-14.md:32; adversarial-review-v5-opus-2026-10-14.md:1-7; adversarial-review-v5-vc-2026-10-14.md:1-12",
+      "fact_id": "A01"
+     }
+    ]
+   },
+   "origin": "v4",
+   "plannedS": 13
+  },
+  {
+   "id": "a1-2-pin",
+   "chapter": "ch1",
+   "function": "GENERIC_MODEL",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "Each step leaves a marker that stays valid until its pin moves: the code tree, the diff, or an event it depends on.",
+   "fact_ids": [
+    "A02"
+   ],
+   "visual": {
+    "assertion": "A marker stays valid until its pin moves",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "run:ci-hold",
+      "atCue": "step"
+     },
+     {
+      "action": "V11",
+      "target": "note:pin: tree, diff, event",
+      "atCue": "pin"
+     },
+     {
+      "action": "V11",
+      "target": "stale:ci",
+      "atCue": "tree"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "pipeline-redesign-v5-2026-10-14.md:21-23, 674",
+      "fact_id": "A02"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "ci",
+       "code": "await step('ci')",
+       "fact": "ci:green@tree",
+       "reads": []
+      },
+      {
+       "id": "verdict",
+       "code": "await step('verdict')",
+       "fact": "verdict:merge@diff",
+       "reads": []
+      },
+      {
+       "id": "hold",
+       "code": "await step('hold')",
+       "fact": "hold:none@event",
+       "reads": []
+      }
+     ],
+     "start": {
+      "markers": {}
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "simplification": true,
+   "plannedS": 10
+  },
+  {
+   "id": "a1-3-verdict",
+   "chapter": "ch1",
+   "function": "STAKE",
+   "mode": "explain",
+   "band": "hook",
+   "spoken": "Eight blockers from one, six from the other. Both say not converged, not ready yet, and both call every blocker a specification fix, not an architectural one.",
+   "fact_ids": [
+    "A03",
+    "A04"
+   ],
+   "visual": {
+    "assertion": "Both say not converged yet",
+    "job": "numbers",
+    "render": "StatBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "stat:8 from opus",
+      "atCue": "Eight"
+     },
+     {
+      "action": "V11",
+      "target": "stat:6 from vc",
+      "atCue": "six"
+     },
+     {
+      "action": "V11",
+      "target": "chip:both: not converged",
+      "atCue": "converged"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "measured",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:17, 21",
+      "fact_id": "A03"
+     },
+     {
+      "kind": "measured",
+      "text": "adversarial-review-v5-vc-2026-10-14.md:14",
+      "fact_id": "A04"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "but",
+   "contested": {
+    "id": "VC:14 vs OP:17-19, 224-235",
+    "fallback": "Eight blockers from one, six from the other. Both say not converged, not ready yet, and both call version five a real improvement.",
+    "why": "'None architectural' is vc's verdict only; opus calls B8's services unbuildable as written (OP:226)"
+   },
+   "plannedS": 10
+  },
+  {
+   "id": "a2-1-orphan",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "The orphan trap alarms on a valid marker the entry never reached. After a clean merge-up, the entry returns at the CI wait, short of the owner's approval, and the trap fires. Five hundred and twenty of nine hundred and ninety-nine runs merged up.",
+   "fact_ids": [
+    "A05",
+    "A06"
+   ],
+   "visual": {
+    "assertion": "A wait returns before the trap's check",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:orphan trap",
+      "atCue": "trap"
+     },
+     {
+      "action": "V11",
+      "target": "note:clean merge-up",
+      "atCue": "merge-up"
+     },
+     {
+      "action": "V11",
+      "target": "wait:ci",
+      "atCue": "returns"
+     },
+     {
+      "action": "V11",
+      "target": "orphan:verdict,owner",
+      "atCue": "fires"
+     },
+     {
+      "action": "V11",
+      "target": "note:520 of 999 merged up",
+      "atCue": "Five"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:23-27, 49-61; adversarial-review-v5-vc-2026-10-14.md:88-99",
+      "fact_id": "A05"
+     },
+     {
+      "kind": "measured",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:60; adversarial-review-v5-vc-2026-10-14.md:93",
+      "fact_id": "A06"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "plan",
+       "code": "await step('plan')",
+       "fact": "contract:approved",
+       "reads": []
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "plan"
+       ],
+       "agent": true
+      },
+      {
+       "id": "ci",
+       "code": "await wait('ci')",
+       "fact": "ci:green@tree",
+       "reads": [
+        "push"
+       ]
+      },
+      {
+       "id": "verdict",
+       "code": "await step('verdict')",
+       "fact": "verdict:merge@diff",
+       "reads": [
+        "ci"
+       ]
+      },
+      {
+       "id": "owner",
+       "code": "await wait('owner')",
+       "fact": "owner:approved@diff",
+       "reads": [
+        "verdict"
+       ]
+      },
+      {
+       "id": "land",
+       "code": "await step('land')",
+       "fact": "landed",
+       "reads": [
+        "owner"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "plan": "valid",
+       "push": "valid",
+       "verdict": "valid",
+       "owner": "valid",
+       "ci": "stale"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 18
+  },
+  {
+   "id": "a2-1f-orphan-fix",
+   "chapter": "ch2",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "The integrator proposes one reviewer's fix: alarm only on a marker the entry passed and skipped, never one past where it stopped to wait.",
+   "fact_ids": [
+    "A07"
+   ],
+   "visual": {
+    "assertion": "Alarm only on markers passed and skipped",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:call-site check",
+      "atCue": "proposes"
+     },
+     {
+      "action": "V11",
+      "target": "note:passed and skipped",
+      "atCue": "skipped"
+     },
+     {
+      "action": "V11",
+      "target": "wait:ci",
+      "atCue": "wait"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "v5-feedback-assessment-2026-10-14.md:39, 50, 118-124, 169",
+      "fact_id": "A07"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "plan",
+       "code": "await step('plan')",
+       "fact": "contract:approved",
+       "reads": []
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "plan"
+       ],
+       "agent": true
+      },
+      {
+       "id": "ci",
+       "code": "await wait('ci')",
+       "fact": "ci:green@tree",
+       "reads": [
+        "push"
+       ]
+      },
+      {
+       "id": "verdict",
+       "code": "await step('verdict')",
+       "fact": "verdict:merge@diff",
+       "reads": [
+        "ci"
+       ]
+      },
+      {
+       "id": "owner",
+       "code": "await wait('owner')",
+       "fact": "owner:approved@diff",
+       "reads": [
+        "verdict"
+       ]
+      },
+      {
+       "id": "land",
+       "code": "await step('land')",
+       "fact": "landed",
+       "reads": [
+        "owner"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "plan": "valid",
+       "push": "valid",
+       "verdict": "valid",
+       "owner": "valid",
+       "ci": "stale"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 10
+  },
+  {
+   "id": "a2-2-patchid",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "Git's patch-id, a hash of the diff, ignores whitespace. A fixer re-indents a permissions block: CI goes stale with the tree, but the patch-id holds, so the adversary's verdict still counts.",
+   "fact_ids": [
+    "A08"
+   ],
+   "visual": {
+    "assertion": "Patch-id ignores whitespace",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:pin: patch-id",
+      "atCue": "patch-id"
+     },
+     {
+      "action": "V11",
+      "target": "edit:perm|  permissions: write-all",
+      "atCue": "re-indents"
+     },
+     {
+      "action": "V11",
+      "target": "stale:job",
+      "atCue": "stale"
+     },
+     {
+      "action": "V11",
+      "target": "note:patch-id unchanged",
+      "atCue": "holds"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:33-34, 114-118; adversarial-review-v5-vc-2026-10-14.md:26-33; pipeline-redesign-v5-2026-10-14.md:674",
+      "fact_id": "A08"
+     }
+    ],
+    "recipe": {
+     "file": "ci.yml · the PR's diff",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "job",
+       "code": "deploy:",
+       "fact": "ci:green@tree",
+       "reads": []
+      },
+      {
+       "id": "perm",
+       "code": "    permissions: write-all",
+       "fact": "adversary:merge@diff",
+       "reads": []
+      },
+      {
+       "id": "pub",
+       "code": "    steps: [publish]",
+       "fact": "verdict:merge@diff",
+       "reads": []
+      }
+     ],
+     "start": {
+      "markers": {
+       "job": "valid",
+       "perm": "valid",
+       "pub": "valid"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 13
+  },
+  {
+   "id": "a2-2f-patchid-fix",
+   "chapter": "ch2",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "The integrator proposes to pin its own hash of the verbatim diff, whitespace kept.",
+   "fact_ids": [
+    "A09"
+   ],
+   "visual": {
+    "assertion": "Pin a hash of the verbatim diff",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:pin: verbatim diff",
+      "atCue": "pin"
+     },
+     {
+      "action": "V11",
+      "target": "stale:perm,pub",
+      "atCue": "verbatim"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "v5-feedback-assessment-2026-10-14.md:41, 47, 65-79; adversarial-review-v5-opus-2026-10-14.md:132-134; adversarial-review-v5-vc-2026-10-14.md:43-45",
+      "fact_id": "A09"
+     }
+    ],
+    "recipe": {
+     "file": "ci.yml · the PR's diff",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "job",
+       "code": "deploy:",
+       "fact": "ci:green@tree",
+       "reads": []
+      },
+      {
+       "id": "perm",
+       "code": "  permissions: write-all",
+       "fact": "adversary:merge@diff",
+       "reads": []
+      },
+      {
+       "id": "pub",
+       "code": "    steps: [publish]",
+       "fact": "verdict:merge@diff",
+       "reads": []
+      }
+     ],
+     "start": {
+      "markers": {
+       "perm": "valid",
+       "pub": "valid",
+       "job": "stale"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 7
+  },
+  {
+   "id": "a2-3-revert",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "A revert moves the parent's pin, but the child checks only a digest of the parent's result, which has not changed. So its claim is still granted against a parent gone from main.",
+   "fact_ids": [
+    "A10"
+   ],
+   "visual": {
+    "assertion": "A revert leaves the child's claim granted",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:parent reverted",
+      "atCue": "revert"
+     },
+     {
+      "action": "V11",
+      "target": "note:digest unchanged",
+      "atCue": "digest"
+     },
+     {
+      "action": "V11",
+      "target": "run:claim",
+      "atCue": "granted"
+     },
+     {
+      "action": "V11",
+      "target": "note:parent gone from main",
+      "atCue": "gone"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-vc-2026-10-14.md:72-81; adversarial-review-v5-opus-2026-10-14.md:162-169",
+      "fact_id": "A10"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/child.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "dep",
+       "code": "await step('dep')",
+       "fact": "parent:landed",
+       "reads": []
+      },
+      {
+       "id": "claim",
+       "code": "await claim('implementer')",
+       "fact": "claim:implementer",
+       "reads": [
+        "dep"
+       ],
+       "claim": true
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "claim"
+       ],
+       "agent": true
+      }
+     ],
+     "start": {
+      "markers": {
+       "dep": "valid"
+      },
+      "tokens": {
+       "free": 1,
+       "held": []
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "contested": {
+    "id": "opus:B5 / vc:V5-B3",
+    "fallback": "After a revert, both reviewers find the child's claim still granted against a parent gone from main. One blames the digest check; the other says the pin never moves.",
+    "why": "vc: the pin moves and the digest compare misses it (VC:74-81); opus: an ordinary revert never moves the pin (OP:166-169). They agree only on the outcome"
+   },
+   "plannedS": 14
+  },
+  {
+   "id": "a2-3f-revert-fix",
+   "chapter": "ch2",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "The integrator proposes: compare pins, not digests, and spot a revert by its metadata.",
+   "fact_ids": [
+    "A11"
+   ],
+   "visual": {
+    "assertion": "Compare pins; spot reverts by metadata",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:integrator's proposal",
+      "atCue": "integrator"
+     },
+     {
+      "action": "V11",
+      "target": "stale:dep",
+      "atCue": "compare"
+     },
+     {
+      "action": "V11",
+      "target": "note:spotted by metadata",
+      "atCue": "metadata"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "v5-feedback-assessment-2026-10-14.md:43, 49, 81-90, 112-116; adversarial-review-v5-vc-2026-10-14.md:83-86; adversarial-review-v5-opus-2026-10-14.md:171-174",
+      "fact_id": "A11"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/child.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "dep",
+       "code": "await step('dep')",
+       "fact": "parent:landed",
+       "reads": []
+      },
+      {
+       "id": "claim",
+       "code": "await claim('implementer')",
+       "fact": "claim:implementer",
+       "reads": [
+        "dep"
+       ],
+       "claim": true
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "claim"
+       ],
+       "agent": true
+      }
+     ],
+     "start": {
+      "markers": {
+       "dep": "valid"
+      },
+      "tokens": {
+       "free": 1,
+       "held": []
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 7
+  },
+  {
+   "id": "a2-4-path",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "A contract-path claim keeps a shared file to one item. It releases at park, when CI first goes green, before review, so a second item can take the file mid-fix.",
+   "fact_ids": [
+    "A12"
+   ],
+   "visual": {
+    "assertion": "The path claim releases before review",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "run:ci",
+      "atCue": "claim"
+     },
+     {
+      "action": "V11",
+      "target": "release:path",
+      "atCue": "park"
+     },
+     {
+      "action": "V11",
+      "target": "note:free before review",
+      "atCue": "review"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:195-207; adversarial-review-v5-vc-2026-10-14.md:126-133",
+      "fact_id": "A12"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "path",
+       "code": "await claim('path')",
+       "fact": "claim:contract-path",
+       "reads": [],
+       "claim": true
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "path"
+       ],
+       "agent": true
+      },
+      {
+       "id": "ci",
+       "code": "await step('ci')",
+       "fact": "ci:green@tree",
+       "reads": [
+        "push"
+       ]
+      },
+      {
+       "id": "review",
+       "code": "await claim('reviewer')",
+       "fact": "verdict:merge@diff",
+       "reads": [
+        "ci"
+       ]
+      },
+      {
+       "id": "fix",
+       "code": "await step('fix')",
+       "fact": "fix:done",
+       "reads": [
+        "review"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "path": "valid",
+       "push": "valid"
+      },
+      "tokens": {
+       "free": 0,
+       "held": [
+        "path"
+       ]
+      }
+     },
+     "pool": "contract paths"
+    }
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "contested": {
+    "id": "opus:B7 / vc:V5-B6",
+    "fallback": "A contract-path claim keeps a shared file to one item. It can release at park, which may come before review, so a second item could take the file mid-fix.",
+    "why": "opus reads 'park' two ways and shows the release only under one (OP:197-207); vc reads it as worktree park (VC:128-133)"
+   },
+   "plannedS": 13
+  },
+  {
+   "id": "a2-4f-path-fix",
+   "chapter": "ch2",
+   "function": "HOW",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "The integrator proposes to release the path only when the item lands or is abandoned.",
+   "fact_ids": [
+    "A13"
+   ],
+   "visual": {
+    "assertion": "Release the path when the item lands",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "run:review-land",
+      "atCue": "release"
+     },
+     {
+      "action": "V11",
+      "target": "release:path",
+      "atCue": "lands"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "v5-feedback-assessment-2026-10-14.md:45, 52; adversarial-review-v5-opus-2026-10-14.md:216-218; adversarial-review-v5-vc-2026-10-14.md:137-141",
+      "fact_id": "A13"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "path",
+       "code": "await claim('path')",
+       "fact": "claim:contract-path",
+       "reads": [],
+       "claim": true
+      },
+      {
+       "id": "push",
+       "code": "await step('push')",
+       "fact": "head:pushed",
+       "reads": [
+        "path"
+       ],
+       "agent": true
+      },
+      {
+       "id": "ci",
+       "code": "await step('ci')",
+       "fact": "ci:green@tree",
+       "reads": [
+        "push"
+       ]
+      },
+      {
+       "id": "review",
+       "code": "await claim('reviewer')",
+       "fact": "verdict:merge@diff",
+       "reads": [
+        "ci"
+       ]
+      },
+      {
+       "id": "fix",
+       "code": "await step('fix')",
+       "fact": "fix:done",
+       "reads": [
+        "review"
+       ]
+      },
+      {
+       "id": "land",
+       "code": "await step('land')",
+       "fact": "landed",
+       "reads": [
+        "fix"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "path": "valid",
+       "push": "valid",
+       "ci": "valid"
+      },
+      "tokens": {
+       "free": 0,
+       "held": [
+        "path"
+       ]
+      }
+     },
+     "pool": "contract paths"
+    }
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 7
+  },
+  {
+   "id": "a3-1-merge",
+   "chapter": "ch3",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "First, from one reviewer: GitHub's merge call checks only the pull request's head, so if main moves first, an untested tree lands. The owner's call: keep the API merge, check main's tree after, and treat a mismatch as main red.",
+   "fact_ids": [
+    "A14"
+   ],
+   "visual": {
+    "assertion": "Merging checks only the head",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:merge checks head only",
+      "atCue": "merge"
+     },
+     {
+      "action": "V11",
+      "target": "left:moved main lands untested",
+      "atCue": "untested"
+     },
+     {
+      "action": "V11",
+      "target": "right:keep merge, check tree",
+      "atCue": "API"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:80-106; owner's call, 2026-10-14",
+      "fact_id": "A14"
+     }
+    ],
+    "titles": [
+     "as written",
+     "owner's call"
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "but",
+   "contested": {
+    "id": "opus:B2 vs vc fork F-5 (VC:184)",
+    "fallback": "First, from one reviewer: GitHub's merge call checks only the pull request's head, so a moved main could land an untested tree. The other rates this landing shape as holding. The owner's call: keep the API merge, check main's tree after, and treat a mismatch as main red.",
+    "why": "vc rates the landing-shape fork 'Holds' (VC:184); opus's B2 says shape (b) cannot keep I1 (OP:80-98)"
+   },
+   "plannedS": 15
+  },
+  {
+   "id": "a3-2-dedupe",
+   "chapter": "ch3",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "code",
+   "spoken": "Second, after a clean rebase, a check run on the old commit is deduped, leaving the new head without its required check. The integrator proposes keying commit effects by the tree.",
+   "fact_ids": [
+    "A15"
+   ],
+   "visual": {
+    "assertion": "A clean rebase drops the check run",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:clean rebase",
+      "atCue": "rebase"
+     },
+     {
+      "action": "V11",
+      "target": "note:deduped: no check",
+      "atCue": "deduped"
+     },
+     {
+      "action": "V11",
+      "target": "stale:publish",
+      "atCue": "tree"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:142-160; v5-feedback-assessment-2026-10-14.md:42",
+      "fact_id": "A15"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "verdict",
+       "code": "await step('verdict')",
+       "fact": "verdict:merge@diff",
+       "reads": []
+      },
+      {
+       "id": "publish",
+       "code": "await step('publish')",
+       "fact": "check:posted@diff",
+       "reads": [
+        "verdict"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "verdict": "valid",
+       "publish": "valid"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 13
+  },
+  {
+   "id": "a3-3-milestones",
+   "chapter": "ch3",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "Third, from the other reviewer: milestone one's shadow gate compares events that only arrive at milestone two. The integrator proposes moving the event log into milestone one.",
+   "fact_ids": [
+    "A16"
+   ],
+   "visual": {
+    "assertion": "M1's gate needs M2's events",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:M1 gate needs events",
+      "atCue": "gate"
+     },
+     {
+      "action": "V11",
+      "target": "left:events arrive at M2",
+      "atCue": "two"
+     },
+     {
+      "action": "V11",
+      "target": "right:event log moves to M1",
+      "atCue": "log"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-vc-2026-10-14.md:106-122; v5-feedback-assessment-2026-10-14.md:51, 126-130",
+      "fact_id": "A16"
+     }
+    ],
+    "titles": [
+     "as written",
+     "proposed"
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 10
+  },
+  {
+   "id": "a3-4-observed",
+   "chapter": "ch3",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Fourth, a rules change sends no event, so a newly required check is never read; under a bypass token, a candidate lands without it. The integrator proposes an event source per pin, or a time limit.",
+   "fact_ids": [
+    "A17"
+   ],
+   "visual": {
+    "assertion": "A rules change sends no event",
+    "job": "code-proof",
+    "render": "RecipeRunBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "note:rule edit: no event",
+      "atCue": "event"
+     },
+     {
+      "action": "V11",
+      "target": "note:new check never read",
+      "atCue": "check"
+     },
+     {
+      "action": "V11",
+      "target": "run:land",
+      "atCue": "lands"
+     },
+     {
+      "action": "V11",
+      "target": "stale:rules",
+      "atCue": "source"
+     },
+     {
+      "action": "V11",
+      "target": "note:or a time limit",
+      "atCue": "limit"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-vc-2026-10-14.md:50-69; v5-feedback-assessment-2026-10-14.md:48",
+      "fact_id": "A17"
+     }
+    ],
+    "recipe": {
+     "file": "recipes/slice.ts",
+     "keying": "fact",
+     "steps": [
+      {
+       "id": "rules",
+       "code": "await step('rules')",
+       "fact": "land-rules@event",
+       "reads": []
+      },
+      {
+       "id": "ci",
+       "code": "await step('ci')",
+       "fact": "ci:green@tree",
+       "reads": []
+      },
+      {
+       "id": "land",
+       "code": "await step('land')",
+       "fact": "landed",
+       "reads": [
+        "rules",
+        "ci"
+       ]
+      }
+     ],
+     "start": {
+      "markers": {
+       "rules": "valid",
+       "ci": "valid"
+      }
+     }
+    }
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 14
+  },
+  {
+   "id": "a4-1-fact",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Every workflow engine [memoizes](/mˈɛmoʊˌaɪzᵻz/) per run, by position or step id; none invalidates by fact and pin, and Shepherd already replays from the top. So both keep the core built: no Temporal, DBOS, Restate or [Inngest](/ˈɪnʤɛst/).",
+   "fact_ids": [
+    "A18"
+   ],
+   "visual": {
+    "assertion": "Engines memoize per run; v5 needs pins",
+    "job": "alternatives-vs-ours",
+    "render": "CompareBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "left:memo per run",
+      "atCue": "engine"
+     },
+     {
+      "action": "V11",
+      "target": "left:key: position or step id",
+      "atCue": "position"
+     },
+     {
+      "action": "V11",
+      "target": "right:key: fact and pin",
+      "atCue": "none"
+     },
+     {
+      "action": "V11",
+      "target": "right:Shepherd replays from top",
+      "atCue": "Shepherd"
+     },
+     {
+      "action": "V11",
+      "target": "left:not bought",
+      "atCue": "built"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:338-378; adversarial-review-v5-vc-2026-10-14.md:195-199, 203, 218-219",
+      "fact_id": "A18"
+     }
+    ],
+    "titles": [
+     "engines",
+     "v5 needs"
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "pivot": true,
+   "plannedS": 14
+  },
+  {
+   "id": "a4-2-queue",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Five edges are worth buying. First, the merge queue: GitHub's own if the repos move to an organization, else Mergify or Trunk, else our own with fast-forward.",
+   "fact_ids": [
+    "A19"
+   ],
+   "visual": {
+    "assertion": "Build the core, buy five edges",
+    "job": "artifact-filling",
+    "render": "ScorecardTable",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "edge:merge queue|buy if eligible|GitHub, SaaS, own",
+      "atCue": "First"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:385-398, 466; adversarial-review-v5-vc-2026-10-14.md:206, 224-226; v5-feedback-assessment-2026-10-14.md:186",
+      "fact_id": "A19"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "but",
+   "contested": {
+    "id": "OP:385 vs BR:95",
+    "fallback": "Five edges are worth buying. First, the merge queue: GitHub's own if the repos qualify; one reviewer would try a hosted queue next; else our own.",
+    "why": "opus verified the native queue only for org-owned public repos or GHEC (OP:385, 394-395), and so did the integrator (AS:186); Mergify and Trunk are opus's picks only"
+   },
+   "plannedS": 11
+  },
+  {
+   "id": "a4-3-ingress",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Second, webhooks through a free tunnel, leaving the reconciler as a backstop. Third, Litestream to copy the one store.",
+   "fact_ids": [
+    "A20"
+   ],
+   "visual": {
+    "assertion": "Webhooks and backups are bought",
+    "job": "artifact-filling",
+    "render": "ScorecardTable",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "edge:webhooks|buy|free tunnel",
+      "atCue": "webhooks"
+     },
+     {
+      "action": "V11",
+      "target": "edge:store backup|buy|Litestream (beta)",
+      "atCue": "Litestream"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:249-257; adversarial-review-v5-opus-2026-10-14.md:424-430, 451-452, 470, 473; adversarial-review-v5-vc-2026-10-14.md:204, 208, 221-223",
+      "fact_id": "A20"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 8
+  },
+  {
+   "id": "a4-4-hashes",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Fourth, the hashes behind the pins: git gives the verbatim diff and tree hashes, and small libraries do the rest. Fifth, a lint that keeps recipes deterministic, and an eval grader.",
+   "fact_ids": [
+    "A21"
+   ],
+   "visual": {
+    "assertion": "Hashes, a lint and a grader are bought",
+    "job": "artifact-filling",
+    "render": "ScorecardTable",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "edge:pin hashes|buy the parts|git + libraries",
+      "atCue": "hashes"
+     },
+     {
+      "action": "V11",
+      "target": "edge:lint, grader|buy|ESLint, evals",
+      "atCue": "lint"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:408-414; adversarial-review-v5-opus-2026-10-14.md:454-458, 467, 474; adversarial-review-v5-vc-2026-10-14.md:203, 207, 212-213, 219-220",
+      "fact_id": "A21"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "contested": {
+    "id": "OP:456 vs VC:212-213",
+    "fallback": "Fourth, the hashes behind the pins: git gives the verbatim diff and tree hashes, and small libraries do the rest. Fifth, one reviewer would buy a lint that keeps recipes deterministic, the other an eval grader.",
+    "why": "The determinism lint is opus's pick only (OP:456); the eval grader is vc's only (VC:212-213)"
+   },
+   "plannedS": 12
+  },
+  {
+   "id": "a4-5-built",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "diagram",
+   "spoken": "Two parts stay built. Claims and pools: Kubernetes schedulers run only on Kubernetes. The event bus: a second store would split the marker's transactions.",
+   "fact_ids": [
+    "A22"
+   ],
+   "visual": {
+    "assertion": "Claims and the bus stay built",
+    "job": "artifact-filling",
+    "render": "ScorecardTable",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "edge:claims, pools|build|not Kubernetes",
+      "atCue": "Claims"
+     },
+     {
+      "action": "V11",
+      "target": "edge:event bus|build|one SQLite store",
+      "atCue": "bus"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "adversarial-review-v5-opus-2026-10-14.md:417-422; adversarial-review-v5-opus-2026-10-14.md:433-438, 469; adversarial-review-v5-vc-2026-10-14.md:205, 208",
+      "fact_id": "A22"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "but",
+   "plannedS": 10
+  },
+  {
+   "id": "a5-1-design",
+   "chapter": "ch5",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "Two design calls are yours. Twelve: should every version bump re-run open work, safe but costly? Thirteen: should a verdict carry to an identical diff, whitespace counted, never for a visual approval?",
+   "fact_ids": [
+    "A23"
+   ],
+   "visual": {
+    "assertion": "Two design calls are yours",
+    "job": "numbers",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:Q12 re-run on every bump?",
+      "atCue": "Twelve"
+     },
+     {
+      "action": "V11",
+      "target": "card:Q13 verdict on same diff?",
+      "atCue": "Thirteen"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "pipeline-redesign-v5-2026-10-14.md:648-649; adversarial-review-v5-vc-2026-10-14.md:43-48; adversarial-review-v5-opus-2026-10-14.md:132-140",
+      "fact_id": "A23"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "plannedS": 12
+  },
+  {
+   "id": "a5-2-accounts",
+   "chapter": "ch5",
+   "function": "WHAT",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "Three more stay yours: where the repos live, for GitHub's queue; a webhook tunnel; and a backup target. Each touches an outside account.",
+   "fact_ids": [
+    "A24"
+   ],
+   "visual": {
+    "assertion": "Three account calls stay yours",
+    "job": "numbers",
+    "render": "HookBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "card:repos location",
+      "atCue": "repos"
+     },
+     {
+      "action": "V11",
+      "target": "card:tunnel webhooks",
+      "atCue": "tunnel"
+     },
+     {
+      "action": "V11",
+      "target": "card:backup target",
+      "atCue": "backup"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "pipeline-redesign-v5-2026-10-14.md:39-42; v6-and-addendum-briefs-2026-10-14.md:45-47",
+      "fact_id": "A24"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "and",
+   "plannedS": 9
+  },
+  {
+   "id": "a5-3-next",
+   "chapter": "ch5",
+   "function": "CLOSE",
+   "mode": "explain",
+   "band": "takeaways",
+   "spoken": "Version six is being written to answer both reviews, and another adversary round follows. Until you decide, each fix is a proposal.",
+   "fact_ids": [
+    "A25"
+   ],
+   "visual": {
+    "assertion": "Fixes are proposals until you decide",
+    "job": "numbers",
+    "render": "OutroBeat",
+    "cues": [
+     {
+      "action": "V11",
+      "target": "title:v6, then a review round",
+      "atCue": "written"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "v6-and-addendum-briefs-2026-10-14.md:22-28, 66-68",
+      "fact_id": "A25"
+     }
+    ]
+   },
+   "origin": "v4",
+   "connector_in": "so",
+   "contested": {
+    "id": "brief (BR:66-68)",
+    "fallback": "Version six will be written to answer both reviews, and another adversary round follows. Until you decide, each fix is a proposal.",
+    "why": "v6's status at render time is unverified"
+   },
+   "plannedS": 9
+  }
+ ],
+ "maps": {
+  "old": {
+   "nodeBox": {
+    "w": 280,
+    "h": 116
+   },
+   "nodes": [
+    {
+     "id": "backlog",
+     "label": "Backlog",
+     "actor": "store",
+     "centre": [
+      200,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "tick",
+     "label": "Tick",
+     "actor": "software",
+     "centre": [
+      770,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "broker",
+     "label": "Broker",
+     "actor": "software",
+     "centre": [
+      1340,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "implementer",
+     "label": "Implementer",
+     "actor": "agent",
+     "centre": [
+      1720,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "seat",
+     "label": "Seat",
+     "actor": "agent",
+     "centre": [
+      960,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "shepherd",
+     "label": "Shepherd",
+     "actor": "software",
+     "centre": [
+      1340,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "reviewer",
+     "label": "Reviewer",
+     "actor": "agent",
+     "centre": [
+      1720,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "owner",
+     "label": "Owner",
+     "actor": "human",
+     "centre": [
+      960,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "main",
+     "label": "Main",
+     "actor": "software",
+     "centre": [
+      1720,
+      750
+     ],
+     "level": "containers"
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:backlog->tick",
+     "from": "backlog",
+     "to": "tick",
+     "label": "reads"
+    },
+    {
+     "id": "e:tick->broker",
+     "from": "tick",
+     "to": "broker",
+     "label": "spawn"
+    },
+    {
+     "id": "e:broker->implementer",
+     "from": "broker",
+     "to": "implementer",
+     "label": ""
+    },
+    {
+     "id": "e:implementer->shepherd",
+     "from": "implementer",
+     "to": "shepherd",
+     "label": "PR"
+    },
+    {
+     "id": "e:shepherd->main",
+     "from": "shepherd",
+     "to": "main",
+     "label": "merge"
+    },
+    {
+     "id": "e:tick->shepherd",
+     "from": "tick",
+     "to": "shepherd",
+     "label": "re-register"
+    },
+    {
+     "id": "e:shepherd->broker",
+     "from": "shepherd",
+     "to": "broker",
+     "label": ""
+    },
+    {
+     "id": "e:reviewer->shepherd",
+     "from": "reviewer",
+     "to": "shepherd",
+     "label": ""
+    },
+    {
+     "id": "e:shepherd->seat",
+     "from": "shepherd",
+     "to": "seat",
+     "label": ""
+    },
+    {
+     "id": "e:shepherd->owner",
+     "from": "shepherd",
+     "to": "owner",
+     "label": "gates"
+    },
+    {
+     "id": "e:seat->owner",
+     "from": "seat",
+     "to": "owner",
+     "label": "asks"
+    }
+   ],
+   "flows": {
+    "flow:old": [
+     "backlog",
+     "tick",
+     "broker",
+     "implementer",
+     "shepherd",
+     "main"
+    ]
+   }
+  },
+  "new": {
+   "nodeBox": {
+    "w": 280,
+    "h": 116
+   },
+   "nodes": [
+    {
+     "id": "backlog",
+     "label": "Backlog",
+     "actor": "store",
+     "centre": [
+      200,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "plans",
+     "label": "Plans",
+     "actor": "store",
+     "centre": [
+      770,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "broker",
+     "label": "Broker",
+     "actor": "software",
+     "centre": [
+      1340,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "agents",
+     "label": "Agents",
+     "actor": "agent",
+     "centre": [
+      1720,
+      230
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "ops",
+     "label": "Ops alarms",
+     "actor": "software",
+     "centre": [
+      960,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "ledger",
+     "label": "Runner",
+     "actor": "software",
+     "centre": [
+      1340,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "github",
+     "label": "GitHub + CI",
+     "actor": "software",
+     "centre": [
+      1720,
+      495
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "owner",
+     "label": "Owner",
+     "actor": "human",
+     "centre": [
+      960,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "queue",
+     "label": "Merge queue",
+     "actor": "software",
+     "centre": [
+      1340,
+      750
+     ],
+     "level": "containers"
+    },
+    {
+     "id": "main",
+     "label": "Main",
+     "actor": "software",
+     "centre": [
+      1720,
+      750
+     ],
+     "level": "containers"
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:backlog->plans",
+     "from": "backlog",
+     "to": "plans",
+     "label": "plan"
+    },
+    {
+     "id": "e:plans->ledger",
+     "from": "plans",
+     "to": "ledger",
+     "label": "contracts"
+    },
+    {
+     "id": "e:ledger->broker",
+     "from": "ledger",
+     "to": "broker",
+     "label": "spawn"
+    },
+    {
+     "id": "e:broker->ledger",
+     "from": "broker",
+     "to": "ledger",
+     "label": "events"
+    },
+    {
+     "id": "e:broker->agents",
+     "from": "broker",
+     "to": "agents",
+     "label": ""
+    },
+    {
+     "id": "e:agents->github",
+     "from": "agents",
+     "to": "github",
+     "label": "push"
+    },
+    {
+     "id": "e:ledger->github",
+     "from": "ledger",
+     "to": "github",
+     "label": "polls"
+    },
+    {
+     "id": "e:ledger->queue",
+     "from": "ledger",
+     "to": "queue",
+     "label": ""
+    },
+    {
+     "id": "e:queue->main",
+     "from": "queue",
+     "to": "main",
+     "label": ""
+    },
+    {
+     "id": "e:ledger->owner",
+     "from": "ledger",
+     "to": "owner",
+     "label": ""
+    },
+    {
+     "id": "e:ledger->ops",
+     "from": "ledger",
+     "to": "ops",
+     "label": ""
+    }
+   ],
+   "flows": {
+    "flow:item": [
+     "backlog",
+     "plans",
+     "ledger",
+     "broker",
+     "agents",
+     "github",
+     "ledger",
+     "queue",
+     "main"
+    ],
+    "flow:ask": [
+     "ledger",
+     "owner"
+    ]
+   }
+  }
+ },
+ "shared_nodes": [
+  "backlog",
+  "broker",
+  "owner",
+  "main"
+ ],
+ "facts": {
+  "A01": {
+   "claim": "v5 had no adversary round when two adversaries reviewed it apart: opus with the web, vc after reviewing v1-v4; neither read the other",
+   "source": "pipeline-redesign-v5-2026-10-14.md:32; adversarial-review-v5-opus-2026-10-14.md:1-7; adversarial-review-v5-vc-2026-10-14.md:1-12",
+   "status": "docs-claim"
+  },
+  "A02": {
+   "claim": "The marker key is (item, fact, pin), the pin chosen per fact class (tree, diff, observed, item); CI facts take the tree pin, review facts the diff pin",
+   "source": "pipeline-redesign-v5-2026-10-14.md:21-23, 674",
+   "status": "docs-claim"
+  },
+  "A03": {
+   "claim": "opus: 8 blocking items, not converged; v5 is a real improvement on v4",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:17, 21",
+   "status": "measured"
+  },
+  "A04": {
+   "claim": "vc: not converged, 6 blocking items, each a specification fix, none architectural",
+   "source": "adversarial-review-v5-vc-2026-10-14.md:14",
+   "status": "measured"
+  },
+  "A05": {
+   "claim": "The orphan trap alarms on a valid marker the entry did not visit; after a clean merge-up the entry returns at the CI wait, short of the owner's approval, and the trap fires",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:23-27, 49-61; adversarial-review-v5-vc-2026-10-14.md:88-99",
+   "status": "docs-claim"
+  },
+  "A06": {
+   "claim": "520 of 999 runs had a merge-up (V4 §2.1)",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:60; adversarial-review-v5-vc-2026-10-14.md:93",
+   "status": "measured"
+  },
+  "A07": {
+   "claim": "The integrator proposes vc's call-site definition: an orphan is a valid marker the entry passed and skipped, never one beyond where it stopped",
+   "source": "v5-feedback-assessment-2026-10-14.md:39, 50, 118-124, 169",
+   "status": "docs-claim"
+  },
+  "A08": {
+   "claim": "Git's patch-id ignores whitespace unless --verbatim; a re-indented permissions block changes the tree, not the patch-id, so a diff-pinned verdict still counts",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:33-34, 114-118; adversarial-review-v5-vc-2026-10-14.md:26-33; pipeline-redesign-v5-2026-10-14.md:674",
+   "status": "docs-claim"
+  },
+  "A09": {
+   "claim": "The integrator proposes its own SHA-256 over a canonical verbatim diff, whitespace kept, as the diff pin",
+   "source": "v5-feedback-assessment-2026-10-14.md:41, 47, 65-79; adversarial-review-v5-opus-2026-10-14.md:132-134; adversarial-review-v5-vc-2026-10-14.md:43-45",
+   "status": "docs-claim"
+  },
+  "A10": {
+   "claim": "vc: a revert moves the parent's pin, not the digest of its projection, so the child's claim is still granted; opus: an ordinary revert never moves the pin",
+   "source": "adversarial-review-v5-vc-2026-10-14.md:72-81; adversarial-review-v5-opus-2026-10-14.md:162-169",
+   "status": "docs-claim"
+  },
+  "A11": {
+   "claim": "The integrator proposes both fixes: validity compares pins, not digests, and Reverted fires on revert metadata",
+   "source": "v5-feedback-assessment-2026-10-14.md:43, 49, 81-90, 112-116; adversarial-review-v5-vc-2026-10-14.md:83-86; adversarial-review-v5-opus-2026-10-14.md:171-174",
+   "status": "docs-claim"
+  },
+  "A12": {
+   "claim": "A contract-path claim keeps a shared path to one item and releases at park; under one reading of park that is the first green CI, before review",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:195-207; adversarial-review-v5-vc-2026-10-14.md:126-133",
+   "status": "docs-claim"
+  },
+  "A13": {
+   "claim": "The integrator proposes releasing the path only at the landing result or abandonment",
+   "source": "v5-feedback-assessment-2026-10-14.md:45, 52; adversarial-review-v5-opus-2026-10-14.md:216-218; adversarial-review-v5-vc-2026-10-14.md:137-141",
+   "status": "docs-claim"
+  },
+  "A14": {
+   "claim": "opus B2: GitHub's merge call checks only the PR head, so a moved main can land an untested tree; the owner's call keeps the API merge, checks main's tree after, and treats a mismatch as main red",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:80-106; owner's call, 2026-10-14",
+   "status": "docs-claim"
+  },
+  "A15": {
+   "claim": "opus B4: after a clean rebase, commit-attached effects are deduped and the new head is left bare; the integrator proposes keying commit effects by the tree pin",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:142-160; v5-feedback-assessment-2026-10-14.md:42",
+   "status": "docs-claim"
+  },
+  "A16": {
+   "claim": "vc V5-B5: M1's gate needs events that only M2's event log produces; the integrator proposes moving the event log into M1",
+   "source": "adversarial-review-v5-vc-2026-10-14.md:106-122; v5-feedback-assessment-2026-10-14.md:51, 126-130",
+   "status": "docs-claim"
+  },
+  "A17": {
+   "claim": "vc V5-B2: observed pins have no guaranteed emitter; under a bypass, a stale land-rules marker is the only check; the integrator proposes a producer per kind or a TTL pin",
+   "source": "adversarial-review-v5-vc-2026-10-14.md:50-69; v5-feedback-assessment-2026-10-14.md:48",
+   "status": "docs-claim"
+  },
+  "A18": {
+   "claim": "Durable-workflow engines memoize per run by position or step id; none invalidates by fact and pin; Shepherd already replays from the top; both reviews keep the core built",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:338-378; adversarial-review-v5-vc-2026-10-14.md:195-199, 203, 218-219",
+   "status": "docs-claim"
+  },
+  "A19": {
+   "claim": "Merge queue: native where eligible (org-owned public repos or GHEC), else Mergify or Trunk (opus), else an own fast-forward queue",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:385-398, 466; adversarial-review-v5-vc-2026-10-14.md:206, 224-226; v5-feedback-assessment-2026-10-14.md:186",
+   "status": "docs-claim"
+  },
+  "A20": {
+   "claim": "Webhooks through a free tunnel make the reconciler a backstop; Litestream (Apache-2.0, beta badge) replicates the one store",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:249-257; adversarial-review-v5-opus-2026-10-14.md:424-430, 451-452, 470, 473; adversarial-review-v5-vc-2026-10-14.md:204, 208, 221-223",
+   "status": "docs-claim"
+  },
+  "A21": {
+   "claim": "Hashing parts are bought (git, canonical JSON, cacache); a determinism lint (opus) and an eval grader (vc)",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:408-414; adversarial-review-v5-opus-2026-10-14.md:454-458, 467, 474; adversarial-review-v5-vc-2026-10-14.md:203, 207, 212-213, 219-220",
+   "status": "docs-claim"
+  },
+  "A22": {
+   "claim": "Claims and pools stay built (Kueue and Volcano are Kubernetes-only); the bus stays in the one store, sharing transactions with markers",
+   "source": "adversarial-review-v5-opus-2026-10-14.md:417-422; adversarial-review-v5-opus-2026-10-14.md:433-438, 469; adversarial-review-v5-vc-2026-10-14.md:205, 208",
+   "status": "docs-claim"
+  },
+  "A23": {
+   "claim": "Q12: every bump invalidates, fail-safe but re-running open reviews; Q13: a verdict counts at an identical diff, with whitespace and visual approvals excluded as proposals",
+   "source": "pipeline-redesign-v5-2026-10-14.md:648-649; adversarial-review-v5-vc-2026-10-14.md:43-48; adversarial-review-v5-opus-2026-10-14.md:132-140",
+   "status": "docs-claim"
+  },
+  "A24": {
+   "claim": "The owner keeps external accounts; the queue's home, a webhook tunnel and a backup target are new calls",
+   "source": "pipeline-redesign-v5-2026-10-14.md:39-42; v6-and-addendum-briefs-2026-10-14.md:45-47",
+   "status": "docs-claim"
+  },
+  "A25": {
+   "claim": "A v6 integrator answers both reviews, then a v6 adversary round follows",
+   "source": "v6-and-addendum-briefs-2026-10-14.md:22-28, 66-68",
+   "status": "docs-claim"
+  }
+ }
+}

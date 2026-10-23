@@ -1,0 +1,14 @@
+{
+ "script": "v4-numbers-forty",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r1-7-promise",
+   "check": "numbers",
+   "severity": "error",
+   "message": "40 is not on the fact list"
+  }
+ ]
+}

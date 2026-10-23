@@ -1,0 +1,14 @@
+{
+ "script": "review-addendum-v5-bands-stake-late",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": null,
+   "check": "Q-W1",
+   "severity": "error",
+   "message": "stake after 15%"
+  }
+ ]
+}

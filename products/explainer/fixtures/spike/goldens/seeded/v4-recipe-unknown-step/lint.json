@@ -1,0 +1,14 @@
+{
+ "script": "v4-recipe-unknown-step",
+ "base": "redesign-explainer-v4",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "r3b-2-crash",
+   "check": "recipe",
+   "severity": "error",
+   "message": "crash names unknown step 'prof'"
+  }
+ ]
+}

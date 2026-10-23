@@ -1,0 +1,253 @@
+{
+ "task": "TP-2995",
+ "capturedAt": "2026-10-20T14:39:12+00:00",
+ "python": "3.14.4",
+ "bundle": {
+  "path": "motion-spike-video.bundle",
+  "sha256": "bd029f8af3e825ad9d7aaf3296654fa8ff43f76a2f9c22fdd20490d5a207ed99"
+ },
+ "env": {
+  "EXPLAINER_BUDGETS": "<checkout>/titan/src/beats/examples/explainer/budgets.json"
+ },
+ "sanitized": "one internal seat name replaced by lead-desk / Lead-desk, as in the v4 fixture; two agent names in the addendum's script.md text replaced by reviewer-agent and coordinator-a",
+ "scripts": {
+  "redesign-explainer-v4": {
+   "frozenScript": {
+    "path": "rf-snapshot/redesign-explainer-v4/script.json",
+    "sha256": "923d7ab3ea419d35e1f90197598f9a8c9f9b6ece7270c00be68e4933955219fd",
+    "rebuiltByMainMatches": false
+   },
+   "inputs": {
+    "branch": "video/rx-v4",
+    "commit": "6a09ca2a9a9b863b136429e2ab4b787ded2cc8fc",
+    "files": {
+     "titan/src/beats/examples/explainer/budgets.json": "a2d7c06b44dbc22ec226ba2cf4a3cc23f59874d6e94d13f5333414480849ded8",
+     "titan/src/beats/examples/explainer/mapType.json": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233",
+     "examples/samples/pipeline-explainer.visual.json": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337",
+     "examples/samples/redesign-explainer.words.json": "8fc1694e6b97a357e1e6900fa343a8309c4cd0b5b5d481279281c43826a216cf",
+     "examples/samples/redesign-explainer.json": "59d87f79762661b1ba81c1867830c991c39c642b3b61c94864fc7b26b6f7440f",
+     "examples/samples/redesign-explainer-v4.visual.json": "80ecc398ed66f4802a63ffaec4cd6a7fb14e91d6fd0f0edf4922922cb54ba352",
+     "examples/samples/redesign-explainer-v4.words.json": "ceddfcac4b400130cbb8358127df2028c4d50205039cdedb896ed8b3f6b26a8d"
+    }
+   },
+   "goldens": {
+    "lint.json": {
+     "tool": "rf-snapshot/redesign-explainer-v4/tools/build_script.py",
+     "sha256": "f121485a11746aac79a26e148c710f4612aaa1941a9e1a7e10b8050c70b9c5d2",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/build_script.py",
+      "--lint",
+      "rf-snapshot/redesign-explainer-v4/script.json"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/redesign-explainer-v4/tools/script_data.py",
+      "sha256": "2989308fac090d85a59199579979651ac6244caf4088aa5f7efcde532a8b0020"
+     },
+     "outputSha256": "365944602d41e05be053d601ecb8098ebb60fc68fc642b9794873ab48363e193"
+    },
+    "script.md": {
+     "tool": "rf-snapshot/redesign-explainer-v4/tools/build_script.py",
+     "sha256": "f121485a11746aac79a26e148c710f4612aaa1941a9e1a7e10b8050c70b9c5d2",
+     "argv": [
+      "python3",
+      "-I",
+      "-c",
+      "import json, sys; sys.path.insert(0, 'tools'); import build_script as b; s = json.load(open(sys.argv[1])); assert s['facts'] == {k: dict(zip(('claim', 'source', 'status'), v)) for k, v in b.FACTS.items()}; i, w = b.lint(s['beats']); open(sys.argv[2], 'w').write(b.render_md(s, i, w, b.load_v2_durations()))",
+      "rf-snapshot/redesign-explainer-v4/script.json",
+      "build/script.from-frozen.md"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/redesign-explainer-v4/tools/script_data.py",
+      "sha256": "2989308fac090d85a59199579979651ac6244caf4088aa5f7efcde532a8b0020"
+     },
+     "outputSha256": "f39179f11d89b91fe6a0059e129b30e5f8679798516d847554516d14e384a8ad"
+    },
+    "visual.json": {
+     "tool": "rf-snapshot/redesign-explainer-v4/tools/build_script.py",
+     "sha256": "f121485a11746aac79a26e148c710f4612aaa1941a9e1a7e10b8050c70b9c5d2",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/build_script.py",
+      "--visual",
+      "rf-snapshot/redesign-explainer-v4/script.json",
+      "build/visual.json"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/redesign-explainer-v4/tools/script_data.py",
+      "sha256": "2989308fac090d85a59199579979651ac6244caf4088aa5f7efcde532a8b0020"
+     },
+     "outputSha256": "78f1bb3ff4973e9de379d52468059cf1b5018fee6c7c03602fb51829ec90d337"
+    },
+    "make_sample.full.json": {
+     "tool": "rf-snapshot/redesign-explainer-v4/tools/make_sample.py",
+     "sha256": "67558a9c0738f5c7e1285fb10fe361d97fbc7c93013cbaed15fe6839d8bb7e1a",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/make_sample.py",
+      "rf-snapshot/redesign-explainer-v4/script.json",
+      "wt-rx-v4/examples/samples/redesign-explainer.json",
+      "build/sample.full.json",
+      "build/sample.synth.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "c68780274ddb37c487f9ebafb9c6cea222dd7a8d1e3c3302eb39d47f829b9527"
+    },
+    "make_sample.synth.json": {
+     "tool": "rf-snapshot/redesign-explainer-v4/tools/make_sample.py",
+     "sha256": "67558a9c0738f5c7e1285fb10fe361d97fbc7c93013cbaed15fe6839d8bb7e1a",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/make_sample.py",
+      "rf-snapshot/redesign-explainer-v4/script.json",
+      "wt-rx-v4/examples/samples/redesign-explainer.json",
+      "build/sample.full.json",
+      "build/sample.synth.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "365e99c3440da94e350e445645d2c30a0ba4aebd2ecf5f4c3c9338c7c9177fc6"
+    },
+    "sweep_moments.json": {
+     "tool": "rf-snapshot/qa/s9/sweep_moments.py",
+     "sha256": "08d4b62e73b1db38bad9c21601148a458ec212ae820a7c773e278c2068b6ef98",
+     "argv": [
+      "python3",
+      "-I",
+      "qa/sweep_moments.py",
+      "wt-rx-v4/examples/samples/redesign-explainer-v4.words.json",
+      "build/visual.json",
+      "build/sweep_moments.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "71bda73885cadd0548ebed123aa5076b5db2eb666d90a1af8a8e21551dc946af"
+    }
+   }
+  },
+  "review-addendum-v5": {
+   "frozenScript": {
+    "path": "rf-snapshot/review-addendum-v5/r2/script.json",
+    "sha256": "a3d5ae8f833f023e88e91dd73b77f0e9fc7fb5df3944dfe57b3c49f9f7edc96e",
+    "rebuiltByMainMatches": true
+   },
+   "inputs": {
+    "branch": "video/rx-addendum-r2",
+    "commit": "209c91ba11e180e2e9f483399a0f7f545ed2c670",
+    "files": {
+     "titan/src/beats/examples/explainer/budgets.json": "24f0596b13fc8a87edf1008b16a4c48bd1022e3f4325e3dda7beecad6aa00f02",
+     "titan/src/beats/examples/explainer/mapType.json": "5c0b7882618acd63a09f5c47fa51e275e413c9a744f87d8c75f559fa86da9233",
+     "examples/samples/pipeline-explainer.visual.json": "4f6a4141abc7a460f5558adf6ff452b66df0aef4c027cec9400c8cea678cf337",
+     "examples/samples/redesign-explainer.words.json": "8fc1694e6b97a357e1e6900fa343a8309c4cd0b5b5d481279281c43826a216cf",
+     "examples/samples/redesign-explainer.json": "59d87f79762661b1ba81c1867830c991c39c642b3b61c94864fc7b26b6f7440f",
+     "examples/samples/review-addendum-v5.visual.json": "b3ed65d3e84ef82d580046b2685e71d51232670bf92d1aa0563475255aa2b6f4",
+     "examples/samples/review-addendum-v5.words.json": "32abdd92d4543edc9d9ad7e39c3e8671c2931b7622066c6e9d6784c65f9a4690"
+    }
+   },
+   "goldens": {
+    "lint.json": {
+     "tool": "rf-snapshot/review-addendum-v5/tools/build_script.py",
+     "sha256": "85e82da316217f70120b21057e7a817a0b1dc440f0ad6e6608a637066a8ec90c",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/build_script.py",
+      "--lint",
+      "rf-snapshot/review-addendum-v5/r2/script.json"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/review-addendum-v5/tools/script_data.py",
+      "sha256": "f7878533cca48de3224718140488694cabf59c146069c98dbdd1423a9bcf083b"
+     },
+     "outputSha256": "0ab664af8578c452311a7f3ea922a9c25a84d02ec60a9c6d3cdb500449bae0ec"
+    },
+    "script.md": {
+     "tool": "rf-snapshot/review-addendum-v5/tools/build_script.py",
+     "sha256": "85e82da316217f70120b21057e7a817a0b1dc440f0ad6e6608a637066a8ec90c",
+     "argv": [
+      "python3",
+      "-I",
+      "-c",
+      "import json, sys; sys.path.insert(0, 'tools'); import build_script as b; s = json.load(open(sys.argv[1])); assert s['facts'] == {k: dict(zip(('claim', 'source', 'status'), v)) for k, v in b.FACTS.items()}; i, w = b.lint(s['beats']); open(sys.argv[2], 'w').write(b.render_md(s, i, w, b.load_v2_durations()))",
+      "rf-snapshot/review-addendum-v5/r2/script.json",
+      "build/script.from-frozen.md"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/review-addendum-v5/tools/script_data.py",
+      "sha256": "f7878533cca48de3224718140488694cabf59c146069c98dbdd1423a9bcf083b"
+     },
+     "outputSha256": "87f99900613a596607b211c0072504931d24baee8e826b80ae26acbc9ccbd952"
+    },
+    "visual.json": {
+     "tool": "rf-snapshot/review-addendum-v5/tools/build_script.py",
+     "sha256": "85e82da316217f70120b21057e7a817a0b1dc440f0ad6e6608a637066a8ec90c",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/build_script.py",
+      "--visual",
+      "rf-snapshot/review-addendum-v5/r2/script.json",
+      "build/visual.json"
+     ],
+     "exitCode": 0,
+     "dataTool": {
+      "tool": "rf-snapshot/review-addendum-v5/tools/script_data.py",
+      "sha256": "f7878533cca48de3224718140488694cabf59c146069c98dbdd1423a9bcf083b"
+     },
+     "outputSha256": "b3ed65d3e84ef82d580046b2685e71d51232670bf92d1aa0563475255aa2b6f4"
+    },
+    "make_sample.full.json": {
+     "tool": "rf-snapshot/review-addendum-v5/tools/make_sample.py",
+     "sha256": "7086f13b88238d44aea86404809890882b424cc4010b661b1e90f2cca3505dde",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/make_sample.py",
+      "rf-snapshot/review-addendum-v5/r2/script.json",
+      "wt-rx-addendum-r2/examples/samples/redesign-explainer.json",
+      "build/sample.full.json",
+      "build/sample.synth.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "8c1e189dba03e30aff424a45d531776395053875ae13e6198d4abd03f38245c9"
+    },
+    "make_sample.synth.json": {
+     "tool": "rf-snapshot/review-addendum-v5/tools/make_sample.py",
+     "sha256": "7086f13b88238d44aea86404809890882b424cc4010b661b1e90f2cca3505dde",
+     "argv": [
+      "python3",
+      "-I",
+      "tools/make_sample.py",
+      "rf-snapshot/review-addendum-v5/r2/script.json",
+      "wt-rx-addendum-r2/examples/samples/redesign-explainer.json",
+      "build/sample.full.json",
+      "build/sample.synth.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "52665c1c4712e089d5d3da182513ef0eff808ab05197f8ea43e0d2183cc1a26b"
+    },
+    "sweep_moments.json": {
+     "tool": "rf-snapshot/qa/s9/sweep_moments.py",
+     "sha256": "08d4b62e73b1db38bad9c21601148a458ec212ae820a7c773e278c2068b6ef98",
+     "argv": [
+      "python3",
+      "-I",
+      "qa/sweep_moments.py",
+      "wt-rx-addendum-r2/examples/samples/review-addendum-v5.words.json",
+      "build/visual.json",
+      "build/sweep_moments.json"
+     ],
+     "exitCode": 0,
+     "outputSha256": "3882a5a00541fb658759ba68cb6a701d964dfdc6209cbf1a5ff2623a6902e1c9"
+    }
+   }
+  }
+ }
+}

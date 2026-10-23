@@ -1,0 +1,26 @@
+{
+ "script": "review-addendum-v5-rule5",
+ "base": "review-addendum-v5",
+ "tool": "build_script.py --lint",
+ "exitCode": 1,
+ "issues": [
+  {
+   "beat": "a5-2-accounts",
+   "check": "rule5",
+   "severity": "error",
+   "message": "a dense list straight after a5-1-design"
+  },
+  {
+   "beat": "a5-1-design",
+   "check": "hook",
+   "severity": "error",
+   "message": "card 'Q12 re-run on every bump?' is 25 chars, cap 18 at 3 columns"
+  },
+  {
+   "beat": "a5-1-design",
+   "check": "hook",
+   "severity": "error",
+   "message": "card 'Q13 verdict on same diff?' is 25 chars, cap 18 at 3 columns"
+  }
+ ]
+}
