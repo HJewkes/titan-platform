@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { relative, resolve } from "node:path";
 import { workingTreeSource, type CodeGraphStore, type IndexSource } from "@titan-design/code-graph";
 
 /** The files the review read: the file nodes of the review index's newest snapshot, as repo-relative ids. */
@@ -13,31 +13,27 @@ export function reviewScopeFiles(store: CodeGraphStore): string[] {
     .sort();
 }
 
-/** The fewest directories whose subtrees hold every scoped file: a dir is dropped once an ancestor is kept. */
-export function scopeRoots(clonePath: string, files: readonly string[]): string[] {
-  const dirs = [...new Set(files.map((file) => dirname(file)))].sort();
-  const kept = dirs.filter((dir, i) => !dirs.slice(0, i).some((parent) => parent === "." || dir === parent || dir.startsWith(`${parent}/`)));
-  return kept.map((dir) => join(clonePath, dir));
-}
-
 const SCRIPT_FILE = /\.[cm]?[jt]sx?$/;
 
 // A hidden file is read through a path that is not there, so every layer sees the host's own not-found error.
 const ABSENT = ".outside-review-scope";
 
 /**
- * A working-tree source that sees only the scoped script files. The roots stay directories (the walker
- * recurses), so a scoped dir that also holds vendored siblings would otherwise index them too, and the
- * type checker would otherwise follow imports into the vendored tree and keep every file it opens.
+ * A working-tree source that sees only the scoped files. The index root stays the clone, because
+ * `indexPaths` roots file ids at the first path when the clone is not a git toplevel, so the walk
+ * still visits the whole clone and the list is cut down here. Unscoped scripts are also hidden from
+ * the type checker, which would otherwise follow imports into a vendored tree and keep every file it opens.
  */
 export function scopedSource(clonePath: string, files: readonly string[]): IndexSource {
   const base = workingTreeSource();
-  const top = realpathSync(clonePath);
+  // Outside git the walk keeps the clone path as written, so a symlinked tmpdir must match either spelling.
+  const tops = [realpathSync(clonePath), resolve(clonePath)];
   const scoped = new Set(files);
-  const hidden = (abs: string): boolean => {
-    const rel = relative(top, abs);
-    return !rel.startsWith("..") && SCRIPT_FILE.test(rel) && !scoped.has(rel);
+  const unscoped = (abs: string): boolean => {
+    const rel = tops.map((top) => relative(top, abs)).find((candidate) => !candidate.startsWith(".."));
+    return rel !== undefined && !scoped.has(rel);
   };
+  const hidden = (abs: string): boolean => unscoped(abs) && SCRIPT_FILE.test(abs);
   const seen = (path: string): string => (hidden(path) ? `${path}${ABSENT}` : path);
   const fileSystem = new Proxy(base.fileSystem, {
     get(target, key, receiver) {
@@ -53,6 +49,6 @@ export function scopedSource(clonePath: string, files: readonly string[]): Index
     fileSystem,
     fileExists: (abs) => base.fileExists(seen(abs)),
     readFile: (abs) => base.readFile(seen(abs)),
-    listFiles: async (rootDirs, languages) => (await base.listFiles(rootDirs, languages)).filter((abs) => !hidden(abs)),
+    listFiles: async (rootDirs, languages) => (await base.listFiles(rootDirs, languages)).filter((abs) => !unscoped(abs)),
   };
 }

@@ -103,7 +103,7 @@ describe("openStructureGraph", () => {
 
     expect(result.ok && result.graph.files).toBe(4);
     const ids = result.ok ? result.graph.store.listNodes(result.graph.snapshotId).filter((n) => n.kind === "file").map((n) => n.id) : [];
-    expect(ids).not.toContain("bundled/vendored.ts");
+    expect(ids.sort()).toEqual(["packages/a/src/entry.ts", "packages/b/src/service.ts", "packages/c/src/report.ts", "packages/c/src/store.ts"]);
   });
 
   it("refuses with E-INDEX when the index fails", async () => {

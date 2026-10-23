@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { indexPaths, openCodeGraph } from "@titan-design/code-graph";
 import { afterEach, describe, expect, it } from "vitest";
-import { reviewScopeFiles, scopedSource, scopeRoots } from "./review-scope.js";
+import { reviewScopeFiles, scopedSource } from "./review-scope.js";
 
 const temps: string[] = [];
 
@@ -21,18 +21,6 @@ async function cloneWith(files: readonly string[]): Promise<string> {
   return dir;
 }
 
-describe("scopeRoots", () => {
-  it("keeps one root per scoped directory and drops directories an ancestor already covers", () => {
-    const files = ["app/src/a.ts", "app/src/deep/b.ts", "lib/c.ts", "app/srcother/d.ts"];
-
-    expect(scopeRoots("/clone", files)).toEqual(["/clone/app/src", "/clone/app/srcother", "/clone/lib"]);
-  });
-
-  it("is the whole clone when a scoped file sits at the top", () => {
-    expect(scopeRoots("/clone", ["index.ts", "lib/c.ts"])).toEqual(["/clone"]);
-  });
-});
-
 describe("scopedSource", () => {
   it("lists only scoped files even when a scoped directory holds unscoped siblings", async () => {
     const clone = await cloneWith(["app/in.ts", "app/vendored.ts", "bundled/big.ts"]);
@@ -41,6 +29,15 @@ describe("scopedSource", () => {
     const listed = await source.listFiles([clone], ["typescript"]);
 
     expect(listed).toEqual([join(clone, "app/in.ts")]);
+  });
+
+  it("lists only scoped files of every language, not just scripts", async () => {
+    const clone = await cloneWith(["app/in.py", "app/vendored.py"]);
+    const source = scopedSource(clone, ["app/in.py"]);
+
+    const listed = await source.listFiles([clone], ["python"]);
+
+    expect(listed).toEqual([join(clone, "app/in.py")]);
   });
 
   it("hides unscoped scripts from the type checker's file system but not scoped files or other kinds", async () => {

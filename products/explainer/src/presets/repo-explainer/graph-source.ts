@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexPaths, openCodeGraph, type CodeGraphStore } from "@titan-design/code-graph";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
-import { reviewScopeFiles, scopedSource, scopeRoots } from "./review-scope.js";
+import { reviewScopeFiles, scopedSource } from "./review-scope.js";
 import type { StructureSource } from "./structure-schema.js";
 
 /** Where a finished review keeps its code-graph index, relative to the review dir. */
@@ -87,7 +87,7 @@ function indexScope(options: GraphSourceOptions, scope: readonly string[], out: 
     out.push(diag("W-INDEX-SCOPE", "the review holds no file list to scope the index; indexing the whole clone", options.clonePath));
     return { paths: [options.clonePath] };
   }
-  return { paths: scopeRoots(options.clonePath, scope), source: scopedSource(options.clonePath, scope) };
+  return { paths: [options.clonePath], source: scopedSource(options.clonePath, scope) };
 }
 
 async function freshSnapshot(options: GraphSourceOptions, dir: string, scope: readonly string[], out: GatherDiagnostic[]) {
