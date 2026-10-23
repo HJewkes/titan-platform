@@ -7,7 +7,7 @@
       "find": "    scopeCheckRoute(deps.now),\n",
       "replace": "",
       "kills": [
-        "shepherd phase step families pins sh-fix-proof, sh-fix-proof-waive, sh-fix-proof-waived, sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-seat-recheck, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait, sh-review-request, sh-review-stop, sh-ci-unread, sh-review-panel, sh-no-reviewer-hold, sh-no-reviewer-wait and sh-scope-check to review.ts, declared and routed there"
+        "shepherd phase step families pins every review-phase step, sh-fix-proof through sh-scope-check, to review.ts, declared and routed there"
       ]
     }
   ]
