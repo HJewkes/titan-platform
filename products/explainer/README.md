@@ -362,3 +362,27 @@ A verdict with no quote, or a quote not in that beat's text on that track, is vo
 scores 0 (L2, cold). Every beat call ends with one known-bad canary beat, and every viewer call
 asks about a component that does not exist. A run whose judge passes a canary, or whose call
 fails, is untrusted: its rows are still written, and the command exits 1.
+
+### Emphasis mapping and the target gate
+
+A script beat's `visual.cues` are its emphasis cues. Each one maps a spoken span, `atCue` to `untilCue`, to
+`target`: the id of one element in the beat. The optional `visual.beat` names the beat spec, and the spec's
+`emphasis.targets` lists the slot lists whose item ids a cue may name. How the element is emphasised (pointer,
+highlight, trace, scale, colour, camera) is the template's choice from the spec's `treatments`. This package adds no
+pointer layer and no default treatment.
+
+- `emphasisCues(beat)` lists each cue's word range and target. `targetsForSpan(beat, span, timings?)` maps a word
+  range, or a time range through the beat's word timings, to the targets whose cues overlap it.
+- `emphasisTargetGate({ beats, specs, slots, layout?, marks? })` is the resolve stage's gate. It fails a cue when:
+  - its beat names no spec (`no-beat-spec`), or the beat's slots fail the spec (`bad-slots`);
+  - the target names no element (`no-element`), or names more than one, such as a node and an edge that share an id
+    (`ambiguous`);
+  - once laid out, the element's box is missing or not wholly inside the frame (`off-frame`);
+  - given the mark frames either side of the step, the step changes under 2 % of the target's box. A pixel counts as
+    changed when a channel moves by more than 8 levels (`unchanged`; `changedShare`, `emphasisStepChanges`).
+- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The workflow has no resolve stage
+  yet; the resolver task (TP-2614) registers the gate when it adds the stage.
+
+Stubbed: the mark frames come from beat-aware marks (TP-3000), which are not built yet. The rule takes two decoded
+RGBA frames and the target box, and its tests use synthetic frames. `fixtures/emphasis/` holds a synthetic script,
+slots and layout.

@@ -1,0 +1,64 @@
+{
+  "schema": "script/v1",
+  "id": "parcel-desk-emphasis",
+  "profile": "repo-tour",
+  "facts_pack": "facts.tsv",
+  "video": {
+    "audience": "TODO: audience",
+    "stake": "TODO: stake",
+    "promise": "TODO: promise",
+    "thesis_mechanism": "TODO: thesis",
+    "running_example": "TODO: example",
+    "simplifications": [],
+    "close_type": "TODO: close"
+  },
+  "chapters": [{ "id": "ch1", "label": "How a scan lands", "question": "Where does a scan go?" }],
+  "beats": [
+    {
+      "id": "b1-walk",
+      "chapter": "ch1",
+      "function": "HOW",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Open the total first, then close it with the return.",
+      "fact_ids": ["F1"],
+      "visual": {
+        "assertion": "The total opens and closes in two lines",
+        "job": "code-proof",
+        "beat": "code-walk",
+        "cues": [
+          { "action": "V9", "target": "open", "atCue": "Open", "untilCue": "total" },
+          { "action": "V9", "target": "close", "atCue": "close", "untilCue": "return" }
+        ]
+      }
+    },
+    {
+      "id": "b2-map",
+      "chapter": "ch1",
+      "function": "WHAT",
+      "mode": "explain",
+      "plannedS": 8,
+      "spoken": "Every scan passes the desk before it reaches the ledger.",
+      "fact_ids": ["F2"],
+      "visual": {
+        "assertion": "One desk sits between every scan and the ledger",
+        "job": "map",
+        "beat": "flow-map",
+        "cues": [
+          { "action": "V10", "target": "desk", "atCue": "desk" },
+          { "action": "V10", "target": "ledger", "atCue": "ledger" }
+        ]
+      }
+    },
+    {
+      "id": "b3-close",
+      "chapter": "ch1",
+      "function": "CLOSE",
+      "mode": "explain",
+      "plannedS": 4,
+      "spoken": "That is the desk.",
+      "fact_ids": [],
+      "visual": { "assertion": "The desk is the one place a scan is checked", "job": "map" }
+    }
+  ]
+}
