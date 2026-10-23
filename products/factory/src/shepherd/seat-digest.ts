@@ -7,7 +7,7 @@ import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
 import { liveRoute, type ExitNoticePorts, type FallbackSeat } from "./exit-notice.js";
-import { registrantSeat, runLineage } from "./registrant.js";
+import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
@@ -176,7 +176,7 @@ const finishedAt = ({ row, run }: DigestInput): string => run.completedAt ?? row
 /**
  * A rerouted run the fallback need not hear of (TP-4059): a finished one older than its own seat's last digest or the
  * window, so a dead seat's backlog is never replayed in one message. A run whose registrant's seat is live is never
- * rerouted, since `registrantSeat` names it only while live and `liveRoute` keeps a live seat.
+ * rerouted, since `registrantSeat` and `spawnerSeat` name a seat only while live and `liveRoute` keeps a live seat.
  */
 function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, now: Date): (input: DigestInput) => boolean {
   const floor = new Date(now.getTime() - REROUTE_WINDOW_MS).toISOString();
@@ -224,15 +224,22 @@ export async function sendSeatDigests(
   return { sent, failed };
 }
 
+/** An unread roster routes every digest by repo seat, as before registrants were recorded; the log says why. */
+function unreadRoster(error: unknown): undefined {
+  console.error(`shepherd: seat digests go by repo seat, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  return undefined;
+}
+
 /**
- * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat, and none when the repo has no
- * single seat (`runSeat`). The seat book is read once, and the roster once, which also says which seats are live.
+ * Each run's seat: the one its lineage names (`registrantSeat`), else the live seat that spawned its registrant
+ * (`spawnerSeat`), else its repo's one seat, and none when the repo has no single seat (`runSeat`). The seat book is read
+ * once, and the roster once, which also says which seats are live.
  */
 async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<DigestRoutes> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
-  const roster = ports.roster ? await ports.roster().catch(() => undefined) : undefined;
-  const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster)]));
+  const roster = ports.roster ? await ports.roster().catch(unreadRoster) : undefined;
+  const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster)]));
   const chosen: SeatOf = (run) => {
     const seat = seatFor(run.repo);
     return seat && (named.get(run.runId) ?? seat);
