@@ -309,6 +309,16 @@ describe("deployPacerPorts", () => {
     expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
   });
 
+  it("spawns the deployer for origin/main, with no --expect, when the pacer re-asks after a rollback", () => {
+    const fake = fakePorts();
+
+    deployPacerPorts({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fake.ports).spawn(SHA, { main: true });
+
+    expect(fake.calls[0]?.args.slice(-3)).toEqual(["/factory/dist/bin.js", "service", "deploy"]);
+    expect(fake.calls[0]?.args).toContain(deployUnitName(SHA, AT));
+    expect(fake.lines).toEqual([`${AT.toISOString()} service deploy\n`]);
+  });
+
   it("queues into the file the pacer reads", async () => {
     const store = memoryStore();
 
