@@ -268,6 +268,17 @@ large diff, a shell-active path, or any git error) records `scoped: false` with 
 convergence head and every panel member other than correctness always read the whole PR.
 The mode is recorded on the intent, so a replay scopes a head the way its first run did.
 
+`shepherd.review.scopeCheck` takes `off`, `shadow` or `on`, also absent as `off` and read at
+restart. It checks only a round whose correctness brief was scoped (`scopedRereview: on` and
+`scoped: true`). Before that round's `FIX_FIRST` is routed, `sh-scope-check:<head>` counts its
+blocking items that cite only lines outside the fix's ranges with no `Important:` and
+`Class:` line (`untagged`), and those that restate an open finding once case, punctuation and
+spacing are dropped (`repeated`). Under `shadow` only the counts are recorded. Under `on` a
+miss gets one correction turn in the reviewer's own session, and its reply is taken as
+written, a MERGE included. A reply that misses again, or no reply, keeps the verdict and
+records `kept`. `shepherd stats --reviews` reports the counts per week, and counts a
+`scopeShadow` round as full.
+
 ## After the merge {#after-the-merge}
 
 The `sh-main-ci` step reads main CI on the merge commit once, for up to 60 minutes. What

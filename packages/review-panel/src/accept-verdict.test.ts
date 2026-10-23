@@ -72,8 +72,8 @@ describe("acceptVerdict malformed record", () => {
     expect(acceptVerdict(input, [said(review)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
   });
 
-  it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "probes_missing"]);
+  it("covers every refusal the schema lists, the two Shepherd's scope check sends included", () => {
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "probes_missing", "scope_untagged", "repeated_finding"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
   });

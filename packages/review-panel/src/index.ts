@@ -47,7 +47,7 @@ export {
   reviewerBrief,
   validOwnerPicks,
 } from "./reviewer-brief.js";
-export type { CiCheckRow, EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput } from "./reviewer-brief.js";
+export type { CiCheckRow, EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput, ScopeRefusal } from "./reviewer-brief.js";
 export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";

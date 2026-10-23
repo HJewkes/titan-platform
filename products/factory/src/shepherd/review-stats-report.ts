@@ -40,6 +40,13 @@ interface PrRow {
   merged: boolean;
 }
 
+/** A week's scoped fix rounds whose FIX_FIRST was checked, and the out-of-range and repeated items found in them. */
+interface ScopeCheckWeek {
+  checked: number;
+  untagged: number;
+  repeated: number;
+}
+
 interface ReviewReport {
   v: 1;
   at: string;
@@ -47,6 +54,7 @@ interface ReviewReport {
   perReview: Cut & { byRepo: Record<string, Cut>; byWeek: Record<string, Cut>; byModel: Record<string, Cut>; byVerdict: Record<string, number>; byCauseShape: Record<string, Cut> };
   perPr: { n: number; usd: Omit<Dist, "total">; reviewMinutes: Omit<Dist, "total">; rounds: Omit<Dist, "total">; prs: PrRow[] };
   rereview: Rereview;
+  scopeCheckByWeek: Record<string, ScopeCheckWeek>;
   rows?: ReviewRecord[];
 }
 
@@ -55,7 +63,7 @@ const ReviewSql = z.object({
   session_id: z.string().nullable(), model: z.string().nullable(), requested_at: z.number(), started_at: z.number().nullable(), verdict_at: z.number().nullable(),
   queue_ms: z.number().nullable(), review_ms: z.number().nullable(), verdict: z.string().nullable(), usd: z.number().nullable(), cost_source: z.string().nullable(),
   input: z.number().nullable(), cache_read: z.number().nullable(), cache_write: z.number().nullable(), output: z.number().nullable(),
-  cause: z.string().nullable(), shape: z.string().nullable(), scoped: z.number().nullable(),
+  cause: z.string().nullable(), shape: z.string().nullable(), scoped: z.number().nullable(), scope_untagged: z.number().nullable(), scope_repeated: z.number().nullable(),
 });
 type ReviewSqlRow = z.infer<typeof ReviewSql>;
 
@@ -162,6 +170,20 @@ const record = (row: ReviewSqlRow): ReviewRecord => ({
 
 const rereviewInput = (row: ReviewSqlRow) => ({ cause: row.cause, shape: row.shape, scoped: row.scoped, at: row.verdict_at ?? row.requested_at, usd: row.usd, tokens: tokensOf(row) });
 
+function scopeCheckByWeek(rows: readonly ReviewSqlRow[]): Record<string, ScopeCheckWeek> {
+  const weeks: Record<string, ScopeCheckWeek> = {};
+  for (const row of rows.filter((each) => each.scope_untagged !== null || each.scope_repeated !== null)) {
+    const week = (weeks[isoWeek(row.verdict_at ?? row.requested_at)] ??= { checked: 0, untagged: 0, repeated: 0 });
+    Object.assign(week, { checked: week.checked + 1, untagged: week.untagged + (row.scope_untagged ?? 0), repeated: week.repeated + (row.scope_repeated ?? 0) });
+  }
+  return weeks;
+}
+
+const scopeCheckLines = (weeks: Record<string, ScopeCheckWeek>): string[] => {
+  const lines = Object.entries(weeks).map(([week, c]) => `  ${week}  checked ${c.checked}  untagged ${c.untagged}  repeated ${c.repeated}`);
+  return lines.length === 0 ? [] : ["scope checks by week:", ...lines];
+};
+
 const spread = ({ p50, p90: high, mean }: Dist): Omit<Dist, "total"> => ({ p50, p90: high, mean });
 
 /** The v1 console-ready read of the review store: per-review distributions with their cuts, and per-PR totals. */
@@ -185,7 +207,8 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     prs,
   };
   const echoed = { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null };
-  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview: rereviewOf(rows.map(rereviewInput), range.sinceScoped) };
+  const rereview = rereviewOf(rows.map(rereviewInput), range.sinceScoped);
+  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview, scopeCheckByWeek: scopeCheckByWeek(rows) };
   return withRows ? { ...report, rows: rows.map(record) } : report;
 }
 
@@ -217,6 +240,7 @@ export function formatReviewReport(report: ReviewReport): string {
     distLine("usd", r.usd, usdText), distLine("review", r.reviewMinutes, minText), distLine("queue", r.queueMinutes, minText),
     ...cutLines("by repo", r.byRepo), ...cutLines("by week", r.byWeek), ...cutLines("by model", r.byModel), ...cutLines("by shape and cause", r.byCauseShape),
     ...rereviewLines(report.rereview),
+    ...scopeCheckLines(report.scopeCheckByWeek),
     `PRs ${report.perPr.n}  usd p50 ${usdText(report.perPr.usd.p50)} p90 ${usdText(report.perPr.usd.p90)}  rounds p50 ${report.perPr.rounds.p50 ?? "-"} p90 ${report.perPr.rounds.p90 ?? "-"}`,
     "top 10 PRs by review cost:", ...report.perPr.prs.slice(0, 10).map(prLine),
   ];

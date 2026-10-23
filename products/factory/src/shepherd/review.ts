@@ -8,11 +8,12 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { awaitVerdictStep } from "./await-verdict-step.js";
 import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
-import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
 import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
@@ -31,6 +32,7 @@ import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./rev
 import { fixFirstCount } from "./wake-brief.js";
 import { convergenceFields } from "./fix-first-trail.js";
 import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedRereviewOf, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
+import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, scopeRoundOf, type ScopeCheckWiring } from "./scope-check-round.js";
 import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
@@ -46,9 +48,7 @@ import { ciChecksAt } from "./green-checks.js";
 import { heldMerge, recordsRecheck } from "./seat-recheck.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
-export { REVIEW_STEP };
-export { AWAIT_VERDICT_STEP };
-export { LATE_VERDICT_STEP, mergeVerdict };
+export { AWAIT_VERDICT_STEP, LATE_VERDICT_STEP, REVIEW_STEP, mergeVerdict };
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...FIX_PROOF_STEPS,
   ...PROOF_WAIVER_STEPS,
@@ -67,6 +67,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...CI_UNREAD_STEPS,
   ...PANEL_STEPS,
   ...NO_REVIEWER_STEPS,
+  ...SCOPE_CHECK_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -165,7 +166,7 @@ function notStartedInTime(intent: ReviewIntent, rosterError: string | undefined)
   return { kind: "none", reason: `reviewer ${intent.reviewer} did not start one session in time${cause}` };
 }
 
-export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring {
+export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -242,7 +243,7 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, input.fresh), () => chooseReviewer(input, registration, roster, true));
   if ("exhausted" in billed) return { kind: "none", reason: "every review account is exhausted", exhausted: billed.exhausted };
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
-  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview) };
+  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck) };
   return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, { ...input, reviewer: intent.reviewer, mode: intent.mode }, roster)) };
 };
 
@@ -293,26 +294,15 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
   return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
 }
 
-/** A panel member's await names its shape, so its own checkout is the one removed. */
-const MemberShapeRead = z.looseObject({ shape: z.enum(OVERLAY_SHAPES).optional() });
-
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
-  const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
-    if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
-    const input = parseAwaitVerdictInput(raw);
-    if (!wiring) return { kind: "none" };
-    const { reader, dispatch } = wiring;
-    const work = () => awaitVerdict(reader, input, timing, signal, dispatch && (() => dispatch.roster()));
-    return thenDropCheckout(deps, input, work, (result) => result.kind === "verdict", MemberShapeRead.parse(raw).shape);
-  };
   const seatWait = { ...brokerTiming(deps), timeoutMs: wiring?.seatWaitMs ?? DEFAULT_SEAT_WAIT_MS };
   return [
     ...fixProofRoutes(deps),
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
-    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait, ownerIn(deps.store))),
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, awaitVerdictStep(deps, wiring, timing), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),
@@ -325,6 +315,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ciUnreadRoute(deps.now),
     panelVerdictRoute(deps),
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
+    scopeCheckRoute(deps.now),
   ];
 };
 
@@ -357,7 +348,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
   const base: MemberBase = { ...target, runId: ctx.runId, ...(fixFirsts > 0 && { fixFirsts }), ...(proof.kind === "result" && { fixProof: proof.line }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined && { fixProofWaivedAt: standing.waivedAt }), ...workflowCiFieldOf(proof) };
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...workflowCiFieldOf(proof), ...convergenceFields(request.convergence), ...(await scopedRereviewOf(ctx, request, intent)) }, Dispatched);
+  const { scopedRereview } = await scopedRereviewOf(ctx, request, intent);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(base.fixProof !== undefined && { fixProof: base.fixProof }), ...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(base.fixProofWaivedAt !== undefined && { fixProofWaivedAt: base.fixProofWaivedAt }), ...workflowCiFieldOf(proof), ...convergenceFields(request.convergence), ...(scopedRereview && { scopedRereview }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return notReviewed(ctx, target, dispatched);
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
@@ -369,6 +361,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
     ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
   };
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
-  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing);
+  const scope = scopeRoundOf(intent, scopedRereview);
+  const reviewed = panelOn(intent) ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing, scope) : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing, scope);
   return withReviewerProfile(reviewed, dispatched.profile);
 };

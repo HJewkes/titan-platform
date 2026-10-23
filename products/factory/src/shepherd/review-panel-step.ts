@@ -15,6 +15,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
+import type { ScopeRound } from "./scope-check-round.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -287,10 +288,10 @@ const memberProfiles = (members: readonly DispatchedMember[]): Record<string, st
  * Every member but correctness is started before any verdict is awaited, so they review side by side; correctness keeps its
  * late read, correction turn and usage-limit hold. The recorded aggregate decides, and a panel that is not unanimous never merges.
  */
-export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding): Promise<Verdict> {
+export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {
   const target: ReviewTarget = { repo: base.repo, pr: base.pr, head: base.head };
   const members = await dispatchMembers(ctx, intent, base);
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
