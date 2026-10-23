@@ -40,6 +40,8 @@ cuts:
   - { id: decision-brief, type: decision-brief, when: "The PR waits at the visual gate: verdict, one change row, proof and the ask, in BLUF order.", runtimeS: [45, 90] }
 hook: "Stake first: the verdict and what it costs or opens, in the first sentence."
 ending: button
+styles: { allow: [mono-console, night-drafting, ember-desk] }
+voice: { id: bf_emma, rate: 1.05 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]

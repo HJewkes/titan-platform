@@ -3,6 +3,7 @@ import type { AudiencePack, HeuristicStructure, TypeProfile } from "./profile-sc
 import type { BeatSystem } from "./beat-system-schema.js";
 import type { NarrativeStructure, StructureFit } from "./structure-schema.js";
 import { VOCABULARY } from "./doctrine-fixtures.test-helpers.js";
+import type { StylePack } from "./style-pack-schema.js";
 
 // Invented profiles over the invented doctrine vocabulary; none is a shipped profile.
 
@@ -22,6 +23,20 @@ const AUDIENCES = new Map([
 ]);
 
 const block = (id: string) => ({ id, goal: `${id} goal.`, seconds: [10, 20] as [number, number], beats: ["hook"] });
+
+/** A sound pack over real token names; overrides replace whole top-level fields. */
+export const stylePack = (id: string, overrides: Partial<StylePack> = {}): StylePack => ({
+  schema: "style-pack/v1",
+  id,
+  theme: "dark",
+  feel: `${id} feel.`,
+  tokens: {
+    ground: "color-background-base", surface: "color-surface-raised", text: "color-text-primary", textMuted: "color-text-secondary",
+    accent: "color-brand-primary", accentSoft: "color-brand-primary-subtle", rule: "color-hairline-default", lift: "lift-2",
+    heading: "font-family-heading", body: "font-family-body", code: "font-family-mono", duration: "duration-normal", ease: "ease-out",
+  },
+  ...overrides,
+});
 
 /** A sound fixed-order profile; overrides replace whole top-level fields. */
 export const fixedProfile = (overrides: Partial<TypeProfile> = {}): TypeProfile => ({
@@ -43,6 +58,8 @@ export const fixedProfile = (overrides: Partial<TypeProfile> = {}): TypeProfile 
   variety: { window: 5, minFramings: 3, ngram: 6, mode: "warn" },
   pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] },
   coverage: [],
+  styles: { allow: ["plain", "bold"] },
+  voice: { id: "af_heart", rate: 1 },
   ...overrides,
 });
 
@@ -116,6 +133,7 @@ export const heuristicProfile = (overrides: Partial<TypeProfile> = {}): TypeProf
     runtime: { targetS: 240, minS: 210, maxS: 300, splitAboveS: 360 },
     structure: HEURISTIC,
     series: { mayRepeat: ["frame-chrome"], mustVary: ["structure", "hook-kind", "close-kind", "function-mix", "component-histogram", "style-pack"] },
+    voice: { id: "am_adam", rate: 1 },
     ...overrides,
   });
 
@@ -124,4 +142,5 @@ export const setOf = (...profiles: TypeProfile[]): ProfileSet => ({
   audiences: AUDIENCES,
   structures: STRUCTURES,
   beatSystems: BEAT_SYSTEMS,
+  stylePacks: new Map([["plain", stylePack("plain")], ["bold", stylePack("bold")]]),
 });
