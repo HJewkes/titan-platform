@@ -66,7 +66,7 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-45 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the five conditional
+49 allow, 6 gate and 69 deny rows: one unconditional row per pair, plus the five conditional
 allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
@@ -83,6 +83,7 @@ the enforcing code should record.
 | `hardware-stop` | allow | allow | allow | allow | allow | allow | deny |
 | `destructive-remote` | allow | deny | deny | deny | deny | deny | deny |
 | `destructive-local` | allow | deny | allow | allow | allow | allow | deny |
+| `agent-retire` | allow | allow | allow | deny | deny | allow | deny |
 | `destructive-foreign` | allow | deny | deny | deny | deny | deny | deny |
 | `spawn` | allow | allow | allow T | deny | deny | allow | deny |
 | `spend-over-cap` | allow | deny | allow | allow | allow | allow | deny |

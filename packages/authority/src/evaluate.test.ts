@@ -15,19 +15,20 @@ const DENY_RULE_IDS = [
   "HW-OR", "HW-WK", "HW-HD", "HW-AU",
   "DSR-OR", "DSR-CO", "DSR-WK", "DSR-HD", "DSR-AU",
   "DSL-OR",
+  "RET-WK", "RET-HD",
   "DSX-OR", "DSX-CO", "DSX-WK", "DSX-HD", "DSX-AU",
   "SPN-WK", "SPN-HD",
   "SPD-OR",
   "CFG-OR", "CFG-CO", "CFG-WK", "CFG-HD", "CFG-AU",
   "HV-CO", "HV-WK", "HV-HD", "HV-AU",
   "MRG-DC", "REL-DC", "SEC-DC", "UNT-DC", "PUB-DC", "EXT-DC", "HW-DC", "HWS-DC",
-  "DSR-DC", "DSL-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
+  "DSR-DC", "DSL-DC", "RET-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
   "ANS-OT", "ANS-OR", "ANS-CO", "ANS-WK", "ANS-HD", "ANS-AU", "ANS-DC",
 ];
 
 const ACTION_CODES: Record<string, ActionClass> = {
   MRG: "merge", REL: "release", SEC: "secret-read", UNT: "untrusted-ingest", PUB: "private-to-public", EXT: "private-egress",
-  HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", DSX: "destructive-foreign",
+  HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", RET: "agent-retire", DSX: "destructive-foreign",
   SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb", ANS: "answer-question",
 };
 const ACTOR_CODES: Record<string, ActorClass> = {
@@ -44,9 +45,15 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 44 allow, 6 gate and 66 deny rows", () => {
+  it("holds 49 allow, 6 gate and 69 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 45, gate: 6, deny: 66 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 49, gate: 6, deny: 69 });
+  });
+
+  // Kills: retire-agent riding destructive-local's DSL-OR deny, or RET-OR flipped to gate or deny.
+  it("lets the owner retire an agent from the console while other local destruction stays denied there", () => {
+    expect(evaluate(DEFAULT_TABLE, request("agent-retire", "owner-remote"))).toEqual({ verdict: "allow", ruleId: "RET-OR" });
+    expect(evaluate(DEFAULT_TABLE, request("destructive-local", "owner-remote"))).toMatchObject({ verdict: "deny", ruleId: "DSL-OR" });
   });
 
   it("denies exactly the hand-listed rows", () => {

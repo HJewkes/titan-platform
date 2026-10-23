@@ -757,6 +757,68 @@
       ]
     },
     {
+      "id": "RET-OT",
+      "action": "agent-retire",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "RET-OR",
+      "action": "agent-retire",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "condition": "Plain retire only, never --force: the agent's session has exited and it works on no live Shepherd run, both re-read at tap time under the confirmed agent id.",
+      "evidence": [
+        "E-prin"
+      ]
+    },
+    {
+      "id": "RET-CO",
+      "action": "agent-retire",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "condition": "Agents it dispatched.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "RET-WK",
+      "action": "agent-retire",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "RET-HD",
+      "action": "agent-retire",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "RET-AU",
+      "action": "agent-retire",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Agents that finished their work.",
+      "evidence": []
+    },
+    {
+      "id": "RET-DC",
+      "action": "agent-retire",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "DSX-OT",
       "action": "destructive-foreign",
       "actor": "owner-terminal",
