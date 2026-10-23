@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { cueResolverFromWords } from "../cues.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
+import { emphasisGateVerdict } from "../emphasis-gate.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
 import { parseSpine } from "../spine-schema.js";
 import { readTiming } from "../timing.js";
 import type { ArtifactStore } from "./artifacts.js";
@@ -102,6 +104,10 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "rewrite-rows", gate: false, reads: ["rewrite-report"], run: rewriteTargetRows },
   ],
   eval: [],
+  resolve: [
+    { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
+    { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
+  ],
   tts: [{ name: "cue-resolution", gate: true, reads: ["script", "words"], run: cueResolution }],
   render: [],
   qa: [],

@@ -1,6 +1,7 @@
 import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
+import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
@@ -46,6 +47,10 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "rewrite") {
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");
     return runRewriteStage(input, { judge: config.judge, rounds: config.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
+  }
+  if (stage === "resolve") {
+    if (!config.doctrine) throw new Error("resolve stage spec has no doctrine sha");
+    return runResolveStage(input, { doctrine: config.doctrine });
   }
   if (stage === "eval") {
     if (!config.judge) throw new Error("eval stage spec has no judge");
