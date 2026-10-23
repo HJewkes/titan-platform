@@ -254,6 +254,20 @@ The plan is read from the recorded intent, so a run whose intent was recorded wi
 (before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
 restart onto `on`.
 
+### Fix-round re-review {#fix-round-rereview}
+
+`shepherd.review.scopedRereview` takes `off`, `shadow` or `on`, and an absent key means `off`.
+It reads only at restart. Under `shadow` or `on`, a head reviewed for a fix round after a
+reviewer's `FIX_FIRST` gets `sh-review-scope:<head>`. That step diffs the head against the
+newest finding's head, with main's merged changes left out. Under `on`, the correctness
+reviewer then reads that fix diff and the findings since the run's last MERGE, and fills the
+fixed / not fixed checklist. Under `shadow` the brief is unchanged. Either mode records
+`scoped` on the `sh-review` result, and `shadow` adds `scopeShadow`. A refusal (a rebase, a
+large diff, a shell-active path, or any git error) records `scoped: false` with its
+`scopeReason`, and the head is reviewed in full. The first review, every other cause, D8's
+convergence head and every panel member other than correctness always read the whole PR.
+The mode is recorded on the intent, so a replay scopes a head the way its first run did.
+
 ## After the merge {#after-the-merge}
 
 The `sh-main-ci` step reads main CI on the merge commit once, for up to 60 minutes. What
