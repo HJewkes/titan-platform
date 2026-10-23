@@ -1,8 +1,9 @@
-import { O as OwnerItem, A as Audience, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './deposit.js';
-export { b as AUDIENCES, D as DEPOSIT_LENS, c as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as LocatorCite, g as ON_SILENCE_ACTIONS, h as OnSilence, i as OwnerItemDeposit, R as ROUTE_TARGETS, j as SOURCE_SYSTEMS, k as depositItemId, l as fromDeposit, m as locatorCiteSchema, o as ownerItemDepositSchema, n as ownerItemSchema, s as sourceRefSchema } from './deposit.js';
+import { O as OwnerItem, A as Audience, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './schema.js';
+export { b as AUDIENCES, D as DOORS, c as ITEM_KINDS, d as ITEM_STATUSES, L as LENSES, e as LocatorCite, f as ON_SILENCE_ACTIONS, g as OnSilence, R as ROUTE_TARGETS, h as SOURCE_SYSTEMS, l as locatorCiteSchema, o as ownerItemSchema, s as sourceRefSchema } from './schema.js';
 import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
 import { z } from 'zod';
+export { D as DEPOSIT_LENS, O as OwnerItemDeposit, d as depositItemId, f as fromDeposit, o as ownerItemDepositSchema } from './deposit.js';
 import { ManifestInput, FeedbackSchema } from '@titan-design/review-schema';
 
 declare const CARD_RULES: readonly ["card:options", "card:consequence", "card:class", "card:on-silence", "card:default-not-option", "card:apply-default-needs-default", "card:one-way-irreversible", "card:one-way-waits"];
@@ -179,6 +180,7 @@ declare const ownerCardSchema: zod.ZodObject<{
         at: zod.ZodISODateTime;
         covers: zod.ZodOptional<zod.ZodNumber>;
     }, zod_v4_core.$strip>>;
+    repeats: zod.ZodOptional<zod.ZodNumber>;
     lint: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
 }, zod_v4_core.$strip>;
 
@@ -431,10 +433,22 @@ declare function roundAskKey(unit: string, questionId: string): string;
 declare function componentKey(name: string): string;
 declare function tokenKey(name: string): string;
 declare function topicKey(name: string): string;
+/**
+ * The key an alarm deposit carries for the thing that raised it, such as `alarm:console-update`. Open
+ * deposits from one asker with the same alarm key are one alarm repeating (`collapseRepeats`).
+ */
+declare function alarmKey(source: string): string;
 /** A PR key pinned to its head, in the canonical form `mergeByKeys` compares. */
 declare function prKey(repo: string, pr: number, headSha: string): string;
 /** The relation kind of a key, or null for a merge key or anything else. */
 declare function relationKind(key: string): RelationKeyKind | null;
+
+/**
+ * Collapses open items one asker filed with the same `alarm:` key into the newest of them, which
+ * carries `repeats` when it stands for more than itself. Items with no alarm key pass through;
+ * the kept item holds its own place in the order.
+ */
+declare function collapseRepeats(items: readonly OwnerItem[]): OwnerItem[];
 
 /** A key merges only in its exact, complete form: a PR ref needs its full 40-hex head sha. */
 declare function isMergeKey(key: string): boolean;
@@ -572,9 +586,142 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, cardLint, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
+import { z } from 'zod';
+import { O as OwnerItem } from './schema.js';
+
+/**
+ * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
+ * to set a system field (id, status, answer, route, authority, lint, a hidden pick) is refused
+ * rather than silently stripped.
+ */
+declare const ownerItemDepositSchema: z.ZodObject<{
+    depositId: z.ZodString;
+    asker: z.ZodString;
+    kind: z.ZodEnum<{
+        decide: "decide";
+        approve: "approve";
+        do: "do";
+        review: "review";
+        know: "know";
+    }>;
+    door: z.ZodEnum<{
+        "one-way": "one-way";
+        "two-way": "two-way";
+    }>;
+    class: z.ZodOptional<z.ZodString>;
+    irreversible: z.ZodOptional<z.ZodString>;
+    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    default: z.ZodOptional<z.ZodString>;
+    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        action: z.ZodLiteral<"wait">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodEnum<{
+            "apply-default": "apply-default";
+            expire: "expire";
+        }>;
+        afterHours: z.ZodNumber;
+    }, z.core.$strict>], "action">>;
+    summary: z.ZodString;
+    context: z.ZodString;
+    options: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        label: z.ZodString;
+        description: z.ZodOptional<z.ZodString>;
+        consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    }, z.core.$strict>>>;
+    recommended: z.ZodOptional<z.ZodObject<{
+        optionId: z.ZodString;
+        by: z.ZodString;
+        confidence: z.ZodOptional<z.ZodNumber>;
+        rationale: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
+    }, z.core.$strict>>;
+    command: z.ZodOptional<z.ZodString>;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>], "kind">>;
+    evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+    keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    seat: z.ZodOptional<z.ZodString>;
+    initiative: z.ZodOptional<z.ZodString>;
+    personal: z.ZodDefault<z.ZodBoolean>;
+    unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    audience: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        operator: "operator";
+    }>>;
+    expiresAt: z.ZodOptional<z.ZodISODateTime>;
+}, z.core.$strict>;
+type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
+/** Every deposit has an asker waiting on it, so only Know items leave the blocking lens. */
+declare const DEPOSIT_LENS: {
+    readonly decide: "blocking-agent";
+    readonly approve: "blocking-agent";
+    readonly do: "blocking-agent";
+    readonly review: "planning";
+    readonly know: "fyi";
+};
+/** The JSON pair keeps the input injective, so an asker containing "/" cannot collide with another. */
+declare function depositItemId(asker: string, depositId: string): string;
+/**
+ * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
+ * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
+ */
+declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
+
+export { DEPOSIT_LENS as D, type OwnerItemDeposit as O, depositItemId as d, fromDeposit as f, ownerItemDepositSchema as o };
+
+// ./dist/schema.d.ts
 import { z } from 'zod';
 
 declare const SOURCE_SYSTEMS: readonly ["agent-chat", "hitl", "morning", "active-work", "round", "plan", "deposit"];
@@ -798,6 +945,7 @@ declare const ownerItemSchema: z.ZodObject<{
         at: z.ZodISODateTime;
         covers: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
+    repeats: z.ZodOptional<z.ZodNumber>;
     lint: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strip>;
 type SourceRef = z.infer<typeof sourceRefSchema>;
@@ -808,131 +956,4 @@ type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
 type OnSilence = z.infer<typeof onSilenceSchema>;
 
-/**
- * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
- * to set a system field (id, status, answer, route, authority, lint, a hidden pick) is refused
- * rather than silently stripped.
- */
-declare const ownerItemDepositSchema: z.ZodObject<{
-    depositId: z.ZodString;
-    asker: z.ZodString;
-    kind: z.ZodEnum<{
-        decide: "decide";
-        approve: "approve";
-        do: "do";
-        review: "review";
-        know: "know";
-    }>;
-    door: z.ZodEnum<{
-        "one-way": "one-way";
-        "two-way": "two-way";
-    }>;
-    class: z.ZodOptional<z.ZodString>;
-    irreversible: z.ZodOptional<z.ZodString>;
-    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    default: z.ZodOptional<z.ZodString>;
-    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
-        action: z.ZodLiteral<"wait">;
-    }, z.core.$strict>, z.ZodObject<{
-        action: z.ZodEnum<{
-            "apply-default": "apply-default";
-            expire: "expire";
-        }>;
-        afterHours: z.ZodNumber;
-    }, z.core.$strict>], "action">>;
-    summary: z.ZodString;
-    context: z.ZodString;
-    options: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        id: z.ZodString;
-        label: z.ZodString;
-        description: z.ZodOptional<z.ZodString>;
-        consequence: z.ZodOptional<z.ZodString>;
-        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    }, z.core.$strict>>>;
-    recommended: z.ZodOptional<z.ZodObject<{
-        optionId: z.ZodString;
-        by: z.ZodString;
-        confidence: z.ZodOptional<z.ZodNumber>;
-        rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
-            session: z.ZodString;
-            event: z.ZodString;
-            quote: z.ZodString;
-        }, z.core.$strict>]>>;
-    }, z.core.$strict>>;
-    command: z.ZodOptional<z.ZodString>;
-    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
-        kind: z.ZodLiteral<"resolve-gate">;
-        gateId: z.ZodString;
-        headSha: z.ZodString;
-        decision: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"release-hold">;
-        repo: z.ZodString;
-        pr: z.ZodNumber;
-        headSha: z.ZodString;
-        holdClass: z.ZodEnum<{
-            g10: "g10";
-            "owner-asked": "owner-asked";
-        }>;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"merge-at-head">;
-        repo: z.ZodString;
-        pr: z.ZodNumber;
-        headSha: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"close-pr">;
-        repo: z.ZodString;
-        pr: z.ZodNumber;
-        headSha: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"factory-config-set">;
-        path: z.ZodString;
-        value: z.ZodJSONSchema;
-        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"deploy-pause-clear">;
-        pausedAt: z.ZodISODateTime;
-        target: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        kind: z.ZodLiteral<"retire-agent">;
-        name: z.ZodString;
-        agentId: z.ZodString;
-        force: z.ZodBoolean;
-    }, z.core.$strict>], "kind">>;
-    evidenceRef: z.ZodOptional<z.ZodString>;
-    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    pins: z.ZodOptional<z.ZodObject<{
-        repo: z.ZodString;
-        head: z.ZodString;
-        base: z.ZodOptional<z.ZodString>;
-    }, z.core.$strict>>;
-    keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    seat: z.ZodOptional<z.ZodString>;
-    initiative: z.ZodOptional<z.ZodString>;
-    personal: z.ZodDefault<z.ZodBoolean>;
-    unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    audience: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
-        operator: "operator";
-    }>>;
-    expiresAt: z.ZodOptional<z.ZodISODateTime>;
-}, z.core.$strict>;
-type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
-/** Every deposit has an asker waiting on it, so only Know items leave the blocking lens. */
-declare const DEPOSIT_LENS: {
-    readonly decide: "blocking-agent";
-    readonly approve: "blocking-agent";
-    readonly do: "blocking-agent";
-    readonly review: "planning";
-    readonly know: "fyi";
-};
-/** The JSON pair keeps the input injective, so an asker containing "/" cannot collide with another. */
-declare function depositItemId(asker: string, depositId: string): string;
-/**
- * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
- * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
- */
-declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
-
-export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, type OnSilence as h, type OwnerItemDeposit as i, SOURCE_SYSTEMS as j, depositItemId as k, fromDeposit as l, locatorCiteSchema as m, ownerItemSchema as n, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, ITEM_KINDS as c, ITEM_STATUSES as d, type LocatorCite as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, SOURCE_SYSTEMS as h, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };
