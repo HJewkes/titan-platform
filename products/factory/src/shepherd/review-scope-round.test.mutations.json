@@ -25,7 +25,9 @@
       "find": "run.fixFirstTrail.slice(run.openFrom ?? 0)",
       "replace": "run.fixFirstTrail.slice(-1)",
       "kills": [
-        "fixRoundOf scopes a fix round against the newest finding's head, with every open finding and the base read at this head"
+        "fixRoundOf scopes a fix round against the newest finding's head, with every open finding and the base read at this head",
+        "fixRoundOf leaves out the findings a MERGE answered and the fix-proof's NO_REPRO records",
+        "fixRoundOf does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head"
       ]
     }
   ]
