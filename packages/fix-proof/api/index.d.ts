@@ -220,7 +220,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
 /**
- * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `killed` only when every declared mutation is killed and every changed test file outside the carry globs has a spec of
+ * its own in the diff;
  * `error` when the specs or the report could not be read at all.
  */
 declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
@@ -236,7 +237,7 @@ interface MutantsResult {
     verdict: MutantVerdict;
     results: MutantResult[];
     /**
-     * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+     * Changed test files outside the carry globs that no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
      * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
      */
     uncovered?: string[];
