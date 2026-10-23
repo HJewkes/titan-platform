@@ -80,6 +80,12 @@ describe("audition code scores", () => {
     expect(coverageScore(decided, structureFor(set.structures, "scqa"), plain)).toBe(0.75);
   });
 
+  it("a signal the fit reads that does not hold anchors no facts", () => {
+    const pains: MaterialFact[] = ["slow", "tedious", "manual", "error-prone"].map((word, i) => ({ id: `P${i + 1}`, text: `Releases are ${word}.` }));
+
+    expect(anchorFacts(abt, { map: mapOf(pains), facts: pains })).toEqual([]);
+  });
+
   it("a coverage item no fact in the pack evidences is left out rather than failed", () => {
     const facts: MaterialFact[] = [{ id: "U1", text: "Builds are slow on every laptop." }, { id: "U2", text: "The cache lives in one directory." }];
     const painOnly = spine({ hook: { fact: "U1", line: "Slow." }, blocks: spine().blocks.map((b) => ({ ...b, facts: ["U1"] })) });
