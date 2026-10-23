@@ -39,20 +39,12 @@
       ]
     },
     {
-      "name": "a run held behind a reservation counts as merging ahead",
+      "name": "a run held behind a live reservation counts as merging",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "    if (await heldByOrder(deps, input.repo, run.id, async () => theirs, others, rule)) continue;\n",
+      "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",
       "replace": "",
       "kills": [
-        "TP-4098 slice C: the #2301 loop never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring"
-      ]
-    },
-    {
-      "name": "the wait keeps waiting on an ahead run that is now held",
-      "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "    if (headSha !== undefined && (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;\n",
-      "replace": "",
-      "kills": [
+        "TP-4098 slice C: the #2301 loop never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring",
         "TP-4098 slice C: the #2301 loop stops waiting on a run it let merge first once that run is held behind a live reservation"
       ]
     }
