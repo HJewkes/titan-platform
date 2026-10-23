@@ -1,0 +1,5 @@
+{
+  "files": {
+    "src/desk.ts": "// An invented parcel desk: synthetic source for the resolve stage's citation tests.\nexport interface Scan { parcel: string; dock: string }\n\nexport function admit(scan: Scan, ledger: Map<string, string>): boolean {\n  const row = ledger.get(scan.parcel);\n  if (row === undefined) return false;\n  return row === scan.dock;\n}\n\nexport function label(scan: Scan): string {\n  return `${scan.parcel}@${scan.dock}`;\n}\n"
+  }
+}

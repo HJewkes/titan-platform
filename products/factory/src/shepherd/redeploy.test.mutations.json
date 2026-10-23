@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pacer's origin/main re-ask still passes --expect",
+      "file": "products/factory/src/shepherd/redeploy.ts",
+      "find": "const expect = target?.main === true ? [] : [\"--expect\", mergeSha];",
+      "replace": "const expect = [\"--expect\", mergeSha];",
+      "kills": [
+        "deployPacerPorts spawns the deployer for origin/main, with no --expect, when the pacer re-asks after a rollback"
+      ]
+    }
+  ]
+}
