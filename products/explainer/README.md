@@ -76,6 +76,17 @@ registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
 
+`anchor-grid.ts` is the frame as a 6×6 grid of named anchors: columns `A` to `F` left to right,
+rows `1` to `6` top to bottom, so `A1` is the top left. A script's `visual.anchors` and a
+template's slots (`placeSlots`) name cells or `B2:E5` ranges; `anchorsForBox` maps a pixel box to
+the cells it overlaps. `occupancy-table.ts` builds one table per settled mark, mapping each
+occupied anchor to the element ids on it. The DOM's `[data-el]` boxes place template beats. A
+custom layer that declares anchors adds `custom-layer` on them, and an undeclared custom layer
+(or a mark with no DOM elements) falls back to the frame's pixel 6×6 ink coverage, so line art
+is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
+(`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
+`writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
+
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
 bytes Python's `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` gives,
@@ -185,7 +196,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 | Stage | Path | Inputs → outputs |
 |---|---|---|
-| `audition` | in-process, no model call: the material map and the fit predicates (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map |
+| `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition |
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
@@ -260,6 +271,32 @@ outcome turns on a gap is `undecided`. `candidates` are the structures that fit 
 fixed macro, or its heuristic rows, macros and fallback). The stage key covers the facts sha, the profile's version
 and content hash, and a hash over the structure registry, so a doctrine edit is a new key; a body whose doctrine no
 longer matches its key refuses. `material-map.json` holds fact ids and cue words, not the facts' text.
+
+**Audition** (plan §A.3 steps 2 to 5). After the map, the stage builds a pool of structures and samples one spine
+for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` caps the call):
+- **Pool** (`audition-pool.ts`). Every candidate, in the profile's heuristic order. When fewer than the profile's
+  `audition.k` fit, allowed structures that are `undecided` top the pool up: an undecided structure is never a
+  candidate on its own, only fills a slot after every fitting one, and counts each gap term as half met in its fit
+  score. With **0 candidates** the profile's fixed macro (or a heuristic profile's `fallback`) leads the pool, and
+  `audition.json` records `fallback` with the reason (which allowed structures did not fit, and which fit but are
+  not allowed). A pool shorter than k is cycled, each repeat under the next beat system the profile binds to that
+  structure, so a fixed tour samples k spines under different systems.
+- **Sampling** (`audition-sample.ts`). Verbalized sampling: the call returns one spine per slot, each with a stated
+  likelihood, its ABT or SCQA sentence, hook fact, block questions with fact ids and lead beat, the payoff block,
+  the signature layer and its cuts. A reply that names an unknown fact, a block out of order, a beat or coverage
+  item the profile does not list, or the wrong slot is retried once with its issues, then fails the stage with its
+  spend recorded; nothing is adopted unscored.
+- **Scores** (`audition-score.ts`), each 0 to 1. Fit: the share of the predicate's terms met. Coverage: P1 facts
+  placed and the profile's coverage items covered. Tension: stake by 15 %, complication by 25 %, every block within
+  the profile's `reHookS` bound, payoff by 40 %. Range: distinct lead beats over blocks, until the resolver (PP-6)
+  can say what it would draw. Freshness: the profile's must-vary `structure` and `signature-layer` against the
+  series window; 1 until the PP-9 fingerprint records the series (TP-4019). The cold-viewer rubric (J8 to J12) runs
+  on every candidate's hook, signature layer and block questions and is recorded only.
+- **Pick.** The agent picks with no owner gate: the highest code total, ties to the higher stated likelihood, then
+  the earlier slot. `audition.json` (`audition/v1`) keeps every candidate with its spine and scores, the pick, the
+  runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. The stage
+  stops at the storyboard: it writes no script and renders nothing. A gate check, `audition-scored`, fails the stage
+  if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run

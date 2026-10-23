@@ -13,7 +13,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8", script: "x4", rewrite: "x4", eval: "x4", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8b", script: "x4", rewrite: "x4", eval: "x4", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
 const IN_PROCESS_INPUTS: Record<"audition" | "script" | "rewrite" | "eval", readonly string[]> = { audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"] };
@@ -90,7 +90,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   if (stage === "audition") {
     z.strictObject({}).parse(params);
     if (!settings.profile) throw new Error("stage audition needs a profile: pass --profile <type>");
-    return auditionConfig(settings.profile);
+    return auditionConfig(settings.profile, { model: settings.scriptModel, judge: settings.judge });
   }
   if (stage === "script") return { model: ScriptParamsSchema.parse(params).model ?? settings.scriptModel };
   if (stage === "rewrite") {

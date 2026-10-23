@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no fallback on 0 candidates",
+      "file": "products/explainer/src/audition-pool.ts",
+      "find": "candidates.length === 0 ?",
+      "replace": "candidates.length < 0 ?",
+      "kills": [
+        "audition pool 0 candidates fall back to the fixed macro, each slot under a different bound beat system, and record why"
+      ]
+    },
+    {
+      "name": "heuristic fallback takes the first heuristic row",
+      "file": "products/explainer/src/audition-pool.ts",
+      "find": "profile.structure.macro : profile.structure.fallback",
+      "replace": "profile.structure.macro : profile.structure.heuristic[0]!.macro",
+      "kills": [
+        "audition pool a heuristic profile with 0 candidates falls back to its fallback macro"
+      ]
+    },
+    {
+      "name": "fallback slots all share one system",
+      "file": "products/explainer/src/audition-pool.ts",
+      "find": "bound[n % bound.length]!",
+      "replace": "bound[0]!",
+      "kills": [
+        "audition pool 0 candidates fall back to the fixed macro, each slot under a different bound beat system, and record why"
+      ]
+    },
+    {
+      "name": "undecided fills every slot even when k fit",
+      "file": "products/explainer/src/audition-pool.ts",
+      "find": "Math.max(0, k - lead.length)",
+      "replace": "k",
+      "kills": [
+        "audition pool an undecided structure is left out when k structures already fit"
+      ]
+    },
+    {
+      "name": "undecided counts as a candidate",
+      "file": "products/explainer/src/audition-pool.ts",
+      "find": "const fallback = candidates.length === 0",
+      "replace": "const fallback = candidates.length + undecidedRows.length === 0",
+      "kills": [
+        "audition pool an undecided structure never counts as a candidate: alone it still leaves the fallback leading"
+      ]
+    }
+  ]
+}
