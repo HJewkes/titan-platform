@@ -18,6 +18,35 @@
       "kills": [
         "deploy pacer an older sha the queued one contains keeps the queued record, spawn mark and all"
       ]
+    },
+    {
+      "name": "a running build that contains the ask answers it during its health watch",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "const why = inWatch(input);",
+      "replace": "const why = undefined;",
+      "kills": [
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask survives a rollback inside the watch and is deployed again once the pause is cleared",
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask whose containing deploy passes its watch is cleared once deploy.json records it",
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask is kept while the window for the running build is still open, even with its deploy recorded"
+      ]
+    },
+    {
+      "name": "a recorded deploy ends the watch while its window is still open",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "return now < deployWindow.windowEnd ?",
+      "replace": "return false ?",
+      "kills": [
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask is kept while the window for the running build is still open, even with its deploy recorded"
+      ]
+    },
+    {
+      "name": "a rollback after the spawn still waits out the stale timeout",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": " || rolledBackSinceSpawn(wanted, input.lastDeploy)",
+      "replace": "",
+      "kills": [
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask survives a rollback inside the watch and is deployed again once the pause is cleared"
+      ]
     }
   ]
 }
