@@ -18,6 +18,26 @@
       "kills": [
         "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order"
       ]
+    },
+    {
+      "name": "a Send back note goes out untrimmed",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "const comment = note.trim();",
+      "replace": "const comment = note;",
+      "kills": [
+        "answering a Ship round sends Send back as the other option, with the owner's note as its comment and no head sha"
+      ]
+    },
+    {
+      "name": "pressing an Addressed tick never ticks it",
+      "file": "apps/console/src/pages/ShipPriorFeedback.tsx",
+      "find": "onCheckedChange={(checked) => (locked ? undefined : onToggle(item, checked))}",
+      "replace": "onCheckedChange={() => undefined}",
+      "kills": [
+        "Ship while feedback is open (TP-3741) shows round 1's Don't ship and note, and keeps Ship off until it is ticked Addressed",
+        "frame feedback on a Ship round (TP-3773 S6b) lists an earlier round's frame feedback and holds Ship until it is ticked Addressed",
+        "an unsent Ship round's draft (TP-3870) restores the side answer and comment, the Addressed tick and the Send back note after a remount"
+      ]
     }
   ]
 }

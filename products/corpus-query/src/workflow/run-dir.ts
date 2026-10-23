@@ -21,7 +21,7 @@ export interface BatchArtifact<T> {
   round?: number;
   /** For a confirm batch, the book it holds. */
   book?: string;
-  via: "primary" | "redo" | "unjudged";
+  via: "primary" | "redo" | "fallback" | "unjudged";
   passageIds: string[];
   items: T[];
   voided: Voided[];
@@ -61,11 +61,14 @@ export interface CostEntry {
 
 const TOKEN_FIELDS = ["inputTokens", "cacheReadTokens", "cacheWrite5mTokens", "cacheWrite1hTokens", "outputTokens"] as const;
 
-/** Cache fields are copied when the runner reported them; a field it left out stays out rather than reading as zero. */
+/**
+ * Cache fields are copied when the runner reported them; a field it left out stays out rather than reading as zero.
+ * The model is the id the call ran on when the runner reported one, because a route alias such as "haiku" has no price.
+ */
 export function costEntry(stage: Stage, entry: UsageEntry): CostEntry {
-  const usage = entry.usage as StepUsage & Partial<Record<(typeof TOKEN_FIELDS)[number], number>>;
+  const usage = entry.usage as StepUsage & Partial<Record<(typeof TOKEN_FIELDS)[number], number>> & { model?: string };
   const tokens = Object.fromEntries(TOKEN_FIELDS.filter((f) => usage[f] !== undefined).map((f) => [f, usage[f]]));
-  return { stage, model: entry.model, ...tokens, cliCostUsd: usage.costUsd };
+  return { stage, model: usage.model ?? entry.model, ...tokens, cliCostUsd: usage.costUsd };
 }
 
 export interface RunPaths {
@@ -75,6 +78,8 @@ export interface RunPaths {
   answer: string;
   cost: string;
   batch: (stage: "screen" | "confirm", key: string, round?: number) => string;
+  /** Where a batch parks the spend of attempts that left no journal entry, outside the artifact dirs a resume lists. */
+  attempts: (stage: "screen" | "confirm", key: string, round?: number) => string;
 }
 
 export function runPaths(dataDir: string, runId: string): RunPaths {
@@ -86,6 +91,7 @@ export function runPaths(dataDir: string, runId: string): RunPaths {
     answer: path.join(runDir, "answer.json"),
     cost: path.join(runDir, "cost.json"),
     batch: (stage, key, round) => path.join(runDir, stage, round === undefined ? "" : `r${round}`, `${key}.json`),
+    attempts: (stage, key, round) => path.join(runDir, "attempts", stage, round === undefined ? "" : `r${round}`, `${key}.json`),
   };
 }
 

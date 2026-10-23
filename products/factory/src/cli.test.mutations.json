@@ -25,7 +25,7 @@
       "find": "for (const deprecated of deps.configDeprecations?.(io.env) ?? []) (deps.logger ?? consoleLogger).warn({}, deprecated);",
       "replace": "",
       "kills": [
-        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+        "the serve verb's config deprecations logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
       ]
     },
     {
@@ -34,7 +34,7 @@
       "find": "return reconcilerDeprecations(loadConfig(configPath(env)));",
       "replace": "return reconcilerDeprecations({});",
       "kills": [
-        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+        "the serve verb's config deprecations logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "find": "return reconcilerDeprecations(loadConfig(configPath(env)));",
       "replace": "return reconcilerDeprecations(loadConfig(configPath({})));",
       "kills": [
-        "logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
+        "the serve verb's config deprecations logs reconciler.intervalMs as deprecated when the config file serve reads still sets it, and nothing when it does not"
       ]
     }
   ]

@@ -41,6 +41,92 @@ The package README has the table of deviations from Karpathy's loop.
    factory config knows. Only medians and gate pass counts come back, and the number of looks per
    run is capped by the target's `validator.maxLooks`.
 
+## The CLI
+
+`titan-factory autoresearch` sends each verb to `titan-factory serve` when serve answers on
+`--port`, which defaults to serve's port. When serve is down, a verb that is safe without it runs
+in this process against the local database.
+
+| Verb | What it does |
+| --- | --- |
+| `start <target> --pin <sha> [--lanes n] [--rounds n]` | Starts a run on a configured target. The pin is a 7 to 40 character hex sha. The flags override the config's `run` settings for this run. A target holds one unfinished run at a time. Without serve, the run is driven here until it ends or waits on a human. |
+| `resume <runId>` | Drives an unfinished autoresearch run in this process. |
+| `status [runId] [--json]` | With no run, one line per run. With a run, one line per rung from `none` to `L3` naming the ideas that stopped there, then the ladders still running. `--json` prints the read model. |
+| `add-idea <runId> --file <proposal.json>` | Queues an owner proposal, in the planner's proposal shape, for an unfinished run. The run reads it at its next round. |
+| `milestone <runId>` | Starts one validator look at the run's best head. **It needs serve:** counting looks and starting one must happen in one process. |
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Done. |
+| 1 | A refusal, or a run started in-process that failed. |
+| 2 | A bad flag or argument, or a proposal file that is not JSON. |
+| 69 | Serve is needed and down (`milestone`); serve is down and there is no local database to read; or serve is busy or not ready. |
+
+Refusals name their code first:
+
+| Code | When |
+| --- | --- |
+| `[no-config]` | The factory has no `autoresearch` config section. |
+| `[no-target]` | The target is not under `autoresearch.targets`. |
+| `[target-busy] <runId>` | The target already has an unfinished run. |
+| `[run-finished]` | `add-idea` names a run that has ended. |
+| `[proposal]` | The proposal does not match the proposal shape. |
+| `[no-pin]` | The run has not recorded its pin yet. |
+| `[no-best]` | The run has not finished its baseline, so there is no head to look at. |
+| `[max-looks] n/max` | The run already has `validator.maxLooks` looks. Failed looks count. |
+| `[not_found]` | No autoresearch run has that id. |
+
+The commands behind the verbs are `autoresearch.start`, `autoresearch.add-idea` and
+`autoresearch.milestone`, and like every factory command they are also MCP tools on serve.
+
+## Config
+
+Autoresearch is off until the factory's local config file has an `autoresearch` section. Every
+path is an absolute local path and never lives in a target repo. A synthetic example:
+
+```json
+{
+  "autoresearch": {
+    "agentChatBin": "/srv/factory/bin/agent-chat",
+    "configDir": "/srv/factory/agents-config",
+    "account": "fixture@example.invalid",
+    "workRoot": "/srv/factory/autoresearch/work",
+    "archiveDir": "/srv/factory/autoresearch/archive",
+    "registryPath": "/srv/factory/autoresearch/registry.jsonl",
+    "inboxDir": "/srv/factory/autoresearch/inbox",
+    "stages": { "planner": { "profile": "ar-planner" }, "implementer": { "profile": "ar-implementer" } },
+    "load": { "ceiling": 8, "pollMs": 30000 },
+    "limits": { "pool": "autoresearch", "path": "/srv/factory/limits.json" },
+    "run": { "lanes": 3, "rounds": 50 },
+    "targets": {
+      "fixture": {
+        "clone": "/srv/factory/clones/fixture",
+        "adapterDir": "autoresearch/fixture",
+        "caseNamesFile": "/srv/factory/autoresearch/fixture-case-names",
+        "validatorCasesFile": "/srv/factory/autoresearch/fixture-validator-cases"
+      }
+    }
+  }
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `agentChatBin`, `configDir`, `account` | The agent-chat binary, the agents account's config directory and the account recorded on each implementer. |
+| `workRoot`, `archiveDir`, `registryPath`, `inboxDir` | Evaluator and look checkouts, the round archives, the phase registry (one JSON line per phase) and the owner-idea inboxes. |
+| `stages.planner.profile`, `stages.implementer.profile` | The model per stage, chosen by profile. There is no per-stage TTL. |
+| `load` | `{ceiling, pollMs, maxWaitMs?}`: a stage starts only while the five-minute load is below `ceiling`. |
+| `limits` | `{pool, path}`: the spawn limits file and the pool every spawn is admitted against. |
+| `run` | Run defaults: `lanes`, `rounds`, `minPool`, `caseNames` and `forkSchedule`. |
+| `targets.<name>` | `clone` (absolute), `adapterDir` (relative to the target repo, no `..`), and the optional `caseNamesFile` and `validatorCasesFile`. |
+
+`caseNamesFile` holds one case name per line. L0 refuses an added line that names one.
+`validatorCasesFile` holds one held-out case per line, either `<case>` or `<case>` then a tab then
+`<caseSet>`. Without a case set, the target's own `caseSets` entry for that case is used, if it has
+one. A look with no validator cases is refused with `[no-validator-cases]`.
+
 ## The ratchet is a logged merge path
 
 The ratchet fast-forwards only a run's own branch under the target's `ratchetPrefix`. It refuses

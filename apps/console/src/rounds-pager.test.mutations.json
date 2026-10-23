@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the last section still offers Next",
+      "file": "apps/console/src/pages/RoundPager.tsx",
+      "find": "isDisabled={next === undefined}",
+      "replace": "isDisabled={false}",
+      "kills": [
+        "a round of several sections shows one section at a time, and Next and Back step between them"
+      ]
+    }
+  ]
+}

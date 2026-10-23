@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBatches, buildJudgePrefix, prefixSha, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
+import { assertsMatch, buildBatches, buildJudgePrefix, CONFIRM_ROLE, prefixSha, resolveLabels, SCREEN_ROLE, verifyVerdict, type ShownPassage } from "./index.js";
 import type { QuerySpec } from "../types.js";
 
 const spec: QuerySpec = {
@@ -31,7 +31,7 @@ const batchFor = (canaryIndex = 0) => {
   });
   return batch!;
 };
-const fullVerdict = (batch: ReturnType<typeof batchFor>, items: { id: string; quote: string }[]) => ({
+const fullVerdict = <T extends { id: string; quote: string }>(batch: ReturnType<typeof batchFor>, items: T[]) => ({
   judged: [...batch.passages.map((p) => p.id), batch.canary!.id],
   items,
 });
@@ -57,8 +57,25 @@ describe("judge prefix", () => {
 describe("batching", () => {
   it("puts the canary after every real passage", () => {
     const batch = batchFor();
-    const lastHeader = batch.message.lastIndexOf("=== PASSAGE ");
-    expect(batch.message.slice(lastHeader)).toContain(batch.canary!.id);
+    const lastLabel = [...batch.message.matchAll(/^=== PASSAGE (\S+) /gm)].at(-1)![1]!;
+    expect(batch.labels[lastLabel]).toBe(batch.canary!.id);
+  });
+
+  it("shows short labels instead of passage ids and resolves a verdict's labels back to ids", () => {
+    const batch = batchFor();
+
+    const resolved = resolveLabels(batch, { judged: ["P1", "P2", "P3"], items: [{ id: "P1", quote: "q" }] });
+
+    expect(passages.some((p) => batch.message.includes(p.id))).toBe(false);
+    expect(resolved).toEqual({ judged: [passages[0]!.id, passages[1]!.id, batch.canary!.id], items: [{ id: passages[0]!.id, quote: "q" }] });
+  });
+
+  it("keeps a name that is not a label, so verification voids it as an unknown id", () => {
+    const batch = batchFor();
+
+    const resolved = resolveLabels(batch, { judged: [], items: [{ id: "P9", quote: "q" }, { id: "constructor", quote: "q" }] });
+
+    expect(verifyVerdict(batch, resolved).voided).toEqual([{ id: "P9", reason: "unknown-id" }, { id: "constructor", reason: "unknown-id" }]);
   });
 
   it("shows the canary with an id and ref shaped like a real passage", () => {
@@ -160,5 +177,48 @@ describe("verifyVerdict", () => {
     const batch = batchFor(0);
     const result = verifyVerdict(batch, fullVerdict(batch, [{ id: batch.canary!.id, quote: "lifted the Coastal Cup" }]));
     expect([result.flagged, result.items]).toEqual([false, []]);
+  });
+});
+
+describe("canary scoring by claim", () => {
+  type Claim = { id: string; quote: string; event: "won" | "lost" | "preview"; included?: boolean };
+
+  const nearMiss = (event: "won" | "lost" | "preview", included?: boolean) => {
+    const batch = batchFor(1);
+    const item: Claim = { id: batch.canary!.id, quote: "mentioned any silverware", event, ...(included === undefined ? {} : { included }) };
+    return verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch);
+  };
+
+  it("reads a near-miss canary tagged lost as seen, not a miss", () => {
+    expect(nearMiss("lost").flagged).toBe(false);
+  });
+
+  it("reads a near-miss canary tagged won as a miss", () => {
+    expect(nearMiss("won").flagged).toBe(true);
+  });
+
+  it("reads a near-miss canary on an excluded row as seen, even when the row says won", () => {
+    expect(nearMiss("won", false).flagged).toBe(false);
+  });
+
+  it("still flags a positive canary tagged lost, which is not a claim", () => {
+    const batch = batchFor(0);
+    const item: Claim = { id: batch.canary!.id, quote: "lifted the Coastal Cup", event: "lost" };
+    expect(verifyVerdict(batch, fullVerdict(batch, [item]), assertsMatch).flagged).toBe(true);
+  });
+});
+
+describe("confirm role", () => {
+  it("tells the judge to row the earliest passage of a win and refer later recaps", () => {
+    expect(CONFIRM_ROLE).toMatch(/EARLIEST passage where the win happens/);
+    expect(CONFIRM_ROLE).toMatch(/"referenced"/);
+  });
+
+  it("gives the judge a way to exclude a passage", () => {
+    expect(CONFIRM_ROLE).toMatch(/"included": false/);
+  });
+
+  it("tells both judges to read a canary as in scope, so a book's context cannot make them reject it", () => {
+    for (const role of [CONFIRM_ROLE, SCREEN_ROLE]) expect(role).toMatch(/ref is CANARY[\s\S]*read whoever it is about as in scope/);
   });
 });

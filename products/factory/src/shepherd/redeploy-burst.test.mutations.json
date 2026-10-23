@@ -7,22 +7,10 @@
       "find": "mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });",
       "replace": "mergeSha: target.mergeSha });",
       "kills": [
-        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
-        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
-        "does not clear the wanted tip because the running build already holds the older merge",
-        "queues nothing when the service already runs the green tip"
-      ]
-    },
-    {
-      "name": "only an acknowledged green sha is passed, not one read at a newer push",
-      "file": "products/factory/src/shepherd/post-merge.ts",
-      "find": "...(result.readSha !== undefined && { greenSha: result.readSha })",
-      "replace": "...(result.acknowledgedSha !== undefined && { greenSha: result.acknowledgedSha })",
-      "kills": [
-        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
-        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
-        "does not clear the wanted tip because the running build already holds the older merge",
-        "queues nothing when the service already runs the green tip"
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) does not clear the wanted tip because the running build already holds the older merge",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) queues nothing when the service already runs the green tip"
       ]
     },
     {
@@ -31,40 +19,43 @@
       "find": "const sha = input.greenSha ?? input.mergeSha;",
       "replace": "const sha = input.mergeSha;",
       "kills": [
-        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
-        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
-        "does not clear the wanted tip because the running build already holds the older merge",
-        "queues nothing when the service already runs the green tip",
-        "spawns the green tip, not the merge sha, when no pacer queue is wired"
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) keeps the green tip its own run queued when an older merge acknowledged on it queues after",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) does not clear the wanted tip because the running build already holds the older merge",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) queues nothing when the service already runs the green tip",
+        "a burst of merges whose own main CI was cancelled under one green tip (TP-3959) spawns the green tip, not the merge sha, when no pacer queue is wired"
       ]
     },
     {
-      "name": "the pacer queue gets the merge sha",
-      "file": "products/factory/src/shepherd/redeploy.ts",
-      "find": "return requestDeploy(deployer.request, sha);",
-      "replace": "return requestDeploy(deployer.request, input.mergeSha);",
+      "name": "an older sha replaces a queued sha that contains it",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": " || (previous !== undefined && previous.sha === heldBy)",
+      "replace": "",
       "kills": [
-        "queues the green tip sh-main-ci read, not the merge sha whose run was cancelled",
-        "keeps the green tip its own run queued when an older merge acknowledged on it queues after",
-        "does not clear the wanted tip because the running build already holds the older merge"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     },
     {
-      "name": "the already-running check compares the merge sha",
+      "name": "the probe asks the wrong direction",
       "file": "products/factory/src/shepherd/redeploy.ts",
-      "find": "if (deployer.runningSha() === sha)",
-      "replace": "if (deployer.runningSha() === input.mergeSha)",
+      "find": "options.isAncestor(mergeSha, queued)",
+      "replace": "options.isAncestor(queued, mergeSha)",
       "kills": [
-        "queues nothing when the service already runs the green tip"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha, so the pacer deploys it and not the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) does not clear the newer queued sha because the running build holds the older merge",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) still replaces the queued sha with a newer merge that contains it",
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     },
     {
-      "name": "the spawn-only deployer gets the merge sha",
-      "file": "products/factory/src/shepherd/redeploy.ts",
-      "find": "started = deployer.spawn(sha);",
-      "replace": "started = deployer.spawn(input.mergeSha);",
+      "name": "the deploy checkout probe never fetches",
+      "file": "products/factory/src/build-ancestry.ts",
+      "find": "cachedAncestry(fetchingAncestry(gitAncestry(checkout, run), gitFetchMain(checkout, run)))",
+      "replace": "cachedAncestry(gitAncestry(checkout, run))",
       "kills": [
-        "spawns the green tip, not the merge sha, when no pacer queue is wired"
+        "an older merge whose own main run goes green after a newer sha is queued (TP-3963) keeps the newer queued sha when neither merge is in the deploy checkout yet"
       ]
     }
   ]

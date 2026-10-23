@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
+import { ArConfigSchema } from "./autoresearch/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
 
@@ -199,6 +200,7 @@ export const FactoryConfigSchema = z.object({
   service: ServiceConfigSchema.optional(),
   github: GithubConfigSchema.optional(),
   reconciler: ReconcilerConfigSchema.optional(),
+  autoresearch: ArConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -213,6 +215,13 @@ export const FactoryConfigSchema = z.object({
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
+      /**
+       * Where serve's main CI watch sends a red-main event, ahead of the run's seat, the branch-prefix seat and `hubSeat`: the
+       * repo's entry (keys match in any case), else `fallback`. Red events only; merge policy and seat identity never read it.
+       */
+      redSeat: z
+        .strictObject({ repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.string().min(1)).optional(), fallback: z.string().min(1).optional() })
+        .optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
       /**
@@ -269,6 +278,7 @@ export const FactoryConfigSchema = z.object({
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.redSeat || s.agentChatBin, { message: "redSeat needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });

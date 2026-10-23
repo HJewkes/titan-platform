@@ -4,8 +4,6 @@
  *
  * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
  */
-import { createHash } from "node:crypto";
-import { canonicalArgs } from "@titan-design/rpc-client";
 import { mapItems, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { buildDigest, evidenceRow, type EvidenceRow } from "./digest.js";
@@ -15,7 +13,6 @@ import { arStepId } from "./manifest.js";
 import { addPair, band, NO_NOISE, sigmaOf, type NoiseState } from "./noise.js";
 import {
   ArchivedSchema,
-  HeadSchema,
   InboxSchema,
   PinnedSchema,
   PlannerSchema,
@@ -24,7 +21,7 @@ import {
   StopReasonSchema,
   type Pinned,
   type Planner,
-  type RatchetRequest,
+  type Reeval,
   type RegistryRow,
   type RoundRecord,
   type RoundSummary,
@@ -35,7 +32,9 @@ import { applyOps, quotaViolations } from "./queue.js";
 import { EMPTY_REGISTRIES, recordAnalysis, recordOutcome, type Registries } from "./registry.js";
 import { IdeaSchema, OutcomeSchema, QueueOpsSchema, resultSchemaFor, type ArResult, type Idea, type Outcome, type Proposal, type QueueOps } from "./schemas.js";
 import { select } from "./select.js";
+import { cutIfDue, SnapshotSettingsSchema, startSnapshots, syncOpen, withKept, type SnapshotRun, type SnapshotState } from "./snapshot.js";
 import { dispatch, recorded, step } from "./steps.js";
+import { settleWinners, type Moved } from "./winners.js";
 
 export const AUTORESEARCH_WORKFLOW = "autoresearch";
 
@@ -52,6 +51,8 @@ export const RunSettingsSchema = z.object({
   /** Names of the target's cases; a proposal that mentions one is refused before any spawn. */
   caseNames: z.array(z.string()).default([]),
   forkSchedule: ForkScheduleSchema.default({ afterKeep: { exploit: 1 }, basinEvery: 3 }),
+  /** Set by a host with snapshot and sync ports; absent, the run never cuts, and a run recorded before cadence replays unchanged. */
+  snapshot: SnapshotSettingsSchema.optional(),
 });
 export type RunSettings = z.infer<typeof RunSettingsSchema>;
 type Spend = RegistryRow["spend"];
@@ -79,6 +80,7 @@ interface LoopState {
   inboxCursor: number;
   spend: Spend;
   archives: string[];
+  snapshot: SnapshotState;
 }
 
 const phaseOf = (run: Run) => run.pinned.target.phases[0]!;
@@ -109,11 +111,15 @@ async function baseline(run: Run): Promise<Pick<LoopState, "best" | "noise" | "s
 const NO_SPEND: Spend = { agentUsd: 0, modelUsd: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0);
 
-/** Agent dollars are implementers and planners; model dollars are eval and micro runs. Superseded outcomes spent too. */
-function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[]): Spend {
+/**
+ * Agent dollars are implementers and planners; model dollars are eval and micro runs, a re-evaluation's runs among
+ * them, which no outcome carries. Superseded outcomes spent too.
+ */
+function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[], reevals: readonly Reeval[]): Spend {
+  const reevalUsd = sum(reevals.flatMap((reeval) => reeval.runs.map((result) => result.usd)));
   return {
     agentUsd: spend.agentUsd + sum(outcomes.map((outcome) => outcome.usage?.implementUsd ?? 0)) + sum(planners.map((usage) => usage.usd)),
-    modelUsd: spend.modelUsd + sum(outcomes.map((outcome) => (outcome.usage?.evalUsd ?? 0) + (outcome.usage?.microUsd ?? 0))),
+    modelUsd: spend.modelUsd + sum(outcomes.map((outcome) => (outcome.usage?.evalUsd ?? 0) + (outcome.usage?.microUsd ?? 0))) + reevalUsd,
     cacheReadTokens: spend.cacheReadTokens + sum(planners.map((usage) => usage.cacheReadTokens ?? 0)),
     cacheWriteTokens: spend.cacheWriteTokens + sum(planners.map((usage) => (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0))),
   };
@@ -218,63 +224,41 @@ async function fanOut(run: Run, rc: RoundContext, picks: readonly Idea[], round:
   return mapped.results.map(({ result }) => OutcomeSchema.parse(JSON.parse(result.output!)));
 }
 
-/** One σ per round, so ordering by Δ is ordering by σ-normalized Δ. */
-const byStrength = (a: Outcome, b: Outcome) => (b.delta ?? 0) - (a.delta ?? 0) || a.ideaId.localeCompare(b.ideaId);
-const smaller = (a: Outcome, b: Outcome) =>
-  (a.diff?.srcLines ?? Infinity) - (b.diff?.srcLines ?? Infinity) || (a.diff?.srcFiles ?? Infinity) - (b.diff?.srcFiles ?? Infinity) || a.ideaId.localeCompare(b.ideaId);
-
-/**
- * Winners within σ of the strongest are a tie, and the smallest source diff of those goes first; the rest
- * stay in Δ order. A pick over a fixed set, not a tolerance comparator, which would not be transitive.
- */
-export function pickWinner(winners: readonly Outcome[], sigma: number): Outcome[] {
-  if (winners.length === 0) return [];
-  const top = Math.max(...winners.map((outcome) => outcome.delta ?? 0));
-  const [first] = winners.filter((outcome) => (outcome.delta ?? 0) >= top - sigma).sort(smaller);
-  return [first!, ...[...winners].sort(byStrength).filter((outcome) => outcome !== first)];
+interface Settled {
+  sigma: number;
+  superseded: readonly string[];
+  /** Absent for a round recorded before concurrent winners. */
+  reevals?: readonly Reeval[];
 }
 
-const runDigest = (result: ArResult) => createHash("sha256").update(canonicalArgs(result)).digest("hex");
-
-/** The G12 move record: which idea moved the ratchet, on what evidence, against which pin. */
-function ratchetMove(run: Run, state: LoopState, first: Outcome, round: number, sigma: number): RatchetRequest {
-  const { ratchetRef, integrationTree: tree, target } = run.pinned;
-  const evidence = { round, ideaId: first.ideaId, kind: "ff" as const, keepRung: first.rungReached, delta: first.delta ?? 0, sigma, runDigests: first.runs.map(runDigest), ...runPinOf(run) };
-  return { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, from: state.best.head, to: first.head!, ...evidence };
-}
-
-/** The picked winner moves the ratchet; any other winner goes back in the queue on its lineage until S5 re-evaluates it against the new head. */
-async function ratchet(run: Run, state: LoopState, outcomes: Outcome[], round: number, sigma: number): Promise<Moved> {
-  const winners = pickWinner(outcomes.filter((outcome) => outcome.verdict === "kept"), sigma);
-  const [first, ...rest] = winners;
-  if (!first) return { best: state.best, kept: [], superseded: [], move: null, requeue: [] };
-  const move = ratchetMove(run, state, first, round, sigma);
-  const { head } = await step(run.ctx, `${arStepId("ratchet")}:${round}`, move, HeadSchema);
-  const requeue = rest.map((outcome) => ({ ...state.ideas.get(outcome.ideaId)!, source: "requeue" as const, round: round + 1 }));
-  return { best: { head, runs: first.runs }, kept: [first.ideaId], superseded: rest.map((outcome) => outcome.ideaId), move: { from: state.best.head, to: head }, requeue };
-}
-
-interface Moved {
-  best: LoopState["best"];
-  kept: string[];
-  superseded: string[];
-  move: RoundSummary["ratchet"];
-  requeue: Idea[];
+function settle(outcome: Outcome, superseded: boolean, reeval: Reeval | undefined): Outcome {
+  const verdict = reeval && { reeval: { vs: reeval.vs, decision: reeval.decision, reason: reeval.reason } };
+  if (superseded) return { ...outcome, verdict: "stopped", reason: "superseded", ...verdict };
+  if (reeval?.decision === "rejected") return { ...outcome, verdict: "rejected", reason: `reeval:${reeval.reason}`, ...verdict };
+  return { ...outcome, ...verdict };
 }
 
 /**
- * The outcomes a round settles on: each superseded winner stopped, every outcome stamped with the round's σ.
+ * The outcomes a round settles on: each requeued winner stopped as superseded, each winner the new head rejected
+ * rejected, every re-evaluated one carrying its `reeval`, and every outcome stamped with the round's σ.
  * The recipe and any reader of the recorded stops share it, so they cannot disagree.
  */
-export function finalOutcomes(stops: readonly Outcome[], { sigma, superseded }: { sigma: number; superseded: readonly string[] }): Outcome[] {
+export function finalOutcomes(stops: readonly Outcome[], { sigma, superseded, reevals = [] }: Settled): Outcome[] {
   const marked = new Set(superseded);
-  return stops.map((outcome) => ({ ...(marked.has(outcome.ideaId) ? { ...outcome, verdict: "stopped" as const, reason: "superseded" } : outcome), sigma }));
+  const reevalOf = new Map(reevals.map((reeval) => [reeval.ideaId, reeval]));
+  return stops.map((outcome) => ({ ...settle(outcome, marked.has(outcome.ideaId), reevalOf.get(outcome.ideaId)), sigma }));
+}
+
+/** The net move: from where the round's first move started to where its last one ended. */
+function netMove(moves: Moved["moves"]): RoundSummary["ratchet"] {
+  return moves.length === 0 ? null : { from: moves[0]!.from, to: moves.at(-1)!.to };
 }
 
 /** G7 and G16, recorded once the ratchet has moved, so a reader sees the round's decision rather than redoing it. */
 async function summarize(run: Run, round: number, rc: RoundContext, planned: PlannedRound, moved: Moved): Promise<RoundSummary> {
   const best = { head: moved.best.head, primary: median(moved.best.runs.map((result) => primaryOf(run, result))) };
-  const summary = { round, best, against: rc.against, keptIds: moved.kept, superseded: moved.superseded, ratchet: moved.move, quotaViolations: planned.violations, plannerRetried: planned.retried };
+  const decided = { keptIds: moved.kept, superseded: moved.superseded, ratchet: netMove(moved.moves), moves: moved.moves, reevals: moved.reevals };
+  const summary = { round, best, against: rc.against, ...decided, quotaViolations: planned.violations, plannerRetried: planned.retried };
   return recorded(run.ctx, `${arStepId("summary")}:${round}`, RoundSummarySchema, () => summary);
 }
 
@@ -294,6 +278,11 @@ async function archive(run: Run, round: number, record: RoundRecord): Promise<st
   return (await step(run.ctx, `${arStepId("archive")}:${round}`, { runId: run.ctx.runId, round, record }, ArchivedSchema)).path;
 }
 
+function unpicked(queue: readonly Idea[], picks: readonly Idea[]): Idea[] {
+  const picked = new Set(picks.map((idea) => idea.id));
+  return queue.filter((idea) => !picked.has(idea.id));
+}
+
 async function runRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
   const { ops, planned, cursor } = await roundOps(run, state, round);
   const queue = await nextQueue(run, state, ops, round);
@@ -302,17 +291,16 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
   const rc = roundContext(run, state, round, picks);
   const sigma = rc.band.sigma;
   const stops = await fanOut(run, rc, picks, round);
-  const moved = await ratchet(run, { ...state, ideas }, stops, round, sigma);
+  const moved = await settleWinners(rc, ideas, stops);
   await summarize(run, round, rc, planned, moved);
-  const picked = new Set(picks.map((idea) => idea.id));
-  const outcomes = finalOutcomes(stops, { sigma, superseded: moved.superseded });
+  const outcomes = finalOutcomes(stops, { sigma, superseded: moved.superseded, reevals: moved.reevals });
   const registries = outcomes.reduce((acc, outcome) => recordOutcome(acc, ideas.get(outcome.ideaId)!, outcome, round), recordAnalysis(state.registries, ops.analysis, round));
   const evidence = outcomes.map((outcome) => evidenceRow(round, outcome));
   const archived = await archive(run, round, { outcomes, digest: rc.digest, ops, draws, registries, evidence, ...(planned.planner ? { planner: planned.planner } : {}) });
   return {
     best: moved.best,
     noise: withPairs(state.noise, outcomes, run),
-    queue: [...queue.filter((idea) => !picked.has(idea.id)), ...moved.requeue],
+    queue: [...unpicked(queue, picks), ...moved.requeue],
     ideas,
     outcomes: [...state.outcomes, ...outcomes],
     evidence: [...state.evidence, ...evidence],
@@ -320,9 +308,27 @@ async function runRound(run: Run, state: LoopState, round: number): Promise<Loop
     keptLastRound: moved.kept,
     roundsWithoutGain: moved.kept.length > 0 ? 0 : state.roundsWithoutGain + 1,
     inboxCursor: cursor,
-    spend: addSpend(state.spend, outcomes, planned.usage),
+    spend: addSpend(state.spend, outcomes, planned.usage, moved.reevals),
     archives: archived === undefined ? state.archives : [...state.archives, archived],
+    snapshot: withKept(state.snapshot, outcomes, moved.kept),
   };
+}
+
+const snapshotRun = (run: Run): SnapshotRun | null => (run.settings.snapshot ? { ...run, settings: run.settings.snapshot } : null);
+
+/** With snapshots on, an open snapshot is synced before the round plans, and the cadence is checked once it is archived. */
+async function cadencedRound(run: Run, state: LoopState, round: number): Promise<LoopState> {
+  const snapshots = snapshotRun(run);
+  if (!snapshots) return runRound(run, state, round);
+  const synced = await syncOpen(snapshots, state, round);
+  return cutIfDue(snapshots, await runRound(run, synced, round), round);
+}
+
+/** The run ends with any due cut made, or pending behind the open one; it never waits for review. */
+async function finalCut(run: Run, state: LoopState, stopReason: StopReason): Promise<LoopState> {
+  const snapshots = snapshotRun(run);
+  if (!snapshots) return state;
+  return cutIfDue(snapshots, await syncOpen(snapshots, state, "end"), "end", stopReason);
 }
 
 /** A superseded winner goes back in the queue, so it is evaluated when it runs again, not twice. */
@@ -354,7 +360,8 @@ async function finish(run: Run, state: LoopState): Promise<void> {
   const { ctx } = run;
   const reason: StopReason = stopped(run, state) ?? "rounds-exhausted";
   const { stopReason } = await recorded(ctx, arStepId("end"), EndSchema, () => ({ stopReason: reason }));
-  await step(ctx, `${arStepId("registry")}:${phaseOf(run).id}`, { runId: ctx.runId, row: registryRow(run, state, stopReason) }, RegisteredSchema);
+  const final = await finalCut(run, state, stopReason);
+  await step(ctx, `${arStepId("registry")}:${phaseOf(run).id}`, { runId: ctx.runId, row: registryRow(run, final, stopReason) }, RegisteredSchema);
 }
 
 const EndSchema = z.object({ stopReason: StopReasonSchema });
@@ -367,7 +374,7 @@ export async function runAutoresearch(ctx: WorkflowContext): Promise<void> {
   if (overlap.length > 0) throw new Error(`[bounds-frozen] ${overlap.join(", ")}`);
   const run: Run = { ctx, pinned, settings, keep: pinned.target.metric, result: resultSchemaFor(pinned.target.metric) };
   const empty = { queue: [], ideas: new Map(), outcomes: [], evidence: [], registries: EMPTY_REGISTRIES, keptLastRound: [], roundsWithoutGain: 0, inboxCursor: 0, archives: [] };
-  let state: LoopState = { ...empty, ...(await baseline(run)) };
-  for (let round = 1; round <= settings.rounds && !stopped(run, state); round++) state = await runRound(run, state, round);
+  let state: LoopState = { ...empty, snapshot: startSnapshots(pinned.ratchetHead), ...(await baseline(run)) };
+  for (let round = 1; round <= settings.rounds && !stopped(run, state); round++) state = await cadencedRound(run, state, round);
   await finish(run, state);
 }

@@ -12,6 +12,8 @@ import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
+import { roundNudges, type RoundNudge } from "./round-nudge.js";
+import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -44,9 +46,10 @@ interface InboxList {
   readAt: string;
 }
 
-/** `inbox.list`'s answer: the owner queue, and the machine-derived rows that carry no action. */
+/** `inbox.list`'s answer: the owner queue, the machine-derived rows that carry no action, and the rounds waiting over six hours. */
 export interface InboxView extends InboxList {
   derived: DerivedRow[];
+  nudges: RoundNudge[];
 }
 
 export interface InboxSources extends ApprovalsSources {
@@ -254,10 +257,16 @@ async function readDerived({ shepherd, agents, now = Date.now }: InboxSources, l
   return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? [])] };
 }
 
+/** The queue read already reports an unreadable round as a gap, so a nudge read adds none of its own. */
+async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<RoundNudge[]> {
+  const read = await readQueueRounds(rounds);
+  return roundNudges(rounds.dir, read.rounds, now()).catch(() => []);
+}
+
 async function readInboxView(sources: InboxSources): Promise<InboxView> {
-  const { list, live } = await readOwnerQueue(sources);
+  const [{ list, live }, nudges] = await Promise.all([readOwnerQueue(sources), readNudges(sources)]);
   const derived = await readDerived(sources, live);
-  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value };
+  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 
 export function inboxViewCommands(sources: InboxSources) {
@@ -265,7 +274,7 @@ export function inboxViewCommands(sources: InboxSources) {
     "inbox.list": readCommand({
       name: "inbox.list",
       description:
-        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action",
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
       args: z.object({}),
       result: z.custom<InboxView>(),
       run: () => readInboxView(sources),

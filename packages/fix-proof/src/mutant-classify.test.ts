@@ -110,8 +110,25 @@ describe("classifyMutants", () => {
     expect(judged({ built: true, report: fileReport({ adds: "failed" }) }, baseline).results[0]?.outcome).toBe("baseline");
   });
 
-  it("a kills name the test file does not have is a baseline outcome", () => {
-    expect(judged({ built: true, report: fileReport({ adds: "failed" }) }, BASELINE, ["typo"]).results[0]?.outcome).toBe("baseline");
+  it("a kills name the loaded baseline has no test for is an error naming the spec, mutation and kill", () => {
+    const result = judged({ built: true, report: fileReport({ adds: "failed" }) }, BASELINE, ["typo"]);
+
+    expect(result).toEqual({ verdict: "error", results: [], error: `${SPEC}: mutation "flip" kills "typo", which names no test in ${TEST_FILE}` });
+  });
+
+  it("a kill given by its bare title under a describe is an error that names the full title", () => {
+    const baseline = fileReport({ "math adds": "passed", "math subtracts": "passed" });
+
+    const result = judged({ built: true, report: fileReport({ "math adds": "failed" }) }, baseline, ["adds"]);
+
+    expect(result.verdict).toBe("error");
+    expect(result.error).toBe(`${SPEC}: mutation "flip" kills "adds", which names no test in ${TEST_FILE}; did you mean "math adds"?`);
+  });
+
+  it("a baseline that failed to load leaves an unknown kill a baseline outcome, since no test names were read", () => {
+    const unloaded = { testResults: [{ name: TEST_FILE, status: "failed", assertionResults: [] }] };
+
+    expect(judged({ built: true, report: fileReport({ adds: "failed" }) }, unloaded, ["typo"]).results[0]?.outcome).toBe("baseline");
   });
 
   it("a declared mutation missing from the report is an error outcome", () => {

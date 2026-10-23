@@ -7,7 +7,7 @@
       "find": "|| freezes.live(repo, episode)) continue;",
       "replace": ") continue;",
       "kills": [
-        "a main gate on a merged PR once its freeze episode thawed > keeps the gate while the episode it asked about is still frozen"
+        "a main gate on a merged PR once its freeze episode thawed keeps the gate while the episode it asked about is still frozen"
       ]
     },
     {
@@ -16,8 +16,8 @@
       "find": "if (!dryRun) services.store.get().recordGateCancel(runId, reason, new Date(services.now?.() ?? Date.now()).toISOString());",
       "replace": "",
       "kills": [
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
       ]
     },
     {
@@ -26,7 +26,7 @@
       "find": "if (!dryRun && !cancelUnlessSettled(",
       "replace": "if (!cancelUnlessSettled(",
       "kills": [
-        "a main gate on a merged PR once its freeze episode thawed > a dry run lists the gate it would cancel and cancels nothing"
+        "a main gate on a merged PR once its freeze episode thawed a dry run lists the gate it would cancel and cancels nothing"
       ]
     },
     {
@@ -35,10 +35,10 @@
       "find": "report.closedMainGates = closeThawedMainGates(host, services, { dryRun });",
       "replace": "report.closedMainGates = [];",
       "kills": [
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing",
-        "a main gate on a merged PR once its freeze episode thawed > cancels an earlier episode's main-frozen gate once a later red froze the repo again, and leaves the new freeze",
-        "a main gate on a merged PR once its freeze episode thawed > a dry run lists the gate it would cancel and cancels nothing"
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed cancels an earlier episode's main-frozen gate once a later red froze the repo again, and leaves the new freeze",
+        "a main gate on a merged PR once its freeze episode thawed a dry run lists the gate it would cancel and cancels nothing"
       ]
     },
     {
@@ -47,17 +47,8 @@
       "find": "if (reason.startsWith(EPISODE_THAWED)) return undefined;",
       "replace": "",
       "kills": [
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
-        "a main gate on a merged PR once its freeze episode thawed > cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
-      ]
-    },
-    {
-      "name": "the run takes any cancel as a thaw",
-      "file": "products/factory/src/shepherd/thawed-main-gates.ts",
-      "find": "if (reason.startsWith(EPISODE_THAWED)) return undefined;",
-      "replace": "return undefined;",
-      "kills": [
-        "a main gate cancelled for another reason > still fails the run, and records no gate-cancel event"
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
+        "a main gate on a merged PR once its freeze episode thawed cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
       ]
     }
   ]

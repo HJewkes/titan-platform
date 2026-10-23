@@ -1,7 +1,10 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import { deployCheckoutAncestry, type AncestryProbe } from "../build-ancestry.js";
 import { FACTORY_REPO } from "../build-info.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { gitBehindMain } from "../test-support/git-line.js";
 import { H1, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -9,7 +12,7 @@ import { sleep } from "../workflows/land.js";
 import { DEPLOY_QUIET_MS, noteWanted, pacerTick, readWanted, writeWanted, type WantedStore } from "./deploy-pacer.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { redeploy, systemDeployer, type DeployerPorts } from "./redeploy.js";
+import { redeploy, systemDeployer, type DeployerPorts, type Redeploy } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
 
 const OWN_REPO = FACTORY_REPO!;
@@ -119,13 +122,85 @@ describe("a burst of merges whose own main CI was cancelled under one green tip 
     expect(readWanted("/state", store)).toBeUndefined();
   });
 
-  it("spawns the green tip, not the merge sha, when no pacer queue is wired", () => {
+  it("spawns the green tip, not the merge sha, when no pacer queue is wired", async () => {
     const spawned: string[] = [];
     const deployer = { runningSha: () => RUNNING, spawn: (sha: string) => (spawned.push(sha), { pid: 4242, log: "/state/redeploy.log" }) };
 
-    const result = redeploy(deployer, { repo: OWN_REPO, pr: 1, mergeSha: fakeSha("cancelled-merge"), greenSha: TIP });
+    const result = await redeploy(deployer, { repo: OWN_REPO, pr: 1, mergeSha: fakeSha("cancelled-merge"), greenSha: TIP });
 
     expect(spawned).toEqual([TIP]);
     expect(result.detail).toContain(`deploys ${TIP}`);
+  });
+});
+
+describe("an older merge whose own main run goes green after a newer sha is queued (TP-3963)", () => {
+  const OLDER = fakeSha("older-merge");
+  const NEWER = fakeSha("newer-merge");
+  const UNRELATED = fakeSha("unrelated-merge");
+  /** Main runs OLDER then NEWER; UNRELATED shares no line with either. */
+  const isAncestor = async (ancestor: string, descendant: string) => ancestor === OLDER && descendant === NEWER;
+
+  async function queue(store: WantedStore, sha: string, probe: AncestryProbe = isAncestor): Promise<Redeploy> {
+    const deployer = { ...systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => new Date(AT), isAncestor: probe }, queueOnlyPorts, store), runningSha: () => RUNNING };
+    return redeploy(deployer, { repo: OWN_REPO, pr: 1, mergeSha: sha });
+  }
+
+  it("keeps the newer queued sha, so the pacer deploys it and not the older merge", async () => {
+    const store = memoryStore();
+    await queue(store, NEWER);
+
+    await queue(store, OLDER);
+
+    expect(tickAfterQuiet(store)).toEqual([NEWER]);
+  });
+
+  it("does not clear the newer queued sha because the running build holds the older merge", async () => {
+    const store = memoryStore();
+    await queue(store, NEWER);
+    await queue(store, OLDER);
+
+    expect(tickAfterQuiet(store, (sha) => sha === OLDER)).toEqual([NEWER]);
+  });
+
+  it("still replaces the queued sha with a newer merge that contains it", async () => {
+    const store = memoryStore();
+    await queue(store, OLDER);
+
+    await queue(store, NEWER);
+
+    expect(readWanted("/state", store)?.sha).toBe(NEWER);
+  });
+
+  it("still replaces the queued sha with an unrelated later merge", async () => {
+    const store = memoryStore();
+    await queue(store, NEWER);
+
+    await queue(store, UNRELATED);
+
+    expect(readWanted("/state", store)?.sha).toBe(UNRELATED);
+  });
+
+  it("keeps the newer queued sha when neither merge is in the deploy checkout yet", async () => {
+    const behind = gitBehindMain();
+    try {
+      const store = memoryStore();
+      const probe = deployCheckoutAncestry(behind.checkout);
+      await queue(store, behind.newer, probe);
+
+      await queue(store, behind.older, probe);
+
+      expect(readWanted("/state", store)?.sha).toBe(behind.newer);
+    } finally {
+      rmSync(behind.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces the queued sha when git cannot tell, as before the guard", async () => {
+    const store = memoryStore();
+    await queue(store, NEWER);
+
+    await queue(store, OLDER, async () => ({ unknown: "git merge-base exited 128: bad object" }));
+
+    expect(readWanted("/state", store)?.sha).toBe(OLDER);
   });
 });

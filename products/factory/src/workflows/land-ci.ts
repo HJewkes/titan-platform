@@ -3,6 +3,7 @@ import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPe
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import type { HeadObserver } from "../head-guard/head-regression.js";
+import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -36,6 +37,8 @@ export interface CiSnapshot {
   readAt?: number;
   /** The required contexts this read was judged on: the base's live list, or the recorded one when the live read failed. */
   contexts?: string[];
+  /** On a `pending` read: jobs still open under a completed workflow run past the grace, which land reruns once per head. */
+  orphaned?: OrphanedCheck[];
 }
 
 export interface CiInput {

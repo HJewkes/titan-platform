@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import type { AncestryProbe } from "../build-ancestry.js";
 import { buildSha, FACTORY_REPO } from "../build-info.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, readWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./deploy-pacer.js";
@@ -33,7 +34,7 @@ export interface Deployer {
   runningSha: () => string;
   spawn: (mergeSha: string) => { pid: number | undefined; log: string };
   /** Queues the sha for serve's deploy pacer instead of spawning; absent means every merge spawns. */
-  request?: (mergeSha: string) => Redeploy;
+  request?: (mergeSha: string) => Redeploy | Promise<Redeploy>;
 }
 
 export const isFactoryRepo = (repo: string, factoryRepo = FACTORY_REPO): boolean => factoryRepo !== undefined && repo.toLowerCase() === factoryRepo.toLowerCase();
@@ -45,7 +46,7 @@ export async function redeployStep(ctx: WorkflowContext, input: RedeployInput): 
 }
 
 /** A service already built from the sha is the restart this step caused, so it spawns nothing. Never throws, so a failed spawn cannot stop unfreeze and cleanup. */
-export function redeploy(deployer: Deployer | undefined, input: RedeployInput): Redeploy {
+export async function redeploy(deployer: Deployer | undefined, input: RedeployInput): Promise<Redeploy> {
   if (!deployer) return { spawned: false, detail: "no deployer wired" };
   const sha = input.greenSha ?? input.mergeSha;
   if (deployer.runningSha() === sha) return { spawned: false, detail: `the service already runs ${sha}` };
@@ -61,16 +62,16 @@ export function redeploy(deployer: Deployer | undefined, input: RedeployInput): 
   return { spawned: true, pid, log, detail: `deployer pid ${pid} deploys ${sha}, logging to ${log}` };
 }
 
-function requestDeploy(request: NonNullable<Deployer["request"]>, mergeSha: string): Redeploy {
+async function requestDeploy(request: NonNullable<Deployer["request"]>, mergeSha: string): Promise<Redeploy> {
   try {
-    return request(mergeSha);
+    return await request(mergeSha);
   } catch (error) {
     return { spawned: false, detail: `the deploy was not queued: ${failureOf(error)}` };
   }
 }
 
 export function redeployRoute(now: () => number, deployer?: Deployer): StepRoute {
-  return codeRoute(REDEPLOY_STEP, now, async (input: RedeployInput) => redeploy(deployer, input));
+  return codeRoute(REDEPLOY_STEP, now, (input: RedeployInput) => redeploy(deployer, input));
 }
 
 /** The effects `systemDeployer` has; tests pass fakes, so none of them starts a process. */
@@ -107,6 +108,8 @@ export interface DeployerOptions {
   node?: string;
   now?: () => Date;
   platform?: NodeJS.Platform;
+  /** Lets the queue keep a newer queued sha over an older merge it contains; absent means the last merge queued wins. */
+  isAncestor?: AncestryProbe;
 }
 
 export const SYSTEMD_RUN = "systemd-run";
@@ -175,12 +178,21 @@ function startUnderSystemd(ports: DeployerPorts, log: string, cwd: string, unit:
 const minutes = (ms: number): number => ms / 60_000;
 const QUEUED_DETAIL = `deploys after ${minutes(DEPLOY_QUIET_MS)} min with no newer merge, at most ${minutes(DEPLOY_MAX_WAIT_MS)} min after the first`;
 
-/** Serve's deploy pacer spawns later, through `deployPacerPorts`. */
-function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store: WantedStore, mergeSha: string): Redeploy {
+/** The queued sha when git shows it contains `mergeSha`; no answer leaves it to be replaced, as before. */
+async function queuedHolding(options: DeployerOptions, store: WantedStore, mergeSha: string): Promise<string | undefined> {
+  const queued = readWanted(options.stateDir, store)?.sha;
+  if (queued === undefined || options.isAncestor === undefined) return undefined;
+  return (await options.isAncestor(mergeSha, queued)) === true ? queued : undefined;
+}
+
+/** Serve's deploy pacer spawns later, through `deployPacerPorts`. The record is read again after the probe, so a sha queued meanwhile is not kept by a stale answer. */
+async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store: WantedStore, mergeSha: string): Promise<Redeploy> {
   const now = (options.now?.() ?? new Date()).getTime();
   ports.mkdir(options.stateDir);
-  writeWanted(options.stateDir, store, noteWanted(readWanted(options.stateDir, store), mergeSha, now));
-  return { spawned: false, queued: true, detail: `queued ${mergeSha}; ${QUEUED_DETAIL}` };
+  const heldBy = await queuedHolding(options, store, mergeSha);
+  writeWanted(options.stateDir, store, noteWanted(readWanted(options.stateDir, store), mergeSha, now, heldBy));
+  const detail = heldBy === undefined ? `queued ${mergeSha}; ${QUEUED_DETAIL}` : `kept the queued ${heldBy}, which contains ${mergeSha}`;
+  return { spawned: false, queued: true, detail };
 }
 
 /** The pacer spawns through the same deployer, so both paths share A0's unit naming and log. */

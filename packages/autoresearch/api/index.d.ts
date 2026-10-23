@@ -165,6 +165,16 @@ declare const ImplementerSchema: z.ZodObject<{
     }>;
     account: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
+/** What re-evaluating a later winner on top of the round's new head decided; `vs` is that head. */
+declare const ReevalVerdictSchema: z.ZodObject<{
+    vs: z.ZodString;
+    decision: z.ZodEnum<{
+        kept: "kept";
+        rejected: "rejected";
+        requeued: "requeued";
+    }>;
+    reason: z.ZodString;
+}, z.core.$strip>;
 /** How one idea's ladder ended; every stop is recorded, never thrown, so siblings keep running. */
 declare const OutcomeSchema: z.ZodObject<{
     ideaId: z.ZodString;
@@ -254,6 +264,15 @@ declare const OutcomeSchema: z.ZodObject<{
         implementUsd: z.ZodNumber;
         evalUsd: z.ZodNumber;
         microUsd: z.ZodNumber;
+    }, z.core.$strip>>;
+    reeval: z.ZodOptional<z.ZodObject<{
+        vs: z.ZodString;
+        decision: z.ZodEnum<{
+            kept: "kept";
+            rejected: "rejected";
+            requeued: "requeued";
+        }>;
+        reason: z.ZodString;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 type Outcome = z.infer<typeof OutcomeSchema>;
@@ -639,6 +658,12 @@ interface RunPin {
     pin: string;
     frozenHash?: string;
 }
+/** `ff` moves onto the round's first winner, `merge` onto a later winner merged on top of it, `sync` onto main merged in. */
+declare const RatchetKindSchema: z.ZodEnum<{
+    sync: "sync";
+    ff: "ff";
+    merge: "merge";
+}>;
 interface RatchetRequest extends RunPin {
     tree: string;
     ratchetRef: string;
@@ -646,8 +671,9 @@ interface RatchetRequest extends RunPin {
     from: string;
     to: string;
     round: number;
-    ideaId: string;
-    kind: "ff";
+    /** Absent only for a `sync`, which moves onto main rather than an idea. */
+    ideaId?: string;
+    kind: z.infer<typeof RatchetKindSchema>;
     keepRung: string;
     delta: number;
     sigma: number;
@@ -695,6 +721,74 @@ interface RoundRecord {
     /** Absent when the host's planner reports no agent. */
     planner?: Planner;
 }
+/** Merges a later winner onto the round's new head in the integration tree; never pushes. */
+interface IntegrateRequest {
+    runId: string;
+    tree: string;
+    base: string;
+    head: string;
+    message: string;
+    /** The step's first start, which the merge commit is dated with, so a restart rebuilds the same sha. */
+    at?: string;
+}
+/** `skipped` is the answer of a host with no integrate port: the winner is requeued, never kept on its solo run. */
+declare const IntegrateResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    merged: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    conflict: z.ZodArray<z.ZodString>;
+}, z.core.$strip>, z.ZodObject<{
+    skipped: z.ZodLiteral<"no-integrate">;
+}, z.core.$strip>]>;
+type IntegrateResult = z.infer<typeof IntegrateResultSchema>;
+/** One later winner's re-evaluation on top of the round's new head `vs`; `from` is the head its solo ladder ran against. */
+declare const ReevalSchema: z.ZodObject<{
+    ideaId: z.ZodString;
+    from: z.ZodString;
+    vs: z.ZodString;
+    merge: z.ZodNullable<z.ZodString>;
+    conflict: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    l0: z.ZodOptional<z.ZodObject<{
+        ok: z.ZodBoolean;
+        code: z.ZodOptional<z.ZodString>;
+        checks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            ok: z.ZodBoolean;
+            code: z.ZodOptional<z.ZodString>;
+            ms: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strip>>>;
+    }, z.core.$strip>>;
+    runs: z.ZodArray<z.ZodObject<{
+        schema: z.ZodLiteral<"ar-result/v2">;
+        case: z.ZodString;
+        repeat: z.ZodString;
+        metrics: z.ZodRecord<z.ZodString, z.ZodNumber>;
+        gates: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodBoolean>>;
+        violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        usd: z.ZodNumber;
+        wall_s: z.ZodNumber;
+        rung: z.ZodOptional<z.ZodString>;
+        evaluator_pin: z.ZodOptional<z.ZodString>;
+        artifact_dir: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    delta: z.ZodOptional<z.ZodNumber>;
+    decision: z.ZodEnum<{
+        kept: "kept";
+        rejected: "rejected";
+        requeued: "requeued";
+    }>;
+    reason: z.ZodString;
+}, z.core.$strip>;
+type Reeval = z.infer<typeof ReevalSchema>;
+declare const RatchetMoveSchema: z.ZodObject<{
+    from: z.ZodString;
+    to: z.ZodString;
+    kind: z.ZodEnum<{
+        sync: "sync";
+        ff: "ff";
+        merge: "merge";
+    }>;
+    ideaId: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
 /** G7 and G16: what a round decided, recorded after its ratchet so a reader never re-derives it. */
 declare const RoundSummarySchema: z.ZodObject<{
     round: z.ZodNumber;
@@ -718,6 +812,53 @@ declare const RoundSummarySchema: z.ZodObject<{
     }, z.core.$strip>>;
     quotaViolations: z.ZodArray<z.ZodString>;
     plannerRetried: z.ZodBoolean;
+    moves: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        from: z.ZodString;
+        to: z.ZodString;
+        kind: z.ZodEnum<{
+            sync: "sync";
+            ff: "ff";
+            merge: "merge";
+        }>;
+        ideaId: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>>;
+    reevals: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        ideaId: z.ZodString;
+        from: z.ZodString;
+        vs: z.ZodString;
+        merge: z.ZodNullable<z.ZodString>;
+        conflict: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        l0: z.ZodOptional<z.ZodObject<{
+            ok: z.ZodBoolean;
+            code: z.ZodOptional<z.ZodString>;
+            checks: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                ok: z.ZodBoolean;
+                code: z.ZodOptional<z.ZodString>;
+                ms: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strip>>>;
+        }, z.core.$strip>>;
+        runs: z.ZodArray<z.ZodObject<{
+            schema: z.ZodLiteral<"ar-result/v2">;
+            case: z.ZodString;
+            repeat: z.ZodString;
+            metrics: z.ZodRecord<z.ZodString, z.ZodNumber>;
+            gates: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodBoolean>>;
+            violations: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+            usd: z.ZodNumber;
+            wall_s: z.ZodNumber;
+            rung: z.ZodOptional<z.ZodString>;
+            evaluator_pin: z.ZodOptional<z.ZodString>;
+            artifact_dir: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
+        delta: z.ZodOptional<z.ZodNumber>;
+        decision: z.ZodEnum<{
+            kept: "kept";
+            rejected: "rejected";
+            requeued: "requeued";
+        }>;
+        reason: z.ZodString;
+    }, z.core.$strip>>>;
 }, z.core.$strip>;
 type RoundSummary = z.infer<typeof RoundSummarySchema>;
 declare const StopReasonSchema: z.ZodEnum<{
@@ -726,6 +867,107 @@ declare const StopReasonSchema: z.ZodEnum<{
     "rounds-exhausted": "rounds-exhausted";
 }>;
 type StopReason = z.infer<typeof StopReasonSchema>;
+declare const CadenceTriggerSchema: z.ZodEnum<{
+    kept: "kept";
+    "phase-end": "phase-end";
+    spend: "spend";
+}>;
+type CadenceTrigger = z.infer<typeof CadenceTriggerSchema>;
+/** A cut or a sync after the last round is round `end`. */
+declare const CadenceRoundSchema: z.ZodUnion<readonly [z.ZodNumber, z.ZodLiteral<"end">]>;
+type CadenceRound = z.infer<typeof CadenceRoundSchema>;
+/** What a snapshot PR's body is rendered from: aggregates only, so no case name or per-case number reaches the PR. */
+declare const SnapshotLogSchema: z.ZodObject<{
+    phase: z.ZodString;
+    trigger: z.ZodEnum<{
+        kept: "kept";
+        "phase-end": "phase-end";
+        spend: "spend";
+    }>;
+    round: z.ZodUnion<readonly [z.ZodNumber, z.ZodLiteral<"end">]>;
+    from: z.ZodString;
+    to: z.ZodString;
+    kept: z.ZodArray<z.ZodObject<{
+        ideaId: z.ZodString;
+        delta: z.ZodOptional<z.ZodNumber>;
+        sigma: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>;
+    spentSince: z.ZodObject<{
+        agentUsd: z.ZodNumber;
+        modelUsd: z.ZodNumber;
+    }, z.core.$strip>;
+}, z.core.$strip>;
+type SnapshotLog = z.infer<typeof SnapshotLogSchema>;
+/** Cuts snapshot `k` at a ratchet sha: tag, PR branch with one log commit, the PR, and its Shepherd registration. */
+interface SnapshotRequest extends RunPin {
+    k: number;
+    trigger: CadenceTrigger;
+    round: CadenceRound;
+    sha: string;
+    ratchetRef: string;
+    ratchetPrefix: string;
+    log: SnapshotLog;
+    /** The step's first start, which the log commit is dated with, so a restart rebuilds the same sha. */
+    at?: string;
+}
+declare const SnapshotCutSchema: z.ZodObject<{
+    k: z.ZodNumber;
+    tag: z.ZodString;
+    sha: z.ZodString;
+    branch: z.ZodString;
+    pr: z.ZodNumber;
+    url: z.ZodOptional<z.ZodString>;
+    shepherdRunId: z.ZodOptional<z.ZodString>;
+    logSha: z.ZodString;
+}, z.core.$strip>;
+/** `failed` is the recorded answer of a port that threw, so a replay reads the same failure instead of cutting again. */
+declare const SnapshotResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    k: z.ZodNumber;
+    tag: z.ZodString;
+    sha: z.ZodString;
+    branch: z.ZodString;
+    pr: z.ZodNumber;
+    url: z.ZodOptional<z.ZodString>;
+    shepherdRunId: z.ZodOptional<z.ZodString>;
+    logSha: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    failed: z.ZodString;
+}, z.core.$strip>]>;
+/** Reads the open snapshot PR and, once it merged, merges main into the ratchet; `resolved` is an owner's merge to move onto instead. */
+interface SyncRequest extends RunPin {
+    round: CadenceRound;
+    pr: number;
+    branch: string;
+    /** The ratchet head the run holds as B. */
+    head: string;
+    ratchetRef: string;
+    ratchetPrefix: string;
+    tree: string;
+    resolved?: string;
+    /** With `resolved`: the frozen paths the held gate showed the owner, the only ones the resolved merge may change. */
+    allowedFrozen?: string[];
+    at?: string;
+}
+/**
+ * `treeChanged` compares the tree outside the snapshot log dir, since the log commit alone would always change it.
+ * `conflict` and `frozen` leave the ratchet where it was.
+ */
+declare const SyncResultSchema: z.ZodObject<{
+    state: z.ZodEnum<{
+        merged: "merged";
+        open: "open";
+        closed: "closed";
+    }>;
+    merged: z.ZodOptional<z.ZodObject<{
+        from: z.ZodString;
+        to: z.ZodString;
+        main: z.ZodString;
+    }, z.core.$strip>>;
+    conflict: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    frozen: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    treeChanged: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strip>;
+type SyncResult = z.infer<typeof SyncResultSchema>;
 declare const InboxSchema: z.ZodObject<{
     ideas: z.ZodArray<z.ZodObject<{
         hypothesis: z.ZodString;
@@ -851,6 +1093,15 @@ interface ArPorts {
     ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{
         head: string;
     }>;
+    /**
+     * Merges a later winner onto the round's new head in the integration tree, or names the conflicting files after
+     * aborting; it never pushes. A host without it has every later winner requeued.
+     */
+    integrate?(input: IntegrateRequest, signal: AbortSignal): Promise<IntegrateResult>;
+    /** Cuts a snapshot PR; every sub-write is idempotent. A host with none never cuts, and its run sets no `snapshot` settings. */
+    snapshot?(input: SnapshotRequest, signal: AbortSignal): Promise<z.input<typeof SnapshotCutSchema>>;
+    /** Reads the open snapshot PR and syncs main back into the ratchet; never rebases or force-pushes. */
+    sync?(input: SyncRequest, signal: AbortSignal): Promise<z.input<typeof SyncResultSchema>>;
     /** Parks the tree: checkout removed, branch kept. */
     releaseTree(input: {
         tree: string;
@@ -885,6 +1136,13 @@ interface ArPorts {
     now(): number;
 }
 
+/**
+ * The autoresearch recipe: pin, baseline, then rounds of plan, select and a pipelined ladder per idea,
+ * with the strongest winner moving the ratchet. Everything outside the run goes through `ArPorts`.
+ *
+ * Inspired by Andrej Karpathy's autoresearch, https://github.com/karpathy/autoresearch (MIT); no code copied.
+ */
+
 declare const AUTORESEARCH_WORKFLOW = "autoresearch";
 /** Plan 4.5: after a KEEP, this many follow-ups of the winner resume its implementer; every `basinEvery`th round all lanes explore. */
 declare const ForkScheduleSchema: z.ZodObject<{
@@ -904,33 +1162,44 @@ declare const RunSettingsSchema: z.ZodObject<{
         }, z.core.$strip>>;
         basinEvery: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
+    snapshot: z.ZodOptional<z.ZodObject<{
+        keptIdeas: z.ZodDefault<z.ZodNumber>;
+        spendUsd: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 type RunSettings = z.infer<typeof RunSettingsSchema>;
-/**
- * The outcomes a round settles on: each superseded winner stopped, every outcome stamped with the round's σ.
- * The recipe and any reader of the recorded stops share it, so they cannot disagree.
- */
-declare function finalOutcomes(stops: readonly Outcome[], { sigma, superseded }: {
+interface Settled {
     sigma: number;
     superseded: readonly string[];
-}): Outcome[];
+    /** Absent for a round recorded before concurrent winners. */
+    reevals?: readonly Reeval[];
+}
+/**
+ * The outcomes a round settles on: each requeued winner stopped as superseded, each winner the new head rejected
+ * rejected, every re-evaluated one carrying its `reeval`, and every outcome stamped with the round's σ.
+ * The recipe and any reader of the recorded stops share it, so they cannot disagree.
+ */
+declare function finalOutcomes(stops: readonly Outcome[], { sigma, superseded, reevals }: Settled): Outcome[];
 /** The workflow function; a host registers it under `AUTORESEARCH_WORKFLOW` with routes for every dispatch step. */
 declare function runAutoresearch(ctx: WorkflowContext): Promise<void>;
 
-declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "release", "load-wait", "archive", "inbox", "validate", "registry"];
+declare const AR_DISPATCH_STEPS: readonly ["pin", "eval", "plan", "alloc", "implement", "l0", "l1", "ratchet", "integrate", "snapshot", "sync", "release", "load-wait", "archive", "inbox", "validate", "registry"];
 type ArDispatchStep = (typeof AR_DISPATCH_STEPS)[number];
 /**
  * Pure decisions recorded so a replay reads them back instead of recomputing: the queue, the draws, each ladder's
- * lane slot and stop, each round's summary and why the loop ended.
+ * lane slot and stop, each later winner's re-evaluation, each round's summary, each snapshot cadence and why the loop ended.
  */
-declare const AR_SEED_STEPS: readonly ["queue", "select", "lane", "stop", "summary", "end"];
+declare const AR_SEED_STEPS: readonly ["queue", "select", "lane", "stop", "reeval", "summary", "cadence", "end"];
 type ArSeedStep = (typeof AR_SEED_STEPS)[number];
+/** The owner's answer to a sync that main cannot merge into the ratchet without help. */
+declare const AR_GATE_STEPS: readonly ["sync-gate"];
+type ArGateStep = (typeof AR_GATE_STEPS)[number];
 /** A step family and the context call that runs it; a host that guards step kinds reads this. */
 interface ArStepDeclaration {
     id: string;
-    kind: "dispatch" | "seed";
+    kind: "dispatch" | "seed" | "assisted";
 }
-declare const arStepId: (name: ArDispatchStep | ArSeedStep) => string;
+declare const arStepId: (name: ArDispatchStep | ArSeedStep | ArGateStep) => string;
 declare const AUTORESEARCH_STEPS: readonly ArStepDeclaration[];
 
 /**
@@ -958,10 +1227,82 @@ interface ArStepHandler {
 }
 /**
  * Every step but the ratchet only reads, writes inside its own idea tree or rewrites its own round archive, so a restart repeats it;
- * a repeated registry row carries the same run and phase, so a host's reader keeps the last.
- * A ratchet push cut off mid-way may have moved the remote, so a person decides.
+ * a repeated registry row carries the same run and phase, so a host's reader keeps the last. An integrate re-checks-out its
+ * base and merges with the step's first start as the date, so a repeat rebuilds the same commit; so does a snapshot's
+ * log commit, and its tag, branch, PR and registration are each idempotent.
+ * A ratchet push or a sync cut off mid-way may have moved the remote, so a person decides.
  */
 declare function arStepHandlers(ports: ArPorts): ArStepHandler[];
+
+/**
+ * Snapshot cadence and ar-sync (plan 4.10, 4.11): kept work reaches main through tag-pinned snapshot PRs, one open at a
+ * time, cut at round boundaries; once one merges, main merges back into the ratchet so the next PR diffs only new work.
+ * The loop never waits on review. Its only wait is an owner's answer to a sync that main cannot merge in cleanly.
+ */
+
+/** Cut once this many ideas were kept, or this many agent plus model dollars were spent, since the last cut. */
+declare const SnapshotSettingsSchema: z.ZodObject<{
+    keptIdeas: z.ZodDefault<z.ZodNumber>;
+    spendUsd: z.ZodDefault<z.ZodNumber>;
+}, z.core.$strip>;
+type SnapshotSettings = z.infer<typeof SnapshotSettingsSchema>;
+type Spend = Pick<RegistryRow["spend"], "agentUsd" | "modelUsd">;
+type KeptRow = SnapshotLog["kept"][number];
+/** What a cut leaves behind; a PR closed unmerged hands `carried` back, so its work rolls into the next cut. */
+interface OpenSnapshot {
+    k: number;
+    pr: number;
+    branch: string;
+    tag: string;
+    sha: string;
+    carried: {
+        kept: KeptRow[];
+        from: string;
+    };
+}
+interface SnapshotState {
+    /** The last cut's number; the next cut is `k + 1`. */
+    k: number;
+    open: OpenSnapshot | null;
+    /** Ideas kept since the last cut. */
+    kept: KeptRow[];
+    /** The run's spend when the last cut was made. */
+    spentAt: Spend;
+    /** The ratchet head the last cut tagged. */
+    from: string;
+}
+declare const CadenceSchema: z.ZodObject<{
+    due: z.ZodBoolean;
+    trigger: z.ZodNullable<z.ZodEnum<{
+        kept: "kept";
+        "phase-end": "phase-end";
+        spend: "spend";
+    }>>;
+    blockedBy: z.ZodNullable<z.ZodLiteral<"open">>;
+    keptSince: z.ZodNumber;
+    spentSince: z.ZodNumber;
+}, z.core.$strip>;
+type Cadence = z.infer<typeof CadenceSchema>;
+/**
+ * Whether a cut is due: the phase ending, then kept ideas, then spend. Nothing kept since the last cut means nothing to
+ * ship, so no trigger fires. One snapshot is open at a time, so a due cut waits while one is.
+ */
+declare function cadence(snapshot: SnapshotState, spend: Spend, settings: SnapshotSettings, end?: StopReason): Cadence;
+/** The snapshot PR's log: kept ids with Δ and σ, the spend since the last cut, the shas it spans and the phase. */
+declare function snapshotLog(phase: string, ledger: Ledger, round: CadenceRound, trigger: CadenceTrigger): SnapshotLog;
+/** The part of the loop's state cadence and sync move. */
+interface Ledger {
+    best: {
+        head: string;
+        runs: ArResult[];
+    };
+    spend: RegistryRow["spend"];
+    snapshot: SnapshotState;
+}
+/** The owner's merge of main into the ratchet; the sync port moves onto it only when it contains both. */
+declare const SyncGateAnswerSchema: z.ZodObject<{
+    resolved: z.ZodString;
+}, z.core.$loose>;
 
 declare const BoundsSchema: z.ZodObject<{
     schema: z.ZodLiteral<"ar-bounds/v1">;
@@ -1184,8 +1525,35 @@ interface ArRoundView {
         plannerTopK: string[];
     };
     ladders: ArLadderView[];
+    /** The net move; `moves` holds each step of it. */
     ratchet: RoundSummary["ratchet"];
+    moves: z.infer<typeof RatchetMoveSchema>[];
+    reevals: ArReevalView[];
 }
+/** A later winner's re-evaluation on top of the round's new head, with its runs named as the console names them. */
+type ArReevalView = Omit<Reeval, "runs"> & {
+    runs: ArEvalView[];
+};
+/** A cut snapshot, with the trigger and round its recorded cadence decided. */
+type ArSnapshotView = Omit<z.infer<typeof SnapshotCutSchema>, "shepherdRunId"> & {
+    trigger: CadenceTrigger;
+    round: CadenceRound;
+};
+/**
+ * One sync of the open snapshot PR. `conflict` and `frozen` say why a gate held; the other fields are where it settled.
+ * `runs` are B's re-measure after main changed the tree, kept out of every ladder.
+ */
+type ArSyncView = SyncResult & {
+    round: CadenceRound;
+    pr: number;
+    gate?: {
+        answered: boolean;
+        resolved?: string;
+    };
+    runs?: ArEvalView[];
+    /** Why the sync failed; the PR stays open and the next round's sync retries it. */
+    failed?: string;
+};
 interface ArRunView {
     runId: string;
     status: WorkflowStatus;
@@ -1207,6 +1575,12 @@ interface ArRunView {
         maxLooks: number;
         looks: LookAggregate[];
     };
+    snapshots: ArSnapshotView[];
+    /** A phase-end cut that waited behind the open snapshot when the run ended. */
+    snapshotPending: {
+        trigger: CadenceTrigger;
+    } | null;
+    syncs: ArSyncView[];
 }
 interface ArRunSummary {
     runId: string;
@@ -1220,6 +1594,11 @@ interface ArRunSummary {
     /** Null until every baseline eval is recorded. */
     best: RoundSummary["best"] | null;
     spend: number;
+    /** The snapshot whose PR no sync has yet seen merged or closed. */
+    openSnapshot: {
+        k: number;
+        pr: number;
+    } | null;
 }
 
 /**
@@ -1242,4 +1621,4 @@ declare function ideaRefs(run: WorkflowRun, ideaId: string): {
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
 declare function arRunView(run: WorkflowRun, looks?: readonly WorkflowRun[]): ArRunView | null;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArStepDeclaration, type ArStepHandler, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, type RatchetRequest, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArReevalView, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArSnapshotView, type ArStepDeclaration, type ArStepHandler, type ArSyncView, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type Cadence, type CadenceRound, CadenceRoundSchema, CadenceSchema, type CadenceTrigger, CadenceTriggerSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, SnapshotCutSchema, type SnapshotLog, SnapshotLogSchema, type SnapshotRequest, SnapshotResultSchema, type SnapshotSettings, SnapshotSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, SyncGateAnswerSchema, type SyncRequest, type SyncResult, SyncResultSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cadence, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, snapshotLog, toIdea, zeroToleranceHit };

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any containing sha keeps whatever is queued",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "previous.sha === heldBy)",
+      "replace": "heldBy !== undefined)",
+      "kills": [
+        "deploy pacer a containing sha that is no longer the queued one does not keep it"
+      ]
+    },
+    {
+      "name": "an older sha replaces a queued sha that contains it",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": " || (previous !== undefined && previous.sha === heldBy)",
+      "replace": "",
+      "kills": [
+        "deploy pacer an older sha the queued one contains keeps the queued record, spawn mark and all"
+      ]
+    }
+  ]
+}

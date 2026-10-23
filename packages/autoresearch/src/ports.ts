@@ -2,7 +2,7 @@ import { z } from "zod";
 import { BoundsSchema } from "./bounds.js";
 import type { Digest, EvidenceRow } from "./digest.js";
 import type { Registries } from "./registry.js";
-import { AgainstSchema, DiffSizeSchema, ImplementerSchema, L0RecordSchema, ProposalSchema, TargetSchema, type ArMicro, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
+import { AgainstSchema, ArResultSchema, DiffSizeSchema, ImplementerSchema, L0RecordSchema, ProposalSchema, ReevalVerdictSchema, TargetSchema, type ArMicro, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
 
 export const PinnedSchema = z.object({
   pin: z.string(),
@@ -54,6 +54,9 @@ export interface RunPin {
   frozenHash?: string;
 }
 
+/** `ff` moves onto the round's first winner, `merge` onto a later winner merged on top of it, `sync` onto main merged in. */
+export const RatchetKindSchema = z.enum(["ff", "merge", "sync"]);
+
 export interface RatchetRequest extends RunPin {
   tree: string;
   ratchetRef: string;
@@ -61,8 +64,9 @@ export interface RatchetRequest extends RunPin {
   from: string;
   to: string;
   round: number;
-  ideaId: string;
-  kind: "ff";
+  /** Absent only for a `sync`, which moves onto main rather than an idea. */
+  ideaId?: string;
+  kind: z.infer<typeof RatchetKindSchema>;
   keepRung: string;
   delta: number;
   sigma: number;
@@ -112,22 +116,140 @@ export interface RoundRecord {
   planner?: Planner;
 }
 
+/** Merges a later winner onto the round's new head in the integration tree; never pushes. */
+export interface IntegrateRequest {
+  runId: string;
+  tree: string;
+  base: string;
+  head: string;
+  message: string;
+  /** The step's first start, which the merge commit is dated with, so a restart rebuilds the same sha. */
+  at?: string;
+}
+
+/** `skipped` is the answer of a host with no integrate port: the winner is requeued, never kept on its solo run. */
+export const IntegrateResultSchema = z.union([z.object({ merged: z.string() }), z.object({ conflict: z.array(z.string()) }), z.object({ skipped: z.literal("no-integrate") })]);
+export type IntegrateResult = z.infer<typeof IntegrateResultSchema>;
+
+/** One later winner's re-evaluation on top of the round's new head `vs`; `from` is the head its solo ladder ran against. */
+export const ReevalSchema = z.object({
+  ideaId: z.string(),
+  from: z.string(),
+  vs: z.string(),
+  merge: z.string().nullable(),
+  conflict: z.array(z.string()).optional(),
+  l0: L0RecordSchema.optional(),
+  runs: z.array(ArResultSchema),
+  delta: z.number().optional(),
+  decision: ReevalVerdictSchema.shape.decision,
+  reason: z.string(),
+});
+export type Reeval = z.infer<typeof ReevalSchema>;
+
+export const RatchetMoveSchema = z.object({ from: z.string(), to: z.string(), kind: RatchetKindSchema, ideaId: z.string().optional() });
+
 /** G7 and G16: what a round decided, recorded after its ratchet so a reader never re-derives it. */
 export const RoundSummarySchema = z.object({
   round: z.number().int().positive(),
   best: z.object({ head: z.string(), primary: z.number() }),
   against: AgainstSchema,
   keptIds: z.array(z.string()),
+  /** Winners requeued for a later round: a merge conflict, or no integrate port. */
   superseded: z.array(z.string()),
+  /** The net move, from the first move's `from` to the last move's `to`. */
   ratchet: z.object({ from: z.string(), to: z.string() }).nullable(),
   /** The first planner answer's misses; empty when it met every quota. */
   quotaViolations: z.array(z.string()),
   plannerRetried: z.boolean(),
+  /** Absent on rounds recorded before concurrent winners, which read as empty. */
+  moves: z.array(RatchetMoveSchema).default([]),
+  reevals: z.array(ReevalSchema).default([]),
 });
 export type RoundSummary = z.infer<typeof RoundSummarySchema>;
 
 export const StopReasonSchema = z.enum(["ideas-evaluated", "rounds-without-gain", "rounds-exhausted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
+
+export const CadenceTriggerSchema = z.enum(["phase-end", "kept", "spend"]);
+export type CadenceTrigger = z.infer<typeof CadenceTriggerSchema>;
+/** A cut or a sync after the last round is round `end`. */
+export const CadenceRoundSchema = z.union([z.number().int().positive(), z.literal("end")]);
+export type CadenceRound = z.infer<typeof CadenceRoundSchema>;
+
+const usd = z.number().nonnegative();
+/** What a snapshot PR's body is rendered from: aggregates only, so no case name or per-case number reaches the PR. */
+export const SnapshotLogSchema = z.object({
+  phase: z.string(),
+  trigger: CadenceTriggerSchema,
+  round: CadenceRoundSchema,
+  /** The ratchet head the previous cut tagged, or the run's starting head. */
+  from: z.string(),
+  to: z.string(),
+  kept: z.array(z.object({ ideaId: z.string(), delta: z.number().optional(), sigma: z.number().optional() })),
+  /** No cap is enforced: a round may overshoot the cadence's spend, and this shows by how much. */
+  spentSince: z.object({ agentUsd: usd, modelUsd: usd }),
+});
+export type SnapshotLog = z.infer<typeof SnapshotLogSchema>;
+
+/** Cuts snapshot `k` at a ratchet sha: tag, PR branch with one log commit, the PR, and its Shepherd registration. */
+export interface SnapshotRequest extends RunPin {
+  k: number;
+  trigger: CadenceTrigger;
+  round: CadenceRound;
+  sha: string;
+  ratchetRef: string;
+  ratchetPrefix: string;
+  log: SnapshotLog;
+  /** The step's first start, which the log commit is dated with, so a restart rebuilds the same sha. */
+  at?: string;
+}
+
+export const SnapshotCutSchema = z.object({
+  k: z.number().int().positive(),
+  tag: z.string(),
+  sha: z.string(),
+  branch: z.string(),
+  pr: z.number().int().positive(),
+  url: z.string().optional(),
+  shepherdRunId: z.string().optional(),
+  logSha: z.string(),
+});
+/** `failed` is the recorded answer of a port that threw, so a replay reads the same failure instead of cutting again. */
+export const SnapshotResultSchema = z.union([SnapshotCutSchema, z.object({ failed: z.string() })]);
+
+/** Reads the open snapshot PR and, once it merged, merges main into the ratchet; `resolved` is an owner's merge to move onto instead. */
+export interface SyncRequest extends RunPin {
+  round: CadenceRound;
+  pr: number;
+  branch: string;
+  /** The ratchet head the run holds as B. */
+  head: string;
+  ratchetRef: string;
+  ratchetPrefix: string;
+  tree: string;
+  resolved?: string;
+  /** With `resolved`: the frozen paths the held gate showed the owner, the only ones the resolved merge may change. */
+  allowedFrozen?: string[];
+  at?: string;
+}
+
+/**
+ * `treeChanged` compares the tree outside the snapshot log dir, since the log commit alone would always change it.
+ * `conflict` and `frozen` leave the ratchet where it was.
+ */
+export const SyncResultSchema = z.object({
+  state: z.enum(["open", "merged", "closed"]),
+  merged: z.object({ from: z.string(), to: z.string(), main: z.string() }).optional(),
+  conflict: z.array(z.string()).optional(),
+  frozen: z.array(z.string()).optional(),
+  treeChanged: z.boolean().optional(),
+});
+export type SyncResult = z.infer<typeof SyncResultSchema>;
+/** As with a snapshot, `failed` is the recorded answer of a sync port that threw, so a replay never syncs again. */
+export const SyncStepSchema = z.union([SyncResultSchema, z.object({ failed: z.string() })]);
+
+/** A sync that finds the ratchet moved under it needs a person: a later round's retry would only find it moved again. */
+export const RATCHET_MOVED = "[ratchet-moved]";
 
 export const InboxSchema = z.object({ ideas: z.array(ProposalSchema), cursor: z.number().int().nonnegative() });
 
@@ -189,6 +311,15 @@ export interface ArPorts {
   /** `key` is unique per run, scope and repeat, since a target may use it as a cache directory. */
   evalCase(input: RunPin & { tree: string; case: string; key: string; rung: string }, signal: AbortSignal): Promise<ArResult>;
   ratchet(input: RatchetRequest, signal: AbortSignal): Promise<{ head: string }>;
+  /**
+   * Merges a later winner onto the round's new head in the integration tree, or names the conflicting files after
+   * aborting; it never pushes. A host without it has every later winner requeued.
+   */
+  integrate?(input: IntegrateRequest, signal: AbortSignal): Promise<IntegrateResult>;
+  /** Cuts a snapshot PR; every sub-write is idempotent. A host with none never cuts, and its run sets no `snapshot` settings. */
+  snapshot?(input: SnapshotRequest, signal: AbortSignal): Promise<z.input<typeof SnapshotCutSchema>>;
+  /** Reads the open snapshot PR and syncs main back into the ratchet; never rebases or force-pushes. */
+  sync?(input: SyncRequest, signal: AbortSignal): Promise<z.input<typeof SyncResultSchema>>;
   /** Parks the tree: checkout removed, branch kept. */
   releaseTree(input: { tree: string }, signal: AbortSignal): Promise<void>;
   /**

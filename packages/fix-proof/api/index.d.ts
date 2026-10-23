@@ -49,6 +49,11 @@ interface PlanInput {
     baseConfig?: string | null;
     /** The same file at head, used only to tell the reviewer the PR edited it. */
     headConfig?: string | null;
+    /**
+     * Paths at head beside the diff's mutation specs. A spec whose one sibling test is listed here plans that test, so a
+     * spec-only diff still runs the file its mutants are judged on; absent, no sibling is planned.
+     */
+    headFiles?: readonly string[];
 }
 interface FixProofPlan {
     /** Head paths of added or changed tests, to check out over the merge base and run. */
@@ -97,7 +102,7 @@ type TestOnlyReading = {
 };
 /**
  * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
- * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ * out of the tests counts), or it plans no test at all (a changeset- or fixture-only diff, or a spec with no sibling).
  */
 declare function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading;
 /** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */
@@ -138,9 +143,10 @@ type MutationCheck = {
 declare function parseMutationSpec(text: string): MutationSpecResult;
 /**
  * Whether one mutation can run against the merge base: its file must be code under test, not a test, carried file, spec or
- * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once.
+ * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once. `at` names
+ * the commit `baseText` came from in the error, for a caller that checks against another one.
  */
-declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig): MutationCheck;
+declare function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig, at?: string): MutationCheck;
 
 /** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
 declare const MAX_ENCODED_BYTES = 900000;
@@ -206,7 +212,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
  * - `survived`: some `kills` test did not fail.
  * - `unbuilt`: the rebuild under the mutation failed.
  * - `load-error`: the test file failed to load, or some test failed with a load or new-API error.
- * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run.
+ * - `baseline`: a `kills` test did not pass exactly once in the unmutated baseline run. A kill naming no test in a
+ *   baseline that loaded is no outcome but an `error` verdict naming the spec, mutation and kill.
  * - `error`: the mutation's run is missing from the report, or some test failed with anything but an assertion failure:
  *   a thrown TypeError, a timeout, a crash, or no failure message at all.
  */
@@ -420,7 +427,8 @@ type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 /**
  * Runs every declared mutation of a test-only diff against the merge base with the head's tests overlaid and writes one
  * `mutants.report`: a skipped marker with no spec or with source in the diff, an error marker on any failure, never a throw.
- * With a sandbox user, every build and vitest call after the overlay runs inside the sandbox, since head code ran there.
+ * A spec that does not read, pair or check, source diff or not, also writes its reason to `mutants.refused`, which fails
+ * the mutants job. With a sandbox user, every build and vitest call after the overlay runs inside the sandbox.
  */
 declare function execMutants(options: ExecMutantsOptions): Promise<void>;
 

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
+import { AGENT_CHAT_NOT_FOUND, DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
+import { seatNotifier } from "./round-notice-transport.js";
 
 const HOME = "/srv/tester";
 
@@ -125,6 +126,38 @@ describe("console config", () => {
       { seat: "beta", prefix: "be" },
     ]);
     expect(() => resolveConfig({ TITAN_CONSOLE_SEATS: "alpha" }, HOME)).toThrow(/seat=prefix/);
+  });
+});
+
+describe("console agent-chat binary", () => {
+  const machine = (...executables: string[]): Machine => ({ hostname: () => "box", addresses: () => [], isExecutable: (file) => executables.includes(file) });
+  const PATH = ["/opt/none/bin", "/opt/chat/bin"].join(path.delimiter);
+
+  it("resolves the bare default on PATH to an absolute path, with no warning", () => {
+    const config = resolveConfig({ PATH }, HOME, "linux", machine("/opt/chat/bin/agent-chat"));
+
+    expect(config.agentChatBin).toBe("/opt/chat/bin/agent-chat");
+    expect(config.startupWarnings).toEqual([]);
+  });
+
+  it("keeps an absolute or ~/ TITAN_CONSOLE_AGENT_CHAT_BIN as given", () => {
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "/srv/chat/agent-chat" }, HOME, "linux", machine()).agentChatBin).toBe("/srv/chat/agent-chat");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "~/bin/agent-chat" }, HOME, "linux", machine()).agentChatBin).toBe(path.join(HOME, "bin", "agent-chat"));
+  });
+
+  it("turns seat notices off with one warning naming TITAN_CONSOLE_AGENT_CHAT_BIN when the name is not on PATH", () => {
+    const config = resolveConfig({ PATH }, HOME, "linux", machine("/opt/chat/bin/other"));
+
+    expect(config.agentChatBin).toBeUndefined();
+    expect(config.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+    expect(AGENT_CHAT_NOT_FOUND).toMatch(/TITAN_CONSOLE_AGENT_CHAT_BIN/);
+  });
+
+  it("keeps a relative path with a slash, which the send still refuses", async () => {
+    const config = resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "bin/agent-chat" }, HOME, "linux", machine("/opt/chat/bin/agent-chat"));
+
+    expect(config.agentChatBin).toBe("bin/agent-chat");
+    await expect(seatNotifier("bin/agent-chat")("alpha", "answered")).rejects.toThrow(/binary path must be absolute, got 'bin\/agent-chat'/);
   });
 });
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
+import { parseNumberFlag, RULES } from "./workflow/commands.js";
 import { writeCorpus } from "./synthetic-corpus.test-helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -82,5 +83,28 @@ describe("corpus-query hits", () => {
     const { root, db } = await indexed();
 
     expect(await runCli(["hits", root, "--db", db], () => undefined)).toBe(2);
+  });
+});
+
+describe("corpus-query ask flags", () => {
+  const ask = (...flags: string[]) => {
+    const lines: string[] = [];
+    return runCli(["ask", "List every cup", "--corpus", ".", ...flags], (l) => lines.push(l)).then((code) => ({ code, out: lines.join("\n") }));
+  };
+
+  it.each([
+    ["--rounds", "abc"], ["--rounds", ""], ["--rounds", "-1"], ["--rounds", "1.5"], ["--rounds", "11"], ["--rounds", "Infinity"],
+    ["--concurrency", "0"], ["--concurrency", "2.5"], ["--concurrency", "33"], ["--concurrency", "NaN"],
+    ["--budget-usd", "0"], ["--budget-usd", "-3"], ["--budget-usd", "Infinity"], ["--budget-usd", "1001"], ["--budget-usd", "three"],
+  ])("rejects %s %s before any run starts, naming the flag", async (flag, value) => {
+    const { code, out } = await ask(flag, value);
+
+    expect(code).not.toBe(0);
+    expect(out).toContain(flag);
+  });
+
+  it("accepts a fractional budget and zero rounds", () => {
+    expect(parseNumberFlag(RULES.budgetUsd, "0.5")).toBe(0.5);
+    expect(parseNumberFlag(RULES.rounds, "0")).toBe(0);
   });
 });

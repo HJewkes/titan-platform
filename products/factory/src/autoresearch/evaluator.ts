@@ -1,25 +1,31 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join } from "node:path";
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   ArMicroSchema,
   BoundsSchema,
   TargetSchema,
   changedParams,
   frozenOverlap,
+  median,
   parseUnifiedDiff,
   postCheck,
   renderCommand,
   resultSchemaFor,
   type ArPorts,
+  type ArResult,
   type Bounds,
   type DiffFile,
   type Idea,
+  type LookAggregate,
+  type LookRequest,
   type Pinned,
+  type RegistryRow,
   type RoundRecord,
   type RunPin,
   type Target,
 } from "@titan-design/autoresearch";
+import { execDatedGit, mergeOnto } from "./integrate.js";
 import { execGit, ratchetFastForward, remoteDefaultBranch, seedRatchet } from "./ratchet.js";
 import { lastLine, runCommand } from "./run-command.js";
 
@@ -33,9 +39,20 @@ export interface EvaluatorOptions {
   adapterDir: string;
   /** Names L0 refuses in an added line; a host reads them from its own config, never from the target repo. */
   caseNames?: readonly string[];
+  /** Held-out cases for milestone looks, from host config; absent or empty, a look is refused. */
+  validatorCases?: readonly ValidatorCase[];
+  /** The phase registry, one JSON line per finished phase; absent, the registry step records no path. */
+  registryPath?: string;
+  now?: () => number;
 }
 
-type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "archive">;
+export interface ValidatorCase {
+  case: string;
+  /** The `{caseSet}` argument; absent, the target's own `caseSets` entry for the case, if any. */
+  caseSet?: string;
+}
+
+type EvaluatorPorts = Pick<ArPorts, "pin" | "evalCase" | "micro" | "staticCheck" | "ratchet" | "integrate" | "archive" | "validate" | "registry">;
 
 type Session = Pick<Pinned, "pin" | "target" | "bounds"> & { evaluatorTree: string; frozenHash: string; defaultBranch: string };
 type Row = { name: string; ok: boolean; code?: string; ms?: number };
@@ -78,7 +95,9 @@ const evaluatorTreeOf = (workRoot: string, runId: string) => join(workRoot, `eva
 
 /** A run is judged against the default branch, so a pin from a side branch would ratchet work main never had. */
 async function refuseOffMain(clone: string, pin: string, defaultBranch: string): Promise<void> {
-  await execGit(["fetch", "--quiet", "origin"], clone);
+  await execGit(["fetch", "--quiet", "origin"], clone).catch((error: unknown) => {
+    throw new Error(`[pin-fetch] git fetch origin failed in ${clone}: ${error instanceof Error ? error.message : String(error)}`);
+  });
   const onMain = await execGit(["merge-base", "--is-ancestor", pin, `origin/${defaultBranch}`], clone).then(
     () => true,
     (error: { code?: unknown }) => {
@@ -223,6 +242,59 @@ async function archiveRound(archiveDir: string, input: { runId: string; round: n
   return { path, sha256: sum };
 }
 
+const LOOK_PROVENANCE = "frozen evaluator gates on held-out cases; not an LLM judge; search not changed";
+
+/** Medians per metric and pass counts per gate over every run, so no case's own result leaves the port. */
+function aggregateOf(runs: readonly ArResult[]): LookAggregate["aggregate"] {
+  const names = (pick: (run: ArResult) => object) => [...new Set(runs.flatMap((run) => Object.keys(pick(run))))].sort();
+  const metrics = names((run) => run.metrics).map((name) => [name, median(runs.flatMap((run) => run.metrics[name] ?? []))]);
+  const gates = names((run) => run.gates).map((name) => [name, runs.filter((run) => run.gates[name] === true).length]);
+  return { metrics: Object.fromEntries(metrics), gates: Object.fromEntries(gates) };
+}
+
+/** Unique per look, case and repeat like a search run's key, and naming the case only by its index. */
+const lookKey = (input: LookRequest, index: number, repeat: number) => `${input.runId}-val${input.look}-${index}-${repeat}`.replace(/[^A-Za-z0-9._-]/g, "_");
+
+async function seedRuns(session: Session, cases: readonly ValidatorCase[], input: LookRequest, tree: string, signal: AbortSignal): Promise<ArResult[]> {
+  const { target } = session;
+  const runs: ArResult[] = [];
+  for (const [index, held] of cases.entries()) {
+    for (let repeat = 1; repeat <= target.validator.runs; repeat++) {
+      const vars = { caseSet: held.caseSet ?? target.caseSets[held.case], case: held.case, key: lookKey(input, index, repeat), runnerRoot: join(tree, target.runnerRoot) };
+      runs.push(resultSchemaFor(target.metric).parse(await runRung(session, "seed", vars, signal)));
+    }
+  }
+  return runs;
+}
+
+/**
+ * G17: one look runs the frozen seed rung on the held-out cases against the head, in a tree of its own. A parent whose
+ * evaluator checkout is gone gets it back at the pin, and the session's frozen-hash check still decides whether it is trusted.
+ */
+async function validateLook(options: EvaluatorOptions, session: ReturnType<typeof sessions>, input: LookRequest, signal: AbortSignal): Promise<LookAggregate> {
+  const cases = options.validatorCases ?? [];
+  if (cases.length === 0) throw new Error("[no-validator-cases] no held-out cases are configured for this target");
+  const evaluatorTree = evaluatorTreeOf(options.workRoot, input.runId);
+  if (!existsSync(evaluatorTree)) await checkout(options.clone, evaluatorTree, input.pin);
+  const pinned = await session.of(input);
+  const tree = join(options.workRoot, `val-${input.runId}-${input.look}`);
+  await checkout(options.clone, tree, input.head);
+  try {
+    const runs = await seedRuns(pinned, cases, input, tree, signal);
+    const at = new Date((options.now ?? Date.now)()).toISOString();
+    return { look: input.look, at, sha: input.head, aggregate: aggregateOf(runs), provenance: LOOK_PROVENANCE, usd: runs.reduce((sum, run) => sum + run.usd, 0) };
+  } finally {
+    await execGit(["worktree", "remove", "--force", tree], options.clone);
+  }
+}
+
+function appendRegistryRow(registryPath: string | undefined, row: RegistryRow): { path?: string } {
+  if (registryPath === undefined) return {};
+  mkdirSync(dirname(registryPath), { recursive: true });
+  appendFileSync(registryPath, `${JSON.stringify(row)}\n`);
+  return { path: registryPath };
+}
+
 /** Sessions by run: the one this process pinned, or one rebuilt from a step's recorded pin after a restart. */
 function sessions(options: EvaluatorOptions) {
   const byRun = new Map<string, Promise<Session>>();
@@ -263,6 +335,9 @@ export function evaluatorPorts(options: EvaluatorOptions): EvaluatorPorts {
       const { target, defaultBranch } = await session.of(input);
       return ratchetFastForward(execGit, { tree, ratchetRef, ratchetPrefix: target.ratchetPrefix, defaultBranch, from, to });
     },
+    integrate: ({ tree, base, head, message, at }) => mergeOnto(execDatedGit, { tree, base, head, message, at }),
     archive: (input) => archiveRound(options.archiveDir, input),
+    validate: (input, signal) => validateLook(options, session, input, signal),
+    registry: async ({ row }) => appendRegistryRow(options.registryPath, row),
   };
 }

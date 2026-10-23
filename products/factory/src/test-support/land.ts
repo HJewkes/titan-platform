@@ -77,7 +77,7 @@ export async function approveUntilSettled(host: FactoryHost, runId: string, fake
       answerPendingGate(host, runId, fake);
       expect(host.runtime.status(runId)?.status).toMatch(/completed|failed|recovery_required/);
     },
-    { timeout: 4_000, interval: 10 },
+    { interval: 10 },
   );
 }
 

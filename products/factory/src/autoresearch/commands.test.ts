@@ -1,16 +1,18 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, BoundsSchema, TargetSchema } from "@titan-design/autoresearch";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
-import type { StepResult, WorkflowRun } from "@titan-design/workflow";
+import type { StepResult, WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import { AR_READ_COMMANDS } from "./commands.js";
+import { arConfigFixture } from "../test-support/autoresearch.js";
+import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./commands.js";
 import { ideaDiff } from "./diff-read.js";
+import { ownerIdeasPort } from "./inbox.js";
 import { execGit } from "./ratchet.js";
 
 /** A copy of the console's `ArDiffSchema`, not an import: a product may not import an app. */
@@ -161,5 +163,128 @@ describe("autoresearch.runs and autoresearch.run", () => {
     const { envelope } = await call("autoresearch.run", { runId: "run-1" }, ctx);
 
     expect(envelope).toMatchObject({ ok: false, code: EXIT.NOINPUT, error: expect.stringContaining("[not_found]") });
+  });
+});
+
+const UNFINISHED: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required"];
+const SEED_RUN = { schema: "ar-result/v2", case: "train-1", repeat: "b", metrics: { score: 2 }, gates: {}, violations: {}, usd: 0, wall_s: 1 };
+
+/** A run past its baseline, so it has a best head a look can start at. */
+function baselinedRun(id: string, status: WorkflowStatus = "running"): WorkflowRun {
+  const run = recordedRun("a".repeat(40), "b".repeat(40));
+  const baseline = Object.assign({}, ...Array.from({ length: 6 }, (_, index) => dispatched(`ar-eval:base:b${index + 1}`, SEED_RUN)));
+  return { ...run, id, status, stepResults: { ...run.stepResults, ...baseline } };
+}
+
+const lookRun = (id: string, parent: string, status: WorkflowStatus): WorkflowRun => ({ ...baselinedRun(id, status), workflowName: AUTORESEARCH_VALIDATE_WORKFLOW, params: { parent }, stepResults: {} });
+
+/** A runtime whose `start` records the run as running, and whose bare `list()` is the unfinished runs, as the real one's is. */
+function writeContext(initial: readonly WorkflowRun[], inboxRoot = "/nonexistent") {
+  const runs = [...initial];
+  const start = vi.fn((workflowName: string, params: Record<string, string>) => {
+    const id = `started-${runs.length + 1}`;
+    runs.push({ ...baselinedRun(id), workflowName, params, stepResults: {} });
+    return id;
+  });
+  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: (statuses = UNFINISHED) => runs.filter((run) => statuses.includes(run.status)), start };
+  const autoresearch = arConfigFixture(inboxRoot, { fixture: { clone: `${inboxRoot}/fixture` }, other: { clone: `${inboxRoot}/other` } });
+  const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearch };
+  return { ctx, start };
+}
+
+const write = (name: string) => AR_WRITE_COMMANDS.find((candidate) => candidate.name === name)!;
+const callWrite = async (name: string, args: object, ctx: FactoryContext) => (await invokeCommand(write(name), args, ctx)).envelope;
+const PIN = "c".repeat(40);
+
+describe("autoresearch.start", () => {
+  it("refuses a target that already has an unfinished run and starts none", async () => {
+    const { ctx, start } = writeContext([baselinedRun("run-1")]);
+
+    const envelope = await callWrite("autoresearch.start", { target: "fixture", pin: PIN }, ctx);
+
+    expect(envelope).toMatchObject({ ok: false, error: "[target-busy] run-1" });
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("starts another target with the config's run settings and the flags over them", async () => {
+    const { ctx, start } = writeContext([baselinedRun("run-1")]);
+
+    const envelope = await callWrite("autoresearch.start", { target: "other", pin: PIN, config: { lanes: 2 } }, ctx);
+
+    expect(envelope).toMatchObject({ ok: true, data: { runId: "started-2" } });
+    const [workflowName, params] = start.mock.calls[0]!;
+    expect(workflowName).toBe(AUTORESEARCH_WORKFLOW);
+    expect(params).toMatchObject({ target: "other", pin: PIN });
+    expect(JSON.parse(params.config!)).toMatchObject({ lanes: 2, rounds: 50, forkSchedule: { basinEvery: 3 } });
+  });
+
+  it("is not blocked by an unfinished run of another workflow that names the same target", async () => {
+    const { ctx, start } = writeContext([{ ...baselinedRun("land-1"), workflowName: "land-pr" }]);
+
+    expect(await callWrite("autoresearch.start", { target: "fixture", pin: PIN }, ctx)).toMatchObject({ ok: true });
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts a target whose last run has finished", async () => {
+    const { ctx, start } = writeContext([baselinedRun("run-1", "completed")]);
+
+    expect(await callWrite("autoresearch.start", { target: "fixture", pin: PIN }, ctx)).toMatchObject({ ok: true });
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("autoresearch.milestone", () => {
+  it("starts two looks at the best head and refuses the third", async () => {
+    const { ctx, start } = writeContext([baselinedRun("run-1")]);
+
+    const first = await callWrite("autoresearch.milestone", { runId: "run-1" }, ctx);
+    const second = await callWrite("autoresearch.milestone", { runId: "run-1" }, ctx);
+    const third = await callWrite("autoresearch.milestone", { runId: "run-1" }, ctx);
+
+    expect(first).toMatchObject({ ok: true, data: { look: 1, head: "a".repeat(40) } });
+    expect(second).toMatchObject({ ok: true, data: { look: 2 } });
+    expect(third).toMatchObject({ ok: false, error: "[max-looks] 2/2" });
+    expect(start.mock.calls.map(([name, params]) => [name, params.parent, params.look, params.target])).toEqual([
+      [AUTORESEARCH_VALIDATE_WORKFLOW, "run-1", "1", "fixture"],
+      [AUTORESEARCH_VALIDATE_WORKFLOW, "run-1", "2", "fixture"],
+    ]);
+  });
+
+  it("counts a failed look against the cap", async () => {
+    const { ctx, start } = writeContext([baselinedRun("run-1"), lookRun("look-1", "run-1", "failed"), lookRun("look-2", "run-1", "completed")]);
+
+    expect(await callWrite("autoresearch.milestone", { runId: "run-1" }, ctx)).toMatchObject({ ok: false, error: "[max-looks] 2/2" });
+    expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe("autoresearch.add-idea", () => {
+  const proposal = {
+    hypothesis: "h", mechanism: "tighten", class: "accept-gate", direction: "tighten", targets: ["src/gates.py"],
+    expectedEffect: { metric: "score", direction: "down", microSignal: "accepts" }, testPlan: "t", bold: false,
+  };
+
+  it("refuses a run that has completed and writes nothing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ar-inbox-"));
+    roots.push(root);
+    const { ctx } = writeContext([baselinedRun("run-1", "completed")], root);
+
+    const envelope = await callWrite("autoresearch.add-idea", { runId: "run-1", proposal }, ctx);
+
+    expect(envelope).toMatchObject({ ok: false, error: "[run-finished] run-1 is completed" });
+    expect(existsSync(join(root, "inbox"))).toBe(false);
+  });
+
+  it("appends a running run's idea to its inbox, where the port reads it once", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ar-inbox-"));
+    roots.push(root);
+    const { ctx } = writeContext([baselinedRun("run-1")], root);
+
+    expect(await callWrite("autoresearch.add-idea", { runId: "run-1", proposal }, ctx)).toMatchObject({ ok: true });
+    const read = ownerIdeasPort(join(root, "inbox"));
+    const signal = new AbortController().signal;
+
+    expect(await read({ runId: "run-1", round: 2, after: 0 }, signal)).toMatchObject({ ideas: [{ hypothesis: "h" }], cursor: 1 });
+    expect(await read({ runId: "run-1", round: 3, after: 1 }, signal)).toEqual({ ideas: [], cursor: 1 });
   });
 });

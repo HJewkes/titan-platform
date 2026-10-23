@@ -7,6 +7,7 @@ import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-c
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
 import { App } from "./App.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { onSection, shownSection, stubScroll, toSection } from "./pages/round-pager.test-helpers.js";
 
 const PAGED = "kiln-schedule-r2";
@@ -75,7 +76,7 @@ describe("a round of several sections", () => {
     expect(screen.queryByTestId("round-question-ramp-default")).toBeNull();
     expect(screen.getByTestId("round-question-report-columns")).toBeTruthy();
     expect(isDisabled(endNext())).toBe(true);
-    expect(screen.getByRole("button", { name: "Check and send" })).toBeTruthy();
+    expect(getButton("Check and send")).toBeTruthy();
 
     fireEvent.click(within(screen.getByTestId("section-steps")).getByText("← Back"));
     await onSection("ramp");

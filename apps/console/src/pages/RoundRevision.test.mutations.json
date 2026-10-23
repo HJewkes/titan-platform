@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the check screen sends while the server would refuse the round",
+      "file": "apps/console/src/pages/RoundCheck.tsx",
+      "find": "const onSend = problems.length > 0 ? undefined : sendable;",
+      "replace": "const onSend = sendable;",
+      "kills": [
+        "the built-in revision request marks the comment required and holds the send while the comment is empty",
+        "the built-in revision request asks for a comment on a pick of the round's own revision option too"
+      ]
+    }
+  ]
+}

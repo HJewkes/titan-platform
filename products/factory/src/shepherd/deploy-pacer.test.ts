@@ -188,6 +188,22 @@ describe("deploy pacer", () => {
     expect(next).toEqual(wantedAt("b", 20, 20));
   });
 
+  it("an older sha the queued one contains keeps the queued record, spawn mark and all", () => {
+    const spawned = wantedAt("b", 0, 5, { spawnedSha: "b", spawnedAt: new Date(15 * MIN).toISOString() });
+
+    expect(noteWanted(spawned, "a", 20 * MIN, "b")).toBe(spawned);
+  });
+
+  it("a containing sha that is no longer the queued one does not keep it", () => {
+    const queued = wantedAt("c", 0, 0);
+
+    expect(noteWanted(queued, "a", 5 * MIN, "b")).toEqual(wantedAt("a", 0, 5));
+  });
+
+  it("with no record, a containing sha still queues the incoming one", () => {
+    expect(noteWanted(undefined, "a", 5 * MIN, "b")).toEqual(wantedAt("a", 5, 5));
+  });
+
   it("steady merges while a spawned deploy is unserved spawn once per cap, not once per merge", () => {
     const p = pacer();
     for (let minute = 0; minute <= 240; minute += 5) {
