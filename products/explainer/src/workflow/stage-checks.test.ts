@@ -120,6 +120,7 @@ describe("running a stage's checks", () => {
     const roles = Object.fromEntries(Object.entries(STAGE_CHECKS).map(([stage, checks]) => [stage, checks.map((c) => `${c.name}:${c.gate ? "gate" : "reported"}`)]));
 
     expect(roles).toEqual({
+      gather: [],
       audition: [],
       script: ["l0:gate", "l0-warnings:reported", "pace:gate"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],

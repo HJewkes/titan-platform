@@ -5,9 +5,11 @@ import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
+import { runGatherStage } from "./gather-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
 import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
+import type { GatherDeps } from "./run-gather.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
 import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from "./stage-checks.js";
@@ -27,6 +29,8 @@ interface BodyDeps {
   signal?: AbortSignal;
   now?: () => Date;
   ttsEngine?: () => Promise<TtsEngine>;
+  /** The gather stage's outside world; gh, the transcript roots, the task list and git by default. */
+  gather?: GatherDeps;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, then the stage's checks over its artifacts. */
@@ -38,11 +42,11 @@ export const stageWorkflow = (): WorkflowFn => async (ctx) => {
 
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   const { config, stage } = spec;
-  if (stage === "audition") {
-    if (!config.profile || !config.structures || !config.model || !config.judge) throw new Error("audition stage spec has no profile, structure registry, model or judge");
-    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
-    return runAuditionStage(input, { profile: config.profile, structures: config.structures, model: config.model, judge: config.judge }, seams);
+  if (stage === "gather") {
+    if (!config.gather) throw new Error("gather stage spec has no gather request");
+    return runGatherStage(config.gather, input, deps.dataDir, deps.gather);
   }
+  if (stage === "audition") return runAuditionBody(config, input, deps);
   if (stage === "script") {
     const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
     if (!config.model) throw new Error("script stage spec has no model");
@@ -65,6 +69,12 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
   });
+}
+
+function runAuditionBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.profile || !config.structures || !config.model || !config.judge) throw new Error("audition stage spec has no profile, structure registry, model or judge");
+  const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+  return runAuditionStage(input, { profile: config.profile, structures: config.structures, model: config.model, judge: config.judge }, seams);
 }
 
 function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {

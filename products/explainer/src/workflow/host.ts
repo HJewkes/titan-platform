@@ -19,6 +19,7 @@ import type { CheckJudge } from "./stage-checks.js";
 import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
+import type { GatherDeps, GatherRequest } from "./run-gather.js";
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -36,6 +37,8 @@ export interface RunHost {
   ttsEngine?: () => Promise<TtsEngine>;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
   stylePacks?: () => ReadonlyMap<string, StylePack>;
+  /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
+  gather?: GatherDeps;
   leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -63,8 +66,10 @@ export interface RunRequest {
   scriptModel?: string;
   judge?: JudgeConfig;
   rounds?: number;
-  /** The video type whose profile the audition reads; required from `audition`. */
+  /** The video type whose profile the audition reads; required from `audition`, and the gather's type by default. */
   profile?: string;
+  /** What the gather stage gathers; required from `gather`. */
+  gather?: GatherRequest;
 }
 
 export interface RunOutcome {
@@ -144,19 +149,25 @@ const startsFresh = (from: StageName): boolean => STAGES.indexOf(from) <= STAGES
 /** The input files a run reads: facts for the audition, spine and facts once it reaches the script. */
 function neededInputs(from: StageName, to: StageName): string[] {
   const reachesScript = startsFresh(from) && STAGES.indexOf(to) >= STAGES.indexOf("script");
-  return [...new Set([...(from === "audition" ? ["facts"] : []), ...(reachesScript ? RUN_INPUTS : [])])];
+  const needed = new Set([...(from === "audition" ? ["facts"] : []), ...(reachesScript ? RUN_INPUTS : [])]);
+  // A run from gather makes its own facts.
+  if (from === "gather") needed.delete("facts");
+  return [...needed];
 }
 
 function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const from = request.from ?? "script";
   const to = request.to ?? "export";
   if (STAGES.indexOf(to) < STAGES.indexOf(from)) throw new Error(`--to ${to} comes before --from ${from}`);
+  if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
+  const profile = request.profile ?? request.gather?.type;
   const settings = {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
-    variants: storeVariants(request, store), samples: request.samples ?? {}, ...(request.profile ? { profile: request.profile } : {}),
+    variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
+    ...(request.gather ? { gather: request.gather } : {}),
   };
-  if (from === "audition" && !request.profile) throw new Error("a run from audition needs --profile <type>");
+  if (from === "audition" && !profile) throw new Error("a run from audition needs --profile <type>");
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
   const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
@@ -242,7 +253,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const body = bodyRoute({
     dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
-    ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}),
+    ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
   const styles = host.stylePacks ? { stylePacks: host.stylePacks } : {};
@@ -319,6 +330,7 @@ export async function resumeVideo(runId: string, host: RunHost, overrides: Pick<
   return runVideo({
     from: resumeStage(host.dataDir, run), to: plan.to, base: runId, budgetUsd: overrides.budgetUsd ?? plan.budgetUsd, scriptModel: plan.scriptModel,
     judge: plan.judge, rounds: plan.rounds, variantShas: plan.variants, samples: plan.samples, ...(plan.profile ? { profile: plan.profile } : {}),
+    ...(plan.gather ? { gather: plan.gather } : {}),
   }, host);
 }
 

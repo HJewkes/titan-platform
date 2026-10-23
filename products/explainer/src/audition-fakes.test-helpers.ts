@@ -16,7 +16,11 @@ export function promptSlots(prompt: string): PromptSlot[] {
   });
 }
 
-const factIds = (prompt: string): string[] => [...prompt.matchAll(/^- (F\d+)(?: \[[^\]]*\])?: /gm)].map((m) => m[1]!);
+/** The fact ids the prompt's `## Facts` section lists, whatever their shape (`F1`, `change:src/api.ts`). */
+const factIds = (prompt: string): string[] => {
+  const section = prompt.split("## Facts\n\n")[1]!.split("\n\n## ")[0]!;
+  return [...section.matchAll(/^- (\S+?)(?: \[[^\]]*\])?: /gm)].map((m) => m[1]!);
+};
 
 /** A valid spine per slot: every fact on the hook block, the payoff on the second block, likelihoods falling by slot. */
 function spinesFor(prompt: string, beatAt: (slot: number) => number) {
