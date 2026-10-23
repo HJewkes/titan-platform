@@ -24,7 +24,13 @@ including the tour kinds (what-it-is, entry-point, read-first, should-not, integ
 capability). It checks every precondition before deciding, and refuses with all the coded
 diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-COLUMNS`, and
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
-warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
+warns `W-NO-PAIN`. Two optional files add facts: `explainer-skim.json` (the skill's
+quote-checked docs skim) gives `skim` facts of kinds what-it-is, pain, actor, job, entry-point
+and should-not, and `structural/graph-report.json` (codewatch `graph report --json` over a
+lifetime index) gives `history` facts of kinds hotspot and silo. A review without them warns
+`W-NO-SKIM` or `W-NO-HISTORY`; a report that is not lifetime or not at the pin warns
+`W-HISTORY-PIN` and yields no history facts. `fixtures/review-whiteboard/` is a trimmed real
+review the tests gather; its author identities are removed.
 
 `enrichStructure` is the structure stage after gather. It opens the review's
 `structural/graph.db` when that holds a snapshot at the pin (copied first, so the review stays
