@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { depositItemId, type OwnerItemDeposit } from "./deposit.js";
 import { readAnswer, readSpool, writeAnswer, writeDeposit } from "./spool.js";
 import { readWithdrawal, restoreDeposit, WITHDRAW_LOG, withdrawDeposit, withdrawMatching, WithdrawRefusedError } from "./withdraw.js";
@@ -26,12 +27,15 @@ function deposit(overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
   return { depositId: "d-1", asker: "seat-a", kind: "do", door: "two-way", summary: "Restart the cache", context: "It stopped answering.", ...overrides };
 }
 
-const log = async (): Promise<unknown[]> => (await readFile(join(dir, WITHDRAW_LOG), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as unknown);
+const logLines = z.array(z.record(z.string(), z.string()));
+const log = async (): Promise<Record<string, string>[]> =>
+  logLines.parse((await readFile(join(dir, WITHDRAW_LOG), "utf8")).trim().split("\n").map((line): unknown => JSON.parse(line)));
 
 async function refusal(run: Promise<unknown>): Promise<WithdrawRefusedError> {
   const error = await run.then(() => undefined, (caught: unknown) => caught);
   expect(error).toBeInstanceOf(WithdrawRefusedError);
-  return error as WithdrawRefusedError;
+  if (!(error instanceof WithdrawRefusedError)) throw new Error("not a WithdrawRefusedError");
+  return error;
 }
 
 describe("withdrawDeposit", () => {
@@ -148,7 +152,7 @@ describe("withdrawMatching", () => {
 
     const expected = [depositItemId("seat-a", "alarm-1"), depositItemId("seat-a", "alarm-2")].sort();
     expect(withdrawn.map((item) => item.id).sort()).toEqual(expected);
-    expect((await log()).map((entry) => (entry as { id: string }).id).sort()).toEqual(expected);
+    expect((await log()).map((entry) => entry.id).sort()).toEqual(expected);
     expect(await readWithdrawal(dir, depositItemId("seat-b", "alarm-1"))).toBeUndefined();
     expect(await withdrawMatching(dir, { asker: "seat-a", keys: ["deploy-alarm", "deploy-incident"], reason: "resolved", now: LATER })).toEqual([]);
   });
