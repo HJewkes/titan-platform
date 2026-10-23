@@ -1,4 +1,7 @@
+import { misakiEnglish, type G2p } from "@titan-design/speech-g2p";
 import { z } from "zod";
+import { loadBeatSpecs } from "../beat-load.js";
+import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
@@ -9,8 +12,11 @@ import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
 import { parseSpine } from "../spine-schema.js";
+import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
+import { unknownWords } from "../unknown-words.js";
+import { misakiWords } from "./tts-engine.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
 
@@ -45,8 +51,12 @@ function rowsVerdict(rows: readonly L0Result[]): Verdict {
   return { pass: failed.length === 0, detail: `${rows.length} rows; failed: ${failed.join(", ") || "none"}` };
 }
 
+/** The L0 checks, with Q-E20 reading the stage's gathered facts when it has them. */
+const l0With = (input: CheckInput): readonly L0Check[] =>
+  input.artifacts.facts === undefined ? input.l0Checks : withClaimFacts(input.l0Checks, claimFacts(text(input, "facts")));
+
 const l0Draft = (input: CheckInput): L0Result[] =>
-  runL0(script(input, "draft"), undefined, input.l0Checks, undefined, parseSpine(text(input, "spine")));
+  runL0(script(input, "draft"), undefined, l0With(input), undefined, parseSpine(text(input, "spine")));
 
 const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
   const draft = script(input, name);
@@ -56,8 +66,9 @@ const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
 /** Error rows that fail on the rewritten script but passed on the draft: the rewrite made the script worse. */
 function noNewL0Error(input: CheckInput): Verdict {
   const failing = (rows: readonly L0Result[]) => new Set(errorRows(rows).filter((row) => !row.pass).map((row) => row.check_id));
-  const before = failing(runL0(spellScript(script(input, "draft")), undefined, input.l0Checks));
-  const added = [...failing(runL0(script(input, "script"), undefined, input.l0Checks))].filter((id) => !before.has(id));
+  const checks = l0With(input);
+  const before = failing(runL0(spellScript(script(input, "draft")), undefined, checks));
+  const added = [...failing(runL0(script(input, "script"), undefined, checks))].filter((id) => !before.has(id));
   return { pass: added.length === 0, detail: `new failing error rows: ${added.join(", ") || "none"}` };
 }
 
@@ -69,6 +80,34 @@ function rewriteTargetRows(input: CheckInput): Verdict {
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
 
+const shownList = (items: readonly string[]): string => items.slice(0, 5).join(", ") + (items.length > 5 ? ` and ${items.length - 5} more` : "");
+
+/** Every emphasis target the draft's beat specs declare has a cue to land on, so the render never holds a static frame. */
+function cuesPresent(input: CheckInput): Verdict {
+  const specs = loadBeatSpecs();
+  const uncued = uncuedTargets(script(input, "draft"), leadBeats(parseSpine(text(input, "spine")), specs), specs);
+  return { pass: uncued.length === 0, detail: uncued.length === 0 ? "every emphasis target has a cue" : `uncued: ${shownList(uncued)}` };
+}
+
+let voiceG2p: G2p | undefined;
+const doctrineG2p = (): G2p => (voiceG2p ??= misakiEnglish({ words: misakiWords() }));
+
+/**
+ * Every word of the spelled draft has phonemes in the voice's g2p, the doctrine lexicon included, so a word the voice
+ * cannot say fails here, before the rewrite and tts spend, rather than at tts (owner, TP-3032 s7 item 9).
+ */
+function knownWords(input: CheckInput): Verdict {
+  const unknown = unknownWords(doctrineG2p(), spellScript(script(input, "draft")));
+  const named = [...new Set(unknown.map(({ beat, word }) => `${word} (${beat})`))];
+  return { pass: unknown.length === 0, detail: unknown.length === 0 ? "every spoken word has phonemes" : `no phonemes for: ${shownList(named)}` };
+}
+
+/** Beats whose beat spec declares emphasis targets: with any, a script of no cues has nothing to resolve and fails. */
+function cuedBeats(beats: ScriptV1["beats"]): number {
+  const specs = loadBeatSpecs();
+  return beats.filter(({ visual }) => (specs.get(visual.beat ?? "")?.emphasis?.targets.length ?? 0) > 0).length;
+}
+
 /** Every cue the script names lands on a word the voice actually spoke, so no visual fires on a guess. */
 function cueResolution(input: CheckInput): Verdict {
   const timing = readTiming(JSON.parse(text(input, "words")));
@@ -76,7 +115,8 @@ function cueResolution(input: CheckInput): Verdict {
   const resolve = cueResolverFromWords(words);
   const missed: string[] = [];
   let total = 0;
-  for (const beat of script(input, "script").beats) {
+  const { beats } = script(input, "script");
+  for (const beat of beats) {
     for (const cue of beatCues(beat.visual)) {
       total++;
       try {
@@ -86,8 +126,9 @@ function cueResolution(input: CheckInput): Verdict {
       }
     }
   }
-  const shown = missed.slice(0, 5).join(", ") + (missed.length > 5 ? ` and ${missed.length - 5} more` : "");
-  return { pass: missed.length === 0, detail: `${total - missed.length} of ${total} cues resolve${missed.length ? `; unresolved: ${shown}` : ""}` };
+  const targeted = total === 0 ? cuedBeats(beats) : 0;
+  if (targeted > 0) return { pass: false, detail: `0 cues, but ${targeted} beats name a beat spec with emphasis targets` };
+  return { pass: missed.length === 0, detail: `${total - missed.length} of ${total} cues resolve${missed.length ? `; unresolved: ${shownList(missed)}` : ""}` };
 }
 
 /**
@@ -102,6 +143,8 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "l0", gate: true, reads: ["draft", "spine"], run: (input) => rowsVerdict(errorRows(l0Draft(input))) },
     { name: "l0-warnings", gate: false, reads: ["draft", "spine"], run: (input) => rowsVerdict(warningRows(l0Draft(input))) },
     { name: "pace", gate: true, reads: ["draft"], run: paceVerdict("draft") },
+    { name: "cues-present", gate: true, reads: ["draft", "spine"], run: cuesPresent },
+    { name: "unknown-words", gate: true, reads: ["draft"], run: knownWords },
   ],
   rewrite: [
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },

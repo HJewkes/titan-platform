@@ -26,10 +26,15 @@ interface AuditionConfig {
 }
 
 /** Read when the spec is built, so a profile or structure edit is a new key and never a stale cache hit. */
+/** A video type's profile by version and content hash, so an edit to the profile misses a stage's cache. */
+export function profileRef(type: string, set: ProfileSet = loadProfiles()): AuditionConfig["profile"] {
+  const profile = profileFor(set, type);
+  return { type, version: profile.version, sha: sha256(canonicalJson(profile)) };
+}
+
 export function auditionConfig(type: string, models: { model: string; judge: JudgeConfig }): AuditionConfig {
   const set = loadProfiles();
-  const profile = profileFor(set, type);
-  return { profile: { type, version: profile.version, sha: sha256(canonicalJson(profile)) }, structures: registrySha(set.structures), ...models };
+  return { profile: profileRef(type, set), structures: registrySha(set.structures), ...models };
 }
 
 interface AuditionDeps {
