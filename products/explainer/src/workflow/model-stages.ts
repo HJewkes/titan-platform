@@ -282,7 +282,7 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
     const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script, facts, spine)));
     usage = addUsage(usage, stageUsage(outcome.usage));
     const reply = checked(outcome, plan);
-    const next = reply.script && stampLedgerTerms(reply.script, spine);
+    const next = reply.script && stampLedgerTerms(reply.script, spine, lint);
     const after = next ? failingErrors(lint(next.script)) : failing;
     if (next && after.length < failing.length) [{ script, stamps }, failing, stripped] = [next, after, reply.stripped ?? []];
   }
@@ -316,7 +316,7 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const facts = claimFacts(factsText);
   const l0Checks = withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts);
   const lint: Lint = { rows: (script) => runL0(script, undefined, l0Checks, undefined, spine), spine, ...(facts ? { facts } : {}) };
-  const stamped = stampLedgerTerms(draft.script, spine);
+  const stamped = stampLedgerTerms(draft.script, spine, lint.rows);
   const repair = await repairScript(call, prompt, plan, stamped, lint);
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
   const stripped = repair?.stripped ?? draft.stripped ?? [];

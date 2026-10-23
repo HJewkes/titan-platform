@@ -53,7 +53,7 @@ describe("explainer run", () => {
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
-    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "5 pass, 1 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "6 pass, 1 gate fail, 1 reported fail" });
     expect(result.error).toContain("script: gate l0 failed");
     expect(bridge.calls).toEqual([]);
     expect(row(result, "rewrite").status).toBe("not run");
@@ -90,8 +90,7 @@ describe("explainer run", () => {
   // Mutation: returning the issue text for an unrecognized-keys-only reply (no strip) fails the stage after the retry.
   it("drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry", async () => {
     fx = fixture();
-    const plain = choppy();
-    const script = { ...plain, video: { ...plain.video, glossary: [{ name: "desk server", job: "the part every scan passes" }] } };
+    const script = choppy();
     const withExtras = { ...script, beats: script.beats.map((beat, i) => (i < 2 ? { ...beat, chips: ["extra"], cues: [] } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: withExtras });
 
@@ -117,7 +116,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain('Unrecognized key: "cues"');
-    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "6 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "7 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
@@ -131,7 +130,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
-    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "7 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "8 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("tells the repair what a failing check found where its row alone is opaque", async () => {
