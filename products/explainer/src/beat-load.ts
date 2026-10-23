@@ -29,9 +29,13 @@ export function beatSpecFor(specs: ReadonlyMap<string, BeatSpec>, type: string):
   throw new UnknownBeatError(type, [...specs.keys()]);
 }
 
+/** The ids of a validated target list; the slot schema guarantees each element carries one. */
+const idsOf = (list: unknown): string[] =>
+  Array.isArray(list) ? list.flatMap((element: unknown) => (typeof element === "object" && element !== null && "id" in element && typeof element.id === "string" ? [element.id] : [])) : [];
+
 function duplicateTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
   return (spec.emphasis?.targets ?? []).flatMap((field) => {
-    const ids = (slots[field] as { id: string }[]).map((element) => element.id);
+    const ids = idsOf(slots[field]);
     return [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))].map((id) => `${field} repeats element id ${id}`);
   });
 }
@@ -52,5 +56,5 @@ export function parseBeatSlots(specs: ReadonlyMap<string, BeatSpec>, type: strin
 
 /** The element ids an emphasis cue may target in one beat's validated slots. */
 export function emphasisTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
-  return (spec.emphasis?.targets ?? []).flatMap((field) => (slots[field] as { id: string }[]).map((element) => element.id));
+  return (spec.emphasis?.targets ?? []).flatMap((field) => idsOf(slots[field]));
 }
