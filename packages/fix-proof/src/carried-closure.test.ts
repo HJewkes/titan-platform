@@ -42,6 +42,22 @@ describe("loadsOnlyCarried", () => {
     expect(result).toBe(true);
   });
 
+  it("refuses a carried test that spawns a process, which may run a script a mutation can target", async () => {
+    const result = await loads({
+      [TEST]: 'import { spawnSync } from "node:child_process";\nimport { check } from "./report.js";\nspawnSync(process.execPath, ["../../scripts/run.mjs"]);\n',
+      "pkg/src/test-support/report.ts": "export const check = 1;\n",
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it.each(["child_process", "worker_threads", "node:worker_threads", "cluster", "vm", "node:module", "vitest/node"])(
+    "refuses a load of %s, which may run code outside the import graph",
+    async (specifier) => {
+      expect(await loads({ [TEST]: `import * as m from "${specifier}";\n` })).toBe(false);
+    },
+  );
+
   it("refuses a bare package import, which may resolve to workspace source", async () => {
     expect(await loads({ [TEST]: 'import { z } from "@scope/pkg";\n' })).toBe(false);
   });
@@ -66,6 +82,15 @@ describe("runtimeSpecifiers", () => {
 
   it("is null for a load whose specifier is computed", () => {
     expect(runtimeSpecifiers("const m = await import(name);\n")).toBeNull();
+  });
+
+  it.each([
+    ["eval", 'eval("1");\n'],
+    ["a Function constructor", 'const f = new Function("return 1");\n'],
+    ["vi.importActual", 'const real = await vi.importActual("../src.js");\n'],
+    ["a native addon", 'process.dlopen(module, "addon.node");\n'],
+  ])("is null for %s, which runs code no literal specifier names", (_label, text) => {
+    expect(runtimeSpecifiers(text)).toBeNull();
   });
 
   it("keeps a runtime import that follows a type alias", () => {

@@ -16,6 +16,16 @@
       "kills": ["loadsOnlyCarried refuses a bare package import, which may resolve to workspace source"]
     },
     {
+      "name": "a closure may spawn a process",
+      "file": "packages/fix-proof/src/carried-closure.ts",
+      "find": "\"crypto\", \"events\"",
+      "replace": "\"crypto\", \"child_process\", \"events\"",
+      "kills": [
+        "loadsOnlyCarried refuses a carried test that spawns a process, which may run a script a mutation can target",
+        "loadsOnlyCarried refuses a load of child_process, which may run code outside the import graph"
+      ]
+    },
+    {
       "name": "type-only imports count as runtime loads",
       "file": "packages/fix-proof/src/carried-closure.ts",
       "find": "text.replace(TYPE_ONLY_STATEMENT, \"\")",
