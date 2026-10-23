@@ -33,7 +33,7 @@ export function rankFiles(source: ReadSource, snapshotId: number, fileIds: Itera
 /** The repo-wide reading order, most central first, at code-read's row cap. */
 export function readingOrder(source: ReadSource, snapshotId: number): Structure["reading_order"] {
   const args = CONTRACT["overview.get"].args.parse({ snapshot: snapshotId, reading_limit: OVERVIEW_ROWS_MAX });
-  return getOverview(source, args).readingOrder.map((row) => ({ path: row.node.path ?? row.node.id, centrality: row.centrality }));
+  return getOverview(source, args).readingOrder.map((row) => ({ path: row.node.path, centrality: row.centrality }));
 }
 
 // Rank-based, so a fact's centrality compares across repos of any size: the top file is 1, the last is 1/of.
@@ -49,8 +49,11 @@ interface FactStructure {
 }
 
 function factStructure(resolved: readonly string[], ranks: ReadonlyMap<string, FileCentrality>): FactStructure {
-  const ranked = resolved.map((id) => ranks.get(id)).filter((rank) => rank !== undefined && rank.rank !== null) as FileCentrality[];
-  ranked.sort((a, b) => a.rank! - b.rank!);
+  const ranked = resolved.flatMap((id) => {
+    const rank = ranks.get(id);
+    return rank === undefined || rank.rank === null ? [] : [{ ...rank, rank: rank.rank }];
+  });
+  ranked.sort((a, b) => a.rank - b.rank);
   const top = ranked[0]?.path ?? resolved[0];
   const scores = ranked.map(normalized).filter((score) => score !== null);
   return {

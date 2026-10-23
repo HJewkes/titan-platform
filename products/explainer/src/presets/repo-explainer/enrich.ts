@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { extractProtocolEdges, getLanguageFromPath, NO_PROTOCOL_SOURCE, type GraphNode, type ProtocolEdgeResult, type ProtocolSourceFile } from "@titan-design/code-graph";
+import { extractProtocolEdges, getLanguageFromPath, type GraphNode, type ProtocolEdgeResult, type ProtocolSourceFile } from "@titan-design/code-graph";
 import { createLiveSource, type ReadSource } from "@titan-design/code-read";
 import { callPaths, callTargets, type EntryTiers } from "./call-paths.js";
 import { enrichFacts, entryRoots, factFiles, rankFiles, readingOrder } from "./centrality.js";
@@ -45,10 +45,9 @@ async function protocolSources(ctx: Context): Promise<ProtocolSourceFile[]> {
   return scripts.flatMap((file, i) => (texts[i] === undefined ? [] : [{ path: file.id, text: texts[i] }]));
 }
 
+// code-graph's one protocol diagnostic is the absent source, so each maps to the stage's own coded warning.
 function protocolDiagnostics(result: ProtocolEdgeResult): GatherDiagnostic[] {
-  return result.diagnostics
-    .filter((finding) => finding.code === NO_PROTOCOL_SOURCE)
-    .map((finding) => diag("W-NO-PROTOCOL", `${NO_PROTOCOL_SOURCE}: ${finding.message}`));
+  return result.diagnostics.map((finding) => diag("W-NO-PROTOCOL", `${finding.code}: ${finding.message}`));
 }
 
 function fileResolver(ctx: Context): (id: string) => string {
