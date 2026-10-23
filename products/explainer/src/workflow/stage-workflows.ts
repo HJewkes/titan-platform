@@ -8,7 +8,7 @@ import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP } from "./stage-cache.js";
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 
-export interface BodyDeps {
+interface BodyDeps {
   dataDir: string;
   store: ArtifactStore;
   bridge: () => BridgeFile;

@@ -298,7 +298,8 @@ function dropVideoId(runId: string): void {
   const db = openState(fx.dataDir);
   const raw = db.prepare("SELECT params FROM workflow_run WHERE id = ?").get(runId) as { params: string };
   const params = JSON.parse(raw.params) as { plan: string };
-  const { videoId: _dropped, ...plan } = JSON.parse(params.plan) as Record<string, unknown>;
+  const plan = JSON.parse(params.plan) as Record<string, unknown>;
+  delete plan.videoId;
   db.prepare("UPDATE workflow_run SET params = ? WHERE id = ?").run(JSON.stringify({ plan: JSON.stringify(plan) }), runId);
   db.close();
 }
