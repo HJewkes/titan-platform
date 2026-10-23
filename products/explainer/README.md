@@ -579,13 +579,16 @@ slots and layout.
 `explainer.resolve` (workflow plan §2.3 stage 6, profiles plan slice 6) runs after `eval` and before `tts`. It reads
 the rewritten `script` and, when a pin or an earlier stage supplies them, `code` (`{ "files": { path: text } }`, the
 cited files at the video's sha), `slots` (template slots by beat id) and `layout` (element boxes). Its config pins the
-beat specs, profiles and pinned router by content hash, so a doctrine edit is a new stage key.
+beat specs, profiles, pinned router, speech bands and resolver rows by content hash, so a doctrine or table edit is a
+new stage key.
 
 - **Resolver tables** (`resolve-tables.ts`). Each beat's key is `{function, job, content, route}`: `content` is
   `code`, `map`, `items` or `statement`, read off the visual track, and `route` is the visual-router type its `kind`
   names, or `none`. `RESOLVE_ROWS` is ordered, most specific first, and the first matching row picks
   `{beat, framing, layer}`. `FRAMING_ANCHORS` gives the anchors. The beat spec gives the component and speech band. An
-  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything.
+  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything. A HOW
+  beat's `code-proof` with no excerpt resolves to `proof` at the code band (TP-4093); one with an excerpt is a
+  `code-walk`.
 - **Refusals** (`resolve-beat.ts`, `resolve-citation.ts`) are coded and listed together in one `ResolveError`, before
   the stage stores anything:
   - `E-RESOLVE-NO-ROW`: no row matches. There is no list fallback.

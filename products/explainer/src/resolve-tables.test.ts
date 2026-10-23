@@ -15,6 +15,11 @@ describe("resolver tables", () => {
     expect(resolved("WHAT", { kind: "not-a-router-type" })).toMatchObject({ row: "numbers", key: { route: "none" } });
   });
 
+  it("voices a HOW beat's code proof with no excerpt as a proof beat at the code band", () => {
+    expect(resolved("HOW", { visual: visual({ job: "code-proof" }) })).toMatchObject({ row: "code-proof", beat: "proof", band: "code", framing: "focus" });
+    expect(resolved("HOW", { visual: visual({ job: "code-proof", labels: ["base fails", "head passes"] }) })).toMatchObject({ row: "code-proof", key: { content: "items" } });
+  });
+
   it("refuses a beat that matches no row with a coded error, and never falls back to a list", () => {
     expect(resolve("WHAT", { visual: visual({ job: "code-proof" }) })).toEqual({ beat: "b1", code: "E-RESOLVE-NO-ROW", detail: "no resolver row matches function WHAT, job code-proof, content statement, route none" });
   });

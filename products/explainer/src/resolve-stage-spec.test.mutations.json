@@ -9,6 +9,15 @@
       "kills": [
         "resolve stage spec keys on the script, on the doctrine, and on a code artifact only when the run has one"
       ]
+    },
+    {
+      "name": "the resolver rows stay out of the doctrine hash",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "bands: loadSpeechBands(), rows };",
+      "replace": "bands: loadSpeechBands() };",
+      "kills": [
+        "resolve stage spec re-keys when a resolver row changes, so a cached resolve never outlives the table it was chosen by"
+      ]
     }
   ]
 }
