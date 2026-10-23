@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import { BridgeFileSchema, type BridgeFile } from "./bridge.js";
@@ -296,9 +297,9 @@ describe("stage key", () => {
 /** Rewrites a run's plan as an X1 run stored it, with no video id. */
 function dropVideoId(runId: string): void {
   const db = openState(fx.dataDir);
-  const raw = db.prepare("SELECT params FROM workflow_run WHERE id = ?").get(runId) as { params: string };
-  const params = JSON.parse(raw.params) as { plan: string };
-  const plan = JSON.parse(params.plan) as Record<string, unknown>;
+  const raw = z.object({ params: z.string() }).parse(db.prepare("SELECT params FROM workflow_run WHERE id = ?").get(runId));
+  const params = z.object({ plan: z.string() }).parse(JSON.parse(raw.params));
+  const plan = z.record(z.string(), z.unknown()).parse(JSON.parse(params.plan));
   delete plan.videoId;
   db.prepare("UPDATE workflow_run SET params = ? WHERE id = ?").run(JSON.stringify({ plan: JSON.stringify(plan) }), runId);
   db.close();

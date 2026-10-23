@@ -50,8 +50,9 @@ export const shaPair = (flag: string) => pairs(flag, (_name, value) => {
   return value;
 });
 const stageName = (flag: string, name: string): StageName => {
-  if (!(STAGES as readonly string[]).includes(name)) throw new InvalidArgumentError(`${flag} names no stage "${name}"; stages: ${STAGES.join(", ")}`);
-  return name as StageName;
+  const stage = STAGES.find((s) => s === name);
+  if (!stage) throw new InvalidArgumentError(`${flag} names no stage "${name}"; stages: ${STAGES.join(", ")}`);
+  return stage;
 };
 
 export function sampleIndex(text: string): number {

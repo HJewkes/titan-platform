@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
+import { z } from "zod";
 import { runStageCli } from "./stage-cli.js";
+
+const ReportRowsSchema = z.object({ rows: z.array(z.object({ outputs: z.record(z.string(), z.string()) })) });
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
@@ -78,7 +81,7 @@ describe("explainer stage and run variants CLI", () => {
     const runId = /^run (\S+):/.exec(out[0] ?? "")?.[1];
     out.length = 0;
     await run("report", runId!, "--json");
-    const draft = (JSON.parse(out.join("")) as { rows: { stage: string; outputs: Record<string, string> }[] }).rows[0]!.outputs.draft!;
+    const draft = ReportRowsSchema.parse(JSON.parse(out.join(""))).rows[0]!.outputs.draft!;
     const lines: string[] = [];
     const stage = (...argv: string[]) => runStageCli(["stage", ...argv, "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: (t) => lines.push(t) });
 

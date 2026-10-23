@@ -4,7 +4,7 @@ import { canonicalJson } from "../eval-store.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { sha256 } from "./artifacts.js";
 import type { BridgeFile } from "./bridge.js";
-import { isBridgeStage, CACHED_STAGES, type CachedStage } from "./records.js";
+import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
 
 /**
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
@@ -62,13 +62,13 @@ export function stageKey(spec: Omit<StageSpec, "key" | "remainingUsd">): string 
   return sha256(canonicalJson({ stage: spec.stage, version: STAGE_VERSIONS[spec.stage], config: spec.config, inputs: spec.inputs, sample: spec.sample }));
 }
 
-function bridgeBlock(stage: CachedStage, bridge: () => BridgeFile) {
-  const block = bridge().stages[stage as keyof BridgeFile["stages"]];
+function bridgeBlock(stage: BridgeStage, bridge: () => BridgeFile) {
+  const block = bridge().stages[stage];
   if (!block) throw new Error(`bridge host file has no "${stage}" stage`);
   return block;
 }
 
-function bridgeConfig(stage: CachedStage, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
+function bridgeConfig(stage: BridgeStage, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
   const block = bridgeBlock(stage, bridge);
   const unknown = Object.keys(params).filter((name) => block.vars[name] === undefined);
   if (unknown.length > 0) throw new Error(`variant for ${stage} sets ${unknown.join(", ")}, which its bridge.json block declares no default for in "vars"`);
@@ -87,7 +87,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
 }
 
 const inputNames = (stage: CachedStage, bridge: () => BridgeFile): readonly string[] =>
-  isBridgeStage(stage) ? Object.keys(bridgeBlock(stage, bridge).inputs) : MODEL_INPUTS[stage as keyof typeof MODEL_INPUTS];
+  isBridgeStage(stage) ? Object.keys(bridgeBlock(stage, bridge).inputs) : MODEL_INPUTS[stage];
 
 export interface SpecRequest {
   stage: CachedStage;
