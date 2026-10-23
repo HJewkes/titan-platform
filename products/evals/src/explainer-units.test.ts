@@ -78,4 +78,20 @@ describe("explainer units", () => {
 
     expect(parent.schema === "titan.unit/v1" && parent.children?.map((child) => child.id).sort()).toEqual(STAGE_UNITS);
   });
+
+  it("records the script stage's A/A floor over its dev cases, with a σ for every row and every row noise (TP-4034)", () => {
+    const floor = z.object({
+      schema: z.literal("explainer.aa-floor/v1"),
+      stage: z.literal("script"),
+      cases: z.array(z.string()),
+      sigma: z.record(z.string(), z.number().positive()),
+      rows: z.array(z.object({ row: z.string(), verdict: z.string() })),
+    }).parse(readJson(join(UNITS, "explainer-script", "aa-floor.json")));
+    const devCases = caseFiles("explainer-script").map(caseOf).filter((c) => c.split === "dev").map((c) => c.id);
+
+    expect(floor.cases.sort()).toEqual(devCases.sort());
+    expect(floor.rows.map((row) => row.row).sort()).toEqual(Object.keys(floor.sigma).sort());
+    expect(floor.rows.filter((row) => row.verdict !== "noise").map((row) => row.row)).toEqual([]);
+    expect(readFileSync(join(UNITS, "explainer-script", "notes.md"), "utf8")).toContain("<!-- aa-floor:start -->");
+  });
 });
