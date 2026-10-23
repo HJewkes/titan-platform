@@ -6,6 +6,7 @@ import { emphasisGateVerdict } from "../emphasis-gate.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import { spellScript } from "../rewrite-pass.js";
 import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
 import { parseSpine } from "../spine-schema.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
@@ -55,7 +56,7 @@ const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
 /** Error rows that fail on the rewritten script but passed on the draft: the rewrite made the script worse. */
 function noNewL0Error(input: CheckInput): Verdict {
   const failing = (rows: readonly L0Result[]) => new Set(errorRows(rows).filter((row) => !row.pass).map((row) => row.check_id));
-  const before = failing(runL0(script(input, "draft"), undefined, input.l0Checks));
+  const before = failing(runL0(spellScript(script(input, "draft")), undefined, input.l0Checks));
   const added = [...failing(runL0(script(input, "script"), undefined, input.l0Checks))].filter((id) => !before.has(id));
   return { pass: added.length === 0, detail: `new failing error rows: ${added.join(", ") || "none"}` };
 }

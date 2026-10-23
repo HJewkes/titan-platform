@@ -4,6 +4,8 @@ import { DEFAULT_JUDGE } from "./host.js";
 import { runEvalStage, StageFailure } from "./model-stages.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
+import { voiceCheck } from "../lint-voice.js";
+import { spellScript } from "../rewrite-pass.js";
 import { sha256 } from "./artifacts.js";
 import { l0Check, SPINE } from "./run-fakes.test-helpers.js";
 import { failedGates, runStageChecks, STAGE_CHECKS, type CheckInput } from "./stage-checks.js";
@@ -68,6 +70,16 @@ describe("rewrite stage checks", () => {
     const run = runStageChecks("rewrite", input({ draft: json(draft), script: json(rewritten), "rewrite-report": report(true) }, [failsOnRewrite]));
 
     expect(verdict(run, "no-new-l0-error")).toMatchObject({ gate: true, pass: false, detail: "new failing error rows: fake-l0" });
+  });
+
+  it("compares a reverted rewrite with the spelled draft, so spelling alone adds no error row", () => {
+    const ids = "The desk closed PR 2324 after TP-4103 and then it also opened PR 2325 beside TP-4104 for the courier.";
+    const plain = choppy();
+    const idDraft = { ...plain, beats: plain.beats.map((beat) => (beat.id === "h1" ? { ...beat, spoken: ids } : beat)) };
+    const reverted = spellScript({ ...idDraft, id: `${idDraft.id}-rw` });
+    const run = runStageChecks("rewrite", input({ draft: json(idDraft), script: json(reverted), "rewrite-report": report(true) }, [voiceCheck]));
+
+    expect(verdict(run, "no-new-l0-error")).toMatchObject({ pass: true });
   });
 
   it("passes when the error row was already red on the draft", () => {

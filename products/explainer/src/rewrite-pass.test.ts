@@ -409,3 +409,18 @@ describe("rewriteScript spells before it vets", () => {
     expect(spellSpokenNumbers(once)).toEqual(once);
   });
 });
+
+describe("spelling a script of ids", () => {
+  const ids = "The desk closed PR 2324 after TP-4103 and then it also opened PR 2325 for the courier.";
+  const idScript = (): ScriptV1 => {
+    const plain = choppy();
+    return { ...plain, beats: plain.beats.map((beat) => (beat.id === "h1" ? { ...beat, spoken: ids } : beat)) };
+  };
+  const failing = (s: ScriptV1): string[] => runL0(s).filter((row) => !row.pass).map((row) => row.check_id);
+
+  it("adds no failing row (Q-V9, Q-F11) when the digits are spelled", () => {
+    const draft = idScript();
+
+    expect(failing(spellAll(draft)).filter((id) => !failing(draft).includes(id))).toEqual([]);
+  });
+});
