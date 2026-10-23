@@ -14,7 +14,7 @@ export const deskBeats = (): PaceBeat[] => [
 ];
 
 /** The `[S<n>] text` lines a listener prompt plays, by id. */
-export const promptSentences = (prompt: string): Map<string, string> =>
+const promptSentences = (prompt: string): Map<string, string> =>
   new Map([...prompt.matchAll(/^\[(S\d+)\] (.*)$/gm)].map((m) => [m[1]!, m[2]!]));
 
 /** A listener stand-in: `answer` sees the chapter's sentences and returns its reply, at a fixed price per call. */

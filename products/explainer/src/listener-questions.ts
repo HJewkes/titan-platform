@@ -5,13 +5,13 @@ import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from
 import { sumSpend } from "./eval-judge.js";
 import type { PaceBeat } from "./pace-items.js";
 
-export const LISTENER_EVAL_ID = "L1-listener";
+const LISTENER_EVAL_ID = "L1-listener";
 /** A list read out across this many sentences makes the listener hold its first items while the next sentence starts. */
-export const LIST_SPREAD_MIN_SENTENCES = 2;
+const LIST_SPREAD_MIN_SENTENCES = 2;
 /** "Then seal." is a fragment on its length alone; the listener names the longer ones. */
-export const FRAGMENT_MAX_WORDS = 3;
+const FRAGMENT_MAX_WORDS = 3;
 /** Fewer items than this is a pair, not a list. */
-export const LIST_MIN_ITEMS = 3;
+const LIST_MIN_ITEMS = 3;
 const CONTINUES = /^(?:then|and|also|plus)\s+/i;
 
 // The owner's exercise (TP-4080): one paragraph, heard once, and every question it raises. The chapter is played with
@@ -26,7 +26,7 @@ Reply with JSON only.`;
 
 const SENTENCE = /[^.!?]+(?:[.!?]+["'”’)\]]*|$)/g;
 
-export const ListenerReplySchema = z.strictObject({
+const ListenerReplySchema = z.strictObject({
   questions: z.array(z.strictObject({ sentence: z.string(), question: z.string(), term: z.string().nullable() })),
   lists: z.array(z.strictObject({ items: z.array(z.string()), sentences: z.array(z.string()) })),
   fragments: z.array(z.string()),
@@ -34,9 +34,9 @@ export const ListenerReplySchema = z.strictObject({
 export type ListenerReply = z.infer<typeof ListenerReplySchema>;
 
 const SentenceSchema = z.object({ id: z.string(), beat: z.string(), text: z.string() });
-export type ListenerSentence = z.infer<typeof SentenceSchema>;
+type ListenerSentence = z.infer<typeof SentenceSchema>;
 
-export const ListenerChapterSchema = z.object({
+const ListenerChapterSchema = z.object({
   chapter: z.string(),
   sentences: z.array(SentenceSchema.extend({ questions: z.number().int().nonnegative() })),
   questions: z.number().int().nonnegative(),
@@ -148,9 +148,9 @@ const TALLY_RULES = {
   carried: CONTINUES.source, fragment_max_words: FRAGMENT_MAX_WORDS, memory: "none",
 };
 
-export const listenerEvalVersion = (judge: JudgeConfig): string => evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, TALLY_RULES);
+const listenerEvalVersion = (judge: JudgeConfig): string => evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, TALLY_RULES);
 
-export interface ListenerInput {
+interface ListenerInput {
   beats: readonly PaceBeat[];
   judge: JudgeConfig;
   harness: JudgeHarness;

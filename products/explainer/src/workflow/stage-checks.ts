@@ -18,7 +18,7 @@ export interface CheckInput {
   l0Checks: readonly L0Check[];
 }
 
-export type Verdict = Pick<Check, "pass" | "detail">;
+type Verdict = Pick<Check, "pass" | "detail">;
 
 /**
  * One deterministic check from the workflow plan's §5.1 table. A `gate` fails its stage; any other check is
@@ -135,7 +135,7 @@ export interface JudgedStageCheck {
   run: (input: CheckInput, judge: CheckJudge) => Promise<Verdict & { usage: StageUsage }>;
 }
 
-export const JUDGED_CHECKS: Partial<Record<CachedStage, readonly JudgedStageCheck[]>> = {
+const JUDGED_CHECKS: Partial<Record<CachedStage, readonly JudgedStageCheck[]>> = {
   script: [listenerQuestionsCheck],
 };
 
