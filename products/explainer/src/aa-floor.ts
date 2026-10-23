@@ -4,11 +4,14 @@ import { z } from "zod";
 import { REWRITE_TARGET_ROWS } from "./rewrite-plan.js";
 import { summarizeMeasure, type MeasureInput } from "./rewrite-measure.js";
 import { compareArms, NOISE_SIGMAS, type NoiseFloor, type RowCompare } from "./workflow/samples-compare.js";
+import { STAGE_VERSIONS } from "./workflow/stage-spec.js";
 import { runSamples, sampleRange, type SampleCase, type SampledStage, type SampleEnv, type SampleResult } from "./workflow/samples-measure.js";
 
 export const AaFloorSchema = z.object({
   schema: z.literal("explainer.aa-floor/v1"),
   stage: z.enum(["script", "rewrite"]),
+  /** The stage body's version: a floor measured on an older body says nothing about a newer one. */
+  stageVersion: z.string(),
   measuredAt: z.string(),
   cases: z.array(z.string()),
   samplesPerArm: z.number().int().positive(),
@@ -44,7 +47,7 @@ function floorOf(request: AaFloorRequest, a: SampleResult, b: SampleResult): AaF
   const runs = [...a.runs, ...b.runs];
   const stopped = a.stopped ?? b.stopped;
   return {
-    schema: "explainer.aa-floor/v1", stage: request.stage, measuredAt: request.now().toISOString(), cases: request.cases.map((c) => c.name),
+    schema: "explainer.aa-floor/v1", stage: request.stage, stageVersion: STAGE_VERSIONS[request.stage], measuredAt: request.now().toISOString(), cases: request.cases.map((c) => c.name),
     samplesPerArm: request.samplesPerArm, sigma, rows: compareArms(summarizeMeasure(a.inputs), summarizeMeasure(b.inputs), sigma),
     spentUsd: a.spentUsd + b.spentUsd, runs: runs.length, failedRuns: runs.filter((run) => run.error).length, ...(stopped ? { stopped } : {}),
   };
@@ -68,10 +71,13 @@ const num = (value: number | undefined): string => (value === undefined ? "n/a" 
 
 /** The floor as the stage unit's notes section, between markers so a new measure replaces it. */
 export function floorSection(floor: AaFloor): string {
-  const rows = floor.rows.map((row) => `| ${row.row} | ${num(floor.sigma[row.row])} | ± ${num(NOISE_SIGMAS * (floor.sigma[row.row] ?? NaN))} | ${row.diff >= 0 ? "+" : ""}${num(row.diff)} | ${row.verdict} |`);
+  const rows = floor.rows.map((row) => {
+    const sigma = floor.sigma[row.row];
+    return `| ${row.row} | ${num(sigma)} | ± ${num(sigma === undefined ? undefined : NOISE_SIGMAS * sigma)} | ${row.diff >= 0 ? "+" : ""}${num(row.diff)} | ${row.verdict} |`;
+  });
   return [
     NOTES_START,
-    `## A/A noise floor (${floor.stage})`,
+    `## A/A noise floor (${floor.stage}, stage version ${floor.stageVersion})`,
     "",
     `Measured ${floor.measuredAt.slice(0, 10)} by \`explainer aa-floor\`: the champion against itself, ${floor.samplesPerArm} samples per arm over ` +
       `${floor.cases.length} cases (${floor.cases.join(", ")}); ${floor.runs} runs, ${floor.failedRuns} failed, $${floor.spentUsd.toFixed(2)}.` +

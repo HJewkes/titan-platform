@@ -64,7 +64,7 @@ describe("measureAaFloor", () => {
 });
 
 const FLOOR: AaFloor = {
-  schema: "explainer.aa-floor/v1", stage: "script", measuredAt: "2026-10-22T12:00:00.000Z", cases: ["case-a"], samplesPerArm: 3,
+  schema: "explainer.aa-floor/v1", stage: "script", stageVersion: "x4", measuredAt: "2026-10-22T12:00:00.000Z", cases: ["case-a"], samplesPerArm: 3,
   sigma: { "register:numbers": 1.25 }, spentUsd: 3.5, runs: 6, failedRuns: 0,
   rows: [{ row: "register:numbers", band: { min: 11.92, max: 25.62 }, meanA: 21, meanB: 22, diff: 1, sigma: 1.25, sigmaFrom: "floor", verdict: "noise" }],
 };
@@ -84,7 +84,7 @@ describe("floor notes", () => {
     expect(notes).toContain("kept text");
     expect(notes).toContain("kept tail");
     expect(notes).not.toContain("old floor");
-    expect(notes).toContain("## A/A noise floor (script)");
+    expect(notes).toContain("## A/A noise floor (script, stage version x4)");
     expect(readFloor(dir).sigma).toEqual({ "register:numbers": 1.25 });
   });
 

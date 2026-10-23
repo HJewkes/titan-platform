@@ -62,6 +62,13 @@ export function sampleIndex(text: string): number {
   return value;
 }
 
+/** A sample count for `--samples`; a measure past 20 samples per case is a typo, not a plan. */
+export function sampleCount(text: string): number {
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 1 || value > 20) throw new InvalidArgumentError(`--samples must be an integer from 1 to 20, got "${text}"`);
+  return value;
+}
+
 /** A unit slip (`--budget-usd 2000`) would otherwise lift the backstop the cap exists to be. */
 export function budget(text: string): number {
   const value = Number(text);

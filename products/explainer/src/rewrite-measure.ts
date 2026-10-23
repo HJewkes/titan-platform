@@ -132,7 +132,7 @@ function rowLine(row: MeasureRow): string {
 }
 
 /** The measure as two markdown tables: each input and row, then each row over the inputs with its verdict. */
-export function measureTable(summary: MeasureSummary): string {
+export function measureTable(summary: MeasureSummary, verdictLabel = "Revised done-when"): string {
   return [
     "| input | row | band | before | mean ± sd | n | in band | closer | decided |",
     "|---|---|---|---|---|---|---|---|---|",
@@ -142,7 +142,7 @@ export function measureTable(summary: MeasureSummary): string {
     "|---|---|---|---|---|---|---|---|",
     ...summary.rows.map(rowLine),
     "",
-    `Revised done-when: ${summary.pass ? "PASS" : "FAIL"}`,
+    `${verdictLabel}: ${summary.pass ? "PASS" : "FAIL"}`,
     "",
   ].join("\n");
 }
