@@ -240,6 +240,15 @@ describe("judge with mutation specs", () => {
       expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
     });
 
+    it("a changed carried test that imports non-carried source still needs a spec, since a mutation may target that source", async () => {
+      const PROBE = "pkg/src/test-support/z.test.ts";
+      const probe = `import { foo } from "../foo.js";\n${guardTest("expect(foo).toBe(1);")}`;
+
+      const result = await judgeOver({ "pkg/src/foo.ts": "export const foo = 1;\n" }, { "src/math.test.ts": VACUOUS_TEST, [PROBE]: probe, [SPEC]: specText() }, [PROBE]);
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [PROBE] });
+    });
+
     it("a changed test outside the carry paths with no spec stays uncovered", async () => {
       const PLAIN = "pkg/src/y.test.ts";
 

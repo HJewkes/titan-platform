@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "imports of a carried helper are never followed",
+      "file": "packages/fix-proof/src/carried-closure.ts",
+      "find": "      queue.push(resolved);\n",
+      "replace": "",
+      "kills": ["loadsOnlyCarried refuses a carried test whose carried helper imports non-carried source"]
+    },
+    {
+      "name": "a bare package import is skipped",
+      "file": "packages/fix-proof/src/carried-closure.ts",
+      "find": "if (!specifier.startsWith(\"./\") && !specifier.startsWith(\"../\")) return false;",
+      "replace": "if (!specifier.startsWith(\"./\") && !specifier.startsWith(\"../\")) continue;",
+      "kills": ["loadsOnlyCarried refuses a bare package import, which may resolve to workspace source"]
+    },
+    {
+      "name": "type-only imports count as runtime loads",
+      "file": "packages/fix-proof/src/carried-closure.ts",
+      "find": "text.replace(TYPE_ONLY_STATEMENT, \"\")",
+      "replace": "text",
+      "kills": ["loadsOnlyCarried ignores a type-only import of non-carried source, which the test never loads"]
+    },
+    {
+      "name": "a resolved import is followed without checking it is carried",
+      "file": "packages/fix-proof/src/carried-closure.ts",
+      "find": "if (resolved === null || !isCarried(resolved.path)) return false;",
+      "replace": "if (resolved === null) return false;",
+      "kills": [
+        "loadsOnlyCarried refuses a carried test that imports non-carried source directly",
+        "loadsOnlyCarried refuses a carried test whose carried helper imports non-carried source"
+      ]
+    }
+  ]
+}

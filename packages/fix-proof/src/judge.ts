@@ -1,3 +1,4 @@
+import { loadsOnlyCarried } from "./carried-closure.js";
 import { classifyReports, type Classification } from "./classify.js";
 import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
@@ -5,7 +6,7 @@ import { compileGlobs } from "./glob.js";
 import { classifyMutants, mutantsError, withCoverage, type MutantsResult } from "./mutant-classify.js";
 import { testOnlyReading, type FixProofPlan } from "./plan.js";
 import { formatResultLine, toResult } from "./result-line.js";
-import { readSpecs, SpecError } from "./spec-read.js";
+import { readBlob, readSpecs, SpecError } from "./spec-read.js";
 import { decodeMutantsReport, decodeReport, type DecodedReport } from "./transport.js";
 
 /** Git calls only, so a short budget; the judge's CI job allows 8 minutes. */
@@ -65,10 +66,19 @@ function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classificat
   }
 }
 
+async function testsNeedingNoSpec(ctx: Context, plan: FixProofPlan, head: string): Promise<Set<string>> {
+  const isCarried = compileGlobs(plan.config.carry);
+  const read = (path: string) => readBlob(ctx, head, path);
+  const exempt = new Set<string>();
+  for (const test of plan.tests) if (await loadsOnlyCarried(test, read, isCarried)) exempt.add(test);
+  return exempt;
+}
+
 async function judgeMutants(ctx: Context, plan: FixProofPlan, shas: Shas, encoded: string | undefined): Promise<MutantsResult> {
   try {
     const specs = await readSpecs(ctx, plan, shas);
-    return withCoverage(classifyMutants(specs, decodeMutantsReport(encoded)), specs, plan.tests, compileGlobs(plan.config.carry));
+    const needsNoSpec = await testsNeedingNoSpec(ctx, plan, shas.head);
+    return withCoverage(classifyMutants(specs, decodeMutantsReport(encoded)), specs, plan.tests, needsNoSpec);
   } catch (error) {
     if (!(error instanceof SpecError || error instanceof RunError)) throw error;
     return mutantsError(error.message);
