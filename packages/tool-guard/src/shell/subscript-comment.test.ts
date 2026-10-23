@@ -211,11 +211,11 @@ function countCharAt(read: () => unknown, cap: number): number {
 /**
  * Each shape's span, repeated inside one argument-position subscript, and the characters the hook may read per character
  * of a 64 KB script of it: about twice what each was measured to read. Each span costs several readings, so the linear
- * rows range from 18 to 1 230. The $${ row is quadratic today, 6 947 at 64 KB and doubling per doubling up to 32 KB; its
- * cap pins that cost until TP-4051 makes it linear.
+ * rows range from 18 to 1 230. The $${ row read 6 947 when the glob compiler searched to the end for each unterminated
+ * `[` (TP-4051); it reads 549 now.
  */
 const SPAN_SHAPES: Array<[string, string, number]> = [
-  ["$${ openers, each a bare { to bash", "$${x[", 14_000],
+  ["$${ openers, each a bare { to bash", "$${x[", 1_100],
   ["nested ${ openers", "${x[", 40],
   ["closed ${ spans", "${x[0]}", 650],
   ["backquote spans", "`[]`", 65],

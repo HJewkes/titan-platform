@@ -41,6 +41,7 @@ describe("checkProfiles", () => {
     ["an allowed style pack with no file", fixedProfile({ styles: { allow: ["plain", "loud"] } }), "unknown-style-pack"],
     ["a house pack outside styles.allow", fixedProfile({ styles: { allow: ["plain", "bold"], house: "loud" } }), "unknown-style-pack"],
     ["one allowed pack where the series must vary it", fixedProfile({ styles: { allow: ["plain"] } }), "style-pack-unvaried"],
+    ["a voice speech-tts Kokoro does not offer", fixedProfile({ voice: { id: "bf_emma", rate: 1 } }), "unknown-voice"],
     ["a paper profile without the re-plot check", fixedProfile({ family: "review-paper", publish: { ownerAskPerVideo: true, checks: ["quotes-short"] } }), "publish-unguarded"],
   ])("reports %s", (_name, profile, code) => {
     expect(codes(profile)).toEqual([code]);
