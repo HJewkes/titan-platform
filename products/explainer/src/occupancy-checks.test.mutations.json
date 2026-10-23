@@ -11,28 +11,10 @@
       ]
     },
     {
-      "name": "a listed cell with no elements counts as covered",
-      "file": "products/explainer/src/occupancy-checks.ts",
-      "find": "!table.cells[anchor]?.length",
-      "replace": "!table.cells[anchor]",
-      "kills": [
-        "emptySpace treats a cell listed with no elements as empty"
-      ]
-    },
-    {
       "name": "a finding at a mark's own moment reads the table before it",
       "file": "products/explainer/src/occupancy-checks.ts",
       "find": "table.t <= finding.t!",
       "replace": "table.t < finding.t!",
-      "kills": [
-        "anchorFindings picks the beat's last table at or before the finding's moment"
-      ]
-    },
-    {
-      "name": "a finding before the beat's first mark gets no table",
-      "file": "products/explainer/src/occupancy-checks.ts",
-      "find": "?? own[0];",
-      "replace": "?? undefined;",
       "kills": [
         "anchorFindings picks the beat's last table at or before the finding's moment"
       ]

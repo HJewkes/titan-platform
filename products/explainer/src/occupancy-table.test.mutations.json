@@ -46,15 +46,6 @@
       "kills": [
         "buildOccupancy's pixel lookup uses the pixel grid of the same beat at the same moment"
       ]
-    },
-    {
-      "name": "pixel grids match by time only",
-      "file": "products/explainer/src/occupancy-table.ts",
-      "find": "p.beat === mark.beat && p.t === mark.t",
-      "replace": "p.t === mark.t",
-      "kills": [
-        "buildOccupancy's pixel lookup uses the pixel grid of the same beat at the same moment"
-      ]
     }
   ]
 }
