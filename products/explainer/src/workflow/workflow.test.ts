@@ -8,7 +8,7 @@ import { sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -24,20 +24,20 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "audition" ? "not run" : "ran"]));
-    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
   });
 
-  it("hands the tts command the rewritten script, not the draft", async () => {
+  it("voices the rewritten script, not the draft", async () => {
     fx = fixture();
     const bridge = fakeBridge();
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
 
-    expect(bridge.ttsInputs).toEqual([row(result, "rewrite").outputs.script]);
-    expect(row(result, "rewrite").outputs.script).not.toBe(row(result, "script").outputs.draft);
+    expect(spokenOf(fx, row(result, "tts").outputs.words!)).toBe(spokenOf(fx, row(result, "rewrite").outputs.script!));
+    expect(spokenOf(fx, row(result, "rewrite").outputs.script!)).not.toBe(spokenOf(fx, row(result, "script").outputs.draft!));
   });
 
   it("stops at the script stage's l0 gate when an error-severity L0 check fails, before the rewrite spends", async () => {
@@ -145,7 +145,7 @@ describe("the cold rubric on every run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "eval").checks).toBe("2 pass, 0 gate fail, 0 reported fail");
     expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
-    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
   });
 });
 
@@ -163,7 +163,7 @@ describe("explainer run --from", () => {
     expect(model.prompts).toHaveLength(1);
     expect(host.rewriter.prompts).toHaveLength(0);
     expect(second.report.totals.usd).toBe(0);
-    expect(bridge.ttsInputs).toEqual([row(first, "rewrite").outputs.script]);
+    expect(spokenOf(fx, row(second, "tts").outputs.words!)).toBe(spokenOf(fx, row(first, "rewrite").outputs.script!));
     for (const stage of ["script", "rewrite", "eval"]) {
       expect(row(second, stage)).toMatchObject({ status: "reused", cacheHit: true, usd: 0, wallMs: 0, outputs: row(first, stage).outputs, reusedFrom: first.runId });
     }
@@ -249,17 +249,17 @@ describe("checks as stage steps", () => {
   /** h1 shows a V6 card on "courier", a word h1 speaks in the draft and in its rewrite. */
   const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue: "courier" }] } } });
 
-  it("fails the tts stage at its cue gate when the voice drops a cue word, before render", async () => {
+  it("fails the tts stage when the voice has no phonemes for a word, before render", async () => {
     fx = fixture();
-    const bridge = fakeBridge({ dropWord: "courier" });
+    const bridge = fakeBridge();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), bridge));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), bridge, { ttsEngine: fakeVoice({ dropWord: "courier" }).engine }));
 
     expect(result.status).toBe("failed");
-    expect(result.error).toContain("tts: gate cue-resolution failed (0 of 1 cues resolve; unresolved: h1:courier)");
-    expect(row(result, "tts")).toMatchObject({ status: "failed", checks: "0 pass, 1 gate fail, 0 reported fail" });
+    expect(result.error).toContain('no phonemes for 1 word(s): "courier"');
+    expect(row(result, "tts").status).toBe("failed");
     expect(row(result, "render").status).toBe("not run");
-    expect(bridge.calls).toEqual(["tts.mjs"]);
+    expect(bridge.calls).toEqual([]);
   });
 
   it("passes the cue gate when every cue word is voiced", async () => {
@@ -319,7 +319,7 @@ describe("run report", () => {
 
     const md = readFileSync(result.reportPath, "utf8");
     const bridgedRows = md.split("\n").filter((line) => line.includes("**bridge**")).map((line) => line.split("|")[1]!.trim());
-    expect(bridgedRows).toEqual(["tts", "render", "qa", "sheets"]);
+    expect(bridgedRows).toEqual(["render", "qa", "sheets"]);
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
     expect(md).toContain("qa PASS demo: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);
