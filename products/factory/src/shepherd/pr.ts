@@ -11,7 +11,7 @@ import { setCarryOf } from "./approved-set-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
-import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
+import { conflictCheckRoute, conflictCheckedGates, conflictsAt, leaveOnConflict } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
@@ -180,11 +180,6 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   if (await heldRepair(run, kind, headSha, payload)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
-}
-
-/** An approval at a head that conflicts with its base would only fail at update-branch, so the conflict goes back to the fixer. */
-function leaveOnConflict(headSha: string): LeaveLand {
-  return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }
 
 const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });
