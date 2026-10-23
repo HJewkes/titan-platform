@@ -76,10 +76,20 @@ interface Inbox {
   gaps?: string[];
   fyiCount?: number;
   derived?: Record<string, unknown>[];
+  nudges?: Record<string, unknown>[];
 }
 
-const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [] }: Inbox = {}): JsonEnvelope<unknown> =>
-  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived });
+const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox = {}): JsonEnvelope<unknown> =>
+  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+
+const ROUND_SHA = "e".repeat(64);
+
+const nudge = (roundId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  roundId, unit: roundId.replace(/-r\d+$/, ""), round: 1, openedAt: ago(7 * HOUR), manifestSha256: ROUND_SHA, oneTap: true, nudgedAt: null, recommendationsHidden: false,
+  recommendations: [{ questionId: "ramp", prompt: "Which ramp by default?", answer: "Staged" }],
+  line: `${roundId} has waited 7 h: reply rec to answer all 1 with the recommendation (ramp: Staged)`,
+  ...overrides,
+});
 
 const BLOCKED_AGENT = {
   id: "derived:blocked-agent:relay-worker@1",
@@ -424,5 +434,53 @@ describe("the inbox page, empty or gapped", () => {
   it("says so when the inbox itself cannot be read", async () => {
     renderInbox(errorEnvelope("console daemon down", 69));
     expect(await screen.findByText("Could not load the inbox: console daemon down")).toBeTruthy();
+  });
+});
+
+describe("the round age nudge", () => {
+  it("lists each waiting round once with its recommendation stated", async () => {
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1"), nudge("lamp-r1", { oneTap: false, withoutTap: 'question "notes" has no recommendation that answers it' })] }));
+
+    const kiln = await screen.findByTestId("inbox-nudge-kiln-r1");
+    expect(within(screen.getByTestId("inbox-nudges")).getByText("Waiting over 6 h (2)")).toBeTruthy();
+    expect(within(kiln).getByText("ramp: Staged")).toBeTruthy();
+    expect(within(screen.getByTestId("inbox-nudge-lamp-r1")).getByText('No one-tap answer: question "notes" has no recommendation that answers it')).toBeTruthy();
+    expect(screen.queryByTestId("inbox-nudge-rec-lamp-r1")).toBeNull();
+  });
+
+  it("states no recommendation for an after-answer round, and offers its tap as accepting them unseen", async () => {
+    const hidden = { recommendationsHidden: true, recommendations: [], line: "kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer" };
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1", hidden)] }), { "rounds.answer-rec": () => Promise.resolve(successEnvelope({ status: "submitted", path: "/synthetic/feedback.json", sha256: "f".repeat(64), headSha: null })) });
+
+    const kiln = await screen.findByTestId("inbox-nudge-kiln-r1");
+
+    expect(within(kiln).queryByText(/Staged/)).toBeNull();
+    expect(within(kiln).getByText("kiln-r1 has waited 7 h: 1 questions; recommendations hidden until you answer")).toBeTruthy();
+    expect(within(kiln).getByText("Accept all recommendations (unseen)")).toBeTruthy();
+  });
+
+  it("answers every question with one tap through rounds.answer-rec, bound to the round it showed", async () => {
+    const calls = renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }), { "rounds.answer-rec": () => Promise.resolve(successEnvelope({ status: "submitted", path: "/synthetic/feedback.json", sha256: "f".repeat(64), headSha: null })) });
+
+    fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
+
+    expect(await screen.findByText("Answered with every recommendation.")).toBeTruthy();
+    expect(named(calls, "rounds.answer-rec")).toEqual([{ name: "rounds.answer-rec", args: { id: "kiln-r1", manifestSha256: ROUND_SHA } }]);
+  });
+
+  it("offers no tap on a snapshot page, and shows a refusal from the server", async () => {
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }));
+    expect(await screen.findByText("This page is a snapshot: answer from the live console.")).toBeTruthy();
+    cleanup();
+
+    renderInbox(inboxAnswer({ nudges: [nudge("kiln-r1")] }), { "rounds.answer-rec": () => Promise.resolve(errorEnvelope("refused: withdrawn; only an open round takes the one-tap answer", 65)) });
+    fireEvent.click(await screen.findByTestId("inbox-nudge-rec-kiln-r1"));
+    expect(await screen.findByText("Not answered: refused: withdrawn; only an open round takes the one-tap answer")).toBeTruthy();
+  });
+
+  it("renders a snapshot that carries no nudges", async () => {
+    renderInbox(inboxAnswer());
+    await screen.findByTestId("inbox-row-gate-1");
+    expect(screen.queryByTestId("inbox-nudges")).toBeNull();
   });
 });

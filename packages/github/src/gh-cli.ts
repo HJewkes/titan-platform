@@ -67,7 +67,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
-    listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
+    listCheckRuns: (repo, sha, filter) => listCheckRuns(api, repo, sha, filter),
     createCheckRun: postCheckRun,
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
@@ -91,6 +91,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
+    rerunJob: async (repo, jobId) => void (await api.send("POST", `repos/${repo}/actions/jobs/${jobId}/rerun`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
@@ -243,8 +244,9 @@ interface GhCheckRun {
   pull_requests?: { number: number; base: { ref: string } }[];
 }
 
-async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<CheckRun[]> {
-  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, { per_page: "100" }, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
+async function listCheckRuns(api: Rest, repo: string, sha: string, filter?: "all"): Promise<CheckRun[]> {
+  const fields: Record<string, string> = filter === undefined ? { per_page: "100" } : { per_page: "100", filter };
+  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, fields, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
   return runs.map((run) => ({
     id: run.id,
     name: run.name,

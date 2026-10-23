@@ -1,10 +1,10 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { octokitClient, sharedRateBudget, type GhExecOptions, type GitExec } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOT_CAPABILITY, BOT_LOGIN, BOT_TOKEN_PATH, botAccess, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
+import { BOT_CAPABILITY, BOT_LOGIN, botAccess, botTokenPathIn, openBotIdentity, type BotHandle, type BotIdentity } from "./bot-identity.js";
 import { runCommand } from "./service-ports.js";
 
 /** Built, not written out, so no source line carries a token-shaped literal. */
@@ -164,9 +164,16 @@ describe("bot identity: ls-remote as the bot (TP-3431)", () => {
 });
 
 describe("bot identity: an absent or refused file disables only the bot (V5)", () => {
-  it("ships with no token path, so serve looks nowhere until the option slice fills it", () => {
-    expect(BOT_TOKEN_PATH).toBeUndefined();
-    expect(openBotIdentity().health()).toEqual({ state: "absent" });
+  it("places the token under whatever home it is given, so a test never meets the real file", () => {
+    expect(botTokenPathIn("/srv/synthetic-home")).toBe("/srv/synthetic-home/.config/titan-factory/secrets/github-bot.token");
+  });
+
+  it("a token at the fixed layout under a scratch home is read", () => {
+    const home = scratch();
+    mkdirSync(dirname(botTokenPathIn(home)), { recursive: true, mode: 0o700 });
+    writeFileSync(botTokenPathIn(home), `${SENTINEL}\n`, { mode: 0o600 });
+
+    expect(openBotIdentity({ path: botTokenPathIn(home) }).health()).toEqual({ state: "ok", expiresAt: null });
   });
 
   it("a missing file is absent, and bot steps are blocked with no client to fall back on", () => {

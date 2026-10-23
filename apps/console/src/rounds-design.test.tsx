@@ -10,6 +10,7 @@ import type { Question } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend, checkButton, toSection } from "./pages/round-pager.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
@@ -114,7 +115,7 @@ describe("a design round", () => {
       expect(within(figure).getByText(label)).toBeTruthy();
       expect(await within(figure).findByRole("img", { name: label })).toBeTruthy();
     }
-    fireEvent.click(screen.getByRole("button", { name: "Enlarge Busy" }));
+    fireEvent.click(getButton("Enlarge Busy"));
     expect(screen.getByRole("dialog", { name: "Busy" })).toBeTruthy();
     expect(screen.queryByText("design round: open in the harness")).toBeNull();
   });
@@ -221,7 +222,7 @@ describe("a design round", () => {
   });
 });
 
-const verdictButton = (key: string, verdict: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: verdict });
+const verdictButton = (key: string, verdict: string): HTMLElement => getButton(verdict, screen.getByTestId(`frame-feedback-${key}`));
 const pressed = (key: string, verdict: string): string | null => verdictButton(key, verdict).closest("[aria-pressed]")?.getAttribute("aria-pressed") ?? null;
 const pressedVerdicts = (key: string): string[] => ["Chosen", "Rejected", "Maybe"].filter((verdict) => pressed(key, verdict) === "true");
 const pickOf = (option: string): string | null | undefined => within(screen.getByTestId("round-question-beacon-fill-pick")).getByText(new RegExp(option)).closest('[role="radio"]')?.getAttribute("aria-checked");
@@ -471,7 +472,7 @@ function onPhone(): void {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)", media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
 }
 
-const pinButton = (key: string): HTMLElement => within(screen.getByTestId(`frame-feedback-${key}`)).getByRole("button", { name: /^Pin / });
+const pinButton = (key: string): HTMLElement => getButton(/^Pin /, screen.getByTestId(`frame-feedback-${key}`));
 
 /** A press on a frame's pin layer that lifts `moved` px from where it went down. */
 function tap(layer: HTMLElement, clientX: number, clientY: number, moved = 0): void {
@@ -525,7 +526,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     expect(screen.getByTestId("pin-layer-beacon-idle")).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("pin-layer-beacon-idle")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Enlarge Idle" }));
+    fireEvent.click(getButton("Enlarge Idle"));
     expect(screen.getByRole("dialog", { name: "Idle" })).toBeTruthy();
   });
 
@@ -535,7 +536,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
     tap(layer, 10, 10);
     tap(layer, 20, 20);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove pin 2" }));
+    fireEvent.click(getButton("Remove pin 2"));
     tap(layer, 30, 30);
 
     expect(screen.queryByLabelText("Note for pin 2")).toBeNull();
@@ -558,7 +559,7 @@ describe("a design round's frame pins (TP-3773 S4)", () => {
 
     expect(screen.getAllByTestId("pin-layer-beacon-busy")).toHaveLength(1);
     expect(document.activeElement).toBe(dialog.getByLabelText("Note for pin 1"));
-    fireEvent.click(dialog.getByRole("button", { name: "Done" }));
+    fireEvent.click(getButton("Done", screen.getByRole("dialog")));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByTestId("pin-marker-beacon-busy-1")).toBeTruthy();
   });
@@ -740,7 +741,7 @@ describe("a design round's picks and frame verdicts, kept in step (TP-3773 S7)",
     fireEvent.click(verdictButton("beacon-busy", "Chosen"));
 
     expect(pressedVerdicts("beacon-idle")).toEqual([]);
-    expect(within(screen.getByTestId("question-ab-side-beacon-fill-pick-B")).getByRole("button", { name: "Picked B" })).toBeTruthy();
+    expect(getButton("Picked B", screen.getByTestId("question-ab-side-beacon-fill-pick-B"))).toBeTruthy();
   });
 });
 

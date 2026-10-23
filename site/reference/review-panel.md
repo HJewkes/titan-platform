@@ -100,7 +100,8 @@ every caller plans, briefs and aggregates the same way:
   adversary's MERGE. A vacuous fix-proof line that `provedByMutants` proves is not a bad
   fix-proof. `fixProofShortfall` is set on a `no-verdict` whose only missing blocking member
   is the tests member a bad fix-proof requires but the plan never scheduled, since no fresh
-  reviewer can fill it.
+  reviewer can fill it. Shepherd plans a blocking tests member for a test-only head that
+  proceeds on its vacuous proof, so that head never reaches the shortfall.
 - `reviewPullRequest(request, ports, opts?)`: the one entry point. It classifies the PR,
   plans the panel (asking `ports.headroom()` once), runs every member in parallel and
   returns `aggregate`'s verdict. Each member is spawned under `memberName(target, shape)`
@@ -195,7 +196,9 @@ const brief = shapeBrief("adversary", {
 - A shape brief's `hash` changes with any edit to its overlay; record the hash with each
   verdict so evals compare variants, not ids.
 - The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
-  that does not parse, or names another head, is ignored.
+  that does not parse, or names another head, is ignored. With `fixProofUnverified`
+  `no-repro-test-only` it also asks, for each changed test, whether it would fail without the
+  change it covers.
 - `reviewerBrief`'s `fixProofUnverified` (`error`, `untrusted` or `unread`) adds a blocking
   section: FIX_FIRST unless the reviewer names an added test that fails on the base. A
   reason outside that set adds nothing, and a reproduced line no longer stops the reviewer

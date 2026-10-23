@@ -19,7 +19,7 @@ import { z } from "zod";
 import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
+import { FeedbackSchema, ROUND_ID, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
 import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
@@ -40,7 +40,7 @@ export interface RoundsSource {
 export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
-export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export { ROUND_ID };
 export const ROUND_FILE = "round.json";
 export const FEEDBACK_FILE = "feedback.json";
 export const WITHDRAWN_FILE = "withdrawn.json";
@@ -297,6 +297,7 @@ export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
+  manifestSha256: string;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;
   /** The questions its feedback filed as follow-ups; empty while unsent. */
@@ -362,14 +363,14 @@ async function readWithdrawal(roundDir: string): Promise<Withdrawal | null> {
   return parsed?.success ? { reason: parsed.data.reason, at: parsed.data.at } : { reason: "unreadable", at: null };
 }
 
-/** A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked. */
+/** An unreadable feedback.json is a gap and the round stays open; a withdrawn round's bad round.json is none, as nobody waits on it. */
 async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound; gap?: string }> {
   const roundDir = path.join(dir, id);
   const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
-  if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
+  if (!parsed.ok) return withdrawn === null ? { gap: `${id}: ${parsed.reason}` } : {};
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
   const feedback = read.ok ? read.feedback : null;
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
+  const round = { id, updatedAt, manifest: parsed.manifest, manifestSha256: parsed.sha256, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 

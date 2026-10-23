@@ -4,7 +4,6 @@ import { z } from "zod";
 const CONSOLE_PACKAGE = "titan-console";
 /** pnpm's own view of the workspace packages the console build reaches, so a new dependency needs no list edit here. */
 export const CLOSURE_ARGS: readonly string[] = ["--filter", `${CONSOLE_PACKAGE}...`, "ls", "--depth", "-1", "--json"];
-export const BUILD_ARGS: readonly string[] = ["--filter", `${CONSOLE_PACKAGE}...`, "build"];
 
 /** Root files every workspace build reads; a lockfile bump for an unrelated package over-triggers, which costs one rebuild. */
 const ROOT_BUILD_INPUTS: readonly string[] = ["pnpm-lock.yaml", "package.json", "pnpm-workspace.yaml", ".npmrc"];

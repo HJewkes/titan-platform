@@ -54,7 +54,8 @@ describe("the linearity check", () => {
     return sink;
   };
 
-  // Each timed run must span many ticks of the thread CPU clock; at a fraction of a tick the ratio measured rounding (TP-3978).
+  // Thread CPU ticks in 1 ms steps on Linux, so each run must span several ticks: a sub-tick run reads as 0 or 1 ms and
+  // its ratio is noise (TP-3980).
   cpuBudgetIt("passes work linear in the size", 2000, () => {
     expectLinearTime((n) => () => void work(n * 500), 40_000);
   });

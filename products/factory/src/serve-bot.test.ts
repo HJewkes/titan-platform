@@ -1,12 +1,12 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { daemonPaths, readPidFile, silentLogger, type Logger } from "@titan-design/daemon";
 import type { GitExec } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { botAccess, openBotIdentity, type BotAccess, type BotIdentity } from "./bot-identity.js";
+import { BOT_TOKEN_PATH, botAccess, openBotIdentity, type BotAccess, type BotIdentity } from "./bot-identity.js";
 import { BOT_FINGERPRINT_FILE, tokenFingerprint } from "./bot-token-fingerprint.js";
 import { runCli } from "./cli.js";
 import { configPath } from "./config.js";
@@ -76,6 +76,24 @@ async function runProbe(server: FactoryServer, seen: BotAccess[]): Promise<BotAc
   await vi.waitFor(() => expect(server.host.runtime.status(runId)?.status).toBe("completed"));
   return seen.at(-1);
 }
+
+describe("serve's bot token path under test (TP-3419)", () => {
+  it("a serve started with no bot option reads the sandbox token path, never the real home's secrets dir", async () => {
+    expect(BOT_TOKEN_PATH?.startsWith(join(homedir(), ".config", "titan-factory", "secrets"))).toBe(false);
+    expect(BOT_TOKEN_PATH?.startsWith(tmpdir())).toBe(true);
+    mkdirSync(dirname(BOT_TOKEN_PATH!), { recursive: true, mode: 0o700 });
+    writeFileSync(BOT_TOKEN_PATH!, `${SENTINEL}\n`, { mode: 0o600 });
+    try {
+      const stateDir = join(scratch(), "state");
+      const server = await startFactoryServer({ dbPath: join(stateDir, "factory.sqlite3"), workflows: [], routes: NO_ROUTES, port: 0, logger: silentLogger, github: { status: () => "ok", refresh: async () => undefined } });
+      servers.push(server);
+
+      expect(await botHealth(server)).toEqual({ state: "ok", expiresAt: null });
+    } finally {
+      rmSync(BOT_TOKEN_PATH!, { force: true });
+    }
+  });
+});
 
 describe("serve's bot identity (V5)", () => {
   it("starts with an absent token file, reports the bot absent, and blocks bot steps", async () => {

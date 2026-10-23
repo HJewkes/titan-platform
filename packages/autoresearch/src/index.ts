@@ -2,6 +2,7 @@ export { AUTORESEARCH_WORKFLOW, finalOutcomes, ForkScheduleSchema, runAutoresear
 export { AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, runValidatorLook } from "./validate.js";
 export { AUTORESEARCH_STEPS, arStepId, type ArDispatchStep, type ArStepDeclaration } from "./manifest.js";
 export { arStepHandlers, type ArStepHandler, type StepTiming } from "./handlers.js";
+export { cadence, CadenceSchema, snapshotLog, SnapshotSettingsSchema, SyncGateAnswerSchema, type Cadence, type SnapshotSettings } from "./snapshot.js";
 export {
   ArchivedSchema,
   HeadSchema,
@@ -20,10 +21,22 @@ export {
   RegistryRowSchema,
   ReleasedSchema,
   RoundSummarySchema,
+  CadenceRoundSchema,
+  CadenceTriggerSchema,
+  SnapshotCutSchema,
+  SnapshotLogSchema,
+  SnapshotResultSchema,
   StaticCheckSchema,
   StopReasonSchema,
+  SyncResultSchema,
   TreeSchema,
   type ArPorts,
+  type CadenceRound,
+  type CadenceTrigger,
+  type SnapshotLog,
+  type SnapshotRequest,
+  type SyncRequest,
+  type SyncResult,
   type Fork,
   type ImplementRequest,
   type IntegrateRequest,
@@ -79,4 +92,4 @@ export { applyOps, quotaViolations, toIdea } from "./queue.js";
 export { EMPTY_REGISTRIES, inDeadEnd, recordAnalysis, recordOutcome, registryTails, REGISTRY_TAIL, type DeadEnd, type Registries } from "./registry.js";
 export { buildDigest, cellTable, evidenceRow, implementerBrief, type CellRow, type Digest, type EvidenceRow } from "./digest.js";
 export { arRunSummary, arRunView, ideaRefs, projectMetric } from "./read-model.js";
-export type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArRoundView, ArRunSummary, ArRunView, ArTargetView } from "./read-model-types.js";
+export type { ArEvalView, ArIdeaView, ArLadderView, ArMetricView, ArReevalView, ArRoundView, ArRunSummary, ArRunView, ArSnapshotView, ArSyncView, ArTargetView } from "./read-model-types.js";

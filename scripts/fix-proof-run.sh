@@ -5,7 +5,8 @@
 # cannot be forged from the head the way a single job's could.
 #
 #   exec <base|head|mutants> <runner> <repo> <base> <head> <out>
-#                                                         run one side, writing <name>.report files into <out>
+#                                                         run one side, writing <name>.report files into <out>; mutants
+#                                                         exits 1 when the runner wrote mutants.refused
 #   emit <base|head|mutants> <out>                        copy those files into $GITHUB_OUTPUT as report (and rerun)
 #   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD and
 #                                                         REPORT_MUTANTS into <dir>
@@ -139,6 +140,16 @@ exec_side() {
   fi
   PATH=$path node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
     --budget-ms "$EXEC_BUDGET_MS" "${sandbox[@]}"
+  refused_spec "$side" "$out"
+}
+
+# The judge never reads a source diff's specs, so a refused one would pass unseen; the mutants job fails on it instead.
+# The report is already written, so emit still passes it on.
+refused_spec() {
+  local file="$2/mutants.refused"
+  [ "$1" = mutants ] && [ -f "$file" ] || return 0
+  echo "fix-proof: mutation spec refused: $(head -c 2000 "$file")" >&2
+  return 1
 }
 
 # Prints the report to pass on, or a marker saying why it cannot be: a value with anything outside the base64

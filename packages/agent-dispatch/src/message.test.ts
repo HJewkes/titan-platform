@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { BrokerUnavailableError, DispatchError } from "./dispatch.js";
-import { messageAgent } from "./message.js";
+import { messageAgent, receivesMessages } from "./message.js";
 import { installExecutable } from "./test-support.js";
 
 let dir: string;
@@ -67,5 +67,15 @@ describe("messageAgent", () => {
     await expect(messageAgent(bin, "--force", "wake up", 10_000)).rejects.toThrow(DispatchError);
     await expect(messageAgent(bin, "impl-a", "  ", 10_000)).rejects.toThrow(DispatchError);
     expect(() => readFileSync(join(dir, "argv"))).toThrow();
+  });
+});
+
+describe("receivesMessages", () => {
+  it.each([
+    ["live", true],
+    ["detached", false],
+    ["exited", false],
+  ])("reads a %s agent as reachable: %s, since only a connected session takes an unregistered send", (presence, reachable) => {
+    expect(receivesMessages({ presence })).toBe(reachable);
   });
 });

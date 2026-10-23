@@ -10,7 +10,7 @@ import type { AnswerOutcome, GateAnswerClient, GateAnswerRequest, Unreachable } 
 import { SHIP_OPTIONS as VENDORED_SHIP_OPTIONS } from "./review-schema-0.3/contract.js";
 import { createRoundListeners, type ListenerDeps, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
-import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, twoPrRound } from "./round-fixtures.js";
+import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, settledListeners, twoPrRound } from "./round-fixtures.js";
 import { roundsSubmitCommands } from "./rounds-submit.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -77,9 +77,17 @@ function ownerContext(): ConsoleContext {
   return { warnings: [], format: "json", surface: "http", auth: SESSION_AUTH, ownerWrites: true };
 }
 
+/** Submits, then waits for the listener the submit started without awaiting. */
+async function submitWith(listeners: RoundListeners, args: Record<string, unknown>) {
+  const settling = settledListeners(listeners);
+  const outcome = await invokeCommand(roundsSubmitCommands({ dir }, undefined, settling)["rounds.submit"], args, ownerContext());
+  await settling.settled();
+  return outcome;
+}
+
 function submit(listeners: RoundListeners, pick = "Ship") {
   const args = { id: ROUND, manifestSha256, headSha: HEAD, answers: [{ questionId: "ship-backoff", pick, ...(pick === "Ship" ? {} : { comment: "Cap the jitter." }) }] };
-  return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
+  return submitWith(listeners, args);
 }
 
 beforeEach(async () => {
@@ -134,7 +142,7 @@ describe("the gate-answer listener after rounds.submit", () => {
     reply = () => ({ status: "resolved", gateId: "run-1/approve-merge:1", choice: "send-back" });
     const args = { id: ROUND, manifestSha256, answers: [{ questionId: "ship-backoff", pick: "Don't ship", comment: "Cap the delay lower." }] };
 
-    await invokeCommand(roundsSubmitCommands({ dir }, undefined, createRoundListeners(deps()))["rounds.submit"], args, ownerContext());
+    await submitWith(createRoundListeners(deps()), args);
 
     expect(JSON.parse(await readFile(path.join(dir, ROUND, "feedback.json"), "utf8")).answers[0]).toMatchObject({ revisionRequested: true });
     expect(posts.map((post) => post.choice)).toEqual(["send-back"]);
@@ -323,7 +331,7 @@ describe("the gate-answer listener on a round with two PRs (TP-3789)", () => {
   function submitTwo(listeners: RoundListeners) {
     const answers = [{ questionId: "ship-tiles", pick: "Ship" }, { questionId: "ship-panels", pick: "Don't ship", comment: "Narrow the panel." }];
     const args = { id: TWO, manifestSha256: twoSha, answers, heads: { "ship-tiles": TILES_HEAD } };
-    return invokeCommand(roundsSubmitCommands({ dir }, undefined, listeners)["rounds.submit"], args, ownerContext());
+    return submitWith(listeners, args);
   }
 
   it("posts one request per PR, each to its own gate at its own head", async () => {

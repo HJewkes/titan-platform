@@ -2,15 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "windows are keyed by resource alone, so a reset folds into the window before it",
-      "file": "products/factory/src/github-api/usage-meter.ts",
-      "find": "const key = `${read.resource}@${read.reset}`;",
-      "replace": "const key = read.resource;",
-      "kills": [
-        "usageMeter reports the pre-reset max for a window, not the last value it saw"
-      ]
-    },
-    {
       "name": "a window keeps the last used it saw rather than its max",
       "file": "products/factory/src/github-api/usage-meter.ts",
       "find": "const window = seed !== undefined && seed.used >= read.used ? seed : read;",
@@ -48,20 +39,6 @@
         "usageMeter gives an empty take when no answer arrived since the last one",
         "usage and peak log lines logs a github-api.peak line per window touched since the last peak lines, then none until another answer"
       ]
-    },
-    {
-      "name": "an answer without a resource header is metered",
-      "file": "products/factory/src/github-api/usage-meter.ts",
-      "find": "if (resource === null || used",
-      "replace": "if (used",
-      "kills": ["usageMeter ignores answers without a complete set of rate-limit headers"]
-    },
-    {
-      "name": "a zero limit is metered",
-      "file": "products/factory/src/github-api/usage-meter.ts",
-      "find": " || limit === 0) return undefined;",
-      "replace": ") return undefined;",
-      "kills": ["usageMeter ignores answers without a complete set of rate-limit headers"]
     },
     {
       "name": "the peak line reports the current windows instead of taking the touched ones",

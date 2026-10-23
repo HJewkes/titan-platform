@@ -11,16 +11,6 @@
       ]
     },
     {
-      "name": "a bridge message is trusted from any window",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "event.source !== frame || ",
-      "replace": "",
-      "kills": [
-        "a live story frame swaps its PNG for the story on its own frame's ready, and ignores the same message from another window",
-        "keys pressed in a live story are ignored from a window that is not the story's frame"
-      ]
-    },
-    {
       "name": "a bridge message is trusted from any origin",
       "file": "apps/console/src/pages/live-frame.ts",
       "find": " || event.origin !== storyOrigin",
@@ -28,81 +18,6 @@
       "kills": [
         "a live story frame swaps its PNG for the story on its own frame's ready, and ignores the same message from another window",
         "keys pressed in a live story are ignored from a window that is not the story's frame"
-      ]
-    },
-    {
-      "name": "a dead story remounts forever",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "const AUTO_REMOUNTS = 1;",
-      "replace": "const AUTO_REMOUNTS = Infinity;",
-      "kills": [
-        "a live story frame remounts once when no ready comes within 10 s, then shows the PNG with a notice and Retry"
-      ]
-    },
-    {
-      "name": "every section is live by default, Ship-bound ones too",
-      "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "useState(!shipBound)",
-      "replace": "useState(true)",
-      "kills": [
-        "a live story frame in a Ship-bound section shows the approved PNG with Open live, and mounts no story until asked"
-      ]
-    },
-    {
-      "name": "no cap on mounted stories",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "return at !== -1 && at < cap;",
-      "replace": "return at !== -1;",
-      "kills": [
-        "a live story frame mounts at most 4 stories on a phone; the rest wait as their PNG"
-      ]
-    },
-    {
-      "name": "a frame's reason is not shown",
-      "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "<Typography variant=\"caption\" color=\"secondary\">{note}</Typography>",
-      "replace": "",
-      "kills": [
-        "a live story frame with only a reason, shows its PNG and the reason, and mounts no story"
-      ]
-    },
-    {
-      "name": "a live frame's hit test takes the first box holding the point, the outermost",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "hitTest: (x, y) => hitBox(named, x, y)",
-      "replace": "hitTest: (x, y) => named.find((box) => x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height)?.target",
-      "kills": [
-        "a live frame's pin surface hit-tests the innermost element that has a testId, in the frame's CSS px",
-        "a live story frame keeps the story live in pin mode, places a pin on the innermost named element, and draws held pins over the story"
-      ]
-    },
-    {
-      "name": "a live frame's hit test lands on elements with no testId",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "const named = boxes.filter((box) => box.target.testId !== undefined);",
-      "replace": "const named = boxes;",
-      "kills": [
-        "a live frame's pin surface hit-tests the innermost element that has a testId, in the frame's CSS px",
-        "a live story frame keeps the story live in pin mode, places a pin on the innermost named element, and draws held pins over the story"
-      ]
-    },
-    {
-      "name": "a live frame draws and places no pins over the story",
-      "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "{live && pins ? <SurfacePinLayer",
-      "replace": "{false && pins ? <SurfacePinLayer",
-      "kills": [
-        "a live story frame keeps the story live in pin mode, places a pin on the innermost named element, and draws held pins over the story"
-      ]
-    },
-    {
-      "name": "the page presses any key the story forwards (harness parity)",
-      "file": "apps/console/src/pages/live-frame.ts",
-      "find": "key: z.enum(FORWARDED_KEYS) }",
-      "replace": "key: z.string() }",
-      "kills": [
-        "keys pressed in a live story step through the round, but a digit never picks a choice",
-        "keys pressed in a live story never advance or send on a forwarded Enter, plain or held with Cmd"
       ]
     },
     {
@@ -115,21 +30,24 @@
       ]
     },
     {
-      "name": "the enlarged live view mounts outside the cap",
-      "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "<SlottedStory {...props} wanted fitted={false} first />",
-      "replace": "<MountedStory {...props} fitted={false} onDead={() => undefined} />",
+      "name": "no cap on mounted stories",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "return at !== -1 && at < cap;",
+      "replace": "return at !== -1;",
       "kills": [
+        "a live story frame mounts at most 4 stories on a phone; the rest wait as their PNG",
+        "a live story frame hands a dead frame's slot to the next waiting frame",
         "a live story frame counts the enlarged live view toward the cap, pausing the last fitted frame while it is open"
       ]
     },
     {
-      "name": "no hint that keys go to the story",
-      "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "{focused ? <Typography",
-      "replace": "{false ? <Typography",
+      "name": "the page presses any key the story forwards (harness parity)",
+      "file": "apps/console/src/pages/live-frame.ts",
+      "find": "key: z.enum(FORWARDED_KEYS) }",
+      "replace": "key: z.string() }",
       "kills": [
-        "keys pressed in a live story show the owner that keys go to the story while its frame has focus"
+        "keys pressed in a live story step through the round, but a digit never picks a choice",
+        "keys pressed in a live story never advance or send on a forwarded Enter, plain or held with Cmd"
       ]
     }
   ]

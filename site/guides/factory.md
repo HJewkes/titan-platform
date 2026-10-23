@@ -171,6 +171,12 @@ stays out of the repo.
   the branch, and records them as `retargeted`. GitHub closes every open PR based on a branch
   deleted through the API (TP-3277). Cleanup lists the open PRs again just before the delete,
   and keeps the branch with a caveat while any of them is still based on it.
+- `shepherd.redSeat` says where serve's [main CI watch](/guides/shepherd#main-ci-watch) sends a
+  red-main event: `{ "repos": { "acme/widgets": "widgets-coord" }, "fallback": "ops-coord" }`.
+  The repo's entry wins (keys match in any case), then `fallback`, and either one wins over the
+  run's seat, the branch-prefix seat and `shepherd.hubSeat`. Both keys are optional. Only red
+  events read it: merge grants, merge policy and the seat a run records stay with the seat
+  file. It needs `agentChatBin`, and an unknown key in it fails the load.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 ### GitHub event sources {#github-event-sources}
@@ -581,7 +587,7 @@ Shepherd sweep also marks a merged run `sh-reverted` when a later main commit re
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `deployPaused` (the rollback pause) and `deployHeld` (the manual or Morning hold; see [below](#service-deploy-redeploy-from-main)), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `POST /gates/resolve-proof` | applies an owner-signed proof and returns each item's outcome; see [Owner-signed proofs](#owner-signed-proofs) |
 | `POST /holds/release-proof` | lifts one Shepherd hold on an owner-signed release; see [Owner-signed hold release](#owner-signed-hold-release) |
@@ -986,6 +992,14 @@ paused`, whatever its sha, and a pause file that does not parse still pauses. `t
 service pause` shows the pause. `titan-factory service pause --clear` removes it under the
 deploy lock, so it is refused while a deployer runs.
 
+`/health` carries the same pause as `deployPaused: {paused, since, reason, lastRollback}`, where
+`lastRollback` is `{target, from, status}` and `status` is the rollback's `pending`, `verified` or
+`failed`. With no pause file it reads `{paused: false}` and nulls. A pause file that does not
+parse reads `paused: true` with that as the reason, because the deployer holds on the file's
+existence. A file that cannot be read at all reads `paused: null` with the read error as the
+reason; `/health` still answers. The key covers only `deploy-pause.json`; the manual hold
+below is `deployHeld`.
+
 A person can hold deploys by hand with `titan-factory service pause --set <reason>`. It writes
 `deploy-hold.json` beside the pause file, a separate file so a rollback cannot overwrite the
 reason and the reason cannot overwrite a rollback's. The hold is honoured exactly like the
@@ -994,6 +1008,13 @@ deployer. `--set` does not take the lock, so it can be set while a deploy runs; 
 hold applies from the next deploy. A second `--set` replaces the reason. When both a pause and a
 manual hold stand, `service pause` and the `deploy held:` refusal show both reasons.
 `--clear` lifts both and prints one line for each hold it lifted.
+
+`/health` carries the manual hold as `deployHeld: {held, since, reason, source}`, read through
+the same reader the deployer uses. `source` is the Morning item that set the hold, or null for a
+`--set`. Its null rules match `deployPaused`: no file reads `{held: false}` and nulls, a file that
+does not parse reads `held: true`, and one that cannot be read reads `held: null` with the error
+as the reason. Deploys are held unless both `deployPaused.paused` and `deployHeld.held` are
+`false`.
 
 A seat's Morning queue can hold deploys too. A numbered item under `## Morning queue (owner
 only)` in a `<seat>.md` queue file whose text starts with `DEPLOY HOLD:` (case-sensitive, bold

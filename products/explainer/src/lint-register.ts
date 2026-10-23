@@ -144,7 +144,7 @@ export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
  * P25 5.5%, median 8.5%, P75 16% and P90 23.7%; the cap is P90 rounded, so it asks for a human script's worst tenth,
  * not for zero crowded beats.
  */
-const MAX_CROWDED_BEAT_SHARE = 0.24;
+export const MAX_CROWDED_BEAT_SHARE = 0.24;
 const NUMBERS_PER_BEAT_ID = "register:numbers-per-beat";
 
 export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID];

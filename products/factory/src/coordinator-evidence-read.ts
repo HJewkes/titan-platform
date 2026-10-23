@@ -3,9 +3,11 @@ import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
+  AWAIT_NEW_HEAD,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
+  SENT_BACK_GATE,
   coordinatorEvidencePolicy,
   gatePr,
   landGate,
@@ -58,6 +60,7 @@ function readFor(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, p
   if (step === MERGE_GATE && payload.decision === "merge") return readMerge(sources, gate, run, payload);
   if (Object.hasOwn(MAIN_GATES, step)) return readMainGreen(sources, gate);
   if (PR_GATES.has(step) && payload.decision === "abandon") return readPrGone(sources, gate, run);
+  if (step === SENT_BACK_GATE && payload.decision === AWAIT_NEW_HEAD) return readPrAtHead(sources, gate, run);
   return undefined;
 }
 
@@ -133,15 +136,30 @@ async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promis
   return { kind: "main-green", gateId: gate.id, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
 }
 
-async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+/** The PR the gate names, when it is the run's own PR. */
+function runsPr(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): { repo: string; pr: number } | undefined {
   const target = gatePr(gate);
   const registration = sources.registration(run.id);
   const runPr = run.params.pr === undefined ? registration?.pr : Number(run.params.pr);
-  if (!target || !offersAbandon(gate) || run.params.repo !== target.repo || runPr !== target.pr) return undefined;
+  return target && run.params.repo === target.repo && runPr === target.pr ? target : undefined;
+}
+
+async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+  const target = runsPr(sources, gate, run);
+  if (!target || !offersAbandon(gate)) return undefined;
   const pull = await sources.port.getPr(target.repo, target.pr);
   const state = pull.merged ? "merged" : pull.state === "closed" ? "closed" : undefined;
   if (!state) return undefined;
   return { kind: "pr-gone", gateId: gate.id, ...target, state, readAt: readAt(sources) };
+}
+
+/** Records the PR's state and head as read; the policy alone compares them with the gate's head, so an audit re-runs the same check. */
+async function readPrAtHead(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+  const target = runsPr(sources, gate, run);
+  if (!target) return undefined;
+  const pull = await sources.port.getPr(target.repo, target.pr);
+  const state = pull.merged ? "merged" : pull.state === "open" ? "open" : "closed";
+  return { kind: "pr-at-head", gateId: gate.id, ...target, state, headSha: pull.headSha, readAt: readAt(sources) };
 }
 
 function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {

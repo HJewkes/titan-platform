@@ -21,8 +21,9 @@ export async function kindMove(services: ShepherdServices, known: Registration, 
   return { guard: kindMoveRefusal, diff };
 }
 
+/** A mutation spec keeps a vacuous proof NO_REPRO (`proceedsOnNoRepro`), so a flake fix is steered away from adding one. */
 export const TEST_ONLY_HINT =
-  "hint: this PR changes only tests; re-register with --kind test-only and add a <test>.mutations.json sidecar, or fix-proof reads it as NO_REPRO";
+  "hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO";
 
 /** The hint reads the same diff facts the guard does, so it never suggests a move the register would refuse. */
 export async function testOnlyHint(services: ShepherdServices, registration: Registration): Promise<string | undefined> {

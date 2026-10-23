@@ -33,6 +33,7 @@ function video(id: string, modifiedAt: string, extra: Partial<VideoRow> = {}): V
     copies: 0,
     superseded: false,
     noteCount: 0,
+    videoNoteCount: 0,
     openNoteCount: 0,
     verdict: null,
     ...extra,

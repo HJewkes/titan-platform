@@ -80,7 +80,7 @@ describe("pause to comment", () => {
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
     fireEvent.change(await screen.findByLabelText("Comment text"), { target: { value: "tighten the outro" } });
     fireEvent.click(screen.getByTestId("theater-comment-send"));
-    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", atS: 72.125, text: "tighten the outro" }]));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "content", atS: 72.125, text: "tighten the outro" }]));
     await waitFor(() => expect(screen.queryByLabelText("Comment text")).toBeNull());
   });
 
@@ -92,7 +92,20 @@ describe("pause to comment", () => {
     fireEvent.click(await screen.findByTestId("theater-comment-start"));
     fireEvent.change(await screen.findByLabelText("Comment text"), { target: { value: "the title card runs long" } });
     fireEvent.click(screen.getByTestId("theater-comment-send"));
-    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", atS: 9.5, text: "the title card runs long" }]));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "content", atS: 9.5, text: "the title card runs long" }]));
+  });
+
+  it("sends a comment about the video when the toggle says so, then starts the next one about the content", async () => {
+    const calls = renderPlayer();
+    fireEvent.click(await screen.findByTestId("theater-comment-start"));
+    expect(screen.getByRole("radio", { name: "About the content" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "About the video" }));
+    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "the captions lag the voice" } });
+    fireEvent.click(screen.getByTestId("theater-comment-send"));
+    await waitFor(() => expect(notesSent(calls)).toEqual([{ videoId: VIDEO_ID, kind: "comment", about: "video", atS: 0, text: "the captions lag the voice" }]));
+    await waitFor(() => expect(screen.queryByLabelText("Comment text")).toBeNull());
+    fireEvent.click(screen.getByTestId("theater-comment-start"));
+    expect(screen.getByRole("radio", { name: "About the content" }).getAttribute("aria-checked")).toBe("true");
   });
 
   it("labels the button with the playhead", async () => {

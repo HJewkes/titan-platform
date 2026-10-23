@@ -11,7 +11,7 @@
       ]
     },
     {
-      "name": "origin/main is deployed even when nothing past the asked sha reaches the factory build",
+      "name": "origin/main deploys though nothing past the asked sha reaches the factory build",
       "file": "products/factory/src/deploy.ts",
       "find": "if (wider.kind !== \"go\" || wider.go.touched.length === 0) return plan;",
       "replace": "if (wider.kind !== \"go\") return plan;",
