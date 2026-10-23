@@ -352,7 +352,7 @@ const SINK_UNITS = new Set([...SINK_ANCHORS.map((anchor) => anchor.pkg), RESOLVE
  * Each package, product and app directory that can name a sink, every one after the workspace units it depends on. A
  * unit whose dependency closure misses every sink unit cannot import a sink's type, so the checker would find nothing.
  */
-export function unitsInOrder(root: string): string[] {
+function unitsInOrder(root: string): string[] {
   const units = new Map(TOPS.flatMap((top) => readdirSync(join(root, top)).map((name) => readUnit(root, `${top}/${name}`))).filter((unit) => unit !== undefined));
   const ordered: string[] = [];
   const reach = new Map<string, boolean>();
