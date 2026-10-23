@@ -61,7 +61,7 @@ interface Source {
 
 const rows = (source: Source, file: string): Record<string, string>[] => {
   const path = join(source.evals, file);
-  return existsSync(path) ? readTsv(path).filter((r) => r.script_sha === source.sha && r.void_reason === "" && r.score !== "") : [];
+  return existsSync(path) ? readTsv(path).filter((r) => r.script_sha === source.sha && r.score !== "") : [];
 };
 
 function coldOutputs(source: Source): JudgedOutput[] {
@@ -96,7 +96,10 @@ function beatOutputs(source: Source): JudgedOutput[] {
   });
 }
 
-/** Only the script's own rows, unvoided, so a bench shared across scripts or runs with failed calls stays honest. */
+/**
+ * Only the script's own scored rows. An empty score is a voided verdict; a cold zero also carries a void_reason
+ * ("not stated"), but it is the judge's answer, so it is kept.
+ */
 export function judgedOutputs(entry: ManifestCase): { outputs: JudgedOutput[]; script: string } {
   const raw: unknown = JSON.parse(readFileSync(entry.script, "utf8"));
   const beats = paceInput(raw, entry.format, undefined).beats;
