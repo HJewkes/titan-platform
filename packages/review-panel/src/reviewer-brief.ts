@@ -5,9 +5,9 @@ import { fixProofLines, unverifiedLines, waivedLines, workflowCiLines, type FixP
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { ciTableLines, CI_REVIEWER_TEST_RULE, type CiCheckRow } from "./briefs/ci.js";
 import { OWNER_PICK_CONTRADICTED } from "./fix-first-findings.js";
-import { DEFECT_CLASS_HEADING, earlierFindingLines, type EarlierFinding } from "./briefs/earlier-findings.js";
+import { DEFECT_CLASS_HEADING, EARLIER_FINDINGS_HEADING, earlierFindingLines, type EarlierFinding } from "./briefs/earlier-findings.js";
 import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
-import { scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
+import { CLASS_TAG, IMPORTANT_TAG, scopeLines, scopedDiffLine, shellSafe, usableScope, type ReviewScope } from "./briefs/scoped-rereview.js";
 
 type RepoSlug = string;
 
@@ -16,8 +16,11 @@ export const MAX_OWNER_BRIEF_CHARS = 2000;
 export const OWNER_BRIEF_START = "OWNER-BRIEF";
 export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 
+/** A scoped fix-round FIX_FIRST that broke the unchanged-line or no-repeat rule (TP-3735); Shepherd's scope check finds these, not the parser. */
+export type ScopeRefusal = "scope_untagged" | "repeated_finding";
+
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing";
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing" | ScopeRefusal;
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -307,7 +310,20 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   wrong_target: "its block named another repo, PR or head",
   ci_policy_malformed: "its CI-policy line held more than the exact form",
   probes_missing: "it had no Probes line above the Verdict line",
+  scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
+  repeated_finding: "a blocking item restates an earlier finding",
 };
+
+const isScopeRefusal = (refusal: MalformedRefusal): refusal is ScopeRefusal => refusal === "scope_untagged" || refusal === "repeated_finding";
+
+/** A scope refusal's verdict did parse, so it is told the rule it broke, and that its reply stands whatever it holds. */
+function refusalLine(refusal: MalformedRefusal): string {
+  if (!isScopeRefusal(refusal)) return `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[refusal]}.`;
+  return `Your FIX_FIRST broke a fix-round rule: ${REFUSAL_SENTENCES[refusal]}. Tag that item, move it to the \`${EARLIER_FINDINGS_HEADING}\` checklist as not fixed, or drop it; the verdict stays yours.`;
+}
+
+const lastLine = (refusal: MalformedRefusal): string =>
+  isScopeRefusal(refusal) ? "This is your only correction. Shepherd takes your reply as you write it." : "This is your only correction. A reply that does not end this way goes to a fresh reviewer.";
 
 /** An adversary that wrote no probes is told the form again; the other refusals keep the prompt as it was. */
 const probesReminder = (refusal: MalformedRefusal): string[] =>
@@ -335,7 +351,7 @@ export function correctionPrompt(input: CorrectionPromptInput): string {
 function correctionLines(input: CorrectionPromptInput): string[] {
   const { repo, pr, head } = input;
   return [
-    `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[input.refusal]}.`,
+    refusalLine(input.refusal),
     CI_POLICY_REMINDER,
     ...probesReminder(input.refusal),
     "Do not review again from scratch. Send one message that holds your whole review again, every blocking item included if your verdict is FIX_FIRST, and end it with exactly these three lines, the verdict filled in and " +
@@ -346,6 +362,6 @@ function correctionLines(input: CorrectionPromptInput): string[] {
     `Head: ${head}`,
     ...(input.ownerBrief ? ownerBriefLines() : []),
     "",
-    "This is your only correction. A reply that does not end this way goes to a fresh reviewer.",
+    lastLine(input.refusal),
   ];
 }

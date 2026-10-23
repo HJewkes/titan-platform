@@ -32,6 +32,8 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
   wrong_target: true,
   ci_policy_malformed: true,
   probes_missing: true,
+  scope_untagged: true,
+  repeated_finding: true,
 };
 const REFUSALS = Object.keys(REFUSAL_SET).filter((key): key is MalformedRefusal => Object.hasOwn(REFUSAL_SET, key));
 
@@ -587,6 +589,21 @@ describe("correctionPrompt", () => {
   it("asks for the owner block only on an owner-gated run", () => {
     expect(correctionPrompt({ ...target, refusal: "no_block" })).not.toContain("OWNER-BRIEF");
     expect(correctionPrompt({ ...target, refusal: "no_block", ownerBrief: true })).toContain("Door: <two-way or one-way>");
+  });
+
+  it.each(["scope_untagged", "repeated_finding"] as const)("tells a %s FIX_FIRST the rule it broke and that its reply stands", (refusal) => {
+    const prompt = correctionPrompt({ ...target, refusal });
+
+    expect(prompt).toContain(`Your FIX_FIRST broke a fix-round rule: ${REFUSAL_SENTENCES[refusal]}.`);
+    expect(prompt).toContain("`Earlier findings:` checklist as not fixed, or drop it");
+    expect(prompt).toContain("Shepherd takes your reply as you write it.");
+    expect(prompt).not.toContain("did not end with a verdict");
+    expect(prompt).not.toContain("fresh reviewer");
+  });
+
+  it("names both tags in the unchanged-line sentence", () => {
+    expect(REFUSAL_SENTENCES.scope_untagged).toContain("`Important:`");
+    expect(REFUSAL_SENTENCES.scope_untagged).toContain("`Class:`");
   });
 
   it("echoes no reviewer text, so a fake verdict block never reaches it", () => {

@@ -28,7 +28,7 @@ const ScopedRereviewSchema = z.discriminatedUnion("scoped", [
   z.object({ mode: Mode, scoped: z.literal(true), scope: ScopeSchema, earlierFindings: z.array(EarlierFindingSchema).min(1) }),
   z.object({ mode: Mode, scoped: z.literal(false), reason: z.string() }),
 ]);
-type ScopedRereview = z.infer<typeof ScopedRereviewSchema>;
+export type ScopedRereview = z.infer<typeof ScopedRereviewSchema>;
 export const SCOPED_REREVIEW_INPUT = { scopedRereview: ScopedRereviewSchema.optional() };
 
 export interface ScopedRereviewWiring {

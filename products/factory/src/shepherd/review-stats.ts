@@ -129,6 +129,15 @@ function causeReader(): { note(key: string, result: Record<string, unknown>): vo
   };
 }
 
+/** A shadow round's brief was the whole PR's, so it counts as full however the probe answered. */
+const scopedOf = (result: Record<string, unknown>): boolean | null => (typeof result.scoped === "boolean" ? result.scoped && result.scopeShadow !== true : null);
+
+/** `sh-scope-check:<head>` is the reviewer's own FIX_FIRST; its `:corrected` check reads the reply. */
+const isFirstScopeCheck = (key: string): boolean => {
+  const [name, , suffix] = key.replace(ITERATION, "").split(":");
+  return name === "sh-scope-check" && suffix === undefined;
+};
+
 /** A started reviewer's `sh-review` opens a round, and so does an external intent, which starts nobody. */
 function opened(name: string, result: Record<string, unknown>, index: number, runStart: number): Omit<Round, keyof RoundLabels> | undefined {
   const dispatched = name === "sh-review" && result.kind === "dispatched";
@@ -172,10 +181,11 @@ function roundsOf(run: WorkflowRun): Round[] {
     if (next) {
       const previous = latestOf(rounds, shape);
       if (previous) previous.final = true;
-      rounds.push({ ...next, shape, cause: causes.of(next.head), scoped: typeof result.scoped === "boolean" ? result.scoped : null });
+      rounds.push({ ...next, shape, cause: causes.of(next.head), scoped: scopedOf(result), scopeUntagged: null, scopeRepeated: null });
     }
     const current = latestOf(rounds, shape);
     if (current && RESOLVING.has(stepName(key))) resolve(current, step, result);
+    if (current && isFirstScopeCheck(key)) Object.assign(current, { scopeUntagged: num(result.untagged), scopeRepeated: num(result.repeated) });
   }
   if (FINISHED.includes(run.status)) for (const round of rounds) round.final = true;
   return rounds.filter((round) => !(round.limitOnly && round.verdictAt !== null));
@@ -257,6 +267,7 @@ function reviewRow({ run, round }: Pending, cost: Priced): ReviewRow {
     sessionId: round.sessionId, requestedAt: round.requestedAt, startedAt: round.startedAt, verdictAt: round.verdictAt,
     queueMs: round.startedAt === null ? null : round.startedAt - round.requestedAt, reviewMs: round.verdictAt === null ? null : round.verdictAt - begun,
     verdict: round.verdict, ...cost, model: cost.model ?? round.verdictModel, cause: round.cause, shape: round.shape, scoped: round.scoped,
+    scopeUntagged: round.scopeUntagged, scopeRepeated: round.scopeRepeated,
   };
 }
 
