@@ -4,9 +4,9 @@ import { COMPONENT_MATURITIES, SPEECH_BANDS, type BeatSpec } from "./beat-schema
 import type { EmphasisGateInput } from "./emphasis-gate.js";
 import { canonicalJson } from "./eval-store.js";
 import { ChapterLinksSchema, companionLinkSlots } from "./presets/repo-explainer/companion.js";
-import { loadProfiles, profileFor } from "./profile-load.js";
+import { loadProfiles } from "./profile-load.js";
 import { ResolveError, resolveBeats, type ResolvedBeat } from "./resolve-beat.js";
-import { beatBudget, blockBudgets, budgetVerdict, type BudgetRow } from "./resolve-budget.js";
+import { budgetVerdict, scriptBudgets } from "./resolve-budget.js";
 import { citationRefusals, codeSource } from "./resolve-citation.js";
 import { CONTENT_SHAPES, RESOLVE_ROWS, type ResolveRow } from "./resolve-tables.js";
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
@@ -50,13 +50,6 @@ export function resolveConfig(rows: readonly ResolveRow[] = RESOLVE_ROWS): { doc
   return { doctrine: sha256(canonicalJson(doctrine)) };
 }
 
-function budgets(script: ScriptV1, resolved: readonly Pick<ResolvedBeat, "id" | "band">[], specs: ReadonlyMap<string, BeatSpec>): { rows: BudgetRow[]; unplaced: string[] } {
-  const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
-  const bands = loadSpeechBands();
-  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
-  return { rows: [...script.beats.map((beat) => beatBudget(beat, bandOf.get(beat.id)!, bands)), ...blocks.rows], unplaced: blocks.unplaced };
-}
-
 /** Code citations first, then the tables; any refusal throws before the stage stores an artifact. */
 function resolveScript(script: ScriptV1, code: string | undefined, specs: ReadonlyMap<string, BeatSpec>): ResolvedBeat[] {
   const refused = citationRefusals(script.beats, code === undefined ? undefined : codeSource(code));
@@ -94,7 +87,7 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
     return sha === undefined ? undefined : store.readText(sha);
   };
   const { beats, unlinked } = linkCompanionCards(resolveScript(script, read("code"), specs), read("chapter-links"));
-  const { rows, unplaced } = budgets(script, beats, specs);
+  const { rows, unplaced } = scriptBudgets(script, beats, specs);
   const resolved: Resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats, budgets: rows };
   const sha = store.putText(`${JSON.stringify(resolved, null, 2)}\n`, "resolved", input.from);
   const rowsUsed = [...new Set(beats.map((beat) => beat.row))];

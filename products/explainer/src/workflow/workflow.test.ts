@@ -53,7 +53,7 @@ describe("explainer run", () => {
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
-    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "5 pass, 1 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "7 pass, 1 gate fail, 1 reported fail" });
     expect(result.error).toContain("script: gate l0 failed");
     expect(bridge.calls).toEqual([]);
     expect(row(result, "rewrite").status).toBe("not run");
@@ -99,7 +99,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(1);
-    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "7 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "9 pass, 0 gate fail, 1 reported fail" });
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
     expect(draft.beats[0]).not.toHaveProperty("chips");
     expect(draft.beats[1]).not.toHaveProperty("cues");
@@ -117,7 +117,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain('Unrecognized key: "cues"');
-    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "6 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "8 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
@@ -131,7 +131,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
-    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "7 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "9 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("tells the repair what a failing check found where its row alone is opaque", async () => {

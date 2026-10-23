@@ -1,8 +1,9 @@
 import type { BeatSpec, SpeechBand } from "./beat-schema.js";
 import { wordsOf } from "./lint-text.js";
+import { loadProfiles, profileFor } from "./profile-load.js";
 import type { TypeProfile } from "./profile-schema.js";
-import type { ScriptBeat } from "./script-schema.js";
-import type { SpeechBands } from "./speech-bands.js";
+import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
+import { loadSpeechBands, type SpeechBands } from "./speech-bands.js";
 
 export interface BudgetRow {
   scope: "beat" | "block";
@@ -59,7 +60,27 @@ export function blockBudgets(
   return { rows, unplaced };
 }
 
-const overBudget = (rows: readonly BudgetRow[]): BudgetRow[] => rows.filter((budget) => budget.words > budget.cap);
+/**
+ * Every word budget a script is held to: each beat at the band its resolved beat spec speaks in, then each profile
+ * block. Resolve and the script stage both call this, so the script stage fails a draft for the same caps resolve would.
+ * A beat with no band (one the resolver refused) has no beat row.
+ */
+export function scriptBudgets(
+  script: Pick<ScriptV1, "beats" | "profile">,
+  resolved: readonly { id: string; band: SpeechBand }[],
+  specs: ReadonlyMap<string, BeatSpec>,
+): BlockBudgets {
+  const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
+  const bands = loadSpeechBands();
+  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
+  const beatRows = script.beats.flatMap((beat) => {
+    const band = bandOf.get(beat.id);
+    return band ? [beatBudget(beat, band, bands)] : [];
+  });
+  return { rows: [...beatRows, ...blocks.rows], unplaced: blocks.unplaced };
+}
+
+export const overBudget = (rows: readonly BudgetRow[]): BudgetRow[] => rows.filter((budget) => budget.words > budget.cap);
 
 /** The word-budget gate's verdict: pass when no beat or block runs over its cap. */
 export function budgetVerdict(rows: readonly BudgetRow[]): { pass: boolean; detail: string } {
