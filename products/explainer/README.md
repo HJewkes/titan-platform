@@ -25,6 +25,15 @@ diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
 warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
 
+`gatherDaily` (`src/presets/daily/`) is the `daily-overview` facts adapter. For one UTC day it reads PRs opened
+and merged in each `--repo` (`gh pr list`), the top-level Claude Code sessions active in the window (`session-read`;
+subagent sidechains are left out), and the day's task deltas from `readTaskSnapshot`. That reader lists an
+initiative's tasks read-only (`active-work task list <slug> --status all`), stores the day as a `task-snapshot/v1`
+under `<data dir>/task-snapshots/`, and reports each task whose board column (done, owner-gated, blocked, or its
+status) changed against the latest earlier snapshot as `opened`, `closed`, `moved` or `owner-gated`. With no earlier
+snapshot it reports only what the task dates show. Every digest id comes from its source (`pr/<repo>#<n>/<change>`,
+`session/<id>`, `task/<id>/<change>`), never a clock, and items are sorted by id. `fixtures/daily/` is synthetic.
+
 `video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
 registry under `products/explainer/doctrine/` now names the allowed beats, video types and
 audiences (`vocabulary.yaml`) and holds the craft rules (`craft/`). Type profiles (TP-2746) and
@@ -204,6 +213,10 @@ to a stopped or failed one from the stage it did not finish. `explainer run repo
 tokens, calls, retries, whether it was reused (a cache hit), check verdicts and output shas, with each bridged stage
 marked, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
 stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
+`--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
+[--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
+`<data dir>/gather/<type>/<day>/`, and the run starts from that facts pack. The type's profile must list the adapter in
+`inputs.adapters`. `--dry-run` gathers, prints the plan and stops before any stage.
 `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
 
