@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { OwnerOp } from "@titan-design/owner-queue";
+import { z } from "zod";
 
 export const OWNER_OPS_LEDGER = "owner-ops.jsonl";
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
@@ -33,19 +34,20 @@ export function ownerOpsLedger(stateDir: string): OwnerOpsLedger {
 /** Every `done` result the ledger holds for one action id, oldest first; a missing ledger holds none. */
 export async function doneResults(stateDir: string, actionId: string): Promise<object[]> {
   const text = await readFile(join(stateDir, OWNER_OPS_LEDGER), { encoding: "utf8", flag: constants.O_RDONLY | constants.O_NOFOLLOW }).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
     throw error;
   });
   return text.split("\n").flatMap((line) => {
-    const entry = parsedLine(line);
-    return entry?.phase === "done" && entry.actionId === actionId && entry.result !== undefined ? [entry.result] : [];
+    const entry = DoneLine.safeParse(parsedLine(line));
+    return entry.success && entry.data.actionId === actionId ? [entry.data.result] : [];
   });
 }
 
-function parsedLine(line: string): Partial<LedgerEntry> | undefined {
+const DoneLine = z.looseObject({ actionId: z.string(), phase: z.literal("done"), result: z.looseObject({}) });
+
+function parsedLine(line: string): unknown {
   try {
-    const parsed: unknown = JSON.parse(line);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Partial<LedgerEntry>) : undefined;
+    return JSON.parse(line);
   } catch {
     return undefined;
   }

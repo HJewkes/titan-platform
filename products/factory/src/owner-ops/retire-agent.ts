@@ -6,7 +6,7 @@ import { LIVE } from "../shepherd/gone-elsewhere.js";
 import type { ShepherdStore, ShepherdStoreRef } from "../shepherd/store.js";
 
 /** The name agent-chat records as the actor of every retire the console asks for. */
-export const CONSOLE_CALLER = "titan-console";
+const CONSOLE_CALLER = "titan-console";
 const AGENT_CHAT_TIMEOUT_MS = 30_000;
 
 /** The agent-chat CLI boundary a retire needs: the roster as it stands, and a plain retire by name. */

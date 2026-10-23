@@ -192,7 +192,7 @@ async function sources(): Promise<InboxSources> {
     if (command === "shepherd.list") return rows;
     if (command === "shepherd.timeline") return { row: rows.find((each) => each.pr === args.pr), entries: timelines[Number(args.pr)] ?? [] };
     if (command === "shepherd.release") return shepherd.release(args);
-    if (command === "owner-op.preview" && (args.op as { kind?: unknown }).kind === "retire-agent") return agentPreview();
+    if (command === "owner-op.preview" && z.object({ kind: z.literal("retire-agent") }).safeParse(args.op).success) return agentPreview();
     if (command === "owner-op.preview") return preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
     throw new Error(`no fixture for ${command}`);
   });
