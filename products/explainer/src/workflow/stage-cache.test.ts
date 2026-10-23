@@ -339,12 +339,13 @@ describe("stage key", () => {
     expect(() => keyOf({ variant })).toThrow(/sets wokers/);
   });
 
-  it("a render key changes with the style pack's content under the same variant file", () => {
+  it("a render key changes with any edit to the style pack's file under the same variant file", () => {
     const variant = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "plain", params: { stylePack: "plain" } } };
-    const packs = (pack: StylePack) => () => new Map([["plain", pack]]);
-    const edited = { ...stylePack("plain"), tokens: { ...stylePack("plain").tokens, lift: "lift-4" } };
+    const keyWith = (pack: StylePack) => keyOf({ variant, stylePacks: () => new Map([["plain", pack]]) });
+    const base = keyWith(stylePack("plain"));
 
-    expect(keyOf({ variant, stylePacks: packs(edited) })).not.toBe(keyOf({ variant, stylePacks: packs(stylePack("plain")) }));
+    expect(keyWith({ ...stylePack("plain"), tokens: { ...stylePack("plain").tokens, lift: "lift-4" } })).not.toBe(base);
+    expect(keyWith({ ...stylePack("plain"), feel: "A reworded feel." })).not.toBe(base);
   });
 
   it("hands the bridge the pack's id, theme and CSS as vars", () => {
