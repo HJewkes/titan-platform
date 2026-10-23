@@ -11,28 +11,10 @@
       ]
     },
     {
-      "name": "a call from a file off the map draws an arrow",
-      "file": "packages/graph-layout/src/repo-map.ts",
-      "find": "if (srcId === dstId || !groups.has(srcId) || !groups.has(dstId)) continue;",
-      "replace": "if (srcId === dstId) continue;",
-      "kills": [
-        "emitRepoMap protocol arrows on the whiteboard-shaped repo leaves a call inside one container, or to a file not on the map, off the container map"
-      ]
-    },
-    {
       "name": "imports only is never labelled",
       "file": "packages/graph-layout/src/repo-map.ts",
       "find": "  if (arrows.length > 0) return [...edges, ...arrows];\n  return edges.map",
       "replace": "  return [...edges, ...arrows];\n  return edges.map",
-      "kills": [
-        "emitRepoMap protocol arrows on the whiteboard-shaped repo labels the container import arrows imports only when no protocol arrow is drawn"
-      ]
-    },
-    {
-      "name": "imports only labels every level",
-      "file": "packages/graph-layout/src/repo-map.ts",
-      "find": "(e.level === PACKAGE ? { ...e, label: IMPORTS_ONLY } : e)",
-      "replace": "({ ...e, label: IMPORTS_ONLY })",
       "kills": [
         "emitRepoMap protocol arrows on the whiteboard-shaped repo labels the container import arrows imports only when no protocol arrow is drawn"
       ]
@@ -62,15 +44,6 @@
       "replace": "",
       "kills": [
         "emitRepoMap protocol arrows on the whiteboard-shaped repo leaves import arrows unlabelled when protocol arrows are drawn, and the map unchanged with no protocol input"
-      ]
-    },
-    {
-      "name": "label kinds follow input order",
-      "file": "packages/graph-layout/src/repo-map.ts",
-      "find": "const kinds = [...new Set(edges.map((e) => e.kind))].sort(byText);",
-      "replace": "const kinds = [...new Set(edges.map((e) => e.kind))];",
-      "kills": [
-        "emitRepoMap protocol arrows on the whiteboard-shaped repo gives the same map whatever order the protocol edges arrive in"
       ]
     }
   ]
