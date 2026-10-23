@@ -162,7 +162,7 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--facts <facts>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
@@ -296,7 +296,7 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
 | `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
 
 **Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
@@ -311,7 +311,7 @@ its spend is the script stage's. It is reported, never a gate: with no threshold
 it ran with; use `--sample script=<k>` to run the check on a draft already made. `explainer eval listener` runs the
 same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
-| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced | — |
+| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
@@ -522,7 +522,9 @@ none reads every fact. Ordinals and durations never read as counts; `NOT_A_CLAIM
 merged"), a year after "in" or "since", and a pronoun "one" ("which one merged"). Each
 unbacked claim is a `claimFindings` row naming the beat, the claim and the nearest fact, and the error row fails
 those beats. The registered `claimsCheck` has no facts, so it emits a passing Q-E20 warning that says the check
-did not run.
+did not run. Every L0 call site swaps it for `claimsCheckWith` over the gathered facts (`src/claim-facts.ts`): the
+script, rewrite and eval stages read the run's `facts` artifact, and `eval l0 --facts` reads a daily `digest.json`
+or a facts pack. The script stage's repair hint then names the nearest fact for each unbacked claim.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
