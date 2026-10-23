@@ -129,6 +129,7 @@ describe("Q-E15 scoped to the design-journey structure", () => {
   it("names the spine checks a run skips", () => {
     expect([...skippedSpineChecks({}, false)]).toEqual(["Q-E15", "Q-E18"]);
     expect([...skippedSpineChecks({ structure: "design-journey" }, true)]).toEqual([]);
-    expect([...skippedSpineChecks({ structure: "bluf" }, true)]).toEqual(["Q-E15"]);
+    expect([...skippedSpineChecks({ structure: "bluf" }, true)]).toEqual(expect.arrayContaining(["Q-E15"]));
+    expect([...skippedSpineChecks({ structure: "bluf" }, true)]).not.toContain("Q-E18");
   });
 });

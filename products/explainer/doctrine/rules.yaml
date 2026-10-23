@@ -165,7 +165,7 @@ rules:
     aliases: [X4, TC9]
     related: [P2, P6]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W8"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W8"], structures: [design-journey] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W9
     rule: "design_history entries cite an existing commit sha"
@@ -208,20 +208,20 @@ rules:
     aliases: [X5, TC10, S15]
     related: ["CT R3"]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F3"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F3"], structures: [design-journey] }
   - id: Q-F4
     rule: "Thesis on 3 beats (open, midpoint, button); thesis_mechanism voiced once in acts 1-2"
     fields: [video.thesis_refs, video.thesis_mechanism, beats.spoken]
     aliases: [SA6, X3]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F4"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F4"], structures: [design-journey] }
   - id: Q-F5
     rule: "Exactly one WHAT to HOW pivot line"
     fields: [beats.function, beats.spoken]
     aliases: [X8]
     related: [P7]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F5"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F5"], structures: [design-journey] }
   - id: Q-F6
     rule: "The beat after a chapter open states the chapter's answer"
     fields: [chapters.answer_line, beats.spoken]
@@ -487,7 +487,7 @@ rules:
     rubric_dims: [J3]
     owner_support: for
     note: "Owner feedback rule 1. Needs the spine (spine/v1): the check runs only when a spine is supplied, and only for a design-journey script or a legacy one that names no structure (owner-FB1.2). The L1 J3 anchor carries the judge half."
-    l0: { severity: error, status: implemented, checks: ["Q-E15"] }
+    l0: { severity: error, status: implemented, checks: ["Q-E15"], structures: [design-journey] }
     judge: { layer: L1, status: cited, rubric: rubrics/l1-script.md }
   - id: Q-E16
     rule: "A list holds one kind of item: every item in a list or card set has the same declared kind"

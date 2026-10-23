@@ -7,6 +7,7 @@ import { layout } from "./map-fixtures.test-helpers.js";
 import {
   DEFAULT_RULES_PATH,
   checkType,
+  checksOutsideStructure,
   loadRuleRegistry,
   parseRuleRegistry,
   resolveRule,
@@ -36,6 +37,29 @@ const rule = (overrides: Partial<Rule> = {}): Rule => ({
   ...overrides,
 });
 const registryText = (...rules: Rule[]): string => stringify({ schema: "rules/v1", rules });
+
+describe("L0 rules scoped by structure", () => {
+  const scoped = (structures: string[]): string =>
+    registryText(rule({ l0: { severity: "error", status: "implemented", checks: ["Q-V1"], structures } }));
+
+  it("accepts a structures list that names registered structures", () => {
+    const parsed = parseRuleRegistry(scoped(["design-journey"]), new Set(["design-journey"]));
+
+    expect(parsed.rules[0]?.l0).toMatchObject({ structures: ["design-journey"] });
+  });
+
+  // Mutation: skipping the registered-structure check lets the typo through and fails this.
+  it("refuses a structure id the structure registry does not hold", () => {
+    expect(() => parseRuleRegistry(scoped(["design-jorney"]), new Set(["design-journey"]))).toThrow(/Q-V1: unknown structure design-jorney/);
+  });
+
+  it("scopes Q-W8, Q-F3, Q-F4 and Q-F5 to design-journey in the shipped registry", () => {
+    const outside = checksOutsideStructure(registry, "scqa");
+
+    expect(["Q-W8", "Q-F3", "Q-F4", "Q-F5", "Q-E15"].every((id) => outside.has(id))).toBe(true);
+    expect(checksOutsideStructure(registry, undefined).size).toBe(0);
+  });
+});
 
 describe("the shipped Q-rule registry", () => {
   it("holds the 60 rules: 41 L0, 12 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
