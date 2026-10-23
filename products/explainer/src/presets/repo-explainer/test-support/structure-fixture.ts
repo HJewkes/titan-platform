@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { indexPaths, openCodeGraph, type CodeGraphStore } from "@titan-design/code-graph";
 
-export const STRUCTURE_FIXTURE = fileURLToPath(new URL("../../../../fixtures/structure-ts", import.meta.url));
+const STRUCTURE_FIXTURE = fileURLToPath(new URL("../../../../fixtures/structure-ts", import.meta.url));
 export const FIXTURE_PIN = "1111111111111111111111111111111111111111";
 export const OTHER_PIN = "2222222222222222222222222222222222222222";
 

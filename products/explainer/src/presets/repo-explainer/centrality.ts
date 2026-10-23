@@ -6,13 +6,13 @@ import type { ExplainerFact } from "./schemas.js";
 import type { FileCentrality, Structure } from "./structure-schema.js";
 
 /** A fact citing this many indexed files reads better as a graph than as a code card. */
-export const GRAPH_SHAPE_FILES = 3;
+const GRAPH_SHAPE_FILES = 3;
 
 const ROOT_ROLES = new Set<GraphNode["role"]>(["source", "entry", undefined]);
 const IMPORT_KINDS = new Set<GraphEdge["kind"]>(["imports", "re-exports"]);
 
 /** A cited path the indexer would read: TypeScript or Python source. */
-export function isCodePath(path: string): boolean {
+function isCodePath(path: string): boolean {
   return getLanguageFromPath(path) !== null;
 }
 

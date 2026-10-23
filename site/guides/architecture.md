@@ -209,6 +209,8 @@ graph TD
   explainer --> agent
   explainer --> agentProtocol
   explainer --> appPaths
+  explainer --> codeGraph
+  explainer --> codeRead
   explainer --> evidence
   explainer --> graphLayout
   explainer --> hitl

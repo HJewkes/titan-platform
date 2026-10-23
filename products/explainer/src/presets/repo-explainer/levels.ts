@@ -2,9 +2,9 @@ import { projectCallPath, type GraphNode, type ProtocolEdge } from "@titan-desig
 import { emitRepoMap, focusPackage, packageOf, type GraphInput, type MapFlow, type MapFlowHop, type MapLayout } from "@titan-design/graph-layout";
 import type { BoxSummary, FocusGraph } from "./structure-schema.js";
 
-export const PACKAGE_LEVEL = 1;
-export const DIRECTORY_LEVEL = 2;
-export const FILE_LEVEL = 3;
+const PACKAGE_LEVEL = 1;
+const DIRECTORY_LEVEL = 2;
+const FILE_LEVEL = 3;
 
 export interface Levels {
   map: MapLayout;
@@ -13,7 +13,7 @@ export interface Levels {
   focus?: FocusGraph;
 }
 
-export interface LevelsInput {
+interface LevelsInput {
   graph: GraphInput;
   protocolEdges: readonly ProtocolEdge[];
   /** The most central file; its package becomes the focus graph. */
@@ -33,7 +33,7 @@ function fileWeights(map: MapLayout): Map<string, number> {
 }
 
 /** One level's boxes with file and edge counts; no raw edges, which stay in the map. */
-export function summarize(map: MapLayout, level: number): BoxSummary[] {
+function summarize(map: MapLayout, level: number): BoxSummary[] {
   const files = fileWeights(map);
   const edges = map.edges.filter((edge) => edge.level === level);
   return map.nodes
@@ -65,14 +65,14 @@ export async function computeLevels({ graph, protocolEdges, focusFile }: LevelsI
   };
 }
 
-export interface FlowPath {
+interface FlowPath {
   id: string;
   title: string;
   /** Graph node ids, symbols or files. */
   nodes: readonly string[];
 }
 
-export interface Unprojected {
+interface Unprojected {
   flowId: string;
   level: number;
   reason: string;

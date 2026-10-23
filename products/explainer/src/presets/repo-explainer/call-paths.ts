@@ -5,9 +5,9 @@ import type { ExplainerFact } from "./schemas.js";
 import type { CallPath } from "./structure-schema.js";
 
 /** The topic priorities the tour walks a call path for. */
-export const CALL_PATH_PRIORITIES = new Set(["P1", "P2"]);
+const CALL_PATH_PRIORITIES = new Set(["P1", "P2"]);
 
-export interface CallTarget {
+interface CallTarget {
   factId: string;
   /** The innermost symbol at the fact's first indexed citation, else that file. */
   target: string;
