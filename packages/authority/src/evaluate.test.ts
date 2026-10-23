@@ -15,7 +15,6 @@ const DENY_RULE_IDS = [
   "HW-OR", "HW-WK", "HW-HD", "HW-AU",
   "DSR-OR", "DSR-CO", "DSR-WK", "DSR-HD", "DSR-AU",
   "DSL-OR",
-  "RET-WK", "RET-HD",
   "DSX-OR", "DSX-CO", "DSX-WK", "DSX-HD", "DSX-AU",
   "SPN-WK", "SPN-HD",
   "SPD-OR",
@@ -45,15 +44,24 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 49 allow, 6 gate and 69 deny rows", () => {
+  it("holds 51 allow, 6 gate and 67 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 49, gate: 6, deny: 69 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 51, gate: 6, deny: 67 });
   });
 
   // Kills: retire-agent riding destructive-local's DSL-OR deny, or RET-OR flipped to gate or deny.
   it("lets the owner retire an agent from the console while other local destruction stays denied there", () => {
     expect(evaluate(DEFAULT_TABLE, request("agent-retire", "owner-remote"))).toEqual({ verdict: "allow", ruleId: "RET-OR" });
     expect(evaluate(DEFAULT_TABLE, request("destructive-local", "owner-remote"))).toMatchObject({ verdict: "deny", ruleId: "DSL-OR" });
+  });
+
+  // Kills: a RET row for any actor but owner-remote drifting from the destructive-local policy it replaced.
+  it("gives every other actor the same retire policy destructive-local gave it", () => {
+    const shape = (id: string) => {
+      const { verdict, condition, evidence } = DEFAULT_TABLE.rules.find((rule) => rule.id === id)!;
+      return { verdict, condition, evidence };
+    };
+    for (const actor of ["OT", "CO", "WK", "HD", "AU", "DC"]) expect(shape(`RET-${actor}`)).toEqual(shape(`DSL-${actor}`));
   });
 
   it("denies exactly the hand-listed rows", () => {

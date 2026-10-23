@@ -20,7 +20,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 124 rules: 49 allow, 6 gate and 69 deny.
+- The table holds 124 rules: 51 allow, 6 gate and 67 deny.
 - The `decider` actor class may only `answer-question`, and only through ANS-DC-QA: the
   gate's rule kind is exactly `question` and its category's mode is exactly `auto`
   (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a

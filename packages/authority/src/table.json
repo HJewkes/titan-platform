@@ -778,7 +778,7 @@
       "action": "agent-retire",
       "actor": "coordinator",
       "verdict": "allow",
-      "condition": "Agents it dispatched.",
+      "condition": "Inside its own checkout.",
       "evidence": [
         "E-dec"
       ]
@@ -787,26 +787,24 @@
       "id": "RET-WK",
       "action": "agent-retire",
       "actor": "worker",
-      "verdict": "deny",
-      "evidence": [
-        "E-ref"
-      ]
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
     },
     {
       "id": "RET-HD",
       "action": "agent-retire",
       "actor": "headless",
-      "verdict": "deny",
-      "evidence": [
-        "E-ref"
-      ]
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
     },
     {
       "id": "RET-AU",
       "action": "agent-retire",
       "actor": "automation",
       "verdict": "allow",
-      "condition": "Agents that finished their work.",
+      "condition": "Inside its own workspace.",
       "evidence": []
     },
     {
