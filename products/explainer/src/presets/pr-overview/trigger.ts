@@ -50,6 +50,7 @@ export const briefDir = (dataDir: string, target: BriefTarget): string =>
   join(dataDir, "pr-briefs", `${target.repo.replace("/", "--")}--${target.number}--${target.head.slice(0, 12)}`);
 
 const execFileAsync = promisify(execFile);
+const OverdueExit = z.looseObject({ code: z.literal(1), stdout: z.string().trim().min(1) });
 
 /** `shepherd waiting` exits 1 when an owner gate is overdue and still prints the list, so stdout is read either way. */
 export async function shepherdWaiting(port?: number): Promise<unknown> {
@@ -57,8 +58,8 @@ export async function shepherdWaiting(port?: number): Promise<unknown> {
   try {
     return JSON.parse((await execFileAsync("titan-factory", args)).stdout);
   } catch (error) {
-    const stdout = (error as { code?: unknown; stdout?: unknown }).code === 1 ? (error as { stdout?: unknown }).stdout : undefined;
-    if (typeof stdout === "string" && stdout.trim() !== "") return JSON.parse(stdout);
+    const overdue = OverdueExit.safeParse(error);
+    if (overdue.success) return JSON.parse(overdue.data.stdout);
     throw error;
   }
 }
