@@ -34,8 +34,9 @@ export const stageWorkflow = (): WorkflowFn => async (ctx) => {
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   const { config, stage } = spec;
   if (stage === "audition") {
-    if (!config.profile || !config.structures) throw new Error("audition stage spec has no profile or structure registry");
-    return runAuditionStage(input, { profile: config.profile, structures: config.structures });
+    if (!config.profile || !config.structures || !config.model || !config.judge) throw new Error("audition stage spec has no profile, structure registry, model or judge");
+    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+    return runAuditionStage(input, { profile: config.profile, structures: config.structures, model: config.model, judge: config.judge }, seams);
   }
   if (stage === "script") {
     const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
