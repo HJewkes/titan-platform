@@ -7,11 +7,13 @@ import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
-import type { BridgeExec, BridgeFile, ExecRequest } from "./bridge.js";
+import type { z } from "zod";
+import { ScriptSchema } from "../script-schema.js";
+import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
-const SPINE = `# Story spine: parcel-desk
+export const SPINE = `# Story spine: parcel-desk
 
 ## 3. Journey
 | # | Step | What | Why | Invariant | Today |
@@ -44,7 +46,7 @@ export interface Fixture {
   cleanup: () => void;
 }
 
-const BRIDGE: Omit<BridgeFile, "workdir" | "theater"> & { schema: "explainer-bridge/v1" } = {
+const BRIDGE: Omit<z.input<typeof BridgeFileSchema>, "workdir" | "theater"> = {
   schema: "explainer-bridge/v1",
   stages: {
     tts: {
@@ -60,7 +62,12 @@ const BRIDGE: Omit<BridgeFile, "workdir" | "theater"> & { schema: "explainer-bri
       vars: { workers: "4" },
     },
     qa: { inputs: { mp4: "out/demo.mp4" }, outputs: { qa: { path: "out/qa.json", tree: false } }, commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }], vars: {} },
-    sheets: { inputs: { mp4: "out/demo.mp4" }, outputs: { sheet: { path: "out/sheet.png", tree: false } }, commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }], vars: {} },
+    sheets: {
+      inputs: { mp4: "out/demo.mp4" },
+      outputs: { sheet: { path: "out/sheet.png", tree: false } },
+      commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }, { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false }],
+      vars: {},
+    },
   },
 };
 
@@ -93,13 +100,30 @@ const write = (file: string, text: string) => {
 const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
 
 /** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
-function templateBodies(options: { qaFails?: boolean }, ttsInputs: string[]): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
+/** A words.json that voices every beat word for word, one word a second; `drop` leaves that word unspoken everywhere. */
+function wordsFile(scriptText: string, drop?: string): string {
+  const beats = ScriptSchema.parse(JSON.parse(scriptText)).beats.map((beat) => {
+    const spoken = beat.spoken.split(/\s+/).filter((word) => word !== drop);
+    return { id: beat.id, durationS: spoken.length + 1, words: spoken.map((word, i) => ({ word, start: i, end: i + 1 })) };
+  });
+  return JSON.stringify({ voice: { provider: "fake" }, beats });
+}
+
+export interface BridgeOptions {
+  qaFails?: boolean;
+  /** The variety lint (a reported-only check) exits non-zero. */
+  varietyFails?: boolean;
+  /** TTS never voices this word, so any cue on it does not resolve. */
+  dropWord?: string;
+}
+
+function templateBodies(options: BridgeOptions, ttsInputs: string[]): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
   return {
     "tts.mjs": (req) => {
       const script = readFileSync(req.argv[2]!, "utf8");
       ttsInputs.push(sha256(script));
       write(path.join(req.argv[3]!, "b1.wav"), `wav:${sha256(script)}`);
-      write(at(req, "out/words.json"), JSON.stringify({ words: sha256(script) }));
+      write(at(req, "out/words.json"), wordsFile(script, options.dropWord));
       return { code: 0, stdout: "1 beat in 0.1s\n" };
     },
     "render.ts": (req) => {
@@ -115,11 +139,12 @@ function templateBodies(options: { qaFails?: boolean }, ttsInputs: string[]): Re
       write(at(req, "out/sheet.png"), `png:${sha256(readFileSync(at(req, "out/demo.mp4")))}`);
       return { code: 0, stdout: "" };
     },
+    "variety.mjs": () => (options.varietyFails ? { code: 1, stdout: "variety WARN: 3 beats in a row share a framing\n" } : { code: 0, stdout: "variety ok\n" }),
   };
 }
 
 /** Stands in for the template commands and records which ran. */
-export function fakeBridge(options: { qaFails?: boolean } = {}): FakeBridge {
+export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   const calls: string[] = [];
   const ttsInputs: string[] = [];
   const bodies = templateBodies(options, ttsInputs);
