@@ -18,6 +18,8 @@ export interface FixFirstTrail {
   fixFirstTrail: FixFirstEntry[];
   /** The head D8's one convergence review went to (TP-3734); a moved head re-arms it. */
   convergedAt?: string;
+  /** The trail's length at the run's last MERGE; the FIX_FIRSTs before it were answered, so a fix round's open findings start here. */
+  openFrom?: number;
 }
 
 export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional(), noRepro: z.literal(true).optional() });
@@ -74,6 +76,18 @@ export function trailSummary(trail: readonly FixFirstEntry[]): string[] {
   });
 }
 
+/** A fix round's re-review: the newest open finding's head, the base the head merges against when it was read, and every open finding. */
+export interface FixRound {
+  sinceHead: string;
+  baseRef?: string;
+  openFindings: readonly FixFirstEntry[];
+}
+
+/** The reviewer FIX_FIRSTs since the run's last MERGE, oldest first: what a fix round must answer (TP-3735). */
+export const openFindingsOf = (run: FixFirstTrail): FixFirstEntry[] => run.fixFirstTrail.slice(run.openFrom ?? 0).filter((entry) => entry.noRepro !== true);
+
+export const earlierFindingOf = (entry: FixFirstEntry): EarlierFinding => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) });
+
 /** D8's convergence review at `headSha` carries the run's whole trail; any other review carries none. */
 export function convergenceOf(run: FixFirstTrail, headSha: string): { convergence?: FixFirstEntry[] } {
   return run.convergedAt === headSha ? { convergence: [...run.fixFirstTrail] } : {};
@@ -82,5 +96,5 @@ export function convergenceOf(run: FixFirstTrail, headSha: string): { convergenc
 /** The reviewer brief's convergence fields for a trail; only the correctness reviewer gets them, and panel members review as usual. */
 export function convergenceFields(trail: readonly FixFirstEntry[] | undefined): { convergence?: true; earlierFindings?: EarlierFinding[] } {
   if (trail === undefined) return {};
-  return { convergence: true, earlierFindings: trail.map((entry) => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) })) };
+  return { convergence: true, earlierFindings: trail.map(earlierFindingOf) };
 }

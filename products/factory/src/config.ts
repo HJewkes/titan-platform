@@ -51,6 +51,8 @@ export const ReviewConfigSchema = z.strictObject({
   adversaryProfile: profileName.optional(),
   /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
   adversaryConfigDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** A fix round's re-review: `shadow` records its fix diff on the sh-review step, `on` also scopes the correctness brief to it. Absent means `off`. */
+  scopedRereview: z.enum(["off", "shadow", "on"]).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
