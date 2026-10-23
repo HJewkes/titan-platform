@@ -119,6 +119,8 @@ custom layer that declares anchors adds `custom-layer` on them, and an undeclare
 is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
 (`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
 `writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
+`stage-empty-checks.ts` (`emptyStageRuns`) fails a beat whose stage rect holds no content box (decor excluded) for more than
+`MAX_EMPTY_STAGE_SECONDS` (3 s) of sampled moments; the host's measure step feeds it one `StageMoment` per beat and time.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
