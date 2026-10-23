@@ -92,6 +92,28 @@ describe("a run parked in recovery after it recorded its outcome", () => {
     expect(row).toMatchObject({ phase: "post-merge", outcome: { kind: "merged" } });
     expect(row.totalMinutes).toBeGreaterThan(60);
   });
+
+  it("says a running run past its main CI read is cleaning up, not watching main CI", () => {
+    const run = parkedWith("running", "sh-cleanup", { "sh-landed": { mergeSha: "def5678" }, "sh-main-ci": { verdict: "green", mergeSha: "def5678" } });
+
+    const row = watchRow({ registration, run, now });
+
+    expect(row).toMatchObject({ phase: "post-merge", nextAction: "cleaning up after the merge: head branch, task and agents" });
+  });
+
+  it("says none for a completed merged run whose last step was sh-cleanup", () => {
+    const run = { ...parkedWith("completed", "sh-cleanup", { "sh-landed": { mergeSha: "def5678" } }), completedAt: ENDED };
+
+    const row = watchRow({ registration, run, now });
+
+    expect(row).toMatchObject({ phase: "done", nextAction: "none" });
+  });
+
+  it("still says a run in sh-main-ci is watching main CI", () => {
+    const row = watchRow({ registration, run: parkedWith("running", "sh-main-ci", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row.nextAction).toBe("watching main CI after the merge");
+  });
 });
 
 describe("shepherd view agent names", () => {

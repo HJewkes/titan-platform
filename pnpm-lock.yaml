@@ -1191,6 +1191,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
       '@titan-design/graph-layout':
         specifier: workspace:^
         version: link:../../packages/graph-layout
@@ -1200,6 +1203,9 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../../packages/session-read
       '@titan-design/speech-g2p':
         specifier: workspace:^
         version: link:../../packages/speech-g2p

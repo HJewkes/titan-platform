@@ -149,6 +149,21 @@ describe("audition sampling, scoring and pick", () => {
     expect(record.margin).toBeCloseTo(totals[0][1] - totals[1][1], 3);
   });
 
+  it("writes the pick's chapter to profile block mapping and skips J12 on every storyboard", async () => {
+    fx = fixture();
+
+    const { result, record } = await audition("repo-argument", REPO_FACTS);
+
+    const pick = record.candidates.find((c: { id: string }) => c.id === record.pick.candidate);
+    expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }, i: number) => ({ chapter: `ch${i + 1}`, block: b.id })));
+    for (const c of record.candidates) {
+      expect(c.skipped.map((s: { dim: string }) => s.dim)).toEqual(["J12"]);
+      expect(c.rubric.dims.map((d: { dim: string }) => d.dim)).toEqual(["J8", "J9", "J10", "J11"]);
+    }
+    expect(readFileSync(result.reportPath, "utf8")).toContain("J12 skipped: the storyboard shows a quotable visual on 1 beat");
+    expect(record.rules).toMatchObject({ coverage: expect.stringMatching(/covers tags are not scored/), reHook: expect.stringMatching(/own band/) });
+  });
+
   it("scores every candidate on the cold-viewer rubric, reported beside the pick", async () => {
     fx = fixture();
 

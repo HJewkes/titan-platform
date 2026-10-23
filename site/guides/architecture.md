@@ -211,9 +211,11 @@ graph TD
   explainer --> appPaths
   explainer --> codeGraph
   explainer --> evidence
+  explainer --> github
   explainer --> graphLayout
   explainer --> hitl
   explainer --> pm
+  explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
   explainer --> speechTts
