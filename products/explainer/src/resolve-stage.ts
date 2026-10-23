@@ -7,8 +7,9 @@ import { loadProfiles, profileFor } from "./profile-load.js";
 import { ResolveError, resolveBeats, type ResolvedBeat } from "./resolve-beat.js";
 import { beatBudget, blockBudgets, budgetVerdict, type BudgetRow } from "./resolve-budget.js";
 import { citationRefusals, codeSource } from "./resolve-citation.js";
-import { CONTENT_SHAPES } from "./resolve-tables.js";
+import { CONTENT_SHAPES, RESOLVE_ROWS, type ResolveRow } from "./resolve-tables.js";
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
+import { loadSpeechBands } from "./speech-bands.js";
 import { shippedVisualRouter } from "./visual-router.js";
 import { sha256 } from "./workflow/artifacts.js";
 import type { ModelStageInput } from "./workflow/model-stages.js";
@@ -39,16 +40,18 @@ export const ResolvedSchema = z.object({
 });
 type Resolved = z.infer<typeof ResolvedSchema>;
 
-/** The doctrine the resolve stage reads, by content hash: beat specs, profiles and the pinned router. */
-export function resolveConfig(): { doctrine: string } {
+/** The doctrine the resolve stage reads, by content hash: beat specs, profiles, the pinned router, the speech bands' caps and the resolver rows. */
+export function resolveConfig(rows: readonly ResolveRow[] = RESOLVE_ROWS): { doctrine: string } {
   const sorted = <T>(map: ReadonlyMap<string, T>): T[] => [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
-  return { doctrine: sha256(canonicalJson({ beats: sorted(loadBeatSpecs()), profiles: sorted(loadProfiles().profiles), router: shippedVisualRouter() })) };
+  const doctrine = { beats: sorted(loadBeatSpecs()), profiles: sorted(loadProfiles().profiles), router: shippedVisualRouter(), bands: loadSpeechBands(), rows };
+  return { doctrine: sha256(canonicalJson(doctrine)) };
 }
 
 function budgets(script: ScriptV1, resolved: readonly ResolvedBeat[], specs: ReadonlyMap<string, BeatSpec>): { rows: BudgetRow[]; unplaced: string[] } {
-  const bands = new Map(resolved.map((beat) => [beat.id, beat.band]));
-  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs);
-  return { rows: [...script.beats.map((beat) => beatBudget(beat, bands.get(beat.id)!)), ...blocks.rows], unplaced: blocks.unplaced };
+  const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
+  const bands = loadSpeechBands();
+  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
+  return { rows: [...script.beats.map((beat) => beatBudget(beat, bandOf.get(beat.id)!, bands)), ...blocks.rows], unplaced: blocks.unplaced };
 }
 
 /** Code citations first, then the tables; any refusal throws before the stage stores an artifact. */

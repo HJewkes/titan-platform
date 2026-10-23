@@ -8,7 +8,7 @@ fit:
   any: [parallel-findings]
 blocks:
   - { id: frame, goal: "The ABT frame that makes the list matter.", share: 0.2 }
-  - { id: countdown, goal: "At most five findings, each a mini-ABT, ordered by stakes.", share: 0.65 }
+  - { id: countdown, goal: "At most five findings, each a mini-ABT, ordered by stakes.", share: 0.65, maxItems: 5 }
   - { id: takeaway, goal: "What the findings add up to.", share: 0.15 }
 hook: "Name the stakes and the count before the first item."
 ending: "takeaways+button"

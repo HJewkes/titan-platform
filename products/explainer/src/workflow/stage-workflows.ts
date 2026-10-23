@@ -68,9 +68,9 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
 }
 
 function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
-  if (!config.voice) throw new Error("tts stage spec has no voice");
+  if (!config.voice || !config.rates) throw new Error("tts stage spec has no voice or band rates");
   const takesDir = path.join(deps.dataDir, "tts-takes");
-  return runTtsStage({ ...input, store: deps.store }, config.voice, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
+  return runTtsStage({ ...input, store: deps.store }, { voice: config.voice, rates: config.rates }, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
 }
 
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {

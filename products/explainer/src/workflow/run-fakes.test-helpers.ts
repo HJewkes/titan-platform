@@ -175,13 +175,15 @@ export function fakeVoice(options: { dropWord?: string } = {}): FakeVoice {
   const provider: TtsProvider = {
     id: "fake-voice",
     capabilities: { phonemeInput: [], wordTimestamps: true, speedControl: true, voices: [], languages: ["en-US"], sampleRate: FAKE_RATE },
-    synthesize: async (input) => {
+    synthesize: async (input, _voice, synthesis) => {
       const words = ("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
       const unknown = words.map((word, index) => ({ word, index })).filter((w) => w.word === options.dropWord);
       if (unknown.length > 0) throw new TtsUnknownWordsError("fake-voice", unknown);
       spoken.push(words.join(" "));
-      const audio = { samples: new Float32Array(words.length * FAKE_RATE).fill(0.1), sampleRate: FAKE_RATE };
-      return { audio, durationS: words.length, words: words.map((word, i) => ({ word, start: i, end: i + 1 })) };
+      // A word a second at speed 1, faster with speed, so the stage's rate calibration settles in two tries.
+      const slot = 1 / (synthesis?.speed ?? 1);
+      const audio = { samples: new Float32Array(Math.round(words.length * slot * FAKE_RATE)).fill(0.1), sampleRate: FAKE_RATE };
+      return { audio, durationS: words.length * slot, words: words.map((word, i) => ({ word, start: i * slot, end: (i + 1) * slot })) };
     },
   };
   return { engine: async () => ({ provider, version: "fake/1" }), spoken };

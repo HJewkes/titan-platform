@@ -55,6 +55,8 @@ export const RESOLVE_ROWS: readonly ResolveRow[] = [
   { id: "zoom", when: { job: ["zoom"] }, then: template("zoom", "focus") },
   { id: "alternatives", when: { job: ["alternatives-vs-ours"] }, then: template("compare", "split") },
   { id: "artifact-filling", when: { job: ["artifact-filling"] }, then: template("scorecard", "focus") },
+  // A HOW beat's code proof with no excerpt shows the checks behind the mechanism: C5 voices that at the code band, as proof's spec does.
+  { id: "code-proof", when: { function: ["HOW"], job: ["code-proof"], content: ["items", "statement"] }, then: template("proof", "focus") },
   { id: "hook", when: { function: ["HOOK"], job: ["numbers"] }, then: template("hook", "full") },
   { id: "stake", when: { function: ["STAKE"], job: ["numbers"] }, then: template("stakes", "focus") },
   { id: "promise", when: { function: ["PROMISE"], job: ["numbers"] }, then: template("promise", "stack") },

@@ -236,15 +236,20 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 **The tts stage (TP-2615).** Each beat's `spoken` text is voiced by speech-tts Kokoro (Kokoro-82M at fp32 over
 speech-g2p misaki English, on the host's speech runtime) with `unknownWords: "fail"`, so a word with no phonemes
 fails the stage before any audio is made. The voice and its rate are the run profile's voice band (`--profile`); a
-tts variant may set `voice` and `rate`, and a run with no profile speaks as `af_heart` at 1. The engine's own word
+tts variant may set `voice` and `rate`, and a run with no profile speaks as `af_heart` at 1. Each beat speaks at its
+beat type's speech band (TP-2670): the stage reads the band from the `resolved` artifact and its words a minute from
+`doctrine/speech-bands.yaml` (story 195, concept 175, code 160, takeaways 180, held 175), times the voice rate.
+speech-tts `calibrateSpeed` steps Kokoro's speed until the measured articulation rate (pauses of 0.25 s or more not
+counted) is within 5 wpm, as the bridge's `gen_audio.py` did, and truing reads the calibrated take. The engine's own word
 times are re-timed against the script words (the port of the template's `realign.py`: number words meet digits,
 hyphenated words meet their parts, and `HOMOPHONES` in `src/lexicon.ts` maps a heard spelling to the script's word;
 an unmatched run shares the gap between its neighbours). A beat lasts `max(plannedS, 0.3 s lead + speech + 0.6 s
 tail)`, rounded up to a whole frame at 30 fps, and its WAV starts with the lead's silence. The stage writes the
 `audio` tree (`<beat>.wav`), `words.json` (`explainer.words/v1`: per beat `startS`, `durationS`, `words` and `heard`
-relative to the beat start, and `absolute`, every word on the video timeline) and `voice.json` (provider, engine
-build, voice, rate and where they came from). Takes are cached per beat in `<dataDir>/tts-takes/` under
-`sha(spoken, voice, rate, engine version)`, so a re-voiced script synthesizes only the beats whose text changed and
+relative to the beat start, and `absolute`, every word on the video timeline) and `voice.json` (`explainer.voice/v2`:
+provider, engine build, voice, rate and where they came from, and per beat its band, target words a minute, the speed
+found and the rate measured). Takes are cached per beat in `<dataDir>/tts-takes/` under
+`sha(spoken, voice, words a minute, engine version)`, so a re-voiced script synthesizes only the beats whose text or band changed and
 keeps the others' audio byte for byte. A host `bridge.json` that still has a `tts` block is refused: delete it, and
 move any command it ran besides TTS (a sample builder) to the start of `render`.
 
@@ -287,7 +292,7 @@ same exercise on a script file.
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
-speech-vet and the rate band (TP-3004 and the per-beat rate, TP-2670), duration agreement and two-run determinism
+speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
 (TP-2992), the QA sweep gates (TP-2610, TP-2669, TP-2998), and the variety lints (PP-9). Each becomes a row of
 `STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
 reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
@@ -347,7 +352,9 @@ for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` ca
   the fact ids the hook and blocks cite, never the spine's own `covers` tags: the share of anchor facts placed (the
   pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged
   with the share of coverage items a cited fact evidences by cue (`COVERAGE_CUES`), over the items some fact in the
-  pack evidences. Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
+  pack evidences. A block with a `maxItems` cap in its structure (countdown: five) earns anchor credit for its first
+  `maxItems` anchor facts only, and the candidate's `findings` in `audition.json` and the stage notes name the excess.
+  Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
   each block to the profile's target runtime and holds it to the profile's `reHookS` ceiling, or to the block's own
   band when the profile bands it longer: supports (60 to 120 s) and countdown (90 to 150 s) are runs of items, each
   its own re-hook. Range: distinct lead beats over blocks, until the resolver (PP-6) can say what it would draw.
@@ -403,6 +410,35 @@ stage, the spend and wall time delta, the stages the run took from a cache, and 
 `inputs.adapters`. `--dry-run` gathers, prints the plan and stops before any stage.
 `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
+
+### `explainer pr`: PR videos
+
+`gatherPr` (`src/presets/pr-overview/`) is the pr-overview profile's gather stage body (`inputs.adapters:
+[gatherPr]`). `explainer pr gather <owner/repo#N> --clone <dir> --out <dir>` runs it on request. It reads the PR
+through two `gh pr` calls (`view --json` and `diff`), and indexes the head commit's tree with code-graph from the
+clone's git objects, so the clone needs the commit (`git fetch origin pull/N/head`) but no checkout of it. It writes
+`facts.jsonl` (`PrFactSchema`, sorted by kind then id) and `gather.json` (outcome and diagnostics):
+
+| Kind | Id | Feeds |
+|---|---|---|
+| `pr` | `pr` | `summary`: title, linked task, head sha |
+| `change` | `change:<path>` | `changes`: status, +/- counts, head-side hunk line spans |
+| `finding` | `finding:<sha256(origin, body)[:12]>` | `shortcomings`: each review or comment with a body, and its `Verdict:` |
+| `call` | `call:<from>-><to>` | `interactions`, the sequence slot: calls between two different changed files |
+
+Ids come from content, never position, so two gathers of one head write the same bytes and a new comment renumbers
+nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`, `E-EMPTY-DIFF`, `E-LINKED-TASK`
+(no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
+index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
+
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--json] [--data-dir <dir>]` is the only
+automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
+only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+Every other PR, seat gates and other owner holds included, is on request only. A start writes
+`<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`) and
+then the gather into the same directory; a directory that already holds `brief.json` is `already`, so a repeated
+sweep starts each head once. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
@@ -590,13 +626,16 @@ slots and layout.
 `explainer.resolve` (workflow plan §2.3 stage 6, profiles plan slice 6) runs after `eval` and before `tts`. It reads
 the rewritten `script` and, when a pin or an earlier stage supplies them, `code` (`{ "files": { path: text } }`, the
 cited files at the video's sha), `slots` (template slots by beat id) and `layout` (element boxes). Its config pins the
-beat specs, profiles and pinned router by content hash, so a doctrine edit is a new stage key.
+beat specs, profiles, pinned router, speech bands and resolver rows by content hash, so a doctrine or table edit is a
+new stage key.
 
 - **Resolver tables** (`resolve-tables.ts`). Each beat's key is `{function, job, content, route}`: `content` is
   `code`, `map`, `items` or `statement`, read off the visual track, and `route` is the visual-router type its `kind`
   names, or `none`. `RESOLVE_ROWS` is ordered, most specific first, and the first matching row picks
   `{beat, framing, layer}`. `FRAMING_ANCHORS` gives the anchors. The beat spec gives the component and speech band. An
-  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything.
+  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything. A HOW
+  beat's `code-proof` with no excerpt resolves to `proof` at the code band (TP-4093); one with an excerpt is a
+  `code-walk`.
 - **Refusals** (`resolve-beat.ts`, `resolve-citation.ts`) are coded and listed together in one `ResolveError`, before
   the stage stores anything:
   - `E-RESOLVE-NO-ROW`: no row matches. There is no list fallback.
@@ -607,7 +646,8 @@ beat specs, profiles and pinned router by content hash, so a doctrine edit is a 
     its range, or the run has no `code` artifact. This is evidence's `verifyRange`, the quote-free half of
     `verifyCitation`.
 - **Word budget** (`resolve-budget.ts`). A beat holds `floor(plannedS × rate)` words at its beat type's speech band:
-  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670). A chapter whose id names a
+  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670), read from
+  `doctrine/speech-bands.yaml`, which also joins the resolve stage's doctrine sha. A chapter whose id names a
   profile block is also held to that block's longest airtime at the fastest rate its beat types allow. Other
   chapters are listed in a note and not capped.
 - **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,

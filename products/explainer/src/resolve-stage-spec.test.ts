@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "./resolve-stage.js";
+import { RESOLVE_ROWS } from "./resolve-tables.js";
 import { DEFAULT_JUDGE } from "./workflow/host.js";
 import { stageSpec, type RunSettings } from "./workflow/stage-spec.js";
 
@@ -15,6 +16,10 @@ describe("resolve stage spec", () => {
     expect(bare.config).toEqual(resolveConfig());
     expect(withCode.inputs).toEqual({ script: "a".repeat(64), code: "c".repeat(64) });
     expect(withCode.key).not.toBe(bare.key);
+  });
+
+  it("re-keys when a resolver row changes, so a cached resolve never outlives the table it was chosen by", () => {
+    expect(resolveConfig(RESOLVE_ROWS.slice(1)).doctrine).not.toBe(resolveConfig().doctrine);
   });
 
   it("fails before the stage starts when no script exists", () => {

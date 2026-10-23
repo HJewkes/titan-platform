@@ -27,6 +27,15 @@
       "kills": [
         "resolver tables refuses a beat that matches no row with a coded error, and never falls back to a list"
       ]
+    },
+    {
+      "name": "a code proof with no excerpt resolves to a concept-band claim card",
+      "file": "products/explainer/src/resolve-tables.ts",
+      "find": "then: template(\"proof\", \"focus\")",
+      "replace": "then: template(\"claim-card\", \"focus\")",
+      "kills": [
+        "resolver tables voices a HOW beat's code proof with no excerpt as a proof beat at the code band"
+      ]
     }
   ]
 }

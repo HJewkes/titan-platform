@@ -12,15 +12,19 @@ const BRIDGE = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", wor
 function ttsSpec(profile?: string, params?: Variant["params"]) {
   const variant = params ? { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "tts" as const, name: "v", params } } : undefined;
   const settings = profile ? { ...SETTINGS, profile } : SETTINGS;
-  return stageSpec({ stage: "tts", artifacts: { script: "a".repeat(64), spine: "c".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge: BRIDGE, ...(variant ? { variant } : {}) });
+  return stageSpec({ stage: "tts", artifacts: { script: "a".repeat(64), resolved: "d".repeat(64), spine: "c".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge: BRIDGE, ...(variant ? { variant } : {}) });
 }
 
 describe("tts stage spec", () => {
-  it("reads only the script, and speaks in the run profile's voice band", () => {
+  it("reads the script and its resolved beat types, and speaks in the run profile's voice band", () => {
     const spec = ttsSpec("repo-argument");
 
-    expect(spec.inputs).toEqual({ script: "a".repeat(64) });
+    expect(spec.inputs).toEqual({ script: "a".repeat(64), resolved: "d".repeat(64) });
     expect(spec.config.voice).toEqual({ id: "am_michael", rate: 1, source: "profile repo-argument" });
+  });
+
+  it("keys on each speech band's words a minute from doctrine (C5: story 195, concept 175, code 160, takeaways 180)", () => {
+    expect(ttsSpec().config.rates).toEqual({ story: 195, concept: 175, code: 160, takeaways: 180, held: 175 });
   });
 
   it("lays a tts variant's voice and rate over the profile's, and keys on them", () => {

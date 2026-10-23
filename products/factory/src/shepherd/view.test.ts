@@ -1,6 +1,7 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { resolveCommand } from "../registry.js";
+import { clearCiWaitHead, noteCiWaitHead } from "../workflows/ci-wait-head.js";
 import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
@@ -589,5 +590,35 @@ describe("a held run whose wait saw a pushed head", () => {
 
     expect(row).toMatchObject({ phase: "ci", headSha: H2 });
     expect(row.nextAction).toContain(H2.slice(0, 7));
+  });
+});
+
+describe("a run whose PR moved while its ci-wait runs (TP-4092)", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const waitingAt = (currentStep: string) => {
+    const run = { ...pausedAt(currentStep), status: "running" } as WorkflowRun;
+    run.stepResults["await-new-head:1:0"] = { stepId: "await-new-head:1", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { headSha: H1 } } };
+    return run;
+  };
+
+  it("names the head the live ci-wait is judging, not the last recorded one", () => {
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      const row = watchRow({ registration, run: waitingAt("ci-wait:r5:0") });
+
+      expect(row).toMatchObject({ phase: "ci", headSha: H2, nextAction: `waiting for CI on ${H2.slice(0, 7)}` });
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
+  });
+
+  it("keeps the recorded head once the run has left ci-wait", () => {
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      expect(watchRow({ registration, run: waitingAt("ci-orphan-rerun:r5:0") }).headSha).toBe(H1);
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
   });
 });

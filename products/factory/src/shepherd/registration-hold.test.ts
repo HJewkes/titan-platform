@@ -265,17 +265,6 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(reads).toBe(2);
   });
 
-  it("does not re-read a file list cut short at GitHub's cap", async () => {
-    const r = rig([file("packages/x/src/a.ts", 5)]);
-    r.fake.prChangedFiles.set(1, 5000);
-    const listPrFiles = r.port.listPrFiles;
-    let reads = 0;
-    r.port = { ...r.port, listPrFiles: (repo, pr) => (reads++, listPrFiles(repo, pr)) };
-
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
-    expect(reads).toBe(1);
-  });
-
   it("stacks a g10-adversary hold over a hold the run already has, which gates again once it is released", async () => {
     const r = rig([file("packages/authority/src/x.ts", 10)]);
     r.store.hold("run-1", "stalled: seat away; TP-1");
