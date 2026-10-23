@@ -14,14 +14,14 @@ const KOKORO_ENGINE_VERSION = "kokoro-82m-fp32+misaki-en/1";
 
 const DOCTRINE_LEXICON_PATH = join(DEFAULT_DOCTRINE_DIR, "lexicon.json");
 
-export interface KokoroEngineDeps {
+interface KokoroEngineDeps {
   /** Defaults to the doctrine's `lexicon.json`. */
   lexicon?: Lexicon;
   /** Defaults to the fp32 model; tests pass a fake so no model loads. */
   loadEngine?: (options: KokoroEngineOptions) => Promise<KokoroEngine>;
 }
 
-export function loadDoctrineLexicon(path = DOCTRINE_LEXICON_PATH): Lexicon {
+function loadDoctrineLexicon(path = DOCTRINE_LEXICON_PATH): Lexicon {
   return loadLexicon(JSON.parse(readFileSync(path, "utf8")));
 }
 
