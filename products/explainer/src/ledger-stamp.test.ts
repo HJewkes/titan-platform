@@ -22,8 +22,8 @@ const spineOf = (ledger: SpineLedgerRow[]): SpineV1 => ({
 
 const LEDGER = [entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("TP-9", "ch1")];
 
-const withSpoken = (id: string, spoken: string, extra: Record<string, unknown> = {}): BeatSpec[] =>
-  GOOD_BEATS.map(([beatId, chapter, fn, was, more]) => (beatId === id ? [beatId, chapter, fn, spoken, { ...more, ...extra }] : [beatId, chapter, fn, was, more]));
+const withSpoken = (id: string, spoken: string, extra: Record<string, unknown> = {}, base: BeatSpec[] = GOOD_BEATS): BeatSpec[] =>
+  base.map(([beatId, chapter, fn, was, more]) => (beatId === id ? [beatId, chapter, fn, spoken, { ...more, ...extra }] : [beatId, chapter, fn, was, more]));
 
 const pinned = (text: string) => ({ visual: { assertion: "The desk refuses unknown parcels", job: "map", map_state: { level: "components", visible: ["desk"], pins: [{ anchor: "desk", text, atCue: "desk" }] } } });
 
@@ -43,7 +43,7 @@ describe("stampLedgerTerms", () => {
   });
 
   it("stamps only the first beat that names the item", () => {
-    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}).map((b) => (b[0] === "w1" ? ["w1", "ch2", "WHAT", "So PR 101 starts the scan.", b[4]] : b)) as BeatSpec[]);
+    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.")));
 
     const stamped = stampLedgerTerms(script, spineOf(LEDGER));
 
