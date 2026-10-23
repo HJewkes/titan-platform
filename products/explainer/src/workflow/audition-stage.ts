@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { agentRunner, type StepRunOutcome } from "@titan-design/workflow";
 import { auditionPool, type AuditionPool } from "../audition-pool.js";
-import { auditionNotes, auditionRecord, rubricCandidate, type AuditionCandidate } from "../audition-record.js";
+import { auditionNotes, auditionRecord, rubricCandidate, skippedRows, withoutSkipped, type AuditionCandidate } from "../audition-record.js";
 import { checkSample, samplePrompt, sampleRetryPrompt, slotBlocks, type SampleContext, type SpineCandidate } from "../audition-sample.js";
 import { codeScores, type ScoreContext } from "../audition-score.js";
 import { loadDoctrine } from "../doctrine-load.js";
@@ -91,8 +91,10 @@ const rubricUsage = (results: readonly (ColdRubricResult | null)[]): StageUsage 
 function candidatesOf(spines: readonly SpineCandidate[], pool: AuditionPool, set: ProfileSet, ctx: ScoreContext, rubric: readonly (ColdRubricResult | null)[]): AuditionCandidate[] {
   return spines.map((spine, i) => {
     const slot = pool.slots[i]!;
+    const id = `c${i + 1}`;
     const { scores, tension } = codeScores(spine, structureFor(set.structures, slot.structure), ctx);
-    return { id: `c${i + 1}`, structure: slot.structure, system: slot.system, basis: slot.basis, likelihood: spine.likelihood, spine, scores, tension, rubric: rubric[i] ?? null };
+    const skipped = skippedRows(rubricCandidate(id, spine));
+    return { id, structure: slot.structure, system: slot.system, basis: slot.basis, likelihood: spine.likelihood, spine, scores, tension, rubric: withoutSkipped(rubric[i] ?? null, skipped), skipped };
   });
 }
 
@@ -122,7 +124,7 @@ export async function runAuditionStage(input: ModelStageInput, config: AuditionC
   const sampled = await sampleSpines(caller(input, config, deps), sampleContext(set, profile, map, facts, pool));
   const rubric = await coldRubric(sampled.spines, config, deps);
   const candidates = candidatesOf(sampled.spines, pool, set, { map, profile, facts, series: [] }, rubric.results);
-  const record = auditionRecord({ mapSha, map, k: profile.audition.k, pool, candidates, ...(rubric.error ? { rubricError: rubric.error } : {}) });
+  const record = auditionRecord({ mapSha, map, profile, k: profile.audition.k, pool, candidates, ...(rubric.error ? { rubricError: rubric.error } : {}) });
   const auditionSha = input.store.putText(`${JSON.stringify(record, null, 2)}\n`, "audition", input.from);
   const scored = candidates.length >= profile.audition.k && candidates.every((c) => Number.isFinite(c.scores.total));
   return {
