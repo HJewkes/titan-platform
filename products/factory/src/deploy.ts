@@ -230,10 +230,7 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   return native === undefined ? { kind: "go", go } : refuse(native);
 }
 
-/**
- * A rollback restores dist but leaves the checkout's main where it was, so a refusal here would answer every older ask
- * the pacer holds the same way until it went stale. origin/main contains both, and the checkout only fast-forwards.
- */
+/** A rollback restores dist but not the checkout's main, so refusing would strand every older ask; origin/main holds both. */
 async function pastTarget(deploy: Deploy, head: string, target: string, prepareOnly: boolean): Promise<Plan> {
   const { ports } = deploy;
   const past = `the checkout's main is at ${head}, already past ${target}`;
