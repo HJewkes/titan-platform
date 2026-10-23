@@ -46,6 +46,8 @@ series:
 audition: { k: 3, storyboardOnly: true }
 # The daily is gathered with no planner in the loop, so the audition pick is the script stage's spine.
 spine: { from: audition-pick }
+# Renders through the host's daily bridge (bridges/daily.json in the explainer data dir) in every run's data dir.
+bridge: daily
 layers: { customMin: 1, templateMaxShare: 0.85, componentMaxShare: 0.3 }
 variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
 pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }

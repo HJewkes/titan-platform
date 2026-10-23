@@ -38,6 +38,8 @@ export const RunPlanSchema = z.object({
   profile: z.string().optional(),
   /** What the gather stage gathers; required when the run starts at `gather`. */
   gather: GatherRequestSchema.optional(),
+  /** The folder export links into, in place of the bridge's `theater.dir`, so one host bridge serves every day's folder. */
+  theater: z.string().optional(),
   /** Stage → the artifact sha of its variant file; a stage with none runs the champion settings above. */
   variants: z.partialRecord(z.enum(STAGES), z.string()).default({}),
   /** Stage → sample index; part of the stage key, so n samples are n cached runs. */
