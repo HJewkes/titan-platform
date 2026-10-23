@@ -1,3 +1,4 @@
+import { plainText } from "@titan-design/speech-vet";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { bodyBeats, contentTerms, countRow, isChapterOpen, ruleRow, sentencesOf, sharesTerm, startShares, wordsOf } from "./lint-text.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
@@ -108,7 +109,10 @@ function listItems(sentence: string): number {
   return segments.length + (/\S\s+(and|or)\s+\S/.test(tail) ? 1 : 0);
 }
 
-const identifiers = (text: string): number => wordsOf(text).filter((w) => IDENTIFIER.test(w.replace(/[.,;:!?]+$/, ""))).length;
+// The voice says the word of a `[w](/phonemes/)` override, and Q-V10 demands that markup, so its slashes name nothing.
+const spokenWords = (spoken: string): string[] => wordsOf(plainText(spoken));
+
+const identifiers = (text: string): number => spokenWords(text).filter((w) => IDENTIFIER.test(w.replace(/[.,;:!?]+$/, ""))).length;
 
 /** Q-F9: spoken lists stay short, and names or paths read aloud in bulk belong on a `ref` beat. */
 const longLists = (beats: readonly ScriptBeat[]): string[] =>
@@ -163,7 +167,7 @@ function learnerQuestions(beats: readonly ScriptBeat[]): L0Result {
 
 /** Q-F16: the plain-language share of the script before the first internal identifier is spoken. */
 function plainOpening(beats: readonly ScriptBeat[]): L0Result {
-  const words = beats.flatMap((b) => wordsOf(b.spoken).map((word) => ({ id: b.id, word: word.replace(/[.,;:!?]+$/, "") })));
+  const words = beats.flatMap((b) => spokenWords(b.spoken).map((word) => ({ id: b.id, word: word.replace(/[.,;:!?]+$/, "") })));
   const at = words.findIndex(({ word }) => IDENTIFIER.test(word));
   const share = at === -1 || words.length === 0 ? 1 : at / words.length;
   const beat = at === -1 ? [] : [words[at]!.id];
