@@ -4,7 +4,7 @@
     {
       "name": "a run in sh-cleanup reads as watching main CI again",
       "file": "products/factory/src/shepherd/view.ts",
-      "find": "heldWakeWait(run, steps) ?? cleanupWait(run) ??",
+      "find": "heldWakeWait(run, steps) ?? cleanupWait(run, phase) ??",
       "replace": "heldWakeWait(run, steps) ??",
       "kills": [
         "a run parked in recovery after it recorded its outcome says a running run past its main CI read is cleaning up, not watching main CI"
@@ -13,10 +13,19 @@
     {
       "name": "every post-merge step reads as cleaning up",
       "file": "products/factory/src/shepherd/view.ts",
-      "find": "run.currentStep !== null && stepIdMatches(\"sh-cleanup\", run.currentStep) ?",
-      "replace": "run.currentStep !== null && stepPhase(run.currentStep) === \"post-merge\" ?",
+      "find": "phase === \"post-merge\" && run.currentStep !== null && stepIdMatches(\"sh-cleanup\", run.currentStep) ?",
+      "replace": "phase === \"post-merge\" && run.currentStep !== null && stepPhase(run.currentStep) === \"post-merge\" ?",
       "kills": [
         "a run parked in recovery after it recorded its outcome still says a run in sh-main-ci is watching main CI"
+      ]
+    },
+    {
+      "name": "a finished run left on sh-cleanup reads as still cleaning up",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "phase === \"post-merge\" && run.currentStep !== null",
+      "replace": "run.currentStep !== null",
+      "kills": [
+        "a run parked in recovery after it recorded its outcome says none for a completed merged run whose last step was sh-cleanup"
       ]
     }
   ]

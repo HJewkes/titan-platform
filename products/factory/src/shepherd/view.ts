@@ -185,10 +185,10 @@ function admissionWait({ repo, pr }: Registration): string | undefined {
 }
 
 /** sh-cleanup can wait an hour per part on agents to exit, long after main CI was read, so it must not read as a main CI wait. */
-const cleanupWait = (run: WorkflowRun): string | undefined =>
-  run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
+const cleanupWait = (run: WorkflowRun, phase: Phase): string | undefined =>
+  phase === "post-merge" && run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
 
-const BaseCheckData =z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
+const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
 /** While a head waits for its PR to be retargeted, the refused base is the next action. */
 function baseWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
@@ -291,7 +291,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),
