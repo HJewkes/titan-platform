@@ -223,9 +223,9 @@ describe("review labels", () => {
       ...panelRounds().slice(0, 8),
       ["sh-await-verdict:h2:0", 15, verdict(SESSION.c, "h2", "FIX_FIRST")],
       ["sh-scope-check:h2:0", 15, { kind: "checked", mode: "on", untagged: 2, repeated: 1, at: at(15) }],
-      ["sh-correct-verdict:h2:scope:0", 16, { kind: "asked", startedAt: at(16) }],
-      ["sh-await-verdict:h2:scope:0", 17, verdict(SESSION.c, "h2", "FIX_FIRST")],
-      ["sh-scope-check:h2:corrected:0", 17, { kind: "checked", mode: "on", untagged: 1, repeated: 0, at: at(17), kept: true }],
+      ["sh-correct-verdict:h2:scope-1:0", 16, { kind: "asked", startedAt: at(16) }],
+      ["sh-await-verdict:h2:scope-1:0", 17, verdict(SESSION.c, "h2", "FIX_FIRST")],
+      ["sh-scope-check:h2:reply-1:0", 17, { kind: "checked", mode: "on", untagged: 1, repeated: 0, at: at(17), kept: true }],
       ["sh-await-verdict:h2:adversary:0", 18, verdict(SESSION.b, "h2", "MERGE")],
     ];
 

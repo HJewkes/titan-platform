@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "inside and outside the fix's ranges are inverted",
+      "file": "products/factory/src/shepherd/scope-check.ts",
+      "find": "cites.every((cite) => !inside(hunks, cite.path, cite.line))",
+      "replace": "cites.every((cite) => inside(hunks, cite.path, cite.line))",
+      "kills": [
+        "scopeViolations flags a new item that cites only a line outside the fix's ranges and carries no tag",
+        "scopeViolations still flags an Important: item that names no Class:"
+      ]
+    },
+    {
+      "name": "the tag check ignores Class:",
+      "file": "products/factory/src/shepherd/scope-check.ts",
+      "find": "itemBody(item).startsWith(IMPORTANT_TAG) && CLASS_LINE.test(item)",
+      "replace": "itemBody(item).startsWith(IMPORTANT_TAG)",
+      "kills": [
+        "scopeViolations still flags an Important: item that names no Class:"
+      ]
+    },
+    {
+      "name": "the repeat normalization is dropped",
+      "file": "products/factory/src/shepherd/scope-check.ts",
+      "find": "itemBody(item).toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu, \" \").replace(/\\s+/g, \" \").trim()",
+      "replace": "itemBody(item)",
+      "kills": [
+        "scopeViolations flags a new item equal to an earlier finding once case, punctuation and spacing are dropped"
+      ]
+    }
+  ]
+}

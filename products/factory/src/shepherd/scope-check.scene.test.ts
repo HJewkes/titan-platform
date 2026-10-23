@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import { REFUSAL_SENTENCES, type ReviewerAgent, type ReviewerFacts, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
@@ -83,6 +84,7 @@ function scriptedReviewers(script: Script, resumes: string[]) {
   };
   const resume = async (name: string, prompt: string) => {
     resumes.push(prompt);
+    await delay(resumes.length > MAX_RESUMES ? 1_000 : 1);
     if (resumes.length > MAX_RESUMES) throw new Error("the scene's reviewer takes no more corrections");
     const agent = agents.find((each) => each.name === name)!;
     replies.set(name, [...(replies.get(name) ?? []), script.replies[resumes.length - 1] ?? script.atH2]);
@@ -133,7 +135,7 @@ async function fixRoundRun(modes: Modes, script: Script) {
 
 const ON = { scopedRereview: "on", scopeCheck: "on" } as const;
 const checks = (stepIds: readonly string[]) => stepIds.filter((id) => id.startsWith("sh-scope-check"));
-const scopeCorrections = (stepIds: readonly string[]) => stepIds.filter((id) => id === `sh-correct-verdict:${H2}:scope`);
+const scopeCorrections = (stepIds: readonly string[]) => stepIds.filter((id) => id === `sh-correct-verdict:${H2}:scope-1`);
 
 describe("the scope check on a scoped fix round's FIX_FIRST", () => {
   it("on: an untagged item outside the fix's ranges gets one correction, and the reviewer's MERGE reply stands", async () => {
@@ -185,7 +187,7 @@ describe("the scope check on a scoped fix round's FIX_FIRST", () => {
     expect(scopeCorrections(w.stepIds)).toHaveLength(1);
     expect(w.resultOf(`sh-scope-check:${H2}`)).toMatchObject({ untagged: 1 });
     expect(w.resultOf(`sh-scope-check:${H2}`)).not.toHaveProperty("kept");
-    expect(w.resultOf(`sh-scope-check:${H2}:corrected`)).toMatchObject({ untagged: 1, kept: true });
+    expect(w.resultOf(`sh-scope-check:${H2}:reply-1`)).toMatchObject({ untagged: 1, kept: true });
     expect(w.resultOf(`sh-review-panel:${H2}`)).toMatchObject({ outcome: "FIX_FIRST", findings: [expect.objectContaining({ text: expect.stringContaining("deny-rules.ts:901") })] });
   });
 

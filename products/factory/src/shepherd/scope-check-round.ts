@@ -62,14 +62,17 @@ export function scopeRoundOf(intent: object, rereview: ScopedRereview | undefine
   return { mode, hunks: rereview.scope.hunks, posted: rereview.earlierFindings.map((finding) => finding.text) };
 }
 
+/** A reviewer is asked to correct a scoped FIX_FIRST at most this many times per head. */
+const MAX_SCOPE_CORRECTIONS = 1;
+
 const FixFirstRead = z.looseObject({ kind: z.literal("verdict"), verdict: z.literal("FIX_FIRST"), text: z.string() });
 
-/** One correction turn in the reviewer's own session; a reply with no verdict reads as `none`. */
-async function askScopeCorrection(ctx: WorkflowContext, awaiting: AwaitVerdictInput, checked: CheckedResult, ownerBrief: boolean): Promise<AwaitedResult> {
+/** One correction turn in the reviewer's own session, its steps numbered by `turn`; a reply with no verdict reads as `none`. */
+async function askScopeCorrection(ctx: WorkflowContext, awaiting: AwaitVerdictInput, checked: CheckedResult, ownerBrief: boolean, turn: number): Promise<AwaitedResult> {
   const malformed = { refusal: checked.untagged > 0 ? "scope_untagged" : "repeated_finding", writtenAt: checked.at };
-  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}:scope`, { ...awaiting, malformed, ...(ownerBrief && { ownerBrief: true }) }, Corrected);
+  const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}:scope-${turn}`, { ...awaiting, malformed, ...(ownerBrief && { ownerBrief: true }) }, Corrected);
   if (asked.kind !== "asked") return { kind: "none", reason: asked.reason };
-  return step(ctx, `${AWAIT_VERDICT_STEP}:${awaiting.head}:scope`, { ...awaiting, dispatchedAt: checked.at, startedAt: asked.startedAt }, Awaited);
+  return step(ctx, `${AWAIT_VERDICT_STEP}:${awaiting.head}:scope-${turn}`, { ...awaiting, dispatchedAt: checked.at, startedAt: asked.startedAt }, Awaited);
 }
 
 /**
@@ -77,13 +80,13 @@ async function askScopeCorrection(ctx: WorkflowContext, awaiting: AwaitVerdictIn
  * the reviewer wrote it, a MERGE included; a reply that still misses, or none, keeps the verdict and records `kept`. No code
  * here turns a FIX_FIRST into a MERGE.
  */
-export async function enforceScope(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedResult, round: ScopeRound & { ownerBrief: boolean }, corrected = false): Promise<AwaitedResult> {
+export async function enforceScope(ctx: WorkflowContext, awaiting: AwaitVerdictInput, awaited: AwaitedResult, round: ScopeRound & { ownerBrief: boolean }, turn = 0): Promise<AwaitedResult> {
   const fixFirst = FixFirstRead.safeParse(awaited).data;
   if (!fixFirst) return awaited;
-  const input = { head: awaiting.head, text: fixFirst.text, hunks: round.hunks, posted: round.posted, mode: round.mode, ...(corrected && { corrected: true as const }) };
-  const checked = await step(ctx, `${SCOPE_CHECK_STEP}:${awaiting.head}${corrected ? ":corrected" : ""}`, input, Checked);
-  if (round.mode === "shadow" || checked.untagged + checked.repeated === 0 || corrected) return awaited;
-  const reply = await askScopeCorrection(ctx, awaiting, checked, round.ownerBrief);
+  const input = { head: awaiting.head, text: fixFirst.text, hunks: round.hunks, posted: round.posted, mode: round.mode, ...(turn > 0 && { corrected: true as const }) };
+  const checked = await step(ctx, `${SCOPE_CHECK_STEP}:${awaiting.head}${turn > 0 ? `:reply-${turn}` : ""}`, input, Checked);
+  if (round.mode === "shadow" || checked.untagged + checked.repeated === 0 || turn >= MAX_SCOPE_CORRECTIONS) return awaited;
+  const reply = await askScopeCorrection(ctx, awaiting, checked, round.ownerBrief, turn + 1);
   if (isUsageLimit(reply)) return reply;
-  return enforceScope(ctx, awaiting, reply.kind === "verdict" ? reply : awaited, round, true);
+  return enforceScope(ctx, awaiting, reply.kind === "verdict" ? reply : awaited, round, turn + 1);
 }
