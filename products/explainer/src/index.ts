@@ -31,5 +31,6 @@ export * from "./eval-exports.js";
 export * from "./lint-exports.js";
 export * from "./speech-exports.js";
 export * from "./doctrine-exports.js";
+export * from "./presets/pr-overview/index.js";
 export * from "./rewrite-exports.js";
 export * from "./workflow/index.js";

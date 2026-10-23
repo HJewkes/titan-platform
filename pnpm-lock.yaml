@@ -1185,6 +1185,9 @@ importers:
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
+      '@titan-design/code-graph':
+        specifier: workspace:^
+        version: link:../../packages/code-graph
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence
