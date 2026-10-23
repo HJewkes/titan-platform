@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { cueResolverFromWords } from "../cues.js";
+import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine } from "../spine-schema.js";
+import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import type { ArtifactStore } from "./artifacts.js";
-import type { CachedStage, Check } from "./records.js";
+import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
 
 /** What a check reads: the stage's input and output shas, by artifact name. */
 export interface CheckInput {
@@ -108,9 +110,56 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   sheets: [],
 };
 
+const couldNotRun = (error: unknown): Verdict => ({
+  pass: false,
+  detail: `could not run: ${(error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").slice(0, 200)}`,
+});
+
 interface CheckRun {
   checks: Check[];
   notes: string[];
+}
+
+/** The judge a model-backed check calls; a run that names none skips those checks. */
+export interface CheckJudge {
+  config: JudgeConfig;
+  harness: JudgeHarness;
+  /** Questions a sentence above which `listener-questions` reports red; none by default. */
+  listenerThreshold?: number;
+}
+
+/** A check that spends on a model call. It is always reported, never a gate, until owner labels calibrate it. */
+export interface JudgedStageCheck {
+  name: string;
+  reads: readonly string[];
+  run: (input: CheckInput, judge: CheckJudge) => Promise<Verdict & { usage: StageUsage }>;
+}
+
+const JUDGED_CHECKS: Partial<Record<CachedStage, readonly JudgedStageCheck[]>> = {
+  script: [listenerQuestionsCheck],
+};
+
+/** Runs a stage's judged checks after its deterministic ones; their spend is the checks step's own. */
+export async function runJudgedChecks(
+  stage: CachedStage, input: CheckInput, judge: CheckJudge | undefined, checks: readonly JudgedStageCheck[] = JUDGED_CHECKS[stage] ?? [],
+): Promise<CheckRun & { usage: StageUsage }> {
+  const out = { checks: [] as Check[], notes: [] as string[], usage: NO_USAGE };
+  if (!judge) return out;
+  for (const check of checks) {
+    const missing = check.reads.filter((name) => input.artifacts[name] === undefined);
+    if (missing.length > 0) {
+      out.notes.push(`check ${check.name} skipped: no ${missing.join(", ")} artifact`);
+      continue;
+    }
+    try {
+      const { usage, ...verdict } = await check.run(input, judge);
+      out.usage = addUsage(out.usage, usage);
+      out.checks.push({ name: check.name, gate: false, ...verdict });
+    } catch (error) {
+      out.checks.push({ name: check.name, gate: false, ...couldNotRun(error) });
+    }
+  }
+  return out;
 }
 
 /** Runs a stage's checks over its artifacts. A check that throws fails with the error as its detail. */
@@ -126,7 +175,7 @@ export function runStageChecks(stage: CachedStage, input: CheckInput, checks: re
     try {
       verdict = check.run(input);
     } catch (error) {
-      verdict = { pass: false, detail: `could not run: ${(error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").slice(0, 200)}` };
+      verdict = couldNotRun(error);
     }
     out.checks.push({ name: check.name, gate: check.gate, ...verdict });
   }

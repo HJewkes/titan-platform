@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { answerWithin, startWorker } from "./deadline.js";
 
 // The built bundle orders its modules differently from the source vitest loads, so a load-order crash shows only here.
@@ -52,7 +52,9 @@ describe("the built tool-guard", () => {
 describe("the built tool-guard on a line whose check outruns its deadline (TP-3224)", () => {
   const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
 
-  it("denies within the deadline plus a margin through the built worker, telling the agent to split the command", async () => {
+  // The deadline's timer is faked, so the deny comes as the deadline passes however busy the runner is (TP-4047); the
+  // worker is real and still classifying then.
+  it("denies as the deadline passes through the built worker, telling the agent to split the command", async () => {
     const repo = join(home, "app");
     mkdirSync(join(repo, ".git"), { recursive: true });
     writeFileSync(join(repo, ".git/HEAD"), "ref: refs/heads/feat/x\n");
@@ -60,16 +62,21 @@ describe("the built tool-guard on a line whose check outruns its deadline (TP-32
     writeFileSync(join(repo, "a.sh"), fill("a b c d e f g h i j k l m n o p q r s t u v w x y z\n", 64 * 1024));
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: repo, tool_input: { command: "./a.sh; git push origin HEAD:main" } });
     const deadlineMs = 200;
-    const start = performance.now();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
-    const result = await answerWithin(input, {
-      env: {},
-      now: () => new Date(),
-      deadlineMs,
-      start: (text) => startWorker({ input: text, env: {}, home, foldCase: true }, pathToFileURL(join(dist, "hook-worker.js"))),
-    });
+    try {
+      const answer = answerWithin(input, {
+        env: {},
+        now: () => new Date(0),
+        deadlineMs,
+        start: (text) => startWorker({ input: text, env: {}, home, foldCase: true }, pathToFileURL(join(dist, "hook-worker.js"))),
+      });
+      await vi.advanceTimersByTimeAsync(deadlineMs);
+      const result = await answer;
 
-    expect(performance.now() - start).toBeLessThan(deadlineMs + 1500);
-    expect(result.stdout).toContain("could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.");
+      expect(result.stdout).toContain("could not finish checking this call in time, so it was not run. Split the command into smaller Bash calls.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

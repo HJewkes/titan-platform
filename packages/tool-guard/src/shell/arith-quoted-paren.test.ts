@@ -6,6 +6,7 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { countWork } from "../test-support/work-count.js";
 
 const home = mkdtempSync(join(tmpdir(), "tool-guard-arith-paren-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -50,8 +51,17 @@ describe("a quoted paren in $(( ))", () => {
     },
   );
 
-  // The unbounded readings this guards against take ten seconds or run out of memory; slow CI runners need the slack.
-  const BOUNDED_MS = 2000;
+  // The unbounded readings this guards against take ten seconds or run out of memory. Work, unlike time, a loaded runner
+  // cannot stretch (TP-4047). Nesting at the limit is read in full, with trials the limit bounds: 21 890 characters a
+  // character. Past it, or through another span, a line is refused after at most 298.
+  const AT_LIMIT_WORK_PER_CHAR = 40_000;
+  const REFUSED_WORK_PER_CHAR = 600;
+  const EVENT_WORK = 10_000;
+  async function countedVerdict(command: string, perChar = REFUSED_WORK_PER_CHAR): Promise<string> {
+    let verdict = "";
+    await countWork(async () => (verdict = await handled(command)), EVENT_WORK + command.length * perChar);
+    return verdict;
+  }
 
   it.each([
     ["at the limit", 4, "pass"],
@@ -60,9 +70,7 @@ describe("a quoted paren in $(( ))", () => {
   ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", async (_name, depth, verdict) => {
     let body = `x${" + 1".repeat(1000)}`;
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
-    const started = Date.now();
-    expect(await handled(`echo ${body}`)).toBe(verdict);
-    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
+    expect(await countedVerdict(`echo ${body}`, verdict === "pass" ? AT_LIMIT_WORK_PER_CHAR : REFUSED_WORK_PER_CHAR)).toBe(verdict);
   });
 
   // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
@@ -79,9 +87,7 @@ describe("a quoted paren in $(( ))", () => {
   ] as const)("refuses quoted-paren arithmetic nested through %s, %i deep, in bounded time", async (_name, depth, wrap) => {
     let body = "true";
     for (let i = 0; i < depth; i++) body = wrap(body, i);
-    const started = Date.now();
-    expect(await handled(`echo ${body}`)).toBe("deny");
-    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
+    expect(await countedVerdict(`echo ${body}`)).toBe("deny");
   });
 
   it.each([

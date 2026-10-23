@@ -25,6 +25,8 @@ interface RunFlags {
   judge?: string;
   rounds: number;
   profile?: string;
+  listenerQuestions?: boolean;
+  listenerThreshold?: number;
 }
 
 /** Everything but the data dir is injectable, so the CLI runs on fakes in a test. */
@@ -87,6 +89,17 @@ function summary(result: RunOutcome, io: Io): number {
   return result.status === "completed" ? EXIT.OK : EXIT.FAILED;
 }
 
+function threshold(text: string): number {
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < 0) throw new InvalidArgumentError(`--listener-threshold must be a number of questions a sentence, 0 or more, got "${text}"`);
+  return value;
+}
+
+function withListener(host: RunHost, flags: RunFlags): RunHost {
+  if (!flags.listenerQuestions && flags.listenerThreshold === undefined) return host;
+  return { ...host, listener: flags.listenerThreshold === undefined ? {} : { threshold: flags.listenerThreshold } };
+}
+
 function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
   return new Command("run")
     .description("Make one explainer video end to end on the workflow runtime, then write run-report.md (see also `run report --help`, `run resume --help`)")
@@ -105,17 +118,20 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--script-model <model>", "model for the script stage", DEFAULT_SCRIPT_MODEL)
     .option("--judge <file>", "model config JSON for the rewrite stage, as for `explainer rewrite` (default: claude-print sonnet)")
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, rounds, MAX_REWRITE_ROUNDS)
+    .option("--listener-questions", "also run the reported listener-questions check on the script stage, on the --judge model (it spends)")
+    .option("--listener-threshold <q>", "questions a sentence above which listener-questions reports red (implies --listener-questions; default: none)", threshold)
     .exitOverride()
-    .action(async (flags: RunFlags) => {
-      const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
-      const result = await runVideo({
-        ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
-        ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
-        from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-        ...(flags.profile ? { profile: flags.profile } : {}),
-      }, hostFor(flags, deps));
-      onResult(summary(result, io));
-    });
+    .action(async (flags: RunFlags) => onResult(summary(await runFromFlags(flags, deps), io)));
+}
+
+function runFromFlags(flags: RunFlags, deps: RunCliDeps): Promise<RunOutcome> {
+  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
+  return runVideo({
+    ...(flags.spine ? { spine: flags.spine } : {}), ...(flags.facts ? { facts: flags.facts } : {}), ...(flags.base ? { base: flags.base } : {}),
+    ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
+    from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
+    ...(flags.profile ? { profile: flags.profile } : {}),
+  }, withListener(hostFor(flags, deps), flags));
 }
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
