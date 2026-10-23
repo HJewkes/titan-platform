@@ -1,0 +1,25 @@
+schema: narrative-structure/v1
+id: countdown
+version: 0.1.0
+source: "story-structure §2.9 (listicle / countdown), §4 row 6"
+summary: "Parallel findings counted down by stakes inside an ABT frame, never a bare list."
+fit:
+  ask: "Are the findings parallel and independent?"
+  any: [parallel-findings]
+blocks:
+  - { id: frame, goal: "The ABT frame that makes the list matter.", share: 0.2 }
+  - { id: countdown, goal: "At most five findings, each a mini-ABT, ordered by stakes.", share: 0.65 }
+  - { id: takeaway, goal: "What the findings add up to.", share: 0.15 }
+hook: "Name the stakes and the count before the first item."
+ending: "takeaways+button"
+spine:
+  - title: Frame
+    body: |-
+      <And ..., but ..., therefore ...: why the list matters.>
+  - title: Countdown
+    body: |-
+      | Rank | Finding | Its but | Fact id |
+      |---|---|---|---|
+  - title: What they add up to
+    body: |-
+      <One sentence that only the whole list supports.>

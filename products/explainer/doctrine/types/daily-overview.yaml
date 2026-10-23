@@ -12,9 +12,9 @@ runtime: { targetS: 150, minS: 120, maxS: 240, splitAboveS: 300 }
 structure:
   order: heuristic
   heuristic:
-    - { signal: blocking-decision, ask: "Does the owner queue hold an old blocking item?", macro: scqa }
-    - { signal: cascade-day, ask: "Did one event cascade through the day?", macro: timeline }
-    - { signal: board-moved, ask: "Is the day best told as work moving across the board?", macro: board-walk }
+    - { macro: scqa, ask: "Does the owner queue hold an old blocking item?" }
+    - { macro: timeline, ask: "Did one event cascade through the day?" }
+    - { macro: board-walk, ask: "Is the day best told as work moving across the board?" }
   fallback: bluf
   macros:
     bluf: [bottom-line, decisions, facts, segments, ask]

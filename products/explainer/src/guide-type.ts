@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DEFAULT_DOCTRINE_DIR, loadDoctrine } from "./doctrine-load.js";
 import type { DoctrineRegistry, DoctrineRule } from "./doctrine-schema.js";
 import { sliceForStage } from "./doctrine-slice.js";
-import { loadProfiles, profileFor, type ProfileSet } from "./profile-load.js";
+import { loadProfiles, profileFor, structureFor, type ProfileSet } from "./profile-load.js";
 import type { ProfileBlock, TypeProfile } from "./profile-schema.js";
 import { loadRuleRegistry, type RuleRegistry } from "./rules.js";
 
@@ -18,11 +18,17 @@ const minutes = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).p
 const renderBlock = ({ id, goal, seconds, beats, require = [] }: ProfileBlock): string =>
   `- **${id}** (${seconds[0]}-${seconds[1]} s): ${goal} Beats: ${beats.join(", ")}${require.length > 0 ? `; must include ${require.join(", ")}` : ""}.`;
 
-function renderStructure({ structure }: TypeProfile): string {
+const macrosOf = ({ structure }: TypeProfile): string[] =>
+  structure.order === "fixed" ? [structure.macro] : [...new Set([...structure.heuristic.map((row) => row.macro), structure.fallback])];
+
+function renderStructure({ structure }: TypeProfile, set: ProfileSet): string {
   if (structure.order === "fixed") {
     return [`Macro: ${structure.macro}. The chapters play in this order every time; they are the viewer's map.`, "", ...structure.blocks.map(renderBlock)].join("\n");
   }
-  const rows = structure.heuristic.map(({ ask, macro, minRuntimeS }, i) => `${i + 1}. ${ask} Then **${macro}**${minRuntimeS ? ` (at ${minutes(minRuntimeS)} or longer)` : ""}.`);
+  const rows = structure.heuristic.map(({ ask, macro }, i) => {
+    const { minRuntimeS } = structureFor(set.structures, macro).fit;
+    return `${i + 1}. ${ask} Then **${macro}**${minRuntimeS ? ` (at ${minutes(minRuntimeS)} or longer)` : ""}.`;
+  });
   const macros = Object.entries(structure.macros).map(([macro, ids]) => `- **${macro}**: ${ids.join(" → ")}`);
   return [
     "Pick the macro structure: ask these in order and stop at the first yes.",
@@ -50,7 +56,7 @@ function renderProfile(profile: TypeProfile, set: ProfileSet): string {
     profile.intent,
     `## Audience\n\n${profile.audience.default}${pack ? `: ${pack.viewer}` : ""}`,
     `## Runtime\n\nAim for ${minutes(targetS)}, within ${minutes(minS)}-${minutes(maxS)}. Above ${minutes(splitAboveS)}, split into episodes.`,
-    `## Structure\n\n${renderStructure(profile)}`,
+    `## Structure\n\n${renderStructure(profile, set)}`,
     `## Hook and ending\n\n- Hook: ${profile.hook}\n- Ending: ${profile.ending}`,
     ...(cuts.length > 0 ? [`## Cuts\n\n${cuts.join("\n")}`] : []),
     `## Series\n\nMay repeat from the previous video: ${profile.series.mayRepeat.join(", ") || "nothing"}.\nMust differ from the previous video: ${profile.series.mustVary.join(", ")}.`,
@@ -59,6 +65,23 @@ function renderProfile(profile: TypeProfile, set: ProfileSet): string {
 }
 
 const renderRule = ({ id, text }: DoctrineRule): string => `- **${id}**: ${text}`;
+
+/** The plan-stage rules a video gets only when it picks `structure`. */
+function structureRules(structure: string, registry: DoctrineRegistry, qRules: RuleRegistry): DoctrineRule[] {
+  const { prompt } = sliceForStage(registry, qRules, { stage: "plan", structure });
+  return prompt.filter((rule) => (rule.scope.structures ?? []).includes(structure));
+}
+
+/** Each structure the profile may pick: its shape, its spine sections and the rules it brings. */
+function renderStructures(profile: TypeProfile, set: ProfileSet, registry: DoctrineRegistry, qRules: RuleRegistry): string {
+  const entries = macrosOf(profile).map((id) => {
+    const { summary, source, spine } = structureFor(set.structures, id);
+    const rules = structureRules(id, registry, qRules).map(renderRule);
+    const sections = spine.map(({ title }, i) => `${i + 1}. ${title}`).join("; ");
+    return [`### ${id}`, "", `${summary} (${source})`, "", `Spine sections: ${sections}.`, ...(rules.length > 0 ? ["", ...rules] : [])].join("\n");
+  });
+  return `## Structures\n\nThe spine you write follows the structure you pick. The runner-up goes in the render notes.\n\n${entries.join("\n\n")}`;
+}
 
 /**
  * One video type's planner guide: its profile, then the plan-stage rules for the type and its
@@ -69,7 +92,7 @@ export function guideForType(type: string, deps: TypeGuideDeps = {}): string {
   const profile = profileFor(profiles, type);
   const { prompt } = sliceForStage(registry, qRules, { stage: "plan", type, audience: profile.audience.default });
   const rules = prompt.length > 0 ? prompt.map(renderRule).join("\n") : "- (none)";
-  return `${renderProfile(profile, profiles)}\n\n## Rules for the plan stage\n\n${rules}\n`;
+  return `${renderProfile(profile, profiles)}\n\n${renderStructures(profile, profiles, registry, qRules)}\n\n## Rules for the plan stage\n\n${rules}\n`;
 }
 
 /** Writes `guides/planner/<type>.md` for every profile under `doctrineDir`; returns the types written. */

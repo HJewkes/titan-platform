@@ -1156,6 +1156,70 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
+Policy paths also cover who may resolve a gate, not only the owner's rule file. The list is
+`GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`: hitl's whole
+source, the workflow runtime, its types and its gate authorize step, queue-mirror's whole source
+and the Matrix owner fold, the owner queue's source port, the factory's owner-queue sources and
+answer entry points (`gate-resolve*`, `gate-answer-*`, `gate-batch*`, `gate-notify*`,
+`console-action/`, `owner-ops/`, the round-ship sweep), the land workflow's gate rules, the owner
+presence and proof files, the store wiring in `host.ts`, and the coordinator evidence, allowance
+and device-gate rules. The owner's skill-diff guard (`merge-facts.ts`, `skill-paths.ts`,
+`approval-carry.ts`) is held beside it. A change to any of them takes `g10-adversary`; a change to
+their test files alone does not.
+
+The closure is a heuristic trigger for the `g10-adversary` hold, not a completeness proof.
+Nothing static over this code can be complete: who may resolve a gate also depends on which
+owner-identity check each composition root binds. The boundary against a same-user agent is the
+OS (TP-3584). What CI checks is the part of that list the type checker can derive.
+`gate-resolve-sites.test.ts` builds one TypeScript program per package, product or app whose
+dependencies reach a resolve sink, and collects every non-test source file that does one of these:
+
+- names a resolve sink: hitl's `GateStore.resolve` and `resolveGate`, `WorkflowRuntime.signal`, or
+  either `QueueSource.resolve`;
+- implements one of those interfaces;
+- calls a function that forwards one of its own parameters into a sink's who-answered argument;
+- declares or names a function that synchronously returns a `GateResolver`;
+- writes an object literal typed as a `GateResolver`.
+
+The checker resolves the receiver, so a destructured, aliased, optional-chained or bracketed call
+is found the same as `host.gates.resolve(...)`. The test fails when a file in that closure is not
+held, and it checks that known sites are found, so an empty closure cannot pass. Synthetic probe
+files pin each spelling an earlier text scan missed. Fix-proof mutates only product source, never a
+test-support file, so the closure's own rules (destructuring, forwarders, implementers, factories)
+are proved another way: each has an off switch, and a row shows the probe that rule alone finds
+goes missing when it is off.
+
+**Not covered (filed as gap tasks).** The closure misses these forms:
+
+- A receiver re-typed to a structurally identical local type, such as round 5's `Answerer`
+  (TP-4063).
+- Async resolver factories that return `Promise<GateResolver>` (TP-4064).
+- Owner-identity checks supplied by composition roots: the `presence` that `cli.ts` and `bin.ts`
+  pass, `serve.ts`'s `ownerKeys`, and a `QueueMirror` composer's `ownerUserId` (TP-4067). The
+  CLI's owner-presence proof is also an unverifiable UUID (TP-4066).
+- Edits to `gate-resolve-sites.test.ts` or its mutations sidecar alone, which are test-exempt
+  (TP-4065).
+
+TP-4068 and TP-4069 (the actor matrix) are the planned behavioural check.
+
+**Accepted residual.** The closure does not reach the following:
+
+- Values that cross a process boundary (HTTP, Matrix, CLI). The receiving side builds the
+  resolver and is in the closure.
+- A file upstream of a sink call that only computes part of a resolver's input. The file that
+  hands the value to the sink is held; the file that computed it is not.
+- A receiver typed `any`. Lint's `no-explicit-any` refuses one unless the line disables that
+  rule.
+- `test-support/` and `fixtures/` directories and `*.test-helpers.ts` files, which the scan skips.
+- The checks and proofs in the list that build no resolver, such as the skill-diff guard and the
+  presence and evidence rules. Those are kept by hand, and `registration-hold.test.ts` pins each
+  one with a row.
+
+**Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
+answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value
+as `ResolverClass`, which admits only the owner classes, so a widened enum fails typecheck; and
+hitl's default refusal rejects any other class at run time. Both checks sit in held files.
+
 **Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
 edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
 added, so only its new path is matched. Classing by content or by import graph would need every

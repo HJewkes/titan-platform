@@ -1,0 +1,26 @@
+schema: narrative-structure/v1
+id: timeline
+version: 0.1.0
+source: "video-profiles plan §B.4 (the cascade day)"
+summary: "One event and its cascade, told in time order from the first event to its last effect."
+fit:
+  ask: "Did one event cascade through the period?"
+  all: [cascade]
+blocks:
+  - { id: bottom-line, goal: "The verdict and the event that drove it.", share: 0.15 }
+  - { id: cascade, goal: "The event and its effects, in time order.", share: 0.5 }
+  - { id: decisions, goal: "The decisions the cascade left.", share: 0.25 }
+  - { id: ask, goal: "What to do next.", share: 0.1 }
+hook: "Open on the last effect, then go back to the first event."
+ending: "button"
+spine:
+  - title: Bottom line
+    body: |-
+      <The verdict, and the event behind it.>
+  - title: Cascade
+    body: |-
+      | Time | Event | Effect | Fact id |
+      |---|---|---|---|
+  - title: Decisions left
+    body: |-
+      <Each decision with its recommendation.>

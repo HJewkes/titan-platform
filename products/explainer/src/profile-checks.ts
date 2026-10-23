@@ -7,6 +7,7 @@ export const PROFILE_ISSUE_CODES = [
   "unknown-audience",
   "audience-not-allowed",
   "dangling-ref",
+  "unknown-structure",
   "runtime-order",
   "series-overlap",
   "series-base-missing",
@@ -72,6 +73,15 @@ function structureRefs(profile: TypeProfile): ProfileIssue[] {
   return [...missingBlocks, ...missingMacros];
 }
 
+/** Every macro a profile names, fixed or heuristic, is a registered structure (plan §A.2). */
+function registeredStructures(profile: TypeProfile, { structures }: ProfileSet): ProfileIssue[] {
+  const { structure } = profile;
+  const named = structure.order === "fixed" ? [structure.macro] : [...Object.keys(structure.macros), ...structure.heuristic.map((row) => row.macro), structure.fallback];
+  return [...new Set(named)]
+    .filter((macro) => !structures.has(macro))
+    .map((macro) => issue("unknown-structure", profile, `macro ${macro} has no structures/${macro}.yaml`));
+}
+
 function runtimeOrder(profile: TypeProfile): ProfileIssue[] {
   const { minS, targetS, maxS, splitAboveS } = profile.runtime;
   return minS <= targetS && targetS <= maxS && maxS <= splitAboveS
@@ -109,7 +119,7 @@ function publish(profile: TypeProfile, { audiences: packs }: ProfileSet): Profil
   return issues;
 }
 
-const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, runtimeOrder, series, publish];
+const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish];
 
 /** Every cross-field and cross-file refinement over the loaded profiles. Empty when sound. */
 export function checkProfiles(set: ProfileSet, vocabulary: DoctrineVocabulary): ProfileIssue[] {
