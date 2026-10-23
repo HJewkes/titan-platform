@@ -169,22 +169,20 @@ interface DigestRoutes {
   unsendable: ReadonlyMap<string, string>;
   /** The run's own seat when its digest goes to a fallback because that seat holds no live session. */
   reroutedFrom?: SeatOf;
-  /** Whether the seat the run's registrant names holds a live session, so the run reaches that seat's own digest. */
-  ownerLive?: (run: { repo: string; runId: string }) => boolean;
 }
 
 const finishedAt = ({ row, run }: DigestInput): string => run.completedAt ?? row.phaseSince;
 
 /**
- * A rerouted run the fallback need not hear of (TP-4059): one whose registrant's live seat hears it, and a finished one
- * older than its own seat's last digest or the window, so a dead seat's backlog is never replayed in one message.
+ * A rerouted run the fallback need not hear of (TP-4059): a finished one older than its own seat's last digest or the
+ * window, so a dead seat's backlog is never replayed in one message. A run whose registrant's seat is live is never
+ * rerouted, since `registrantSeat` names it only while live and `liveRoute` keeps a live seat.
  */
 function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, now: Date): (input: DigestInput) => boolean {
   const floor = new Date(now.getTime() - REROUTE_WINDOW_MS).toISOString();
   return (input) => {
     const origin = routes.reroutedFrom?.(input.row);
     if (origin === undefined) return false;
-    if (routes.ownerLive?.(input.row)) return true;
     if (input.row.outcome === null && !FINISHED_PHASES.has(input.row.phase)) return false;
     const lastTold = memory.get(origin)?.at;
     const since = lastTold !== undefined && lastTold > floor ? lastTold : floor;
@@ -240,12 +238,7 @@ async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<D
     return seat && (named.get(run.runId) ?? seat);
   };
   const live = roster && { live: async (seat: string) => holdsLiveSession(seat, roster) };
-  const routes = await liveSeats(store.all(), chosen, { ...live, ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) });
-  const ownerLive = (run: { runId: string }): boolean => {
-    const owner = named.get(run.runId);
-    return owner !== undefined && roster !== undefined && holdsLiveSession(owner, roster);
-  };
-  return { ...routes, ownerLive };
+  return liveSeats(store.all(), chosen, { ...live, ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) });
 }
 
 /**
@@ -275,11 +268,11 @@ async function liveSeats(runs: readonly { repo: string; runId: string }[], chose
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
-export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory): ReturnType<typeof sendSeatDigests> {
+export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now: Date = new Date()): ReturnType<typeof sendSeatDigests> {
   const routes = await runSeats(services.store.get(), ports);
   const reads = digestReads(memory, routes.seatOf);
   const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, routes);
+  return sendSeatDigests(inputs, ports, memory, routes, now);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

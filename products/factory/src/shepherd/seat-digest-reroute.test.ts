@@ -1,5 +1,8 @@
 import type { WorkflowRun } from "@titan-design/workflow";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { REPO } from "../test-support/land.js";
+import { REPO_SEAT, digestSweep, liveRow, redRun, retiredRow, type RedWorld } from "../test-support/registrant-routing.js";
+import type { NoticeFallbacks } from "./exit-notice.js";
 import { digestReads, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
 import type { WatchRow } from "./view.js";
 
@@ -29,7 +32,7 @@ function memoryOf(initial: Record<string, SeatState>): SeatDigestMemory {
   return { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) };
 }
 
-const toFallback = { seatOf: () => FALLBACK, reroutedFrom: () => DEAD, ownerLive: () => false };
+const toFallback = { seatOf: () => FALLBACK, reroutedFrom: () => DEAD };
 const backlog = (count: number): DigestInput[] => Array.from({ length: count }, (_, i) => finished(1000 + i, 72));
 
 describe("a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059)", () => {
@@ -52,22 +55,11 @@ describe("a digest rerouted from a dead seat carries only what is recent and unh
     expect(out.sent[0]!.text).toMatch(/1 newly finished\.[\s\S]*#1 merged$/);
   });
 
-  it("omits a row whose registrant's seat is live, open or finished", async () => {
-    const out = ports();
-    const memory = memoryOf({ [FALLBACK]: { open: [], finished: [] } });
-    const ownerLive = (r: { runId: string }): boolean => r.runId === "run-1" || r.runId === "run-3";
-
-    await sendSeatDigests([gated(1), gated(2), finished(3, 1), finished(4, 1)], out, memory, { ...toFallback, ownerLive }, NOW);
-
-    expect(out.sent[0]!.text).toMatch(/^Shepherd digest for hub-coord: 1 open, 1 newly finished\./);
-    expect(out.sent[0]!.text).not.toMatch(/#1 |#3 /);
-  });
-
-  it("sends a live seat's digest exactly as before: no window, no live-owner filter", async () => {
+  it("sends a live seat's digest exactly as before, with no window", async () => {
     const out = ports();
     const memory = memoryOf({ [DEAD]: { open: [], finished: [] } });
 
-    await sendSeatDigests([gated(1), finished(2, 72)], out, memory, { seatOf: () => DEAD, ownerLive: () => true }, NOW);
+    await sendSeatDigests([gated(1), finished(2, 72)], out, memory, { seatOf: () => DEAD }, NOW);
 
     expect(out.sent).toEqual([
       { seat: DEAD, text: ["Shepherd digest for old-coord: 1 open, 1 newly finished.", "Open:", "- acme/widgets#1 waits on approve-merge: `titan-factory gate resolve run-1 approve-merge --json '<payload>'`", "Finished:", "- acme/widgets#2 merged"].join("\n") },
@@ -84,5 +76,37 @@ describe("a digest rerouted from a dead seat carries only what is recent and unh
 
     expect(out.sent).toHaveLength(1);
     expect(inputs.filter((input) => digestReads(memory, toFallback.seatOf)(input.row, true))).toEqual([]);
+  });
+});
+
+describe("a rerouted digest through the sweep serve runs (TP-4059)", () => {
+  const FALLBACKS: NoticeFallbacks = { redSeat: { repos: { [REPO.toUpperCase()]: "red-coord" }, fallback: "red-fallback" } };
+  const ROSTER = [retiredRow(REPO_SEAT), liveRow("red-coord")];
+  const knownFallback = (): Map<string, SeatState> => new Map([["red-coord", { open: [], finished: [] }]]);
+
+  async function closedRun(): Promise<RedWorld> {
+    const world = await redRun({}, ROSTER, FALLBACKS);
+    await world.fake.wire.closePr(REPO, 1);
+    await vi.waitFor(() => expect(world.host.runtime.status(world.runId)?.completedAt).not.toBeNull(), { timeout: 10_000 });
+    return world;
+  }
+
+  it("tells the fallback of the retired seat's run that finished inside the window", async () => {
+    const world = await closedRun();
+
+    const sweep = await digestSweep(world, ROSTER, FALLBACKS, false, { states: knownFallback() });
+
+    expect(sweep.told).toEqual(["red-coord"]);
+    expect(sweep.texts[0]).toContain(`${REPO}#1 stopped`);
+  });
+
+  it("settles the retired seat's run that finished before the window, telling the fallback nothing", async () => {
+    const world = await closedRun();
+    const states = knownFallback();
+
+    const sweep = await digestSweep(world, ROSTER, FALLBACKS, false, { states, now: new Date(Date.now() + 48 * 3_600_000) });
+
+    expect(sweep.told).toEqual([]);
+    expect(states.get("red-coord")?.finished).toContain(world.runId);
   });
 });
