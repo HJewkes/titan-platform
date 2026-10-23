@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
+import { flowCheck } from "../lint-flow.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
@@ -69,6 +70,37 @@ describe("explainer run", () => {
     expect(row(result, "script")).toMatchObject({ retries: 1, calls: 2, usd: 0.1 });
   });
 
+  // Mutation: returning the issue text for an unrecognized-keys-only reply (no strip) fails the stage after the retry.
+  it("drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry", async () => {
+    fx = fixture();
+    const script = choppy();
+    const withExtras = { ...script, beats: script.beats.map((beat, i) => (i < 2 ? { ...beat, chips: ["extra"], cues: [] } : beat)) };
+    const model = fakeScriptModel(script, { invalid: 1, invalidReply: withExtras });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(1);
+    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "4 pass, 0 gate fail, 1 reported fail" });
+    const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
+    expect(draft.beats[0]).not.toHaveProperty("chips");
+    expect(draft.beats[1]).not.toHaveProperty("cues");
+  });
+
+  it("names an unknown key in the schema retry when the reply has other faults too, and recovers there", async () => {
+    fx = fixture();
+    const script = choppy();
+    const broken = { ...script, chapters: [], beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, cues: [] } : beat)) };
+    const model = fakeScriptModel(script, { invalid: 1, invalidReply: broken });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toContain('Unrecognized key: "cues"');
+    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "4 pass, 0 gate fail, 0 reported fail" });
+  });
+
   it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
     fx = fixture();
     const draft = choppy();
@@ -81,6 +113,16 @@ describe("explainer run", () => {
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
     expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "5 pass, 0 gate fail, 0 reported fail" });
+  });
+
+  it("tells the repair what a failing check found where its row alone is opaque", async () => {
+    fx = fixture();
+    const draft = choppy();
+    const model = fakeScriptModel({ ...draft, video: { ...draft.video, thesis_refs: [draft.beats[0]!.id, draft.beats[1]!.id, draft.beats.at(-1)!.id] } });
+
+    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge(), { evalChecks: [flowCheck] }));
+
+    expect(model.prompts[1]).toMatch(/\n- Q-F4: .*\n {2}Found: the midpoint thesis ref /);
   });
 
   // Mutation: keeping the reply's structure records bluf, which the spine was never planned under.

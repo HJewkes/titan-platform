@@ -85,6 +85,16 @@ describe("why, value and thread lints", () => {
     expect(rowFor(script, "Q-W5")?.pass).toBe(false);
   });
 
+  it.each([["You'll be able to catch a bad label before it prints."], ["By the end you’ll spot a bad label before it prints."]])(
+    "passes a promise whose you carries a contraction: %s",
+    (promise) => {
+      const good = goodScript();
+      const script = { ...good, video: { ...good.video, promise } };
+
+      expect(rowFor(script, "Q-W5")?.pass).toBe(true);
+    },
+  );
+
   it("fails a HOW chapter that speaks no invariant or absence", () => {
     const script = withBeat(goodScript(), "b6", { spoken: "The desk server reads parcel P-7 from the ledger." });
 

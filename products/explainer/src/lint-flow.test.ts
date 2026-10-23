@@ -134,4 +134,10 @@ describe("warnings and plain opening", () => {
     expect(row).toMatchObject({ pass: false, detail_beats: ["h1"] });
     expect(row?.value).toBeLessThan(0.01);
   });
+
+  it("Q-F16 reads a phoneme override as the word the voice says, not as a path", () => {
+    const row = flow(spoken("h1", "Wait thirty [minutes](/ˈmɪnɪts/) and a parcel that never arrived is [read](=past) as lost.")).get("Q-F16");
+
+    expect(row).toMatchObject({ pass: true, detail_beats: [] });
+  });
 });

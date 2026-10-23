@@ -14,6 +14,8 @@ const WHY_QUESTION = /^\s*(?:why|how come)\b/i;
 const ABSENCE = /\b(?:never|always|every|nothing|no longer|cannot|can't|only)\b/i;
 const CHAPTER_COUNT = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:\s+\w+)?\s+chapters?\b/i;
 const SHA = /^[0-9a-f]{7,40}$/;
+// The planner guide asks for contractions ("you'll"), so the promise's "you" may carry one before its verb.
+const YOU_VERB = /\byou(?:['’]ll)?\s+\w+/i;
 
 const isTodo = (value: unknown): value is string => typeof value === "string" && value.startsWith("TODO:");
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -96,7 +98,7 @@ function userValuePerChapter(script: ScriptV1): L0Result {
 
 function promiseShape(script: ScriptV1): L0Result {
   const promise = script.video.promise;
-  const scriptFailure = isTodo(promise) || !/\byou\b\s+\w+/i.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
+  const scriptFailure = isTodo(promise) || !YOU_VERB.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
   const beats = script.beats.filter((beat) => beat.function === "PROMISE" && (/\btour of\b/i.test(beat.spoken) || CHAPTER_COUNT.test(beat.spoken)));
   return verdict("Q-W5", "tagged", beats.map((beat) => beat.id), scriptFailure ? 1 : 0);
 }

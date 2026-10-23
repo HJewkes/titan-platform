@@ -19,15 +19,15 @@ function readingNames(table: HeteronymTable, form: string): string[] {
   return Object.keys(entry?.readings ?? {});
 }
 
-/** A heteronym occurrence with neither a `[w](=reading)` naming a reading the table knows nor a `[w](/phonemes/)` override. */
-function hasUnsettledHeteronym(spoken: string, table: HeteronymTable): boolean {
-  return checkReadings(spoken, textTokens(spoken), table).some(({ word, declared, status }) =>
-    declared === null ? status === "warn" : !readingNames(table, word.toLowerCase()).includes(declared),
-  );
+/** Each heteronym occurrence with neither a `[w](=reading)` naming a reading the table knows nor a `[w](/phonemes/)` override. */
+export function unsettledHeteronyms(spoken: string, table: HeteronymTable = englishHeteronyms): { word: string; readings: string[] }[] {
+  return checkReadings(spoken, textTokens(spoken), table)
+    .filter(({ word, declared, status }) => (declared === null ? status === "warn" : !readingNames(table, word.toLowerCase()).includes(declared)))
+    .map(({ word }) => ({ word, readings: readingNames(table, word.toLowerCase()) }));
 }
 
 const unsettledBeats = (beats: readonly ScriptBeat[], table: HeteronymTable): string[] =>
-  beats.filter((beat) => hasUnsettledHeteronym(beat.spoken, table)).map((beat) => beat.id);
+  beats.filter((beat) => unsettledHeteronyms(beat.spoken, table).length > 0).map((beat) => beat.id);
 
 /** Q-V10: every heteronym the voice will say is declared or overridden, so a tagger change cannot flip it unheard. */
 export function heteronymCheckWith(table: HeteronymTable = englishHeteronyms): L0Check {
