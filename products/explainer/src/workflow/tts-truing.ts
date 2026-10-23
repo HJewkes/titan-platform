@@ -5,7 +5,7 @@ export interface Padding {
 }
 
 export const DEFAULT_PADDING: Padding = { leadS: 0.3, tailS: 0.6 };
-export const FPS = 30;
+const FPS = 30;
 
 /**
  * A beat lasts its planned length, or longer when the voice needs it: the lead, the speech and the tail, rounded up to

@@ -9,7 +9,6 @@ import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
 import type { z } from "zod";
-import { ScriptSchema } from "../script-schema.js";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 import type { TtsEngine } from "./tts-stage.js";
@@ -162,7 +161,7 @@ export const l0Check = (pass: boolean): L0Check => () => [{ check_id: "fake-l0",
 type Fakes = { rewriter: ReturnType<typeof fakeRewriter>; rubric: ReturnType<typeof fakeRubricJudge> };
 
 /** A host on fakes, with a clock that moves one second per read so stage wall times are exact; `rubric` judges J8 to J12. */
-export interface FakeVoice {
+interface FakeVoice {
   engine: () => Promise<TtsEngine>;
   /** The text of every take synthesized, in order; a take the cache served is not here. */
   spoken: string[];

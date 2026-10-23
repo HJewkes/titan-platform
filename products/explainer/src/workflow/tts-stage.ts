@@ -23,13 +23,13 @@ export interface StageVoice {
   source: string;
 }
 
-export interface TtsStageInput {
+interface TtsStageInput {
   artifacts: Readonly<Record<string, string>>;
   store: Pick<ArtifactStore, "readText" | "putText" | "putTree">;
   from: Provenance;
 }
 
-export interface TtsStageDeps {
+interface TtsStageDeps {
   engine: () => Promise<TtsEngine>;
   /** The per-beat take cache's directory. */
   takesDir: string;

@@ -6,7 +6,7 @@ import { canonicalJson } from "../eval-store.js";
 import { sha256 } from "./artifacts.js";
 
 /** What makes a beat's audio: the text, the voice, its rate and the engine build. Planned length and padding are not in it. */
-export interface TakeKey {
+interface TakeKey {
   spoken: string;
   voice: string;
   rate: number;
