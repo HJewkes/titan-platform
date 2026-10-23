@@ -151,11 +151,6 @@ function headOf(result: StepResult): string | undefined {
   return typeof head === "string" ? head : undefined;
 }
 
-/** A running ci-wait judges the PR's live head, which may have moved past every recorded one (TP-4092). */
-function ciWaitHeadOf(run: WorkflowRun, { repo, pr }: Registration): string | undefined {
-  return run.currentStep !== null && stepIdMatches("ci-wait", run.currentStep) ? ciWaitHead(repo, pr) : undefined;
-}
-
 function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase): string {
   const ended = endedAt(run, steps);
   if (ended !== undefined) return ended;
@@ -282,7 +277,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = ciWaitHeadOf(run, registration) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = ciWaitHead(run.currentStep, registration.repo, registration.pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);

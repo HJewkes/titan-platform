@@ -21,7 +21,7 @@ function harness(newRuns: CheckRun[], pushAtMs: number) {
     port: githubPort(fake.wire),
     now: () => clock.now,
     sleep: async (ms) => {
-      seen.push(ciWaitHead(REPO, 1));
+      seen.push(ciWaitHead("ci-wait:r5", REPO, 1));
       clock.now += ms;
       if (clock.now >= pushAtMs && fake.pr(1).headSha === OLD) {
         fake.setRuns(NEW, newRuns);
@@ -55,6 +55,6 @@ describe("ci-wait on a PR whose head moved while the wait ran (TP-4092)", () => 
 
     expect(h.seen[0]).toBe(OLD);
     expect(h.seen.at(-1)).toBe(NEW);
-    expect(ciWaitHead(REPO, 1)).toBeUndefined();
+    expect(ciWaitHead("ci-wait:r5", REPO, 1)).toBeUndefined();
   });
 });
