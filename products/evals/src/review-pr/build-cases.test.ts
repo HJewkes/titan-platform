@@ -182,4 +182,42 @@ describe("buildReviewPrCases", () => {
     expect(written).not.toContain(PRIVATE_SLUG);
     expect(written).not.toContain("household-notes");
   });
+
+  it("counts a head the clone does not hold as head-unreachable and still builds the rest", async () => {
+    const missing = "0123456789abcdef0123456789abcdef01234567";
+    const rows = [
+      ...corpus(fixture),
+      row({ pr: 20, head: missing, verdict: "FIX_FIRST", label: "caught", nextHead: fixture.fix, citedPaths: ["a.ts"] }),
+      row({ pr: 21, head: missing, verdict: "MERGE", label: "clean", mergeSha: missing }),
+    ];
+
+    const { manifest } = await build(rows);
+
+    expect(manifest.skipped).toEqual({ pending: 1, "superseded-clean": 1, "head-unreachable": 2 });
+    expect(manifest.counts).toEqual({ defect: 1, clean: 2, control: 6 });
+  });
+
+  it("counts a caught row whose next head is missing as head-unreachable", async () => {
+    const missing = "89abcdef0123456789abcdef0123456789abcdef";
+    const rows = [...corpus(fixture), row({ pr: 22, head: fixture.caught, verdict: "FIX_FIRST", label: "caught", nextHead: missing, citedPaths: ["a.ts"] })];
+
+    const { manifest } = await build(rows);
+
+    expect(manifest.skipped).toMatchObject({ "head-unreachable": 1 });
+    expect(manifest.counts).toEqual({ defect: 1, clean: 2, control: 6 });
+  });
+
+  it("still aborts on a main ref the clone does not have, rather than counting every head unreachable", async () => {
+    const out = join(scratch, `out-${outs++}`);
+    const options = { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => cloneGit, mainRef: "origin/nope", seed: "test" };
+
+    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow(/is not a git repo/);
+  });
+
+  it("aborts when a repo's clone directory does not exist, rather than counting its heads unreachable", async () => {
+    const out = join(scratch, `out-${outs++}`);
+    const options = { outDir: out, policy: defaultPolicy(activeWorkRoot), gitFor: () => localCloneGit(join(scratch, "no-such-clone")), mainRef: fixture.base, seed: "test" };
+
+    await expect(buildReviewPrCases(corpus(fixture), options)).rejects.toThrow(/is not a git repo/);
+  });
 });
