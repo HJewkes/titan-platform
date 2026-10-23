@@ -511,6 +511,16 @@ mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script
 reads the spine for all of these; without `--spine`, or for Q-E15 under another structure, a rule claiming the
 skipped check is not a ghost.
 
+`claimsCheckWith(facts)` (`src/lint-claims.ts`) runs Q-E20 over gathered facts of any profile. It reads each beat's
+spoken line, headline, labels and chips, with spelled numbers read as digits ("PD-three hundred ten" is PD-310).
+A pull request (`PR 12`, `#12`, `owner/repo#12`, or a short repo such as `ac#12`) or a task id must appear in some
+fact's id or fields. A count, a number with a known noun or a state ("three open PRs", "79 merged"), must equal a
+value in a fact the beat cites, or the number of cited facts that carry its noun and state; a beat that cites
+none reads every fact. `NOT_A_CLAIM` skips ordinals, durations, years and indexes such as "chapter 2". Each
+unbacked claim is a `claimFindings` row naming the beat, the claim and the nearest fact, and the error row fails
+those beats. The registered `claimsCheck` has no facts, so it emits a passing Q-E20 warning that says the check
+did not run.
+
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
 (`fixtures/spike/redesign-explainer-v4/labels.json` for v4, `fixtures/spike/pipeline-explainer/labels.json`

@@ -517,3 +517,10 @@ rules:
     owner_support: none
     note: "Makes the vacuity visible: Q-E4, Q-F8 and Q-W2 read new_terms, which defaults to empty, so an undeclared script passes them. Warning only; a script/v1 check."
     l0: { severity: warning, status: implemented, checks: ["Q-E19"] }
+  - id: Q-E20
+    rule: "Every pull request or task a beat names, and every count it says or shows, matches the gathered facts"
+    fields: [beats.spoken, beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.fact_ids, beats.why]
+    related: [Q-E1]
+    owner_support: for
+    note: "A count passes when a cited fact holds the number or when that many cited facts carry its noun and state. Ordinals, durations, years and indexes are not claims. Without gathered facts the row is a passing warning that says it did not run; the checker lives in src/lint-claims.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E20"] }

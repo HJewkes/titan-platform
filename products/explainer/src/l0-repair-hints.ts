@@ -1,4 +1,5 @@
 import type { L0Result } from "./eval-l0.js";
+import { beatClaims } from "./lint-claims.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
@@ -44,6 +45,14 @@ function headlineHint(script: ScriptV1): string {
   return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
 }
 
+function claimsHint(script: ScriptV1, row: L0Result): string {
+  const failing = new Set(row.detail_beats);
+  const named = script.beats
+    .filter((beat) => failing.has(beat.id))
+    .map((beat) => `${beat.id}: ${beatClaims(beat).map((claim) => `"${claim.text}"`).join(", ")}`);
+  return `claims the gathered facts do not back are among ${named.join("; ")}. Name only pull requests and tasks the facts hold, and make each count equal a cited fact's value or the number of cited facts it counts; cite the facts in fact_ids, or drop the number`;
+}
+
 const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F1": linkHint,
   "Q-F3": threadHint,
@@ -52,6 +61,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
   "Q-V13": headlineHint,
+  "Q-E20": claimsHint,
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
