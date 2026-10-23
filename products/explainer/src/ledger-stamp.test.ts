@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runL0 } from "./eval-l0.js";
+import { L0_CHECKS, runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
 import { ledgerCheck } from "./lint-ledger.js";
 import { stampLedgerTerms } from "./ledger-stamp.js";
@@ -24,6 +24,15 @@ const LEDGER = [entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("TP-9", "ch1
 
 const glossed = (...names: string[]) => ({ glossary: names.map((name) => ({ name, job: "a handle the spine ledger defines" })) });
 
+const WHY = { why: { need: "a reader trusts a scan", actor: "reader", consequence: "a bad label never ships", fact_ids: ["F1"] } };
+
+const fullLint = (spine: SpineV1) => (script: ScriptV1) => runL0(script, undefined, L0_CHECKS, undefined, spine);
+
+const stamp = (script: ScriptV1, spine: SpineV1) => stampLedgerTerms(script, spine, fullLint(spine));
+
+const failingErrors = (rows: readonly L0Result[]): string[] =>
+  rows.filter((r) => r.severity === "error" && !r.pass).flatMap((r) => (r.detail_beats.length ? r.detail_beats.map((b) => `${r.check_id}@${b}`) : [r.check_id]));
+
 const withSpoken = (id: string, spoken: string, extra: Record<string, unknown> = {}, base: BeatSpec[] = GOOD_BEATS): BeatSpec[] =>
   base.map(([beatId, chapter, fn, was, more]) => (beatId === id ? [beatId, chapter, fn, spoken, { ...more, ...extra }] : [beatId, chapter, fn, was, more]));
 
@@ -36,18 +45,18 @@ const q17 = (script: ScriptV1, spine: SpineV1) => runL0(script, undefined, [ledg
 describe("stampLedgerTerms", () => {
   // Mutation: dropping the chapter test stamps an item on a beat that names it before its chapter defines it.
   it("stamps a ch2 ledger item named in ch2 with empty new_terms, and records the stamp", () => {
-    const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server."), glossed("PR 101"));
+    const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server.", WHY), glossed("PR 101"));
 
-    const stamped = stampLedgerTerms(script, spineOf(LEDGER));
+    const stamped = stamp(script, spineOf(LEDGER));
 
     expect(termsOf(stamped.script, "w1")).toEqual(["PR 101"]);
     expect(stamped.stamps).toEqual([{ beat: "w1", term: "PR 101" }]);
   });
 
   it("stamps only the first beat that names the item", () => {
-    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.")), glossed("PR 101"));
+    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.", WHY)), glossed("PR 101"));
 
-    const stamped = stampLedgerTerms(script, spineOf(LEDGER));
+    const stamped = stamp(script, spineOf(LEDGER));
 
     expect(stamped.stamps).toEqual([{ beat: "w1", term: "PR 101" }]);
   });
@@ -55,7 +64,7 @@ describe("stampLedgerTerms", () => {
   it("leaves an item named in ch1 that the ledger defines in ch2 unstamped", () => {
     const script = tour(withSpoken("h1", "A courier asks about PR 101, but the desk refuses."));
 
-    const stamped = stampLedgerTerms(script, spineOf(LEDGER));
+    const stamped = stamp(script, spineOf(LEDGER));
 
     expect(stamped.stamps).toEqual([]);
     expect(stamped.script).toBe(script);
@@ -64,13 +73,13 @@ describe("stampLedgerTerms", () => {
   it("keeps a term the model already declared, in any case", () => {
     const script = tour(withSpoken("w1", "So PR 101 sends every scan.", { new_terms: ["pr 101"] }), glossed("PR 101"));
 
-    expect(stampLedgerTerms(script, spineOf(LEDGER)).stamps).toEqual([]);
+    expect(stamp(script, spineOf(LEDGER)).stamps).toEqual([]);
   });
 
   it("leaves names the ledger does not list, and handles that only share a prefix, untouched", () => {
     const script = tour(withSpoken("w1", "So PR 1011 and the Scanner app send every scan to the desk server."));
 
-    const stamped = stampLedgerTerms(script, spineOf(LEDGER));
+    const stamped = stamp(script, spineOf(LEDGER));
 
     expect(stamped.stamps).toEqual([]);
     expect(termsOf(stamped.script, "w1")).toEqual([]);
@@ -78,22 +87,51 @@ describe("stampLedgerTerms", () => {
 });
 
 describe("a stamp never adds an error row", () => {
+  // Mutation: keeping a stamp whatever the lint says adds a Q-W2 row on w1, a WHAT beat with no cited why.
+  it("leaves a handle unstamped on a WHAT beat with no why, where a new term would fail Q-W2", () => {
+    const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server."), glossed("PR 101"));
+
+    const stamped = stamp(script, spineOf(LEDGER));
+
+    expect(stamped.stamps).toEqual([]);
+    expect(stamped.script).toBe(script);
+  });
+
+  it("fails no error row under the full L0 checks that the unstamped script passed", () => {
+    const spine = spineOf([entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("PR 102", "ch3")]);
+    const beats = withSpoken("k1", "Therefore PR 102 keeps one row per parcel.", {}, withSpoken("w2", "TP-7 holds each scan.", {}, withSpoken("w1", "So PR 101 sends every scan.", WHY)));
+    const script = tour(beats, glossed("PR 101", "TP-7", "PR 102"));
+
+    const stamped = stamp(script, spine);
+
+    expect(stamped.stamps).toEqual([{ beat: "w1", term: "PR 101" }]);
+    const before = new Set(failingErrors(fullLint(spine)(script)));
+    expect(failingErrors(fullLint(spine)(stamped.script)).filter((key) => !before.has(key))).toEqual([]);
+  });
+
+  // Mutation: checking only the first speaking beat declares "PR 101" twice in ch2.
+  it("leaves a handle a later beat of the same chapter already declares", () => {
+    const script = tour(withSpoken("w2", "PR 101 holds each scan.", { new_terms: ["PR 101"] }, withSpoken("w1", "So PR 101 starts the scan.", WHY)), glossed("PR 101"));
+
+    expect(stamp(script, spineOf(LEDGER)).stamps).toEqual([]);
+  });
+
   const three = [entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("PR 102", "ch2")];
 
-  // Mutation: dropping the glossary test stamps "TP-7", and Q-E4 fails the beat.
+  // Mutation: dropping the lint test stamps "TP-7", which the glossary lacks, and Q-E4 fails the beat.
   it("stamps only the glossaried handles of a beat citing three, one unglossaried, up to the beat's limit", () => {
-    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan."), glossed("PR 101", "PR 102"));
+    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan.", WHY), glossed("PR 101", "PR 102"));
 
-    const stamped = stampLedgerTerms(script, spineOf(three));
+    const stamped = stamp(script, spineOf(three));
 
     expect(termsOf(stamped.script, "w1")).toEqual(["PR 101", "PR 102"]);
   });
 
-  // Mutation: dropping the per-beat limit stamps all three and Q-F8 fails the beat.
+  // Mutation: dropping the lint test stamps all three and Q-F8 fails the beat.
   it("stops at the limit of two new terms a beat when all three are glossaried", () => {
-    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan."), glossed("PR 101", "TP-7", "PR 102"));
+    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan.", WHY), glossed("PR 101", "TP-7", "PR 102"));
 
-    const stamped = stampLedgerTerms(script, spineOf(three));
+    const stamped = stamp(script, spineOf(three));
 
     expect(termsOf(stamped.script, "w1")).toEqual(["PR 101", "TP-7"]);
   });
