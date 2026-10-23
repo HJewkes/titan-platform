@@ -16,19 +16,20 @@ export const CONFIG_STORE_PATHS: readonly GuardedPath[] = [
   coordinatorDir("macos", "~/Library/Preferences/titan-coordinator"),
   // The directory alone, not what is under it: removing, moving or copying over it takes the owner state with it, while
   // agents still deposit into its inbox and rounds.
-  { id: "home:titan-console", pattern: CONSOLE_STATE },
-  { id: "home:titan-console/lan.token", pattern: `${CONSOLE_STATE}/lan.token` },
+  { id: "home:titan-console", pattern: CONSOLE_STATE, tails: ["titan-console"] },
+  { id: "home:titan-console/lan.token", pattern: `${CONSOLE_STATE}/lan.token`, tails: ["lan.token"] },
   consoleDir("owner-actions", "a1.json"),
   consoleDir("config", "log.jsonl"),
 ];
 
 function coordinatorDir(where: string, dir: string): GuardedPath {
-  return { id: `home:titan-coordinator-${where}`, pattern: `${dir}/**`, samples: [`${dir}/${COORDINATOR_DOC}`] };
+  const samples = [`${dir}/${COORDINATOR_DOC}`];
+  return { id: `home:titan-coordinator-${where}`, pattern: `${dir}/**`, samples, tails: ["titan-coordinator/**", COORDINATOR_DOC] };
 }
 
 function consoleDir(name: string, sample: string): GuardedPath {
   const dir = `${CONSOLE_STATE}/${name}`;
-  return { id: `home:titan-console/${name}`, pattern: `${dir}/**`, samples: [`${dir}/${sample}`] };
+  return { id: `home:titan-console/${name}`, pattern: `${dir}/**`, samples: [`${dir}/${sample}`], tails: [`titan-console/${name}/**`] };
 }
 
 const CONSOLE_BIN = "titan-console";

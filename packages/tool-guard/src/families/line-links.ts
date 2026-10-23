@@ -36,8 +36,20 @@ export function lnSymbolic(args: readonly WordToken[]): boolean {
   return false;
 }
 
+/** Whether the command makes symbolic links: `ln -s`, or `cp -s`/`--symbolic-link`, which links each file it would copy. */
+export function makesSymlinks(cmd: SimpleCommand): boolean {
+  if (cmd.name === "ln") return lnSymbolic(cmd.args);
+  return cmd.name === "cp" && cpOptions(cmd.args).some((v) => /^-[A-Za-z]*s/.test(v) || /^--sy/.test(v));
+}
+
+/** cp's option words: GNU cp reads them anywhere before `--`; counting one BSD would read as a file only adds a deny. */
+export function cpOptions(args: readonly WordToken[]): string[] {
+  const end = args.findIndex((a) => a.value === "--");
+  return (end < 0 ? args : args.slice(0, end)).map((a) => a.value).filter((v) => v.startsWith("-"));
+}
+
 /**
- * The links `ln -s` makes, each at the destination and, should that be a directory, at the source's name inside it.
+ * The links `ln -s` or `cp -s` makes, each at the destination and, should that be a directory, at the source's name inside it.
  * Null when one is only placed at run time. A relative source is resolved from the link's own directory, as the
  * filesystem resolves it.
  */
@@ -58,7 +70,7 @@ function parentOf(path: string): string {
 }
 
 /**
- * The line after `ln -s` ran: a path through one of its links resolves to where the link points, which the host's
+ * The line after `ln -s` or `cp -s` ran: a path through one of its links resolves to where the link points, which the host's
  * `readLink` cannot see because the link did not exist when the hook ran. A guarded `&&` chain's fallback learns it too.
  */
 export function withLinks(ctx: ClassifyContext, links: readonly Link[]): ClassifyContext {

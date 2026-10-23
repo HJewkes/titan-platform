@@ -35,8 +35,8 @@ interface Verdict {
   action: string | null;
 }
 
-async function hook(toolName: string, toolInput: Record<string, unknown>): Promise<Verdict> {
-  const stdin = JSON.stringify({ tool_name: toolName, session_id: "sess-1", tool_use_id: "tu-1", cwd: REPO, tool_input: toolInput });
+async function hook(toolName: string, toolInput: Record<string, unknown>, cwd: string | null = REPO): Promise<Verdict> {
+  const stdin = JSON.stringify({ tool_name: toolName, session_id: "sess-1", tool_use_id: "tu-1", cwd, tool_input: toolInput });
   const { stdout, log } = await handle(stdin, { CLAUDE_AGENT_ID: "impl-7" }, port);
   if (stdout === "") return { decision: null, action: null };
   const decision = /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unparsed";
@@ -214,6 +214,49 @@ describe("a write whose subject is only resolved indirectly", () => {
   });
 
   it.each([
+    ["env -u taking C/tmp as its value", "cd ~/.config/titan-coordinator && env -uC/tmp sh -c 'echo x > coordinator.json'"],
+    ["env -u taking -C/tmp as its value", "cd ~/.config/titan-coordinator && env -u -C/tmp sh -c 'echo x > coordinator.json'"],
+    ["sudo -p taking D/tmp as its value", "cd ~/.config/titan-coordinator && sudo -pD/tmp sh -c 'echo x > coordinator.json'"],
+    ["sudo -p taking -D/tmp as its value", "cd ~/.config/titan-coordinator && sudo -p -D/tmp sh -c 'echo x > coordinator.json'"],
+    ["env -u taking Cx as its value", "cd ~/.config && env -uCx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["env -a taking Cx as its value", "cd ~/.config && env -aCx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["sudo -u taking Dx as its value", "cd ~/.config && sudo -uDx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["a second env's -C", "env env -C ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["a second env's -C after an assignment", "env FOO=1 env -C ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["an env -S string's -C", `env -S '-C /home/you/.config/titan-coordinator sh -c "echo x > coordinator.json"'`],
+    ["an abbreviated --chdir", "env --ch ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["an abbreviated sudo --chdir", "sudo --chd ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+  ])("refuses %s, the run directory as the wrapper's own parser reads it", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["cp -s of the document, then a redirect", `cp -s ${DOC} ~/v.json && echo '{}' > ~/v.json`],
+    ["cp -rs of the directory, then a redirect", "cp -rs ~/.config/titan-coordinator ~/tc && echo '{}' > ~/tc/coordinator.json"],
+    ["cp --symbolic-link, then sed -i", `cp --symbolic-link ${DOC} ~/v.json && sed -i s/6/60/ ~/v.json`],
+    ["cp -s to a path only known at run time", `cp -s ${DOC} "$L"`],
+  ])("refuses %s, a link cp makes", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a file under the coordinator dir", `cd "$D" && echo '{}' > titan-coordinator/state.json`],
+    ["the LAN secret", `cd "$D" && echo new > lan.token`],
+    ["the console's revision log", `cd "$D" && rm -rf titan-console/config`],
+    ["the Claude settings by a glob", `cd "$D" && rm .claude/settings*.json`],
+  ])("refuses %s under a dir only known at run time", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "echo '{}' > .config/titan-coordinator/coordinator.json",
+    "echo '{}' > .claude/settings.json",
+    "rm -rf .local/state/titan-console/config",
+  ])("refuses %s with no cwd on the event", async (command) => {
+    expect(await hook("Bash", { command }, null)).toEqual(REFUSED);
+  });
+
+  it.each([
     ["a dir link then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2 && echo '{}' > ~/tc2/coordinator.json"],
     ["a file link then a redirect", "ln -s ~/.config/titan-coordinator/coordinator.json ~/v2.json && echo '{}' > ~/v2.json"],
     ["a dir link; then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2; echo '{}' > ~/tc2/coordinator.json"],
@@ -277,6 +320,17 @@ describe("a write whose subject is only resolved indirectly", () => {
     "cd ~/.config/titan-coordinator && env -C /tmp sh -c 'echo x > coordinator.json'",
     "rm -rf {a,b}/dist",
     "cp x.json /tmp/out*/",
+    'echo \'{}\' > "$OUT/config.json"',
+    `cd "$WT" && sed -i s/a/b/ CLAUDE.md`,
+    'cd "$(git rev-parse --show-toplevel)" && git config user.email x',
+    "pnpm --filter x exec vitest run config",
+    `cd "$D" && echo x > pre-push`,
+    `cd "$D" && echo x > titan-console/inbox/deposits/x.json`,
+    "env -uC sh -c 'echo x > notes.md'",
+    "sudo -pD/tmp sh -c 'echo x > coordinator.json'",
+    "env -C /tmp env -C x sh -c 'echo x > coordinator.json'",
+    "cp -s /tmp/a.json ~/b.json && echo '{}' > ~/b.json",
+    `cp ${DOC} ~/v.json && echo '{}' > ~/v.json`,
   ])("still passes %s", async (command) => {
     expect(await bash(command)).toEqual(PASSES);
   });

@@ -184,9 +184,9 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       assigned.push(assignment);
       i++;
     } else if (!w.dynamic && commandName(w.value) === "env") {
-      runDir = movedTo(runDir, runDirWord("env", envOptions(words, i + 1)));
       const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
       if (walked === null) throw new EnvSplitError();
+      runDir = walked.options.reduce((dir, options) => movedTo(dir, runDirWord("env", options, ENV)), runDir);
       if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt), ...ranIn(runDir) };
       ({ words, end: i } = walked);
       wrapped = true;
@@ -199,7 +199,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
       const optionsEnd = skipWrapper(words, start, spec);
-      if (optionsEnd >= 0) runDir = movedTo(runDir, runDirWord(commandName(w.value), words.slice(i + 1, optionsEnd)));
+      if (optionsEnd >= 0) runDir = movedTo(runDir, wrapperRunDir(commandName(w.value), words, i, start, optionsEnd));
       wrapped ||= !BUILTIN_RUNNERS.has(commandName(w.value));
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
@@ -223,14 +223,12 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   return { ...cmd, ...named, ...bare, ...ranIn(runDir), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
 }
 
-/** env's own options from `i` with their value words, up to the first assignment or command word. */
-function envOptions(words: WordToken[], i: number): WordToken[] {
-  const start = i;
-  for (let w = words[i]; w?.value.startsWith("-"); w = words[i]) {
-    i += takesNextWord(w.value, ENV) ? 2 : 1;
-    if (w.value === "--") break;
-  }
-  return words.slice(start, i);
+/** The directory a wrapper's options, or a runner's global options before its subcommand, start the command in. */
+function wrapperRunDir(name: string, words: WordToken[], i: number, start: number, optionsEnd: number): WordToken | null | undefined {
+  const spec = wrapperSpec(name);
+  if (spec) return runDirWord(name, words.slice(start, optionsEnd), spec);
+  const runner = Object.hasOwn(RUNNERS, name) ? RUNNERS[name] : undefined;
+  return runner && runDirWord(name, words.slice(i + 1, start - 1), { values: runner.values });
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

@@ -11,7 +11,7 @@ import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { consoleOwnerVerb } from "./config-store.js";
 import { copyDestination } from "./copy-destination.js";
 import { findReaches } from "./find-names.js";
-import { lnSymbolic, symlinksMade, withLinks } from "./line-links.js";
+import { cpOptions, lnSymbolic, makesSymlinks, symlinksMade, withLinks } from "./line-links.js";
 
 /** Config reads are allowed by the table; only edits are CFG. */
 const READ_ONLY = new Set(["cat", "head", "tail", "less", "grep", "rg", "jq", "ls", "stat", "diff", "wc", "test", "[", "[["]);
@@ -46,14 +46,14 @@ function foundMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
 
 /** A link to a guarded path made somewhere only known at run time cannot be followed, so later writes through it are unseen. */
 function unplacedLink(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction | null {
-  if (cmd.name !== "ln" || !lnSymbolic(cmd.args) || symlinksMade(cmd, ctx.home) !== null) return null;
+  if (!makesSymlinks(cmd) || symlinksMade(cmd, ctx.home) !== null) return null;
   const linked = commandMentions({ ...cmd, redirects: [] }, ctx, GUARDED_PATHS.config, true, true)[0];
   return linked ? classified("bash.config.cp-mv-ln", { pattern: linked.id }) : null;
 }
 
-/** Links `ln -s` made earlier on the line, which later commands write through. */
+/** Links `ln -s` or `cp -s` made earlier on the line, which later commands write through. */
 function after(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext | undefined {
-  if (cmd.name !== "ln" || !lnSymbolic(cmd.args)) return undefined;
+  if (!makesSymlinks(cmd)) return undefined;
   const links = symlinksMade(cmd, ctx.home);
   return links && links.length > 0 ? withLinks(ctx, links) : undefined;
 }
@@ -89,11 +89,7 @@ function writesTo(cmd: SimpleCommand, m: Mention): boolean {
 /** A hard link shares the source's inode, so a later write through it rewrites the source where no path names it. */
 function hardLinks(cmd: SimpleCommand): boolean {
   if (cmd.name === "ln") return !lnSymbolic(cmd.args);
-  if (cmd.name !== "cp") return false;
-  // GNU cp reads options anywhere before `--`; counting one BSD would read as a file only adds a deny.
-  const end = cmd.args.findIndex((a) => a.value === "--");
-  const options = (end < 0 ? cmd.args : cmd.args.slice(0, end)).map((a) => a.value).filter((v) => v.startsWith("-"));
-  return options.some((v) => /^-[A-Za-z]*l/.test(v) || /^--li/.test(v));
+  return cmd.name === "cp" && cpOptions(cmd.args).some((v) => /^-[A-Za-z]*l/.test(v) || /^--li/.test(v));
 }
 
 /**

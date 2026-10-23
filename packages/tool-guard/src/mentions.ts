@@ -31,6 +31,7 @@ const INPUT_OPS = new Set(["<", "<&"]);
 const HEREDOC_OPS = new Set(["<<", "<<-"]);
 const FILE_URL_RE = /\bfile:\/\/(?=\/)/gi;
 const REMOTE_URL_RE = /^[a-z][\w+.-]*:\/\//i;
+const ANCHORED_RE = /^(?:\/|~|\$HOME|\$\{HOME\})/;
 const REMOTE_URL_GLOBAL_RE = /\b[a-z][\w+.-]*:\/\/[^\s'"`]*/gi;
 const PATH_IN_TEXT_RE =/(?<=^|[\s'"`;|&<>(),=:[{])(?:~|\$HOME|\$\{HOME\})?\/[^\s'"`;|&<>(),\]}]*/g;
 
@@ -89,7 +90,9 @@ function wordMentions(raw: string, scan: Scan, word?: WordToken): Found[] {
   const candidates = new Set<string>();
   const eq = /^--[\w-]+=(.+)$/.exec(value);
   const paths = [...(value.startsWith("-") ? [] : [value]), ...(eq ? [eq[1] as string] : [])].flatMap(braceExpansions);
-  for (const path of paths) for (const p of toAbsolute(path, scan.dir, scan.ctx.home)) candidates.add(p);
+  // Under an unknown base a relative path is matched by entry tails alone, not guessed to sit at home or the root.
+  const placed = scan.unplaced && scan.dir === null ? paths.filter((p) => ANCHORED_RE.test(p)) : paths;
+  for (const path of placed) for (const p of toAbsolute(path, scan.dir, scan.ctx.home)) candidates.add(p);
   const found = [...[...candidates].map((p) => matchPath(p, scan)), ...unplacedMentions(paths, scan, word)];
   return withBasenames(found, value, scan);
 }
@@ -97,8 +100,8 @@ function wordMentions(raw: string, scan: Scan, word?: WordToken): Found[] {
 /** With no known base, a relative path may sit under any directory, a guarded one included; so may what follows an expansion. */
 function unplacedMentions(paths: string[], scan: Scan, word: WordToken | undefined): Array<Found | null> {
   if (!scan.unplaced) return [];
-  const tails = word?.dynamic ? [literalTail(word)] : scan.dir === null ? paths.filter((p) => !/^(?:\/|~|\$HOME|\$\{HOME\})/.test(p)) : [];
-  return tails.flatMap(braceExpansions).map((tail) => found(matchUnplaced(tail, scan.list, scan.ctx.home), "unplaced"));
+  const tails = word?.dynamic ? [literalTail(word)] : scan.dir === null ? paths.filter((p) => !ANCHORED_RE.test(p)) : [];
+  return tails.flatMap(braceExpansions).map((tail) => found(matchUnplaced(tail, scan.list), "unplaced"));
 }
 
 /** The text after a word's last expansion, which is all of it the line shows. */
