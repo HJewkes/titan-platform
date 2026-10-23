@@ -1,4 +1,4 @@
-import { LABEL_OPTIONS } from "./calibration-agreement.js";
+import { optionText, OWNER_LABELS } from "./calibration-agreement.js";
 import type { CalibrationQueue, QueueItem } from "./calibration-queue.js";
 
 /** About how long one item takes: read the excerpt, answer one yes or no question. */
@@ -21,7 +21,7 @@ const question = (item: QueueItem) => ({
   kind: "pick-one" as const,
   required: false,
   prompt: `${item.question}\n\n${item.excerpt}`,
-  options: Object.values(LABEL_OPTIONS),
+  options: OWNER_LABELS.map((label) => optionText(label, item.id)),
   signsOff: `your label for item ${item.id}`,
 });
 

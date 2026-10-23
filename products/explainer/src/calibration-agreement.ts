@@ -9,13 +9,16 @@ const FeedbackSchema = z.object({
   answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional() }).loose()),
 }).loose();
 
-const byOption = new Map<string, OwnerLabel>(Object.entries(LABEL_OPTIONS).map(([label, option]) => [option, label as OwnerLabel]));
+export const OWNER_LABELS = Object.keys(LABEL_OPTIONS) as OwnerLabel[];
+
+/** The console refuses an option text that two questions share, so each option names its item. */
+export const optionText = (label: OwnerLabel, item: string): string => `${LABEL_OPTIONS[label]} (${item})`;
 
 /** The owner's labels from a round's feedback.json; a question left blank or answered off the options is unlabelled. */
 export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
   const answers = FeedbackSchema.parse(feedback).answers;
   return new Map(answers.flatMap((a) => {
-    const label = a.pick === undefined ? undefined : byOption.get(a.pick);
+    const label = OWNER_LABELS.find((l) => a.pick === optionText(l, a.questionId));
     return label ? [[a.questionId, label] as const] : [];
   }));
 }

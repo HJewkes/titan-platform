@@ -86,7 +86,7 @@ describe("explainer eval calibrate agreement", () => {
   it("reports agreement per judge from the round's feedback and records it, still refusing promotion below the bar", async () => {
     expect(await queue()).toBe(0);
     const answers = readKey().entries.map((e, i) => ({
-      questionId: e.id, pick: e.judge === "l1" || i % 2 === 0 ? (e.pass ? "Yes" : "No") : e.pass ? "No" : "Yes",
+      questionId: e.id, pick: `${e.judge === "l1" || i % 2 === 0 ? (e.pass ? "Yes" : "No") : e.pass ? "No" : "Yes"} (${e.id})`,
     }));
     writeFileSync(join(dir, "round", "feedback.json"), JSON.stringify({ schema: "titan-review/feedback@1", answers }));
     log.mockClear();

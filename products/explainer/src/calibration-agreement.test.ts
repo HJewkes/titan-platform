@@ -10,8 +10,8 @@ const row = (judge: CalibrationJudge, labelled: number, agreement: number | null
 describe("labelsFromFeedback", () => {
   it("reads the console's picks as labels and drops blanks and off-option answers", () => {
     const feedback = { schema: "titan-review/feedback@1", answers: [
-      { questionId: "q01", pick: "Yes" }, { questionId: "q02", pick: "No" }, { questionId: "q03", pick: "Can't tell" },
-      { questionId: "q04" }, { questionId: "q05", pick: "None of these, request a revision" },
+      { questionId: "q01", pick: "Yes (q01)" }, { questionId: "q02", pick: "No (q02)" }, { questionId: "q03", pick: "Can't tell (q03)" },
+      { questionId: "q04" }, { questionId: "q05", pick: "None of these, request a revision" }, { questionId: "q06", pick: "Yes (q01)" },
     ] };
 
     expect([...labelsFromFeedback(feedback)]).toEqual([["q01", "yes"], ["q02", "no"], ["q03", "unsure"]]);
