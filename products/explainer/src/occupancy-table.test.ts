@@ -75,9 +75,28 @@ describe("occupancyForMark", () => {
     expect(table.cells).toEqual({ B1: [PIXEL_ELEMENT] });
   });
 
+  it("reads pixels for an undeclared custom layer even when it has DOM labels", () => {
+    const table = occupancyForMark(mark, STAGE, { beat: "b09-walk", layer: "custom" }, pixels);
+    expect(table.source).toBe("pixel");
+    expect(table.cells).toEqual({ A1: ["label"], B1: [PIXEL_ELEMENT] });
+  });
+
   it("lists an element once per cell even when two of its boxes land there", () => {
     const twice = { ...mark, elements: [...mark.elements, { id: "label", box: { x: 20, y: 20, width: 5, height: 5 } }] };
     expect(occupancyForMark(twice, STAGE).cells).toEqual({ A1: ["label"] });
+  });
+});
+
+describe("buildOccupancy's pixel lookup", () => {
+  it("uses the pixel grid of the same beat at the same moment", () => {
+    const grid = (beat: string, t: number, cell: number) => ({ beat, t, coverage: [Array.from({ length: 6 }, (_, i) => (i === cell ? 1 : 0))] });
+    const built = buildOccupancy({
+      stage: STAGE,
+      layouts: [{ beat: "b05-art", layer: "custom" }],
+      marks: [{ beat: "b05-art", t: 2, elements: [] }],
+      pixels: [grid("b06-other", 2, 0), grid("b05-art", 1, 1), grid("b05-art", 2, 2)],
+    });
+    expect(built[0]!.cells).toEqual({ C1: [PIXEL_ELEMENT] });
   });
 });
 

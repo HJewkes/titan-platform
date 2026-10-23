@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "declared anchors are ignored",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": "if (layout?.anchors?.length) return \"declared\";",
+      "replace": "",
+      "kills": [
+        "buildOccupancy over the synthetic marks places a custom layer on the anchors it declares, alongside its DOM elements",
+        "occupancyForMark prefers declared anchors to the pixel grid"
+      ]
+    },
+    {
+      "name": "an undeclared custom layer with DOM labels skips the pixel fallback",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": "(layout?.layer === \"custom\" || mark.elements.length === 0)",
+      "replace": "mark.elements.length === 0",
+      "kills": [
+        "occupancyForMark reads pixels for an undeclared custom layer even when it has DOM labels"
+      ]
+    },
+    {
+      "name": "a cell exactly at the pixel threshold reads empty",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": ">= minCoverage);",
+      "replace": "> minCoverage);",
+      "kills": [
+        "pixelAnchors counts a cell at the threshold as drawn on, and one below it as empty"
+      ]
+    },
+    {
+      "name": "an element is listed twice in one cell",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": "if (!ids.includes(element)) cells.set",
+      "replace": "cells.set",
+      "kills": [
+        "occupancyForMark lists an element once per cell even when two of its boxes land there"
+      ]
+    },
+    {
+      "name": "pixel grids match by beat only",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": "p.beat === mark.beat && p.t === mark.t",
+      "replace": "p.beat === mark.beat",
+      "kills": [
+        "buildOccupancy's pixel lookup uses the pixel grid of the same beat at the same moment"
+      ]
+    },
+    {
+      "name": "pixel grids match by time only",
+      "file": "products/explainer/src/occupancy-table.ts",
+      "find": "p.beat === mark.beat && p.t === mark.t",
+      "replace": "p.t === mark.t",
+      "kills": [
+        "buildOccupancy's pixel lookup uses the pixel grid of the same beat at the same moment"
+      ]
+    }
+  ]
+}

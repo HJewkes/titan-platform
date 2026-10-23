@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a cell with one element is a collision",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "return elements.length > 1 ?",
+      "replace": "return elements.length > 0 ?",
+      "kills": [
+        "collisions finds none where each cell holds one element"
+      ]
+    },
+    {
+      "name": "a listed cell with no elements counts as covered",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "!table.cells[anchor]?.length",
+      "replace": "!table.cells[anchor]",
+      "kills": [
+        "emptySpace treats a cell listed with no elements as empty"
+      ]
+    },
+    {
+      "name": "a finding at a mark's own moment reads the table before it",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "table.t <= finding.t!",
+      "replace": "table.t < finding.t!",
+      "kills": [
+        "anchorFindings picks the beat's last table at or before the finding's moment"
+      ]
+    },
+    {
+      "name": "a finding before the beat's first mark gets no table",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "?? own[0];",
+      "replace": "?? undefined;",
+      "kills": [
+        "anchorFindings picks the beat's last table at or before the finding's moment"
+      ]
+    },
+    {
+      "name": "a finding's elements are not looked up in the table",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "  if (fromTable.length > 0) return fromTable;\n",
+      "replace": "",
+      "kills": [
+        "anchorFindings reports a finding on its elements' anchors and the mark it was read at"
+      ]
+    },
+    {
+      "name": "the box fallback is dropped",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "return finding.box ? anchorsForBox(finding.box, stage) : [];",
+      "replace": "return [];",
+      "kills": [
+        "anchorFindings falls back to the finding's box when the table does not hold its elements"
+      ]
+    },
+    {
+      "name": "the beat is not carried into the selector",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "selector: qa.selector ?? beat,",
+      "replace": "selector: qa.selector,",
+      "kills": [
+        "anchorFindings keeps the beat in the selector so repair attribution still finds it"
+      ]
+    }
+  ]
+}

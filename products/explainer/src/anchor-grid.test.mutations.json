@@ -1,0 +1,70 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a span that ends on a cell boundary enters the next cell",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "const last = Math.min(Math.ceil(hi / cell), GRID) - 1;",
+      "replace": "const last = Math.min(Math.floor(hi / cell), GRID - 1);",
+      "kills": [
+        "anchorsForBox does not count a box that only touches a cell's edge"
+      ]
+    },
+    {
+      "name": "a box left of the stage is not clipped",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "const lo = Math.max(from, 0);",
+      "replace": "const lo = from;",
+      "kills": [
+        "anchorsForBox clips a box that runs off the stage and drops one wholly off it"
+      ]
+    },
+    {
+      "name": "an empty box still occupies a cell",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "if (hi <= lo) return [];",
+      "replace": "if (hi < lo) return [];",
+      "kills": [
+        "anchorsForBox drops an empty box"
+      ]
+    },
+    {
+      "name": "cells are indexed column-major",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "return ANCHOR_IDS[row * GRID + col]!;",
+      "replace": "return ANCHOR_IDS[col * GRID + row]!;",
+      "kills": [
+        "anchorsForBox returns every cell a box overlaps, row by row",
+        "placeSlots addresses each template slot by its anchors"
+      ]
+    },
+    {
+      "name": "a range is walked only from its first corner",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "for (let row = Math.min(a.row, b.row);",
+      "replace": "for (let row = a.row;",
+      "kills": [
+        "expandAnchors expands a range to its rectangle in either corner order"
+      ]
+    },
+    {
+      "name": "rows are read one-based",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "row: Number(id[1]) - 1 };",
+      "replace": "row: Number(id[1]) };",
+      "kills": [
+        "the 6x6 anchor grid reads a cell id as zero-based column and row",
+        "the 6x6 anchor grid gives each cell a sixth of the stage on each axis"
+      ]
+    },
+    {
+      "name": "a three-corner range is read as its first two",
+      "file": "products/explainer/src/anchor-grid.ts",
+      "find": "  if (rest.length > 0) throw",
+      "replace": "  if (rest.length > 9) throw",
+      "kills": [
+        "expandAnchors on malformed ranges rejects a range of three corners"
+      ]
+    }
+  ]
+}

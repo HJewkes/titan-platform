@@ -1241,7 +1241,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +616 more in `products/explainer/src/index.ts`
+- +660 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 
