@@ -1,6 +1,7 @@
 import { classifyReports, type Classification } from "./classify.js";
 import { errorLine, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
+import { compileGlobs } from "./glob.js";
 import { classifyMutants, mutantsError, withCoverage, type MutantsResult } from "./mutant-classify.js";
 import { testOnlyReading, type FixProofPlan } from "./plan.js";
 import { formatResultLine, toResult } from "./result-line.js";
@@ -67,7 +68,7 @@ function classifyDecoded(plan: FixProofPlan, reports: JudgeReports): Classificat
 async function judgeMutants(ctx: Context, plan: FixProofPlan, shas: Shas, encoded: string | undefined): Promise<MutantsResult> {
   try {
     const specs = await readSpecs(ctx, plan, shas);
-    return withCoverage(classifyMutants(specs, decodeMutantsReport(encoded)), specs, plan.tests);
+    return withCoverage(classifyMutants(specs, decodeMutantsReport(encoded)), specs, plan.tests, compileGlobs(plan.config.carry));
   } catch (error) {
     if (!(error instanceof SpecError || error instanceof RunError)) throw error;
     return mutantsError(error.message);

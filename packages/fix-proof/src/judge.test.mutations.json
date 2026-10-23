@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "coverage counts a carried test as uncovered again",
+      "file": "packages/fix-proof/src/mutant-classify.ts",
+      "find": " && !isCarried(test)",
+      "replace": "",
+      "kills": [
+        "judge with mutation specs a changed test file with no spec of its own a changed test under a carried test-support path needs no spec, since no mutation may target its helpers"
+      ]
+    },
+    {
+      "name": "the judge passes coverage no carry globs",
+      "file": "packages/fix-proof/src/judge.ts",
+      "find": "compileGlobs(plan.config.carry)",
+      "replace": "compileGlobs([])",
+      "kills": [
+        "judge with mutation specs a changed test file with no spec of its own a changed test under a carried test-support path needs no spec, since no mutation may target its helpers"
+      ]
+    }
+  ]
+}

@@ -287,7 +287,10 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
     because vitest reports those as a plain `Error`.
 - **Coverage.** A killed spec proves only the test file beside it. The judge lists every
   changed test file (`plan.tests`) that no spec in the diff sits beside as
-  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
+  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A changed test
+  matching the config's `carry` globs (such as one under `test-support/`) is left out: it tests
+  only carried helpers, which `checkMutation` refuses as a target, so no spec could cover it.
+  A changed test outside the carry paths still needs a spec. A line from a judge
   before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
   diff that deletes a test or renames one out of the tests is not test-only
   (`testOnlyReading`), so the judge attaches no `mutants` to it at all.
