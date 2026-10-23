@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
@@ -145,11 +145,22 @@ const ready = (overrides: Record<string, unknown> = {}): JsonEnvelope<unknown> =
 
 const resolved = (): Promise<JsonEnvelope<unknown>> => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved" }));
 
-function deferred(): { promise: Promise<JsonEnvelope<unknown>>; resolve: (value: JsonEnvelope<unknown>) => void } {
+interface Deferred {
+  promise: Promise<JsonEnvelope<unknown>>;
+  resolve: (value: JsonEnvelope<unknown>) => void;
+}
+
+function deferred(): Deferred {
   let resolve!: (value: JsonEnvelope<unknown>) => void;
   const promise = new Promise<JsonEnvelope<unknown>>((done) => (resolve = done));
   return { promise, resolve };
 }
+
+// react-native-web re-arms a Pressable whose props changed in a passive effect, so a Confirm tapped between the read-back's
+// commit and that effect still runs the disabled "reading" handler and drops the tap (TP-4119). Inside act the effect has run.
+const answerPrepare = (prepared: Deferred, answer: JsonEnvelope<unknown>): Promise<void> => act(async () => prepared.resolve(answer));
+
+const tapConfirm = (): Promise<void> => act(async () => void fireEvent.click(confirmButton()));
 
 const named = (calls: readonly Call[], name: string): Call[] => calls.filter((call) => call.name === name);
 
@@ -307,11 +318,12 @@ describe("the inbox page, acting from the console", () => {
   });
 
   it("sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again", async () => {
-    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const prepared = deferred();
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": resolved });
     await tapGate();
-    await screen.findByTestId("inbox-readback");
-    fireEvent.click(confirmButton());
-    expect((await screen.findByTestId("inbox-confirm-outcome")).textContent).toContain("Merge approved");
+    await answerPrepare(prepared, ready());
+    await tapConfirm();
+    expect(screen.getByTestId("inbox-confirm-outcome").textContent).toContain("Merge approved");
     expect(named(calls, "inbox.act").map((call) => call.args)).toEqual([{ itemId: "gate-1", confirm: CONFIRM }]);
     await waitFor(() => expect(named(calls, "inbox.list").length).toBeGreaterThan(1));
     expect(screen.queryByTestId("inbox-confirm-ok")).toBeNull();
@@ -319,20 +331,22 @@ describe("the inbox page, acting from the console", () => {
 
   it("shows the run's live next state under a landed outcome", async () => {
     const landed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "resolved" }, message: "Merge approved", next: { state: "merged", detail: "example/repo#12 merged as 9999999" } }));
-    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": landed });
+    const prepared = deferred();
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": landed });
     await tapGate();
-    await screen.findByTestId("inbox-readback");
-    fireEvent.click(confirmButton());
-    expect((await screen.findByTestId("inbox-confirm-next")).textContent).toBe("Now: example/repo#12 merged as 9999999");
+    await answerPrepare(prepared, ready());
+    await tapConfirm();
+    expect(screen.getByTestId("inbox-confirm-next").textContent).toBe("Now: example/repo#12 merged as 9999999");
   });
 
   it("shows a moved head as a warning naming the new head", async () => {
     const moved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "moved", currentHead: "9".repeat(40) }, message: "PR moved to 9999999, read again" }));
-    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": moved });
+    const prepared = deferred();
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": moved });
     await tapGate();
-    await screen.findByTestId("inbox-readback");
-    fireEvent.click(confirmButton());
-    expect((await screen.findByTestId("inbox-confirm-outcome")).textContent).toContain("PR moved to 9999999, read again");
+    await answerPrepare(prepared, ready());
+    await tapConfirm();
+    expect(screen.getByTestId("inbox-confirm-outcome").textContent).toContain("PR moved to 9999999, read again");
   });
 
   it("falls back to the terminal command when inbox actions are off", async () => {
@@ -346,11 +360,12 @@ describe("the inbox page, acting from the console", () => {
 
   it("keeps the read-back and offers the terminal when the owner write is refused", async () => {
     const refused = () => Promise.resolve(errorEnvelope("owner writes are off on this console", 77));
-    renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": refused });
+    const prepared = deferred();
+    renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": refused });
     const sheet = await tapGate();
-    await within(sheet).findByTestId("inbox-readback");
-    fireEvent.click(confirmButton());
-    expect((await within(sheet).findByTestId("inbox-confirm-error")).textContent).toContain("Not done: owner writes are off on this console");
+    await answerPrepare(prepared, ready());
+    await tapConfirm();
+    expect(within(sheet).getByTestId("inbox-confirm-error").textContent).toContain("Not done: owner writes are off on this console");
     expect(within(sheet).getByTestId("inbox-readback")).toBeTruthy();
     expect(within(sheet).getByText("titan-factory gate resolve run-gate-1/approve-merge --decision merge")).toBeTruthy();
   });
@@ -401,12 +416,14 @@ describe("the inbox page, acting from the console", () => {
     const op = item("op-1", { sources: [{ system: "deposit", ref: "fixture-agent/op-1" }], kind: "do", summary: "Hand-merge example/repo#16", action: { kind: "owner-op", op: { kind: "merge-at-head", repo: "example/repo", pr: 16, headSha: HEAD } } });
     const readBack = { repo: "example/repo", pr: 16, title: "tidy the fixtures", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "MRG-OR: gate", proposedBy: "fixture-agent", proposal: "Hand-merge example/repo#16", effect: "Merge example/repo#16 at 0b7e2c1 through a land run, once its required checks are green at this head" };
     const accepted = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "accepted", runId: "land-1" }, message: "Merge queued: land run land-1 merges at this head once its checks are green" }));
-    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-1", action: op.action, readBack })), "inbox.act": accepted });
+    const prepared = deferred();
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => prepared.promise, "inbox.act": accepted });
     fireEvent.click(within(await screen.findByTestId("inbox-row-op-1")).getByText("Merge at head"));
-    expect((await screen.findByTestId("inbox-readback-proposal")).textContent).toBe("Proposed by fixture-agent: Hand-merge example/repo#16");
+    await answerPrepare(prepared, ready({ itemId: "op-1", action: op.action, readBack }));
+    expect(screen.getByTestId("inbox-readback-proposal").textContent).toBe("Proposed by fixture-agent: Hand-merge example/repo#16");
     expect(screen.getByText("Into main; GitHub reads it clean. Authority MRG-OR: gate")).toBeTruthy();
-    fireEvent.click(confirmButton());
-    const outcome = await screen.findByTestId("inbox-confirm-outcome");
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
     expect(outcome.textContent).toContain("Merge queued: land run land-1");
     expect(outcome.className).toContain("success");
   });
