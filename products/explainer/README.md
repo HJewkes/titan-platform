@@ -150,12 +150,14 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 ### `explainer run`: one video end to end
 
-`explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--base <runId>] [--budget-usd 20]
+`explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--to <stage>] [--base <runId>]
+[--pin <name=sha>]... [--variant <stage=file>]... [--sample <stage=k>]... [--video <id>] [--budget-usd 20]
 [--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--data-dir <dir>]` makes one video as an
 `explainer-video` run on `@titan-design/workflow` (`src/workflow/`, the corpus-query host pattern). The data dir
 (default: the per-user data dir) holds `state.sqlite3`, the content-addressed artifact store `artifacts/<sha256>`
 (a directory is stored as a tree of file shas), one `runs/<runId>/` directory per run, and the bridge host file
-`bridge.json`. Each stage is one code step, in this order:
+`bridge.json`. Each stage is one code step of the parent, in this order; every stage but `export` runs as its own
+`explainer.<stage>` child workflow behind the stage cache (below):
 
 | Stage | Path | Inputs → outputs |
 |---|---|---|
@@ -169,18 +171,43 @@ The bridge is temporary: it runs today's template commands, Python included, fro
 so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
 (`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
 the commands run), `outputs` (name → path, `tree: true` for a directory) and `commands` (`argv`, optional `cwd`,
-`env`, `timeoutS`, and `check`, which records the command's verdict). `{workdir}`, `{in.<name>}` and `{out.<name>}`
-expand to absolute paths. `theater` names the folder, the file stem and the suffix per artifact for `export`.
+`env`, `timeoutS`, and `check`, which records the command's verdict), plus `vars`, the defaults for `{var.<name>}`
+tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
+names the folder, the file stem and the suffix per artifact for `export`. A bridged stage's `inputs` are also its
+cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
+QA entry.
+
+**Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
+config is the run's settings for that stage (script model; judge and rounds; for a bridged stage its whole
+`bridge.json` block and `vars`) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
+does not reproduce its audio byte for byte, so a stage downstream of TTS keys on the shas TTS actually wrote. The
+`explainer_stage_runs` table in `state.sqlite3` maps a key to its child run, status and outputs. A finished key
+returns its outputs at no cost (status `cached` in the report). A key whose child is still running, here or orphaned
+by a crash, is adopted rather than started twice; the row is committed with the child's run row. A failed key starts
+a fresh child.
+
+A variant file (`explainer.variant/v1`: `stage`, `name`, `params`) sets `model` for `script`, `model` and `rounds`
+for `rewrite`, and any declared `vars` for a bridged stage; `--variant render=w8.json` reruns render and whatever
+reads its outputs. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
+`--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
+the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
+
+`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--json] [--data-dir <dir>]` runs one
+stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its child run,
+key, spend and output shas. Exit 0 when it finished, 1 when it failed, 2 on usage.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
-checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost and
-links the two runs; a stage with no input fails at once, naming the missing artifact. `--budget-usd` is a high
+checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
+with a base belongs to the base run's video (`--video` names one outright); a run ends when the MP4 reaches the
+theater, and a follow-up run from stored artifacts joins the same video. A stage with no input fails at once, naming the missing artifact. `--budget-usd` is a high
 runaway backstop: once model spend reaches it, the run stops before the next stage, writes `stop.json` naming that
 stage, and fails. `explainer run resume <runId> [--budget-usd <usd>]` drives a crashed run on, or starts a run linked
 to a stopped or failed one from the stage it did not finish. `explainer run report <runId> [--json]` writes
 `run-report.md` and `run-report.json` into the run directory: per stage the wall time and its share, usd and its share,
 tokens, calls, retries, whether it was reused (a cache hit), check verdicts and output shas, with each bridged stage
-marked, and the cost of the linked runs. `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
+marked, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
+stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
+`run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
