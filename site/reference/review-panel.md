@@ -210,6 +210,14 @@ const brief = shapeBrief("adversary", {
   (in any case), so a mid-line cut cannot recreate either. The brief then asks for an
   `Earlier findings:` checklist of `- fixed:` and `- not fixed:` lines, and for an earlier
   `Defect class:` line copied exactly when the class recurs.
+- `reviewerBrief`'s `scope` (a `ReviewScope`: the reviewed `sinceHead`, the fix's `paths` and
+  `hunks` at the head, and `mergedBase`) scopes a fix-round re-review to the fix diff. It takes
+  effect only with at least one earlier finding and when `usableScope` passes: a full sha, 1 to
+  `MAX_SCOPE_PATHS` paths, no shell-active path, and hunks only on listed paths. The brief then
+  runs `git diff <sinceHead> <head> -- <paths>` in place of `gh pr diff`, lists the line ranges,
+  requires the checklist (with `- partly fixed:`), and allows a new item outside the ranges only
+  when tagged `Important:` with a `Class:` line. Any other scope leaves the brief as it was, and
+  `shapeBrief` drops `scope`, so panel members always read the full diff.
 - `reviewerBrief` asks every MERGE, on any diff, for a `CI-policy: unchanged` or
   `CI-policy: weakened <keys>` line directly after `Head:` (`CI_POLICY_RULE`, which gives each
   key a one-line meaning). `correctionPrompt` repeats it with the key names only, since it resumes
