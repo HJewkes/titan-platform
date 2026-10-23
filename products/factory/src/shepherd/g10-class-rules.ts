@@ -6,9 +6,9 @@ export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence
 export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 /**
  * The owner's own levers: the console's tap and inbox actions, gate resolution and owner release (titan-coord's E1
- * amendment to 458). Globbed by name stem, so a helper split out of one of these files stays held.
+ * amendment to 458), plus the fix-proof gate's config, whose edit can weaken a merge gate. Globbed by name stem, so a helper split out of one of these files stays held.
  */
-export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts"];
+export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps/console/server/**/inbox-actions*.ts", "products/factory/src/**/gate-resolve*.ts", "products/factory/src/**/*owner-release*.ts", ".github/fix-proof.json"];
 
 /**
  * Who may resolve a gate (TP-4052, tp#2253): files that build a `GateResolver` or hand one to a resolve sink, and
