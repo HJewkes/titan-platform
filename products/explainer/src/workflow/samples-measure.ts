@@ -7,7 +7,7 @@ import type { CachedStage, StageRecord } from "./records.js";
 import { ChildStageFailure } from "./stage-cache.js";
 
 /** The model stages a multi-sample measure scores: the script artifact each makes, and for rewrite the draft it starts from. */
-export const SAMPLED_STAGES = { script: { output: "draft" }, rewrite: { output: "script", before: "draft" } } as const;
+export const SAMPLED_STAGES: Record<"script" | "rewrite", { output: string; before?: string }> = { script: { output: "draft" }, rewrite: { output: "script", before: "draft" } };
 export type SampledStage = keyof typeof SAMPLED_STAGES;
 export const isSampledStage = (stage: CachedStage): stage is SampledStage => Object.hasOwn(SAMPLED_STAGES, stage);
 
@@ -98,7 +98,7 @@ async function runOne(request: SampleRequest, env: SampleEnv, input: Collecting,
 }
 
 function startInput(request: SampleRequest, env: SampleEnv, c: SampleCase): Collecting {
-  const beforeName = (SAMPLED_STAGES[request.stage] as { before?: string }).before;
+  const beforeName = SAMPLED_STAGES[request.stage].before;
   const beforeSha = beforeName === undefined ? undefined : c.inputs[beforeName];
   if (beforeName !== undefined && beforeSha === undefined) throw new Error(`case ${c.name} has no "${beforeName}" input for stage ${request.stage}`);
   return { name: c.name, inputs: c.inputs, samples: [], ...(beforeSha === undefined ? {} : { before: env.score(beforeSha) }) };

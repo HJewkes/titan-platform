@@ -88,7 +88,7 @@ interface AbFlags extends SampleSettings {
 
 async function runAb(flags: AbFlags, host: RunHost, out: (text: string) => void, err: (text: string) => void): Promise<number> {
   const stage = sampledStage(flags.stage);
-  const [a, b] = flags.variants as [string, string];
+  const [a = CHAMPION, b = CHAMPION] = flags.variants;
   const cases = loadCases(flags.cases, flags.split === "all" ? undefined : flags.split);
   const cap = flags.maxUsd === undefined ? {} : { maxUsd: flags.maxUsd };
   // The same settings on both arms would share cache keys; arm B then takes the next n sample indices.
