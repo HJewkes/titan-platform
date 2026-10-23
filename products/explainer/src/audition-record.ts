@@ -107,7 +107,8 @@ const label = (n: AuditionRecord["runnerUp"]) => `${n.candidate} ${n.structure}$
 /** The stage notes, which the run report and the render notes carry: the pick, the runner-up by name, and why the pool is what it is. */
 export function auditionNotes(record: AuditionRecord): string[] {
   const skips = (c: AuditionCandidate) => c.skipped.map((s) => `; ${s.dim} skipped: ${s.reason}`).join("");
-  const rubric = record.candidates.map((c) => `${c.id}: ${c.rubric ? rubricNote(c.rubric) : `cold rubric (reported only): not scored${record.rubricError ? `, ${record.rubricError}` : ""}`}${skips(c)}`);
+  const unscored = `cold rubric (reported only): not scored${record.rubricError ? `, ${record.rubricError}` : ""}`;
+  const rubric = record.candidates.map((c) => `${c.id}: ${c.rubric ? rubricNote(c.rubric) : unscored}${skips(c)}`);
   return [
     `audition pick: ${label(record.pick)}; runner-up: ${label(record.runnerUp)}; margin ${record.margin}`,
     `chapters: ${record.pick.chapters.map((c) => `${c.chapter}=${c.block ?? "no profile block"}`).join(", ")}`,
