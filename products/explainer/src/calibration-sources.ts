@@ -107,7 +107,8 @@ function beatOutputs(source: Source): JudgedOutput[] {
     const at = index.get(r.beat!)!;
     const beat = source.beats[at]!;
     const previous = r.dim === "B3" && at > 0 ? `Previous beat: ${source.beats[at - 1]!.spoken}\n\n` : "";
-    return { ...source.ref, judge: "l1", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt: `${previous}This beat: ${beat.spoken}${screenOf(beat)}`, pass: r.score === "1", ...origin(r) };
+    const excerpt = `${previous}This beat: ${beat.spoken}${screenOf(beat)}`;
+    return { ...source.ref, judge: "l1", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt, pass: r.score === "1", ...origin(r) };
   });
 }
 
