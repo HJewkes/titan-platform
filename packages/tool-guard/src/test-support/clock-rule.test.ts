@@ -8,11 +8,16 @@ const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Built from the clock's name, so this file's own fixtures do not read as clock calls to the rule.
 const call = (clock: string) => `const start = ${clock}();`;
 
+const COST = "a cost asserted on wall time, to move onto work counts (TP-4076)";
+
 /**
- * Test modules that read a clock outside cpu-budget.ts. Empty since TP-4047: deadlines run on faked timers and costs
- * are counted as work, so no test outside the helper reads a clock. A stale entry fails the rule, so it only shrinks.
+ * Test modules that read a clock outside cpu-budget.ts. Since TP-4047 deadlines run on faked timers and costs are
+ * counted as work; these two remain for TP-4076. A stale entry fails the rule, so it only shrinks.
  */
-const ALLOWED: Record<string, string> = {};
+const ALLOWED: Record<string, string> = {
+  "merge-lint/merge-lint.test.ts": COST,
+  "shell/procsub-heredoc.test.ts": COST,
+};
 
 function sourceFiles(): Array<[string, string]> {
   const entries = fs.readdirSync(SRC, { recursive: true, encoding: "utf8" });

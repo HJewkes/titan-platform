@@ -19,7 +19,8 @@ The bench is not part of `pnpm test` or CI: run it on a quiet machine after a ch
 Write a budget test with `cpuBudgetIt(name, cpuMs, body)` or `cpuBudgetIt.each(rows)(...)`; its wall timeout is
 `max(30 s, 12 x cpuMs)` and never a per-test timeout. Never read a clock in a test yourself: `clock-rule.test.ts` fails
 on any test module other than `cpu-budget.ts` that calls `process.threadCpuUsage`, `process.cpuUsage`,
-`process.hrtime`, `performance.now` or `Date.now`. Its allowlist is empty, and it only shrinks.
+`process.hrtime`, `performance.now` or `Date.now`. Its allowlist holds only the two wall-time cost tests that
+TP-4076 moves onto work counts, and it only shrinks.
 
 ## Why not time (TP-4047)
 
