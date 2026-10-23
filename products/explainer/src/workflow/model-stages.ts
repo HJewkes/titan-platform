@@ -22,6 +22,7 @@ import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
+import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
 
 export type RunnerFor = (options: AgentRunnerOptions) => LegacyStepRunner;
@@ -288,13 +289,6 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
   }
   const detail = `${first} failing error checks before repair, ${failing.length} after`;
   return { script, stamps, usage, ...(stripped ? { stripped } : {}), check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
-}
-
-/** Reported only, so a reader sees which `new_terms` the stage wrote rather than the model. */
-function stampCheck(stamps: readonly LedgerStamp[]): Check[] {
-  if (stamps.length === 0) return [];
-  const named = stamps.map((stamp) => `${stamp.beat} ${stamp.term}`).join(", ");
-  return [{ name: "ledger-stamp", gate: false, pass: true, detail: `stamped new_terms on ${stamps.length} ledger item(s): ${named}` }];
 }
 
 const SHOWN_KEYS = 10;

@@ -80,7 +80,8 @@ function beatFindings(beat: PaceBeat, at: number, beats: readonly PaceBeat[], le
   const found: string[] = [];
   if (unlisted.length > 0) {
     const handles = available.length > 0 ? quoted(available) : "none yet";
-    found.push(`${beat.id} shows ${quoted(unlisted.map((i) => i.label))} (${[...new Set(unlisted.map((i) => i.source))].join("/")}), not in the spine ledger; name a ledger item the chapter may use (${handles}) or drop it`);
+    const sources = [...new Set(unlisted.map((i) => i.source))].join("/");
+    found.push(`${beat.id} shows ${quoted(unlisted.map((i) => i.label))} (${sources}), not in the spine ledger; name a ledger item the chapter may use (${handles}) or drop it`);
   }
   late.forEach(({ item, entry }) => found.push(`${beat.id} shows "${item.label}" before ${entry.definedIn}, where the ledger defines it; move it to ${entry.definedIn} or drop it`));
   return found;
