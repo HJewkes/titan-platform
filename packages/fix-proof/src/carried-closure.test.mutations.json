@@ -13,7 +13,17 @@
       "file": "packages/fix-proof/src/carried-closure.ts",
       "find": "if (!specifier.startsWith(\"./\") && !specifier.startsWith(\"../\")) return false;",
       "replace": "if (!specifier.startsWith(\"./\") && !specifier.startsWith(\"../\")) continue;",
-      "kills": ["loadsOnlyCarried refuses a bare package import, which may resolve to workspace source"]
+      "kills": [
+        "loadsOnlyCarried refuses a carried test that spawns a process, which may run a script a mutation can target",
+        "loadsOnlyCarried refuses a load of child_process, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of worker_threads, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of node:worker_threads, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of cluster, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of vm, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of node:module, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a load of vitest/node, which may run code outside the import graph",
+        "loadsOnlyCarried refuses a bare package import, which may resolve to workspace source"
+      ]
     },
     {
       "name": "a closure may spawn a process",
