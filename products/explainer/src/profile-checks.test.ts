@@ -19,7 +19,7 @@ describe("checkProfiles", () => {
     ["a default audience outside allow", fixedProfile({ audience: { default: "public-youtube", allow: ["owner-internal"] } }), "audience-not-allowed"],
     ["a macro naming a missing block", heuristicProfile({ structure: { ...heuristic, macros: { ...heuristic.macros, abt: ["setup", "ghost"] } } }), "dangling-ref"],
     ["a heuristic row naming a missing macro", heuristicProfile({ structure: { ...heuristic, fallback: "scqa-c4" } }), "dangling-ref"],
-    ["a fixed macro with no registered structure", fixedProfile({ structure: { ...fixedProfile().structure, macro: "freytag" } }), "unknown-structure"],
+    ["a fixed macro with no registered structure", fixedProfile({ structure: { order: "fixed", macro: "freytag", blocks: [{ id: "a", goal: "g", seconds: [1, 2], beats: ["hook"] }] } }), "unknown-structure"],
     ["a heuristic macro with no registered structure", heuristicProfile({ structure: { ...heuristic, macros: { ...heuristic.macros, freytag: ["setup"] }, fallback: "freytag" } }), "unknown-structure"],
     ["a target above the max", fixedProfile({ runtime: { targetS: 800, minS: 480, maxS: 720, splitAboveS: 900 } }), "runtime-order"],
     ["a field both repeated and varied", fixedProfile({ series: { mayRepeat: ["hook-kind"], mustVary: fixedProfile().series.mustVary } }), "series-overlap"],
