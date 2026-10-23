@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a withdrawn deposit is listed as answered",
+      "file": "apps/console/server/approval-items.ts",
+      "find": "items.withdrawn.push({ item: { ...item, status: \"withdrawn\" }, was: \"open\", pr: \"\", reason: withdrawal.reason });",
+      "replace": "items.answered.push({ ...item, status: \"answered\" });",
+      "kills": [
+        "spoolQueueItems lists a deposit its seat withdrew as withdrawn, never as open or answered"
+      ]
+    }
+  ]
+}

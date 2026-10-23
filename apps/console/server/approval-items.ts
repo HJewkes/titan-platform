@@ -1,10 +1,11 @@
 /**
  * The console's own two legs of the owner queue as OwnerItems: review rounds from the rounds dir and
- * deposits from the inbox spool. Each leg answers `{ open, answered, gaps }`, the rounds leg also
- * `withdrawn`, and never throws, so one bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
+ * deposits from the inbox spool. Each leg answers `{ open, answered, withdrawn, gaps }` and never throws,
+ * so one bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
  */
-import { answeredFromFeedback, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
+import { answeredFromFeedback, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
+import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 import {
   FeedbackSchema as OwnerQueueFeedbackSchema,
   ManifestSchema,
@@ -17,14 +18,11 @@ import type { QueueRound, Withdrawal } from "./rounds.js";
 interface QueueItems {
   open: OwnerItem[];
   answered: OwnerItem[];
+  withdrawn: WithdrawnItem[];
   gaps: string[];
 }
 
-interface RoundItems extends QueueItems {
-  withdrawn: WithdrawnItem[];
-}
-
-const empty = (): QueueItems => ({ open: [], answered: [], gaps: [] });
+const empty = (): QueueItems => ({ open: [], answered: [], withdrawn: [], gaps: [] });
 
 /** `<owner>/<repo>#<n>` from a merge-bound question's pinned PR key, or empty for any other question. */
 function prOf(item: OwnerItem): string {
@@ -37,7 +35,7 @@ function withdrawnItem(item: OwnerItem, { reason }: Withdrawal): WithdrawnItem {
 }
 
 /** An unsent round's questions are asked, unless the round was withdrawn: then they are listed as withdrawn only. */
-function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: RoundItems): void {
+function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: QueueItems): void {
   try {
     const asked = fromRoundQuestions(manifest, round.id, { openedAt: round.updatedAt });
     const { withdrawn } = round;
@@ -83,7 +81,7 @@ function ownerQueueFeedback(round: QueueRound, feedback: Feedback, items: QueueI
 }
 
 /** A sent round is closed, so its questions are answered items only; feedback that does not fit leaves it open. */
-function roundItems(round: QueueRound, items: RoundItems): void {
+function roundItems(round: QueueRound, items: QueueItems): void {
   const manifest = ownerQueueManifest(round, items);
   if (manifest === undefined) return;
   if (round.feedback === null) {
@@ -101,13 +99,27 @@ function roundItems(round: QueueRound, items: RoundItems): void {
   }
 }
 
-export function roundQueueItems(rounds: readonly QueueRound[]): RoundItems {
-  const items = { ...empty(), withdrawn: [] };
+export function roundQueueItems(rounds: readonly QueueRound[]): QueueItems {
+  const items = empty();
   for (const round of rounds) roundItems(round, items);
   return items;
 }
 
+/** True when the deposit's seat withdrew it; a malformed marker is a gap and leaves the deposit to its answer. */
+async function withdrawnDeposit(dir: string, item: OwnerItem, items: QueueItems): Promise<boolean> {
+  try {
+    const withdrawal = await readWithdrawal(dir, item.id);
+    if (withdrawal === undefined) return false;
+    items.withdrawn.push({ item: { ...item, status: "withdrawn" }, was: "open", pr: "", reason: withdrawal.reason });
+    return true;
+  } catch {
+    items.gaps.push(`${item.id}: its withdrawal file is malformed`);
+    return false;
+  }
+}
+
 async function spoolItem(dir: string, item: OwnerItem, items: QueueItems): Promise<void> {
+  if (await withdrawnDeposit(dir, item, items)) return;
   try {
     const answer = await readAnswer(dir, item.id);
     if (answer === undefined) items.open.push(item);
@@ -118,7 +130,10 @@ async function spoolItem(dir: string, item: OwnerItem, items: QueueItems): Promi
   }
 }
 
-/** A deposit with an answer file beside it is answered; readSpool's reject reasons never quote the file. */
+/**
+ * A deposit with an answer file beside it is answered, one its seat withdrew is withdrawn, and repeats of one
+ * alarm collapse into the newest open one. readSpool's reject reasons never quote the file.
+ */
 export async function spoolQueueItems(dir: string): Promise<QueueItems> {
   const items = empty();
   let spool;
@@ -129,5 +144,5 @@ export async function spoolQueueItems(dir: string): Promise<QueueItems> {
   }
   items.gaps.push(...spool.rejects.map((reject) => `${reject.file}: ${reject.reason}`));
   for (const item of spool.items) await spoolItem(dir, item, items);
-  return items;
+  return { ...items, open: collapseRepeats(items.open) };
 }

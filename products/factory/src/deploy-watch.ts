@@ -1,5 +1,6 @@
-import type { OwnerItemDeposit } from "@titan-design/owner-queue";
+import { alarmKey, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { runningHolds, type AncestryProbe } from "./build-ancestry.js";
+import { DEPLOY_ALARM_ASKER, DEPLOY_TARGET } from "./deploy-incident.js";
 import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, type DeployHealth } from "./deploy-health.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 
@@ -101,18 +102,18 @@ async function notice(ports: DeployWatchPorts, health: DeployHealth): Promise<Al
 const hubSeatNote = (told: AlarmNotice): string =>
   "sent" in told ? `The hub seat was told at ${told.sent}.` : "skipped" in told ? `The hub seat was not told: ${told.skipped}.` : `Telling the hub seat failed: ${told.failed}.`;
 
-/** One item per running build: its depositId repeats across serve restarts, so writeDeposit files it once. */
+/** One item per running build: its depositId repeats across serve restarts, so writeDeposit files it once; the alarm key folds builds. */
 function alarmDeposit(health: DeployHealth, minutes: number, told: AlarmNotice): OwnerItemDeposit {
   const summary = `titan-factory deploys stalled for ${minutes} min: ${health.causes.join("; ")}`.replace(/\s+/g, " ");
   return {
     depositId: `deploy-alarm-${health.runningSha}`,
-    asker: "titan-factory",
+    asker: DEPLOY_ALARM_ASKER,
     kind: "do",
     door: "two-way",
     summary: summary.length > SUMMARY_MAX ? `${summary.slice(0, SUMMARY_MAX - 1)}…` : summary,
     context: `${alarmMessage(health)} ${hubSeatNote(told)} Merged work is not live until a deploy lands.`,
     command: STATUS_COMMAND,
-    keys: ["deploy-alarm"],
+    keys: ["deploy-alarm", alarmKey(`deploy-alarm:${DEPLOY_TARGET}`)],
   };
 }
 

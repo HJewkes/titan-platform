@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { depositItemId } from "@titan-design/owner-queue";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 import { DEFAULT_STORY_PORT, resolveConfig } from "../config.js";
+import { failureDeposit } from "./alarm.js";
 import { nodeUpdatePorts, smokeEnv, smokeRelease } from "./node-ports.js";
 import { releaseCli } from "./release-smoke.js";
 
@@ -59,5 +63,31 @@ describe("the smoke check of a release on disk", () => {
     const run = await nodeUpdatePorts(path.join(release, "inbox")).runNode(releaseCli(release), ["self-update", "--smoke", "x", "y"]);
 
     expect(run).toEqual({ code: 3, stdout: '["self-update","--smoke","x","y"]\n', stderr: "warn\n", timedOut: false });
+  });
+});
+
+describe("the production alarm ports over a spool", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("withdraws every open update failure the console filed as resolved, and no other asker's item", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "titan-console-alarm-spool-"));
+    roots.push(root);
+    const spool = path.join(root, "deposits");
+    const ports = nodeUpdatePorts(spool);
+    const smoke = failureDeposit({ stage: "smoke", target: "b".repeat(40), serving: "a".repeat(40), why: "no /health" });
+    const restart = failureDeposit({ stage: "restart", target: "c".repeat(40), serving: "a".repeat(40), why: "no /health" });
+    await ports.alarm(smoke);
+    await ports.alarm(restart);
+    await writeDeposit(spool, { ...smoke, asker: "seat-x" });
+
+    expect(await ports.resolveAlarms()).toBe(2);
+
+    expect(await readWithdrawal(spool, depositItemId("titan-console", smoke.depositId))).toMatchObject({ reason: "resolved", by: "titan-console" });
+    expect(await readWithdrawal(spool, depositItemId("titan-console", restart.depositId))).toMatchObject({ reason: "resolved" });
+    expect(await readWithdrawal(spool, depositItemId("seat-x", smoke.depositId))).toBeUndefined();
+    expect(await ports.resolveAlarms()).toBe(0);
   });
 });

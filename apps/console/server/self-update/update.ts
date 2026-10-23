@@ -31,6 +31,8 @@ export interface UpdatePorts extends LockPorts, SmokePorts {
   /** The build sha the console on `port` reports, polled until it is `want` or the wait ends; null when it answered with no sha, undefined when it never answered. */
   servedSha: (port: number, want: string) => Promise<string | null | undefined>;
   alarm: (deposit: OwnerItemDeposit) => Promise<void>;
+  /** Withdraws every open update-failure deposit as resolved and returns how many it withdrew. */
+  resolveAlarms: () => Promise<number>;
   now: () => number;
 }
 
@@ -183,6 +185,7 @@ async function apply(update: Update, go: Go): Promise<number> {
   write(update, go, "updated");
   update.ports.log(`updated: serving ${go.target}`);
   installShim(update);
+  await resolveAlarms(update);
   await prune(update, [go.release, go.current]);
   return EXIT.OK;
 }
@@ -194,6 +197,16 @@ function installShim(update: Update): void {
     if (update.ports.writeShim(file, shimText(update.options.root))) update.ports.log(`wrote ${file}`);
   } catch (error) {
     update.ports.log(`error: could not write ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Only after a verified swap, when a newer sha serves; a failure is logged and never undoes the update. */
+async function resolveAlarms(update: Update): Promise<void> {
+  try {
+    const withdrawn = await update.ports.resolveAlarms();
+    if (withdrawn > 0) update.ports.log(`withdrew ${withdrawn} resolved update alarm(s) from the owner inbox`);
+  } catch (error) {
+    update.ports.log(`error: could not withdraw resolved update alarms: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

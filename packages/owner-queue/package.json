@@ -13,6 +13,10 @@
     "./spool": {
       "types": "./dist/spool.d.ts",
       "import": "./dist/spool.js"
+    },
+    "./withdraw": {
+      "types": "./dist/withdraw.d.ts",
+      "import": "./dist/withdraw.js"
     }
   },
   "files": [

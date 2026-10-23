@@ -24,7 +24,8 @@ export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockR
 export { INFLUENCE_RULES, influenceEdges } from "./influence.js";
 export type { InfluenceContext, InfluenceEdge, InfluenceRule } from "./influence.js";
 export type { ClosedStatus, QueueSource, ResolveResult, SourceEvent } from "./port.js";
-export { askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind, roundAskKey, tokenKey, topicKey } from "./keys.js";
+export { alarmKey, askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind, roundAskKey, tokenKey, topicKey } from "./keys.js";
+export { collapseRepeats } from "./repeats.js";
 export type { RelationKeyKind } from "./keys.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
 export { rank } from "./rank.js";

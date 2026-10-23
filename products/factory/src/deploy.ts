@@ -28,6 +28,8 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   listFiles: (dir: string) => string[] | undefined;
   /** Tells the hub seat and the owner queue about a rollback that paused deploys; absent means only stderr carries it. */
   incident?: (incident: DeployIncident) => Promise<void>;
+  /** Withdraws the open deploy alarms and incidents as resolved, returning how many; absent means they stay for a person. */
+  resolveAlarms?: () => Promise<number>;
 }
 
 export interface DeployOptions {
@@ -260,7 +262,20 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
   if (typeof why === "object") return finish(deploy, go, "held", why.held, writeUnreadableHold(deploy.ports, deploy.options.stateDir, go.target, why.held));
-  return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
+  if (why !== undefined) return rollBackRestart(deploy, go, backup, why);
+  await resolveAlarms(deploy);
+  return finish(deploy, go, "deployed");
+}
+
+/** Only after a deploy whose build answered and held through the watch; a failure is reported and never fails the deploy. */
+async function resolveAlarms({ ports, io }: Deploy): Promise<void> {
+  if (!ports.resolveAlarms) return;
+  try {
+    const withdrawn = await ports.resolveAlarms();
+    if (withdrawn > 0) io.stdout(`withdrew ${withdrawn} resolved deploy alarm(s) from the owner inbox\n`);
+  } catch (error) {
+    io.stderr(`error: could not withdraw resolved deploy alarms: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
 }
 
 /** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
