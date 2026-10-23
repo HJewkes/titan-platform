@@ -39,3 +39,18 @@ export {
   type GatherProfile,
   type GatherResult,
 } from "./gather.js";
+export {
+  EDGE_SOURCES,
+  STRUCTURE_SOURCES,
+  StructureSchema,
+  type BoxSummary,
+  type CallPath,
+  type EdgeSource,
+  type EntryPoint,
+  type FileCentrality,
+  type FocusGraph,
+  type Structure,
+  type StructureSource,
+} from "./structure-schema.js";
+export { REVIEW_GRAPH_DB, openStructureGraph, type GraphSourceOptions, type GraphSourceResult, type StructureGraph } from "./graph-source.js";
+export { MAX_CALL_ENTRIES, enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";
