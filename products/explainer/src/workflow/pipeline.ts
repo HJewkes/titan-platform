@@ -72,7 +72,8 @@ export function videoWorkflow(plan: RunPlan, dataDir: string): WorkflowFn {
       const input: StageInput = { stage, artifacts, remainingUsd: plan.budgetUsd - spent, ...(reuse ? { reuse } : {}) };
       const record = await codeStep(ctx, `stage:${stage}`, input, StageRecordSchema);
       spent += record.usage.usd;
-      artifacts = { ...artifacts, ...record.outputs };
+      // A reused stage's outputs are already in the plan's artifacts, under any pin that replaces them.
+      if (!reuse) artifacts = { ...artifacts, ...record.outputs };
     }
   };
 }

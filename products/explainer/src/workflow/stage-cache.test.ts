@@ -108,6 +108,21 @@ describe("stage cache over whole runs", () => {
   });
 });
 
+describe("pins over a base run", () => {
+  it("a pin replaces the base run's output for the stages after --from", async () => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const draft = row(first, "script").outputs.draft!;
+
+    const repair = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), bridge));
+
+    expect(repair.status, repair.error).toBe("completed");
+    expect(row(repair, "eval").status).toBe("ran");
+    expect(bridge.ttsInputs.at(-1)).toBe(draft);
+  });
+});
+
 describe("explainer stage", () => {
   it("two samples are two cached runs, and a repeated sample is a cache hit", async () => {
     fx = fixture();
