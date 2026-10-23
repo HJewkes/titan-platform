@@ -9,6 +9,8 @@ export type { VectorIndex, VectorMatch, VectorRetrieverOptions } from "./retriev
 export { BruteForceVectorIndex, vectorRetriever } from "./retrievers/vector.js";
 export type { GraphRetrieverOptions } from "./retrievers/graph.js";
 export { expandGraph, graphRetriever } from "./retrievers/graph.js";
+export type { WalkGraph, WalkNeighbour, WalkOptions, WalkStep } from "./retrievers/walk.js";
+export { defaultHubDegree, walkGraph } from "./retrievers/walk.js";
 export type { Candidate, CrossEncoderOptions, Reranked, Reranker } from "./rerank.js";
 export { crossEncoderReranker, rerankCandidates } from "./rerank.js";
 export type { EngineOptions, RetrievalEngine, SearchOptions, SearchResponse } from "./engine.js";
