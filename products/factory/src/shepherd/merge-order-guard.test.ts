@@ -132,12 +132,18 @@ describe("a merge step behind a merge-order reservation", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
+  /** Bounds a merge step that never stops waiting, so it fails on its result instead of polling forever. */
+  const MAX_WAITS = 5;
+
   /** Runs #2310's merge step once; the first wait marks #2301 merged, which ends the reservation. */
   async function mergeStep(rules?: MergeOrderRules): Promise<{ fake: FakeGitHub; result: unknown; waits: number }> {
     const fake = fakeGitHub({ repo: REPO });
     const store = shepherdStoreRef();
     let waits = 0;
-    const sleep = async () => void (waits++, (fake.pr(2301).merged = true));
+    const sleep = async () => {
+      if (++waits > MAX_WAITS) throw new Error(`still held after ${MAX_WAITS} waits`);
+      fake.pr(2301).merged = true;
+    };
     const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => AT + 60_000, sleep, registry: async () => "trusted" as const, ...(rules && { mergeOrderRules: rules }) });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
     hosts.push(host);
