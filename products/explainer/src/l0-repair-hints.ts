@@ -1,5 +1,5 @@
 import type { L0Result } from "./eval-l0.js";
-import { boundaryLinks, MAX_CONNECTIVE_SHARE, MIN_LINKED, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
+import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import type { ScriptV1 } from "./script-schema.js";
@@ -32,11 +32,18 @@ function heteronymHint(script: ScriptV1): string {
   return `undeclared heteronyms: ${words.join("; ")}`;
 }
 
+function plainOpeningHint(script: ScriptV1): string | undefined {
+  const first = firstIdentifier(script.beats);
+  if (!first) return undefined;
+  return `the first identifier the voice says is "${first.word}" in ${first.beat}, after ${percent(first.share)} of the words (needs ${percent(MIN_PLAIN_SHARE)}); say it in plain words there, or name it later`;
+}
+
 const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F1": linkHint,
   "Q-F3": threadHint,
   "Q-F4": (script) => thesisDefects(script).join("; "),
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
+  "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
 };
 

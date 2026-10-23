@@ -49,6 +49,12 @@ describe("repair hints for rows whose value says too little", () => {
     );
   });
 
+  it("Q-F16 names the identifier the voice says first and where", () => {
+    const script = tour(withBeat("h2", { spoken: "That refusal works because the GitHub desk checks every scan against the ledger." }));
+
+    expect(hintFor(script, "Q-F16")).toMatch(/^the first identifier the voice says is "GitHub" in h2, after \d+ % of the words \(needs 40 %\)/);
+  });
+
   it("Q-V10 names each undeclared heteronym with the declarations that would settle it", () => {
     const script = tour(withBeat("w2", { spoken: "The desk server will read each scan, so nothing prints early." }));
 

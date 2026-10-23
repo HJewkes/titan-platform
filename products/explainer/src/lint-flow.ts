@@ -205,13 +205,18 @@ function learnerQuestions(beats: readonly ScriptBeat[]): L0Result {
   return ruleRow("Q-F15", { value: silent.length, threshold: 0, pass: silent.length === 0, beats: ids, severity: "warning" });
 }
 
-/** Q-F16: the plain-language share of the script before the first internal identifier is spoken. */
-function plainOpening(beats: readonly ScriptBeat[]): L0Result {
+/** The first internal identifier the script speaks, its beat, and the share of words spoken before it. */
+export function firstIdentifier(beats: readonly ScriptBeat[]): { beat: string; word: string; share: number } | undefined {
   const words = beats.flatMap((b) => spokenWords(b.spoken).map((word) => ({ id: b.id, word: word.replace(/[.,;:!?]+$/, "") })));
   const at = words.findIndex(({ word }) => IDENTIFIER.test(word));
-  const share = at === -1 || words.length === 0 ? 1 : at / words.length;
-  const beat = at === -1 ? [] : [words[at]!.id];
-  return ruleRow("Q-F16", { value: share, threshold: MIN_PLAIN_SHARE, pass: share >= MIN_PLAIN_SHARE, beats: beat });
+  return at === -1 ? undefined : { beat: words[at]!.id, word: words[at]!.word, share: at / words.length };
+}
+
+/** Q-F16: the plain-language share of the script before the first internal identifier is spoken. */
+function plainOpening(beats: readonly ScriptBeat[]): L0Result {
+  const first = firstIdentifier(beats);
+  const share = first?.share ?? 1;
+  return ruleRow("Q-F16", { value: share, threshold: MIN_PLAIN_SHARE, pass: share >= MIN_PLAIN_SHARE, beats: first ? [first.beat] : [] });
 }
 
 /** Q-F flow lints over the spoken track and the beat functions. */
