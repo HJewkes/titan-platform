@@ -85,6 +85,17 @@ registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
 
+`anchor-grid.ts` is the frame as a 6×6 grid of named anchors: columns `A` to `F` left to right,
+rows `1` to `6` top to bottom, so `A1` is the top left. A script's `visual.anchors` and a
+template's slots (`placeSlots`) name cells or `B2:E5` ranges; `anchorsForBox` maps a pixel box to
+the cells it overlaps. `occupancy-table.ts` builds one table per settled mark, mapping each
+occupied anchor to the element ids on it. The DOM's `[data-el]` boxes place template beats. A
+custom layer that declares anchors adds `custom-layer` on them, and an undeclared custom layer
+(or a mark with no DOM elements) falls back to the frame's pixel 6×6 ink coverage, so line art
+is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
+(`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
+`writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
+
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
 bytes Python's `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` gives,

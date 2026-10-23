@@ -791,7 +791,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +428 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
+- +436 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -1241,7 +1241,7 @@ Key exports:
 - `attribute`: `attributeFindings`
 - `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
 - `cues`: `cueResolverFromWords`
-- +711 more in `products/explainer/src/index.ts`
+- +755 more in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>
 

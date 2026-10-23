@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANCHOR_SPEC_PATTERN } from "./anchor-grid.js";
 import { cueResolverFromWords } from "./cues.js";
 import { EDGE_SOURCES, MapStateSchema, VisualSchema, type MapState } from "./map-state.js";
 
@@ -39,8 +40,8 @@ export const VISUAL_LAYERS = ["template", "custom"] as const;
 export const FRAMINGS = ["full", "focus", "split", "stack", "grid", "inset"] as const;
 
 const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-case name");
-// A cell of the 6×6 anchor grid: column A to F, then row 1 to 6, so A1 is the top left.
-const AnchorId = z.string().regex(/^[A-F][1-6]$/, "expected an anchor cell from A1 to F6");
+// A cell of the 6×6 anchor grid (A1 top left), or a `B2:E5` range, so a layer over a block names one rectangle.
+const AnchorSpec = z.string().regex(ANCHOR_SPEC_PATTERN, "expected an anchor cell from A1 to F6, or a range such as B2:E5");
 
 const Audience = z
   .object({
@@ -120,7 +121,7 @@ const ScriptVisualSchema = z
     render: Text.optional(),
     layer: z.enum(VISUAL_LAYERS).optional(),
     framing: z.enum(FRAMINGS).optional(),
-    anchors: z.array(AnchorId).min(1).optional(),
+    anchors: z.array(AnchorSpec).min(1).optional(),
     scene: Text.optional(),
     // A beat-spec name: the emphasis gate reads the spec's target lists before template fill writes the slots.
     beat: Kebab.optional(),
