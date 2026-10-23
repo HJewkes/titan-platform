@@ -108,7 +108,7 @@ async function fixRoundRun(mode: ScopedRereviewMode | undefined, rebased = false
   ref.get().hold(runId, "g10-adversary: security touch", undefined, { actor: "seat" });
   await vi.waitFor(() => expect(fake.pr(1).merged).toBe(true), { timeout: 10_000 });
   const results = host.runtime.status(runId)!.stepResults;
-  const resultOf = (stepId: string) => Object.values(results).find((result) => result.stepId === stepId)?.data?.result as Record<string, unknown> | undefined;
+  const resultOf = (stepId: string): unknown => Object.values(results).find((result) => result.stepId === stepId)?.data?.result;
   const briefAt = (head: string, adversary: boolean) => spawned.filter((each) => each.adversary === adversary && each.brief.includes(`at head ${head}`)).map((each) => each.brief.replaceAll(runId, "<run>"));
   return { resultOf, briefAt, stepIds: Object.values(results).map((result) => result.stepId) };
 }
