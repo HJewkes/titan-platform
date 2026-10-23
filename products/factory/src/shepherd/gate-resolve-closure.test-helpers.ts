@@ -371,11 +371,25 @@ function unitsInOrder(root: string): string[] {
   return ordered;
 }
 
+/** Parses each `.d.ts` once for every unit's program: the lib and dependency declarations they all load are the bulk of the work. */
+function declarationCachingHost(): ts.CompilerHost {
+  const host = ts.createCompilerHost(COMPILER_OPTIONS);
+  const { getSourceFile } = host;
+  const parsed = new Map<string, ts.SourceFile | undefined>();
+  host.getSourceFile = (name, version, ...rest) => {
+    if (!name.endsWith(".d.ts")) return getSourceFile(name, version, ...rest);
+    if (!parsed.has(name)) parsed.set(name, getSourceFile(name, version, ...rest));
+    return parsed.get(name);
+  };
+  return host;
+}
+
 /** The closure of every non-test source file in the repo, one program per unit so no checker holds the whole tree. */
 export function repoClosure(root: string): string[] {
   const closure = new GateResolveClosure(root);
+  const host = declarationCachingHost();
   return unitsInOrder(root).flatMap((dir) => {
     const sources = repoSources(root, dir);
-    return sources.length === 0 ? [] : closure.scan(sourceProgram(sources), sources);
+    return sources.length === 0 ? [] : closure.scan(sourceProgram(sources, host), sources);
   });
 }
