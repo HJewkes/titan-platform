@@ -41,6 +41,8 @@ structure:
 cuts: []
 hook: "Open on the concrete example or the number, never on the paper's title."
 ending: takeaways+button
+styles: { allow: [paper-margin, night-drafting] }
+voice: { id: af_bella, rate: 0.95 }
 series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]

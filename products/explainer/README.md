@@ -34,6 +34,30 @@ status) changed against the latest earlier snapshot as `opened`, `closed`, `move
 snapshot it reports only what the task dates show. Every digest id comes from its source (`pr/<repo>#<n>/<change>`,
 `session/<id>`, `task/<id>/<change>`), never a clock, and items are sorted by id. `fixtures/daily/` is synthetic.
 
+`gatherArticle` (`src/presets/article/`) is the `paper-summary` profile's gather stage. It
+reads an article or paper as markdown text, kept in a directory of its own because the source
+is untrusted, and a list of proposed claims (from a model pass or a hand edit). It writes
+`facts.jsonl` (`ArticleFactSchema`) and `rejected.json`:
+
+- A claim or number is kept only when its quote is verbatim in the text, at most
+  `QUOTE_MAX_WORDS` (25) words, and, for a number, states the value. A failing claim is kept
+  in `rejected.json` with its reason.
+- Each captioned figure or table (`Figure 2: ...`, `Table 1: ...`) whose data the text carries
+  as a markdown table becomes a `figure/<id>` fact with its series, ready to re-plot. A figure
+  held only as an image is noted `W-FIGURE-NO-DATA`; a table of text is noted `W-TABLE-TEXT`.
+
+`paperPublishEligibility` (`src/article-checks.ts`) runs the profile's `publish.checks` over a
+paper video's `beats.json` against those facts. `figures-replotted-from-data` fails any image
+in a beat's slots, a `replot` whose `source.ref` is not a figure fact id or whose points are
+not that figure's data, and any other beat citing a figure fact. `quotes-short` fails any
+quote over the limit in the slots, the narration or the on-screen text. A check it does not
+know fails the video.
+
+Passing makes a video eligible to publish, nothing more. Publishing third-party text and
+figures needs the owner's explicit ask for that one video (owner Q4 B). No code here
+publishes, and eligibility never triggers a publish. `fixtures/article/demo/` is a synthetic
+paper the tests gather.
+
 `video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
 registry under `products/explainer/doctrine/` now names the allowed beats, video types and
 audiences (`vocabulary.yaml`) and holds the craft rules (`craft/`). Type profiles (TP-2746) and
@@ -223,7 +247,10 @@ a fresh child.
 
 A variant file (`explainer.variant/v1`: `stage`, `name`, `params`) sets `model` for `script`, `model` and `rounds`
 for `rewrite`, and any declared `vars` for a bridged stage; `--variant render=w8.json` reruns render and whatever
-reads its outputs. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
+reads its outputs. A render variant may also set `stylePack` to a pack in `doctrine/style-packs/`: the pack's
+content hash joins the render key (an edit to the pack's file misses the cache), and the bridge gets `{var.stylePack}`,
+`{var.styleTheme}` (`dark` or `light`) and `{var.styleCss}` (`--pack-<slot>: var(--<token>);` per slot). No other
+stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
 `--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
 the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
 

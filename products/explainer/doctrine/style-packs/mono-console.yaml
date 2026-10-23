@@ -1,0 +1,19 @@
+# A dark pack led by the mono face: code-heavy videos where the diff is the picture.
+schema: style-pack/v1
+id: mono-console
+theme: dark
+feel: "Monospace headings over inset console panels, a green data accent for what passed, and quick reveals that land line by line."
+tokens:
+  ground: color-background-base
+  surface: color-surface-elevated
+  text: color-text-primary
+  textMuted: color-text-secondary
+  accent: color-dataviz-categorical-4
+  accentSoft: color-brand-secondary-subtle
+  rule: color-border-prominent
+  lift: material-inset-shadow
+  heading: font-family-mono
+  body: font-family-body
+  code: font-family-mono
+  duration: duration-fast
+  ease: ease-out
