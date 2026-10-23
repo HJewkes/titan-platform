@@ -1,0 +1,86 @@
+{
+  "schema": "explainer.aa-floor/v1",
+  "stage": "script",
+  "stageVersion": "x4",
+  "measuredAt": "2026-10-23T08:12:16.882Z",
+  "cases": [
+    "fixture-v4",
+    "recent-02"
+  ],
+  "samplesPerArm": 3,
+  "sigma": {
+    "register:numbers": 6.905704851787396,
+    "register:numbers-per-beat": 0.057156947667511664,
+    "register:triads": 1.1532782983015564,
+    "register:sentence-mean": 0.38906993801457673,
+    "register:sentence-cv": 0.03500416641868032
+  },
+  "rows": [
+    {
+      "row": "register:numbers",
+      "band": {
+        "min": 11.92,
+        "max": 25.62
+      },
+      "meanA": 54.1635,
+      "meanB": 62.848499999999994,
+      "diff": 8.684999999999995,
+      "sigma": 6.905704851787396,
+      "sigmaFrom": "floor",
+      "verdict": "noise"
+    },
+    {
+      "row": "register:numbers-per-beat",
+      "band": {
+        "max": 0.24
+      },
+      "meanA": 0.3520833333333333,
+      "meanB": 0.4444166666666667,
+      "diff": 0.09233333333333338,
+      "sigma": 0.057156947667511664,
+      "sigmaFrom": "floor",
+      "verdict": "noise"
+    },
+    {
+      "row": "register:triads",
+      "band": {
+        "max": 2.21
+      },
+      "meanA": 3.769666666666667,
+      "meanB": 3.5045,
+      "diff": -0.265166666666667,
+      "sigma": 1.1532782983015564,
+      "sigmaFrom": "floor",
+      "verdict": "noise"
+    },
+    {
+      "row": "register:sentence-mean",
+      "band": {
+        "min": 12.51,
+        "max": 25.82
+      },
+      "meanA": 10.400416666666667,
+      "meanB": 10.137583333333334,
+      "diff": -0.26283333333333303,
+      "sigma": 0.38906993801457673,
+      "sigmaFrom": "floor",
+      "verdict": "noise"
+    },
+    {
+      "row": "register:sentence-cv",
+      "band": {
+        "min": 0.51,
+        "max": 0.79
+      },
+      "meanA": 0.42091666666666666,
+      "meanB": 0.4241666666666667,
+      "diff": 0.0032500000000000306,
+      "sigma": 0.03500416641868032,
+      "sigmaFrom": "floor",
+      "verdict": "noise"
+    }
+  ],
+  "spentUsd": 12.2550372,
+  "runs": 12,
+  "failedRuns": 2
+}
