@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { L0_CHECKS, runL0 } from "./eval-l0.js";
+import type { SpineCandidate } from "./audition-sample.js";
+import { pickSpine } from "./audition-spine.js";
 import { ledgerCheck, ledgerRows } from "./lint-ledger.js";
 import { buildPaceBeats, type PaceSourceBeat } from "./pace-items.js";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import type { SpineLedgerRow, SpineV1 } from "./spine-schema.js";
+import { parseSpine, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 
 const source = (id: string, labels: readonly string[], kind = "job"): PaceSourceBeat => ({
   id,
@@ -133,5 +135,35 @@ describe("a profile planned against a spine", () => {
     const result = runL0(script("design-explainer"), undefined, L0_CHECKS, undefined, spine).find((r) => r.check_id === "Q-E17");
 
     expect(result?.pass).toBe(true);
+  });
+});
+
+describe("a spine made from an audition pick", () => {
+  const pick: SpineCandidate = {
+    structure: "scqa", system: null, likelihood: 0.5, sentence: "One task waits on the owner.",
+    hook: { fact: "task/DM-7/owner-gated", line: "One task waits on the owner." },
+    blocks: [
+      { id: "bottom-line", question: "What needs the owner?", facts: ["task/DM-7/owner-gated"], seconds: 20, beat: "verdict-card", covers: [] },
+      { id: "situation", question: "What shipped?", facts: ["pr/acme/parcel-desk#412/merged"], seconds: 30, beat: "list", covers: [] },
+    ],
+    payoff: "situation", signatureLayer: "layer 1", cuts: [],
+  };
+  const spine = parseSpine(pickSpine("daily-overview-scqa", pick, []));
+  const beat = (id: string, chapter: string, terms: string[]) => ({ ...scriptWith().beats[0], id, chapter, new_terms: terms });
+  const script = (first: string[], second: string[]) =>
+    ScriptSchema.parse(scriptWith({}, {
+      profile: "daily-overview",
+      chapters: [{ id: "ch1", label: "The bottom line", question: "What needs the owner?" }, { id: "ch2", label: "What shipped", question: "What shipped?" }],
+      beats: [beat("b1", "ch1", first), beat("b2", "ch2", second)],
+    }));
+  const qE17 = (s: ReturnType<typeof script>) => runL0(s, undefined, [ledgerCheck], undefined, spine).find((r) => r.check_id === "Q-E17");
+
+  // Mutation: resolving a defining chapter as no beat of the script fails every pick spine; a fact-id ledger fails the handles.
+  it("passes Q-E17 when the script names the same handles in the chapters that define them", () => {
+    expect(qE17(script(["DM-7"], ["PR 412", "DM-7"]))).toMatchObject({ pass: true });
+  });
+
+  it("fails Q-E17 on a beat that shows a handle before the chapter that defines it", () => {
+    expect(qE17(script(["PR 412"], []))).toMatchObject({ pass: false, detail_beats: ["b1"] });
   });
 });

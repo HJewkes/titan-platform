@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpineCandidate } from "./audition-sample.js";
-import { pickSpine } from "./audition-spine.js";
+import { pickSpine, spokenHandle } from "./audition-spine.js";
 import { parseSpine } from "./spine-schema.js";
 
 const PICK: SpineCandidate = {
@@ -28,9 +28,13 @@ describe("an audition pick read as a story spine", () => {
       [2, "proof", "What shows it holds?", "A scan writes one ledger row."],
     ]);
     expect(spine.chapters).toEqual([
-      { chapter: "ch1", question: "What does the change do?", rows: ["§3.1"] },
-      { chapter: "ch2", question: "What shows it holds?", rows: ["§3.2"] },
+      { chapter: "ch1", question: "What does the change do?", rows: ["§3.1"], beat: "verdict-card" },
+      { chapter: "ch2", question: "What shows it holds?", rows: ["§3.2"], beat: "proof" },
     ]);
+  });
+
+  it("names the pick's structure", () => {
+    expect(parseSpine(pickSpine("pr-overview-scqa", PICK, FACTS)).structure).toBe("scqa");
   });
 
   it("ledgers each cited fact at the chapter that first cites it", () => {
@@ -41,5 +45,33 @@ describe("an audition pick read as a story spine", () => {
       ["F2", "ch1", ["ch2"]],
       ["F3", "ch2", []],
     ]);
+  });
+
+  // Mutation: keying the ledger by fact id lists "task/DM-7/opened", which no script ever names.
+  it("ledgers a task or pull-request fact by the handle a script speaks, and keeps the fact ids to cite", () => {
+    const daily: SpineCandidate = {
+      ...PICK,
+      hook: { fact: "task/DM-7/opened", line: "One task waits on the owner." },
+      blocks: [
+        { ...PICK.blocks[0]!, facts: ["task/DM-7/opened", "pr/acme/parcel-desk#412/merged"] },
+        { ...PICK.blocks[1]!, facts: ["task/DM-7/owner-gated", "F3"] },
+      ],
+    };
+
+    const markdown = pickSpine("daily-overview-scqa", daily, FACTS);
+    const spine = parseSpine(markdown);
+
+    expect(spine.ledger.map(({ item, definedIn, reusedIn }) => [item, definedIn, reusedIn])).toEqual([
+      ["DM-7", "ch1", ["ch2"]],
+      ["PR 412", "ch1", []],
+      ["F3", "ch2", []],
+    ]);
+    expect(markdown).toContain("| DM-7 | task/DM-7/opened, task/DM-7/owner-gated |");
+  });
+});
+
+describe("the spoken handle of a fact", () => {
+  it("is the task id, PR and its number, or else the fact id itself", () => {
+    expect(["task/DM-7/closed", "pr/acme/parcel-desk#412/opened", "session/s-1", "F2"].map(spokenHandle)).toEqual(["DM-7", "PR 412", "session/s-1", "F2"]);
   });
 });
