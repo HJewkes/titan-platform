@@ -194,6 +194,20 @@ describe("linked runs of one video", () => {
     expect(repair.report.videoUsd).toBeCloseTo(firstAgain.videoUsd);
   });
 
+  it("a run whose plan predates video ids belongs to the video at the root of its base chain", async () => {
+    fx = fixture();
+    const model = fakeScriptModel();
+    const bridge = fakeBridge();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, bridge));
+    const middle = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx, model, bridge));
+    dropVideoId(middle.runId);
+
+    const last = await runVideo({ from: "sheets", base: middle.runId }, fakeHost(fx, model, bridge));
+
+    expect(last.report.videoId).toBe(first.runId);
+    expect(last.report.linked.map((r) => r.runId)).toEqual([first.runId, middle.runId]);
+  });
+
   it("a new video started with no base is not linked to an earlier one", async () => {
     fx = fixture();
     const model = fakeScriptModel();
@@ -248,3 +262,13 @@ describe("stage key", () => {
   });
 });
 
+
+/** Rewrites a run's plan as an X1 run stored it, with no video id. */
+function dropVideoId(runId: string): void {
+  const db = openState(fx.dataDir);
+  const raw = db.prepare("SELECT params FROM workflow_run WHERE id = ?").get(runId) as { params: string };
+  const params = JSON.parse(raw.params) as { plan: string };
+  const { videoId: _dropped, ...plan } = JSON.parse(params.plan) as Record<string, unknown>;
+  db.prepare("UPDATE workflow_run SET params = ? WHERE id = ?").run(JSON.stringify({ plan: JSON.stringify(plan) }), runId);
+  db.close();
+}

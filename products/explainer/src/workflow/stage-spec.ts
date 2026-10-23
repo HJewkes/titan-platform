@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
+import { canonicalJson } from "../eval-store.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { sha256 } from "./artifacts.js";
 import type { BridgeFile } from "./bridge.js";
@@ -54,16 +55,6 @@ export interface RunSettings {
   scriptModel: string;
   judge: JudgeConfig;
   rounds: number;
-}
-
-/** JSON with sorted keys at every depth, so equal values hash equal whatever order they were built in. */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 /** `sha(stage, definition version, config with the variant, the inputs the stage reads, sample)`: never the outputs, which TTS does not reproduce byte for byte. */
