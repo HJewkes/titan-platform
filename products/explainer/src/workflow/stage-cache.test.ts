@@ -10,6 +10,8 @@ import { newRuntime, openState, resumeVideo, runOneStage, runVideo, writeReport 
 import { compareReports } from "./report.js";
 import { runStageCached } from "./stage-cache.js";
 import { stageSpec, type RunSettings } from "./stage-spec.js";
+import { stylePack } from "../profile-fixtures.test-helpers.js";
+import type { StylePack } from "../style-pack-schema.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
@@ -40,6 +42,21 @@ describe("stage cache over whole runs", () => {
     expect(model.prompts).toHaveLength(1);
     expect(second.report.totals.usd).toBe(0);
     expect(row(second, "render").outputs.mp4).not.toBe(row(first, "render").outputs.mp4);
+  });
+
+  it("a new style pack reruns render and what reads it, never tts", async () => {
+    fx = fixture();
+    const model = fakeScriptModel();
+    const bridge = fakeBridge();
+    await runVideo({ spine: fx.spine, facts: fx.facts, variants: { render: variantFile("render", "drafting", { stylePack: "night-drafting" }) } }, fakeHost(fx, model, bridge));
+    bridge.calls.length = 0;
+
+    const second = await runVideo({ spine: fx.spine, facts: fx.facts, variants: { render: variantFile("render", "paper", { stylePack: "paper-margin" }) } }, fakeHost(fx, model, bridge));
+
+    expect(second.status, second.error).toBe("completed");
+    expect(statuses(second)).toMatchObject({ script: "cached", tts: "cached", render: "ran" });
+    // The fake render writes the same MP4 for any pack, so QA and sheets, keyed on its sha, hit the cache.
+    expect(bridge.calls).toEqual(["render.ts"]);
   });
 
   it("a stage's wall time spans its body, read from the clock after the body returns", async () => {
@@ -320,6 +337,31 @@ describe("stage key", () => {
     const variant = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "typo", params: { wokers: 8 } } };
 
     expect(() => keyOf({ variant })).toThrow(/sets wokers/);
+  });
+
+  it("a render key changes with the style pack's content under the same variant file", () => {
+    const variant = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "plain", params: { stylePack: "plain" } } };
+    const packs = (pack: StylePack) => () => new Map([["plain", pack]]);
+    const edited = { ...stylePack("plain"), tokens: { ...stylePack("plain").tokens, lift: "lift-4" } };
+
+    expect(keyOf({ variant, stylePacks: packs(edited) })).not.toBe(keyOf({ variant, stylePacks: packs(stylePack("plain")) }));
+  });
+
+  it("hands the bridge the pack's id, theme and CSS as vars", () => {
+    const variant = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "plain", params: { stylePack: "plain", workers: 8 } } };
+    const spec = stageSpec({ stage: "render", artifacts: { words: "a".repeat(64) }, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: () => BRIDGE("4"), variant, stylePacks: () => new Map([["plain", stylePack("plain")]]) });
+
+    expect(spec.config.vars).toMatchObject({ workers: "8", stylePack: "plain", styleTheme: "dark" });
+    expect(spec.config.vars?.styleCss).toContain("--pack-accent: var(--color-brand-primary);");
+  });
+
+  it("refuses a style pack on any stage but render, and a pack with no file", () => {
+    const tts = { schema: "explainer.variant/v1" as const, stage: "tts" as const, name: "styled", params: { stylePack: "night-drafting" } };
+    const ttsBridge = () => BridgeFileSchema.parse({ ...BRIDGE("4"), stages: { tts: { outputs: {}, commands: [{ argv: ["t"] }] } } });
+    const loud = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "loud", params: { stylePack: "loud" } } };
+
+    expect(() => stageSpec({ stage: "tts", artifacts: {}, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: ttsBridge, variant: { sha: "c".repeat(64), value: tts } })).toThrow(/only a render variant/);
+    expect(() => keyOf({ variant: loud })).toThrow(/unknown style pack loud/);
   });
 
   it("an eval key changes with the judge, since eval scores the cold-viewer rows with it", () => {
