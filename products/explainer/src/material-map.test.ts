@@ -60,6 +60,17 @@ describe("material map signals and fits", () => {
     expect(holding(mapOf(factsOf(["Review took 2 rounds."])))).not.toContain("many-review-rounds");
   });
 
+  it("an attempt with no failure is not a failed attempt", () => {
+    expect(holding(mapOf(factsOf(["We tried a global lock."])))).not.toContain("attempts-failed");
+  });
+
+  it("five status items among many other facts are not a status report", () => {
+    const items = [1, 2, 3, 4, 5].map((n) => `TP-${n} is on track.`);
+    const others = [1, 2, 3, 4, 5, 6].map((n) => `Table ${n} keeps records.`);
+
+    expect(holding(mapOf(factsOf([...items, ...others])))).not.toContain("status-report");
+  });
+
   it("a method cue with no number is not an experiment", () => {
     expect(holding(mapOf(factsOf(["We measured it by hand once."])))).not.toContain("experiment");
   });
