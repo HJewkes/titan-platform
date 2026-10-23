@@ -1,5 +1,5 @@
 export { StoryboardSchema, beatNumber, type Beat, type Storyboard } from "./storyboard.js";
-export { DigestSchema, type Digest } from "./digest.js";
+export { DigestSchema, type Digest, type DigestItem } from "./digest.js";
 export { LexiconSchema, lexiconEntriesFor, type Lexicon, type LexiconEntry } from "./lexicon.js";
 export {
   DEFAULT_PACKET_MAX_BYTES,
@@ -33,3 +33,4 @@ export * from "./speech-exports.js";
 export * from "./doctrine-exports.js";
 export * from "./rewrite-exports.js";
 export * from "./workflow/index.js";
+export * from "./presets/daily/index.js";
