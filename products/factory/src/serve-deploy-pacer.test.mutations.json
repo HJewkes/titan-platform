@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sweep never reads deploy-window.json",
+      "file": "products/factory/src/deploy-pacer-sweep.ts",
+      "find": "      deployWindow: () => readDeployWindow(stateDir),\n",
+      "replace": "",
+      "kills": [
+        "serve's deploy pacer sweep keeps a wanted sha the running build descends from while deploy-window.json shows that build still in its health watch"
+      ]
+    }
+  ]
+}
