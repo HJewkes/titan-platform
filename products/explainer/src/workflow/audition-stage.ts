@@ -3,7 +3,7 @@ import { agentRunner, type StepRunOutcome } from "@titan-design/workflow";
 import { auditionPool, type AuditionPool } from "../audition-pool.js";
 import { auditionNotes, auditionRecord, rubricCandidate, skippedRows, withoutSkipped, type AuditionCandidate } from "../audition-record.js";
 import { checkSample, samplePrompt, sampleRetryPrompt, slotBlocks, type SampleContext, type SpineCandidate } from "../audition-sample.js";
-import { codeScores, type ScoreContext } from "../audition-score.js";
+import { capFindings, codeScores, type ScoreContext } from "../audition-score.js";
 import { loadDoctrine } from "../doctrine-load.js";
 import { readColdRubric, scoreCandidates, type ColdRubricResult } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig } from "../eval-harness.js";
@@ -92,9 +92,13 @@ function candidatesOf(spines: readonly SpineCandidate[], pool: AuditionPool, set
   return spines.map((spine, i) => {
     const slot = pool.slots[i]!;
     const id = `c${i + 1}`;
-    const { scores, tension } = codeScores(spine, structureFor(set.structures, slot.structure), ctx);
+    const structure = structureFor(set.structures, slot.structure);
+    const { scores, tension } = codeScores(spine, structure, ctx);
     const skipped = skippedRows(rubricCandidate(id, spine));
-    return { id, structure: slot.structure, system: slot.system, basis: slot.basis, likelihood: spine.likelihood, spine, scores, tension, rubric: withoutSkipped(rubric[i] ?? null, skipped), skipped };
+    return {
+      id, structure: slot.structure, system: slot.system, basis: slot.basis, likelihood: spine.likelihood, spine, scores, tension, rubric: withoutSkipped(rubric[i] ?? null, skipped), skipped,
+      findings: capFindings(spine, structure, ctx),
+    };
   });
 }
 

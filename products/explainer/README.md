@@ -329,7 +329,9 @@ for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` ca
   the fact ids the hook and blocks cite, never the spine's own `covers` tags: the share of anchor facts placed (the
   pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged
   with the share of coverage items a cited fact evidences by cue (`COVERAGE_CUES`), over the items some fact in the
-  pack evidences. Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
+  pack evidences. A block with a `maxItems` cap in its structure (countdown: five) earns anchor credit for its first
+  `maxItems` anchor facts only, and the candidate's `findings` in `audition.json` and the stage notes name the excess.
+  Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
   each block to the profile's target runtime and holds it to the profile's `reHookS` ceiling, or to the block's own
   band when the profile bands it longer: supports (60 to 120 s) and countdown (90 to 150 s) are runs of items, each
   its own re-hook. Range: distinct lead beats over blocks, until the resolver (PP-6) can say what it would draw.

@@ -32,6 +32,8 @@ export interface AuditionCandidate {
   /** The cold-viewer rows J8 to J12, reported only, less any skipped row; null when the judge could not score. */
   rubric: ColdRubricResult | null;
   skipped: SkippedRow[];
+  /** What the code scoring found wrong with the spine, e.g. a block citing more anchor facts than its cap. */
+  findings: string[];
 }
 
 export interface AuditionRecord {
@@ -106,7 +108,7 @@ const label = (n: AuditionRecord["runnerUp"]) => `${n.candidate} ${n.structure}$
 
 /** The stage notes, which the run report and the render notes carry: the pick, the runner-up by name, and why the pool is what it is. */
 export function auditionNotes(record: AuditionRecord): string[] {
-  const skips = (c: AuditionCandidate) => c.skipped.map((s) => `; ${s.dim} skipped: ${s.reason}`).join("");
+  const skips = (c: AuditionCandidate) => c.skipped.map((s) => `; ${s.dim} skipped: ${s.reason}`).join("") + c.findings.map((f) => `; finding: ${f}`).join("");
   const unscored = `cold rubric (reported only): not scored${record.rubricError ? `, ${record.rubricError}` : ""}`;
   const rubric = record.candidates.map((c) => `${c.id}: ${c.rubric ? rubricNote(c.rubric) : unscored}${skips(c)}`);
   return [

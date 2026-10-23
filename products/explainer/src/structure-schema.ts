@@ -20,7 +20,8 @@ const FitSchema = z
   .strict()
   .refine((fit) => fit.all.length + fit.any.length > 0, "a fit predicate names at least one signal in all or any");
 
-const StructureBlockSchema = z.object({ id: Kebab, goal: z.string().min(1), share: z.number().gt(0).max(1) }).strict();
+/** `maxItems` is the block's own cap on parallel items (countdown: at most five); the audition checks it, the goal text only says it. */
+const StructureBlockSchema = z.object({ id: Kebab, goal: z.string().min(1), share: z.number().gt(0).max(1), maxItems: z.number().int().positive().optional() }).strict();
 
 /** One section of the structure's story spine: the planner fills it before it writes beats. */
 const SpineSectionSchema = z.object({ title: z.string().min(1), body: z.string().min(1) }).strict();
