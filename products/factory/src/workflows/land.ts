@@ -254,13 +254,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
 function afterMerge(merge: z.infer<typeof MergeResultResult>, ci: CiSnapshot, check: BaseCheck, state: LandState): LandOutcome | undefined {
   // The port answers "" for a PR merged elsewhere with no merge commit named.
   if (merge.done || merge.skipped === "merged") {
-    return {
-      kind: "merged",
-      headSha: ci.headSha,
-      mergeSha: merge.mergeSha || null,
-      ...landedOf(check, ci.headSha),
-      ...(merge.done && { own: true as const }),
-    };
+    return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha), ...(merge.done && { own: true as const }) };
   }
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
   if (merge.skipped === "held") state.helds++;
