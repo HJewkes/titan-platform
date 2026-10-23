@@ -2,7 +2,9 @@ import { tmpdir } from "node:os";
 import { z } from "zod";
 import { agentRunner, type AgentRunnerOptions, type LegacyStepRunner, type StepRunOutcome, type StepUsage } from "@titan-design/workflow";
 import { L0_CHECKS, l0HardPass, failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
+import { readColdRubric, rubricBeatsFromPace, rubricNote, runColdRubric } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
+import { canonicalSha } from "../eval-store.js";
 import { guidePlan } from "../guide-plan.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
@@ -216,8 +218,29 @@ export async function runRewriteStage(input: ModelStageInput, deps: RewriteStage
 
 const verdict = (name: string, rows: readonly L0Result[]) => ({ name, pass: l0HardPass(rows), detail: `${rows.length} checks; failed: ${failedChecks(rows).join(", ") || "none"}` });
 
+export interface EvalStageDeps {
+  judge: JudgeConfig;
+  harnessFor?: HarnessFor;
+}
+
+/**
+ * The cold-viewer rows J8 to J12 on the final script. Reported only (owner answer Q5 A): they add a note and an artifact,
+ * never a check, so no score and no judge failure can fail the stage.
+ */
+async function reportColdRubric(input: ModelStageInput, script: ScriptV1, deps: EvalStageDeps): Promise<Pick<StageOutcome, "outputs" | "usage" | "notes">> {
+  const beats = rubricBeatsFromPace(fromScriptV1(script));
+  const harness = (deps.harnessFor ?? createJudgeHarness)(deps.judge);
+  try {
+    const result = await runColdRubric({ subjectSha: canonicalSha(script), beats, rubric: readColdRubric(), series: [], judge: deps.judge, harness, run: 1 });
+    const usage: StageUsage = { usd: result.spend.usd, inputTokens: result.spend.tokensIn, outputTokens: result.spend.tokensOut, cacheReadTokens: 0, calls: 1 };
+    return { outputs: { "cold-rubric": putJson(input, result, "cold-rubric") }, usage, notes: [rubricNote(result)] };
+  } catch (error) {
+    return { outputs: {}, notes: [`cold rubric (reported only): not scored, ${error instanceof Error ? error.message : String(error)}`] };
+  }
+}
+
 /** L0 with the spine lints, and pace, on the final script. An error-severity failure stops the run here. */
-export function runEvalStage(input: ModelStageInput, l0Checks: readonly L0Check[] = L0_CHECKS): StageOutcome {
+export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, l0Checks: readonly L0Check[] = L0_CHECKS): Promise<StageOutcome> {
   const script = readScript(input, "script");
   const spine = parseSpine(input.store.readText(need(input, "spine")));
   const l0 = runL0(script, undefined, l0Checks, undefined, spine);
@@ -225,5 +248,6 @@ export function runEvalStage(input: ModelStageInput, l0Checks: readonly L0Check[
   const checks = [verdict("l0", l0), verdict("pace", pace)];
   const red = checks.filter((check) => !check.pass);
   if (red.length > 0) throw new Error(`eval: ${red.map((check) => `${check.name} ${check.detail}`).join("; ")}`);
-  return { outputs: { l0: putJson(input, { l0, pace }, "eval-rows") }, checks };
+  const rubric = await reportColdRubric(input, script, deps);
+  return { ...rubric, outputs: { l0: putJson(input, { l0, pace }, "eval-rows"), ...rubric.outputs }, checks };
 }

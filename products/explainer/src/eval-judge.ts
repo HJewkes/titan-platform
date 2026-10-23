@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { canonicalSha } from "./eval-store.js";
-import { EvidenceSchema, beatTexts, evalVersion, formatEvidence, renderBeat, voidReason, type Evidence } from "./eval-evidence.js";
+import { EvidenceSchema, beatTexts, evalVersion, formatEvidence, renderBeat, scriptRubricParts, voidReason, type Evidence } from "./eval-evidence.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import type { EvalBeat } from "./eval-view.js";
 
@@ -81,8 +81,9 @@ export interface L1Result {
   spend: { usd: number; tokensIn: number; tokensOut: number };
 }
 
+// The reported rows (J8 to J12) are scored by a call of their own, so they stay out of judge A's prompt and version.
 export const l1EvalVersion = (rubrics: L1Rubrics, judge: JudgeConfig): string =>
-  evalVersion(L1_EVAL_ID, `${rubrics.beat}\n${rubrics.script}`, judge, L1_CANARIES);
+  evalVersion(L1_EVAL_ID, `${rubrics.beat}\n${scriptRubricParts(rubrics.script).core}`, judge, L1_CANARIES);
 
 function canaryBeat(canary: Canary, scriptSha: string, chapter: number): EvalBeat {
   const visual = { map_id: null, mode: "none" as const, you_are_here: null, nodes_shown: [], edges_shown: [], state_changes: [], labels: [], chips: [] };
@@ -140,7 +141,7 @@ async function judgeChapter(input: L1Input, ids: readonly string[], chapter: num
 }
 
 async function judgeScript(input: L1Input) {
-  const prompt = beatPrompt(input.rubrics.script, input.beats);
+  const prompt = beatPrompt(scriptRubricParts(input.rubrics.script).core, input.beats);
   const reply = await input.harness({ prompt, schema: ScriptCallSchema });
   const texts = beatTexts(input.beats, "SV");
   const verdicts = SCRIPT_DIMS.map((dim) => {

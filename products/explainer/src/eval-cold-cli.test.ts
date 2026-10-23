@@ -7,6 +7,7 @@ import { readRubric } from "./eval-evidence.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
+import { fakeRubricJudge, routeRubric } from "./cold-rubric-fakes.test-helpers.js";
 
 const spikeBeat = (id: string, chapter: string, spoken: string, titles: string[]) => ({ id, chapter, function: "EXPLAIN", plannedS: 12, spoken, visual: { titles } });
 /** An invented parcel desk in two chapters. */
@@ -22,12 +23,12 @@ const TERMS_RUBRIC = readRubric("l1-cold-terms.md");
 
 /**
  * A viewer that admits it was told nothing, so the canary passes; `guess` makes it answer every question. Asked for
- * the terms it cannot define, its nth call names `terms[n]`.
+ * the terms it cannot define, its nth call names `terms[n]`. `rubric` judges the reported J8 to J12 call.
  */
-function fakeViewer(options: { guess?: boolean; terms?: string[][] } = {}) {
+function fakeViewer(options: { guess?: boolean; terms?: string[][]; rubric?: JudgeHarness } = {}) {
   const calls: string[] = [];
   const termCalls: string[] = [];
-  const harness: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+  const viewer: JudgeHarness = async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
     if (prompt.startsWith(TERMS_RUBRIC)) {
       termCalls.push(prompt);
       return { ok: true, output: schema.parse({ terms: options.terms?.[termCalls.length - 1] ?? [] }), usd: 0.03, tokensIn: 500, tokensOut: 20 };
@@ -37,7 +38,7 @@ function fakeViewer(options: { guess?: boolean; terms?: string[][] } = {}) {
     const answer = (qid: string) => ({ qid, not_stated: !options.guess, what: "", what_quotes: [], why: "", why_quotes: [], odd_one_out: null });
     return { ok: true, output: schema.parse({ answers: qids.map(answer), summary: "A parcel desk." }), usd: 0.01, tokensIn: 200, tokensOut: 40 };
   };
-  return { harness, calls, termCalls };
+  return { harness: routeRubric(options.rubric ?? fakeRubricJudge().harness, viewer), calls, termCalls };
 }
 
 let dir: string;
@@ -92,7 +93,7 @@ describe("explainer eval cold", () => {
       ["ch2", "0.2", "1", "5"],
     ]);
     const relay = expect.stringMatching(/^relay-[0-9a-f]{6}$/);
-    expect(evalRows("canaries.tsv").map((r) => [r.eval_id, r.canary, r.got, r.pass])).toEqual([
+    expect(evalRows("canaries.tsv").filter((r) => r.eval_id === "L1-cold").map((r) => [r.eval_id, r.canary, r.got, r.pass])).toEqual([
       ["L1-cold", relay, "not_stated", "true"],
       ["L1-cold", relay, "not_stated", "true"],
     ]);
@@ -125,7 +126,7 @@ describe("explainer eval cold", () => {
     const code = await cold(fakeViewer({ guess: true }).harness, "sonnet", "--runs", "1");
 
     expect(code).toBe(1);
-    expect(evalRows("canaries.tsv").map((r) => r.pass)).toEqual(["false", "false"]);
+    expect(evalRows("canaries.tsv").filter((r) => r.eval_id === "L1-cold").map((r) => r.pass)).toEqual(["false", "false"]);
     expect(runRecords()).toHaveLength(1);
   });
 
@@ -175,5 +176,40 @@ describe("explainer eval cold", () => {
 
     expect(code).toBe(2);
     expect(viewer.calls).toEqual([]);
+  });
+});
+
+describe("explainer eval cold: the reported J8 to J12 rows", () => {
+  const rubricRows = () => evalRows("cold-rubric-scores.tsv");
+
+  it("writes each run's five rows with their quotes, a canary row and a run record", async () => {
+    await cold(fakeViewer().harness, "sonnet", "--runs", "2");
+
+    expect(rubricRows().map((r) => [r.run, r.dim, r.score, r.evidence])).toEqual(
+      // The fixture opens on what the desk does, with no stake, so the fake judge marks motivation down.
+      ["1", "2"].flatMap((run) => ["J8", "J9", "J10", "J11", "J12"].map((dim) => [run, dim, dim === "J8" ? "1" : "4", "c1-1:The desk scans,"])),
+    );
+    expect(evalRows("canaries.tsv").filter((r) => r.eval_id === "L1-cold-rubric").map((r) => r.pass)).toEqual(["true", "true"]);
+    expect(allRecords().filter((r) => r.eval_id === "L1-cold-rubric").map((r) => r.run)).toEqual([1, 2]);
+  });
+
+  // Mutation: folding the rubric's trust into evalCold's return value turns these rows into a gate and fails this test.
+  it.each([
+    ["scores every row 1 and misses its canary", fakeRubricJudge({ score: 1, lenient: true }).harness],
+    ["fails its call", (async () => ({ ok: false, reason: "timeout", usd: 0, tokensIn: 0, tokensOut: 0 })) as JudgeHarness],
+    ["throws", (async () => { throw new Error("spawn failed"); }) as JudgeHarness],
+  ])("exits 0 when the rubric judge %s, since the rows are reported only", async (_, rubric) => {
+    const code = await cold(fakeViewer({ rubric }).harness, "sonnet", "--runs", "1");
+
+    expect(code).toBe(0);
+  });
+
+  it("lists the earlier videos given by --series in the novelty row's prompt", async () => {
+    const rubric = fakeRubricJudge();
+    const earlier = write("earlier.json", scriptWith());
+
+    await cold(fakeViewer({ rubric: rubric.harness }).harness, "sonnet", "--runs", "1", "--series", earlier);
+
+    expect(rubric.calls[0]).toContain(`1. ${scriptWith().video.promise}`);
   });
 });
