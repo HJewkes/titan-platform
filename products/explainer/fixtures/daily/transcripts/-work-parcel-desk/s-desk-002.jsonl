@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"s-desk-002","timestamp":"2026-03-11T22:40:00.000Z","message":{"role":"user","content":"Retry the failed scans."}}
+{"type":"ai-title","sessionId":"s-desk-002","timestamp":"2026-03-11T22:40:05.000Z","aiTitle":"Retry failed scans"}
+{"type":"assistant","sessionId":"s-desk-002","timestamp":"2026-03-12T00:20:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Retries are queued."}]}}

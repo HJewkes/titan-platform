@@ -1,0 +1,39 @@
+{
+  "schema": "task-snapshot/v1",
+  "initiative": "demo",
+  "day": "2026-03-10",
+  "tasks": [
+    {
+      "id": "DM-1",
+      "title": "Wire the parcel scanner",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": null
+    },
+    {
+      "id": "DM-2",
+      "title": "Draft the label printer spec",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": null
+    },
+    {
+      "id": "DM-3",
+      "title": "Pick a courier for overnight runs",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": null
+    },
+    {
+      "id": "DM-4",
+      "title": "Retry failed scans",
+      "status": "open",
+      "tags": [],
+      "created": "2026-03-01",
+      "done_at": null
+    }
+  ]
+}
