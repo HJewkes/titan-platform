@@ -3,7 +3,6 @@ import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_P
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
-import { CUE_KIND_ROLES, fromScriptV1 } from "./pace-items.js";
 import type { ScriptV1 } from "./script-schema.js";
 
 type Hint = (script: ScriptV1, row: L0Result) => string | undefined;
@@ -40,28 +39,10 @@ function plainOpeningHint(script: ScriptV1): string | undefined {
   return `the first identifier the voice says is "${first.word}" in ${first.beat}, after ${percent(first.share)} of the words (needs ${percent(MIN_PLAIN_SHARE)}); say it in plain words there, or name it later`;
 }
 
-const projectionFault = (script: ScriptV1, beat: ScriptV1["beats"][number]): string | undefined => {
-  try {
-    fromScriptV1({ ...script, beats: [beat] });
-    return undefined;
-  } catch (error) {
-    return `${beat.id}: ${(error instanceof Error ? error.message : String(error)).replace(/: add it to CUE_KIND_ROLES$/, "")}`;
-  }
-};
-
-/** One beat the item track cannot read fails these rows on every beat, so the repair hears the beat and the cause. */
-function itemTrackHint(script: ScriptV1): string | undefined {
-  const faults = script.beats.flatMap((beat) => projectionFault(script, beat) ?? []);
-  if (faults.length === 0) return undefined;
-  return `the item track cannot read ${faults.join("; ")}. A cue target is kind:label, with kind one of ${Object.keys(CUE_KIND_ROLES).join(", ")}; fix those cues and this row is measured again`;
-}
-
 function headlineHint(script: ScriptV1): string {
   const named = overlongHeadlines(script.beats).map((beat) => `${beat.id} "${beat.visual.assertion}" (${headlineLines(beat.visual.assertion)} lines)`);
   return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
 }
-
-const ITEM_TRACK_ROWS = ["Q-E7", "Q-E9", "Q-E11", "Q-E16", "Q-E17"] as const;
 
 const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F1": linkHint,
@@ -71,7 +52,6 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
   "Q-V13": headlineHint,
-  ...Object.fromEntries(ITEM_TRACK_ROWS.map((id) => [id, itemTrackHint])),
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */

@@ -70,14 +70,6 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(script, "Q-V13")).toBe(`headlines past the band: w2 "${headline}" (3 lines). The band shows 2 lines of about 55 characters; shorten each to fit`);
   });
 
-  it("names the beat and cue the item track cannot read, for the ledger and pace rows that unreadable beat fails everywhere", () => {
-    const script = tour(withBeat("w2", { extra: { visual: { assertion: "The desk holds the scan", job: "numbers", cues: [{ action: "V6", target: "runner", atCue: "holds" }] } } }));
-    const hint = repairHint(failing(script, "Q-E17"), script);
-
-    expect(hint).toMatch(/^the item track cannot read w2: unknown cue kind "runner"\. A cue target is kind:label, with kind one of job, inv,/);
-    expect(repairHint(failing(script, "Q-E16"), script)).toBe(hint);
-  });
-
   it("gives no hint for a row whose beats and value already say what to fix", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 

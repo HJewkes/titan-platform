@@ -70,6 +70,20 @@ describe("explainer run", () => {
     expect(row(result, "script")).toMatchObject({ retries: 1, calls: 2, usd: 0.1 });
   });
 
+  // Mutation: dropping the cue-kind check from `checked` accepts the reply, so there is no retry and the prompt never names the kind.
+  it("rejects a reply whose cue target kind is unknown, and the retry names the kind and the beat", async () => {
+    fx = fixture();
+    const script = choppy();
+    const unknownKind = { ...script, beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, visual: { ...beat.visual, cues: [{ action: "V6", target: "recipe-script:plan", atCue: "courier" }] } } : beat)) };
+    const model = fakeScriptModel(script, { invalid: 1, invalidReply: unknownKind });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toContain(`cue target kind "recipe-script" in ${script.beats[0]!.id} is not one of job, inv,`);
+  });
+
   // Mutation: returning the issue text for an unrecognized-keys-only reply (no strip) fails the stage after the retry.
   it("drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry", async () => {
     fx = fixture();

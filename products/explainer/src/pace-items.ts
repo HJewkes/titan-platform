@@ -92,6 +92,16 @@ export function cueKindRole(kind: string): PaceRole {
   return role;
 }
 
+/** The kind half of a `kind:label` cue target; a target with no colon is its own kind. */
+export const cueTargetKind = (target: string): string => {
+  const colon = target.indexOf(":");
+  return colon < 0 ? target : target.slice(0, colon);
+};
+
+/** The kinds of a beat's cue targets that CUE_KIND_ROLES lacks; a beat spec's cues name element ids, so they have none. */
+export const unknownCueKinds = (beat: Pick<ScriptBeat, "visual">): string[] =>
+  beat.visual.beat !== undefined ? [] : beat.visual.cues.map((cue) => cueTargetKind(cue.target)).filter((kind) => !Object.hasOwn(CUE_KIND_ROLES, kind));
+
 interface Cued {
   label: string;
   atCue?: string;
@@ -135,9 +145,8 @@ function emphasisItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
 function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
   if (beat.emphasisCues) return emphasisItems(beat, atS);
   return beat.cues.flatMap(({ target, atCue }) => {
-    const colon = target.indexOf(":");
-    const kind = colon < 0 ? target : target.slice(0, colon);
-    const label = colon < 0 ? target : target.slice(colon + 1);
+    const kind = cueTargetKind(target);
+    const label = target.includes(":") ? target.slice(kind.length + 1) : target;
     const role = cueKindRole(kind);
     return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
