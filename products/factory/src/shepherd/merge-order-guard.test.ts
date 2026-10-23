@@ -11,10 +11,12 @@ import { MergeOrder, fileRules, type MergeOrderRule, type MergeOrderRules } from
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { ShepherdStore, shepherdStoreRef } from "./store.js";
+import { mergeTrainRef, type MergeTrainRef } from "./train.js";
 
 const REPO = "hjewkes/titan-platform";
 const AT = Date.parse("2026-10-23T10:00:00.000Z");
 const ON: MergeOrderRules = () => ({ enabled: true, ttlMinutes: 120, ignore: [".changeset/**"] }) satisfies MergeOrderRule;
+const OFF: MergeOrderRules = () => ({ enabled: false, ttlMinutes: 120, ignore: [".changeset/**"] }) satisfies MergeOrderRule;
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const SHARED = "products/explainer/CAPABILITY.md";
 const StepOutput = z.looseObject({ result: z.unknown() });
@@ -120,12 +122,12 @@ describe("the merge-order guard", () => {
     expect(await reasonFor(r)).toBeUndefined();
   });
 
-  it("reads nothing at all under the shipped rule file, which leaves every repo unordered", async () => {
+  it("reads nothing at all for a repo the shipped rule file leaves unordered", async () => {
     const r = rig();
     r.fake.calls.length = 0;
     const guard = mergeOrderGuard({ order: () => { throw new Error("the store was read"); }, registrations: () => r.store, rules: fileRules, now: () => r.clock.now });
 
-    expect(await guard.reason(r.port, REPO, 2310, "main", HEADS[2310], "topic-2310")).toBeUndefined();
+    expect(await guard.reason(r.port, "octo/other", 2310, "main", HEADS[2310], "topic-2310")).toBeUndefined();
     expect(r.fake.calls).toEqual([]);
   });
 });
@@ -137,23 +139,43 @@ describe("a merge step behind a merge-order reservation", () => {
   /** Bounds a merge step that never stops waiting, so it fails on its result instead of polling forever. */
   const MAX_WAITS = 5;
 
-  /** Runs #2310's merge step once; the first wait marks #2301 merged, which ends the reservation. */
-  async function mergeStep(rules?: MergeOrderRules): Promise<{ fake: FakeGitHub; result: unknown; waits: number }> {
+  interface MergeRig {
+    fake: FakeGitHub;
+    train: MergeTrainRef;
+    runs: WorkflowRunStore;
+    waits: () => number;
+    /** Runs one merge step for `pr` as `runId`'s; the result, or the failure. */
+    merge: (runId: string, pr: number, sha: string, workflowName?: string) => Promise<unknown>;
+  }
+
+  /** #2301 reserves the shared file and #2310 changes it; the first wait marks #2301 merged, which ends the reservation. */
+  function mergeRig(rules: MergeOrderRules): MergeRig {
     const fake = fakeGitHub({ repo: REPO });
     const store = shepherdStoreRef();
+    const train = mergeTrainRef();
     let waits = 0;
     const sleep = async () => {
       if (++waits > MAX_WAITS) throw new Error(`still held after ${MAX_WAITS} waits`);
       fake.pr(2301).merged = true;
     };
-    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => AT + 60_000, sleep, registry: async () => "trusted" as const, ...(rules && { mergeOrderRules: rules }) });
+    const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, train, now: () => AT + 60_000, sleep, registry: async () => "trusted" as const, mergeOrderRules: rules });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [landPrWorkflow()], routes, gatePollMs: 5 });
     hosts.push(host);
-    seed(fake, store.get(), new MergeOrder(host.db), new WorkflowRunStore(host.db), [file(SHARED)]);
-    const merge = routes.find((route) => route.match === "merge")!;
-    const prompt = JSON.stringify({ repo: REPO, pr: 2310, sha: HEADS[2310], method: "squash", taskIds: [], base: "main" });
-    const out = await merge.runner.run({ runId: "run-y", workflowName: "land-pr", stepId: "merge", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "merge" });
-    return { fake, result: out.ok ? StepOutput.parse(JSON.parse(out.output)).result : out, waits };
+    const runs = new WorkflowRunStore(host.db);
+    seed(fake, store.get(), new MergeOrder(host.db), runs, [file(SHARED)]);
+    const route = routes.find((r) => r.match === "merge")!;
+    const merge = async (runId: string, pr: number, sha: string, workflowName = "land-pr") => {
+      const prompt = JSON.stringify({ repo: REPO, pr, sha, method: "squash", taskIds: [], base: "main" });
+      const out = await route.runner.run({ runId, workflowName, stepId: "merge", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "merge" });
+      return out.ok ? StepOutput.parse(JSON.parse(out.output)).result : out;
+    };
+    return { fake, train, runs, waits: () => waits, merge };
+  }
+
+  async function mergeStep(rules: MergeOrderRules): Promise<{ fake: FakeGitHub; result: unknown; waits: number }> {
+    const r = mergeRig(rules);
+    const result = await r.merge("run-y", 2310, HEADS[2310]);
+    return { fake: r.fake, result, waits: r.waits() };
   }
 
   it("waits in the merge step and answers held, merging nothing, while an overlapping reservation is live", async () => {
@@ -164,11 +186,25 @@ describe("a merge step behind a merge-order reservation", () => {
     expect(fake.effects.merge).toBe(0);
   });
 
-  it("merges at once under the shipped rule file, as it did before merge order existed", async () => {
-    const { fake, result, waits } = await mergeStep();
+  it("merges at once with merge order off, as it did before merge order existed", async () => {
+    const { fake, result, waits } = await mergeStep(OFF);
 
     expect(waits).toBe(0);
     expect(result).toMatchObject({ done: true });
     expect(fake.effects.merge).toBe(1);
+  });
+
+  it("lets the next run take the merge train while the holder's own merge waits behind a reservation (gaveUp)", async () => {
+    const r = mergeRig(ON);
+    running(r.runs, "run-y");
+    r.train.get().take(REPO, "run-y", 2310, null);
+    r.fake.addPr({ number: 2320, headSha: fakeSha("order-w") });
+    r.fake.prFiles.set(2320, [file("src/w.ts")]);
+
+    const result = await r.merge("run-w", 2320, fakeSha("order-w"), "shepherd-pr");
+
+    expect(r.waits()).toBe(0);
+    expect(r.train.get().holder(REPO)?.runId).toBe("run-w");
+    expect(result).toMatchObject({ done: false, skipped: "train" });
   });
 });

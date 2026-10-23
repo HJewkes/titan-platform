@@ -25,7 +25,7 @@ function reasonOf({ reservation, shared }: Blocker): string {
 }
 
 /** A failed read keeps the reservation blocking; its TTL still ends it. */
-async function stillOpen(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
+export async function stillOpen(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
   const read = await port.getPr(repo, pr).catch(() => undefined);
   return read === undefined || (read.state === "open" && !read.merged);
 }

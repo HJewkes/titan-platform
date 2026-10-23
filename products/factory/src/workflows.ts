@@ -38,6 +38,7 @@ import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { retryingGhServerErrors } from "./shepherd/gh-retry.js";
 import { mergeOrderGuard } from "./shepherd/merge-order-guard.js";
+import { mergeOrderRoutes } from "./shepherd/merge-order-steps.js";
 import { fileRules, mergeOrderMigration, mergeOrderRef, type MergeOrderRules } from "./shepherd/merge-order.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
@@ -169,7 +170,8 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const pause = deps.sleep ?? sleep;
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const order = mergeOrderRef();
-  const ordered = mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: deps.mergeOrderRules ?? fileRules, now: deps.now });
+  const orderRules = deps.mergeOrderRules ?? fileRules;
+  const ordered = mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: orderRules, now: deps.now });
   const adversary = adversaryGuard({ store: holds, carry: (input) => carry(input, deps.review?.carry) });
   const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, ordered);
   const satisfy = holdSatisfierFor(deps);
@@ -188,7 +190,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }) };
-  return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
+  return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */

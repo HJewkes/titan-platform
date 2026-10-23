@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import { compileGlobs } from "@titan-design/fix-proof";
 import type { Db, Migration } from "@titan-design/store-sqlite";
-import { WorkflowRunStore, type WorkflowStatus } from "@titan-design/workflow";
+import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
@@ -78,6 +78,11 @@ export class MergeOrder {
     const run = this.runs.get(runId);
     return run !== undefined && DRIVING.has(run.status);
   }
+
+  /** Every running run, of any workflow and repo; the reserve step narrows them to the repo's shepherd-pr runs. */
+  driving(): WorkflowRun[] {
+    return this.runs.listByStatus(["running"]);
+  }
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */
@@ -142,15 +147,18 @@ export interface Blocker {
 /** Reserved earlier, the run id breaking a tie: the one order two reservations can stand in, so they never wait on each other. */
 const before = (a: Reservation, b: Reservation): boolean => a.since < b.since || (a.since === b.since && a.runId < b.runId);
 
+export const withinTtl = (reservation: Reservation, rule: MergeOrderRule, now: number): boolean => now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000;
+
 /**
- * The reservations `self` must wait behind: live (driving and younger than the TTL), not its own, overlapping, and
- * taken before self's own reservation when it holds one. Whether each blocker's PR is still open is read after this.
+ * The reservations `self` must wait behind: live (driving and younger than the TTL), not its own, overlapping, taken
+ * before self's own reservation when it holds one, and not one self was already merging ahead of (`ahead`). Whether
+ * each blocker's PR is still open is read after this.
  */
 export function blockers(self: OrderSelf, reservations: readonly Reservation[], rule: MergeOrderRule, now: number, driving: (runId: string) => boolean): Blocker[] {
   const own = reservations.find((reservation) => reservation.runId === self.runId);
-  const live = (reservation: Reservation): boolean => now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000 && driving(reservation.runId);
+  const live = (reservation: Reservation): boolean => withinTtl(reservation, rule, now) && driving(reservation.runId);
   return reservations
-    .filter((reservation) => reservation.runId !== self.runId && (own === undefined || before(reservation, own)) && live(reservation))
+    .filter((reservation) => reservation.runId !== self.runId && !reservation.ahead.includes(self.runId) && (own === undefined || before(reservation, own)) && live(reservation))
     .map((reservation) => ({ reservation, shared: self.unread ? [] : overlapping(self.repo, self.paths, reservation.paths, rule) }))
     .filter((blocker) => self.unread === true || blocker.shared.length > 0);
 }

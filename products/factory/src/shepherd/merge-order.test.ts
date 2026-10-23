@@ -22,8 +22,8 @@ describe("which paths two PRs overlap on", () => {
     expect(overlapping(REPO, ["products/explainer/CAPABILITY.md", "src/a.ts"], ["products/explainer/CAPABILITY.md", "src/b.ts"], RULE)).toEqual(["products/explainer/CAPABILITY.md"]);
   });
 
-  it("ships the titan-platform rule turned off", () => {
-    expect(fileRules(REPO)).toEqual({ enabled: false, ttlMinutes: 120, ignore: [".changeset/**"] });
+  it("ships the titan-platform rule turned on", () => {
+    expect(fileRules(REPO)).toEqual({ enabled: true, ttlMinutes: 120, ignore: [".changeset/**"] });
     expect(fileRules("octo/other")).toBeUndefined();
   });
 });
@@ -52,6 +52,12 @@ describe("which reservations a PR waits behind", () => {
 
     expect(blockers(self, held, RULE, AT + 120 * 60_000, everyoneDrives)).toEqual([]);
     expect(blockers(self, held, RULE, AT, () => false)).toEqual([]);
+  });
+
+  it("never waits behind a reservation that let it merge first", () => {
+    const graced = [{ ...reservation("run-x", 2301, ["README.md"]), ahead: ["run-z"] }];
+
+    expect(blockers({ repo: REPO, runId: "run-z", paths: ["README.md"] }, graced, RULE, AT, everyoneDrives)).toEqual([]);
   });
 
   it("waits behind every live reservation while its own paths are unread", () => {
