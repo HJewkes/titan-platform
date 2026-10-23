@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeployRecord } from "../deploy.js";
+import type { WatchIntent } from "../deploy-watch-window.js";
 import {
   DEPLOY_MAX_WAIT_MS,
   DEPLOY_NOW_LABEL,
@@ -40,7 +41,14 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
-  const world = { now: 0, busy: options.busy ?? 0, paused: false, runningSha: RUNNING, lastDeploy: options.lastDeploy };
+  const world = {
+    now: 0,
+    busy: options.busy ?? 0,
+    paused: false,
+    runningSha: RUNNING,
+    lastDeploy: options.lastDeploy,
+    deployWindow: undefined as WatchIntent | undefined,
+  };
   const merge = (sha: string) => writeWanted(STATE, store, noteWanted(readWanted(STATE, store), sha, world.now));
   const tick = (spawn = (sha: string) => (spawns.push([world.now / MIN, sha]), { pid: 1 })) =>
     pacerTick({
@@ -51,6 +59,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       ...(options.runningHolds && { runningHolds: options.runningHolds }),
       ...(options.express && { express: options.express }),
       lastDeploy: () => world.lastDeploy,
+      deployWindow: () => world.deployWindow,
       busy: () => world.busy,
       paused: () => world.paused,
       spawn,
@@ -72,12 +81,24 @@ const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial
   ...extra,
 });
 
-const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string; paused?: boolean; express?: boolean } = {}) =>
+interface DecideExtra {
+  busy?: number;
+  lastDeploy?: DeployRecord;
+  deployWindow?: WatchIntent;
+  runningSha?: string;
+  runningHoldsWanted?: boolean;
+  paused?: boolean;
+  express?: boolean;
+}
+
+const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: DecideExtra = {}) =>
   paceDecision({
     wanted,
     now: nowMin * MIN,
     runningSha: extra.runningSha ?? RUNNING,
+    runningHoldsWanted: extra.runningHoldsWanted ?? false,
     lastDeploy: extra.lastDeploy,
+    deployWindow: extra.deployWindow,
     busy: extra.busy ?? 0,
     paused: extra.paused ?? false,
     express: extra.express ?? false,
@@ -304,6 +325,68 @@ describe("deploy pacer", () => {
     expect(p.spawns).toEqual([[15, "a"], [15 + stale, "a"]]);
     expect(p.wanted()).toBeUndefined();
     expect(p.logs.filter((line) => line.includes("recorded nothing"))).toHaveLength(2);
+  });
+});
+
+/** The deployer spawned at minute 15 restarts serve on "b", which contains the asked "a", and opens a watch window to minute 18. */
+function deployInWatch() {
+  const contains = new Set<string>();
+  const p = pacer({ runningHolds: (sha) => contains.has(sha), lastDeploy: { outcome: "deployed", target: RUNNING, from: "sha-older", at: new Date(-MIN).toISOString() } });
+  p.merge("a");
+  p.ticksUntil(15);
+  p.world.runningSha = "b";
+  contains.add("a");
+  p.world.deployWindow = { sha: "b", windowEnd: 18 * MIN };
+  return { p, contains };
+}
+
+describe("the deploy pacer and the health watch of the deploy that contains the ask", () => {
+  it("an ask survives a rollback inside the watch and is deployed again once the pause is cleared", () => {
+    const { p, contains } = deployInWatch();
+    p.ticksUntil(17);
+    p.world.runningSha = RUNNING;
+    contains.clear();
+    p.world.lastDeploy = { outcome: "rolled-back", target: "b", from: RUNNING, at: new Date(17.5 * MIN).toISOString() };
+    p.world.paused = true;
+    p.ticksUntil(30);
+    const pausedSpawns = [...p.spawns];
+
+    p.world.paused = false;
+    p.ticksUntil(31);
+
+    expect(pausedSpawns).toEqual([[15, "a"]]);
+    expect(p.spawns).toEqual([[15, "a"], [31, "a"]]);
+  });
+
+  it("an ask whose containing deploy passes its watch is cleared once deploy.json records it", () => {
+    const { p } = deployInWatch();
+    p.ticksUntil(17);
+    const inWatch = p.wanted();
+
+    p.world.now = 18 * MIN;
+    p.world.lastDeploy = { outcome: "deployed", target: "b", from: RUNNING, at: new Date(18 * MIN).toISOString() };
+    const settled = p.tick();
+
+    expect(inWatch?.sha).toBe("a");
+    expect(settled).toEqual({ kind: "clear", why: "the service runs b, which contains a" });
+    expect(p.wanted()).toBeUndefined();
+  });
+
+  it("an ask is kept while the window for the running build is still open, even with its deploy recorded", () => {
+    const window = { sha: "a", windowEnd: 18 * MIN };
+    const record = { outcome: "deployed" as const, target: "a", from: RUNNING, at: new Date(17 * MIN).toISOString() };
+
+    const open = decide(wantedAt("a", 0, 0), 17, { runningSha: "a", lastDeploy: record, deployWindow: window });
+    const closed = decide(wantedAt("a", 0, 0), 18, { runningSha: "a", lastDeploy: record, deployWindow: window });
+
+    expect(open.kind).toBe("wait");
+    expect(closed).toEqual({ kind: "clear", why: "the service runs a" });
+  });
+
+  it("a running build that deploy.json records as rolled back does not answer the ask", () => {
+    const record = { outcome: "rolled-back" as const, target: "b", from: RUNNING, at: new Date(17 * MIN).toISOString() };
+
+    expect(decide(wantedAt("a", 0, 0), 20, { runningSha: "b", runningHoldsWanted: true, lastDeploy: record })).toEqual({ kind: "spawn", sha: "a" });
   });
 });
 
