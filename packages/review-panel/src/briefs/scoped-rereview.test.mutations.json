@@ -26,7 +26,7 @@
     },
     {
       "name": "the scoped checklist stays optional",
-      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "file": "packages/review-panel/src/briefs/earlier-findings.ts",
       "find": "scoped ? scopedChecklistLine : checklistLine",
       "replace": "checklistLine",
       "kills": [
