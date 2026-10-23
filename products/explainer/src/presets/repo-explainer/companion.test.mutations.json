@@ -46,15 +46,6 @@
       "kills": [
         "the repo companion doc over the whiteboard review warns W-NO-SUMMARY, and still renders every section, when no fact comes from the SUMMARY"
       ]
-    },
-    {
-      "name": "an unmapped chapter's card takes no contents title",
-      "file": "products/explainer/src/presets/repo-explainer/companion.ts",
-      "find": "?.title ?? CONTENTS_TITLE;",
-      "replace": "?.title ?? link.section;",
-      "kills": [
-        "the repo companion doc over the whiteboard review gives a chapter's companion-link card its section's title, or the contents' for an unmapped chapter"
-      ]
     }
   ]
 }

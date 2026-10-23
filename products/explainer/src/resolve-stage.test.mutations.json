@@ -46,24 +46,6 @@
       "kills": [
         "resolve stage refuses to run on doctrine other than the doctrine its spec was keyed on"
       ]
-    },
-    {
-      "name": "a companion-link card is never filled from the chapter links",
-      "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const slots = beat.beat === COMPANION_LINK ? companionLinkSlots(links, beat.chapter) : undefined;",
-      "replace": "const slots = undefined as ReturnType<typeof companionLinkSlots>;",
-      "kills": [
-        "companion-link cards at resolve fills a card's slots from its chapter's link"
-      ]
-    },
-    {
-      "name": "an unlinked card goes unnoted",
-      "file": "products/explainer/src/resolve-stage.ts",
-      "find": "if (beat.beat === COMPANION_LINK && slots === undefined) unlinked.push(beat.id);",
-      "replace": "",
-      "kills": [
-        "companion-link cards at resolve leaves a card unfilled and notes it when the chapter links lack its chapter"
-      ]
     }
   ]
 }

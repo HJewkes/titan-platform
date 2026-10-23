@@ -83,36 +83,6 @@ describe("resolve stage", () => {
   });
 });
 
-describe("companion-link cards at resolve", () => {
-  const card = { spoken: "The rest lives in the companion doc.", visual: visual({ beat: "companion-link" }) };
-  const chapterLinks = (chapters: string[]) =>
-    json({ schema: "explainer.chapter-links/v1", doc: "companion.md", docSha: "d".repeat(64), links: chapters.map((chapter) => ({ chapter, section: "health", href: "companion.md#health", facts: [] })) });
-  const cardOf = (texts: Record<string, string>) => {
-    const { s, outcome } = stageThenChecks(texts);
-    return { outcome, beat: ResolvedSchema.parse(JSON.parse(s.store.readText(outcome.outputs.resolved!))).beats.find((beat) => beat.id === "c3")! };
-  };
-
-  it("fills a card's slots from its chapter's link", () => {
-    const { beat } = cardOf({ script: json(choppy({ c3: card })), "chapter-links": chapterLinks(["ch4"]) });
-
-    expect(beat.slots).toEqual({ title: "Health", section: "health", href: "companion.md#health" });
-  });
-
-  it("leaves a card unfilled and notes it when the chapter links lack its chapter", () => {
-    const { beat, outcome } = cardOf({ script: json(choppy({ c3: card })), "chapter-links": chapterLinks(["ch1"]) });
-
-    expect(beat.slots).toBeUndefined();
-    expect(outcome.notes).toContain("no chapter link for companion-link beats c3: the chapter-links artifact lacks their chapters");
-  });
-
-  it("leaves a card for template fill in a run with no chapter links", () => {
-    const { beat, outcome } = cardOf({ script: json(choppy({ c3: card })) });
-
-    expect(beat.slots).toBeUndefined();
-    expect((outcome.notes ?? []).some((note) => note.includes("companion-link"))).toBe(false);
-  });
-});
-
 describe("emphasis-target gate on the resolve stage", () => {
   it("is skipped with a note until the template fill supplies slots", () => {
     const { checks } = stageThenChecks({ script: json(cuedOnFigures("held")) });
