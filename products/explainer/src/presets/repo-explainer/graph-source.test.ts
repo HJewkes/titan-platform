@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexPaths, openCodeGraph } from "@titan-design/code-graph";
@@ -56,7 +56,7 @@ describe("openStructureGraph", () => {
     if (!result.ok) return;
     expect(result.graph).toMatchObject({ source: "fresh-index", files: 4 });
     expect(result.graph.store.getSnapshot(result.graph.snapshotId)?.commitHash).toBe(FIXTURE_PIN);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics.map((finding) => finding.code)).toEqual(["W-INDEX-SCOPE"]);
   });
 
   it("reuses a review index that holds a snapshot at the pin without indexing", async () => {
@@ -92,6 +92,20 @@ describe("openStructureGraph", () => {
     expect(result.diagnostics.map((finding) => finding.code)).toEqual(["W-INDEX-PIN"]);
   });
 
+  it("indexes only the files the stale review index holds, leaving out the rest of the clone", async () => {
+    const extra = join(clone, "bundled");
+    await mkdir(extra, { recursive: true });
+    await writeFile(join(extra, "vendored.ts"), "export const vendored = 1;\n");
+    const index = vi.fn(indexPaths);
+
+    const result = await open({ reviewDir: await reviewWith(reviewedDb), pin: OTHER_PIN, index });
+    await rm(extra, { recursive: true, force: true });
+
+    expect(result.ok && result.graph.files).toBe(4);
+    const ids = result.ok ? result.graph.store.listNodes(result.graph.snapshotId).filter((n) => n.kind === "file").map((n) => n.id) : [];
+    expect(ids.sort()).toEqual(["packages/a/src/entry.ts", "packages/b/src/service.ts", "packages/c/src/report.ts", "packages/c/src/store.ts"]);
+  });
+
   it("refuses with E-INDEX when the index fails", async () => {
     const index = vi.fn(async () => {
       throw new Error("parser crashed");
@@ -100,8 +114,8 @@ describe("openStructureGraph", () => {
     const result = await open({ index });
 
     expect(result.ok).toBe(false);
-    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "E-INDEX", severity: "error" })]);
-    expect(result.diagnostics[0]!.message).toContain("parser crashed");
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "W-INDEX-SCOPE" }), expect.objectContaining({ code: "E-INDEX", severity: "error" })]);
+    expect(result.diagnostics[1]!.message).toContain("parser crashed");
   });
 
   it("returns the graph with W-NO-INDEX when the clone has no source files", async () => {
@@ -110,7 +124,7 @@ describe("openStructureGraph", () => {
     const result = await open({ clonePath: empty });
 
     expect(result.ok && result.graph.files).toBe(0);
-    expect(result.diagnostics.map((finding) => finding.code)).toEqual(["W-NO-INDEX"]);
+    expect(result.diagnostics.map((finding) => finding.code)).toEqual(["W-INDEX-SCOPE", "W-NO-INDEX"]);
   });
 
   it("reuses a cached fresh index at the pin on the second run", async () => {
