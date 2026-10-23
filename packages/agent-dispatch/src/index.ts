@@ -44,6 +44,7 @@ export {
   parseAgentRows,
   retire,
   type AgentRow,
+  type RetireOptions,
   type RetireResult,
 } from "./agents.js";
 export {
