@@ -1,6 +1,7 @@
 import { misakiEnglish, type G2p } from "@titan-design/speech-g2p";
 import { z } from "zod";
 import { loadBeatSpecs } from "../beat-load.js";
+import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
@@ -50,8 +51,12 @@ function rowsVerdict(rows: readonly L0Result[]): Verdict {
   return { pass: failed.length === 0, detail: `${rows.length} rows; failed: ${failed.join(", ") || "none"}` };
 }
 
+/** The L0 checks, with Q-E20 reading the stage's gathered facts when it has them. */
+const l0With = (input: CheckInput): readonly L0Check[] =>
+  input.artifacts.facts === undefined ? input.l0Checks : withClaimFacts(input.l0Checks, claimFacts(text(input, "facts")));
+
 const l0Draft = (input: CheckInput): L0Result[] =>
-  runL0(script(input, "draft"), undefined, input.l0Checks, undefined, parseSpine(text(input, "spine")));
+  runL0(script(input, "draft"), undefined, l0With(input), undefined, parseSpine(text(input, "spine")));
 
 const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
   const draft = script(input, name);
@@ -61,8 +66,9 @@ const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
 /** Error rows that fail on the rewritten script but passed on the draft: the rewrite made the script worse. */
 function noNewL0Error(input: CheckInput): Verdict {
   const failing = (rows: readonly L0Result[]) => new Set(errorRows(rows).filter((row) => !row.pass).map((row) => row.check_id));
-  const before = failing(runL0(spellScript(script(input, "draft")), undefined, input.l0Checks));
-  const added = [...failing(runL0(script(input, "script"), undefined, input.l0Checks))].filter((id) => !before.has(id));
+  const checks = l0With(input);
+  const before = failing(runL0(spellScript(script(input, "draft")), undefined, checks));
+  const added = [...failing(runL0(script(input, "script"), undefined, checks))].filter((id) => !before.has(id));
   return { pass: added.length === 0, detail: `new failing error rows: ${added.join(", ") || "none"}` };
 }
 

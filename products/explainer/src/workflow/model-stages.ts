@@ -7,8 +7,10 @@ import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval
 import { canonicalSha } from "../eval-store.js";
 import { loadBeatSpecs } from "../beat-load.js";
 import type { BeatSpec } from "../beat-schema.js";
+import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
+import type { GatheredFact } from "../lint-claims.js";
 import { repairHint } from "../l0-repair-hints.js";
 import { paceRows } from "../lint-pace.js";
 import { CUE_KIND_ROLES, fromScriptV1, unknownCueKinds } from "../pace-items.js";
@@ -230,11 +232,11 @@ async function draftScript(call: Call, prompt: string, plan: ScriptPlan): Promis
 
 const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
 
-function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1): string {
+function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, facts?: readonly GatheredFact[]): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
   const found = (row: L0Result) => {
-    const hint = repairHint(row, script);
+    const hint = repairHint(row, script, facts);
     return hint ? `\n  Found: ${hint}` : "";
   };
   return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})${found(row)}`).join("\n");
@@ -258,7 +260,13 @@ export const MAX_REPAIR_ROUNDS = 2;
  * Up to `MAX_REPAIR_ROUNDS` calls, each answering the current script's failing error-severity L0 rows. A reply is
  * kept only when it parses and fails fewer rows, so a round never makes the script worse.
  */
-async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: ScriptV1, lint: (script: ScriptV1) => L0Result[]): Promise<Repair | undefined> {
+interface Lint {
+  rows: (script: ScriptV1) => L0Result[];
+  /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
+  facts?: readonly GatheredFact[];
+}
+
+async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: ScriptV1, { rows: lint, facts }: Lint): Promise<Repair | undefined> {
   const first = failingErrors(lint(draft)).length;
   if (first === 0) return undefined;
   const rules = loadRuleRegistry();
@@ -267,7 +275,7 @@ async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft:
   let usage = NO_USAGE;
   let stripped: string[] | undefined;
   for (let round = 0; round < MAX_REPAIR_ROUNDS && failing.length > 0; round++) {
-    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script)));
+    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script, facts)));
     usage = addUsage(usage, stageUsage(outcome.usage));
     const reply = checked(outcome, plan);
     const after = reply.script ? failingErrors(lint(reply.script)) : failing;
@@ -291,7 +299,8 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const spineText = input.store.readText(need(input, "spine"));
   const spine = parseSpine(spineText);
   const plan = scriptPlan(spine, deps.profile);
-  const prompt = promptFor(spineText, input.store.readText(need(input, "facts")), plan);
+  const factsText = input.store.readText(need(input, "facts"));
+  const prompt = promptFor(spineText, factsText, plan);
   const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
   const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
   const signal = deps.signal ?? new AbortController().signal;
@@ -299,7 +308,10 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const draft = await draftScript(call, prompt, plan);
   const retries = draft.retried ? 1 : 0;
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
-  const repair = await repairScript(call, prompt, plan, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
+  const facts = claimFacts(factsText);
+  const l0Checks = withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts);
+  const lint: Lint = { rows: (script) => runL0(script, undefined, l0Checks, undefined, spine), ...(facts ? { facts } : {}) };
+  const repair = await repairScript(call, prompt, plan, draft.script, lint);
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
   const stripped = repair?.stripped ?? draft.stripped ?? [];
   const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(stripped), ...(repair ? [repair.check] : [])];
@@ -372,7 +384,8 @@ async function reportColdRubric(input: ModelStageInput, script: ScriptV1, deps: 
 export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, l0Checks: readonly L0Check[] = L0_CHECKS): Promise<StageOutcome> {
   const script = readScript(input, "script");
   const spine = parseSpine(input.store.readText(need(input, "spine")));
-  const l0 = runL0(script, undefined, l0Checks, undefined, spine);
+  const facts = input.artifacts.facts === undefined ? undefined : claimFacts(input.store.readText(input.artifacts.facts));
+  const l0 = runL0(script, undefined, withClaimFacts(l0Checks, facts), undefined, spine);
   const pace = paceRows(fromScriptV1(script), script.video.invariants ?? []);
   const checks = [verdict("l0", l0), verdict("pace", pace)];
   const red = checks.filter((check) => !check.pass);

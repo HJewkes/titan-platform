@@ -79,6 +79,15 @@ describe("repair hints for rows whose value says too little", () => {
     expect(repairHint(row, script)).toMatch(/^claims the gathered facts do not back are among w2: "PD-310", "3 open PRs"\. Name only/);
   });
 
+  // Mutation: ignoring the facts quotes the claim alone, with no fact for the repair to correct it by.
+  it("Q-E20 names the nearest gathered fact for each unbacked claim when it has the facts", () => {
+    const script = tour(withBeat("w2", { spoken: "So three open PRs wait at the desk today.", extra: { fact_ids: ["pr/acme/desk#4/opened"] } }));
+    const facts = [{ id: "pr/acme/desk#4/opened", change: "opened" }];
+    const row = runL0(script, undefined, [claimsCheckWith(facts)])[0]!;
+
+    expect(repairHint(row, script, facts)).toMatch(/^claims the gathered facts do not back are among w2 "3 open PRs" \(the cited facts count 1 .*pr\/acme\/desk#4\/opened.*\)\. Name only/);
+  });
+
   it("gives no hint for a row whose beats and value already say what to fix", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 

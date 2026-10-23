@@ -1,12 +1,12 @@
 import type { L0Result } from "./eval-l0.js";
-import { beatClaims } from "./lint-claims.js";
+import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import type { ScriptV1 } from "./script-schema.js";
 
-type Hint = (script: ScriptV1, row: L0Result) => string | undefined;
+type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[]) => string | undefined;
 
 const percent = (share: number): string => `${Math.round(share * 100)} %`;
 const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");
@@ -45,11 +45,13 @@ function headlineHint(script: ScriptV1): string {
   return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
 }
 
-function claimsHint(script: ScriptV1, row: L0Result): string {
+// With the facts at hand each claim is named with the fact that came closest; without them, each failing beat's claims.
+function claimsHint(script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[]): string {
   const failing = new Set(row.detail_beats);
-  const named = script.beats
+  const quoted = () => script.beats
     .filter((beat) => failing.has(beat.id))
     .map((beat) => `${beat.id}: ${beatClaims(beat).map((claim) => `"${claim.text}"`).join(", ")}`);
+  const named = facts?.length ? claimFindings(script, facts).map(findingLine) : quoted();
   return `claims the gathered facts do not back are among ${named.join("; ")}. Name only pull requests and tasks the facts hold, and make each count equal a cited fact's value or the number of cited facts it counts; cite the facts in fact_ids, or drop the number`;
 }
 
@@ -65,4 +67,5 @@ const HINTS: Readonly<Record<string, Hint>> = {
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
-export const repairHint = (row: L0Result, script: ScriptV1): string | undefined => HINTS[row.check_id]?.(script, row);
+export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[]): string | undefined =>
+  HINTS[row.check_id]?.(script, row, facts);

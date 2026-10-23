@@ -5,6 +5,7 @@ import { runEvalStage, StageFailure } from "./model-stages.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { voiceCheck } from "../lint-voice.js";
+import { claimsCheck } from "../lint-claims.js";
 import { spellScript } from "../rewrite-pass.js";
 import { sha256 } from "./artifacts.js";
 import { l0Check, SPINE } from "./run-fakes.test-helpers.js";
@@ -84,6 +85,16 @@ describe("script stage checks", () => {
     const run = runStageChecks("script", input({ draft: json(choppy()), spine: LEAD_SPINE }));
 
     expect(verdict(run, "cues-present")).toMatchObject({ gate: true, pass: false, detail: "uncued: ch1's lead beat verdict-card is on none of its beats" });
+  });
+
+  // Mutation: dropping the facts from the script stage's L0 leaves Q-E20 a passing "did not run" warning.
+  it("fails a daily draft whose count the gathered facts do not back, on Q-E20", () => {
+    const facts = "# Facts: daily 2031-01-02\n\n| Id | Claim |\n|---|---|\n| task/QA-901/opened | task opened · demo · Add a widget |\n";
+    const draft = choppy({ h2: { spoken: "Four tasks opened today at the desk.", fact_ids: ["task/QA-901/opened"] } });
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: SPINE, facts }, [claimsCheck]));
+
+    expect(verdict(run, "l0")).toMatchObject({ gate: true, pass: false, detail: expect.stringContaining("Q-E20") });
   });
 
   // Mutation: testing misaki's rating instead of the phonemes, or dropping the lexicon, changes these verdicts.
