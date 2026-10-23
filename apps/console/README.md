@@ -71,6 +71,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_CLAUDE_DIRS` | `~/.claude` and every `~/.claude-profiles/*` | Comma list of Claude Code config dirs `config.surfaces` reads. From `.claude.json` it reports only the trusted-folder count and the MCP server names |
 | `TITAN_CONSOLE_UPDATE_ROOT` | `~/.local/share/titan-console` | the bootstrap and `self-update` only: holds `checkout/`, `releases/<sha>/` and the `current` symlink the service runs (see [docs/self-update.md](docs/self-update.md)) |
 | `TITAN_CONSOLE_UNIT` | `titan-console.service` | `self-update` only: the systemd user unit it restarts |
+| `TITAN_CONSOLE_BIN_DIR` | `~/.local/bin` | `self-update` only: where a verified update writes the `titan-console` shim that runs `current/apps/console/dist/cli.js` from `PATH` |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -81,7 +82,8 @@ directory, under the name `active-work`.
 The served console updates itself: a systemd user timer runs a small fixed bootstrap every 10
 minutes, which builds origin/main into a new release and hands off to that release's own
 `titan-console self-update --apply <sha>`. It swaps the release in only when a console change
-landed, and rolls back when `/health` does not report the new sha within 60 s. The layout, each
+landed, and rolls back when `/health` does not report the new sha within 60 s. After a verified
+swap it writes a `titan-console` shim to `~/.local/bin`, so seats run the serving CLI from `PATH`. The layout, each
 step, the alarm and the optional owner install commands are in [docs/self-update.md](docs/self-update.md);
 the bootstrap and units are in `deploy/`.
 

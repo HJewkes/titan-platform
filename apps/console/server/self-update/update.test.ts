@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { closureDirs, touchedPaths } from "./plan.js";
 import { verdictLine, type NodeRun } from "./release-smoke.js";
+import { writeShim } from "./shim.js";
 import { applyRelease, EXIT, lockPath, readRecord, recordPath, reportRecorded, type CommandResult, type UpdateOptions, type UpdatePorts } from "./update.js";
 
 const ROOT = "/srv/console";
@@ -10,7 +14,7 @@ const NEW = "b".repeat(40);
 const STALE = "c".repeat(40);
 const RELEASE = `${ROOT}/releases/${NEW}`;
 const PREV = `${ROOT}/releases/${OLD}`;
-const OPTIONS: UpdateOptions = { root: ROOT, stateDir: "/state", port: 7500, unit: "titan-console.service" };
+const OPTIONS: UpdateOptions = { root: ROOT, stateDir: "/state", port: 7500, unit: "titan-console.service", binDir: "/srv/tester/bin" };
 const CLOSURE = JSON.stringify([
   { name: "titan-console", path: `${RELEASE}/apps/console` },
   { name: "@titan-design/daemon", path: `${RELEASE}/packages/daemon` },
@@ -64,6 +68,7 @@ function fakePorts(scenario: Scenario = {}): Fake {
     listDirs: () => [OLD, NEW, STALE],
     mkdir: () => {},
     writeFile: (file, text) => void files.set(file, text),
+    writeShim: (file, text) => (calls.push(`shim ${file}`), files.set(file, text), true),
     readFile: (file) => files.get(file),
     remove: (file) => void files.delete(file),
     createExclusive: (file, text) => (files.has(file) ? false : (files.set(file, text), true)),
@@ -225,6 +230,16 @@ describe("the console updater the bootstrap hands off to", () => {
     expect(fake.calls.filter((call) => !call.startsWith("git rev-parse"))).toEqual([]);
   });
 
+  it("writes no shim when the update does not swap in a new build", async () => {
+    const unchanged = fakePorts({ changed: [] });
+    const rolledBack = fakePorts({ afterRestart: [OLD, OLD] });
+
+    await apply(unchanged);
+    await apply(rolledBack);
+
+    expect([...unchanged.calls, ...rolledBack.calls].filter((call) => call.startsWith("shim"))).toEqual([]);
+  });
+
   it("refuses until the current symlink exists, and when the target was never built", async () => {
     const unlinked = fakePorts();
     unlinked.links.clear();
@@ -269,5 +284,70 @@ describe("the console closure", () => {
     const changed = ["pnpm-lock.yaml", "tsconfig.base.json", "packages/daemon/src/x.ts", "packages/daemon/src/x.test.ts", "packages/pm/src/y.ts", "apps/console/CHANGELOG.md"];
     expect(touchedPaths(changed, ["apps/console", "packages/daemon"])).toEqual(["pnpm-lock.yaml", "tsconfig.base.json", "packages/daemon/src/x.ts"]);
     expect(touchedPaths(changed, undefined)).toEqual(changed);
+  });
+});
+
+describe("the titan-console shim a verified swap puts on PATH", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function tmpBin(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "titan-console-shim-"));
+    dirs.push(dir);
+    return path.join(dir, "bin");
+  }
+
+  const applyWith = (fake: Fake, binDir: string) => applyRelease(fake.ports, { ...OPTIONS, binDir }, NEW);
+
+  it("execs node on the current symlink's cli with every argument passed through, and is executable", async () => {
+    const binDir = tmpBin();
+    const fake = fakePorts();
+    fake.ports.writeShim = writeShim;
+
+    expect(await applyWith(fake, binDir)).toBe(EXIT.OK);
+
+    const shim = path.join(binDir, "titan-console");
+    expect(readFileSync(shim, "utf8")).toBe(`#!/bin/sh\nexec node '${ROOT}/current/apps/console/dist/cli.js' "$@"\n`);
+    expect(statSync(shim).mode & 0o777).toBe(0o755);
+  });
+
+  it("leaves an unchanged shim alone on the next update", async () => {
+    const binDir = tmpBin();
+    const first = fakePorts();
+    first.ports.writeShim = writeShim;
+    await applyWith(first, binDir);
+    const shim = path.join(binDir, "titan-console");
+    const before = statSync(shim).ino;
+    const second = fakePorts();
+    const wrote: boolean[] = [];
+    second.ports.writeShim = (file, text) => {
+      const written = writeShim(file, text);
+      wrote.push(written);
+      return written;
+    };
+
+    expect(await applyWith(second, binDir)).toBe(EXIT.OK);
+
+    expect(wrote).toEqual([false]);
+    expect(statSync(shim).ino).toBe(before);
+  });
+
+  it("still counts the update as done, and logs why, when the shim cannot be written", async () => {
+    const binDir = tmpBin();
+    writeFileSync(binDir, "a file where the bin dir should be");
+    const fake = fakePorts();
+    const lines: string[] = [];
+    fake.ports.writeShim = writeShim;
+    fake.ports.log = (line) => void lines.push(line);
+
+    await expect(applyWith(fake, binDir)).resolves.toBe(EXIT.OK);
+
+    expect(served(fake)).toBe(RELEASE);
+    expect(record(fake)).toMatchObject({ outcome: "updated", target: NEW });
+    expect(fake.alarms).toEqual([]);
+    expect(lines.filter((line) => line.startsWith("error: could not write"))).toHaveLength(1);
+    expect(lines).toContain(`updated: serving ${NEW}`);
   });
 });
