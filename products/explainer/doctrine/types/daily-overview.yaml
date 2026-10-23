@@ -3,7 +3,7 @@
 # The board, the day and the forecast use kanban-flow, gantt and forecast; their components are not built yet.
 schema: type-profile/v1
 type: daily-overview
-version: 0.3.0
+version: 0.4.0
 family: briefing
 intent: "What the owner must know and decide today: the bottom line, the facts behind it, the decisions waiting, then the rest at speed."
 audience: { default: owner-internal, allow: [owner-internal] }
@@ -44,6 +44,8 @@ series:
   mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
   mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines, lead-story, featured-visual]
 audition: { k: 3, storyboardOnly: true }
+# The daily is gathered with no planner in the loop, so the audition pick is the script stage's spine.
+spine: { from: audition-pick }
 layers: { customMin: 1, templateMaxShare: 0.85, componentMaxShare: 0.3 }
 variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
 pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }

@@ -1,6 +1,6 @@
 # Planner guide: daily-overview
 
-<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.4.0) by `explainer guide types`. Do not edit. -->
 
 What the owner must know and decide today: the bottom line, the facts behind it, the decisions waiting, then the rest at speed.
 

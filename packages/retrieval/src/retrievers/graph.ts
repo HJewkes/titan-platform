@@ -1,5 +1,6 @@
 import type { EdgeTable } from "@titan-design/store-sqlite";
 import type { Hit, RetrieveOptions, Retriever } from "../types.js";
+import { walkGraph, type WalkGraph, type WalkNeighbour } from "./walk.js";
 
 export interface GraphRetrieverOptions {
   name?: string;
@@ -9,6 +10,14 @@ export interface GraphRetrieverOptions {
   hops?: number;
   /** Follow edges in both directions (default) or only source to target. */
   direction?: "both" | "out";
+  /**
+   * A non-seed node with at least this many followed edges is returned but not expanded. Uncapped
+   * when omitted: the edge table cannot list every node's degree, so pass
+   * `defaultHubDegree(degrees)` from your own counts to get the walk's p99 default.
+   */
+  hubDegree?: number;
+  /** Stop once this many neighbours have been reached (default unlimited). */
+  maxNodes?: number;
 }
 
 /**
@@ -17,30 +26,23 @@ export interface GraphRetrieverOptions {
  * from another retriever's top results for the same query.
  */
 export function expandGraph(edges: EdgeTable, seeds: string[], options: GraphRetrieverOptions = {}): Hit[] {
-  const hops = options.hops ?? 1;
-  const allowed = options.relations ? new Set(options.relations) : null;
-  const seen = new Set(seeds);
-  let frontier = [...seeds];
-  const hits: Hit[] = [];
-  for (let hop = 1; hop <= hops && frontier.length > 0; hop++) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const { neighbour, relation } of neighbours(edges, id, options.direction ?? "both")) {
-        if (seen.has(neighbour) || (allowed && !allowed.has(relation))) continue;
-        seen.add(neighbour);
-        next.push(neighbour);
-        hits.push({ id: neighbour, rank: hits.length + 1, payload: { hop, via: id, relation } });
-      }
-    }
-    frontier = next;
-  }
-  return hits;
+  const steps = walkGraph(edgeTableGraph(edges, options), seeds, {
+    hops: options.hops,
+    hubDegree: options.hubDegree ?? Infinity,
+    maxNodes: options.maxNodes,
+  });
+  return steps.map(({ id, hop, via, relation }, i) => ({ id, rank: i + 1, payload: { hop, via, relation } }));
 }
 
-function neighbours(edges: EdgeTable, id: string, direction: "both" | "out"): { neighbour: string; relation: string }[] {
-  const out = edges.from(id).map((e) => ({ neighbour: e.targetRef, relation: e.relation }));
-  if (direction === "out") return out;
-  return out.concat(edges.to(id).map((e) => ({ neighbour: e.sourceRef, relation: e.relation })));
+/** The edge table as a walk adjacency, restricted to the followed relations and direction. */
+function edgeTableGraph(edges: EdgeTable, options: GraphRetrieverOptions): WalkGraph {
+  const allowed = options.relations ? new Set(options.relations) : null;
+  const neighbours = (id: string): WalkNeighbour[] => {
+    const out = edges.from(id).map((e) => ({ id: e.targetRef, relation: e.relation }));
+    const all = options.direction === "out" ? out : out.concat(edges.to(id).map((e) => ({ id: e.sourceRef, relation: e.relation })));
+    return allowed ? all.filter((n) => allowed.has(n.relation)) : all;
+  };
+  return { neighbours, degree: (id) => neighbours(id).length };
 }
 
 /** A graph retriever whose seeds are the top results of another retriever for the same query. */

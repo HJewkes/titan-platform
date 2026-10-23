@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { z } from "zod";
+import { loadStructures } from "./profile-load.js";
 
 /** The shipped registry. src/ and dist/ both sit one level under the package root. */
 export const DEFAULT_RULES_PATH = fileURLToPath(new URL("../doctrine/rules.yaml", import.meta.url));
@@ -10,7 +11,7 @@ const Id = z.string().min(1);
 const Slice = z.string().regex(/^(SQ\d+|TP-\d+)$/, "expected the owning slice or task, e.g. SQ3 or TP-2988");
 
 const L0Pending = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("pending"), owner: Slice, partial: z.array(Id).default([]) }).strict();
-const L0Implemented = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("implemented"), checks: z.array(Id).min(1) }).strict();
+const L0Implemented = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("implemented"), checks: z.array(Id).min(1), structures: z.array(Id).min(1).optional() }).strict();
 const JudgePending = z.object({ layer: z.enum(["L1", "L2"]), status: z.literal("pending"), owner: Slice }).strict();
 const JudgeCited = z.object({ layer: z.enum(["L1", "L2"]), status: z.literal("cited"), rubric: Id }).strict();
 
@@ -52,9 +53,37 @@ export const RuleRegistrySchema = z
 
 export type RuleRegistry = z.infer<typeof RuleRegistrySchema>;
 
-export const parseRuleRegistry = (text: string): RuleRegistry => RuleRegistrySchema.parse(parse(text));
+/** A rule scoped to a structure the registry does not hold would silently never run, so with `knownStructures` it is refused. */
+function checkStructures(registry: RuleRegistry, knownStructures: ReadonlySet<string>): RuleRegistry {
+  const unknown = registry.rules.flatMap(({ id, l0 }) =>
+    (l0?.status === "implemented" ? (l0.structures ?? []) : []).filter((name) => !knownStructures.has(name)).map((name) => `${id}: unknown structure ${name}`),
+  );
+  if (unknown.length > 0) throw new Error(unknown.join("; "));
+  return registry;
+}
 
-export const loadRuleRegistry = (path: string = DEFAULT_RULES_PATH): RuleRegistry => parseRuleRegistry(readFileSync(path, "utf8"));
+export const parseRuleRegistry = (text: string, knownStructures?: ReadonlySet<string>): RuleRegistry => {
+  const registry = RuleRegistrySchema.parse(parse(text));
+  return knownStructures ? checkStructures(registry, knownStructures) : registry;
+};
+
+export const loadRuleRegistry = (path: string = DEFAULT_RULES_PATH): RuleRegistry =>
+  parseRuleRegistry(readFileSync(path, "utf8"), new Set(loadStructures().keys()));
+
+let shipped: RuleRegistry | undefined;
+/** The shipped registry, read once; the L0 runner scopes its rows by it. */
+export const shippedRuleRegistry = (): RuleRegistry => (shipped ??= loadRuleRegistry());
+
+/**
+ * The check ids whose rule names structures that leave `structure` out. A legacy script names no structure and
+ * keeps every rule; a rule with no `structures` applies to all.
+ */
+export function checksOutsideStructure(registry: RuleRegistry, structure: string | undefined): Set<string> {
+  if (structure === undefined) return new Set();
+  return new Set(
+    registry.rules.flatMap(({ l0 }) => (l0?.status === "implemented" && l0.structures && !l0.structures.includes(structure) ? l0.checks : [])),
+  );
+}
 
 export const checkType = (rule: Rule): CheckType => (rule.l0 && rule.judge ? "L0+J" : rule.l0 ? "L0" : "J");
 

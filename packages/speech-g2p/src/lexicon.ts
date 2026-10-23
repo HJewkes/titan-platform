@@ -10,7 +10,7 @@ export interface TokenContext {
   futureTo: boolean;
 }
 
-/** Phonemes and rating (5 override, 4 gold, 3 silver or spelled out), or `null`s when the word is unknown. */
+/** Phonemes and rating (5 override or caller word, 4 gold, 3 silver or spelled out), or `null`s when the word is unknown. */
 export type Pronunciation = readonly [phonemes: string | null, rating: number | null];
 
 const UNKNOWN: Pronunciation = [null, null];
@@ -87,10 +87,17 @@ export function suffixIng(stem: string | null): string | null {
 export class Lexicon {
   private readonly golds: LexiconData["golds"];
   private readonly silvers: LexiconData["silvers"];
+  private readonly words: ReadonlyMap<string, string>;
 
-  constructor(data: LexiconData) {
+  /** `words` are caller phonemes, matched case-insensitively and read ahead of every other rule, golds included. */
+  constructor(data: LexiconData, words: Readonly<Record<string, string>> = {}) {
     this.golds = data.golds;
     this.silvers = data.silvers;
+    this.words = new Map(Object.entries(words).map(([word, ps]) => [word.toLowerCase(), ps]));
+  }
+
+  private override(word: string): string | undefined {
+    return this.words.get(word.toLowerCase());
   }
 
   private gold(word: string): LexiconEntry | undefined {
@@ -271,8 +278,10 @@ export class Lexicon {
     return null;
   }
 
-  /** misaki `get_word`: special cases, then the lexicon, then -s, -ed and -ing stems; `null`s when nothing reads it. */
+  /** misaki `get_word`: caller words, special cases, then the lexicon, then -s, -ed and -ing stems; `null`s when nothing reads it. */
   getWord(word: string, tag: string, stress: number | null, ctx: TokenContext): Pronunciation {
+    const override = this.override(word);
+    if (override !== undefined) return [override, 5];
     const special = this.getSpecialCase(word, tag, stress, ctx);
     if (special[0] !== null) return special;
     if (this.readsLowercase(word, tag, stress, ctx)) word = word.toLowerCase();

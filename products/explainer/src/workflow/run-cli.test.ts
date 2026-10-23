@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { writeFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
 import { z } from "zod";
 import type { L0Check } from "../eval-l0.js";
+import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
 const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -113,5 +114,27 @@ describe("explainer stage and run variants CLI", () => {
     expect(code).toBe(1);
     const record = StageRecordSchema.parse(JSON.parse(lines.join("")));
     expect(record.checks.find((check) => check.name === "no-new-l0-error")).toMatchObject({ gate: true, pass: false });
+  });
+});
+
+describe("explainer run --from gather --type daily-overview", () => {
+  // Mutation: dropping `spine: { from: audition-pick }` from daily-overview.yaml refuses this run for want of --spine.
+  it("reaches the script stage with no --spine, on the spine the audition picked", async () => {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    const out: string[] = [];
+    const err: string[] = [];
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks() };
+    const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
+
+    await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
+      host: fakeHost(fx, fakeBriefModels(), fakeBridge()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
+    });
+
+    expect(err.join("")).not.toContain("--spine");
+    const report = ReportRowsSchema.parse(JSON.parse(readFileSync(path.join(path.dirname(out.join("").match(/report: (\S+)/)![1]!), "run-report.json"), "utf8")));
+    const row = (stage: string) => report.rows.find((r) => r.stage === stage)!;
+    expect(row("audition").outputs.spine).toBeDefined();
+    expect(row("script").outputs.draft).toBeDefined();
   });
 });

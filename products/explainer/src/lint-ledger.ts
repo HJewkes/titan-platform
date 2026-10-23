@@ -17,12 +17,22 @@ function unledgered(beats: readonly PaceBeat[], ledger: Ledger): string[] {
   return beats.filter((beat) => beat.newItems.some((item) => !entryOf(ledger, item))).map((b) => b.id);
 }
 
+// A spine written before the beats (an audition pick) can only name the chapter an item is defined in; that
+// chapter's first beat stands for it. A beat id wins over a chapter of the same name.
+function positions(beats: readonly PaceBeat[]): Map<string, number> {
+  const position = new Map(beats.map((b, i) => [b.id, i]));
+  beats.forEach((b, i) => {
+    if (!position.has(b.chapter)) position.set(b.chapter, i);
+  });
+  return position;
+}
+
 /**
- * Q-E17: beats that first show an item whose defining beat comes later, or is no beat of the script. Beats are
- * compared by script position, never by id: as text "r10-1" sorts before "r2-1".
+ * Q-E17: beats that first show an item whose defining beat (or chapter) comes later, or is not in the script. Beats
+ * are compared by script position, never by id: as text "r10-1" sorts before "r2-1".
  */
 function definedLate(beats: readonly PaceBeat[], ledger: Ledger): string[] {
-  const position = new Map(beats.map((b, i) => [b.id, i]));
+  const position = positions(beats);
   return beats
     .filter((beat, at) =>
       beat.newItems.some((item) => {
