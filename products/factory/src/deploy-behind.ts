@@ -14,7 +14,7 @@ export type GitBehindProbe = (runningSha: string) => Promise<GitBehind>;
 type Run = (file: string, args: readonly string[]) => Promise<CommandResult | undefined>;
 
 /** The factory build's package dirs, or undefined when they cannot be read. */
-export type ClosureRead = () => readonly string[] | undefined;
+type ClosureRead = () => readonly string[] | undefined;
 
 interface LoggedCommit {
   sha: string;
