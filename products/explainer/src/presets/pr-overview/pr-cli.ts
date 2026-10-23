@@ -1,16 +1,20 @@
 import { appDirs } from "@titan-design/app-paths";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
+import { briefRunStart } from "../../workflow/brief-run.js";
+import type { RunHost } from "../../workflow/host.js";
 import { pairs } from "../../workflow/run-cli.js";
 import type { CallEdgeReader } from "./call-edges.js";
 import { gatherPr, writeGather } from "./gather.js";
 import type { GhRun } from "./pr-read.js";
-import { gatherStart, runPrVideoTrigger, shepherdWaiting, type TriggerRow } from "./trigger.js";
+import { runPrVideoTrigger, shepherdWaiting, type TriggerRow } from "./trigger.js";
 
 /** Every outside reader is injectable, so the CLI runs on a fake gh, fake Shepherd and fake call graph in a test. */
 export interface PrCliDeps {
   gh?: GhRun;
   callEdges?: CallEdgeReader;
   readWaiting?: (port?: number) => Promise<unknown>;
+  /** The decision-brief run's host, but its data dir; tests pass fake models and a fake clone. */
+  host?: Omit<RunHost, "dataDir">;
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -45,7 +49,7 @@ const rowLine = (row: TriggerRow): string => `${row.outcome} ${row.pr} ${row.hea
 
 function triggerCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Command {
   return new Command("trigger")
-    .description("Start a decision-brief run for each PR held at the owner's visual gate (visual-gate2); no other PR auto-starts")
+    .description("Start a decision-brief run (gather, then audition) for each PR held at the owner's visual gate (visual-gate2); no other PR auto-starts")
     .option("--data-dir <dir>", "where pr-briefs/ is written (default: the per-user data dir)")
     .option("--clone <repo=dir>", "the clone to index for a repo (repeatable)", pairs("--clone", (_repo, dir) => dir), {})
     .option("--port <n>", "port titan-factory serve listens on", port)
@@ -53,10 +57,13 @@ function triggerCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Comman
     .option("--json", "print the rows as JSON")
     .exitOverride()
     .action(async (flags: { dataDir?: string; clone: Record<string, string>; port?: number; dryRun?: boolean; json?: boolean }) => {
+      const dataDir = flags.dataDir ?? appDirs("explainer").data;
+      const { gh, ...rest } = readers(deps);
+      const host: RunHost = { ...deps.host, dataDir, gather: { ...(gh ? { prGh: gh } : {}), ...rest, ...deps.host?.gather } };
       const rows = await runPrVideoTrigger({
-        dataDir: flags.dataDir ?? appDirs("explainer").data,
+        dataDir,
         readWaiting: () => (deps.readWaiting ?? shepherdWaiting)(flags.port),
-        start: gatherStart((repo) => flags.clone[repo], readers(deps)),
+        start: briefRunStart(host, (repo) => flags.clone[repo]),
         dryRun: flags.dryRun ?? false,
       });
       if (flags.json) io.out(`${JSON.stringify(rows, null, 2)}\n`);

@@ -23,7 +23,7 @@ describe("explainer run", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
 
     expect(result.status, result.error).toBe("completed");
-    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "audition" ? "not run" : "ran"]));
+    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "gather" || stage === "audition" ? "not run" : "ran"]));
     expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);

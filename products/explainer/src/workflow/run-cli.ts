@@ -6,7 +6,7 @@ import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
-import { FACT_ADAPTERS, gatherRunFacts, type FactAdapter, type GatherDeps } from "./run-gather.js";
+import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
 
@@ -25,12 +25,15 @@ interface RunFlags {
   scriptModel: string;
   judge?: string;
   rounds: number;
-  factsFrom?: FactAdapter;
+  factsFrom?: GatherFlags["factsFrom"];
   type?: string;
   day?: string;
   repo: string[];
   transcripts: string[];
   initiative: string;
+  article?: string;
+  claims?: string;
+  label?: string;
   dryRun?: boolean;
   profile?: string;
   listenerQuestions?: boolean;
@@ -112,30 +115,43 @@ function isDay(text: string): string {
   return text;
 }
 
-/** With `--facts-from`, the type's adapter writes the facts pack the run starts from; its notes go to stderr. */
-async function factsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<string | undefined> {
-  if (!flags.factsFrom) return flags.facts;
-  const gathered = await gatherRunFacts({ ...flags, factsFrom: flags.factsFrom }, hostFor(flags, deps).dataDir, deps.gather);
-  io.out(`gathered ${gathered.items} facts for ${gathered.type} ${gathered.day}: ${gathered.facts} (digest ${gathered.digest})\n`);
+interface RunInputs {
+  facts?: string;
+  gather?: GatherRequest;
+}
+
+/**
+ * With `--facts-from`, a run from `gather` hands the request to its gather stage; any other start gathers first, and
+ * the facts pack it writes is the one the run starts from. The gather's notes go to stderr.
+ */
+async function inputsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<RunInputs> {
+  if (!flags.factsFrom) return flags.facts ? { facts: flags.facts } : {};
+  const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom });
+  if (flags.from === "gather") return { gather: request };
+  const gathered = await gatherFacts(request, hostFor(flags, deps).dataDir, deps.gather);
+  io.out(`gathered ${gathered.items} facts for ${gathered.type} ${request.day}: ${gathered.facts}${gathered.record ? ` (record ${gathered.record})` : ""}\n`);
   for (const note of gathered.notes) io.err(`note: ${note}\n`);
-  return gathered.facts;
+  return { facts: gathered.facts };
 }
 
 function addGatherOptions(command: Command): Command {
   return command
-    .addOption(new Option("--facts-from <adapter>", "gather the facts pack with the type's facts adapter instead of --facts").choices(FACT_ADAPTERS).conflicts("facts"))
-    .option("--type <type>", "the video type whose profile lists the --facts-from adapter (daily-overview for gatherDaily)")
-    .option("--day <date>", "the UTC day gatherDaily covers, YYYY-MM-DD (default: today)", isDay)
+    .addOption(new Option("--facts-from <adapter>", "gather the facts pack with the type's facts adapter instead of --facts; as the gather stage with --from gather").choices(CLI_FACT_ADAPTERS).conflicts("facts"))
+    .option("--type <type>", "the video type whose profile lists the --facts-from adapter (daily-overview for gatherDaily, paper-summary for gatherArticle)")
+    .option("--day <date>", "the UTC day gatherDaily covers, and the day a gather directory is named for, YYYY-MM-DD (default: today)", isDay)
     .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
     .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
     .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
+    .option("--article <path>", "the article or paper as markdown, for gatherArticle")
+    .option("--claims <path>", "a JSON array of proposed claims, each with its verbatim quote, for gatherArticle")
+    .option("--label <text>", "the source chip's label for gatherArticle (default: the article's file name)")
     .option("--dry-run", "gather and print the plan, then stop before any stage runs");
 }
 
 async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<number> {
-  const facts = await factsFor(flags, deps, io);
+  const { facts, gather } = await inputsFor(flags, deps, io);
   if (flags.dryRun) {
-    io.out(`dry run: would run ${flags.from} to ${flags.to}${facts ? ` with facts ${facts}` : ""}\n`);
+    io.out(`dry run: would run ${flags.from} to ${flags.to}${facts ? ` with facts ${facts}` : ""}${gather ? ` gathering with ${gather.adapter}` : ""}\n`);
     return EXIT.OK;
   }
   const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
@@ -143,8 +159,8 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-    ...(flags.profile ? { profile: flags.profile } : {}),
-  }, withListener(hostFor(flags, deps), flags));
+    ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}),
+  }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}) }, flags));
   return summary(result, io);
 }
 

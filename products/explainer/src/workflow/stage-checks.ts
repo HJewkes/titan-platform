@@ -95,6 +95,7 @@ function cueResolution(input: CheckInput): Verdict {
  * `check` commands of its `bridge.json` block until its TypeScript port lands.
  */
 export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
+  gather: [],
   audition: [],
   script: [
     { name: "l0", gate: true, reads: ["draft", "spine"], run: (input) => rowsVerdict(errorRows(l0Draft(input))) },

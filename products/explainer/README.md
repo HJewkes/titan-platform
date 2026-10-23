@@ -206,6 +206,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 | Stage | Path | Inputs → outputs |
 |---|---|---|
+| `gather` | in-process: the profile's gather body (`gatherDaily`, `gatherPr` or `gatherArticle`) on the run's gather request, which is the stage's key, written into its gather directory as well. A `gatherPr` gather refuses a head other than the one the gate named, and also stores `code` (`{ files }`, each changed file the head still has) for resolve's code citations. Optional: a run takes it only when it starts there, with `--from gather --facts-from <adapter>` (the type's profile, and so the audition's, by default); re-gathering the same request needs `--sample gather=<k>` | (the outside world) → facts, code |
 | `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition |
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
@@ -388,8 +389,12 @@ output shas, with each bridged stage marked, a "Checks" table with every verdict
 stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
 `--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
 [--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
-`<data dir>/gather/<type>/<day>/`, and the run starts from that facts pack. The type's profile must list the adapter in
-`inputs.adapters`. `--dry-run` gathers, prints the plan and stops before any stage.
+`<data dir>/gather/<type>/<day>/`, and the run starts from that facts pack. `--facts-from gatherArticle --type
+paper-summary --article <path> --claims <path> [--label <text>]` writes `facts.jsonl` and `rejected.json` there
+instead; the article and claims are keyed by content, and a file edited after the run was planned fails the gather.
+The type's profile must list the adapter in `inputs.adapters`. With `--from gather` the gather runs as the run's
+first stage; from any later stage it runs before the run. `--dry-run` gathers (or, from `gather`, names the adapter),
+prints the plan and stops before any stage.
 `run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
 a stopped or failed one, 2 on usage.
 
@@ -417,9 +422,11 @@ index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and stil
 automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
 only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
 Every other PR, seat gates and other owner holds included, is on request only. A start writes
-`<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`) and
-then the gather into the same directory; a directory that already holds `brief.json` is `already`, so a repeated
-sweep starts each head once. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+`<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`), then
+runs an `explainer-video` run from `gather` to `audition` (`briefRunStart`): the gather stage writes `facts.jsonl` and
+`gather.json` into the same directory, and `run.json` names the run, its status and each stage's status. A directory
+that already holds `brief.json` is `already`, so a repeated sweep starts each head once. Right before each start the
+sweep reads the gates again, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
 run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]

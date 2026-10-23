@@ -10,6 +10,7 @@ import type { StylePack } from "../style-pack-schema.js";
 import { sha256 } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { auditionConfig } from "./audition-stage.js";
+import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
 import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
 
@@ -17,11 +18,13 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "p6b", render: "x4", qa: "x4", sheets: "x4" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = {
+  gather: "g1", audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
+};
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
 const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly string[]> = {
-  audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"],
+  gather: [], audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
@@ -46,6 +49,8 @@ export const DEFAULT_VOICE = { id: "af_heart", rate: 1 } as const;
 /** What a stage body runs with: the run's settings with the variant's params laid over them. */
 export const StageConfigSchema = z.object({
   variant: z.object({ name: z.string(), sha: z.string() }).optional(),
+  /** The gather stage's request: its adapter and everything that adapter reads. */
+  gather: GatherRequestSchema.optional(),
   model: z.string().optional(),
   judge: JudgeConfigSchema.optional(),
   rounds: z.number().optional(),
@@ -84,6 +89,8 @@ export interface RunSettings {
   rounds: number;
   /** The video type whose profile the audition reads; a run with no audition has none. */
   profile?: string;
+  /** What the gather stage gathers; a run that starts later has none. */
+  gather?: GatherRequest;
 }
 
 /** `sha(stage, definition version, config with the variant, the inputs the stage reads, sample)`: never the outputs, which TTS does not reproduce byte for byte. */
@@ -119,6 +126,11 @@ function bandRates(): Record<SpeechBand, number> {
 }
 
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
+  if (stage === "gather") {
+    z.strictObject({}).parse(params);
+    if (!settings.gather) throw new Error("stage gather needs a gather request: pass --facts-from <adapter> with its flags");
+    return { gather: settings.gather };
+  }
   if (stage === "audition") {
     z.strictObject({}).parse(params);
     if (!settings.profile) throw new Error("stage audition needs a profile: pass --profile <type>");
