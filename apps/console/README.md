@@ -387,9 +387,11 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 - **Typed ops.** A deposit may carry an `op` (owner-queue's `OwnerOp`) naming what a tap does
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
-  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`)
-  becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays on the
-  terminal until its factory effect lands.
+  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head` and
+  `retire-agent`) becomes an `owner-op` tap whose read-back comes from the factory. Any other kind
+  stays on the terminal until its factory effect lands. A `retire-agent` op is offered only as a
+  plain retire. The agent must still hold the name under the op's `agentId`, its session must have
+  exited, and it must work on no live Shepherd run. A `force: true` op always stays on the terminal.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
@@ -812,8 +814,9 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | --- | --- |
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
+| 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
-| 409 `moved` | "PR moved to `abc1234`, read again" |
+| 409 `moved` | "PR moved to `abc1234`, read again", or, with `currentAgentId`, the name is now a different agent |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |

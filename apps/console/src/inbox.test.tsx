@@ -411,6 +411,21 @@ describe("the inbox page, acting from the console", () => {
     expect(outcome.className).toContain("success");
   });
 
+  // Kills: rendering an agent read-back through the chat branch (an empty title and question), or a retire left off LANDED.
+  it("taps a deposit's retire-agent op, reads back the agent from the roster, and shows the retire as landed", async () => {
+    const op = item("op-2", { sources: [{ system: "deposit", ref: "fixture-agent/op-2" }], kind: "do", summary: "Retire item-42", action: { kind: "owner-op", op: { kind: "retire-agent", name: "item-42", agentId: "9e3faa6c0011", force: false } } });
+    const readBack = { agent: "item-42", agentId: "9e3faa6c0011", state: "exited", profile: "impl", cwd: "/work/tree", spawnedBy: "coordinator", authority: "RET-OR: allow", proposedBy: "fixture-agent", proposal: "Retire item-42", effect: "Retire item-42 (9e3faa6): release its worktree" };
+    const retired = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "retired", name: "item-42", caveats: [] }, message: "Retired item-42" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-2", action: op.action, readBack })), "inbox.act": retired });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-2")).getByText("Retire"));
+    expect(await screen.findByText("item-42 (id 9e3faa6c), exited, profile impl, spawned by coordinator")).toBeTruthy();
+    expect(screen.getByText("Authority RET-OR: allow")).toBeTruthy();
+    fireEvent.click(confirmButton());
+    const outcome = await screen.findByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Retired item-42");
+    expect(outcome.className).toContain("success");
+  });
+
   it("names the gate on a gate read-back and gives it no confirm label", async () => {
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await tapGate();

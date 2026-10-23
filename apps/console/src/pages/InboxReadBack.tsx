@@ -7,10 +7,11 @@ export type InboxReady = Extract<Prepared, { status: "ready" }>;
 /** A gate, hold or op read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's `confirmLabel`, only an op's `proposal`. */
 type RepoReadBack = Extract<InboxReady["readBack"], { repo: string }>;
 type OpReadBack = Extract<RepoReadBack, { proposal: string }>;
+type AgentReadBack = Extract<InboxReady["readBack"], { agent: string }>;
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
-/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, or an agent's question. */
+/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, an agent to retire, or an agent's question. */
 export function InboxReadBack({ prepared }: { prepared: InboxReady }): ReactNode {
   const { readBack } = prepared;
   return (
@@ -19,6 +20,8 @@ export function InboxReadBack({ prepared }: { prepared: InboxReady }): ReactNode
       <Typography variant="subtitle1">{readBack.effect}</Typography>
       {"repo" in readBack ? (
         <PrFacts readBack={readBack} readAt={prepared.readAt} />
+      ) : "agent" in readBack ? (
+        <AgentFacts readBack={readBack} readAt={prepared.readAt} />
       ) : (
         <>
           <Typography variant="body2">{readBack.title}</Typography>
@@ -48,7 +51,24 @@ function OpFacts({ readBack }: { readBack: OpReadBack }): ReactNode {
   return (
     <>
       <Typography variant="caption" color="secondary">{`Into ${readBack.base}${behind}; GitHub reads it ${readBack.mergeableState}. Authority ${readBack.authority}`}</Typography>
-      <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>
+      <Proposal readBack={readBack} />
     </>
   );
+}
+
+/** A retire-agent op's agent as agent-chat's roster reads it now, then the depositing agent's words. */
+function AgentFacts({ readBack, readAt }: { readBack: AgentReadBack; readAt: string }): ReactNode {
+  const spawnedBy = readBack.spawnedBy === null ? "" : `, spawned by ${readBack.spawnedBy}`;
+  return (
+    <>
+      <Typography variant="body2">{`${readBack.agent} (id ${readBack.agentId.slice(0, 8)}), ${readBack.state}, profile ${readBack.profile}${spawnedBy}`}</Typography>
+      <Typography variant="mono">{`cwd ${readBack.cwd}, read ${secondsSince(readAt)} s ago`}</Typography>
+      <Typography variant="caption" color="secondary">{`Authority ${readBack.authority}`}</Typography>
+      <Proposal readBack={readBack} />
+    </>
+  );
+}
+
+function Proposal({ readBack }: { readBack: { proposedBy: string; proposal: string } }): ReactNode {
+  return <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>;
 }

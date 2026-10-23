@@ -200,10 +200,12 @@ function messageOf(outcome: Outcome): string {
       return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
+    case "retired":
+      return [`Retired ${outcome.name}`, ...outcome.caveats].join("; ");
     case "already":
       return "Already done by this confirmation";
     case "moved":
-      return `PR moved to ${short(outcome.currentHead)}, read again`;
+      return outcome.currentAgentId === undefined ? `PR moved to ${short(outcome.currentHead)}, read again` : `The name is now a different agent (${short(outcome.currentAgentId)}), read again`;
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":
