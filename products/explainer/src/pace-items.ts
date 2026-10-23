@@ -147,9 +147,7 @@ function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
   return beat.cues.flatMap(({ target, atCue }) => {
     const kind = cueTargetKind(target);
     const label = target.includes(":") ? target.slice(kind.length + 1) : target;
-    // An unknown kind is counted as an item rather than thrown on: script/v1 rejects it, so it reaches here only from a
-    // script that skipped the schema, and a row naming the kind beats a gate that cannot run.
-    const role = Object.hasOwn(CUE_KIND_ROLES, kind) ? CUE_KIND_ROLES[kind]! : "item";
+    const role = cueKindRole(kind);
     return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
 }

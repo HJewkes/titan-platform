@@ -255,10 +255,8 @@ describe("paceCheck as an L0 check", () => {
   };
 
   // Regression: a plain target such as "scanner" made the item track throw, and the default run lost every check.
-  it("reports the pace rows on a cue target with no known kind, and the other L0 checks still report", () => {
-    const results = runL0(oneCue("scanner"));
-
-    expect(results.map((r) => r.check_id)).toEqual(expect.arrayContaining(["Q-E1", "Q-F1", "Q-E7", "Q-E16", "Q-E17"]));
+  it("fails the pace rows on a cue target with no known kind, and the other L0 checks still report", () => {
+    expectPaceFailedAndOthersReported(runL0(oneCue("scanner")));
   });
 
   // Regression: a cue word missing from the heard words (a lexicon rewrite, an older take) threw the same way.
