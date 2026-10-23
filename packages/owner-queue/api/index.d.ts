@@ -307,8 +307,10 @@ interface WithdrawnItem {
     was: ItemStatus;
     /** `<owner>/<repo>#<n>`, lower-cased. */
     pr: string;
-    /** `new-head:<live sha>`. */
+    /** `new-head:<live sha>`, or a seat's withdraw reason. */
     reason: string;
+    /** Who withdrew a seat's deposit, when the withdrawal recorded one; a supersede has none. */
+    actor?: string;
 }
 interface Superseded {
     /** Every item not withdrawn, in input order. */

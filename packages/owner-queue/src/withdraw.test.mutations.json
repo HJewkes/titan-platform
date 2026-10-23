@@ -10,6 +10,43 @@
         "withdrawDeposit refuses a seat that did not file the deposit",
         "restoreDeposit refuses a seat that did not file the deposit and leaves it withdrawn"
       ]
+    },
+    {
+      "name": "the marker and withdraw row drop the actor",
+      "file": "packages/owner-queue/src/withdraw.ts",
+      "find": "const withdrawal = { reason, by: as, actor, at:",
+      "replace": "const withdrawal = { reason, by: as, at:",
+      "kills": [
+        "withdrawDeposit marks the asker's own deposit withdrawn, writes no answer, and logs asker, actor, when and why"
+      ]
+    },
+    {
+      "name": "the restore row drops the actor",
+      "file": "packages/owner-queue/src/withdraw.ts",
+      "find": "{ op: \"restore\", id, by: as, actor, at:",
+      "replace": "{ op: \"restore\", id, by: as, at:",
+      "kills": [
+        "restoreDeposit opens a withdrawn deposit again and logs the restore after the withdraw"
+      ]
+    },
+    {
+      "name": "a blank actor is accepted",
+      "file": "packages/owner-queue/src/withdraw.ts",
+      "find": "if (actor.trim() === \"\") throw",
+      "replace": "if (actor.trim() === \"\\u0000\") throw",
+      "kills": [
+        "withdrawDeposit refuses a blank actor and writes nothing",
+        "withdrawMatching refuses a blank actor even on a dry run"
+      ]
+    },
+    {
+      "name": "withdrawMatching records the asker as actor",
+      "file": "packages/owner-queue/src/withdraw.ts",
+      "find": "{ reason, as: asker, actor, now }",
+      "replace": "{ reason, as: asker, actor: asker, now }",
+      "kills": [
+        "withdrawMatching withdraws only the asker's open deposits that carry one of the keys"
+      ]
     }
   ]
 }

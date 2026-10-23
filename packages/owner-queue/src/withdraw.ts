@@ -6,7 +6,9 @@
  * the marker; the log keeps both lines.
  *
  * `as` is self-declared, as a deposit's asker is: the check stops a seat closing another seat's
- * item by mistake, not a caller who can already write the spool.
+ * item by mistake, not a caller who can already write the spool. `actor` names who ran the verb,
+ * which differs from the asker when a seat closes items a retired automation filed; marker and log
+ * record both, `by` holding the asker as it always has.
  */
 import { appendFile, lstat, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,7 +23,10 @@ const DEPOSIT_ID = /^deposit:/;
 
 export const withdrawalSchema = z.strictObject({
   reason: z.string().regex(WITHDRAW_REASON),
+  /** The deposit's asker. */
   by: z.string().min(1),
+  /** Absent only on markers written before the actor was recorded. */
+  actor: z.string().min(1).optional(),
   at: z.iso.datetime({ offset: true }),
 });
 export type Withdrawal = z.infer<typeof withdrawalSchema>;
@@ -41,14 +46,18 @@ export interface WithdrawRequest {
   reason: string;
   /** Must equal the deposit's asker. */
   as: string;
+  /** Who runs the withdraw; recorded beside the asker. */
+  actor: string;
   now?: Date;
 }
 export interface RestoreRequest {
   as: string;
+  actor: string;
   now?: Date;
 }
 export interface MatchRequest {
   asker: string;
+  actor: string;
   /** A deposit matches when it carries any of these keys. */
   keys: readonly string[];
   reason: string;
@@ -78,7 +87,12 @@ async function appendLog(dir: string, entry: Record<string, string>): Promise<vo
   await appendFile(join(dir, WITHDRAW_LOG), `${JSON.stringify(entry)}\n`, { mode: 0o600 });
 }
 
-async function ownDeposit(dir: string, id: string, as: string): Promise<OwnerItem> {
+function requireActor(actor: string): void {
+  if (actor.trim() === "") throw refused("an actor is required: name the seat running this");
+}
+
+async function ownDeposit(dir: string, id: string, as: string, actor: string): Promise<OwnerItem> {
+  requireActor(actor);
   if (!DEPOSIT_ID.test(id)) throw refused(`${id} is not a deposit; only a seat's own deposits can be withdrawn`);
   const item = (await readSpool(dir)).items.find((each) => each.id === id);
   if (item === undefined) throw new WithdrawRefusedError(`no deposit ${id} in the spool`, "unknown");
@@ -98,26 +112,26 @@ async function createMarker(dir: string, id: string, withdrawal: Withdrawal): Pr
 }
 
 /** Withdraws the deposit `id` that `as` filed; throws WithdrawRefusedError on an unknown id or a refusal. */
-export async function withdrawDeposit(dir: string, id: string, { reason, as, now = new Date() }: WithdrawRequest): Promise<WithdrawResult> {
+export async function withdrawDeposit(dir: string, id: string, { reason, as, actor, now = new Date() }: WithdrawRequest): Promise<WithdrawResult> {
   if (!WITHDRAW_REASON.test(reason)) throw refused(`reason "${reason}" is not obsolete, resolved or superseded:<id>`);
-  await ownDeposit(dir, id, as);
+  await ownDeposit(dir, id, as, actor);
   if ((await readAnswer(dir, id)) !== undefined) throw refused(`${id} is already answered; the owner's answer stands`);
-  const withdrawal = { reason, by: as, at: now.toISOString() };
+  const withdrawal = { reason, by: as, actor, at: now.toISOString() };
   if (!(await createMarker(dir, id, withdrawal))) return { id, outcome: "already-withdrawn" };
   await appendLog(dir, { op: "withdraw", id, ...withdrawal });
   return { id, outcome: "withdrawn" };
 }
 
 /** Undoes a withdrawal of the deposit `id` that `as` filed, so it is open again. */
-export async function restoreDeposit(dir: string, id: string, { as, now = new Date() }: RestoreRequest): Promise<RestoreResult> {
-  await ownDeposit(dir, id, as);
+export async function restoreDeposit(dir: string, id: string, { as, actor, now = new Date() }: RestoreRequest): Promise<RestoreResult> {
+  await ownDeposit(dir, id, as, actor);
   try {
     await unlink(join(dir, withdrawnFileName(id)));
   } catch (error) {
     if (errno(error) === "ENOENT") return { id, outcome: "not-withdrawn" };
     throw error;
   }
-  await appendLog(dir, { op: "restore", id, by: as, at: now.toISOString() });
+  await appendLog(dir, { op: "restore", id, by: as, actor, at: now.toISOString() });
   return { id, outcome: "restored" };
 }
 
@@ -133,13 +147,14 @@ async function isOpen(dir: string, id: string): Promise<boolean> {
 }
 
 /** Every open deposit `asker` filed with one of `keys`, each withdrawn with `reason` unless `dryRun`. */
-export async function withdrawMatching(dir: string, { asker, keys, reason, now = new Date(), dryRun = false }: MatchRequest): Promise<OwnerItem[]> {
+export async function withdrawMatching(dir: string, { asker, actor, keys, reason, now = new Date(), dryRun = false }: MatchRequest): Promise<OwnerItem[]> {
   if (!WITHDRAW_REASON.test(reason)) throw refused(`reason "${reason}" is not obsolete, resolved or superseded:<id>`);
+  requireActor(actor);
   const { items } = await readSpool(dir);
   const open: OwnerItem[] = [];
   for (const item of items) {
     if (item.asker === asker && item.keys.some((key) => keys.includes(key)) && (await isOpen(dir, item.id))) open.push(item);
   }
-  if (!dryRun) for (const item of open) await withdrawDeposit(dir, item.id, { reason, as: asker, now });
+  if (!dryRun) for (const item of open) await withdrawDeposit(dir, item.id, { reason, as: asker, actor, now });
   return open;
 }

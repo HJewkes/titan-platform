@@ -162,24 +162,28 @@ answer. Withdrawn is its own status: nothing here writes an answer file.
 ```ts
 import { readWithdrawal, restoreDeposit, withdrawDeposit, withdrawMatching } from "@titan-design/owner-queue/withdraw";
 
-await withdrawDeposit(dir, "deposit:<32 hex>", { reason: "obsolete", as: "agent-a" });
+await withdrawDeposit(dir, "deposit:<32 hex>", { reason: "obsolete", as: "agent-a", actor: "agent-b" });
 // { id, outcome: "withdrawn" }, or "already-withdrawn" with the first reason kept
-await restoreDeposit(dir, "deposit:<32 hex>", { as: "agent-a" }); // { id, outcome: "restored" }
-await withdrawMatching(dir, { asker: "agent-a", keys: ["my-alarm"], reason: "resolved", dryRun: true });
+await restoreDeposit(dir, "deposit:<32 hex>", { as: "agent-a", actor: "agent-b" }); // { id, outcome: "restored" }
+await withdrawMatching(dir, { asker: "agent-a", actor: "agent-b", keys: ["my-alarm"], reason: "resolved", dryRun: true });
 ```
 
-- `withdrawDeposit` writes `<id>.withdrawn` (`{ reason, by, at }`, 0600, exclusive create)
+- `as` must be the deposit's asker; `actor` (required) names who runs the call, which differs
+  when a seat closes items a retired automation filed.
+- `withdrawDeposit` writes `<id>.withdrawn` (`{ reason, by, actor, at }`, `by` being the asker;
+  0600, exclusive create)
   beside the deposit. The name has no `.json` suffix, so an older `readSpool` never takes it for
   a deposit. `reason` is `obsolete`, `resolved` or `superseded:<id>`.
 - It throws `WithdrawRefusedError` with `kind: "unknown"` for a deposit id the spool does not
   hold, and `kind: "refused"` for a bad reason, an id that is not `deposit:…`, an `as` other
-  than the deposit's `asker`, or a deposit that already has an answer.
-- Every withdraw and restore appends `{ op, id, reason?, by, at }` to `withdrawals.jsonl`
+  than the deposit's `asker`, a blank `actor`, or a deposit that already has an answer.
+- Every withdraw and restore appends `{ op, id, reason?, by, actor, at }` to `withdrawals.jsonl`
   (`WITHDRAW_LOG`) in the spool. `restoreDeposit` deletes the marker and makes the same checks.
 - `withdrawMatching` withdraws every open deposit of `asker` carrying any of `keys`, and skips
   answered, withdrawn and unreadable ones. With `dryRun` it only lists them.
 - `readWithdrawal(dir, id)` returns the marker, `undefined` when there is none, and throws on a
-  malformed one.
+  malformed one. A marker written before actors were recorded has no `actor`.
+- `WithdrawnItem` carries an optional `actor`, so a read model can show who withdrew an item.
 
 `collapseRepeats(items)` in the root export folds open items that one asker filed with the same
 `alarm:<source>` key (`alarmKey(source)`) into the newest, which carries `repeats`, the count.

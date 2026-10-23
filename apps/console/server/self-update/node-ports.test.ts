@@ -85,7 +85,7 @@ describe("the production alarm ports over a spool", () => {
 
     expect(await ports.resolveAlarms()).toBe(2);
 
-    expect(await readWithdrawal(spool, depositItemId("titan-console", smoke.depositId))).toMatchObject({ reason: "resolved", by: "titan-console" });
+    expect(await readWithdrawal(spool, depositItemId("titan-console", smoke.depositId))).toMatchObject({ reason: "resolved", by: "titan-console", actor: "titan-console" });
     expect(await readWithdrawal(spool, depositItemId("titan-console", restart.depositId))).toMatchObject({ reason: "resolved" });
     expect(await readWithdrawal(spool, depositItemId("seat-x", smoke.depositId))).toBeUndefined();
     expect(await ports.resolveAlarms()).toBe(0);

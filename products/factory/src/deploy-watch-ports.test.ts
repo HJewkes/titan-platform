@@ -41,8 +41,8 @@ describe("the deploy resolve wired into service deploy", () => {
 
     expect(await resolve()).toBe(2);
 
-    expect(await readWithdrawal(spool, depositItemId("titan-factory", legacyAlarm.depositId))).toMatchObject({ reason: "resolved", by: "titan-factory" });
-    expect(await readWithdrawal(spool, depositItemId("titan-factory", incident.depositId))).toMatchObject({ reason: "resolved", by: "titan-factory" });
+    expect(await readWithdrawal(spool, depositItemId("titan-factory", legacyAlarm.depositId))).toMatchObject({ reason: "resolved", by: "titan-factory", actor: "titan-factory" });
+    expect(await readWithdrawal(spool, depositItemId("titan-factory", incident.depositId))).toMatchObject({ reason: "resolved", by: "titan-factory", actor: "titan-factory" });
     expect(await readWithdrawal(spool, depositItemId("seat-x", legacyAlarm.depositId))).toBeUndefined();
     expect(await resolve()).toBe(0);
   });

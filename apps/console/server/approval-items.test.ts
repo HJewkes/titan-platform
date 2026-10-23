@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import { alarmKey, depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { answerFileName, depositFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { answerFileName, depositFileName, withdrawnFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { withdrawDeposit } from "@titan-design/owner-queue/withdraw";
 import { invokeCommand } from "@titan-design/registry";
 import { roundQueueItems, spoolQueueItems } from "./approval-items.js";
@@ -239,17 +239,28 @@ describe("spoolQueueItems", () => {
     expect(await spoolQueueItems(spool)).toEqual({ open: [], answered: [], withdrawn: [], gaps: [] });
   });
 
-  it("lists a deposit its seat withdrew as withdrawn, never as open or answered", async () => {
+  it("lists a deposit its seat withdrew as withdrawn with who withdrew it, never as open or answered", async () => {
     await writeDeposit(spool, deposit("ask-1"));
     await writeDeposit(spool, deposit("ask-2"));
     const withdrawn = depositItemId(ASKER, "ask-2");
-    await withdrawDeposit(spool, withdrawn, { reason: "obsolete", as: ASKER });
+    await withdrawDeposit(spool, withdrawn, { reason: "obsolete", as: ASKER, actor: "seat-ops" });
 
     const items = await spoolQueueItems(spool);
 
     expect(items.open.map((item) => item.id)).toEqual([depositItemId(ASKER, "ask-1")]);
     expect(items.answered).toEqual([]);
-    expect(items.withdrawn).toEqual([{ item: expect.objectContaining({ id: withdrawn, status: "withdrawn" }), was: "open", pr: "", reason: "obsolete" }]);
+    expect(items.withdrawn).toEqual([{ item: expect.objectContaining({ id: withdrawn, status: "withdrawn" }), was: "open", pr: "", reason: "obsolete", actor: "seat-ops" }]);
+  });
+
+  it("lists a withdrawal marked before actors were recorded with no actor", async () => {
+    await writeDeposit(spool, deposit("ask-1"));
+    const id = depositItemId(ASKER, "ask-1");
+    await writeFile(path.join(spool, withdrawnFileName(id)), JSON.stringify({ reason: "resolved", by: ASKER, at: "2031-03-01T00:00:00Z" }));
+
+    const items = await spoolQueueItems(spool);
+
+    expect(items.withdrawn).toEqual([{ item: expect.objectContaining({ id }), was: "open", pr: "", reason: "resolved" }]);
+    expect(items.gaps).toEqual([]);
   });
 
   it("collapses open repeats of one alarm into the newest, with the repeat count", async () => {

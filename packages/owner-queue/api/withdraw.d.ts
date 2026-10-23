@@ -7,6 +7,7 @@ declare const WITHDRAW_REASON: RegExp;
 declare const withdrawalSchema: z.ZodObject<{
     reason: z.ZodString;
     by: z.ZodString;
+    actor: z.ZodOptional<z.ZodString>;
     at: z.ZodISODateTime;
 }, z.core.$strict>;
 type Withdrawal = z.infer<typeof withdrawalSchema>;
@@ -19,14 +20,18 @@ interface WithdrawRequest {
     reason: string;
     /** Must equal the deposit's asker. */
     as: string;
+    /** Who runs the withdraw; recorded beside the asker. */
+    actor: string;
     now?: Date;
 }
 interface RestoreRequest {
     as: string;
+    actor: string;
     now?: Date;
 }
 interface MatchRequest {
     asker: string;
+    actor: string;
     /** A deposit matches when it carries any of these keys. */
     keys: readonly string[];
     reason: string;
@@ -45,11 +50,11 @@ type RestoreResult = {
 /** The withdrawal of item `id`, or undefined when none is filed. Throws on a malformed marker. */
 declare function readWithdrawal(dir: string, id: string): Promise<Withdrawal | undefined>;
 /** Withdraws the deposit `id` that `as` filed; throws WithdrawRefusedError on an unknown id or a refusal. */
-declare function withdrawDeposit(dir: string, id: string, { reason, as, now }: WithdrawRequest): Promise<WithdrawResult>;
+declare function withdrawDeposit(dir: string, id: string, { reason, as, actor, now }: WithdrawRequest): Promise<WithdrawResult>;
 /** Undoes a withdrawal of the deposit `id` that `as` filed, so it is open again. */
-declare function restoreDeposit(dir: string, id: string, { as, now }: RestoreRequest): Promise<RestoreResult>;
+declare function restoreDeposit(dir: string, id: string, { as, actor, now }: RestoreRequest): Promise<RestoreResult>;
 /** Every open deposit `asker` filed with one of `keys`, each withdrawn with `reason` unless `dryRun`. */
-declare function withdrawMatching(dir: string, { asker, keys, reason, now, dryRun }: MatchRequest): Promise<OwnerItem[]>;
+declare function withdrawMatching(dir: string, { asker, actor, keys, reason, now, dryRun }: MatchRequest): Promise<OwnerItem[]>;
 
 export { type MatchRequest, type RestoreRequest, type RestoreResult, WITHDRAW_LOG, WITHDRAW_REASON, WithdrawRefusedError, type WithdrawRequest, type WithdrawResult, type Withdrawal, readWithdrawal, restoreDeposit, withdrawDeposit, withdrawMatching, withdrawalSchema };
 
