@@ -24,6 +24,7 @@ const FACTS: ExplainerFact[] = [
   fact("T-SAVE", { priority: "P1", evidence: [at(STORE, 4)] }),
   fact("T-REPORT", { priority: "P2", evidence: [at(REPORT, 4)] }),
   fact("T-GONE", { priority: "P1", evidence: [at("packages/gone/src/x.ts", 1)] }),
+  fact("T-FILE", { priority: "P2", evidence: [at(STORE, 1)] }),
   fact("X-ENTRY-01", { source: "readme", kind: "entry-point", evidence: [{ path: ENTRY }] }),
   fact("X-WHAT", { source: "summary", kind: "what-it-is", evidence: [{ path: "README.md" }] }),
 ];
@@ -86,12 +87,18 @@ describe("enrichStructure over the indexed TS fixture", () => {
     expect(flow?.projected?.[1]).toEqual([{ from: "pkg:a", to: "pkg:b" }, { from: "pkg:b", to: "pkg:c" }]);
   });
 
+  it("reaches a target the README entries miss from an unimported root", () => {
+    const report = structureOf(result).structure.call_paths.find((p) => p.fact_id === "T-REPORT");
+
+    expect(report).toMatchObject({ entry: REPORT, path: [`${REPORT}#report`], via: "calls" });
+  });
+
   it("keeps an unreachable target as a null path with W-NO-CALL-PATH", () => {
     const { structure, diagnostics } = structureOf(result);
 
-    expect(structure.call_paths.find((p) => p.fact_id === "T-REPORT")).toMatchObject({ path: null, via: null });
-    expect(structure.call_paths.map((p) => p.fact_id)).toEqual(["T-SAVE", "T-REPORT"]);
-    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "W-NO-CALL-PATH", selector: "T-REPORT" }));
+    expect(structure.call_paths.find((p) => p.fact_id === "T-FILE")).toMatchObject({ target: STORE, path: null, via: null });
+    expect(structure.call_paths.map((p) => p.fact_id)).toEqual(["T-SAVE", "T-REPORT", "T-FILE"]);
+    expect(diagnostics.filter((d) => d.code === "W-NO-CALL-PATH").map((d) => d.selector)).toEqual(["T-FILE"]);
   });
 
   it("lists README entries before unimported roots", () => {
@@ -167,5 +174,17 @@ describe("enrichStructure diagnostics", () => {
     expect(outcome.structure.edge_sources).toEqual(["import", "call", "protocol"]);
     expect(codes(outcome)).not.toContain("W-NO-PROTOCOL");
     expect(outcome.structure.levels.map.edges).toContainEqual(expect.objectContaining({ edgeSource: "protocol", source: "pkg:a", target: "pkg:c" }));
+  });
+
+  it("records protocol evidence even when the caller and the route share a package and draw no arrow", async () => {
+    const withRoute = await fixtureClone();
+    temps.push(withRoute);
+    await writeFile(join(withRoute, "packages/c/src/server.ts"), 'export function mount(app: { get: Function }) {\n  app.get("/rows", () => []);\n}\n');
+    await writeFile(join(withRoute, "packages/c/src/client.ts"), 'export function rows() {\n  return fetch("/rows");\n}\n');
+
+    const outcome = structureOf(await enrich({ clonePath: withRoute }));
+
+    expect(outcome.structure.levels.map.edges.some((e) => e.edgeSource === "protocol")).toBe(false);
+    expect(outcome.structure.edge_sources).toEqual(["import", "call", "protocol"]);
   });
 });

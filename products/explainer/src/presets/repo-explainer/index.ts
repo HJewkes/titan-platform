@@ -53,4 +53,4 @@ export {
   type StructureSource,
 } from "./structure-schema.js";
 export { REVIEW_GRAPH_DB, openStructureGraph, type GraphSourceOptions, type GraphSourceResult, type StructureGraph } from "./graph-source.js";
-export { MAX_CALL_ENTRIES, enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";
+export { enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";

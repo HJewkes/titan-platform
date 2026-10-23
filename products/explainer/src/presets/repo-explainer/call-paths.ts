@@ -1,4 +1,4 @@
-import { snapshotCallPath, type CodeGraphStore, type GraphNode } from "@titan-design/code-graph";
+import { findCallPath, type CodeGraphStore, type GraphEdge, type GraphNode } from "@titan-design/code-graph";
 import { factFiles, toFileId } from "./centrality.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import type { ExplainerFact } from "./schemas.js";
@@ -43,46 +43,45 @@ export function callTargets(facts: readonly ExplainerFact[], nodes: readonly Gra
     });
 }
 
-// Code-unit order, not localeCompare, so the chosen path cannot vary with the host locale.
-const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+// A node no graph id can equal: it calls every start symbol, so one breadth-first search covers them all.
+const START = "\u0000entries";
 
-function shorterFirst(a: string[], b: string[]): number {
-  return a.length - b.length || byText(JSON.stringify(a), JSON.stringify(b));
+/** The entry files to search from, tried in order: a later tier runs only for a target the earlier ones miss. */
+export type EntryTiers = readonly (readonly string[])[];
+
+interface Tier {
+  entries: readonly string[];
+  edges: GraphEdge[];
 }
 
-interface Found {
-  entry: string;
-  path: string[];
-}
-
-function bestPath(store: CodeGraphStore, snapshotId: number, starts: ReadonlyMap<string, string[]>, target: string): Found | undefined {
-  let best: Found | undefined;
-  for (const [entry, symbols] of starts) {
-    for (const from of symbols) {
-      const path = snapshotCallPath(store, snapshotId, from, target);
-      if (path !== null && (best === undefined || shorterFirst(path, best.path) < 0)) best = { entry, path };
-    }
-  }
-  return best;
+function tierOf(entries: readonly string[], symbols: readonly GraphNode[], edges: readonly GraphEdge[]): Tier {
+  const files = new Set(entries);
+  const starts = symbols.filter((s) => files.has(s.parentId ?? "")).map((s) => s.id);
+  return { entries, edges: [...edges, ...starts.map((dstId) => ({ srcId: START, dstId, kind: "calls" as const }))] };
 }
 
 /**
- * The shortest `calls` path from any entry file's symbols to each target, id order breaking ties.
- * A target no entry reaches gets a null path and a `W-NO-CALL-PATH`; the other targets still run.
+ * The shortest `calls` path from any entry file's symbols to each target, id order breaking ties, via
+ * code-graph's `findCallPath` over the snapshot's edges (what `snapshotCallPath` reads) plus one virtual
+ * start node per tier. A target no tier reaches gets a null path and a `W-NO-CALL-PATH`; the rest still run.
  */
 export function callPaths(
   store: CodeGraphStore,
   snapshotId: number,
-  entries: readonly string[],
+  tiers: EntryTiers,
   targets: readonly CallTarget[],
 ): { paths: CallPath[]; diagnostics: GatherDiagnostic[] } {
-  const symbols = store.listNodes(snapshotId, { includeSymbols: true }).filter((node) => node.kind === "symbol");
-  const starts = new Map(entries.map((entry) => [entry, symbols.filter((s) => s.parentId === entry).map((s) => s.id).sort(byText)]));
+  const nodes = store.listNodes(snapshotId, { includeSymbols: true });
+  const fileOf = new Map(nodes.map((node) => [node.id, node.parentId]));
+  const edges = store.listEdges(snapshotId, { includeReferences: true });
+  const searched = tiers.map((entries) => tierOf(entries, nodes.filter((n) => n.kind === "symbol"), edges));
   const diagnostics: GatherDiagnostic[] = [];
   const paths = targets.map(({ factId, target }): CallPath => {
-    const found = bestPath(store, snapshotId, starts, target);
-    if (found !== undefined) return { fact_id: factId, entry: found.entry, target, path: found.path, via: "calls" };
-    diagnostics.push(diag("W-NO-CALL-PATH", `no calls path reaches ${target} from ${entries.join(", ") || "any entry"}`, factId));
+    for (const tier of searched) {
+      const path = findCallPath(tier.edges, START, target)?.slice(1);
+      if (path !== undefined) return { fact_id: factId, entry: fileOf.get(path[0]!) ?? null, target, path, via: "calls" };
+    }
+    diagnostics.push(diag("W-NO-CALL-PATH", `no calls path reaches ${target} from ${tiers.flat().length} entry files`, factId));
     return { fact_id: factId, entry: null, target, path: null, via: null };
   });
   return { paths, diagnostics };

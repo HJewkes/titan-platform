@@ -50,7 +50,7 @@ describe("callTargets", () => {
 
 describe("callPaths over the indexed fixture", () => {
   it("walks from the entry through the this.helper() method call to the store", () => {
-    const { paths, diagnostics } = callPaths(fixture.store, fixture.snapshotId, [ENTRY, REPORT], [{ factId: "T1", target: `${STORE}#save` }]);
+    const { paths, diagnostics } = callPaths(fixture.store, fixture.snapshotId, [[ENTRY, REPORT]], [{ factId: "T1", target: `${STORE}#save` }]);
 
     expect(paths).toEqual([
       {
@@ -67,10 +67,23 @@ describe("callPaths over the indexed fixture", () => {
   it("gives an unreachable target a null path and W-NO-CALL-PATH without dropping the next target", () => {
     const targets = [{ factId: "T1", target: `${STORE}#count` }, { factId: "T2", target: `${STORE}#save` }];
 
-    const { paths, diagnostics } = callPaths(fixture.store, fixture.snapshotId, [ENTRY], targets);
+    const { paths, diagnostics } = callPaths(fixture.store, fixture.snapshotId, [[ENTRY]], targets);
 
     expect(paths.map((p) => [p.fact_id, p.path?.length ?? null, p.via])).toEqual([["T1", null, null], ["T2", 4, "calls"]]);
     expect(diagnostics).toEqual([expect.objectContaining({ code: "W-NO-CALL-PATH", selector: "T1" })]);
+  });
+
+  it("falls back to a later entry tier for a target the first tier misses", () => {
+    const { paths, diagnostics } = callPaths(fixture.store, fixture.snapshotId, [[ENTRY], [REPORT]], [{ factId: "T1", target: `${STORE}#count` }]);
+
+    expect(paths[0]).toMatchObject({ entry: REPORT, path: [`${REPORT}#report`, `${STORE}#count`], via: "calls" });
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("returns a one-symbol path when the target sits in an entry file", () => {
+    const { paths } = callPaths(fixture.store, fixture.snapshotId, [[STORE]], [{ factId: "T1", target: `${STORE}#save` }]);
+
+    expect(paths[0]).toMatchObject({ entry: STORE, path: [`${STORE}#save`] });
   });
 });
 
@@ -96,15 +109,24 @@ describe("callPaths tie-breaking", () => {
   });
 
   it("picks the id-first of two equally short paths from different entry symbols", () => {
-    const { paths } = callPaths(store, snapshotId, ["z.ts"], [{ factId: "T", target: "m.ts#t" }]);
+    const { paths } = callPaths(store, snapshotId, [["z.ts"]], [{ factId: "T", target: "m.ts#t" }]);
 
     expect(paths[0]!.path).toEqual(["z.ts#a", "m.ts#x", "m.ts#t"]);
+  });
+
+  it("keeps an earlier tier's path over a shorter one from a later tier", () => {
+    store.insertNodes(snapshotId, [{ id: "n.ts", kind: "file", name: "n.ts" }, { id: "n.ts#q", kind: "symbol", name: "q", parentId: "n.ts" }]);
+    store.insertEdges(snapshotId, [{ srcId: "n.ts#q", dstId: "m.ts#t", kind: "calls" }]);
+
+    const { paths } = callPaths(store, snapshotId, [["z.ts"], ["n.ts"]], [{ factId: "T", target: "m.ts#t" }]);
+
+    expect(paths[0]).toMatchObject({ entry: "z.ts", path: ["z.ts#a", "m.ts#x", "m.ts#t"] });
   });
 
   it("prefers a shorter path over an id-first longer one", () => {
     store.insertEdges(snapshotId, [{ srcId: "z.ts#b", dstId: "m.ts#t", kind: "calls" }]);
 
-    const { paths } = callPaths(store, snapshotId, ["z.ts"], [{ factId: "T", target: "m.ts#t" }]);
+    const { paths } = callPaths(store, snapshotId, [["z.ts"]], [{ factId: "T", target: "m.ts#t" }]);
 
     expect(paths[0]!.path).toEqual(["z.ts#b", "m.ts#t"]);
   });

@@ -33,8 +33,9 @@ review db was taken at another commit). It returns a `structure/v1` and the fact
 `centrality` (rank-based, 1 for the most central file), `reading_rank`, `module` and
 `shape_hints.graph`, all from `@titan-design/code-read`'s centrality lens; a cited code path
 outside the index is `W-UNRESOLVED` and leaves the fact's centrality null. Call paths run from
-the README entry files (else the most central unimported files) to each P1/P2 topic's cited
-symbol through code-graph's `snapshotCallPath`, and become `MapFlow`s on the
+the README entry files, then from unimported root files for a target those miss, to each P1/P2
+topic's cited symbol: one search per target through code-graph's `findCallPath` over the
+snapshot's edges (what `snapshotCallPath` reads). They become `MapFlow`s on the
 `@titan-design/graph-layout` `emitRepoMap` levels; a target no entry reaches is
 `W-NO-CALL-PATH`. Protocol edges come from code-graph's `extractProtocolEdges`; with none
 declared the stage warns `W-NO-PROTOCOL` (code-graph's `no-protocol-source`) and the container

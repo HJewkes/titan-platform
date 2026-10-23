@@ -2,16 +2,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { extractProtocolEdges, getLanguageFromPath, NO_PROTOCOL_SOURCE, type GraphNode, type ProtocolEdgeResult, type ProtocolSourceFile } from "@titan-design/code-graph";
 import { createLiveSource, type ReadSource } from "@titan-design/code-read";
-import { callPaths, callTargets } from "./call-paths.js";
+import { callPaths, callTargets, type EntryTiers } from "./call-paths.js";
 import { enrichFacts, entryRoots, factFiles, rankFiles, readingOrder } from "./centrality.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import { openStructureGraph, type GraphSourceOptions, type StructureGraph } from "./graph-source.js";
 import { computeLevels, toFlows, type Levels } from "./levels.js";
 import type { ExplainerFact } from "./schemas.js";
 import { EDGE_SOURCES, StructureSchema, type CallPath, type EdgeSource, type EntryPoint, type Structure } from "./structure-schema.js";
-
-/** Call paths start from at most this many entry files, so the search stays bounded on a large repo. */
-export const MAX_CALL_ENTRIES = 3;
 
 export interface EnrichOptions extends GraphSourceOptions {
   facts: readonly ExplainerFact[];
@@ -36,13 +33,10 @@ function entryPoints(ctx: Context, facts: readonly ExplainerFact[]): EntryPoint[
   return [...readme.map((path) => ({ path, from: "readme" as const })), ...roots.map((path) => ({ path, from: "root" as const }))];
 }
 
-// README entries are the review's own word on where to start; without them, the most central roots stand in.
-function callEntries(ctx: Context, entries: readonly EntryPoint[]): string[] {
-  const readme = entries.filter((e) => e.from === "readme").map((e) => e.path);
-  if (readme.length > 0) return readme.slice(0, MAX_CALL_ENTRIES);
-  const ranks = rankFiles(ctx.read, ctx.graph.snapshotId, entries.map((e) => e.path));
-  const byRank = ranks.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
-  return byRank.slice(0, MAX_CALL_ENTRIES).map((rank) => rank.path);
+// README entries are the review's own word on where to start; unimported roots stand in for a target they miss.
+function entryTiers(entries: readonly EntryPoint[]): EntryTiers {
+  const tiers = (["readme", "root"] as const).map((from) => entries.filter((e) => e.from === from).map((e) => e.path));
+  return tiers.filter((tier) => tier.length > 0);
 }
 
 async function protocolSources(ctx: Context): Promise<ProtocolSourceFile[]> {
@@ -98,7 +92,7 @@ async function buildStructure(ctx: Context): Promise<EnrichResult> {
   const order = graph.files === 0 ? [] : readingOrder(read, graph.snapshotId);
   const entries = entryPoints(ctx, enriched.facts);
   const symbols = graph.store.listNodes(graph.snapshotId, { includeSymbols: true });
-  const calls = callPaths(graph.store, graph.snapshotId, callEntries(ctx, entries), callTargets(enriched.facts, symbols, indexed));
+  const calls = callPaths(graph.store, graph.snapshotId, entryTiers(entries), callTargets(enriched.facts, symbols, indexed));
   out.push(...calls.diagnostics);
   const mapped = await mapLevels(ctx, order[0]?.path, calls.paths);
   const structure = StructureSchema.parse({
