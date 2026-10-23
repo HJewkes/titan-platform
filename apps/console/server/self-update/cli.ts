@@ -15,13 +15,14 @@ export const SELF_UPDATE_USAGE = `       titan-console self-update --apply <sha>
 
 const expandHome = (value: string, home: string): string => (value === "~" ? home : value.startsWith("~/") ? path.join(home, value.slice(2)) : value);
 
-/** `TITAN_CONSOLE_UPDATE_ROOT` and `TITAN_CONSOLE_UNIT` exist for a second install; the defaults are the served console's. */
+/** `TITAN_CONSOLE_UPDATE_ROOT`, `TITAN_CONSOLE_UNIT` and `TITAN_CONSOLE_BIN_DIR` exist for a second install; the defaults are the served console's. */
 function updateOptions(config: ConsoleConfig, env: NodeJS.ProcessEnv = process.env, home: string = homedir()): UpdateOptions {
   return {
     root: expandHome(env.TITAN_CONSOLE_UPDATE_ROOT || "~/.local/share/titan-console", home),
     stateDir: config.stateDir,
     port: config.port,
     unit: env.TITAN_CONSOLE_UNIT || "titan-console.service",
+    binDir: expandHome(env.TITAN_CONSOLE_BIN_DIR || "~/.local/bin", home),
   };
 }
 

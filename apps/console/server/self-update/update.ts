@@ -5,6 +5,7 @@ import { FAILURE_STAGES, failureDeposit, type FailureStage } from "./alarm.js";
 import { releaseLock, takeLock, type LockPorts } from "./lock.js";
 import { CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
 import { releaseCli, smokeFromRelease, type SmokePorts } from "./release-smoke.js";
+import { shimPath, shimText } from "./shim.js";
 
 export interface CommandResult {
   code: number;
@@ -25,6 +26,8 @@ export interface UpdatePorts extends LockPorts, SmokePorts {
   listDirs: (dir: string) => string[];
   mkdir: (dir: string) => void;
   writeFile: (file: string, text: string) => void;
+  /** Writes an executable script atomically; false when `file` already held `text`, so nothing was written. */
+  writeShim: (file: string, text: string) => boolean;
   /** The build sha the console on `port` reports, polled until it is `want` or the wait ends; null when it answered with no sha, undefined when it never answered. */
   servedSha: (port: number, want: string) => Promise<string | null | undefined>;
   alarm: (deposit: OwnerItemDeposit) => Promise<void>;
@@ -39,6 +42,8 @@ export interface UpdateOptions {
   /** The served console's loopback port. */
   port: number;
   unit: string;
+  /** Where the `titan-console` shim goes, so a seat runs the serving CLI from PATH. */
+  binDir: string;
 }
 
 const OUTCOMES = ["updated", "unchanged", "failed", "rolled-back", "rollback-failed"] as const;
@@ -177,8 +182,19 @@ async function apply(update: Update, go: Go): Promise<number> {
   if (restarted !== undefined) return rollBack(update, go, restarted);
   write(update, go, "updated");
   update.ports.log(`updated: serving ${go.target}`);
+  installShim(update);
   await prune(update, [go.release, go.current]);
   return EXIT.OK;
+}
+
+/** Only after a verified swap; a failure is logged and never undoes the update, since the shim is a convenience. */
+function installShim(update: Update): void {
+  const file = shimPath(update.options.binDir);
+  try {
+    if (update.ports.writeShim(file, shimText(update.options.root))) update.ports.log(`wrote ${file}`);
+  } catch (error) {
+    update.ports.log(`error: could not write ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** Recorded, so the bootstrap does not build this sha again; the built release is dropped, since nothing will serve it. */

@@ -17,6 +17,9 @@ Everything lives under `~/.local/share/titan-console` (`TITAN_CONSOLE_UPDATE_ROO
 | `releases/<sha>/` | One `git worktree` of `checkout/` per build, installed and built in place |
 | `current` | Symlink to the release being served. `titan-console.service` starts `current/apps/console/dist/cli.js` |
 
+One file lives outside the root: `~/.local/bin/titan-console` (`TITAN_CONSOLE_BIN_DIR`), the shim
+that puts the CLI on `PATH`, so a seat runs `titan-console inbox file -` without locating `cli.js`.
+
 The updater keeps the serving release and the one before it, and removes older ones with
 `git worktree remove`, only after the new release answers `/health`. It never removes `checkout/`.
 
@@ -61,6 +64,12 @@ The new release's updater (`self-update --apply <sha>`) then:
    goes back to the previous release, which is still on disk, and the unit is restarted once more.
 6. Only after the new sha answers does it record `updated` and prune releases older than the
    previous one.
+7. Writes the `titan-console` shim into `TITAN_CONSOLE_BIN_DIR` (default `~/.local/bin`): a `sh`
+   script that runs `exec node <root>/current/apps/console/dist/cli.js "$@"`, mode 755. It names
+   `current/`, never a release dir, so a later rollback leaves it valid. A shim that already holds
+   that text is not rewritten; a new one is written to a temp file and renamed over the old. A
+   failed write is logged in the unit's journal and does not undo the update, record a failure or
+   file an alarm. Nothing else writes the shim, so the first update after this change creates it.
 
 Every failure records `self-update.json` (`outcome`, `stage`, `target`, `served`, `why`) and files an
 owner-queue item through `@titan-design/owner-queue`'s `writeDeposit` into the console's inbox

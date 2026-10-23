@@ -7,6 +7,7 @@ import type { Readable } from "node:stream";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { z } from "zod";
 import { releaseCli, withTail, type NodeRun } from "./release-smoke.js";
+import { writeShim } from "./shim.js";
 import type { CommandResult, UpdatePorts } from "./update.js";
 
 const COMMAND_TIMEOUT_MS = 15 * 60_000;
@@ -200,6 +201,7 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     listDirs,
     mkdir: (dir) => void mkdirSync(dir, { recursive: true, mode: 0o700 }),
     writeFile: (file, text) => writeFileSync(file, text, { mode: 0o600 }),
+    writeShim,
     readFile,
     remove: (file) => rmSync(file, { force: true }),
     createExclusive,
