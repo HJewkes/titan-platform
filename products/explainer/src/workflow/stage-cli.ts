@@ -48,11 +48,15 @@ function stageCommand(deps: RunCliDeps, out: (text: string) => void): Command {
         throw error;
       });
       if (flags.json) return out(`${JSON.stringify(record, null, 2)}\n`);
-      out(`stage ${stage}: ${record.cached ? "cache hit" : "ran"}; child run ${record.childRunId}; key ${record.key}\n`);
-      out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
-      out(`outputs: ${shortShas(record.outputs)}\n`);
-      out(`checks: ${verdicts(record)}\n`);
+      printRecord(stage, record, out);
     });
+}
+
+function printRecord(stage: CachedStage, record: StageRecord, out: (text: string) => void): void {
+  out(`stage ${stage}: ${record.cached ? "cache hit" : "ran"}; child run ${record.childRunId}; key ${record.key}\n`);
+  out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
+  out(`outputs: ${shortShas(record.outputs)}\n`);
+  out(`checks: ${verdicts(record)}\n`);
 }
 
 /** `explainer stage <name> --in name=sha ...`: exit 0 when the stage finished, 1 when it failed, 2 on usage. */

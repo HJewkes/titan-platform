@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { SHA256_PATTERN } from "./spec/common.js";
 import { parseSpec } from "./spec/index.js";
 import { validateSpec } from "./validate.js";
@@ -53,7 +54,7 @@ describe("explainer units", () => {
 
   it("freezes cases as artifact shas only, so no script text or fact reaches this public repo", () => {
     const leaks = ALL_UNITS.flatMap(caseFiles).map(caseOf).flatMap((c) => {
-      const { inputs, ...rest } = c.input as { inputs: Record<string, string>; files?: Record<string, string> };
+      const { inputs, ...rest } = z.looseObject({ inputs: z.record(z.string(), z.string()) }).parse(c.input);
       const bad = Object.entries(inputs).filter(([, sha]) => !SHA256_PATTERN.test(sha)).map(([name]) => name);
       const extra = Object.keys(rest).filter((key) => key !== "files");
       return [...bad, ...extra].map((name) => `${c.unit.id}/${c.id}: ${name}`);

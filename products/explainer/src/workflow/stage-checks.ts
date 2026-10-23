@@ -1,8 +1,8 @@
+import { z } from "zod";
 import { cueResolverFromWords } from "../cues.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
-import type { RewriteReport } from "../rewrite-pass.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine } from "../spine-schema.js";
 import { readTiming } from "../timing.js";
@@ -22,7 +22,7 @@ type Verdict = Pick<Check, "pass" | "detail">;
  * One deterministic check from the workflow plan's §5.1 table. A `gate` fails its stage; any other check is
  * reported only. A check whose artifacts the stage did not produce is skipped with a note, never failed.
  */
-export interface StageCheck {
+interface StageCheck {
   name: string;
   gate: boolean;
   reads: readonly string[];
@@ -56,8 +56,10 @@ function noNewL0Error(input: CheckInput): Verdict {
   return { pass: added.length === 0, detail: `new failing error rows: ${added.join(", ") || "none"}` };
 }
 
+const TargetRowsSchema = z.object({ after: z.array(z.object({ check_id: z.string(), pass: z.boolean() })) });
+
 function rewriteTargetRows(input: CheckInput): Verdict {
-  const report = JSON.parse(text(input, "rewrite-report")) as Pick<RewriteReport, "after">;
+  const report = TargetRowsSchema.parse(JSON.parse(text(input, "rewrite-report")));
   const red = report.after.filter((row) => !row.pass).map((row) => row.check_id);
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
@@ -105,7 +107,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   sheets: [],
 };
 
-export interface CheckRun {
+interface CheckRun {
   checks: Check[];
   notes: string[];
 }

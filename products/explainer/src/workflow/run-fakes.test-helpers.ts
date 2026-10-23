@@ -109,7 +109,7 @@ function wordsFile(scriptText: string, drop?: string): string {
   return JSON.stringify({ voice: { provider: "fake" }, beats });
 }
 
-export interface BridgeOptions {
+interface BridgeOptions {
   qaFails?: boolean;
   /** The variety lint (a reported-only check) exits non-zero. */
   varietyFails?: boolean;

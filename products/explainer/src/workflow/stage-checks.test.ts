@@ -130,13 +130,13 @@ describe("running a stage's checks", () => {
 describe("eval stage gates", () => {
   it("fails with its gate verdicts attached, before the rubric spends", async () => {
     const { artifacts, store } = input({ script: json(choppy()), spine: SPINE });
-    const stage = { artifacts, store: { ...store, putText: () => "unused" } as never, from: { runId: "r", stage: "eval" }, remainingUsd: 1 };
+    const stage = { artifacts, store: { ...store, putText: () => "unused" }, from: { runId: "r", stage: "eval" }, remainingUsd: 1 };
     let judged = 0;
 
-    const failure = await runEvalStage(stage, { judge: DEFAULT_JUDGE, harnessFor: () => { judged++; throw new Error("no judge"); } }, [l0Check(false)]).catch((error: unknown) => error);
+    const run = runEvalStage(stage, { judge: DEFAULT_JUDGE, harnessFor: () => { judged++; throw new Error("no judge"); } }, [l0Check(false)]);
 
-    expect(failure).toBeInstanceOf(StageFailure);
-    expect((failure as StageFailure).checks.map((c) => [c.name, c.gate, c.pass])).toEqual([["l0", true, false], ["pace", true, true]]);
+    await expect(run).rejects.toBeInstanceOf(StageFailure);
+    await expect(run).rejects.toMatchObject({ checks: [{ name: "l0", gate: true, pass: false }, { name: "pace", gate: true, pass: true }] });
     expect(judged).toBe(0);
   });
 });

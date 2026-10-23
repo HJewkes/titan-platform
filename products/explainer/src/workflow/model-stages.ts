@@ -23,7 +23,7 @@ export const SCRIPT_CALL_USD = 4;
 
 export interface ModelStageInput {
   artifacts: Readonly<Record<string, string>>;
-  store: ArtifactStore;
+  store: Pick<ArtifactStore, "readText" | "putText">;
   from: Provenance;
   remainingUsd: number;
 }
