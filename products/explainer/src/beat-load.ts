@@ -58,3 +58,13 @@ export function parseBeatSlots(specs: ReadonlyMap<string, BeatSpec>, type: strin
 export function emphasisTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
   return (spec.emphasis?.targets ?? []).flatMap((field) => idsOf(slots[field]));
 }
+
+/**
+ * The element a script cue's `target` names in one beat's validated slots. Two target lists may
+ * share an id, so a target naming no element, or more than one, throws.
+ */
+export function cueElement(spec: BeatSpec, slots: Record<string, unknown>, target: string): string {
+  const found = emphasisTargets(spec, slots).filter((id) => id === target).length;
+  if (found !== 1) throw new BeatSlotError(spec.type, [`cue target ${target} resolves to ${found} elements, not one`]);
+  return target;
+}

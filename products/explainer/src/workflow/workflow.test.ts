@@ -84,6 +84,17 @@ describe("explainer run", () => {
     expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "2 pass, 0 fail" });
   });
 
+  // Mutation: keeping the reply's structure records bluf, which the spine was never planned under.
+  it("records the planned design-journey structure on the draft, whatever the reply names", async () => {
+    fx = fixture();
+    const model = fakeScriptModel({ ...choppy(), structure: "bluf" });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
+    expect(draft.structure).toBe("design-journey");
+  });
+
   it("makes no repair call for a draft that passes L0", async () => {
     fx = fixture();
     const model = fakeScriptModel();

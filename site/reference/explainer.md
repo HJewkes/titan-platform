@@ -136,6 +136,16 @@ and the next map beat resumes it.
   `thesis_refs` name beats.
 - Required authored fields accept a `TODO:` placeholder, so a draft parses and the lints
   report every gap at once.
+- The profile fields are optional, so a legacy script still parses. A beat's visual may give its
+  `layer` (`template` or `custom`), its `framing` (`FRAMINGS`), the 6×6 grid cells it uses
+  (`anchors`, `A1` to `F6`) and a `scene`. A cue's `target` is an element id the beat's emphasis
+  mapping resolves, and `untilCue` ends the spoken span it covers.
+- `structure` records the structure registry name the script was planned under, and
+  `parseScript(raw, structures?)` throws `UnknownStructureError` for a name the registry lacks.
+  `explainer eval l0` and `explainer run` parse through it, and the script stage records
+  `design-journey`, the structure its spine template comes from.
+- `signature_layer` (`kind` and its source fact ids) is a hypothesis the pilots measure. It is
+  optional, and no check requires it.
 - `deriveEvalView(script, layout?)` returns the view judges and lints read: `nodes_shown`,
   `edges_shown`, `you_are_here` (the camera station, else the focus) and `state_changes`
   ordered by where their cue is spoken. It is derived, never authored.
@@ -282,7 +292,8 @@ packet recipe (200 words or fewer), whether it is a no-model preset, and its emp
   `beatSpecFor(specs, type)` throws `UnknownBeatError` for a beat with no spec.
 - `parseBeatSlots(specs, type, slots)` validates one beat's slots. It throws `BeatSlotError` for a
   slot the schema rejects or for an emphasis element id used twice. `emphasisTargets(spec, slots)`
-  lists the ids a cue may name.
+  lists the ids a cue may name, and `cueElement(spec, slots, target)` throws `BeatSlotError`
+  unless the target names exactly one of them.
 - `checkBeatSpecs(specs, vocabulary)` returns coded `BeatIssue`s:
   - a spec missing from the vocabulary, or a vocabulary beat with no spec;
   - a slots ref with no schema;

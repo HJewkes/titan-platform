@@ -57,7 +57,7 @@ export {
   type SpeechBand,
 } from "./beat-schema.js";
 export { BEAT_SLOTS, isSlotRef, isTargetField, type BeatSlotRef } from "./beat-slots.js";
-export { BeatSlotError, UnknownBeatError, beatSpecFor, emphasisTargets, loadBeatSpecs, parseBeatSlots } from "./beat-load.js";
+export { BeatSlotError, UnknownBeatError, beatSpecFor, cueElement, emphasisTargets, loadBeatSpecs, parseBeatSlots } from "./beat-load.js";
 export { BEAT_ISSUE_CODES, checkBeatSpecs, type BeatIssue, type BeatIssueCode } from "./beat-checks.js";
 export {
   EvidenceSpanSchema,

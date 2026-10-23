@@ -5,10 +5,11 @@ import { L0_CHECKS, l0HardPass, failedChecks, runL0, type L0Check, type L0Result
 import { readColdRubric, rubricBeatsFromPace, rubricNote, runColdRubric } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
 import { canonicalSha } from "../eval-store.js";
-import { guidePlan } from "../guide-plan.js";
+import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
+import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine } from "../spine-schema.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
@@ -34,7 +35,7 @@ const need = (input: ModelStageInput, name: string): string => {
   return sha;
 };
 
-const readScript = (input: ModelStageInput, name: string): ScriptV1 => ScriptSchema.parse(JSON.parse(input.store.readText(need(input, name))));
+const readScript = (input: ModelStageInput, name: string): ScriptV1 => parseScript(JSON.parse(input.store.readText(need(input, name))));
 const putJson = (input: ModelStageInput, value: unknown, kind: string): string => input.store.putText(`${JSON.stringify(value, null, 2)}\n`, kind, input.from);
 
 export function stageUsage(usage: StepUsage | undefined): StageUsage {
@@ -96,7 +97,8 @@ function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string }
     return { error: "the reply holds no JSON object" };
   }
   const parsed = ScriptSchema.safeParse(raw);
-  if (parsed.success) return { script: parsed.data };
+  // The stage planned the spine under this structure, so the script records it whatever the reply says.
+  if (parsed.success) return { script: { ...parsed.data, structure: GUIDE_PLAN_STRUCTURE } };
   return { error: issueText(parsed.error.issues) };
 }
 

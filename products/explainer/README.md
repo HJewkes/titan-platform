@@ -45,7 +45,10 @@ focus boxes that keeps them above the 83 % caption line.
 
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
-unchanged. Every cue must be a word the beat speaks. `deriveEvalView` computes the view the
+unchanged. Every cue must be a word the beat speaks. The optional profile fields (`visual.layer`,
+`framing`, `anchors`, `scene`, a cue's `untilCue`, the script's `structure` and `signature_layer`)
+leave a legacy script parsing; `script-load.ts` (`parseScript`) also rejects a `structure` the
+registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
 
@@ -212,12 +215,14 @@ that shows a new item the ledger lacks, or first shows an item whose defining be
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
 
-`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 (FB1)
+`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 runs
+only for a script whose `structure` is `design-journey` or that names none, as a legacy script does. Q-E15 (FB1)
 fails a chapter whose §8 row cites a §4 architecture row before the first chapter that cites a §3
 journey row, and a journey step whose "why" is empty; chapters are ordered by position in §8, never by
 id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`) that no §4 row states a
 mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
-reads the spine for all of these; without `--spine` a rule claiming Q-E15 or Q-E18 is not a ghost.
+reads the spine for all of these; without `--spine`, or for Q-E15 under another structure, a rule claiming the
+skipped check is not a ghost.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
