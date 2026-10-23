@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { partialFake } from "@titan-design/test-kit";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,12 +11,13 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import type { SpawnRequest } from "./agents.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
-import { isVisualGate, packetDirFor, visualPacket, type PacketInput, type VisualPacketMode, type VisualPacketPorts } from "./visual-packet-trigger.js";
+import { isVisualGate, packetDirFor, packetTriggering, visualPacket, type PacketInput, type VisualPacketMode, type VisualPacketPorts } from "./visual-packet-trigger.js";
 
 const H2 = fakeSha("visual-next-head");
 const VISUAL: EffectivePolicy = { ...OWNER_GATE_POLICY, ownerGateReason: "gate-2-visual", seat: "design-seat" };
@@ -302,5 +304,71 @@ describe("the packager's brief", () => {
     expect(brief).toContain("titan-review: /srv/synthetic-owner/.local/bin/titan-review");
     for (const step of steps(brief).filter((line) => line.includes("titan-review"))) expect(step).toContain("`/srv/synthetic-owner/.local/bin/titan-review packet ");
     expect(brief).not.toMatch(/`titan-review /);
+  });
+});
+
+describe("the replay guard around the packet step", () => {
+  const packetStep = `sh-visual-packet:${H1}`;
+  const gatePrompt = `Merge PR #1 in ${REPO} at head ${H1}? CI is green. Policy shepherd-merge-guard/visual-path: synthetic reason`;
+
+  interface Position {
+    next?: string;
+    resumed?: string;
+    iterations?: Record<string, number>;
+  }
+
+  /** A run context at a given replay position; `dispatched` collects the steps the trigger records. */
+  async function reachGate(position: Position) {
+    const dispatched: string[] = [];
+    const ctx = partialFake<WorkflowContext>({
+      runId: "run-synthetic-1",
+      historyNext: () => position.next,
+      resumedGate: () => position.resumed,
+      iteration: (id: string) => position.iterations?.[id] ?? 0,
+      dispatch: async <T extends Record<string, unknown>>(stepId: string) => {
+        dispatched.push(stepId);
+        return partialFake<StepResult<T>>({ data: partialFake<T>({}) });
+      },
+    });
+    const assisted = vi.fn<WorkflowContext["assisted"]>(async () => partialFake<Awaited<ReturnType<WorkflowContext["assisted"]>>>({ data: {} }));
+    const run = { ctx, target: { repo: REPO, pr: 1 }, ownerGateReason: () => undefined };
+
+    await packetTriggering(run, assisted)("approve-merge", gatePrompt);
+
+    return { dispatched, assisted };
+  }
+
+  it("a replay whose recorded next step is this head's packet step replays it", async () => {
+    const { dispatched, assisted } = await reachGate({ next: packetStep });
+
+    expect(dispatched).toEqual([packetStep]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a replay whose recorded next step is something else records no packet step", async () => {
+    const { dispatched, assisted } = await reachGate({ next: "sh-policy" });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a gate resumed from before the packet step existed spawns no packager", async () => {
+    const { dispatched, assisted } = await reachGate({ resumed: "approve-merge" });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
+  });
+
+  it("a fresh gate with nothing resumed records the packet step", async () => {
+    const { dispatched } = await reachGate({});
+
+    expect(dispatched).toEqual([packetStep]);
+  });
+
+  it("a second visual gate at a head that already has its packet step records no second one", async () => {
+    const { dispatched, assisted } = await reachGate({ iterations: { [packetStep]: 1 } });
+
+    expect(dispatched).toEqual([]);
+    expect(assisted).toHaveBeenCalledOnce();
   });
 });
