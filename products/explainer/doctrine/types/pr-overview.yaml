@@ -13,13 +13,13 @@ runtime: { targetS: 150, minS: 90, maxS: 240, splitAboveS: 300 }
 structure:
   order: heuristic
   heuristic:
-    - { signal: owner-gate, ask: "Is the PR waiting on the viewer at a gate?", macro: scqa }
-    - { signal: bug-fix, ask: "Is it a bug fix with attempts that broke along the way?", macro: journey }
-    - { signal: many-rounds, ask: "Did review take three or more rounds?", macro: review-saga }
+    - { macro: scqa, ask: "Is the PR waiting on the viewer at a gate?" }
+    - { macro: attempt-journey, ask: "Is it a bug fix with attempts that broke along the way?" }
+    - { macro: review-saga, ask: "Did review take three or more rounds?" }
   fallback: before-after
   macros:
     scqa: [summary, changes, proof, ask]
-    journey: [summary, attempt, breaks, proof, ask]
+    attempt-journey: [summary, attempt, breaks, proof, ask]
     review-saga: [summary, rounds, changes, proof, ask]
     before-after: [summary, problem, changes, interactions, shortcomings, proof, ask]
   blocks:

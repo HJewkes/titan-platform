@@ -1,0 +1,27 @@
+schema: narrative-structure/v1
+id: bluf
+version: 0.1.0
+source: "video-profiles plan §B.4 (bottom line up front)"
+summary: "The bottom line first, the decisions waiting, the facts behind them, then the rest at speed."
+fit:
+  ask: "Is the material a status report of many independent items?"
+  any: [status-report]
+blocks:
+  - { id: bottom-line, goal: "The verdict and how many items need the viewer.", share: 0.15 }
+  - { id: decisions, goal: "The top decisions, each with its recommendation.", share: 0.3 }
+  - { id: facts, goal: "The two or three facts behind the bottom line.", share: 0.25 }
+  - { id: segments, goal: "The remaining items at speed, ranked by change.", share: 0.3 }
+hook: "The bottom line is the first sentence."
+ending: "button"
+spine:
+  - title: Bottom line
+    body: |-
+      <The verdict in one sentence, and the count of items that need the viewer.>
+  - title: Decisions
+    body: |-
+      | Decision | Recommendation | Fact id |
+      |---|---|---|
+  - title: Segments
+    body: |-
+      | Segment | What changed | Rank |
+      |---|---|---|

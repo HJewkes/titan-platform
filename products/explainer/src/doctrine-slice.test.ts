@@ -9,6 +9,7 @@ const universal = rule("dir-P2", { enforcement: ["planner", "base"], stages: ["p
 const starred = rule("dir-P6", { scope: { layer: "U*" }, param: "chapters.count", enforcement: ["planner"], stages: ["plan"] });
 const tour = rule("dir-T1", { scope: { layer: "T", types: ["repo-tour"] }, enforcement: ["planner"], stages: ["plan", "script"] });
 const argument = rule("dir-T2", { scope: { layer: "T", types: ["repo-argument"] }, enforcement: ["planner"], stages: ["plan", "script"] });
+const journey = rule("dir-T4", { scope: { layer: "T", structures: ["abt"] }, enforcement: ["planner"], stages: ["plan", "script"] });
 const publicOnly = rule("dir-T3", { scope: { layer: "T", audiences: ["public-youtube"] }, enforcement: ["human"], stages: ["publish"] });
 const codeWalk = rule("dir-C3", { scope: { layer: "B", beats: ["code-walk"] }, enforcement: ["packet", "planner"], stages: ["plan", "script", "build"] });
 const hook = rule("dir-C4", { scope: { layer: "B", beats: ["hook"] }, enforcement: ["packet"], stages: ["build"] });
@@ -23,7 +24,7 @@ const staleQrule = rule("dir-P9", { enforcement: ["lint", "planner"], stages: ["
 
 const CODE_ENFORCED = new Set([liveGate.id, liveToken.id, liveBeat.id, staleQrule.id]);
 
-const REGISTRY = registryWith(universal, starred, tour, argument, publicOnly, codeWalk, hook, plannedLint, pendingToken, liveGate, liveToken, liveBeat, staleQrule);
+const REGISTRY = registryWith(universal, starred, tour, argument, journey, publicOnly, codeWalk, hook, plannedLint, pendingToken, liveGate, liveToken, liveBeat, staleQrule);
 
 const slice = (request: StageRequest) => sliceForStage(REGISTRY, Q_RULES, request);
 const ids = (rules: DoctrineRule[]): string[] => rules.map((found) => found.id);
@@ -42,6 +43,12 @@ describe("sliceForStage", () => {
     expect(routing("plan")).toContain("## Visual router");
     expect(routing("plan")).toMatch(/\| `sankey` \| new \| gap: draw `dependency-graph`/);
     expect(DOCTRINE_STAGES.filter((stage) => stage !== "plan" && routing(stage) !== "")).toEqual([]);
+  });
+
+  it("gives a structure's rules only to a video that picked that structure", () => {
+    expect(ids(slice({ stage: "plan", type: "repo-argument", structure: "abt" }).prompt)).toEqual(["dir-P2", "dir-P6", "dir-T2", "dir-T4"]);
+    expect(ids(slice({ stage: "plan", type: "repo-argument", structure: "scqa" }).prompt)).toEqual(["dir-P2", "dir-P6", "dir-T2"]);
+    expect(ids(slice({ stage: "plan", type: "repo-argument" }).prompt)).toEqual(["dir-P2", "dir-P6", "dir-T2"]);
   });
 
   it("adds the requested beats' rules to the script prompt", () => {
