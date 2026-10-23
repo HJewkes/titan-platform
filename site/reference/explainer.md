@@ -49,8 +49,8 @@ Verified against 0.0.0.
 ## What it deliberately does not do
 
 - It does not know which video types or beat types exist. `video_type` and a beat's `type`
-  are open kebab-case strings; a doctrine registry (type profiles such as `repo-tour` and
-  `repo-argument`, beat specs) will validate them in a later slice.
+  are open kebab-case strings. The type profiles exist (`loadProfiles`), but the schema does not
+  check `video_type` against them yet, and beat specs will validate beat types in a later slice.
 - It reads and writes no files and makes no model or network calls.
 - It does not verify citations. The route step does that before it resolves a source.
 
@@ -208,3 +208,34 @@ list the stage in `stages` are considered. No code-enforced rule lands in `promp
 its `live` flag lags. `findPromptLeaks(text, registry, qRules)` checks finished prompt text: it
 returns each code-enforced doctrine rule, and each Q-rule whose L0 is implemented, that the text
 names by id, alias or exact rule text. Token names are not leaks.
+
+## Type profiles
+
+`doctrine/types/<type>.yaml` holds one `type-profile/v1` per video type: `repo-tour` (the
+`explain-repo` default, `EXPLAIN_REPO_DEFAULT_TYPE`), `repo-argument`, `pr-overview`,
+`paper-summary` and `daily-overview`. `doctrine/audiences/<id>.yaml` holds the `owner-internal`
+and `public-youtube` packs. A profile states its family, intent, audiences, inputs, runtime band,
+structure, cuts, hook and ending, series fields, audition size, layer shares, variety and pacing
+values, coverage and publish checks. It has no spend cap, since cost is tracked rather than
+capped, and no signature-layer requirement.
+
+- `loadProfiles(dir?)` reads both directories and throws on a shape error, naming the file.
+  `profileFor(set, type)` throws `UnknownProfileError` for a type with no profile.
+- `checkProfiles(set, vocabulary)` returns coded `ProfileIssue`s:
+  - names missing from the vocabulary, or audiences with no pack;
+  - a default audience outside `allow`;
+  - dangling macro or block refs;
+  - a runtime band out of order;
+  - a series field in both `mayRepeat` and `mustVary`;
+  - a `mustVary` missing a `SERIES_BASE` field;
+  - a fixed order that varies its structure or chapter labels, or a heuristic order that does
+    not vary its structure;
+  - a publishable audience with no per-video owner ask, or a paper profile without the
+    `PAPER_PUBLISH_CHECKS`.
+- `chapterOrder(profile, { signals, runtimeS? })` gives one video's block order. A `fixed`
+  structure ignores the material. A `heuristic` one takes the macro of the first row whose
+  signal holds, as story-structure §4 asks its questions, and otherwise the fallback.
+- `guideForType(type)` renders a type's planner guide: the profile, then the `plan` slice for
+  the type and its default audience. `explainer guide types` writes every guide to
+  `doctrine/guides/planner/<type>.md`, and `explainer guide plan --type <type>` prints one.
+  A test fails when a checked-in guide differs from its profile. Tracked by TP-2746.
