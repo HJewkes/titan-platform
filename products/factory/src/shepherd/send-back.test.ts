@@ -12,7 +12,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
 import type { WorkflowCiRead } from "./workflow-ci-proof.js";
-import { noFixerAnswers } from "./workflow-ci-send-back.js";
+import { noFixerAnswers } from "./send-back.js";
 
 const H2 = fakeSha("workflow-ci-merge-up");
 const BASE = fakeSha("workflow-ci-base");

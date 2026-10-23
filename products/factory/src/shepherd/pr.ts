@@ -50,7 +50,7 @@ import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
-import { convergenceOf, fixRoundOf, withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
+import { convergenceOf, fixRoundOf, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
@@ -58,7 +58,7 @@ import { autoPassRoute } from "./auto-pass.js";
 import { countConflictRound, freshFailedRounds, tappedReview, type FailedRoundsState } from "./failed-rounds-demotion.js";
 import { diagnosisRoutes } from "./no-verdict-diagnosis.js";
 import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
-import { noFixerAnswers, workflowCiGate } from "./workflow-ci-send-back.js";
+import { sendBack } from "./send-back.js";
 
 export { SHEPHERD_STEPS };
 
@@ -262,7 +262,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       if (route === "fresh-reviewer") run.fresh.add(headSha);
       return false;
     case "wake-fixer":
-      if (routed.outcome === "FIX_FIRST") return sendBack(run, headSha, routed.verdict);
+      if (routed.outcome === "FIX_FIRST") return sendBack(run, headSha, routed.verdict, (kind, payload) => woken(run, kind, headSha, payload));
       await releaseBeforeLeaving(run);
       throw new LeaveLand(await onConflict(run, headSha));
     case "end-run":
@@ -295,18 +295,6 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   const verdict = await reviewKeepingSeatHold(run.seatHeld, headSha, (seatHeld) =>
     run.phases.review(billing, { ...request, ...(run.fresh.has(headSha) && { fresh: true }), cause, ...(seatHeld && { seatHeld }) }));
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
-}
-
-/** Where each verdict sends the PR back to. */
-const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_FIRST: "review", NO_REPRO: "fix-proof" };
-
-/** Never returns: a woken agent starts the next round, and an unhandled wake asks a human. */
-async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<never> {
-  const wake = SEND_BACK[verdict.kind];
-  if (!wake) throw new Error(`shepherd-pr: a ${verdict.kind} verdict has no send-back`);
-  if (noFixerAnswers(run.ctx, verdict)) throw new LeaveLand(await workflowCiGate(run, headSha));
-  if (await woken(run, wake, headSha, wake === "review" ? withEarlier(verdict, run.fixFirstTrail, headSha) : verdict)) throw new LeaveLand();
-  throw new LeaveLand(await unhandledSendBack(run, verdict.kind, headSha));
 }
 
 /** Merge order first (TP-4098), then one fixer wake at the base the overlapping PRs leave behind. */

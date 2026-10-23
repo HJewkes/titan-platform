@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "a workflow-ci NO_REPRO wakes the fixer again",
-      "file": "products/factory/src/shepherd/pr.ts",
+      "file": "products/factory/src/shepherd/send-back.ts",
       "find": "if (noFixerAnswers(run.ctx, verdict)) throw",
       "replace": "if (false) throw",
       "kills": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "the workflow-ci gate offers no waive-proof",
-      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "file": "products/factory/src/shepherd/send-back.ts",
       "find": "after a workflow-only NO_REPRO\", prompt, true);",
       "replace": "after a workflow-only NO_REPRO\", prompt, false);",
       "kills": [
@@ -21,7 +21,7 @@
     },
     {
       "name": "any NO_REPRO skips the fixer, not only a workflow-ci read",
-      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "file": "products/factory/src/shepherd/send-back.ts",
       "find": "return read.success && !read.data.proved && !recordedWake(ctx);",
       "replace": "return !read.data?.proved && !recordedWake(ctx);",
       "kills": [
@@ -30,7 +30,7 @@
     },
     {
       "name": "a replay ignores the fixer wake its record holds",
-      "file": "products/factory/src/shepherd/workflow-ci-send-back.ts",
+      "file": "products/factory/src/shepherd/send-back.ts",
       "find": "return read.success && !read.data.proved && !recordedWake(ctx);",
       "replace": "return read.success && !read.data.proved;",
       "kills": [
