@@ -50,14 +50,16 @@ const BRIDGE: Omit<BridgeFile, "workdir" | "theater"> & { schema: "explainer-bri
       inputs: { script: "script.json" },
       outputs: { words: { path: "out/words.json", tree: false }, audio: { path: "out/audio", tree: true } },
       commands: [{ argv: ["node", "tools/tts.mjs", "{in.script}", "{out.audio}"], timeoutS: 60 }],
+      vars: {},
     },
     render: {
       inputs: { words: "out/words.json", audio: "out/audio" },
       outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false } },
-      commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}"], timeoutS: 60 }],
+      commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}", "--workers", "{var.workers}"], timeoutS: 60 }],
+      vars: { workers: "4" },
     },
-    qa: { inputs: { mp4: "out/demo.mp4" }, outputs: { qa: { path: "out/qa.json", tree: false } }, commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }] },
-    sheets: { inputs: {}, outputs: { sheet: { path: "out/sheet.png", tree: false } }, commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }] },
+    qa: { inputs: { mp4: "out/demo.mp4" }, outputs: { qa: { path: "out/qa.json", tree: false } }, commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }], vars: {} },
+    sheets: { inputs: { mp4: "out/demo.mp4" }, outputs: { sheet: { path: "out/sheet.png", tree: false } }, commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }], vars: {} },
   },
 };
 
@@ -100,7 +102,7 @@ function templateBodies(options: { qaFails?: boolean }, ttsInputs: string[]): Re
       return { code: 0, stdout: "1 beat in 0.1s\n" };
     },
     "render.ts": (req) => {
-      write(req.argv[2]!, `mp4:${readFileSync(at(req, "out/words.json"), "utf8")}`);
+      write(req.argv[2]!, `mp4:workers=${req.argv[4]}:${readFileSync(at(req, "out/words.json"), "utf8")}`);
       write(at(req, "out/demo.vtt"), "WEBVTT\n");
       return { code: 0, stdout: '{"frames":30}\n' };
     },
@@ -109,7 +111,7 @@ function templateBodies(options: { qaFails?: boolean }, ttsInputs: string[]): Re
       return options.qaFails ? { code: 1, stdout: "qa FAIL demo: 1 held errors\n" } : { code: 0, stdout: "qa PASS demo: 0 held errors, 2 moments\n" };
     },
     "sheets.sh": (req) => {
-      write(at(req, "out/sheet.png"), "png");
+      write(at(req, "out/sheet.png"), `png:${sha256(readFileSync(at(req, "out/demo.mp4")))}`);
       return { code: 0, stdout: "" };
     },
   };

@@ -106,7 +106,7 @@ describe("explainer run", () => {
 });
 
 describe("explainer run --from", () => {
-  it("from tts spends nothing on models and hands tts the base run's script sha", async () => {
+  it("from tts spends nothing on models, and the unchanged script hits the stage cache from tts on", async () => {
     fx = fixture();
     const model = fakeScriptModel();
     const bridge = fakeBridge();
@@ -119,9 +119,12 @@ describe("explainer run --from", () => {
     expect(model.prompts).toHaveLength(1);
     expect(host.rewriter.prompts).toHaveLength(0);
     expect(second.report.totals.usd).toBe(0);
-    expect(bridge.ttsInputs).toEqual([row(first, "rewrite").outputs.script, row(first, "rewrite").outputs.script]);
+    expect(bridge.ttsInputs).toEqual([row(first, "rewrite").outputs.script]);
     for (const stage of ["script", "rewrite", "eval"]) {
       expect(row(second, stage)).toMatchObject({ status: "reused", cacheHit: true, usd: 0, wallMs: 0, outputs: row(first, stage).outputs, reusedFrom: first.runId });
+    }
+    for (const stage of ["tts", "render", "qa", "sheets"]) {
+      expect(row(second, stage)).toMatchObject({ status: "cached", cacheHit: true, wallMs: 0, outputs: row(first, stage).outputs, childRunId: row(first, stage).childRunId });
     }
     expect(second.report.linked).toEqual([{ runId: first.runId, usd: first.report.totals.usd }]);
   });
@@ -193,7 +196,8 @@ describe("bridged stages", () => {
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
 
-    expect(readFileSync(path.join(path.dirname(result.reportPath), "logs", "qa-1.log"), "utf8")).toContain("qa PASS demo");
+    const qaChild = row(result, "qa").childRunId!;
+    expect(readFileSync(path.join(fx.dataDir, "runs", qaChild, "logs", "qa-1.log"), "utf8")).toContain("qa PASS demo");
   });
 });
 

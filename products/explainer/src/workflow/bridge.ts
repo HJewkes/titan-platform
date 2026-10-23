@@ -9,7 +9,7 @@ import { BRIDGE_STAGES, type BridgeStage, type Check, type StageOutcome } from "
 /**
  * The host file `<dataDir>/bridge.json`: the argv each bridged stage runs, kept outside the repo so no template
  * script (Python included) ships with the product. `{workdir}`, `{in.<name>}` and `{out.<name>}` in an argv or cwd
- * expand to absolute paths.
+ * expand to absolute paths, and `{var.<name>}` to the stage variant's value or the block's default in `vars`.
  */
 const CommandSchema = z.object({
   argv: z.array(z.string()).min(1),
@@ -27,6 +27,8 @@ const BridgeStageSchema = z.object({
   inputs: z.record(z.string(), z.string()).default({}),
   outputs: z.record(z.string(), OutputSchema),
   commands: z.array(CommandSchema).min(1),
+  /** Defaults for the `{var.<name>}` tokens a stage variant may set; part of the stage key. */
+  vars: z.record(z.string(), z.string()).default({}),
 });
 
 export const BridgeFileSchema = z.object({
@@ -74,11 +76,16 @@ export const spawnExec: BridgeExec = ({ argv, cwd, env, timeoutMs }) =>
     child.on("close", (code) => resolve({ code, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") }));
   });
 
-function expander(workdir: string, stage: z.infer<typeof BridgeStageSchema>): (text: string) => string {
+function expander(workdir: string, stage: z.infer<typeof BridgeStageSchema>, vars: Readonly<Record<string, string>>): (text: string) => string {
   const at = (rel: string) => path.resolve(workdir, rel);
   return (text) =>
-    text.replace(/\{(workdir|in\.[\w-]+|out\.[\w-]+)\}/g, (token, name: string) => {
+    text.replace(/\{(workdir|in\.[\w-]+|out\.[\w-]+|var\.[\w-]+)\}/g, (token, name: string) => {
       if (name === "workdir") return path.resolve(workdir);
+      if (name.startsWith("var.")) {
+        const value = vars[name.slice(4)];
+        if (value === undefined) throw new Error(`bridge token ${token} names no var in the stage's "vars"`);
+        return value;
+      }
       const side = name.startsWith("in.") ? "in" : "out";
       const key = name.slice(side.length + 1);
       const rel = side === "in" ? stage.inputs[key] : stage.outputs[key]?.path;
@@ -101,6 +108,8 @@ export interface BridgeRun {
   exec: BridgeExec;
   /** Each command's full stdout and stderr land here, one file per command. */
   logDir: string;
+  /** The `{var.<name>}` values: the block's defaults with the stage variant's params over them. */
+  vars?: Readonly<Record<string, string>>;
 }
 
 async function runCommand(run: BridgeRun, command: BridgeCommand, n: number, expand: (text: string) => string): Promise<{ note: string; check?: Check }> {
@@ -121,7 +130,7 @@ async function runCommand(run: BridgeRun, command: BridgeCommand, n: number, exp
 export async function runBridgeStage(run: BridgeRun): Promise<StageOutcome> {
   const stage = run.file.stages[run.stage];
   if (!stage) throw new Error(`bridge host file has no "${run.stage}" stage`);
-  const expand = expander(run.file.workdir, stage);
+  const expand = expander(run.file.workdir, stage, run.vars ?? stage.vars);
   for (const [name, rel] of Object.entries(stage.inputs)) {
     const sha = run.artifacts[name];
     if (sha === undefined) throw new Error(`stage ${run.stage} needs artifact "${name}", which no earlier stage produced`);
