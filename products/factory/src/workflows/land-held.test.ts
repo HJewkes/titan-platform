@@ -74,7 +74,9 @@ describe("land with the merge held for an owner release", () => {
 
   it("still fails a merge that never lands for another reason at the cycle limit", async () => {
     const scenario = landScenario({ policy: allowMerges });
-    const crash = crashAt({ dbPath: dbFile(), workflows: [scenario.workflow], routes: mergeAnswering(scenario.routes, () => "canned", { done: false, skipped: "base-moved", mergeSha: "" }), hangAt: "never" });
+    // A loop that ignores the limit stops here instead of spinning, so it fails the wait below rather than hanging the file.
+    const beyondLimit = (stepId: string) => (ordinal(stepId) < MAX_CI_CYCLES ? "canned" : new Promise<void>(() => undefined));
+    const crash = crashAt({ dbPath: dbFile(), workflows: [scenario.workflow], routes: mergeAnswering(scenario.routes, beyondLimit, { done: false, skipped: "base-moved", mergeSha: "" }), hangAt: "never" });
     const runId = crash.crashed.runtime.start("land-test");
 
     await vi.waitFor(() => expect(crash.crashed.runtime.status(runId)?.status).toBe("failed"));
