@@ -32,7 +32,8 @@ export interface RedeployInput {
 export interface Deployer {
   /** The sha the running service was built from. */
   runningSha: () => string;
-  spawn: (mergeSha: string) => { pid: number | undefined; log: string };
+  /** `main` deploys origin/main, for the pacer's re-ask after a rollback; `mergeSha` then only names the unit. */
+  spawn: (mergeSha: string, options?: { main?: boolean }) => { pid: number | undefined; log: string };
   /** Queues the sha for serve's deploy pacer instead of spawning; absent means every merge spawns. */
   request?: (mergeSha: string) => Redeploy | Promise<Redeploy>;
 }
@@ -198,7 +199,7 @@ async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store
 /** The pacer spawns through the same deployer, so both paths share A0's unit naming and log. */
 export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): DeployPacerOptions {
   const deployer = systemDeployer(options, ports);
-  return { stateDir: options.stateDir, spawn: (sha) => deployer.spawn(sha) };
+  return { stateDir: options.stateDir, spawn: (sha, target) => deployer.spawn(sha, target) };
 }
 
 /** On systemd the returned pid is systemd-run's, which exits once the transient unit has started. */
@@ -206,10 +207,11 @@ export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = 
   return {
     runningSha: buildSha,
     request: (mergeSha) => queueDeploy(options, ports, store, mergeSha),
-    spawn: (mergeSha) => {
+    spawn: (mergeSha, target) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
       const at = options.now?.() ?? new Date();
-      const command = { file: options.node ?? process.execPath, args: [options.bin, "service", "deploy", "--expect", mergeSha] };
+      const expect = target?.main === true ? [] : ["--expect", mergeSha];
+      const command = { file: options.node ?? process.execPath, args: [options.bin, "service", "deploy", ...expect] };
       ports.mkdir(options.stateDir);
       ports.append(log, `${at.toISOString()} ${command.args.slice(1).join(" ")}\n`);
       const onSystemd = (options.platform ?? process.platform) === "linux";

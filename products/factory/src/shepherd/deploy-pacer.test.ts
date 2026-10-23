@@ -7,12 +7,14 @@ import {
   DEPLOY_QUIET_MS,
   DEPLOY_STALE_SPAWN_MS,
   DEPLOY_WANTED,
+  DEPLOY_WATCH_GRACE_MS,
   noteWanted,
   paceDecision,
   pacerStatus,
   pacerTick,
   readWanted,
   writeWanted,
+  type DeploySpawn,
   type DeployWanted,
   type WantedStore,
 } from "./deploy-pacer.js";
@@ -50,7 +52,8 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
     deployWindow: undefined as WatchIntent | undefined,
   };
   const merge = (sha: string) => writeWanted(STATE, store, noteWanted(readWanted(STATE, store), sha, world.now));
-  const tick = (spawn = (sha: string) => (spawns.push([world.now / MIN, sha]), { pid: 1 })) =>
+  const record: DeploySpawn = (sha, target) => (spawns.push([world.now / MIN, target?.main === true ? `origin/main for ${sha}` : sha]), { pid: 1 });
+  const tick = (spawn: DeploySpawn = record) =>
     pacerTick({
       stateDir: STATE,
       store,
@@ -340,14 +343,20 @@ function deployInWatch() {
   return { p, contains };
 }
 
+/** At minute 17.5 the watch of "b" fails: serve is back on the old build, deploy.json records b rolled back, and deploys are paused. */
+function rolledBackInWatch() {
+  const world = deployInWatch();
+  world.p.ticksUntil(17);
+  world.p.world.runningSha = RUNNING;
+  world.contains.clear();
+  world.p.world.lastDeploy = { outcome: "rolled-back", target: "b", from: RUNNING, at: new Date(17.5 * MIN).toISOString() };
+  world.p.world.paused = true;
+  return world;
+}
+
 describe("the deploy pacer and the health watch of the deploy that contains the ask", () => {
-  it("an ask survives a rollback inside the watch and is deployed again once the pause is cleared", () => {
-    const { p, contains } = deployInWatch();
-    p.ticksUntil(17);
-    p.world.runningSha = RUNNING;
-    contains.clear();
-    p.world.lastDeploy = { outcome: "rolled-back", target: "b", from: RUNNING, at: new Date(17.5 * MIN).toISOString() };
-    p.world.paused = true;
+  it("an ask survives a rollback inside the watch and asks for origin/main once the pause is cleared", () => {
+    const { p } = rolledBackInWatch();
     p.ticksUntil(30);
     const pausedSpawns = [...p.spawns];
 
@@ -355,7 +364,47 @@ describe("the deploy pacer and the health watch of the deploy that contains the 
     p.ticksUntil(31);
 
     expect(pausedSpawns).toEqual([[15, "a"]]);
-    expect(p.spawns).toEqual([[15, "a"], [31, "a"]]);
+    expect(p.spawns).toEqual([[15, "a"], [31, "origin/main for a"]]);
+    expect(p.logs).toContain("deploy pacer: deployer pid 1 deploys origin/main for a, whose containing deploy rolled back");
+  });
+
+  it("an origin/main re-ask the deployer holds, since main is still the rolled-back sha, is dropped after the stale timeout and never asked again", () => {
+    const { p } = rolledBackInWatch();
+    p.ticksUntil(30);
+    p.world.paused = false;
+    p.ticksUntil(31);
+
+    p.ticksUntil(31 + DEPLOY_STALE_SPAWN_MS / MIN + 1);
+
+    expect(p.spawns).toEqual([[15, "a"], [31, "origin/main for a"]]);
+    expect(p.wanted()).toBeUndefined();
+  });
+
+  it("an ask is cleared once the origin/main re-ask lands a build that contains it and passes its watch", () => {
+    const { p, contains } = rolledBackInWatch();
+    p.ticksUntil(30);
+    p.world.paused = false;
+    p.ticksUntil(31);
+
+    p.world.now = 40 * MIN;
+    p.world.runningSha = "c";
+    contains.add("a");
+    p.world.deployWindow = { sha: "c", windowEnd: 39 * MIN };
+    p.world.lastDeploy = { outcome: "deployed", target: "c", from: RUNNING, at: new Date(39 * MIN).toISOString() };
+
+    expect(p.tick()).toEqual({ kind: "clear", why: "the service runs c, which contains a" });
+  });
+
+  it("a deployer that died in its watch holds the ask only until the grace after the window ends", () => {
+    const window = { sha: "b", windowEnd: 18 * MIN };
+    const extra = { runningSha: "b", runningHoldsWanted: true, deployWindow: window };
+    const graceEnds = (18 * MIN + DEPLOY_WATCH_GRACE_MS) / MIN;
+
+    const inGrace = decide(wantedAt("a", 0, 0), graceEnds - 1, extra);
+    const past = decide(wantedAt("a", 0, 0), graceEnds, extra);
+
+    expect(inGrace.kind).toBe("wait");
+    expect(past).toEqual({ kind: "clear", why: "the service runs b, which contains a" });
   });
 
   it("an ask whose containing deploy passes its watch is cleared once deploy.json records it", () => {

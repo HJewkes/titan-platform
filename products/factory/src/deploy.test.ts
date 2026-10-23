@@ -677,6 +677,22 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
+  it("after a containing deploy rolls back and the pause is cleared, refuses the older asked sha but deploys origin/main (TP-4083)", async () => {
+    const machine = fakeMachine({ crashes: [CORE] });
+    await deploy(machine, CORE);
+    const afterRollback = { record: machine.record(), head: machine.state.head, serving: machine.serving() };
+    machine.files.delete(deployPausePath(STATE));
+
+    const reAsk = await deploy(machine, DOCS);
+    const toMain = await deploy(machine);
+
+    expect(afterRollback).toEqual({ record: expect.objectContaining({ outcome: "rolled-back", target: CORE }), head: CORE, serving: BASE });
+    expect(reAsk).toMatchObject({ code: 1, err: expect.stringContaining(`already past ${DOCS}`) });
+    expect(toMain.code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
+    expect(machine.serving()).toBe(TIP);
+  });
+
   it("deploys when /health does not answer, since an unknown build counts as touched", async () => {
     const machine = fakeMachine({ running: null });
 
