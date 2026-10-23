@@ -24,8 +24,11 @@ describe("compareArms", () => {
     expect(row).toMatchObject({ meanA: 30, meanB: 28, diff: -2, sigma: 1.5, sigmaFrom: "floor", verdict: "noise" });
   });
 
-  it("calls the same move a win once it clears 2σ of the floor", () => {
-    expect(numbersRow([30, 30, 30], [27, 27, 27], { "register:numbers": 1.4 }).verdict).toBe("win");
+  it("calls the same move a win once it clears 2σ of the floor, though the arms' own σ would call it noise", () => {
+    const [a, b] = [[28, 30, 32], [25, 27, 29]];
+
+    expect(numbersRow(a, b).verdict).toBe("noise");
+    expect(numbersRow(a, b, { "register:numbers": 1.4 }).verdict).toBe("win");
   });
 
   it("calls a move past 2σ away from the band a loss", () => {
