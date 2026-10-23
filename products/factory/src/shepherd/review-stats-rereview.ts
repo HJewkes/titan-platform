@@ -1,7 +1,7 @@
 import { median, p90 } from "./stage-times.js";
 
 /** One stored round as the re-review read needs it; `at` is its verdict time, or its request time when it has none. */
-export interface RereviewInput {
+interface RereviewInput {
   cause: string | null;
   shape: string | null;
   scoped: number | null;
