@@ -1,12 +1,13 @@
 // superseded-at:M3 (D-M3-19: M3's lander owns conflict routing)
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step, type CiSnapshot } from "../workflows/land.js";
+import type { GateRun } from "./gates.js";
 import type { ShepherdDeps } from "./phases.js";
 
-export const CONFLICT_BASE_STEP = "sh-conflict-base";
+const CONFLICT_BASE_STEP = "sh-conflict-base";
 export const CONFLICT_BASE_STEPS: readonly StepDeclaration[] = [{ id: CONFLICT_BASE_STEP, kind: "dispatch" }];
 
 interface ConflictBaseInput {
@@ -21,7 +22,7 @@ const ConflictBaseResult = z.looseObject({ baseSha: z.string().nullable(), conta
 type ConflictBase = z.infer<typeof ConflictBaseResult>;
 
 /** A failed read answers a null base, which `isNewConflict` reads as the same base, so the D9 demotion still applies. */
-export async function readConflictBase(port: Pick<GitHubPort, "defaultBranch" | "getHeadSha" | "compareAncestry">, input: ConflictBaseInput): Promise<ConflictBase> {
+async function readConflictBase(port: Pick<GitHubPort, "defaultBranch" | "getHeadSha" | "compareAncestry">, input: ConflictBaseInput): Promise<ConflictBase> {
   try {
     const baseSha = await port.getHeadSha(input.repo, input.baseRef ?? (await port.defaultBranch(input.repo)));
     if (!baseSha || !input.lastBase || baseSha === input.lastBase) return { baseSha, containsLastBase: false };
@@ -33,7 +34,7 @@ export async function readConflictBase(port: Pick<GitHubPort, "defaultBranch" | 
 }
 
 /** New only when the base moved since the last conflict and the head already merged that last base: the fixer did its job. */
-export function isNewConflict(lastBase: string | undefined, read: ConflictBase): boolean {
+function isNewConflict(lastBase: string | undefined, read: ConflictBase): boolean {
   return lastBase !== undefined && read.baseSha !== null && read.baseSha !== lastBase && read.containsLastBase;
 }
 
@@ -41,9 +42,7 @@ export function conflictBaseRoute(deps: Pick<ShepherdDeps, "port" | "now">): Ste
   return codeRoute(CONFLICT_BASE_STEP, deps.now, (input: ConflictBaseInput) => readConflictBase(deps.port, input));
 }
 
-export interface ConflictBaseRun {
-  ctx: WorkflowContext;
-  target: { repo: RepoSlug };
+export interface ConflictBaseRun extends Pick<GateRun, "ctx" | "target"> {
   lastCi?: CiSnapshot;
   /** The base sha read at the last conflict; replaying the recorded step results rebuilds it. */
   conflictBase?: string;

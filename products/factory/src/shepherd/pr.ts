@@ -41,8 +41,8 @@ import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
 import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
-import { fixConflict } from "./conflict-demotion.js";
-import { conflictAtNewBase, conflictBaseRoute, type ConflictBaseRun } from "./conflict-base.js";
+import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
+import { conflictBaseRoute } from "./conflict-base.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -60,7 +60,7 @@ import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, ConflictBaseRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, ConflictRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -82,8 +82,6 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
   throttledRounds: number;
   /** The consecutive FIX_FIRSTs that said Closer: no; the FIX_FIRST count itself is `fixFirstCount(ctx)`. */
   closer: CloserStreak;
-  /** Conflict wakes since the PR was last green or its base moved past the fixer's merge; a conflict that survives one wakes a fresh fixer, then the seat. */
-  conflictWakes: number;
   conflictChecks: number;
   /** Red heads checked against a frozen main's failures. */
   freezeChecks: number;
@@ -312,10 +310,7 @@ async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Pr
   throw new LeaveLand(await unhandledSendBack(run, verdict.kind, headSha));
 }
 
-async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> {
-  if (await conflictAtNewBase(run, headSha)) run.conflictWakes = 0;
-  return fixConflict(run, headSha, (payload) => woken(run, "conflict", headSha, payload));
-}
+const onConflict = (run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> => fixConflict(run, headSha, (payload) => woken(run, "conflict", headSha, payload));
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
@@ -355,8 +350,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps),
-    conflictBaseRoute(deps),
+    conflictCheckRoute(deps), conflictBaseRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),

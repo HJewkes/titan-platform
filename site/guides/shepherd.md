@@ -493,7 +493,10 @@ ask for Shepherd's own review with [`shepherd review`](#own-review).
 - `shepherd-route/conflict`: a merge conflict survived one fixer attempt. Under
   `GATE_DEMOTIONS.conflict` (on) Shepherd first wakes one fresh fixer, a successor rather than
   the implementer, and if the conflict survives that too it tells the repo's seat and waits for
-  a new head. The gate opens only when that notice cannot go out. Answer `merge` to have
+  a new head. The gate opens only when that notice cannot go out. A conflict at a base that
+  moved past the fixer's last merge-main is a new conflict, not a surviving one: Shepherd wakes
+  the fixer again and spends no demotion (`sh-conflict-base`; an unreadable base counts as the
+  same base). Answer `merge` to have
   Shepherd land the next resolved head, or `abandon`.
 - `shepherd-route/failed-rounds`: 3 review rounds failed at this task. Only a stuck round
   counts: a fresh reviewer after silence or a timeout, a re-read of a hold's reviewer, or a
