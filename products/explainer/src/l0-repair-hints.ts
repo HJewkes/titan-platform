@@ -3,10 +3,12 @@ import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lin
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
+import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import type { ScriptV1 } from "./script-schema.js";
+import type { SpineV1 } from "./spine-schema.js";
 
-type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[]) => string | undefined;
+type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1) => string | undefined;
 
 const percent = (share: number): string => `${Math.round(share * 100)} %`;
 const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");
@@ -63,9 +65,10 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
   "Q-V13": headlineHint,
+  "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
-export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[]): string | undefined =>
-  HINTS[row.check_id]?.(script, row, facts);
+export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1): string | undefined =>
+  HINTS[row.check_id]?.(script, row, facts, spine);
