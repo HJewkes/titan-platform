@@ -195,6 +195,17 @@ describe("an older merge whose own main run goes green after a newer sha is queu
     }
   });
 
+  it("replaces an ask whose deployer was refused and recorded nothing with the next green merge (TP-4085)", async () => {
+    const store = memoryStore();
+    const asked = noteWanted(undefined, OLDER, AT - 2 * DEPLOY_QUIET_MS);
+    writeWanted("/state", store, { ...asked, spawnedSha: OLDER, spawnedAt: new Date(AT - DEPLOY_QUIET_MS).toISOString() });
+
+    await queue(store, NEWER);
+
+    expect(readWanted("/state", store)).toEqual({ sha: NEWER, firstAt: new Date(AT).toISOString(), lastAt: new Date(AT).toISOString() });
+    expect(tickAfterQuiet(store)).toEqual([NEWER]);
+  });
+
   it("replaces the queued sha when git cannot tell, as before the guard", async () => {
     const store = memoryStore();
     await queue(store, NEWER);
