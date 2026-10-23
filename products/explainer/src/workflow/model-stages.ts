@@ -267,7 +267,6 @@ interface Lint {
   rows: (script: ScriptV1) => L0Result[];
   /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
   facts?: readonly GatheredFact[];
-  /** The spine whose ledger the Q-E17 hint reads and whose handles a reply's `new_terms` are stamped from. */
   spine: SpineV1;
 }
 
