@@ -93,8 +93,8 @@ export class GateResolveClosure {
   constructor(private readonly root: string) {}
 
   /**
-   * Repo-relative paths of the scanned files that sit in the closure. Scan a unit after every unit it imports: a
-   * forwarder found in one is keyed by unit and name, so a later unit's call through the built `.d.ts` still matches.
+   * Repo-relative paths of the scanned files that sit in the closure. Scan a unit after every unit it imports: an
+   * exported forwarder found in one is also keyed by unit and name, so a later unit's call through the `.d.ts` matches.
    */
   scan(program: ts.Program, scanned: readonly string[]): string[] {
     this.program = program;
@@ -109,17 +109,30 @@ export class GateResolveClosure {
   }
 
   /**
-   * A declaration other modules can name keys by unit and name, so a built `.d.ts` copy matches its source; any other
-   * keys by its own position, so two local helpers that share a name stay apart.
+   * A declaration in a built `.d.ts` keys by unit and name, the only identity it shares with its source. A source
+   * declaration keys by its file and name when exported, else by position, so two helpers that share a name stay apart.
    */
   private keyOf(decl: ts.Node): string | undefined {
     const file = decl.getSourceFile();
-    const unit = unitOf(this.root, file.fileName);
+    const unitKey = this.unitKeyOf(decl);
+    if (file.isDeclarationFile || unitKey === undefined) return unitKey;
+    const owner = ownerOf(decl);
+    return this.isExported(owner ?? decl) ? `${file.fileName}#${owner ? `${nameOf(owner)}.` : ""}${nameOf(decl)}` : `${file.fileName}:${decl.getStart()}`;
+  }
+
+  private unitKeyOf(decl: ts.Node): string | undefined {
+    const unit = unitOf(this.root, decl.getSourceFile().fileName);
     const name = nameOf(decl);
     if (!unit || !name) return undefined;
     const owner = ownerOf(decl);
-    if (!this.isExported(owner ?? decl)) return `${file.fileName}:${decl.getStart()}`;
     return `${unit}#${owner ? `${nameOf(owner)}.` : ""}${name}`;
+  }
+
+  /** Records a sink under its own key, and an exported one also under the key a later unit's `.d.ts` call lands on. */
+  private addSink(decl: ts.Node, slot: number): boolean {
+    const own = this.keyOf(decl);
+    const exported = this.isExported(ownerOf(decl) ?? decl) ? this.unitKeyOf(decl) : undefined;
+    return [own, exported].reduce((grew, key) => (key === undefined ? grew : this.addSlot(key, slot) || grew), false);
   }
 
   private isExported(decl: ts.Node): boolean {
@@ -138,12 +151,20 @@ export class GateResolveClosure {
     }
   }
 
+  /** Finds each anchor's declaration in this program, so its own source keys as a sink as well as its `.d.ts`. */
   private collectSinkInterface(node: ts.Node): void {
-    if (!ts.isInterfaceDeclaration(node) && !ts.isClassDeclaration(node)) return;
     const unit = unitOf(this.root, node.getSourceFile().fileName);
+    if (ts.isFunctionDeclaration(node)) {
+      const anchor = SINK_ANCHORS.find((a) => a.pkg === unit && !a.container && a.member === nameOf(node));
+      if (anchor) this.addSink(node, anchor.slot);
+    }
+    if (!ts.isInterfaceDeclaration(node) && !ts.isClassDeclaration(node)) return;
     const anchor = SINK_ANCHORS.find((a) => a.pkg === unit && a.container === nameOf(node));
     const symbol = node.name && this.checker.getSymbolAtLocation(node.name);
-    if (anchor && symbol) this.sinkInterfaces.push({ type: this.checker.getDeclaredTypeOfSymbol(symbol), member: anchor.member, slot: anchor.slot });
+    if (!anchor || !symbol) return;
+    this.sinkInterfaces.push({ type: this.checker.getDeclaredTypeOfSymbol(symbol), member: anchor.member, slot: anchor.slot });
+    const members: readonly ts.Node[] = node.members;
+    members.filter((member) => nameOf(member) === anchor.member).forEach((member) => this.addSink(member, anchor.slot));
   }
 
   /** A class or object that satisfies a sink interface makes its own member a sink too: calls on it reach the store. */
@@ -152,8 +173,7 @@ export class GateResolveClosure {
       if (unitOf(this.root, file.fileName) === undefined) continue;
       const visit = (node: ts.Node): void => {
         for (const member of this.implementedMembers(node)) {
-          const key = this.keyOf(member.decl);
-          if (key) this.addSlot(key, member.slot);
+          this.addSink(member.decl, member.slot);
         }
         ts.forEachChild(node, visit);
       };
@@ -202,12 +222,12 @@ export class GateResolveClosure {
 
   private addForwarder(call: ts.CallExpression): boolean {
     const fn = ts.findAncestor(call.parent, ts.isFunctionLike);
-    const key = fn && this.keyOf(this.calleeDeclarationOf(fn));
-    if (!fn || !key) return false;
+    if (!fn) return false;
+    const callee = this.calleeDeclarationOf(fn);
     let grew = false;
     for (const slot of this.sinkSlotsOf(call.expression)) {
       const arg = call.arguments[slot];
-      for (const param of arg ? this.parameterIndicesIn(arg, fn) : []) grew = this.addSlot(key, param) || grew;
+      for (const param of arg ? this.parameterIndicesIn(arg, fn) : []) grew = this.addSink(callee, param) || grew;
     }
     return grew;
   }

@@ -80,7 +80,10 @@ const MIRROR_PROBE_PATH = join(ROOT, "packages/queue-mirror/src/probe/mirror-for
 
 function probeHost(files: Map<string, string>): ts.CompilerHost {
   const host = ts.createCompilerHost(COMPILER_OPTIONS);
-  const { getSourceFile, fileExists, readFile } = host;
+  const { getSourceFile, fileExists, readFile, directoryExists, realpath } = host;
+  const isProbeDir = (dir: string): boolean => [...files.keys()].some((name) => name.startsWith(`${dir}/`));
+  host.directoryExists = (dir) => isProbeDir(dir) || (directoryExists?.(dir) ?? true);
+  host.realpath = (name) => (files.has(name) || !realpath ? name : realpath(name));
   host.fileExists = (name) => files.has(name) || fileExists(name);
   host.readFile = (name) => files.get(name) ?? readFile(name);
   host.getSourceFile = (name, version, ...rest) => {

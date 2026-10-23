@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the factory's owner-queue sources leave the held set",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  \"products/factory/src/needs/*-source.ts\",\n",
+      "replace": "",
+      "kills": ["the gate-resolve closure of the repo is held g10-adversary, so a new resolve path cannot land without an adversary review"]
+    },
+    {
+      "name": "a destructured binding is not read through to the property it takes",
+      "file": "products/factory/src/shepherd/gate-resolve-closure.test-helpers.ts",
+      "find": "    if (ts.isBindingElement(parent) && ts.isObjectBindingPattern(parent.parent)",
+      "replace": "    if (parent.kind === ts.SyntaxKind.Unknown && ts.isBindingElement(parent) && ts.isObjectBindingPattern(parent.parent)",
+      "kills": ["a resolve site written the ways a name or regex scan misses finds destructured-method"]
+    },
+    {
+      "name": "a function that forwards a parameter into a sink is not a sink to its callers",
+      "file": "products/factory/src/shepherd/gate-resolve-closure.test-helpers.ts",
+      "find": "    this.addForwarders(files);\n",
+      "replace": "",
+      "kills": ["a resolve site written the ways a name or regex scan misses finds forwarder-caller"]
+    },
+    {
+      "name": "an implementation of a sink interface is not a sink",
+      "file": "products/factory/src/shepherd/gate-resolve-closure.test-helpers.ts",
+      "find": "    this.addImplementers(program.getSourceFiles());\n",
+      "replace": "",
+      "kills": [
+        "a resolve site written the ways a name or regex scan misses finds queue-source",
+        "the gate-resolve closure of the repo finds the known resolve site products/factory/src/needs/hitl-source.ts"
+      ]
+    },
+    {
+      "name": "a function returning a GateResolver is not a factory",
+      "file": "products/factory/src/shepherd/gate-resolve-closure.test-helpers.ts",
+      "find": "    const result = signatures.some((signature) => this.returnsResolver(signature));",
+      "replace": "    const result = signatures.length < 0;",
+      "kills": ["a resolve site written the ways a name or regex scan misses finds factory-spread"]
+    }
+  ]
+}
