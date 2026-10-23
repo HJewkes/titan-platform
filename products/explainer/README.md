@@ -187,7 +187,8 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 `explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--to <stage>] [--base <runId>]
 [--pin <name=sha>]... [--variant <stage=file>]... [--sample <stage=k>]... [--video <id>] [--budget-usd 20]
-[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--data-dir <dir>]` makes one video as an
+[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--listener-questions] [--listener-threshold <q>]
+[--data-dir <dir>]` makes one video as an
 `explainer-video` run on `@titan-design/workflow` (`src/workflow/`, the corpus-query host pattern). The data dir
 (default: the per-user data dir) holds `state.sqlite3`, the content-addressed artifact store `artifacts/<sha256>`
 (a directory is stored as a tree of file shas), one `runs/<runId>/` directory per run, and the bridge host file
@@ -223,8 +224,20 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair` |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `listener-questions` (opt-in, below) |
 | `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+
+**Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
+chapter of the draft once, with nothing before it, and lists every question the chapter raises and leaves
+unanswered, each tagged with the sentence (`S1`, `S2`, ...) that raised it. Its verdict gives the questions and
+sentences per chapter and the density (questions a sentence), and counts three flags that code, not the listener,
+decides: a list spread over two or more sentences (the listener's lists, and any list a "Then ..." sentence carries
+on), a term asked about, placed at the first sentence that speaks it, and fragments (the listener's, and any sentence
+of three words or fewer). It calls a model, so it runs only under `--listener-questions`, on the `--judge` model, and
+its spend is the script stage's. It is reported, never a gate: with no threshold it passes on any density, and
+`--listener-threshold <q>` reports red a chapter above `q` questions a sentence. A cached script stage keeps the checks
+it ran with; use `--sample script=<k>` to run the check on a draft already made. `explainer eval listener` runs the
+same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced | — |
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
@@ -401,6 +414,11 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   invariant, or no §4 part whose mechanism keeps it, fails with no model call, and a chapter of
   only such seats makes no call and has no canary row. Spine runs get their own eval_version; runs
   without `--spine` keep theirs.
+- `explainer eval listener <script.json> --judge <judge.json> [--format spike|v1] [--threshold <q>] [--out
+  <result.json>]` runs the listener-questions exercise (eval id `L1-listener`, above) on a script file, one call a
+  chapter, and prints one line: questions, sentences and density, overall and per chapter, with each chapter's
+  questions per sentence and flags. `--out` writes the whole `ListenerResultSchema` result, every question with its
+  sentence. It exits 1 when a chapter is above `--threshold` or a call fails.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 

@@ -140,7 +140,9 @@ export const JUDGED_CHECKS: Partial<Record<CachedStage, readonly JudgedStageChec
 };
 
 /** Runs a stage's judged checks after its deterministic ones; their spend is the checks step's own. */
-export async function runJudgedChecks(stage: CachedStage, input: CheckInput, judge: CheckJudge | undefined, checks: readonly JudgedStageCheck[] = JUDGED_CHECKS[stage] ?? []): Promise<CheckRun & { usage: StageUsage }> {
+export async function runJudgedChecks(
+  stage: CachedStage, input: CheckInput, judge: CheckJudge | undefined, checks: readonly JudgedStageCheck[] = JUDGED_CHECKS[stage] ?? [],
+): Promise<CheckRun & { usage: StageUsage }> {
   const out = { checks: [] as Check[], notes: [] as string[], usage: NO_USAGE };
   if (!judge) return out;
   for (const check of checks) {

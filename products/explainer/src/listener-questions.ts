@@ -143,8 +143,12 @@ const NO_REPLY: ListenerReply = { questions: [], lists: [], fragments: [] };
 const listenerPrompt = (sentences: readonly ListenerSentence[]): string =>
   `${LISTENER_PROMPT}\n\n## The chapter, played once\n\n${sentences.map((s) => `[${s.id}] ${s.text}`).join("\n")}\n`;
 
-export const listenerEvalVersion = (judge: JudgeConfig): string =>
-  evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, { split: SENTENCE.source, list_spread_min_sentences: LIST_SPREAD_MIN_SENTENCES, list_min_items: LIST_MIN_ITEMS, carried: CONTINUES.source, fragment_max_words: FRAGMENT_MAX_WORDS, memory: "none" });
+const TALLY_RULES = {
+  split: SENTENCE.source, list_spread_min_sentences: LIST_SPREAD_MIN_SENTENCES, list_min_items: LIST_MIN_ITEMS,
+  carried: CONTINUES.source, fragment_max_words: FRAGMENT_MAX_WORDS, memory: "none",
+};
+
+export const listenerEvalVersion = (judge: JudgeConfig): string => evalVersion(LISTENER_EVAL_ID, LISTENER_PROMPT, judge, TALLY_RULES);
 
 export interface ListenerInput {
   beats: readonly PaceBeat[];

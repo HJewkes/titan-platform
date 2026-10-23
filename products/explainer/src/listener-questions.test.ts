@@ -72,10 +72,11 @@ describe("tallying one chapter's reply", () => {
     expect(tallyChapter("c2", c2(), reply).flags.terms_before_setup).toEqual([{ term: "Manifest", sentence: "S3" }]);
   });
 
-  it("flags a term from an earlier sentence than the question named", () => {
+  it("flags a term at its first sentence, earlier than the one the question named", () => {
+    const sentences = chapterSentences([beat("b", "c1", "The desk runs checks. Seal it now. The checks end at noon.")]);
     const reply = { ...quiet(), questions: [ask("S3", "Which checks?", "checks")] };
 
-    expect(tallyChapter("c2", c2(), reply).flags.terms_before_setup).toEqual([{ term: "checks", sentence: "S1" }]);
+    expect(tallyChapter("c1", sentences, reply).flags.terms_before_setup).toEqual([{ term: "checks", sentence: "S1" }]);
   });
 
   it("matches a term as whole words only", () => {
