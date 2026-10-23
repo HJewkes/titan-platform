@@ -22,6 +22,8 @@ const spineOf = (ledger: SpineLedgerRow[]): SpineV1 => ({
 
 const LEDGER = [entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("TP-9", "ch1")];
 
+const glossed = (...names: string[]) => ({ glossary: names.map((name) => ({ name, job: "a handle the spine ledger defines" })) });
+
 const withSpoken = (id: string, spoken: string, extra: Record<string, unknown> = {}, base: BeatSpec[] = GOOD_BEATS): BeatSpec[] =>
   base.map(([beatId, chapter, fn, was, more]) => (beatId === id ? [beatId, chapter, fn, spoken, { ...more, ...extra }] : [beatId, chapter, fn, was, more]));
 
@@ -34,7 +36,7 @@ const q17 = (script: ScriptV1, spine: SpineV1) => runL0(script, undefined, [ledg
 describe("stampLedgerTerms", () => {
   // Mutation: dropping the chapter test stamps an item on a beat that names it before its chapter defines it.
   it("stamps a ch2 ledger item named in ch2 with empty new_terms, and records the stamp", () => {
-    const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server."));
+    const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server."), glossed("PR 101"));
 
     const stamped = stampLedgerTerms(script, spineOf(LEDGER));
 
@@ -43,7 +45,7 @@ describe("stampLedgerTerms", () => {
   });
 
   it("stamps only the first beat that names the item", () => {
-    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.")));
+    const script = tour(withSpoken("w2", "PR 101 holds each scan until the ledger confirms.", {}, withSpoken("w1", "So PR 101 starts the scan.")), glossed("PR 101"));
 
     const stamped = stampLedgerTerms(script, spineOf(LEDGER));
 
@@ -60,7 +62,7 @@ describe("stampLedgerTerms", () => {
   });
 
   it("keeps a term the model already declared, in any case", () => {
-    const script = tour(withSpoken("w1", "So PR 101 sends every scan.", { new_terms: ["pr 101"] }));
+    const script = tour(withSpoken("w1", "So PR 101 sends every scan.", { new_terms: ["pr 101"] }), glossed("PR 101"));
 
     expect(stampLedgerTerms(script, spineOf(LEDGER)).stamps).toEqual([]);
   });
@@ -72,6 +74,28 @@ describe("stampLedgerTerms", () => {
 
     expect(stamped.stamps).toEqual([]);
     expect(termsOf(stamped.script, "w1")).toEqual([]);
+  });
+});
+
+describe("a stamp never adds an error row", () => {
+  const three = [entry("PR 101", "ch2"), entry("TP-7", "ch2"), entry("PR 102", "ch2")];
+
+  // Mutation: dropping the glossary test stamps "TP-7", and Q-E4 fails the beat.
+  it("stamps only the glossaried handles of a beat citing three, one unglossaried, up to the beat's limit", () => {
+    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan."), glossed("PR 101", "PR 102"));
+
+    const stamped = stampLedgerTerms(script, spineOf(three));
+
+    expect(termsOf(stamped.script, "w1")).toEqual(["PR 101", "PR 102"]);
+  });
+
+  // Mutation: dropping the per-beat limit stamps all three and Q-F8 fails the beat.
+  it("stops at the limit of two new terms a beat when all three are glossaried", () => {
+    const script = tour(withSpoken("w1", "So PR 101, TP-7 and PR 102 send every scan."), glossed("PR 101", "TP-7", "PR 102"));
+
+    const stamped = stampLedgerTerms(script, spineOf(three));
+
+    expect(termsOf(stamped.script, "w1")).toEqual(["PR 101", "TP-7"]);
   });
 });
 
