@@ -67,6 +67,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-no-verdict-diagnosis": `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`,
   "sh-carry-scope": `${RECORD}: the scope an approval carried over`,
   "sh-carry-seat": `${RECORD}: the seat an approval carried under`,
+  "sh-review-scope": `${RECORD}: the fix diff a fix-round re-review may read as scoped`,
   "sh-remerge": `${RECORD}: a MERGE carried across a clean remerge`,
   "sh-approval-carry:fix": `${RECORD}: an approval carried across a small fix`,
   "sh-approval-carry:own": `${RECORD}: an approval carried across an own merge-up`,
