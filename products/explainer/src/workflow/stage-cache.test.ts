@@ -6,7 +6,7 @@ import { JudgeConfigSchema } from "../eval-harness.js";
 import { fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import { BridgeFileSchema, type BridgeFile } from "./bridge.js";
 import { sha256 } from "./artifacts.js";
-import { newRuntime, openState, runOneStage, runVideo, writeReport } from "./host.js";
+import { newRuntime, openState, resumeVideo, runOneStage, runVideo, writeReport } from "./host.js";
 import { compareReports } from "./report.js";
 import { runStageCached } from "./stage-cache.js";
 import { stageSpec, type RunSettings } from "./stage-spec.js";
@@ -121,6 +121,36 @@ describe("pins over a base run", () => {
     expect(repair.status, repair.error).toBe("completed");
     expect(row(repair, "eval").status).toBe("ran");
     expect(bridge.ttsInputs.at(-1)).toBe(draft);
+  });
+
+  it("a run based on a pinned run keeps the pin, not the output the pinned run only reused", async () => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const draft = row(first, "script").outputs.draft!;
+    const repair = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), bridge));
+
+    const followUp = await runVideo({ from: "tts", base: repair.runId }, fakeHost(fx, fakeScriptModel(), bridge));
+
+    expect(followUp.status, followUp.error).toBe("completed");
+    expect(row(repair, "tts").outputs).not.toEqual(row(first, "tts").outputs);
+    expect(row(followUp, "tts").outputs).toEqual(row(repair, "tts").outputs);
+  });
+
+  it("a resumed pinned run keeps the pin for the runs based on it", async () => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const draft = row(first, "script").outputs.draft!;
+    const failed = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), fakeBridge({ qaFails: true })));
+    const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), bridge));
+
+    const followUp = await runVideo({ from: "tts", base: resumed.runId }, fakeHost(fx, fakeScriptModel(), bridge));
+
+    expect(failed.status).toBe("failed");
+    expect(resumed.status, resumed.error).toBe("completed");
+    expect(row(failed, "tts").outputs).not.toEqual(row(first, "tts").outputs);
+    expect(row(followUp, "tts").outputs).toEqual(row(failed, "tts").outputs);
   });
 });
 

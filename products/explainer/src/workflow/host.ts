@@ -104,7 +104,9 @@ function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageReco
     if (!found) throw new Error(`base run ${base.id} has no completed ${stage} stage; start from ${stage} or earlier`);
     return found;
   });
-  const artifacts = reused.reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...planOf(base).artifacts });
+  // A record the base itself reused already has its outputs in the base plan, under any pin; folding it again would undo the pin.
+  const ran = reused.filter((record) => !record.reusedFrom);
+  const artifacts = ran.reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...planOf(base).artifacts });
   return { reused, artifacts };
 }
 
