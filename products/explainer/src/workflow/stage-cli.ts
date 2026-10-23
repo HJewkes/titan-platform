@@ -15,6 +15,7 @@ interface StageFlags {
   scriptModel: string;
   judge?: string;
   rounds: number;
+  profile?: string;
   json?: boolean;
 }
 
@@ -32,18 +33,20 @@ function stageCommand(deps: RunCliDeps, out: (text: string) => void): Command {
     .option("--script-model <model>", "model for the script stage", DEFAULT_SCRIPT_MODEL)
     .option("--judge <file>", "model config JSON for the rewrite stage")
     .addOption(new Option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`).argParser(rounds).default(MAX_REWRITE_ROUNDS))
+    .option("--profile <type>", "the video type whose profile the audition stage reads")
     .option("--json", "print the stage record JSON")
     .exitOverride()
     .action(async (stage: CachedStage, flags: StageFlags) => {
       const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
       const record = await runOneStage({
         stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
-        ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}),
+        ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}), ...(flags.profile ? { profile: flags.profile } : {}),
       }, hostFor(flags, deps));
       if (flags.json) return out(`${JSON.stringify(record, null, 2)}\n`);
       out(`stage ${stage}: ${record.cached ? "cache hit" : "ran"}; child run ${record.childRunId}; key ${record.key}\n`);
       out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
       out(`outputs: ${shortShas(record.outputs)}\n`);
+      for (const note of record.notes) out(`note: ${note}\n`);
     });
 }
 

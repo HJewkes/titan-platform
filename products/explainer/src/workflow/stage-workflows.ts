@@ -1,6 +1,7 @@
 import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type WorkflowFn } from "@titan-design/workflow";
 import type { L0Check } from "../eval-l0.js";
 import type { ArtifactStore } from "./artifacts.js";
+import { runAuditionStage } from "./audition-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
 import { isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
@@ -29,6 +30,10 @@ export const stageWorkflow = (): WorkflowFn => async (ctx) => {
 
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   const { config, stage } = spec;
+  if (stage === "audition") {
+    if (!config.profile || !config.structures) throw new Error("audition stage spec has no profile or structure registry");
+    return runAuditionStage(input, { profile: config.profile, structures: config.structures });
+  }
   if (stage === "script") {
     const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
     if (!config.model) throw new Error("script stage spec has no model");

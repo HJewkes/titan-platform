@@ -23,7 +23,7 @@ describe("explainer run", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
 
     expect(result.status, result.error).toBe("completed");
-    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, "ran"]));
+    expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "audition" ? "not run" : "ran"]));
     expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
@@ -244,7 +244,7 @@ describe("run report", () => {
 
     const { report } = result;
     const rewrite = row(result, "rewrite");
-    expect(report.rows.every((r) => r.wallMs === 1000)).toBe(true);
+    expect(report.rows.filter((r) => r.status !== "not run").every((r) => r.wallMs === 1000)).toBe(true);
     expect(report.totals.wallMs).toBe(8000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);

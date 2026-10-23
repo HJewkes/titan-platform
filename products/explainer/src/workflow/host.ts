@@ -10,7 +10,7 @@ import { artifactMigration, ArtifactStore } from "./artifacts.js";
 import { readBridgeFile, spawnExec, type BridgeExec } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
 import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan } from "./pipeline.js";
-import { CACHED_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
+import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { BODY_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
@@ -54,6 +54,8 @@ export interface RunRequest {
   scriptModel?: string;
   judge?: JudgeConfig;
   rounds?: number;
+  /** The video type whose profile the audition reads; required from `audition`. */
+  profile?: string;
 }
 
 export interface RunOutcome {
@@ -101,9 +103,10 @@ function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageReco
   const before = STAGES.slice(0, STAGES.indexOf(from));
   const reused = before.map((stage) => {
     const found = records.find((record) => record.stage === stage);
+    if (!found && OPTIONAL_STAGES.includes(stage)) return undefined;
     if (!found) throw new Error(`base run ${base.id} has no completed ${stage} stage; start from ${stage} or earlier`);
     return found;
-  });
+  }).filter((record) => record !== undefined);
   // A record the base itself reused already has its outputs in the base plan, under any pin; folding it again would undo the pin.
   const ran = reused.filter((record) => !record.reusedFrom);
   const artifacts = ran.reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...planOf(base).artifacts });
@@ -126,6 +129,15 @@ function checkPins(pins: Record<string, string>, store: ArtifactStore): Record<s
   return pins;
 }
 
+/** A run from `audition` or `script` starts from its input files; a later start needs a base run or pins. */
+const startsFresh = (from: StageName): boolean => STAGES.indexOf(from) <= STAGES.indexOf("script");
+
+/** The input files a run reads: facts for the audition, spine and facts once it reaches the script. */
+function neededInputs(from: StageName, to: StageName): string[] {
+  const reachesScript = startsFresh(from) && STAGES.indexOf(to) >= STAGES.indexOf("script");
+  return [...new Set([...(from === "audition" ? ["facts"] : []), ...(reachesScript ? RUN_INPUTS : [])])];
+}
+
 function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const from = request.from ?? "script";
   const to = request.to ?? "export";
@@ -133,14 +145,15 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const settings = {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
-    variants: storeVariants(request, store), samples: request.samples ?? {},
+    variants: storeVariants(request, store), samples: request.samples ?? {}, ...(request.profile ? { profile: request.profile } : {}),
   };
+  if (from === "audition" && !request.profile) throw new Error("a run from audition needs --profile <type>");
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (from !== "script" && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
   const artifacts = { ...fromBase.artifacts, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
-  const missing = from === "script" ? RUN_INPUTS.filter((name) => artifacts[name] === undefined) : [];
+  const missing = neededInputs(from, to).filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`this run needs ${missing.map((m) => `--${m}`).join(" and ")}`);
   const videoId = request.video ?? (base ? videoIdOf(runs, base) : undefined);
   return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings };
@@ -259,7 +272,8 @@ export async function runVideo(request: RunRequest, host: RunHost): Promise<RunO
 /** The first stage of `run` with no completed record: where a stopped or failed run picks up. */
 function resumeStage(dataDir: string, run: WorkflowRun): StageName {
   const done = new Set(stageRecords(run).map((record) => record.stage));
-  const stage = STAGES.slice(0, STAGES.indexOf(planOf(run).to) + 1).find((s) => !done.has(s));
+  const plan = planOf(run);
+  const stage = STAGES.slice(STAGES.indexOf(plan.from), STAGES.indexOf(plan.to) + 1).find((s) => !done.has(s));
   if (!stage) throw new Error(`run ${run.id} finished every stage; nothing to resume`);
   return readJson(runPaths(dataDir, run.id).stop, StopSchema)?.stage ?? stage;
 }
@@ -286,7 +300,7 @@ export async function resumeVideo(runId: string, host: RunHost, overrides: Pick<
   const plan = planOf(run);
   return runVideo({
     from: resumeStage(host.dataDir, run), to: plan.to, base: runId, budgetUsd: overrides.budgetUsd ?? plan.budgetUsd, scriptModel: plan.scriptModel,
-    judge: plan.judge, rounds: plan.rounds, variantShas: plan.variants, samples: plan.samples,
+    judge: plan.judge, rounds: plan.rounds, variantShas: plan.variants, samples: plan.samples, ...(plan.profile ? { profile: plan.profile } : {}),
   }, host);
 }
 
@@ -301,6 +315,7 @@ export interface StageRequest {
   scriptModel?: string;
   judge?: JudgeConfig;
   rounds?: number;
+  profile?: string;
 }
 
 /** `explainer stage`: one stage as its own child run, through the stage cache, with no parent run. */
@@ -310,7 +325,10 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const rt = newRuntime(db, host);
     const variants = storeVariants({ ...(request.variant ? { variants: { [request.stage]: request.variant } } : {}) }, rt.store);
     const variantSha = variants[request.stage];
-    const settings = { scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL, judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS };
+    const settings = {
+      scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL, judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
+      ...(request.profile ? { profile: request.profile } : {}),
+    };
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
       remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge,
