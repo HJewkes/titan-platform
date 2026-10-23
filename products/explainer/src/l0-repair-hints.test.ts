@@ -3,12 +3,13 @@ import { runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
 import { flowCheck } from "./lint-flow.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
+import { ledgerCheck } from "./lint-ledger.js";
 import { whyCheck } from "./lint-why.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { GOOD_BEATS, tour, withBeat, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 const failing = (script: ScriptV1, id: string): L0Result => {
-  const row = runL0(script, undefined, [flowCheck, whyCheck, heteronymCheck]).find((r) => r.check_id === id);
+  const row = runL0(script, undefined, [flowCheck, whyCheck, heteronymCheck, ledgerCheck]).find((r) => r.check_id === id);
   expect(row?.pass, `${id} should fail`).toBe(false);
   return row!;
 };
@@ -59,6 +60,14 @@ describe("repair hints for rows whose value says too little", () => {
     const script = tour(withBeat("w2", { spoken: "The desk server will read each scan, so nothing prints early." }));
 
     expect(hintFor(script, "Q-V10")).toMatch(/; w2 "read" \(write \[read\]\(=\w+\) or \[read\]\(=\w+\)\)/);
+  });
+
+  it("names the beat and cue the item track cannot read, for the ledger and pace rows that unreadable beat fails everywhere", () => {
+    const script = tour(withBeat("w2", { extra: { visual: { assertion: "The desk holds the scan", job: "numbers", cues: [{ action: "V6", target: "runner", atCue: "holds" }] } } }));
+    const hint = repairHint(failing(script, "Q-E17"), script);
+
+    expect(hint).toMatch(/^the item track cannot read w2: unknown cue kind "runner"\. A cue target is kind:label, with kind one of job, inv,/);
+    expect(repairHint(failing(script, "Q-E16"), script)).toBe(hint);
   });
 
   it("gives no hint for a row whose beats and value already say what to fix", () => {

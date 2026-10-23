@@ -2,6 +2,7 @@ import type { L0Result } from "./eval-l0.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { THREAD_SHARE } from "./lint-why.js";
+import { CUE_KIND_ROLES, fromScriptV1 } from "./pace-items.js";
 import type { ScriptV1 } from "./script-schema.js";
 
 type Hint = (script: ScriptV1, row: L0Result) => string | undefined;
@@ -38,6 +39,24 @@ function plainOpeningHint(script: ScriptV1): string | undefined {
   return `the first identifier the voice says is "${first.word}" in ${first.beat}, after ${percent(first.share)} of the words (needs ${percent(MIN_PLAIN_SHARE)}); say it in plain words there, or name it later`;
 }
 
+const projectionFault = (script: ScriptV1, beat: ScriptV1["beats"][number]): string | undefined => {
+  try {
+    fromScriptV1({ ...script, beats: [beat] });
+    return undefined;
+  } catch (error) {
+    return `${beat.id}: ${(error instanceof Error ? error.message : String(error)).replace(/: add it to CUE_KIND_ROLES$/, "")}`;
+  }
+};
+
+/** One beat the item track cannot read fails these rows on every beat, so the repair hears the beat and the cause. */
+function itemTrackHint(script: ScriptV1): string | undefined {
+  const faults = script.beats.flatMap((beat) => projectionFault(script, beat) ?? []);
+  if (faults.length === 0) return undefined;
+  return `the item track cannot read ${faults.join("; ")}. A cue target is kind:label, with kind one of ${Object.keys(CUE_KIND_ROLES).join(", ")}; fix those cues and this row is measured again`;
+}
+
+const ITEM_TRACK_ROWS = ["Q-E7", "Q-E9", "Q-E11", "Q-E16", "Q-E17"] as const;
+
 const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F1": linkHint,
   "Q-F3": threadHint,
@@ -45,6 +64,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
+  ...Object.fromEntries(ITEM_TRACK_ROWS.map((id) => [id, itemTrackHint])),
 };
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
