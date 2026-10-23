@@ -88,7 +88,7 @@ jobs:
           restore-keys: vitest-results-${{ runner.os }}-
       # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
       - name: Install zsh for the redirect corpus
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh ffmpeg
       # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
       # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
       - name: Read the playwright-core version
