@@ -14,7 +14,7 @@ interface Video {
 }
 
 /** The `### Video X` sections of a rubric prompt, with each beat's spoken line and screen text. */
-export function promptVideos(prompt: string): Video[] {
+function promptVideos(prompt: string): Video[] {
   return prompt
     .split("### Video ")
     .slice(1)
