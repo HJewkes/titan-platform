@@ -43,6 +43,8 @@ export interface SampleRequest {
   samples: readonly number[];
   /** Stops before a run whose cost, estimated as the dearest run so far, would take the total past it. */
   maxUsd?: number;
+  /** Runs an earlier pass under the same cap already made; they count toward its spend and estimate. */
+  prior?: readonly SampleRun[];
 }
 
 export interface SampleResult {
@@ -113,9 +115,10 @@ export async function runSamples(request: SampleRequest, env: SampleEnv): Promis
     ({ inputs: inputs.map(({ inputs: _, ...rest }) => rest), runs, spentUsd: sumUsd(runs), ...(stopped ? { stopped } : {}) });
   for (const sample of request.samples) {
     for (const input of inputs) {
-      const next = Math.max(0, ...runs.map((run) => run.usd));
-      if (request.maxUsd !== undefined && sumUsd(runs) + next > request.maxUsd) {
-        return result(`spend cap: $${sumUsd(runs).toFixed(4)} spent, the next run (est. $${next.toFixed(4)}) would pass $${request.maxUsd}`);
+      const counted = [...(request.prior ?? []), ...runs];
+      const next = Math.max(0, ...counted.map((run) => run.usd));
+      if (request.maxUsd !== undefined && sumUsd(counted) + next > request.maxUsd) {
+        return result(`spend cap: $${sumUsd(counted).toFixed(4)} spent, the next run (est. $${next.toFixed(4)}) would pass $${request.maxUsd}`);
       }
       const run = await runOne(request, env, input, sample);
       runs.push(run);

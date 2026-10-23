@@ -82,6 +82,16 @@ describe("runSamples", () => {
     expect(result.stopped).toBe("spend cap: $2.0000 spent, the next run (est. $1.0000) would pass $2.5");
   });
 
+  it("counts an earlier pass's runs toward the cap and the next-run estimate", async () => {
+    const fake = env(async () => record({ draft: "d20" }, 0.1));
+    const prior = [{ case: "a", sample: 0, usd: 2, cached: false }];
+
+    const result = await runSamples({ stage: "script", cases, samples: [1], maxUsd: 3, prior }, fake);
+
+    expect(fake.calls).toEqual([]);
+    expect(result.stopped).toBe("spend cap: $2.0000 spent, the next run (est. $2.0000) would pass $3");
+  });
+
   it("runs on to exactly the cap", async () => {
     const fake = env(async () => record({ draft: "d20" }, 1));
 
