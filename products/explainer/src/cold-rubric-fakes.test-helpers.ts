@@ -64,3 +64,9 @@ export function routeRubric(rubric: JudgeHarness, other: JudgeHarness): JudgeHar
   const head = readColdRubric().trim();
   return (call) => (call.prompt.startsWith(head) ? rubric(call) : other(call));
 }
+
+/** Rubric judges that cannot score: one whose call fails, one that throws before replying. */
+export const failingRubric: JudgeHarness = async () => ({ ok: false, reason: "timeout", usd: 0, tokensIn: 0, tokensOut: 0 });
+export const throwingRubric: JudgeHarness = async () => {
+  throw new Error("spawn failed");
+};

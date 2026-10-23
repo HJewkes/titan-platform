@@ -7,7 +7,7 @@ import { readRubric } from "./eval-evidence.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
-import { fakeRubricJudge, routeRubric } from "./cold-rubric-fakes.test-helpers.js";
+import { failingRubric, fakeRubricJudge, routeRubric, throwingRubric } from "./cold-rubric-fakes.test-helpers.js";
 
 const spikeBeat = (id: string, chapter: string, spoken: string, titles: string[]) => ({ id, chapter, function: "EXPLAIN", plannedS: 12, spoken, visual: { titles } });
 /** An invented parcel desk in two chapters. */
@@ -196,8 +196,8 @@ describe("explainer eval cold: the reported J8 to J12 rows", () => {
   // Mutation: folding the rubric's trust into evalCold's return value turns these rows into a gate and fails this test.
   it.each([
     ["scores every row 1 and misses its canary", fakeRubricJudge({ score: 1, lenient: true }).harness],
-    ["fails its call", (async () => ({ ok: false, reason: "timeout", usd: 0, tokensIn: 0, tokensOut: 0 })) as JudgeHarness],
-    ["throws", (async () => { throw new Error("spawn failed"); }) as JudgeHarness],
+    ["fails its call", failingRubric],
+    ["throws", throwingRubric],
   ])("exits 0 when the rubric judge %s, since the rows are reported only", async (_, rubric) => {
     const code = await cold(fakeViewer({ rubric }).harness, "sonnet", "--runs", "1");
 

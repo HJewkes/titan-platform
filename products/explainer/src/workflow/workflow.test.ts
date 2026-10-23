@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { fakeRubricJudge } from "../cold-rubric-fakes.test-helpers.js";
-import type { JudgeHarness } from "../eval-harness.js";
+import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { sha256 } from "./artifacts.js";
@@ -124,12 +123,12 @@ describe("the cold rubric on every run", () => {
   // Mutation: adding the rubric to the eval stage's checks, failing below 3 or on a missed canary, fails this test.
   it.each([
     ["scores every row 1 and misses its canary", fakeRubricJudge({ score: 1, lenient: true }).harness],
-    ["fails its call", (async () => ({ ok: false, reason: "timeout", usd: 0, tokensIn: 0, tokensOut: 0 })) as JudgeHarness],
-    ["throws", (async () => { throw new Error("spawn failed"); }) as JudgeHarness],
+    ["fails its call", failingRubric],
+    ["throws", throwingRubric],
   ])("cannot fail the run or gate a stage when the rubric judge %s", async (_, harness) => {
     fx = fixture();
     const bridge = fakeBridge();
-    const rubric = { harness, calls: [] };
+    const rubric = { harness, calls: [] as string[] };
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { rubric }));
 
