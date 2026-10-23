@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { countWork } from "../test-support/work-count.js";
 import { ParseError, type RedirectToken, tokenize } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
@@ -50,14 +51,15 @@ describe("the cost of finding where an arithmetic command ends", () => {
     depth === 0 ? "1" : `$( (( $(cat <<E${depth}\n${throughHeredocs(depth - 1)}\nE${depth}\n) )) )`;
   const longSubshells = `((((((cd x; ${"echo a; ".repeat(2000)}) ) ) ) ) )`;
 
-  function lexMillis(command: string): number {
-    const start = performance.now();
+  /** The costliest line, 30 unclosed levels, reads 940 characters a character; a rescan per level of each heredoc would be far more. */
+  const WORK_PER_CHAR = 1_500;
+
+  function lexOrRefuse(command: string): void {
     try {
       tokenize(command);
     } catch (error) {
       if (!(error instanceof ParseError)) throw error;
     }
-    return performance.now() - start;
   }
 
   it.each([
@@ -67,8 +69,8 @@ describe("the cost of finding where an arithmetic command ends", () => {
     ["a run of 20000 (", "(".repeat(20000)],
     ["20 levels of (( $( through heredoc bodies", throughHeredocs(20)],
     ["40 levels of (( $( through heredoc bodies", throughHeredocs(40)],
-  ])("stays fast for %s", (_how, command) => {
-    expect(lexMillis(command)).toBeLessThan(500);
+  ])("does work linear in the length of %s", async (_how, command) => {
+    await countWork(() => lexOrRefuse(command), command.length * WORK_PER_CHAR);
   });
 
   it("refuses to lex deep nesting rather than spend the budget", () => {

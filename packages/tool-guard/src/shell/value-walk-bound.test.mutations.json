@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the readers recurse a hundred levels past the nesting limit",
+      "file": "packages/tool-guard/src/shell/nesting.ts",
+      "find": "  if (nesting.depth >= MAX_NESTING) throw new NestingLimitError();",
+      "replace": "  if (nesting.depth >= MAX_NESTING + 100) throw new NestingLimitError();",
+      "kills": [
+        "a nested subscript value is walked in bounded time (TP-2243) denies 200 nested substitutions inside brackets within its work budget",
+        "a nested subscript value is walked in bounded time (TP-2243) denies a value nested past the limit rather than allowing it"
+      ]
+    }
+  ]
+}

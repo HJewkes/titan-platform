@@ -5,6 +5,7 @@ import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { itemsCommand } from "./eval-items-cli.js";
+import { listenerCommand } from "./listener-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
@@ -152,16 +153,18 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
   const onResult = (next: number): void => {
     code = next;
   };
-  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride()
+  // Positional at every level, or a parent option such as calibrate's --format takes a subcommand's same-named flag.
+  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride().enablePositionalOptions()
     .addCommand(l0Command(deps, onResult))
     .addCommand(paceCommand(deps, onResult))
     .addCommand(l1Command(deps, onResult))
     .addCommand(l2Command(deps, onResult))
     .addCommand(coldCommand(deps, onResult))
     .addCommand(itemsCommand(deps, onResult))
+    .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult));
-  const program = new Command("explainer").exitOverride().addCommand(evalCommand);
+  const program = new Command("explainer").exitOverride().enablePositionalOptions().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });
   } catch (error) {

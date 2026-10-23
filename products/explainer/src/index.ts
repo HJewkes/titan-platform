@@ -37,4 +37,6 @@ export * from "./occupancy-exports.js";
 export * from "./emphasis-exports.js";
 export * from "./audition-exports.js";
 export * from "./workflow/index.js";
+export { AaFloorSchema, floorSection, measureAaFloor, readFloor, writeFloorNotes, type AaFloor } from "./aa-floor.js";
+export { runAaFloorCli } from "./aa-floor-cli.js";
 export * from "./presets/article/index.js";

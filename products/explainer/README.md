@@ -187,7 +187,8 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 `explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--to <stage>] [--base <runId>]
 [--pin <name=sha>]... [--variant <stage=file>]... [--sample <stage=k>]... [--video <id>] [--budget-usd 20]
-[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--data-dir <dir>]` makes one video as an
+[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--listener-questions] [--listener-threshold <q>]
+[--data-dir <dir>]` makes one video as an
 `explainer-video` run on `@titan-design/workflow` (`src/workflow/`, the corpus-query host pattern). The data dir
 (default: the per-user data dir) holds `state.sqlite3`, the content-addressed artifact store `artifacts/<sha256>`
 (a directory is stored as a tree of file shas), one `runs/<runId>/` directory per run, and the bridge host file
@@ -223,8 +224,20 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair` |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `listener-questions` (opt-in, below) |
 | `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+
+**Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
+chapter of the draft once, with nothing before it, and lists every question the chapter raises and leaves
+unanswered, each tagged with the sentence (`S1`, `S2`, ...) that raised it. Its verdict gives the questions and
+sentences per chapter and the density (questions a sentence), and counts three flags that code, not the listener,
+decides: a list spread over two or more sentences (the listener's lists, and any list a "Then ..." sentence carries
+on), a term asked about, placed at the first sentence that speaks it, and fragments (the listener's, and any sentence
+of three words or fewer). It calls a model, so it runs only under `--listener-questions`, on the `--judge` model, and
+its spend is the script stage's. It is reported, never a gate: with no threshold it passes on any density, and
+`--listener-threshold <q>` reports red a chapter above `q` questions a sentence. A cached script stage keeps the checks
+it ran with; use `--sample script=<k>` to run the check on a draft already made. `explainer eval listener` runs the
+same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced | — |
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
@@ -297,6 +310,29 @@ for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` ca
   runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. The stage
   stops at the storyboard: it writes no script and renders nothing. A gate check, `audition-scored`, fails the stage
   if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
+
+**Samples and the noise floor (TP-4034).** A model stage's output varies run to run as much as a tuning round moves
+it (TP-3878), so one sample decides nothing. `script` and `rewrite` take samples; each scores its script (the draft;
+for rewrite the rewritten script, with the input draft as the before) on the five Q-V11 target rows and reports
+through `summarizeMeasure`: per cell the mean, sample sd and n, and per row σ, one sample's noise pooled over cases.
+
+- `explainer stage <script|rewrite> --in ... --samples n [--sample k] [--max-usd <usd>]` runs sample indices `k` to
+  `k + n - 1`, each a cached run of its own, so a repeat measure reuses what it has. A sample whose stage failed a
+  gate still counts (its script exists); one that made no script is listed and left out. Exit 1 when a sample made
+  no script or `--max-usd` stopped the measure.
+- `explainer aa-floor --stage <s> --cases <dir|file...> [--split dev] [--samples 3] [--unit-dir <dir>] [--out <file>]`
+  runs the champion against itself: arm A on sample indices 0 to n-1, arm B on n to 2n-1, over the case split
+  (`products/evals/units/explainer-<stage>/cases`, `dev` by default). σ per row is pooled within each arm. With
+  `--unit-dir` it writes the floor to the unit's `notes.md` (a marked section a new floor replaces) and
+  `aa-floor.json`, stamped with the stage version it measured.
+- `explainer ab --stage <s> --variants <a> <b> --cases <dir|file...> [--samples 3] [--floor <aa-floor.json|unit dir>]`
+  runs both arms (`champion` names the run's own settings) and judges each row's B minus A: within 2σ is `noise`
+  however it points; past it, `win` or `loss` when B's mean sits nearer or further from the band than A's, `shift`
+  when both are equally near (both in band). σ comes from `--floor`, else from the arms' own pooled σ (`unknown`
+  with one sample and no floor).
+
+All three take the stage settings of `explainer stage` and `--max-usd`, which stops before a run the dearest run so
+far says would pass it, with one cap over both arms.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
@@ -394,6 +430,34 @@ beats that fail at least one error-severity row. Borderline labels count as neit
 a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
 carries is "not run", not zero.
 
+**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, and L1's
+beat dimensions) stay reported only until the owner's labels show they agree with the owner.
+
+- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--size 20]
+  [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
+  judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
+  script). Keep the manifest outside this repo, because it names private scripts.
+- The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
+  than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
+  last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
+  no question:
+  - cold probe: does the chapter answer the question the viewer was asked about an item, in that kind's own
+    words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
+  - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
+  - L1: does the beat pass a B dimension?
+- It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a
+  judge, its video types and verdicts also take turns.
+- It writes `round.json`, a questions-only console round with one section per video. A section shows the script
+  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones. The round shows no judge
+  name, verdict or recommendation. The verdicts go to the answer key, which is kept outside the round directory.
+  The command never overwrites an existing round or key.
+- `explainer eval calibrate agreement --key <key.json> --feedback <round>/feedback.json [--record <file>]
+  [--format table|json]` reads the owner's labels from the console's `feedback.json`. For each judge it prints the
+  labelled and can't-tell counts, the agreement (the share of labelled items where owner and judge agree), and the
+  recall on the items the owner failed. `--record` writes the `judge-agreement/v1` record.
+- `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
+  agreement below 0.8. The evals units test checks that every judge check stays `reported`.
+
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached
 `codex login`), `model`, and optionally `reasoning_effort`, `max_budget_usd`, `wall_time_s`
@@ -456,6 +520,11 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   invariant, or no §4 part whose mechanism keeps it, fails with no model call, and a chapter of
   only such seats makes no call and has no canary row. Spine runs get their own eval_version; runs
   without `--spine` keep theirs.
+- `explainer eval listener <script.json> --judge <judge.json> [--format spike|v1] [--threshold <q>] [--out
+  <result.json>]` runs the listener-questions exercise (eval id `L1-listener`, above) on a script file, one call a
+  chapter, and prints one line: questions, sentences and density, overall and per chapter, with each chapter's
+  questions per sentence and flags. `--out` writes the whole `ListenerResultSchema` result, every question with its
+  sentence. It exits 1 when a chapter is above `--threshold` or a call fails.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 
