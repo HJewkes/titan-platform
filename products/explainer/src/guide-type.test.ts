@@ -14,6 +14,7 @@ const tourRule = craftRule({ id: "story-T1", source: { doc: "story-structure", r
 const argumentRule = craftRule({ id: "story-A1", source: { doc: "story-structure", ref: "A1" }, text: "Argument rule", scope: { layer: "T", types: ["repo-argument"] }, enforcement: ["planner"], stages: ["plan"] });
 const abtRule = craftRule({ id: "story-S1", source: { doc: "story-structure", ref: "S1" }, text: "ABT rule", scope: { layer: "T", structures: ["abt"] }, enforcement: ["planner"], stages: ["plan"] });
 const gatedRule = craftRule({ id: "dir-G1", text: "Gated threshold", enforcement: ["gate"], stages: ["plan"], check: { kind: "gate", ref: "gate.x", live: true } });
+const fixedStructure = fixedProfile().structure;
 const deps = { registry: registryWith(tourRule, argumentRule, abtRule, gatedRule), qRules: Q_RULES, profiles: setOf(fixedProfile(), heuristicProfile()), beats: BEATS };
 
 describe("guideForType", () => {
@@ -59,6 +60,16 @@ describe("guideForType", () => {
     const guide = guideForType("repo-tour", deps);
 
     expect(guide).toContain("## Beats\n\n- **hook** (open, 5-20 s): hook summary.\n\n## Rules");
+  });
+
+  it("lists each bound beat system once, with its steps, and names it under each structure it plays in", () => {
+    const tour = fixedProfile({ structure: { ...fixedStructure, systems: [{ system: "hook-close", macro: "scqa-c4" }, { system: "walk-first", macro: "scqa-c4", blocks: ["map"] }] } });
+    const guide = guideForType("repo-tour", { ...deps, profiles: setOf(tour) });
+
+    expect(guide).toContain("Beat systems: **hook-close** over every block; **walk-first** inside map.");
+    expect(guide).toContain("### hook-close\n\nhook-close summary. (hook-close source)\n\n1. hook: Open.\n2. code-walk (optional): Walk.\n3. hook: Close.");
+    expect(guide.match(/### walk-first/g)).toHaveLength(1);
+    expect(guideForType("repo-tour", deps)).not.toContain("## Beat systems");
   });
 
   it("writes one guide per profile", () => {

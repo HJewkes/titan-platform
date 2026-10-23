@@ -12,6 +12,7 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `types/<type>.yaml` | One `type-profile/v1` per video type | `loadProfiles` |
 | `audiences/<id>.yaml` | The audience packs a profile allows (`audience-pack/v1`) | `loadProfiles` |
 | `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
+| `beat-systems/<id>.yaml` | One `beat-system/v1` per beat system: an ordered beat pattern a profile plays inside a structure's blocks | `loadBeatSystems` |
 | `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
 
@@ -41,6 +42,25 @@ change to its section numbers is a `spine/v1` change. A heuristic profile names 
 a macro; its row's `ask` words the question for that type, and the registry's predicate decides.
 A rule that applies only to one structure is a `T` rule naming it in `structures`. Then run
 `explainer guide types` and commit the regenerated guides.
+
+## Adding a beat system
+
+A beat system is the beat order inside a structure's blocks, never a second structure: the
+structure owns the blocks, shares, fit and spine; the system owns which beats play, in what order.
+Add the id to `beatSystems` in `vocabulary.yaml` and name the file after it. Every step's beats
+come from the vocabulary; `loadBeatSystems` refuses any other name. A step a structure may drop is
+`optional: true`. Then bind it in each profile that plays it, under `structure.systems`:
+
+```yaml
+systems:
+  - { system: cl-order, macro: before-after }
+  - { system: journey-of-attempts, macro: bluf, blocks: [segments] }
+```
+
+`blocks` scopes a system to part of a macro, as a segment nests inside a larger order. Each
+required step must land, in order, in a block that allows one of its beats (`beat-system-order`).
+A pattern known only from an abstract, such as Xu's openings or Wei's climaxes, is not a system
+until someone reads the paper. Then run `explainer guide types` and commit the regenerated guides.
 
 ## Adding a beat spec
 

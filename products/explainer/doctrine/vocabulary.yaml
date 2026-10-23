@@ -94,6 +94,19 @@ structures:
   - timeline
   - board-walk
   - bluf
+# Beat systems are the ordered beat patterns of doctrine/beat-systems/ (plan §B, slice 3): a beat
+# order inside a structure's blocks, never a second structure. Xu's opening styles and Wei's climax
+# patterns stay out until someone reads the papers; they are known only from abstracts.
+beatSystems:
+  - bluf
+  - cl-order
+  - example-first
+  - martini-glass
+  - journey-of-attempts
+  - chapter-question
+  - countdown-rung
+  - lab-cycle
+  - board-walk
 signals:
   - task-journey
   - decision-pending

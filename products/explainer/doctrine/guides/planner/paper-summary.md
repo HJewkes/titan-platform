@@ -1,6 +1,6 @@
 # Planner guide: paper-summary
 
-<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.2.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
 
 One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us.
 
@@ -66,11 +66,15 @@ Situation, complication, question, then the answer by 25% of runtime and its sup
 
 Spine sections: 1. Situation; 2. Complication; 3. Question and answer; 4. Supports, by importance.
 
+Beat systems: **example-first** over every block.
+
 ### mystery
 
 Cold open on an anomaly, follow the clues and false leads, then reveal the cause. (story-structure §2.10 (mystery / open loop), §4 row 2)
 
 Spine sections: 1. Anomaly; 2. Clues and false leads; 3. Reveal; 4. Open loops.
+
+Beat systems: **lab-cycle** over every block.
 
 ### kishotenketsu
 
@@ -78,11 +82,40 @@ Introduce, develop, twist with an unexpected angle, reconcile: an elegant idea w
 
 Spine sections: 1. Idea; 2. Development; 3. Twist; 4. Reconciliation.
 
+Beat systems: **lab-cycle** over every block.
+
 ### lab-report
 
 A concrete example, the key idea, how it was shown, the result with its limits, and what it changes for us. (video-profiles plan §B.2 (example before generality))
 
 Spine sections: 1. Example; 2. Key idea; 3. Method and result; 4. So for us.
+
+Beat systems: **example-first** over every block.
+
+## Beat systems
+
+A beat system is the beat order inside a structure's blocks, not a structure of its own. Play the steps in order; a step lands in the same block as the one before it or a later one, and an optional step may be dropped.
+
+### example-first
+
+A concrete example before any generality, then the key idea, how it was shown, the result, its limits, and what it changes for us. (video-profiles plan §B.2 (example before generality) [W46, W18])
+
+1. hook or user-flow or stat: One concrete example, before any general statement.
+2. claim-card: The one key idea the example shows.
+3. info-flow or schema or sequence or sim (optional): How it was shown, as a diagram the pointer follows.
+4. replot or stat or compare: The result, with its interval and grade.
+5. claim-card or list: Its limits: how far to trust it.
+6. takeaways or rule-diff or compare: So for us: what it changes here.
+7. button: The button.
+
+### lab-cycle
+
+A question, a model run live to answer it, the reading, and what it means. (video-profiles plan §B.2 and §B.3 (a lab cycle with a sim))
+
+1. chapter-open or hook or claim-card: The question, or the number that should not be true.
+2. sim: The model, run live: the viewer watches the claim happen.
+3. replot or stat or compare (optional): The reading, on the same axes as the source.
+4. verdict-chip or claim-card or takeaways: What it means.
 
 ## Beats
 

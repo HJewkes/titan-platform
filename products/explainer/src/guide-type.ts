@@ -2,11 +2,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beatSpecFor, loadBeatSpecs } from "./beat-load.js";
 import type { BeatSpec } from "./beat-schema.js";
+import { beatSystemFor } from "./beat-system-load.js";
+import type { BeatSystemStep } from "./beat-system-schema.js";
 import { DEFAULT_DOCTRINE_DIR, loadDoctrine } from "./doctrine-load.js";
 import type { DoctrineRegistry, DoctrineRule } from "./doctrine-schema.js";
 import { sliceForStage } from "./doctrine-slice.js";
 import { loadProfiles, profileFor, structureFor, type ProfileSet } from "./profile-load.js";
-import type { ProfileBlock, TypeProfile } from "./profile-schema.js";
+import type { ProfileBlock, SystemBinding, TypeProfile } from "./profile-schema.js";
 import { loadRuleRegistry, type RuleRegistry } from "./rules.js";
 
 export interface TypeGuideDeps {
@@ -87,15 +89,38 @@ function structureRules(structure: string, registry: DoctrineRegistry, qRules: R
   return prompt.filter((rule) => (rule.scope.structures ?? []).includes(structure));
 }
 
-/** Each structure the profile may pick: its shape, its spine sections and the rules it brings. */
+const renderBinding = ({ system, blocks }: SystemBinding): string => `**${system}** ${blocks ? `inside ${blocks.join(", ")}` : "over every block"}`;
+
+/** The beat systems a structure plays in this profile, as one line, or none when it binds no system. */
+function systemsLine(profile: TypeProfile, macro: string): string[] {
+  const bound = profile.structure.systems.filter((binding) => binding.macro === macro);
+  return bound.length > 0 ? ["", `Beat systems: ${bound.map(renderBinding).join("; ")}.`] : [];
+}
+
+/** Each structure the profile may pick: its shape, its spine sections, its beat systems and the rules it brings. */
 function renderStructures(profile: TypeProfile, set: ProfileSet, registry: DoctrineRegistry, qRules: RuleRegistry): string {
   const entries = macrosOf(profile).map((id) => {
     const { summary, source, spine } = structureFor(set.structures, id);
     const rules = structureRules(id, registry, qRules).map(renderRule);
     const sections = spine.map(({ title }, i) => `${i + 1}. ${title}`).join("; ");
-    return [`### ${id}`, "", `${summary} (${source})`, "", `Spine sections: ${sections}.`, ...(rules.length > 0 ? ["", ...rules] : [])].join("\n");
+    return [`### ${id}`, "", `${summary} (${source})`, "", `Spine sections: ${sections}.`, ...systemsLine(profile, id), ...(rules.length > 0 ? ["", ...rules] : [])].join("\n");
   });
   return `## Structures\n\nThe spine you write follows the structure you pick. The runner-up goes in the render notes.\n\n${entries.join("\n\n")}`;
+}
+
+const renderStep = ({ beats, does, optional }: BeatSystemStep, i: number): string => `${i + 1}. ${beats.join(" or ")}${optional ? " (optional)" : ""}: ${does}`;
+
+/** Each beat system the profile binds, once: the beat order to play inside the blocks it spans. */
+function renderBeatSystems(profile: TypeProfile, set: ProfileSet): string[] {
+  const ids = [...new Set(profile.structure.systems.map((binding) => binding.system))];
+  if (ids.length === 0) return [];
+  const entries = ids.map((id) => {
+    const { summary, source, steps } = beatSystemFor(set.beatSystems, id);
+    return [`### ${id}`, "", `${summary} (${source})`, "", ...steps.map(renderStep)].join("\n");
+  });
+  return [
+    `## Beat systems\n\nA beat system is the beat order inside a structure's blocks, not a structure of its own. Play the steps in order; a step lands in the same block as the one before it or a later one, and an optional step may be dropped.\n\n${entries.join("\n\n")}`,
+  ];
 }
 
 /**
@@ -107,7 +132,8 @@ export function guideForType(type: string, deps: TypeGuideDeps = {}): string {
   const profile = profileFor(profiles, type);
   const { prompt } = sliceForStage(registry, qRules, { stage: "plan", type, audience: profile.audience.default });
   const rules = prompt.length > 0 ? prompt.map(renderRule).join("\n") : "- (none)";
-  return `${renderProfile(profile, profiles)}\n\n${renderStructures(profile, profiles, registry, qRules)}\n\n${renderBeatIndex(profile, beats)}\n\n## Rules for the plan stage\n\n${rules}\n`;
+  const sections = [renderProfile(profile, profiles), renderStructures(profile, profiles, registry, qRules), ...renderBeatSystems(profile, profiles), renderBeatIndex(profile, beats)];
+  return `${sections.join("\n\n")}\n\n## Rules for the plan stage\n\n${rules}\n`;
 }
 
 /** Writes `guides/planner/<type>.md` for every profile under `doctrineDir`; returns the types written. */

@@ -1,0 +1,13 @@
+schema: beat-system/v1
+id: martini-glass
+version: 0.1.0
+source: "video-profiles plan §B.3 (the martini glass) [W47]"
+summary: "An authored stem (verdict, map, one traced request, the key ideas, the scorecard) that opens into a companion doc the viewer explores."
+steps:
+  - { beats: [hook, promise], does: "The verdict line, with the scorecard rows still grey." }
+  - { beats: [context-map, arch-map], does: "The map, which never moves after this." }
+  - { beats: [request-walk], does: "One request traced through the map." }
+  - { beats: [chapter-open], does: "The two to four ideas, each opened at its map station." }
+  - { beats: [scorecard], does: "The scorecard, filled." }
+  - { beats: [companion-link], does: "The bowl: the companion doc holds every topic and file the stem left out." }
+  - { beats: [button], does: "The button." }

@@ -1,7 +1,7 @@
 import { BeatSpecSchema, type BeatSpec } from "./beat-schema.js";
 import { BEAT_SLOTS, isSlotRef } from "./beat-slots.js";
 import { DEFAULT_DOCTRINE_DIR } from "./doctrine-load.js";
-import { readYamlDir } from "./profile-load.js";
+import { readYamlDir } from "./yaml-dir.js";
 
 /** Reads every `beats/<type>.yaml` under `dir`: the beat-spec registry. A shape error throws naming the file. */
 export function loadBeatSpecs(dir: string = DEFAULT_DOCTRINE_DIR): Map<string, BeatSpec> {

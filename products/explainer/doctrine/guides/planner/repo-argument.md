@@ -1,6 +1,6 @@
 # Planner guide: repo-argument
 
-<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.1.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.2.0) by `explainer guide types`. Do not edit. -->
 
 One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away.
 
@@ -103,6 +103,21 @@ Spine sections: 1. Idea; 2. Development; 3. Twist; 4. Reconciliation.
 Parallel findings counted down by stakes inside an ABT frame, never a bare list. (story-structure §2.9 (listicle / countdown), §4 row 6)
 
 Spine sections: 1. Frame; 2. Countdown; 3. What they add up to.
+
+Beat systems: **countdown-rung** inside countdown.
+
+## Beat systems
+
+A beat system is the beat order inside a structure's blocks, not a structure of its own. Play the steps in order; a step lands in the same block as the one before it or a later one, and an optional step may be dropped.
+
+### countdown-rung
+
+One rung of a countdown: its rank, then and, but, therefore, so the item is a small argument rather than a list entry. (story-structure §2.9 (listicle / countdown: each item a mini-ABT))
+
+1. chapter: The rank and the finding's name.
+2. code-walk or claim-card: And: what the code does.
+3. stat or claim-card: But: the cost or the surprise.
+4. claim-card or code-walk: Therefore: what to take from it.
 
 ## Beats
 

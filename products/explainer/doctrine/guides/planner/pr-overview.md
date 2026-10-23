@@ -1,6 +1,6 @@
 # Planner guide: pr-overview
 
-<!-- Generated from doctrine/types/pr-overview.yaml (profile 0.2.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/pr-overview.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
 
 Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do.
 
@@ -69,11 +69,15 @@ Situation, complication, question, then the answer by 25% of runtime and its sup
 
 Spine sections: 1. Situation; 2. Complication; 3. Question and answer; 4. Supports, by importance.
 
+Beat systems: **cl-order** over every block.
+
 ### attempt-journey
 
 The fix told as its attempts: what was tried, where each broke and why, then what holds. (video-profiles plan §B.1 (journey of attempts); story-structure §2.5 (story spine))
 
 Spine sections: 1. Summary; 2. Attempts; 3. Proof.
+
+Beat systems: **journey-of-attempts** over every block.
 
 ### review-saga
 
@@ -81,11 +85,42 @@ A change told through its review rounds: what each round caught, and the change 
 
 Spine sections: 1. Summary; 2. Rounds; 3. What survived.
 
+Beat systems: **cl-order** over every block.
+
 ### before-after
 
 The problem, the change as before against after grouped by purpose, then its proof and shortcomings. (story-structure §2.8 (problem–solution); video-profiles plan §B.1 (CL order))
 
 Spine sections: 1. Problem; 2. Before and after; 3. Shortcomings.
+
+Beat systems: **cl-order** over every block.
+
+## Beat systems
+
+A beat system is the beat order inside a structure's blocks, not a structure of its own. Play the steps in order; a step lands in the same block as the one before it or a later one, and an optional step may be dropped.
+
+### cl-order
+
+A change described the way a good change description reads: summary, why, grouped changes, shortcomings, proof, then the ask. (video-profiles plan §B.1 (the CL / CodeRabbit order) [W43, W44])
+
+1. verdict-card: An imperative one-line summary that stands alone, with the verdict.
+2. claim-card (optional): The problem, and why this approach.
+3. change-group: The changes grouped into two to four rows of related files, each pinned on the diff map.
+4. sequence (optional): A sequence diagram, only if interactions changed.
+5. finding-card (optional): Shortcomings, said aloud.
+6. proof: The tests or the benchmark that show it holds.
+7. metrics-panel (optional): Risk or effort.
+8. button: The ask.
+
+### journey-of-attempts
+
+What was tried, where it broke and why, the fix, and what shows it now holds. (video-profiles plan §B.1 and §B.4 (journey of attempts) [W41])
+
+1. attempt: What was tried.
+2. issue-pin or sequence or info-flow: Where it broke.
+3. history-why or history or sequence or info-flow (optional): Why it broke.
+4. fix or code-walk (optional): The fix.
+5. proof or stat: What holds now: the proof or the number.
 
 ## Beats
 
