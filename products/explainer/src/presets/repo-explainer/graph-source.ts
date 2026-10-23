@@ -58,11 +58,13 @@ async function workDir(cacheDir: string | undefined): Promise<{ dir: string; cle
 }
 
 // A review db is copied before it is opened, because opening runs migrations and the review stays read-only.
+// Its write-ahead log goes with it: rows committed but not yet checkpointed live only there.
 async function reviewSnapshot(options: GraphSourceOptions, dir: string, out: GatherDiagnostic[]) {
   const reviewDb = join(options.reviewDir, REVIEW_GRAPH_DB);
   if (!existsSync(reviewDb)) return undefined;
   const copy = join(dir, "review-graph.db");
   await copyFile(reviewDb, copy);
+  if (existsSync(`${reviewDb}-wal`)) await copyFile(`${reviewDb}-wal`, `${copy}-wal`);
   const store = openCodeGraph(copy);
   const snapshotId = snapshotAt(store, options.pin);
   if (snapshotId !== undefined) return { store, snapshotId };

@@ -68,6 +68,20 @@ describe("openStructureGraph", () => {
     expect(index).not.toHaveBeenCalled();
   });
 
+  it("reads a pinned snapshot that is still only in the review db's write-ahead log", async () => {
+    const live = join(await tempDir("rx-live-"), "graph.db");
+    const store = openCodeGraph(live);
+    await indexPaths(store, { paths: [clone], commitHash: FIXTURE_PIN, computeMetrics: false, computeChurn: false });
+    const reviewDir = await reviewWith(live);
+    await copyFile(`${live}-wal`, join(reviewDir, `${REVIEW_GRAPH_DB}-wal`));
+    store.close();
+
+    const result = await open({ reviewDir, index: vi.fn(indexPaths) });
+
+    expect(result.ok && result.graph.source).toBe("review-index");
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("re-indexes with W-INDEX-PIN when the review index was taken at another commit", async () => {
     const index = vi.fn(indexPaths);
 
