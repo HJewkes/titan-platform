@@ -137,7 +137,7 @@ describe("enrichStructure diagnostics", () => {
 
     expect(outcome.ok).toBe(false);
     expect("structure" in outcome).toBe(false);
-    expect(codes(outcome)).toEqual(["E-INDEX"]);
+    expect(codes(outcome)).toEqual(["W-INDEX-SCOPE", "E-INDEX"]);
   });
 
   it("re-indexes an off-pin review db with W-INDEX-PIN", async () => {

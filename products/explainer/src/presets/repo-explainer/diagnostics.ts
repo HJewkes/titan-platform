@@ -25,6 +25,7 @@ export const GATHER_CODES = {
   "W-BAD-ROW": { severity: "warning" },
   "E-INDEX": { severity: "error" },
   "W-INDEX-PIN": { severity: "warning" },
+  "W-INDEX-SCOPE": { severity: "warning" },
   "W-NO-INDEX": { severity: "warning" },
   "W-UNRESOLVED": { severity: "warning" },
   "W-NO-CALL-PATH": { severity: "warning" },
