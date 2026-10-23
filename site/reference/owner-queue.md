@@ -154,6 +154,36 @@ accepts both: `readSpool`, `readAnswer`, and the repeat check in `writeDeposit` 
 `writeDeposit` reads the file there and throws `SpoolNameCollisionError` unless it holds the
 same asker and `depositId`. It never answers `created: false` for an id it did not file.
 
+## Withdrawing a deposit
+
+The `@titan-design/owner-queue/withdraw` subpath lets a seat take back its own deposit without an
+answer. Withdrawn is its own status: nothing here writes an answer file.
+
+```ts
+import { readWithdrawal, restoreDeposit, withdrawDeposit, withdrawMatching } from "@titan-design/owner-queue/withdraw";
+
+await withdrawDeposit(dir, "deposit:<32 hex>", { reason: "obsolete", as: "agent-a" });
+// { id, outcome: "withdrawn" }, or "already-withdrawn" with the first reason kept
+await restoreDeposit(dir, "deposit:<32 hex>", { as: "agent-a" }); // { id, outcome: "restored" }
+await withdrawMatching(dir, { asker: "agent-a", keys: ["my-alarm"], reason: "resolved", dryRun: true });
+```
+
+- `withdrawDeposit` writes `<id>.withdrawn` (`{ reason, by, at }`, 0600, exclusive create)
+  beside the deposit. The name has no `.json` suffix, so an older `readSpool` never takes it for
+  a deposit. `reason` is `obsolete`, `resolved` or `superseded:<id>`.
+- It throws `WithdrawRefusedError` with `kind: "unknown"` for a deposit id the spool does not
+  hold, and `kind: "refused"` for a bad reason, an id that is not `deposit:…`, an `as` other
+  than the deposit's `asker`, or a deposit that already has an answer.
+- Every withdraw and restore appends `{ op, id, reason?, by, at }` to `withdrawals.jsonl`
+  (`WITHDRAW_LOG`) in the spool. `restoreDeposit` deletes the marker and makes the same checks.
+- `withdrawMatching` withdraws every open deposit of `asker` carrying any of `keys`, and skips
+  answered, withdrawn and unreadable ones. With `dryRun` it only lists them.
+- `readWithdrawal(dir, id)` returns the marker, `undefined` when there is none, and throws on a
+  malformed one.
+
+`collapseRepeats(items)` in the root export folds open items that one asker filed with the same
+`alarm:<source>` key (`alarmKey(source)`) into the newest, which carries `repeats`, the count.
+
 ## Stale rules
 
 An item can stop being a question without anyone answering it: its PR merged, a new commit

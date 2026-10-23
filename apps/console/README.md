@@ -376,7 +376,7 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   64 KB, measured as the spool stores it, answers 400. The body cap is three times the stored
   one because a client that writes non-ASCII as `\uXXXX` escapes sends six bytes for each
   two-byte character (U+0080 to U+07FF) and twelve for each four-byte astral one. An
-  asker with 200 open deposits, those with no answer file beside them, gets 429
+  asker with 200 open deposits, those with no answer or withdrawal beside them, gets 429
   (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
   open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.
 - **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
@@ -394,6 +394,49 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
   ```
+- **Repeat alarms.** A deposit may carry one `alarm:<source>` key (owner-queue's `alarmKey`).
+  Open deposits from one asker with the same alarm key show as one item, the newest, with
+  `repeats` set to how many there are. The rest stay in the spool, untouched.
+
+### Withdrawing a deposit
+
+A seat takes back its own deposit, without an answer, from a shell on the console's machine:
+
+```sh
+titan-console inbox withdraw deposit:<32 hex> --reason obsolete --as my-agent
+titan-console inbox restore deposit:<32 hex> --as my-agent       # open it again
+titan-console inbox withdraw-matching --as my-agent --key my-alarm --reason resolved [--dry-run]
+```
+
+- **Its own status.** Withdrawal writes `<id>.withdrawn` beside the deposit and never an answer
+  file. The inbox lists the item under withdrawn, not open or answered, and it stops counting
+  against the open-deposit caps. A deposit the owner already answered is refused.
+- **Reasons.** `obsolete`, `resolved` or `superseded:<item id>`. A second withdraw keeps the first
+  reason and prints `already-withdrawn`.
+- **Audited.** Every withdraw and restore appends `{ op, id, reason?, by, at }` to
+  `withdrawals.jsonl` in the spool. `restore` deletes the marker; the log keeps both lines.
+- **Own items only.** `--as` must equal the deposit's `asker`. An id that is not a deposit (a
+  hitl gate, a round question) is refused. A refusal exits 65 and an unknown id 66, each with one
+  line on stderr. `--as` is self-declared like `asker`, so this guards against a mistake, not a
+  hostile caller who can already write the spool.
+- **Local only.** Like `rounds withdraw`, these verbs write the spool directly and are never on
+  `/rpc`, so nothing that reaches the daemon can take an item away from the owner.
+- **Auto-withdraw.** A verified console update withdraws every open `titan-console` deposit keyed
+  `console-update` (see `docs/self-update.md`). A factory deploy that holds through its watch
+  withdraws every open `titan-factory` deposit keyed `deploy-alarm` or `deploy-incident`. Both use
+  reason `resolved`. A withdrawn depositId filed again stays withdrawn until it is restored.
+
+**One-time cleanup of a spool from before auto-withdraw.** After checking that the console serves
+a current sha (`/health`) and that the factory's last deploy is `deployed`
+(`titan-factory shepherd status --json --deploy`), list, then withdraw:
+
+```sh
+titan-console inbox withdraw-matching --as titan-console --key console-update --reason resolved --dry-run
+titan-console inbox withdraw-matching --as titan-factory --key deploy-alarm --key deploy-incident --reason resolved --dry-run
+```
+
+Run each again without `--dry-run`. `withdraw-matching` takes `TITAN_CONSOLE_INBOX_DIR` or
+`TITAN_CONSOLE_STATE` like every other verb, so point either at a copy of the spool to rehearse.
 
 ## Filing a decision round
 
@@ -766,7 +809,8 @@ links to its own.
   An item that fails `ownerItemSchema` is a gap line naming its id; the rest are kept. Items whose
   first source is `deposit` are dropped, because the console reads its own spool.
 - **Spool.** `server/approval-items.ts` reads `TITAN_CONSOLE_INBOX_DIR`; a deposit with an answer
-  file beside it counts as answered. A deposit's `gate:` and `run:` keys are removed, so an
+  file beside it counts as answered, and one with a withdrawal marker joins the Flow's `withdrawn`
+  list. Open repeats of one `alarm:` key collapse into the newest. A deposit's `gate:` and `run:` keys are removed, so an
   agent-written deposit never takes a hitl gate's place.
 - **Rounds.** An unsent round gives one open item per question; a round with a valid
   `feedback.json` gives answered items instead, never both. A missing rounds dir is no rounds.

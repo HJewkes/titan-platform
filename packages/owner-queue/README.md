@@ -43,6 +43,13 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
   Readers still accept a deposit filed under its name from before A-Z was escaped.
+- `@titan-design/owner-queue/withdraw`: `withdrawDeposit(dir, id, { reason, as })` marks a
+  seat's own deposit withdrawn with `<id>.withdrawn` beside it, never an answer file;
+  `restoreDeposit` undoes it, and `withdrawMatching` withdraws every open deposit of one asker
+  with given keys. Each withdraw and restore appends to `withdrawals.jsonl`. A refusal throws
+  `WithdrawRefusedError` (`unknown` or `refused`).
+- `collapseRepeats(items)` folds open items one asker filed with the same `alarm:<source>` key
+  (`alarmKey`) into the newest, with `repeats` set to the count.
 - Code anchors: an item and each option may carry `anchors` (`head/<path>#L10-L20`,
   `base/…`, `diff/…#L84-R90`) resolved against the item's `pins { repo, head, base? }`
   (40-hex commits). The deposit schema refuses anchors with no pins or bad grammar.
