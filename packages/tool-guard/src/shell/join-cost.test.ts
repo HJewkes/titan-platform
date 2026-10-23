@@ -13,9 +13,9 @@ const HOME = "/home/you";
 const REPO = "/home/you/projects/app";
 const JOIN = "\\\n";
 /**
- * Past this thread-CPU time a hook timeout would let the command through; a linear reading takes milliseconds. The
- * bench checks it, for the work a count cannot see, such as indexing a string one character at a time; under pnpm test
- * the hook rows count work instead, which load on the runner cannot move (TP-2785, TP-4047).
+ * Past this thread-CPU time the hook nears its deadline, where it denies the command; a linear reading takes
+ * milliseconds. The bench checks it, for the work a count cannot see, such as indexing a string one character at a time;
+ * under pnpm test the hook rows count work instead, which load on the runner cannot move (TP-2785, TP-4047).
  */
 const BUDGET_MS = 1000;
 
