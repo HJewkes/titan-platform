@@ -4,10 +4,10 @@ import type { TargetRow } from "./rewrite-pass.js";
 
 export type TargetRowId = (typeof REWRITE_TARGET_ROWS)[number];
 
-/** One input's target rows before the pass, and after it on each sample that finished. */
+/** One input's target rows before the pass, and after it on each sample that finished; a stage that starts from no script (script) has no before. */
 export interface MeasureInput {
   name: string;
-  before: readonly TargetRow[];
+  before?: readonly TargetRow[];
   samples: readonly (readonly TargetRow[])[];
 }
 
@@ -16,12 +16,12 @@ export interface MeasureCell {
   input: string;
   row: TargetRowId;
   band: Band;
-  before: number;
+  before?: number;
   mean: number;
   sd?: number;
   n: number;
   inBand: boolean;
-  /** In band, or nearer to it than before. */
+  /** In band, or nearer to it than before; with no before, in band only. */
   closer: boolean;
   /** The mean sits further from the band edge than its 90% one-sided noise, so a further sample would not flip it. */
   decided: boolean;
@@ -75,17 +75,17 @@ const edgeMargin = (value: number, band: Band): number =>
 const rowValue = (rows: readonly TargetRow[], row: TargetRowId): number | undefined => rows.find((r) => r.check_id === row)?.value;
 
 function measureCell(input: MeasureInput, row: TargetRowId, reportOnly: boolean): MeasureCell | undefined {
-  const before = rowValue(input.before, row);
+  const before = input.before && rowValue(input.before, row);
   const values = input.samples.map((sample) => rowValue(sample, row)).filter((value) => value !== undefined);
-  if (before === undefined || values.length === 0) return undefined;
+  if ((input.before && before === undefined) || values.length === 0) return undefined;
   const band = TARGET_BANDS[row];
   const m = mean(values);
   const sd = values.length > 1 ? Math.sqrt(variance(values)) : undefined;
   const inBand = bandGap(m, band) === 0;
   const noise = sd === undefined ? Infinity : (t90(values.length - 1) * sd) / Math.sqrt(values.length);
   return {
-    input: input.name, row, band, before, mean: m, ...(sd === undefined ? {} : { sd }), n: values.length,
-    inBand, closer: inBand || bandGap(m, band) < bandGap(before, band), decided: Math.abs(edgeMargin(m, band)) > noise, reportOnly,
+    input: input.name, row, band, ...(before === undefined ? {} : { before }), mean: m, ...(sd === undefined ? {} : { sd }), n: values.length,
+    inBand, closer: inBand || (before !== undefined && bandGap(m, band) < bandGap(before, band)), decided: Math.abs(edgeMargin(m, band)) > noise, reportOnly,
   };
 }
 
@@ -121,7 +121,7 @@ const yes = (flag: boolean): string => (flag ? "yes" : "no");
 function cellLine(cell: MeasureCell): string {
   const spread = cell.sd === undefined ? "" : ` ± ${shown(cell.row, cell.sd)}`;
   const decided = cell.decided ? (cell.inBand ? "in band" : "out of band") : "within noise";
-  return `| ${cell.input} | ${cell.row}${cell.reportOnly ? " (report-only)" : ""} | ${bandText(cell.row, cell.band)} | ${shown(cell.row, cell.before)} | ` +
+  return `| ${cell.input} | ${cell.row}${cell.reportOnly ? " (report-only)" : ""} | ${bandText(cell.row, cell.band)} | ${cell.before === undefined ? "—" : shown(cell.row, cell.before)} | ` +
     `${shown(cell.row, cell.mean)}${spread} | ${cell.n} | ${yes(cell.inBand)} | ${yes(cell.closer)} | ${decided} |`;
 }
 
