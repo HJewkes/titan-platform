@@ -31,6 +31,8 @@ const reviews: [string, string][] = [
   ["re-review after three FIX_FIRSTs", reviewerBrief({ ...target, fixFirsts: 3 })],
   ["g10 re-review", reviewerBrief({ ...target, fixFirsts: 2, ownerBrief: true, questions })],
   ["re-review with earlier findings", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings })],
+];
+const scopedReviews: [string, string][] = [
   ["scoped fix-round re-review", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings, scope })],
   ["scoped fix-round re-review after a main merge, from run dir", reviewerBrief({ ...target, fixFirsts: 2, earlierFindings, scope: { ...scope, mergedBase: true }, sourceCheckout: "/srv/checkouts/demo" })],
 ];
@@ -41,10 +43,14 @@ const corrections: [string, string][] = refusals.flatMap((refusal) => [
 
 describe("rendered briefs against main's output", () => {
   it("covers every golden case", () => {
-    expect([...reviews, ...corrections].map(([name]) => name).sort()).toEqual(Object.keys(golden).sort());
+    expect([...reviews, ...scopedReviews, ...corrections].map(([name]) => name).sort()).toEqual(Object.keys(golden).sort());
   });
 
   it.each([...reviews, ...corrections])("is byte-identical for %s", (name, rendered) => {
     expect(rendered).toBe(golden[name]);
+  });
+
+  it("is byte-identical for both scoped fix-round re-reviews", () => {
+    for (const [name, rendered] of scopedReviews) expect(rendered, name).toBe(golden[name]);
   });
 });

@@ -7,8 +7,7 @@
       "find": "usableScope(input.scope, input.earlierFindings?.length ?? 0) ? input.scope : undefined",
       "replace": "undefined",
       "kills": [
-        "rendered briefs against main's output is byte-identical for scoped fix-round re-review",
-        "rendered briefs against main's output is byte-identical for scoped fix-round re-review after a main merge, from run dir"
+        "rendered briefs against main's output is byte-identical for both scoped fix-round re-reviews"
       ]
     },
     {
@@ -17,7 +16,7 @@
       "find": "scoped ? \"fetch, archive and diff\" : \"fetch and archive\"",
       "replace": "\"fetch and archive\"",
       "kills": [
-        "rendered briefs against main's output is byte-identical for scoped fix-round re-review after a main merge, from run dir"
+        "rendered briefs against main's output is byte-identical for both scoped fix-round re-reviews"
       ]
     },
     {
@@ -26,7 +25,7 @@
       "find": "  scope.mergedBase\n    ?",
       "replace": "  false\n    ?",
       "kills": [
-        "rendered briefs against main's output is byte-identical for scoped fix-round re-review after a main merge, from run dir"
+        "rendered briefs against main's output is byte-identical for both scoped fix-round re-reviews"
       ]
     }
   ]
