@@ -1,4 +1,4 @@
-import { GraphNode, GraphEdge, GraphMetric } from '@titan-design/code-graph';
+import { GraphNode, GraphEdge, GraphMetric, ProtocolEdge } from '@titan-design/code-graph';
 
 /** A graph to collapse or lay out. Callers may pass a wider object; extra fields are ignored. */
 interface GraphInput {
@@ -235,6 +235,11 @@ interface RepoMapOptions {
     maxFilesPerBox?: number;
     label?: LabelMetrics;
     layoutOptions?: Record<string, string>;
+    /**
+     * code-graph's `extractProtocolEdges` edges, drawn as labelled container arrows. An empty
+     * list labels the container import arrows "imports only"; leaving it out draws neither.
+     */
+    protocolEdges?: readonly ProtocolEdge[];
 }
 /**
  * Lay a file-level snapshot out as one repo-map/v1: packages hold directories, directories
