@@ -248,6 +248,10 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
     base: check.base,
   };
   const merge = await step(ctx, roundId("merge", state.round, state.merges++), mergeInput, MergeResultResult);
+  return afterMerge(merge, ci, check, state);
+}
+
+function afterMerge(merge: z.infer<typeof MergeResultResult>, ci: CiSnapshot, check: BaseCheck, state: LandState): LandOutcome | undefined {
   // The port answers "" for a PR merged elsewhere with no merge commit named.
   if (merge.done || merge.skipped === "merged") {
     return {
