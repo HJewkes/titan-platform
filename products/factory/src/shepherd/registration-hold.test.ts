@@ -265,6 +265,28 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(reads).toBe(2);
   });
 
+  it("reads again after a wait when the count outruns the list below the cap, and classes the whole list", async () => {
+    const r = rig([file("packages/x/src/a.ts", 5)]);
+    r.fake.prChangedFiles.set(1, 2);
+    const waits: number[] = [];
+    const pause = async (ms: number) => void (waits.push(ms), r.fake.prChangedFiles.set(1, 1));
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1", { pause })).toBeUndefined();
+    expect(waits).toHaveLength(1);
+    expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("holds as unread when the list is short of its count on both reads, waiting once", async () => {
+    const r = rig([file("packages/x/src/a.ts", 5)]);
+    r.fake.prChangedFiles.set(1, 2);
+    const waits: number[] = [];
+
+    const reason = await applyRegistrationHold(r.port, r.store, "run-1", { pause: async (ms) => void waits.push(ms) });
+
+    expect(reason).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
+    expect(waits).toHaveLength(1);
+  });
+
   it("does not re-read a file list cut short at GitHub's cap", async () => {
     const r = rig([file("packages/x/src/a.ts", 5)]);
     r.fake.prChangedFiles.set(1, 5000);
@@ -272,8 +294,11 @@ describe("the G10 hold Shepherd places at registration", () => {
     let reads = 0;
     r.port = { ...r.port, listPrFiles: (repo, pr) => (reads++, listPrFiles(repo, pr)) };
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
+    const waits: number[] = [];
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1", { pause: async (ms) => void waits.push(ms) })).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
     expect(reads).toBe(1);
+    expect(waits).toEqual([]);
   });
 
   it("stacks a g10-adversary hold over a hold the run already has, which gates again once it is released", async () => {
