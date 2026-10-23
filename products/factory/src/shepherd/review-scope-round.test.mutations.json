@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "a cause other than fix-round is scoped",
-      "file": "products/factory/src/shepherd/review-scope-round.ts",
+      "file": "products/factory/src/shepherd/fix-first-trail.ts",
       "find": "if (cause.cause !== \"fix-round\" || run.convergedAt === headSha) return {};",
       "replace": "if (run.convergedAt === headSha) return {};",
       "kills": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "D8's convergence head is scoped",
-      "file": "products/factory/src/shepherd/review-scope-round.ts",
+      "file": "products/factory/src/shepherd/fix-first-trail.ts",
       "find": "if (cause.cause !== \"fix-round\" || run.convergedAt === headSha) return {};",
       "replace": "if (cause.cause !== \"fix-round\") return {};",
       "kills": [

@@ -1,26 +1,11 @@
 import { usableScope, type EarlierFinding, type ReviewScope } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import type { CiSnapshot } from "../workflows/land-ci.js";
-import { earlierFindingOf, openFindingsOf, type FixFirstTrail, type FixRound } from "./fix-first-trail.js";
-import type { ReviewCause } from "./review-schemas.js";
+import { earlierFindingOf, type FixRound } from "./fix-first-trail.js";
 import { reviewScopeStep, type ReviewScopeResult } from "./review-scope.js";
 
 /** `shepherd.review.scopedRereview` (TP-3735): `shadow` probes a fix round's diff and records it, `on` also scopes the correctness brief. */
 export type ScopedRereviewMode = "off" | "shadow" | "on";
-
-/**
- * Only a fix round after a reviewer's FIX_FIRST is scoped. D8's convergence head reads the whole trail and the whole PR, and
- * every other cause, a retry included, reviews in full.
- */
-export function fixRoundOf(run: FixFirstTrail, headSha: string, cause: ReviewCause, lastCi: Pick<CiSnapshot, "headSha" | "baseRef"> | undefined): { fixRound?: FixRound } {
-  if (cause.cause !== "fix-round" || run.convergedAt === headSha) return {};
-  const openFindings = openFindingsOf(run);
-  const sinceHead = openFindings.at(-1)?.headSha;
-  if (sinceHead === undefined || sinceHead === headSha) return {};
-  const baseRef = lastCi?.headSha === headSha ? lastCi.baseRef : undefined;
-  return { fixRound: { sinceHead, openFindings, ...(baseRef !== undefined && { baseRef }) } };
-}
 
 const ScopeSchema = z.object({
   sinceHead: z.string(),
@@ -44,6 +29,12 @@ export const ScopedRereviewSchema = z.discriminatedUnion("scoped", [
   z.object({ mode: Mode, scoped: z.literal(false), reason: z.string() }),
 ]);
 type ScopedRereview = z.infer<typeof ScopedRereviewSchema>;
+export const SCOPED_REREVIEW_INPUT = { scopedRereview: ScopedRereviewSchema.optional() };
+
+export interface ScopedRereviewWiring {
+  /** `shepherd.review.scopedRereview`; absent means `off`, and no fix round is probed. */
+  scopedRereview?: ScopedRereviewMode;
+}
 
 /** The intent records a mode other than off, so a replay scopes the head as its first run did whatever the config says now. */
 export const scopeModeOf = (mode: ScopedRereviewMode | undefined): { scopedRereview?: "shadow" | "on" } => (mode === "shadow" || mode === "on" ? { scopedRereview: mode } : {});

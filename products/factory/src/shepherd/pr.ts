@@ -49,8 +49,7 @@ import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
-import { convergenceOf, withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
-import { fixRoundOf } from "./review-scope-round.js";
+import { convergenceOf, fixRoundOf, withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { isVisualGate, packetBeforeGate, packetTriggering, visualPacketRoutes, type PacketRun } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_KIND, isSentBack, ownerSendBack, sendBackOffer, sendBackOfferRoute } from "./owner-send-back.js";
 import { NOT_OFFERED, configuredVisualSetCarry, visualAcceptOfferRoute, visualAcceptRoute, type VisualAcceptRun } from "./visual-accept.js";
@@ -241,10 +240,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
   for (;;) {
     const verdict = (await standingVerdict(run, headSha)) ?? (await reviewHead(run, headSha));
     if (verdict.kind !== "none" || verdict.cause !== "account-exhausted") run.reviews.set(headSha, verdict); // an account hold is no review; the head is reviewed once the hold lifts
-    if (verdict.kind === "MERGE") {
-      run.merged.set(headSha, verdict);
-      run.openFrom = run.fixFirstTrail.length;
-    }
+    if (verdict.kind === "MERGE") run.merged.set(headSha, verdict);
     const observed = await observePr(run.ctx, run.target, headSha);
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
     run.trail.last = { headSha, outcome, verdict };

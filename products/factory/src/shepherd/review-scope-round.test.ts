@@ -1,8 +1,8 @@
 import { fakeSha } from "@titan-design/github";
 import { usableScope } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import type { FixFirstEntry, FixFirstTrail } from "./fix-first-trail.js";
-import { fixRoundOf, scopedBriefFields, scopedResultFields, toReviewScope } from "./review-scope-round.js";
+import { fixRoundOf, type FixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
+import { scopedBriefFields, scopedResultFields, toReviewScope } from "./review-scope-round.js";
 import { scopeFromDiff } from "./review-scope.js";
 
 const A = fakeSha("round-a");
@@ -25,7 +25,7 @@ describe("fixRoundOf", () => {
   });
 
   it("does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head", () => {
-    expect(fixRoundOf(trail([entry(A)]), B, { cause: "retry", reason: "not-started" }, ciAt(B))).toEqual({});
+    expect(fixRoundOf(trail([entry(A)]), B, { cause: "retry" }, ciAt(B))).toEqual({});
     expect(fixRoundOf(trail([entry(A)], { convergedAt: B }), B, FIX_ROUND, ciAt(B))).toEqual({});
     expect(fixRoundOf(trail([entry(A)], { openFrom: 1 }), B, FIX_ROUND, ciAt(B))).toEqual({});
     expect(fixRoundOf(trail([entry(A)]), A, FIX_ROUND, ciAt(A))).toEqual({});

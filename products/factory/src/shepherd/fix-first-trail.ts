@@ -88,6 +88,19 @@ export const openFindingsOf = (run: FixFirstTrail): FixFirstEntry[] => run.fixFi
 
 export const earlierFindingOf = (entry: FixFirstEntry): EarlierFinding => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) });
 
+/**
+ * Only a fix round after a reviewer's FIX_FIRST is scoped. D8's convergence head reads the whole trail and the whole PR, and
+ * every other cause, a retry included, reviews in full.
+ */
+export function fixRoundOf(run: FixFirstTrail, headSha: string, cause: { cause: string }, lastCi: { headSha: string; baseRef?: string } | undefined): { fixRound?: FixRound } {
+  if (cause.cause !== "fix-round" || run.convergedAt === headSha) return {};
+  const openFindings = openFindingsOf(run);
+  const sinceHead = openFindings.at(-1)?.headSha;
+  if (sinceHead === undefined || sinceHead === headSha) return {};
+  const baseRef = lastCi?.headSha === headSha ? lastCi.baseRef : undefined;
+  return { fixRound: { sinceHead, openFindings, ...(baseRef !== undefined && { baseRef }) } };
+}
+
 /** D8's convergence review at `headSha` carries the run's whole trail; any other review carries none. */
 export function convergenceOf(run: FixFirstTrail, headSha: string): { convergence?: FixFirstEntry[] } {
   return run.convergedAt === headSha ? { convergence: [...run.fixFirstTrail] } : {};

@@ -5,7 +5,7 @@
       "name": "the scope is also passed to the panel members",
       "file": "products/factory/src/shepherd/review.ts",
       "find": "const base: MemberBase = { ...target, runId: ctx.runId, ",
-      "replace": "const base: MemberBase = { ...target, ...rereview, runId: ctx.runId, ",
+      "replace": "const base: MemberBase = { ...target, ...(await scopedRereviewOf(ctx, request, intent)), runId: ctx.runId, ",
       "kills": [
         "a fix-round re-review under shepherd.review.scopedRereview on: the correctness brief at H2 reads the fix diff since H1 and H1's finding; the adversary member's reads neither"
       ]
