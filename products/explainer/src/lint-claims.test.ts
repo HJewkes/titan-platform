@@ -71,8 +71,8 @@ describe("Q-E20 claims match the gathered facts", () => {
     expect(claimFindings(script, FACTS)).toEqual([{ beat: "w2", claim: "PD-311", nearest: "nearest gathered task is in task/PD-310/opened" }]);
   });
 
-  it("ignores ordinals, durations, years and indexes", () => {
-    const script = scriptSaying("In 2025, the 2nd pass took 90 seconds, and chapter 3 merged it all.");
+  it("ignores ordinals, durations, years, indexes and a pronoun one", () => {
+    const script = scriptSaying("Since 2024 merged PRs held, the 2nd pass took 90 seconds, chapter 3 merged it all, and no one open waited.");
 
     expect(beatClaims(script.beats.find((b) => b.id === "w2")!)).toEqual([]);
     expect(claimsRow(script, FACTS).pass).toBe(true);

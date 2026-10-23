@@ -120,18 +120,18 @@ const QUALIFIERS: Readonly<Record<string, string>> = { open: "open", opened: "op
 const FILLERS = new Set(["more", "other", "new", "still", "are", "is", "were", "was", "now", "already"]);
 
 /**
- * Numbers that are not claims about the facts, checked before a count is read: an ordinal, a length of time (the
- * video's or a step's), a year, and an index such as "chapter 2" or "version 3".
+ * Numbers that read as a count but are not claims about the facts, each known by the words just before it: an index
+ * ("chapter 2 merged"), a year ("since 2024 merged PRs"), and a spelled "one" used as a pronoun ("which one merged").
+ * Ordinals ("2nd") and lengths of time ("90 seconds") never reach this list: a count needs a known noun or state
+ * right after its number.
  */
-export const NOT_A_CLAIM: ReadonlyArray<{ reason: string; reads: "from" | "before"; pattern: RegExp }> = [
-  { reason: "ordinal", reads: "from", pattern: /^\d+(?:st|nd|rd|th)\b/i },
-  { reason: "duration", reads: "from", pattern: /^\d+[\s-]*(?:s|secs?|seconds?|mins?|minutes?|h|hrs?|hours?|days?|weeks?|months?|years?)\b/i },
-  { reason: "year", reads: "from", pattern: /^(?:19|20)\d{2}(?![\s-]+(?:prs?|pull|tasks?|tickets?|sessions?|commits?|open|merged|closed)\b)/i },
-  { reason: "index", reads: "before", pattern: /\b(?:chapter|step|part|beat|version|v|phase|stage|slice|page|line|top)\s*$/i },
+export const NOT_A_CLAIM: ReadonlyArray<{ reason: string; before: RegExp; n?: (n: number) => boolean }> = [
+  { reason: "index", before: /\b(?:chapter|step|part|beat|version|v|phase|stage|slice|page|line|top)\s*$/i },
+  { reason: "year", before: /\b(?:in|since|from|until|during|by|of)\s+$/i, n: (n) => n >= 1900 && n < 2100 },
+  { reason: "pronoun", before: /\b(?:which|each|every|any|no|this|that)\s+$/i, n: (n) => n === 1 },
 ];
 
-const isNotAClaim = (before: string, from: string): boolean =>
-  NOT_A_CLAIM.some(({ reads, pattern }) => pattern.test(reads === "before" ? before : from));
+const isNotAClaim = (before: string, n: number): boolean => NOT_A_CLAIM.some((rule) => rule.before.test(before) && (rule.n?.(n) ?? true));
 
 /** Reads the words after a number: fillers and states, then at most one noun; the claim ends at the last word it used. */
 function readCount(n: number, words: readonly string[]): Claim | undefined {
@@ -154,9 +154,8 @@ const FOLLOWING_WORDS = /^(?:\s+[A-Za-z-]+){0,4}/;
 
 function takeCounts(text: string): Claim[] {
   return [...text.matchAll(COUNT)].flatMap((match) => {
-    const window = text.slice(match.index);
-    if (isNotAClaim(text.slice(0, match.index), window)) return [];
-    const after = window.slice(match[0].length).replace(/\bpull\s+request/gi, "pull-request");
+    if (isNotAClaim(text.slice(0, match.index), Number(match[1]))) return [];
+    const after = text.slice(match.index + match[0].length).replace(/\bpull\s+request/gi, "pull-request");
     const words = (after.match(FOLLOWING_WORDS)?.[0] ?? "").split(/\s+/).filter(Boolean);
     const claim = readCount(Number(match[1]), words);
     return claim ? [claim] : [];
