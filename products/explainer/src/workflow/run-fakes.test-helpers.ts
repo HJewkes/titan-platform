@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-design/workflow";
+import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
@@ -156,10 +157,14 @@ export function fakeScriptModel(script: ScriptV1 = choppy(), options: { invalid?
 /** One L0 row, so a test picks the eval stage's verdict without writing a script the whole L0 set passes. */
 export const l0Check = (pass: boolean): L0Check => () => [{ check_id: "fake-l0", mode: "tagged", severity: "error", value: pass ? 0 : 1, threshold: 0, pass, detail_beats: [] }];
 
-/** A host on fakes, with a clock that moves one second per read so stage wall times are exact. */
-export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge, extra: Partial<RunHost> = {}): RunHost & { rewriter: ReturnType<typeof fakeRewriter> } {
-  const rewriter = fakeRewriter();
+type Fakes = { rewriter: ReturnType<typeof fakeRewriter>; rubric: ReturnType<typeof fakeRubricJudge> };
+
+/** A host on fakes, with a clock that moves one second per read so stage wall times are exact; `rubric` judges J8 to J12. */
+export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
+  const rewriter = extra.rewriter ?? fakeRewriter();
+  const rubric = extra.rubric ?? fakeRubricJudge();
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor: () => rewriter.harness, exec: bridge.exec, evalChecks: [l0Check(true)], now, rewriter, ...extra };
+  const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
+  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
 }
