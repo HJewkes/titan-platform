@@ -25,6 +25,30 @@ diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
 warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
 
+`gatherArticle` (`src/presets/article/`) is the `paper-summary` profile's gather stage. It
+reads an article or paper as markdown text, kept in a directory of its own because the source
+is untrusted, and a list of proposed claims (from a model pass or a hand edit). It writes
+`facts.jsonl` (`ArticleFactSchema`) and `rejected.json`:
+
+- A claim or number is kept only when its quote is verbatim in the text, at most
+  `QUOTE_MAX_WORDS` (25) words, and, for a number, states the value. A failing claim is kept
+  in `rejected.json` with its reason.
+- Each captioned figure or table (`Figure 2: ...`, `Table 1: ...`) whose data the text carries
+  as a markdown table becomes a `figure/<id>` fact with its series, ready to re-plot. A figure
+  held only as an image is noted `W-FIGURE-NO-DATA`; a table of text is noted `W-TABLE-TEXT`.
+
+`paperPublishEligibility` (`src/article-checks.ts`) runs the profile's `publish.checks` over a
+paper video's `beats.json` against those facts. `figures-replotted-from-data` fails any image
+in a beat's slots, a `replot` whose `source.ref` is not a figure fact id or whose points are
+not that figure's data, and any other beat citing a figure fact. `quotes-short` fails any
+quote over the limit in the slots, the narration or the on-screen text. A check it does not
+know fails the video.
+
+Passing makes a video eligible to publish, nothing more. Publishing third-party text and
+figures needs the owner's explicit ask for that one video (owner Q4 B). No code here
+publishes, and eligibility never triggers a publish. `fixtures/article/demo/` is a synthetic
+paper the tests gather.
+
 `video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
 registry under `products/explainer/doctrine/` now names the allowed beats, video types and
 audiences (`vocabulary.yaml`) and holds the craft rules (`craft/`). Type profiles (TP-2746) and
@@ -51,6 +75,17 @@ leave a legacy script parsing; `script-load.ts` (`parseScript`) also rejects a `
 registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
+
+`anchor-grid.ts` is the frame as a 6×6 grid of named anchors: columns `A` to `F` left to right,
+rows `1` to `6` top to bottom, so `A1` is the top left. A script's `visual.anchors` and a
+template's slots (`placeSlots`) name cells or `B2:E5` ranges; `anchorsForBox` maps a pixel box to
+the cells it overlaps. `occupancy-table.ts` builds one table per settled mark, mapping each
+occupied anchor to the element ids on it. The DOM's `[data-el]` boxes place template beats. A
+custom layer that declares anchors adds `custom-layer` on them, and an undeclared custom layer
+(or a mark with no DOM elements) falls back to the frame's pixel 6×6 ink coverage, so line art
+is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
+(`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
+`writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
@@ -161,6 +196,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 
 | Stage | Path | Inputs → outputs |
 |---|---|---|
+| `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition |
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
@@ -221,9 +257,46 @@ stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k
 `--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
 the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
 
-`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--json] [--data-dir <dir>]` runs one
-stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its child run,
-key, spend, output shas and check verdicts. Exit 0 when it finished, 1 when it failed, 2 on usage.
+`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--profile <type>] [--json] [--data-dir <dir>]`
+runs one stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its
+child run, key, spend, output shas, check verdicts and notes. Exit 0 when it finished, 1 when it failed, 2 on usage.
+
+**Material map** (`audition`, plan §A.3 step 1). `parseFacts` reads a facts pack: JSON lines of gather facts, or the
+rows of every markdown table whose header has an `Id` column. A cue lexicon (`material-cues.ts`) marks each fact as
+material: claims, tensions, changes, quantities, time series, mechanisms, flows and parallel items. One rule per
+`vocabulary.yaml` signal (`material-signals.ts`) says whether it holds and which facts carry it; a signal no rule can
+read without judgement (`elegant-idea`) is listed in `gaps`, never sent to a model. Each registered structure's fit
+predicate is scored on the signals and the profile's `runtime.targetS`, with one reason per term; a predicate whose
+outcome turns on a gap is `undecided`. `candidates` are the structures that fit and that the profile allows (its
+fixed macro, or its heuristic rows, macros and fallback). The stage key covers the facts sha, the profile's version
+and content hash, and a hash over the structure registry, so a doctrine edit is a new key; a body whose doctrine no
+longer matches its key refuses. `material-map.json` holds fact ids and cue words, not the facts' text.
+
+**Audition** (plan §A.3 steps 2 to 5). After the map, the stage builds a pool of structures and samples one spine
+for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` caps the call):
+- **Pool** (`audition-pool.ts`). Every candidate, in the profile's heuristic order. When fewer than the profile's
+  `audition.k` fit, allowed structures that are `undecided` top the pool up: an undecided structure is never a
+  candidate on its own, only fills a slot after every fitting one, and counts each gap term as half met in its fit
+  score. With **0 candidates** the profile's fixed macro (or a heuristic profile's `fallback`) leads the pool, and
+  `audition.json` records `fallback` with the reason (which allowed structures did not fit, and which fit but are
+  not allowed). A pool shorter than k is cycled, each repeat under the next beat system the profile binds to that
+  structure, so a fixed tour samples k spines under different systems.
+- **Sampling** (`audition-sample.ts`). Verbalized sampling: the call returns one spine per slot, each with a stated
+  likelihood, its ABT or SCQA sentence, hook fact, block questions with fact ids and lead beat, the payoff block,
+  the signature layer and its cuts. A reply that names an unknown fact, a block out of order, a beat or coverage
+  item the profile does not list, or the wrong slot is retried once with its issues, then fails the stage with its
+  spend recorded; nothing is adopted unscored.
+- **Scores** (`audition-score.ts`), each 0 to 1. Fit: the share of the predicate's terms met. Coverage: P1 facts
+  placed and the profile's coverage items covered. Tension: stake by 15 %, complication by 25 %, every block within
+  the profile's `reHookS` bound, payoff by 40 %. Range: distinct lead beats over blocks, until the resolver (PP-6)
+  can say what it would draw. Freshness: the profile's must-vary `structure` and `signature-layer` against the
+  series window; 1 until the PP-9 fingerprint records the series (TP-4019). The cold-viewer rubric (J8 to J12) runs
+  on every candidate's hook, signature layer and block questions and is recorded only.
+- **Pick.** The agent picks with no owner gate: the highest code total, ties to the higher stated likelihood, then
+  the earlier slot. `audition.json` (`audition/v1`) keeps every candidate with its spine and scores, the pick, the
+  runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. The stage
+  stops at the storyboard: it writes no script and renders nothing. A gate check, `audition-scored`, fails the stage
+  if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
@@ -362,3 +435,27 @@ A verdict with no quote, or a quote not in that beat's text on that track, is vo
 scores 0 (L2, cold). Every beat call ends with one known-bad canary beat, and every viewer call
 asks about a component that does not exist. A run whose judge passes a canary, or whose call
 fails, is untrusted: its rows are still written, and the command exits 1.
+
+### Emphasis mapping and the target gate
+
+A script beat's `visual.cues` are its emphasis cues. Each one maps a spoken span, `atCue` to `untilCue`, to
+`target`: the id of one element in the beat. The optional `visual.beat` names the beat spec, and the spec's
+`emphasis.targets` lists the slot lists whose item ids a cue may name. How the element is emphasised (pointer,
+highlight, trace, scale, colour, camera) is the template's choice from the spec's `treatments`. This package adds no
+pointer layer and no default treatment.
+
+- `emphasisCues(beat)` lists each cue's word range and target. `targetsForSpan(beat, span, timings?)` maps a word
+  range, or a time range through the beat's word timings, to the targets whose cues overlap it.
+- `emphasisTargetGate({ beats, specs, slots, layout?, marks? })` is the resolve stage's gate. It fails a cue when:
+  - its beat names no spec (`no-beat-spec`), or the beat's slots fail the spec (`bad-slots`);
+  - the target names no element (`no-element`), or names more than one, such as a node and an edge that share an id
+    (`ambiguous`);
+  - once laid out, the element's box is missing or not wholly inside the frame (`off-frame`);
+  - given the mark frames either side of the step, the step changes under 2 % of the target's box. A pixel counts as
+    changed when a channel moves by more than 8 levels (`unchanged`; `changedShare`, `emphasisStepChanges`).
+- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The workflow has no resolve stage
+  yet; the resolver task (TP-2614) registers the gate when it adds the stage.
+
+Stubbed: the mark frames come from beat-aware marks (TP-3000), which are not built yet. The rule takes two decoded
+RGBA frames and the target box, and its tests use synthetic frames. `fixtures/emphasis/` holds a synthetic script,
+slots and layout.

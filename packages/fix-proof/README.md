@@ -19,7 +19,8 @@ the `fix-proof` bin does the git and vitest work.
   and the merge-base check that each `find` occurs exactly once in a file that is not test material.
 - `classifyReports({ selected, base, head })`: per-test `reproduces`, `passes-on-base`,
   `new-api`, `fails-on-head` or `not-run`, and a verdict of `reproduced`, `unproven`,
-  `vacuous`, `no-tests` or `error`.
+  `vacuous`, `no-tests` or `error`. A test head skips or marks todo in a file that did not
+  fail is left out, unless base passed it.
 - `toResult`, `formatResultLine` and `parseResultLine`: one `fix-proof/v1 <json>` line of at
   most 4 KB, parsed strictly.
 - `classifyMutants(specs, decoded)`: each declared mutation is `killed` only when its rebuild

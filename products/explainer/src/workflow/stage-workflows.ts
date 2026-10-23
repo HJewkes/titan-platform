@@ -2,6 +2,7 @@ import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type Workflo
 import { z } from "zod";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import type { ArtifactStore } from "./artifacts.js";
+import { runAuditionStage } from "./audition-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
 import { isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
@@ -32,6 +33,11 @@ export const stageWorkflow = (): WorkflowFn => async (ctx) => {
 
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   const { config, stage } = spec;
+  if (stage === "audition") {
+    if (!config.profile || !config.structures || !config.model || !config.judge) throw new Error("audition stage spec has no profile, structure registry, model or judge");
+    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+    return runAuditionStage(input, { profile: config.profile, structures: config.structures, model: config.model, judge: config.judge }, seams);
+  }
   if (stage === "script") {
     const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
     if (!config.model) throw new Error("script stage spec has no model");

@@ -30,7 +30,8 @@ This package is the pure core of that gate. It adds three primitives:
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
   log line of at most 4 KB, for a CI job to print and Shepherd to read.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
-  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
+  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
+  skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
 
 ## When to reach for it
@@ -204,7 +205,14 @@ Duplicate names pair up by occurrence.
 | `passes-on-base` | passed | passed |
 | `new-api` | suite load error, or a failure naming a missing symbol | passed |
 | `fails-on-head` | anything | failed |
-| `not-run` | skipped or absent | passed, or head skipped it |
+| `not-run` | skipped or absent | passed, or head skipped a test base passed |
+
+A test head declines to run (`skip`, `skipIf`, `todo`) is left out of the classification and
+the counts, unless base passed it. It ran nowhere and claims nothing, so it neither reproduces
+nor blocks a mutant proof. Skipping a test base passed removes a check, so that test stays
+`not-run`. vitest also reports tests a throwing hook skipped as `skipped`, so a skip inside a
+file vitest marks failed is never read as deliberate and stays `not-run` too. A line from a
+runner before this rule counts every head skip as `not-run`, which only refuses a proof.
 
 A missing symbol is a failure containing `is not a function`, `is not a constructor`,
 `Cannot find module`, `does not provide an export` or `Failed to load url`. vitest does not

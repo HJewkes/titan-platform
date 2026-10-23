@@ -16,6 +16,7 @@ interface StageFlags {
   scriptModel: string;
   judge?: string;
   rounds: number;
+  profile?: string;
   json?: boolean;
 }
 
@@ -35,13 +36,14 @@ function stageCommand(deps: RunCliDeps, out: (text: string) => void): Command {
     .option("--script-model <model>", "model for the script stage", DEFAULT_SCRIPT_MODEL)
     .option("--judge <file>", "model config JSON for the rewrite stage")
     .addOption(new Option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`).argParser(rounds).default(MAX_REWRITE_ROUNDS))
+    .option("--profile <type>", "the video type whose profile the audition stage reads")
     .option("--json", "print the stage record JSON")
     .exitOverride()
     .action(async (stage: CachedStage, flags: StageFlags) => {
       const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
       const record = await runOneStage({
         stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
-        ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}),
+        ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}), ...(flags.profile ? { profile: flags.profile } : {}),
       }, hostFor(flags, deps)).catch((error: unknown) => {
         // A failed gate still has verdicts; a caller scoring checks reads them from the record, exit code 1 or not.
         if (flags.json && error instanceof ChildStageFailure && error.record) out(`${JSON.stringify(error.record, null, 2)}\n`);
@@ -57,6 +59,7 @@ function printRecord(stage: CachedStage, record: StageRecord, out: (text: string
   out(`$${record.usage.usd.toFixed(4)} over ${record.usage.calls} model calls; ${(record.wallMs / 1000).toFixed(1)} s\n`);
   out(`outputs: ${shortShas(record.outputs)}\n`);
   out(`checks: ${verdicts(record)}\n`);
+  for (const note of record.notes) out(`note: ${note}\n`);
 }
 
 /** `explainer stage <name> --in name=sha ...`: exit 0 when the stage finished, 1 when it failed, 2 on usage. */
