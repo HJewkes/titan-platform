@@ -3,13 +3,25 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
 import { z } from "zod";
+import type { L0Check } from "../eval-l0.js";
+import { choppy } from "../rewrite-fixtures.test-helpers.js";
+import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
 const ReportRowsSchema = z.object({ rows: z.array(z.object({ outputs: z.record(z.string(), z.string()) })) });
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+
+/** Runs the script stage alone and returns the draft's sha from the run report. */
+async function scriptDraft({ run, out }: ReturnType<typeof cli>): Promise<string> {
+  await run("--spine", fx.spine, "--facts", fx.facts, "--to", "script");
+  const runId = /^run (\S+):/.exec(out[0] ?? "")?.[1];
+  out.length = 0;
+  await run("report", runId!, "--json");
+  return ReportRowsSchema.parse(JSON.parse(out.join(""))).rows[0]!.outputs.draft!;
+}
 
 function cli(host: ReturnType<typeof fakeHost>) {
   const out: string[] = [];
@@ -76,12 +88,7 @@ describe("explainer stage and run variants CLI", () => {
   it("stage runs one stage from stored shas and prints a cache hit the second time", async () => {
     fx = fixture();
     const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
-    const { run, out } = cli(host);
-    await run("--spine", fx.spine, "--facts", fx.facts, "--to", "script");
-    const runId = /^run (\S+):/.exec(out[0] ?? "")?.[1];
-    out.length = 0;
-    await run("report", runId!, "--json");
-    const draft = ReportRowsSchema.parse(JSON.parse(out.join(""))).rows[0]!.outputs.draft!;
+    const draft = await scriptDraft(cli(host));
     const lines: string[] = [];
     const stage = (...argv: string[]) => runStageCli(["stage", ...argv, "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: (t) => lines.push(t) });
 
@@ -90,5 +97,21 @@ describe("explainer stage and run variants CLI", () => {
     expect(await stage("rewrite", "--in", "draft=abc")).toBe(2);
 
     expect(lines.filter((l) => l.startsWith("stage rewrite:")).map((l) => l.split(";")[0])).toEqual(["stage rewrite: ran", "stage rewrite: cache hit"]);
+    expect(lines).toContain("checks: no-new-l0-error pass (gate), rewrite-rows pass (reported)\n");
+  });
+
+  it("stage --json prints the failed record with its gate verdict and exits 1", async () => {
+    fx = fixture();
+    const draft = await scriptDraft(cli(fakeHost(fx, fakeScriptModel(), fakeBridge())));
+    const drafted = choppy().beats[0]!.spoken;
+    const redOnceRewritten: L0Check = (input) => l0Check(input.script.beats[0]!.spoken === drafted)(input);
+    const host = fakeHost(fx, fakeScriptModel(), fakeBridge(), { evalChecks: [redOnceRewritten] });
+    const lines: string[] = [];
+
+    const code = await runStageCli(["stage", "rewrite", "--in", `draft=${draft}`, "--json", "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: () => undefined });
+
+    expect(code).toBe(1);
+    const record = StageRecordSchema.parse(JSON.parse(lines.join("")));
+    expect(record.checks.find((check) => check.name === "no-new-l0-error")).toMatchObject({ gate: true, pass: false });
   });
 });
