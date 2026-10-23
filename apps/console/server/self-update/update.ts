@@ -1,10 +1,10 @@
 import path from "node:path";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { z } from "zod";
-import { failureDeposit, type FailureStage } from "./alarm.js";
+import { FAILURE_STAGES, failureDeposit, type FailureStage } from "./alarm.js";
 import { releaseLock, takeLock, type LockPorts } from "./lock.js";
-import { BUILD_ARGS, CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
-import { smokeFromRelease, type SmokePorts } from "./release-smoke.js";
+import { CLOSURE_ARGS, closureDirs, touchedPaths } from "./plan.js";
+import { releaseCli, smokeFromRelease, type SmokePorts } from "./release-smoke.js";
 
 export interface CommandResult {
   code: number;
@@ -41,9 +41,10 @@ export interface UpdateOptions {
   unit: string;
 }
 
-type UpdateOutcome = "updated" | "failed" | "rolled-back" | "rollback-failed";
+const OUTCOMES = ["updated", "unchanged", "failed", "rolled-back", "rollback-failed"] as const;
+type UpdateOutcome = (typeof OUTCOMES)[number];
 
-/** The last attempt; a failed target is not retried until main moves past it. */
+/** The last attempt; the bootstrap does not build its target again until main moves past it. */
 interface UpdateRecord {
   outcome: UpdateOutcome;
   target: string;
@@ -55,12 +56,10 @@ interface UpdateRecord {
 }
 
 export const EXIT = { OK: 0, FAILED: 1, LOCKED: 75, CONFIG: 78 } as const;
-const MAIN = "origin/main";
 const DETAIL_LINES = 20;
 
 export const recordPath = (stateDir: string): string => path.join(stateDir, "self-update.json");
 export const lockPath = (stateDir: string): string => path.join(stateDir, "self-update.lock");
-const buildLogPath = (stateDir: string): string => path.join(stateDir, "self-update-build.log");
 
 interface Update {
   ports: UpdatePorts;
@@ -81,8 +80,12 @@ type Stop = { kind: "stop"; code: number; message: string };
 
 const stopWith = (code: number, message: string): Stop => ({ kind: "stop", code, message });
 
-/** One pass: fetch, decide, build, smoke, swap, restart, verify; any failure leaves the old build serving. */
-export async function selfUpdate(ports: UpdatePorts, options: UpdateOptions): Promise<number> {
+/**
+ * The bootstrap's hand-off (TP-4043): it fetched and built `target` into releases/<target>, and this process runs from
+ * that release, so a fix to anything here applies on the pass that builds it. Decide, smoke, swap, restart, verify;
+ * any failure leaves the previous build serving, and the previous release stays on disk until the new one answers.
+ */
+export async function applyRelease(ports: UpdatePorts, options: UpdateOptions, target: string): Promise<number> {
   ports.mkdir(options.stateDir);
   const lock = lockPath(options.stateDir);
   const held = takeLock(ports, lock);
@@ -92,7 +95,7 @@ export async function selfUpdate(ports: UpdatePorts, options: UpdateOptions): Pr
   }
   try {
     const update = { ports, options, link: path.join(options.root, "current"), checkout: path.join(options.root, "checkout") };
-    const plan = await planUpdate(update);
+    const plan = await planApply(update, target);
     if ("kind" in plan) {
       ports.log(plan.message);
       return plan.code;
@@ -103,12 +106,22 @@ export async function selfUpdate(ports: UpdatePorts, options: UpdateOptions): Pr
   }
 }
 
+/** `self-update --report`: files the owner-queue alarm for a failure the bootstrap recorded, which cannot import alarm.ts. */
+export async function reportRecorded(ports: Pick<UpdatePorts, "readFile" | "alarm" | "log">, stateDir: string): Promise<number> {
+  const last = readRecord(ports.readFile(recordPath(stateDir)));
+  if (last?.outcome !== "failed" || last.stage === undefined) {
+    ports.log(`no failed update is recorded in ${recordPath(stateDir)}`);
+    return EXIT.CONFIG;
+  }
+  return (await raiseAlarm(ports, { stage: last.stage, target: last.target, serving: last.served, why: last.why ?? "no reason recorded" })) ? EXIT.OK : EXIT.FAILED;
+}
+
 const recordSchema = z.object({
-  outcome: z.enum(["updated", "failed", "rolled-back", "rollback-failed"]),
+  outcome: z.enum(OUTCOMES),
   target: z.string(),
   served: z.string(),
   at: z.string(),
-  stage: z.enum(["build", "smoke", "restart", "rollback"]).optional(),
+  stage: z.enum(FAILURE_STAGES).optional(),
   why: z.string().optional(),
   touched: z.array(z.string()).optional(),
 });
@@ -132,38 +145,31 @@ async function revParse(update: Update, cwd: string, rev: string): Promise<strin
   return parsed.code === 0 ? parsed.stdout.trim() : undefined;
 }
 
-async function planUpdate(update: Update): Promise<Go | Stop> {
-  const { ports, options, link, checkout } = update;
+async function planApply(update: Update, target: string): Promise<Go | Stop> {
+  const { ports, options, link } = update;
   const current = ports.readLink(link);
   if (current === undefined) return stopWith(EXIT.CONFIG, `self-update refused: ${link} is not a symlink to the served checkout; run the owner step in apps/console/docs/self-update.md`);
-  const fetched = await ports.git(checkout, ["fetch", "--quiet", "origin", "main"]);
-  if (fetched.code !== 0) return stopWith(EXIT.FAILED, `self-update refused: git fetch origin main failed: ${detail(fetched)}`);
-  const target = await revParse(update, checkout, MAIN);
+  const release = path.join(options.root, "releases", target);
+  if (!ports.exists(releaseCli(release))) return stopWith(EXIT.CONFIG, `self-update refused: ${release} holds no built console; the bootstrap builds it before the hand-off`);
   const served = await revParse(update, current, "HEAD");
-  if (target === undefined || served === undefined) return stopWith(EXIT.FAILED, `self-update refused: could not resolve ${target === undefined ? MAIN : `HEAD in ${current}`}`);
+  if (served === undefined) return stopWith(EXIT.FAILED, `self-update refused: could not resolve HEAD in ${current}`);
   if (served === target) return stopWith(EXIT.OK, `up to date: serving ${target}`);
-  const last = readRecord(ports.readFile(recordPath(options.stateDir)));
-  if (last !== undefined && last.outcome !== "updated" && last.target === target) {
-    return stopWith(EXIT.OK, `held: ${target} ${last.outcome} at ${last.at} (${last.why ?? "no reason recorded"}); a newer main sha updates`);
-  }
-  const touched = await consoleTouched(update, current, served, target);
-  if (touched.length === 0) return stopWith(EXIT.OK, `no console change from ${served} to ${target}; still serving ${served}`);
-  return { current, served, target, touched, release: path.join(options.root, "releases", target) };
+  const touched = await consoleTouched(update, release, served, target);
+  return { current, served, target, touched, release };
 }
 
-/** Diffed in the fetching clone, against the closure pnpm reads from the served tree; a failed diff counts as a change. */
-async function consoleTouched(update: Update, current: string, served: string, target: string): Promise<string[]> {
+/** Diffed in the fetching clone, against the closure pnpm reads from the new release; a failed diff counts as a change. */
+async function consoleTouched(update: Update, release: string, served: string, target: string): Promise<string[]> {
   const diff = await update.ports.git(update.checkout, ["diff", "--name-only", "--no-renames", served, target]);
   if (diff.code !== 0) return [`<git diff failed: ${detail(diff)}>`];
-  const listed = await update.ports.pnpm(current, CLOSURE_ARGS);
-  const closure = listed.code === 0 ? closureDirs(listed.stdout, current) : undefined;
+  const listed = await update.ports.pnpm(release, CLOSURE_ARGS);
+  const closure = listed.code === 0 ? closureDirs(listed.stdout, release) : undefined;
   return touchedPaths(diff.stdout.split("\n").filter((line) => line !== ""), closure);
 }
 
 async function apply(update: Update, go: Go): Promise<number> {
+  if (go.touched.length === 0) return unchanged(update, go);
   update.ports.log(`updating ${go.served} -> ${go.target}; ${go.touched.length} changed path(s) reach the console build`);
-  const built = await buildRelease(update, go);
-  if (built !== undefined) return failBeforeSwap(update, go, "build", built);
   const smoke = await smokeFromRelease(update.ports, go.release, go.target);
   if (smoke !== undefined) return failBeforeSwap(update, go, "smoke", smoke);
   update.ports.swapLink(update.link, go.release);
@@ -175,20 +181,12 @@ async function apply(update: Update, go: Go): Promise<number> {
   return EXIT.OK;
 }
 
-/** A leftover worktree from an earlier failed attempt is replaced, so a rerun starts clean. */
-async function buildRelease(update: Update, go: Go): Promise<string | undefined> {
-  const { ports, checkout } = update;
+/** Recorded, so the bootstrap does not build this sha again; the built release is dropped, since nothing will serve it. */
+async function unchanged(update: Update, go: Go): Promise<number> {
+  write(update, go, "unchanged");
   await removeRelease(update, go.release);
-  ports.mkdir(path.dirname(go.release));
-  const added = await ports.git(checkout, ["worktree", "add", "--detach", go.release, go.target]);
-  if (added.code !== 0) return `git worktree add failed: ${detail(added)}`;
-  for (const args of [["install", "--frozen-lockfile"], BUILD_ARGS]) {
-    const result = await ports.pnpm(go.release, args);
-    if (result.code === 0) continue;
-    ports.writeFile(buildLogPath(update.options.stateDir), `pnpm ${args.join(" ")} at ${go.target}\n${result.stdout}\n${result.stderr}\n`);
-    return `pnpm ${args.join(" ")} failed: ${detail(result)}`;
-  }
-  return undefined;
+  update.ports.log(`no console change from ${go.served} to ${go.target}; still serving ${go.served}`);
+  return EXIT.OK;
 }
 
 async function removeRelease(update: Update, release: string): Promise<void> {
@@ -234,12 +232,18 @@ async function fail(update: Update, go: Go, failure: Failure): Promise<number> {
   const { ports } = update;
   ports.log(`${failure.outcome === "rollback-failed" ? "ALERT" : "error"}: ${failure.stage} of ${go.target} failed: ${failure.why}`);
   write(update, go, failure.outcome, { stage: failure.stage, why: failure.why });
+  await raiseAlarm(ports, { stage: failure.stage, target: go.target, serving: failure.serving, why: failure.why });
+  return EXIT.FAILED;
+}
+
+async function raiseAlarm(ports: Pick<UpdatePorts, "alarm" | "log">, failure: Parameters<typeof failureDeposit>[0]): Promise<boolean> {
   try {
-    await ports.alarm(failureDeposit({ stage: failure.stage, target: go.target, serving: failure.serving, why: failure.why }));
+    await ports.alarm(failureDeposit(failure));
+    return true;
   } catch (error) {
     ports.log(`error: the owner-queue alarm failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
   }
-  return EXIT.FAILED;
 }
 
 function write(update: Update, go: Go, outcome: UpdateOutcome, extra: Pick<UpdateRecord, "stage" | "why"> = {}): void {
