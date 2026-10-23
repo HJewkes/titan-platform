@@ -84,6 +84,14 @@ describe("summarizeMeasure", () => {
     expect(rowOf(inputs, "register:numbers", new Set(["b:register:numbers"]))).toMatchObject({ everyInputCloser: true, pass: true });
   });
 
+  it("measures a stage with no before, such as script: a cell is closer only when its mean is in band", () => {
+    const inputs: MeasureInput[] = [{ name: "a", samples: [rows({ "register:triads": 1 }), rows({ "register:triads": 3 })] }];
+
+    expect(cellOf(inputs, "a", "register:triads")).toMatchObject({ mean: 2, n: 2, inBand: true, closer: true });
+    expect(cellOf(inputs, "a", "register:triads").before).toBeUndefined();
+    expect(cellOf([{ name: "a", samples: [rows({ "register:triads": 4 })] }], "a", "register:triads")).toMatchObject({ inBand: false, closer: false });
+  });
+
   it("passes the measure only when all five target rows pass", () => {
     const green = [input("a", [{}, {}])];
     const oneRed = [input("a", [{ "register:sentence-cv": 0.3 }, { "register:sentence-cv": 0.31 }], GREEN)];
@@ -99,5 +107,11 @@ describe("measureTable", () => {
 
     expect(table).toContain("| a | register:numbers-per-beat | <= 24.0% | 40.0% | 15.0% ± 7.1% | 2 | yes | yes |");
     expect(table).toContain("Revised done-when: PASS");
+  });
+
+  it("prints a dash for the before of a stage that has none", () => {
+    const table = measureTable(summarizeMeasure([{ name: "a", samples: [rows(), rows()] }]));
+
+    expect(table).toContain("| a | register:numbers | <= 25.62 | — | 20.00 ± 0.00 | 2 | yes | yes |");
   });
 });

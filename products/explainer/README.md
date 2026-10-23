@@ -311,6 +311,29 @@ for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` ca
   stops at the storyboard: it writes no script and renders nothing. A gate check, `audition-scored`, fails the stage
   if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
 
+**Samples and the noise floor (TP-4034).** A model stage's output varies run to run as much as a tuning round moves
+it (TP-3878), so one sample decides nothing. `script` and `rewrite` take samples; each scores its script (the draft;
+for rewrite the rewritten script, with the input draft as the before) on the five Q-V11 target rows and reports
+through `summarizeMeasure`: per cell the mean, sample sd and n, and per row σ, one sample's noise pooled over cases.
+
+- `explainer stage <script|rewrite> --in ... --samples n [--sample k] [--max-usd <usd>]` runs sample indices `k` to
+  `k + n - 1`, each a cached run of its own, so a repeat measure reuses what it has. A sample whose stage failed a
+  gate still counts (its script exists); one that made no script is listed and left out. Exit 1 when a sample made
+  no script or `--max-usd` stopped the measure.
+- `explainer aa-floor --stage <s> --cases <dir|file...> [--split dev] [--samples 3] [--unit-dir <dir>] [--out <file>]`
+  runs the champion against itself: arm A on sample indices 0 to n-1, arm B on n to 2n-1, over the case split
+  (`products/evals/units/explainer-<stage>/cases`, `dev` by default). σ per row is pooled within each arm. With
+  `--unit-dir` it writes the floor to the unit's `notes.md` (a marked section a new floor replaces) and
+  `aa-floor.json`, stamped with the stage version it measured.
+- `explainer ab --stage <s> --variants <a> <b> --cases <dir|file...> [--samples 3] [--floor <aa-floor.json|unit dir>]`
+  runs both arms (`champion` names the run's own settings) and judges each row's B minus A: within 2σ is `noise`
+  however it points; past it, `win` or `loss` when B's mean sits nearer or further from the band than A's, `shift`
+  when both are equally near (both in band). σ comes from `--floor`, else from the arms' own pooled σ (`unknown`
+  with one sample and no floor).
+
+All three take the stage settings of `explainer stage` and `--max-usd`, which stops before a run the dearest run so
+far says would pass it, with one cap over both arms.
+
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
 with a base belongs to the base run's video (`--video` names one outright); a run ends when the MP4 reaches the
